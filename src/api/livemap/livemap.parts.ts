@@ -1,4 +1,5 @@
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
+import { validate_part_definition_flags } from "../../internal/part-definition.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { ANY_DATA, hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
@@ -74,6 +75,7 @@ export function validate_part_collection(value: OrderedProjectedValue): readonly
     if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-part") {
       throw new TypeError("Part requires exactly one ordinary element root.");
     }
+    validate_part_definition_flags(root);
     const quads = authored.declarations.length === 0 ? undefined : decode_document_quads(
       [...authored.declarations].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0), root, "document");
     const rawSheet = fields.get("stylesheet");

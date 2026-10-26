@@ -8,7 +8,7 @@ import { MemoryCheckpointAdapter } from '../helpers/memory-checkpoint-adapter.mt
 // Original independent-review reproducer, with relative imports, a callable
 // wrapper and type-safe inspection/corruption for the permanent test gate.
 export async function review_missing_scopes() {
-  const parts = { parts: { leaf: { kind: 'document', document: '<section @:root <button @:button/>/>' } } } as const;
+  const parts = { parts: { leaf: { kind: 'document', document: '<section hson:part @:root <button @:button/>/>' } } } as const;
   const map = hsonLiveMap.fromLibraries({ parts }), adapter = new MemoryCheckpointAdapter();
   const locus = await persist({ map, persistence: adapter, scopedDocuments: true });
   await locus.add_libraries_internal({ page: {

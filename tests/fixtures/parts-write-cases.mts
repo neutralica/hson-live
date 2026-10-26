@@ -4,11 +4,57 @@ import { internal_livemap_aggregate_authority } from "../../src/api/livemap/live
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.js";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.js";
 
-const heading = { kind: "document", document: '<h1 "%{content}"/>' } as const;
-const blank = { kind: "document", document: "<hr/>" } as const;
+const heading = { kind: "document", document: '<h1 hson:part "%{content}"/>' } as const;
+const blank = { kind: "document", document: "<hr hson:part/>" } as const;
 const definitions = { components: { parts: { heading, blank } }, ordinary: { data: { heading } } };
 
 export async function parts_write_cases() {
+  const renamed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document",
+    document: '<p hson:part model:data="%{style}" other:data="%{__proto__}" "#{model.title}:#{other}"/>' } } } });
+  const protectedNames = Object.fromEntries([['style', Hson.data.from({ title: 'Own' })], ['__proto__', Hson.data.from(false)]]);
+  const encoded = renamed.parts.parts.x.write(protectedNames);
+  assert.match(encoded, /data:style=/); assert.match(encoded, /data:__proto__=/);
+  renamed.addLibraries({ page: { document: encoded } });
+  assert.equal(renamed.doc.must('page').render(), '<p>Own:false</p>');
+
+  const changed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<p hson:part "%{value}"/>' } } } });
+  const scalarCapture = changed.parts.parts.x.write({ value: '<b/>' });
+  changed.parts.parts.x.replace({ kind: "document", document: '<main hson:part c:doc="%{value}" <hson-part #{c}/>/>' });
+  assert.throws(() => changed.addLibraries({ bad: { document: scalarCapture } }), /receiving interface/);
+  const documentCapture = changed.parts.parts.x.write({ value: '<b/>' });
+  changed.parts.parts.x.replace({ kind: "document", document: '<p hson:part "%{value}"/>' });
+  assert.throws(() => changed.addLibraries({ bad: { document: documentCapture } }), /receiving interface/);
+  assert.equal(changed.doc('bad'), undefined);
+
+  const optional = hsonLiveMap.fromLibraries({ parts: { parts: {
+    x: { kind: "document", document: '<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>' },
+  } } });
+  for (const [name, value] of [['empty', {}], ['present', { title: 'Visible' }]] as const) {
+    const written = optional.parts.parts.x.write({ payload: Hson.data.from(value) });
+    assert.equal(written, Hson.document`<hson-part lib="parts" at="x" data:payload="${Hson.data.from(value)}"/>`);
+    optional.addLibraries({ [name]: { document: Hson.document`<main ${written}/>` } });
+    const result = optional.doc.must(name).render();
+    assert.equal(result.includes('<p'), name === 'present');
+    assert.doesNotMatch(result, /part:optional|hson-part|data:payload/);
+  }
+
+  const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav hson:part slide:data="%{payload}" title="#{slide.title}" "#{slide.no}"/>' } } } });
+  const structuredAuthority = internal_livemap_aggregate_authority(structured);
+  const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();
+  const slide = Hson.data`<title "Navigation" no -0>`;
+  const written: HsonAuthored = structured.parts.components.nav.write({ payload: slide });
+  assert.equal(written, Hson.document`<hson-part lib="components" at="nav" data:payload="${slide}"/>`);
+  const malformed = structured.parts.components.nav.write({ payload: "<broken" });
+  assert.deepEqual(structuredAuthority.captureSemanticCheckpoint(), structuredBefore);
+  assert.equal(structuredAuthority.identityEpoch().issued(), structuredIssued);
+  for (const args of [{ "data:payload": false }, { "data:payload": 1 }, { "data:payload": null },
+    { payload: "ordinary", "data:payload": slide }, { "data:payload": slide, payload: "ordinary" }, { "data:lib": "null" }, { "Data:x": "null" }]) {
+    assert.throws(() => Reflect.apply(structured.parts.components.nav.write, undefined, [args]));
+  }
+  assert.throws(() => structured.addLibraries({ bad: { document: malformed } }));
+  assert.deepEqual(structuredAuthority.captureSemanticCheckpoint(), structuredBefore);
+  structured.addLibraries({ page: { document: Hson.document`<main ${written}/>` } });
+  assert.match(structured.doc.must("page").render(), /title="Navigation">0<\/nav>/);
   const map = hsonLiveMap.fromLibraries(definitions), parts = map.parts.components;
   const authority = internal_livemap_aggregate_authority(map);
   const before = authority.captureSemanticCheckpoint();
@@ -50,7 +96,7 @@ export async function parts_write_cases() {
     assert.throws(() => Reflect.apply(parts.heading.write, undefined, [value]));
   }
   assert.throws(() => Reflect.apply(parts.heading.write, undefined, [{}, {}]));
-  for (const name of ["", "bad name", "1bad", "x.y", "lib", "at", "style", "__proto__", "hson:quid", "_hson_attr_transit_x", "_hson_meta_attr_x"]) {
+  for (const name of ["", "bad name", "1bad", "x.y", "lib", "at", "style", "__proto__", "hson:quid", "hson:part", "_hson_attr_transit_x", "_hson_meta_attr_x"]) {
     assert.throws(() => parts.heading.write(Object.fromEntries([[name, "value"]])), name);
   }
   assert.throws(() => parts.heading.write({ [Symbol("bad")]: "value" }));
@@ -93,19 +139,19 @@ export async function parts_write_cases() {
 
   for (const trap of ["getPrototypeOf", "ownKeys", "getOwnPropertyDescriptor"] as const) {
     const hostile = new Proxy({ content: "outer" }, { [trap](target: object, key: PropertyKey) {
-      parts.blank.replace({ kind: "document", document: `<hr title="${trap}"/>` });
+      parts.blank.replace({ kind: "document", document: `<hr hson:part title="${trap}"/>` });
       return trap === "getPrototypeOf" ? Reflect.getPrototypeOf(target)
         : trap === "ownKeys" ? Reflect.ownKeys(target) : Reflect.getOwnPropertyDescriptor(target, key);
     } });
     assert.throws(() => retained.write(hostile), /changed during capture/);
-    assert.equal(parts.blank.snap()!.document, `<hr title="${trap}"/>`, "accepted inner work survives");
+    assert.equal(parts.blank.snap()!.document, `<hr hson:part title="${trap}"/>`, "accepted inner work survives");
   }
 
   // Source is detached from both caller arguments and the originating definitions.
-  retained.replace({ kind: "document", document: '<h3 "%{content}"/>' });
+  retained.replace({ kind: "document", document: '<h3 hson:part "%{content}"/>' });
   const receiving = hsonLiveMap.fromLibraries({ components: { parts: {
-    heading: { kind: "document", document: '<h2 title="%{content}" "%{content}"/>' }, blank,
-    scalars: { kind: "document", document: '<p n="%{count}" enabled="%{enabled}" empty="%{empty}" "%{ExactCase}:%{count}:%{enabled}:%{empty}"/>' },
+    heading: { kind: "document", document: '<h2 hson:part title="%{content}" "%{content}"/>' }, blank,
+    scalars: { kind: "document", document: '<p hson:part n="%{count}" enabled="%{enabled}" empty="%{empty}" "%{ExactCase}:%{count}:%{enabled}:%{empty}"/>' },
   } } });
   receiving.addLibraries({ page: { document: Hson.document`<section ${invocation} ${parts.blank.write()}/>` } });
   const pageText = JSON.stringify(receiving.doc.must("page").root());
@@ -113,8 +159,7 @@ export async function parts_write_cases() {
   assert.ok(pageText.includes("h2")); assert.ok(pageText.includes("evil"));
   assert.ok(!pageText.includes('"$_tag":"script"')); assert.ok(!pageText.includes("later"));
   for (const parameters of [undefined, { content: "ok", extra: "bad" }]) {
-    const source = parameters === undefined ? retained.write() : retained.write(parameters);
-    assert.throws(() => receiving.addLibraries({ invalid: { document: source } }), /Missing Part parameter|Unknown Part parameter|Unused Part parameter/);
+    assert.throws(() => receiving.addLibraries({ invalid: { document: parameters === undefined ? retained.write() : retained.write(parameters) } }), /Missing Part parameter|Unknown Part parameter|Unused Part parameter|Unknown Part.write argument/);
     assert.equal(receiving.doc("invalid"), undefined);
   }
   const scalarSource = receiving.parts.components.scalars.write({ ExactCase: "Mixed", count: 3, enabled: true, empty: null });
@@ -122,7 +167,7 @@ export async function parts_write_cases() {
   assert.match(JSON.stringify(receiving.doc.must("scalarPage").root()), /Mixed:3:true:null/);
   assert.throws(() => receiving.addLibraries({ wrongCase: { document: receiving.parts.components.scalars.write({
     exactcase: "wrong", count: 3, enabled: true, empty: null,
-  }) } }), /Missing Part parameter/);
+  }) } }), /Unknown Part.write argument/);
   const incompatible = hsonLiveMap.create();
   assert.throws(() => incompatible.addLibraries({ page: { document: invocation } }));
   assert.equal(incompatible.doc("page"), undefined);
@@ -158,8 +203,8 @@ export async function parts_write_cases() {
 
   // Existing admission owns nested occurrence lifetimes, local QUADs, and CSS.
   const styled = hsonLiveMap.fromLibraries({ components: { parts: {
-    leaf: { kind: "document", document: '<b @:root "leaf"/>', css: { color: "blue" } },
-    panel: { kind: "document", document: '<article @:root <hson-part @:child at="leaf"/>/>', css: { color: "red" } },
+    leaf: { kind: "document", document: '<b hson:part @:root "leaf"/>', css: { color: "blue" } },
+    panel: { kind: "document", document: '<article hson:part @:root <hson-part @:child at="leaf"/>/>', css: { color: "red" } },
   } } });
   const styledAuthority = internal_livemap_aggregate_authority(styled);
   const styledBefore = styledAuthority.captureSemanticCheckpoint();

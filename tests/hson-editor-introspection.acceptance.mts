@@ -11,7 +11,7 @@ import { interpolation_semantic_mismatch, type StaticInterpolationFamily } from 
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { tokenize_authored_document_library } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
-import { transform_part_parameter_strings } from "../src/internal/part-placeholder.ts";
+import { transform_part_parameter_strings } from "../src/internal/part-definition.ts";
 
 const checkpoint = (source: string, mode: "data" | "document" | "schema" | "canonical" = "data") => hson_grammar_checkpoint(source, source.length, mode);
 for (const marked of ['<hson-part lib=|"co"/>', '<hson-part lib="components" at=|"he"/>']) {
@@ -250,7 +250,7 @@ try {
     assert.deepEqual(observed(() => tokenize_hson(source)), observed(() => baseline.tokenize_hson(source)), source);
     assert.deepEqual(observed(() => tokenize_authored_document_library(source)), observed(() => baseline.tokenize_authored_document_library(source)), source);
   }
-  const placement: Pick<typeof import('../src/internal/part-placeholder.ts'), 'transform_part_parameter_strings'> = await import(baselineModule('src/internal/part-placeholder.ts'));
+  const placement: Pick<typeof import('../src/internal/part-definition.ts'), 'transform_part_parameter_strings'> = await import(baselineModule('src/internal/part-placeholder.ts'));
   for (const source of ['<script src="/a.js" type="%{Kind}"/>', '<style media=%{Media}/>', '<main title="%{Mixed-name}" "%{text}"/>',
     '<script <p title="%{bad}"/>/>', '<style <p "%{bad}"/>/>', '<p onclick="%{bad}"/>', '<p style="color:%{bad}"/>']) {
     const apply = (transform: typeof transform_part_parameter_strings) => { const node = parse_hson(source); transform(node, value => value.replace(/%\{[A-Za-z_-]+\}/g, 'filled')); return node; };

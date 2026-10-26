@@ -1,3 +1,4 @@
+import { Hson } from "hson-live/hson";
 import assert from "node:assert/strict";
 import { hsonLiveMap, type LiveMap } from "hson-live/livemap";
 import { hsonTransform } from "hson-live/transform";
@@ -7,10 +8,10 @@ import type { Echo, EchoReplicaTransport } from "hson-live/echo";
 import { test_echo_transport } from "../helpers/public-echo-websocket-transport.mts";
 
 export const parts = { parts: {
-  leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: '/* opaque Part text */ .native-label { border: 0; }', css: { padding: "3px", '@:label': { border: 0 } } },
-  panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', css: { margin: "7px" } },
-  bare: { kind: "document", document: '<aside @:root "Bare"/>' },
-  secret: { kind: "document", document: '<p "PRIVATE_TEMPLATE"/>', stylesheet: 'p{--private:PRIVATE_CSS}' },
+  leaf: { kind: "document", document: '<button hson:part @:root <span @:label "Visible"/>/>', stylesheet: '/* opaque Part text */ .native-label { border: 0; }', css: { padding: "3px", '@:label': { border: 0 } } },
+  panel: { kind: "document", document: '<section hson:part @:root <hson-part @:child at="leaf"/>/>', css: { margin: "7px" } },
+  bare: { kind: "document", document: '<aside hson:part @:root "Bare"/>' },
+  secret: { kind: "document", document: '<p hson:part "PRIVATE_TEMPLATE"/>', stylesheet: 'p{--private:PRIVATE_CSS}' },
 } } as const;
 export const page = { document: '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part @:right lib="parts" at="panel"/> <footer @:footer/>/>' };
 const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection }) => ({
@@ -114,6 +115,84 @@ function privateAbsent(raw: string) {
 function subjectIds(css: string) { return [...css.matchAll(/hson\\:quid="([^"]+)"/g)].map(match => match[1]!); }
 
 export async function hosted_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  for (const kind of ["http", "websocket"] as const) await check(`optional Part ${kind}: SSR, atomic omission, source-free replay and restoration`, async () => {
+    const input = (value: object) => node(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(value)}"/>`);
+    const locus = hsonLiveMap.locus.create({ parts: { access: 'private', parts: {
+      optional: { kind: 'document', document: '<article hson:part @:root part:optional d:data="%{payload}" <h1 "#{d.title}"/> <p @:note part:optional "#{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
+    } }, count: { access: 'shared', data: { n: 0 } }, flat: { access: 'shared', document: '<main/>' }, page: { access: 'shared', document: '<html <head/> <body <hson-part @:gone lib="parts" at="optional" data:payload="<>"/> <hson-part @:left lib="parts" at="optional" data:payload="<title \\"Left\\">"/> <hson-part @:right lib="parts" at="optional" data:payload="<title \\"Right\\">"/>/>/>' } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const client = await receiver(locus, kind, ['page']);
+    try {
+      const audit = await locus.session.create({ libraries: ['flat', 'count'] });
+      const flatBefore = audit.now().libs.libraries.find(entry => entry.name === 'flat')!;
+      await locus.stage(w => {
+        w.doc.must('flat').at([]).asElement().insert(0, input({}));
+        w.data.must('count').at(['n']).set(1);
+      });
+      const flatAfter = audit.now().libs.libraries.find(entry => entry.name === 'flat')!;
+      assert.deepEqual(flatAfter.root, flatBefore.root);
+      assert.equal(flatAfter.scopes, undefined); assert.deepEqual(flatAfter.css, flatBefore.css);
+      await caught(client.echo, locus);
+      const before = client.session.now({ html: 'page' });
+      assert.match(before.html, /Left/); assert.match(before.html, /Right/);
+      assert.doesNotMatch(JSON.stringify(before), /hson:part|part:optional|data:payload|hson-part|%\{|"gone"|"note"/);
+      assert.equal(before.libs.libraries[0]!.scopes!.occurrences.length, 2);
+      assert.equal(document(client.echo).q('gone'), undefined);
+      const left = document(client.echo).q('left')!, right = document(client.echo).q('right')!;
+      await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
+      await caught(client.echo, locus);
+      assert.equal(left.active, false); assert.equal(right.active, true);
+      assert.equal(client.session.now().libs.libraries[0]!.scopes!.occurrences.length, 1);
+      assert.equal((document(client.echo).css.snapshot().match(/color:navy/g) ?? []).length, 1);
+      const stable = client.session.now();
+      await assert.rejects(locus.stage(w => {
+        w.doc.must('page').at([1]).asElement().insert(0, input({ title: 'Early' }));
+        w.doc.must('page').at([1]).asElement().insert(1, input({ title: {} }));
+      }));
+      assert.deepEqual(client.session.now(), stable);
+      await locus.stage(w => w.doc.must('page').at([1]).asElement().insert(0, input({ title: 'Recovered', note: 'Note' })));
+      await caught(client.echo, locus);
+      assert.equal(right.active, true);
+      const restored = await receiver(locus, kind, ['page']);
+      try {
+        assert.deepEqual(document(restored.echo).root(), document(client.echo).root());
+        assert.throws(() => restored.echo.parts.must('parts'));
+        const painted = restored.session.now({ html: 'page' });
+        assert.match(painted.html, /Recovered/); assert.match(painted.html, /Note/);
+        assert.equal(painted.libs.libraries[0]!.scopes!.occurrences.length, 2);
+      } finally { restored.dispose(); }
+      for (const frame of client.frames) assert.doesNotMatch(frame, /hson:part|part:optional|data:payload|hson-part|%\{/);
+      await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
+      await locus.stage(w => w.doc.must('page').at([1, 0]).replace(input({})));
+      await caught(client.echo, locus);
+      assert.equal(client.session.now().libs.libraries[0]!.scopes!.occurrences.length, 0);
+      assert.doesNotMatch(document(client.echo).css.snapshot(), /color:navy|color:pink/);
+    } finally { client.dispose(); locus.dispose(); }
+  });
+
+  for (const kind of ["http", "websocket"] as const) await check(`structured Part ${kind}: source-free hosted capture and updates`, async () => {
+    const data = Hson.data`<title "Visible" extra "PRIVATE_ARGUMENT">`;
+    const control = (data: string) => Hson.document`<hson-part lib="parts" at="y" data:payload="${data}"/>`;
+    const locus = hsonLiveMap.locus.create({ parts: {access:'private',parts:{
+      x:{kind:'document',document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child #{control}/>/>'},
+      y:{kind:'document',document:'<b hson:part payload:data="%{payload}" @:root "#{payload.title}"/>'},
+    }}, page:{access:'shared',document:Hson.document`<main <hson-part @:left lib="parts" at="x" doc:control="${control(data)}"/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
+    const client = await receiver(locus, kind, ['page']);
+    try {
+      const now = client.session.now();
+      assert.doesNotMatch(JSON.stringify(now), /PRIVATE_ARGUMENT|data:slide|hson-part|%\{slide/);
+      assert.throws(() => client.echo.parts.must('parts'));
+      assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
+      await locus.stage(w => w.doc.must('page').at([0]).replace(node(Hson.document`<hson-part lib="parts" at="x" doc:control="${control(Hson.data`<title "Updated">`)}"/>`)));
+      await caught(client.echo, locus);
+      assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
+      assert.match(JSON.stringify(document(client.echo).root()), /Updated/);
+      for (const raw of client.frames) assert.doesNotMatch(raw, /PRIVATE_ARGUMENT|data:slide|hson-part/);
+      const fresh = await receiver(locus, kind, ['page']);
+      try { assert.deepEqual(document(fresh.echo).root(), document(client.echo).root()); }
+      finally { fresh.dispose(); }
+    } finally { client.dispose(); locus.dispose(); }
+  });
+
   for (const kind of ["http", "websocket"] as const) {
     await check(`${kind}: public scoped state, ordered updates, grants, retirement and disposal`, async () => {
       const locus = hsonLiveMap.locus.create(definition[0], definition[1]);

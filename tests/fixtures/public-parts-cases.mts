@@ -6,11 +6,11 @@ import type { LocusLibraryDefinition } from "hson-live/locus";
 
 // Deck-shaped authored definitions: no internal factory or validation marker.
 export const deckParts = {
-  header: { kind: "document", document: Hson.document`<header <h1 "%{title}"/>/>`, stylesheet: "h1{color:purple}" },
-  para: { kind: "document", document: Hson.document`<p "%{text}"/>` },
-  code: { kind: "document", document: Hson.document`<pre <code "%{source}"/>/>`, stylesheet: "pre{white-space:pre-wrap}" },
-  nav: { kind: "document", document: Hson.document`<nav <a href="%{href}" "%{label}"/>/>`, stylesheet: "" },
-  list: { kind: "document", document: Hson.document`<ul <li "%{item}"/>/>` },
+  header: { kind: "document", document: Hson.document`<header hson:part <h1 "%{title}"/>/>`, stylesheet: "h1{color:purple}" },
+  para: { kind: "document", document: Hson.document`<p hson:part "%{text}"/>` },
+  code: { kind: "document", document: Hson.document`<pre hson:part <code "%{source}"/>/>`, stylesheet: "pre{white-space:pre-wrap}" },
+  nav: { kind: "document", document: Hson.document`<nav hson:part <a href="%{href}" "%{label}"/>/>`, stylesheet: "" },
+  list: { kind: "document", document: Hson.document`<ul hson:part <li "%{item}"/>/>` },
 } satisfies LiveMapPartCollection;
 const deck = Hson.document`<main
   <hson-part lib="parts" at="header" title="Deck title"/>
@@ -38,19 +38,19 @@ function writePartMember<TResult>(
 
 export async function public_parts_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
   await check("governed placement accepts script/style own attributes and rejects descendant placeholders", () => {
-    for (const document of ['<script src="/app.js" type="%{Mixed-Case}"/>', '<style media=%{Mixed-Case}/>']) {
+    for (const document of ['<script hson:part src="/app.js" type="%{Mixed-Case}"/>', '<style hson:part media=%{Mixed-Case}/>']) {
       const map = hsonLiveMap.fromLibraries({ components: { parts: { item: { kind: "document", document } } },
         page: { document: '<main <hson-part lib="components" at="item" Mixed-Case="screen"/>/>' } });
       assert.match(JSON.stringify(map.doc.must("page").snap()), /screen/);
       assert.doesNotMatch(JSON.stringify(map.doc.must("page").snap()), /%\{/);
     }
-    for (const document of ['<script <span title="%{bad}"/>/>', '<style <p id=%{bad}/>/>', '<script "%{bad}"/>', '<p onclick="%{bad}"/>', '<p style="color:%{bad}"/>']) {
+    for (const document of ['<script hson:part <span title="%{bad}"/>/>', '<style hson:part <p id=%{bad}/>/>', '<script hson:part "%{bad}"/>', '<p hson:part onclick="%{bad}"/>', '<p hson:part style="color:%{bad}"/>']) {
       assert.throws(() => hsonLiveMap.fromLibraries({ components: { parts: { item: { kind: "document", document } } },
         page: { document: '<main <hson-part lib="components" at="item" bad="x"/>/>' } }), document);
     }
   });
   await check("public widened Parts access rejects supplemental Schema without publication", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p/>" } } }, ordinary: { data: 1 } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, ordinary: { data: 1 } });
     const name: string = "parts", selected = map.parts.must(name), before = map.capture(), schema = selected.schema.get();
     let observations = 0; const stop = map.commits.observe(() => observations++);
     try {
@@ -58,8 +58,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         assert.throws(() => Reflect.get(selected.schema, "use")(supplemental), /Part collections do not support supplemental Schema/);
         assert.deepEqual(map.capture(), before); assert.equal(selected.schema.get(), schema); assert.equal(observations, 0);
       }
-      map.parts.must("parts").at(["p"]).replace({ kind: "document", document: "<aside/>" });
-      assert.equal(map.parts.must("parts").at(["p", "document"]).snap(), "<aside/>");
+      map.parts.must("parts").at(["p"]).replace({ kind: "document", document: "<aside hson:part/>" });
+      assert.equal(map.parts.must("parts").at(["p", "document"]).snap(), "<aside hson:part/>");
       assert.equal(map.data.must("ordinary").snap(), 1);
     } finally { stop(); }
   });
@@ -132,9 +132,9 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     map.commits.observe(() => mapEvents++); locus.commits.observe(() => locusEvents++);
     const bad: unknown[] = [null, [], 1, "{}", { x: null }, { x: { kind: "data", document: "<p/>" } },
       { x: { kind: "document", document: 1 } }, { x: { kind: "document", document: "<p" } },
-      { x: { kind: "document", document: "<p/><p/>" } }, { x: { kind: "document", document: "<p/>", stylesheet: 1 } },
-      { x: { kind: "document", document: "<p/>", stylesheet: undefined } },
-      { x: { kind: "document", document: "<p/>", schema: {} } },
+      { x: { kind: "document", document: "<p hson:part/><p/>" } }, { x: { kind: "document", document: "<p hson:part/>", stylesheet: 1 } },
+      { x: { kind: "document", document: "<p hson:part/>", stylesheet: undefined } },
+      { x: { kind: "document", document: "<p hson:part/>", schema: {} } },
       { good: deckParts.para, late: { kind: "document", document: "<p" } }];
     try {
       for (const parts of bad) {
@@ -432,23 +432,23 @@ export async function public_parts_cases(check: (name: string, run: () => void |
           await unchanged(() => replace(extraMember));
           for (const method of ["set", "replace"] as const) await unchanged(() => member(method, invalid));
         }
-        await member("replace", { kind: "document", document: '<p "replaced"/>' });
-        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p "replaced"/>' });
+        await member("replace", { kind: "document", document: '<p hson:part "replaced"/>' });
+        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p hson:part "replaced"/>' });
         await unchanged(() => member("set", { stylesheet: "p{color:blue}" }));
-        await member("set", { kind: "document", document: '<p "replaced"/>', stylesheet: "p{color:blue}" });
-        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p "replaced"/>', stylesheet: "p{color:blue}" });
+        await member("set", { kind: "document", document: '<p hson:part "replaced"/>', stylesheet: "p{color:blue}" });
+        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p hson:part "replaced"/>', stylesheet: "p{color:blue}" });
         await member("set", deckParts.para);
         assert.equal(selected.at(["para", "document"]).snap(), deckParts.para.document);
         assert.ok(changes > 0);
         if (route === "LiveMap staged") await unchanged(async () => {
           map.batch(writer => {
-            writer.parts.must("parts").at(["para", "document"]).set('<p "valid prefix"/>');
+            writer.parts.must("parts").at(["para", "document"]).set('<p hson:part "valid prefix"/>');
             writer.parts.must("parts").at(["para", "kind"]).set("data" as never);
           });
         });
         if (route === "Locus staged") await unchanged(async () => {
           await locus.stage(writer => {
-            writer.parts.must("parts").at(["para", "document"]).set('<p "valid prefix"/>');
+            writer.parts.must("parts").at(["para", "document"]).set('<p hson:part "valid prefix"/>');
             writer.parts.must("parts").at(["para", "kind"]).set("data" as never);
           });
         });
@@ -507,7 +507,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   });
 
   await check("public dynamic Locus delivers scoped subject CSS while CSS fragments still require a document shell", async () => {
-    const parts = { styled: { kind: "document" as const, document: '<p @:label/>', stylesheet: '[hson\\:quad="label"]{color:red}' } };
+    const parts = { styled: { kind: "document" as const, document: '<p hson:part @:label/>', stylesheet: '[hson\\:quad="label"]{color:red}' } };
     const locus = hsonLiveMap.locus.create({ "parts": { parts, access: "private" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     try {
       const revision = locus.rev;

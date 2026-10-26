@@ -74,7 +74,7 @@ function childSeparator(ctx: SerializeContext, cluster: ParentCluster): string {
 }
 
 function escape_hson_quoted_attr_value(value: string): string {
-  return JSON.stringify(value).slice(1, -1);
+  return JSON.stringify(value).slice(1, -1).replace(/[\u0085\u2028\u2029]/g, character => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
 /**

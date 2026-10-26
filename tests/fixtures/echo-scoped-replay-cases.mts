@@ -37,11 +37,11 @@ const listener = { event: "click", target: "element" as const, capture: false, o
 
 async function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-    leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', css: { color: "blue", "@:label": { opacity: ".5" } } },
-    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { $media: { screen: { color: "red" } } } },
-    green: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { color: "green" } },
-    plain: { kind: "document", document: '<i/>' },
-    secret: { kind: "document", document: '<strong "PRIVATE_DEFINITION_SENTINEL"/>' },
+    leaf: { kind: "document", document: '<b hson:part @:root <span @:label "visible"/>/>', css: { color: "blue", "@:label": { opacity: ".5" } } },
+    panel: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { $media: { screen: { color: "red" } } } },
+    green: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { color: "green" } },
+    plain: { kind: "document", document: '<i hson:part/>' },
+    secret: { kind: "document", document: '<strong hson:part "PRIVATE_DEFINITION_SENTINEL"/>' },
   } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });
   const a = authority(map), library = a.libraries()[1]!;
   const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 0]))!;
@@ -133,7 +133,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       const { batch } = await f.stage(w => {
         insert(w); const d = w.data.must("other"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); insert(w, 1);
         const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
-        parts.at(["secret", "document"]).set('<strong "UPDATED_PRIVATE_SENTINEL"/>');
+        parts.at(["secret", "document"]).set('<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>');
         page(w, "hidden").attrs.set({ kind: "path", path: path([0]) }, "title", "PRIVATE_HIDDEN_SENTINEL");
       });
       assert.doesNotMatch(JSON.stringify(batch), /PRIVATE_DEFINITION_SENTINEL|UPDATED_PRIVATE_SENTINEL|PRIVATE_HIDDEN_SENTINEL|"library":"parts"|"library":"hidden"/);

@@ -179,7 +179,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     } finally { mirror.dispose(); }
   });
   await check("mixed flat subject CSS and scoped delivery remain atomic and projection-owned", async () => {
-    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<b @:label "Scoped"/>', stylesheet: 'b{color:blue}' } }, access: "private" }, "page": { document: '<main <button @:a "Flat"/>/>', stylesheet: '[hson\\:quad="a"]{color:red}', access: "shared" }, "scoped": { document: '<main <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<b hson:part @:label "Scoped"/>', stylesheet: 'b{color:blue}' } }, access: "private" }, "page": { document: '<main <button @:a "Flat"/>/>', stylesheet: '[hson\\:quad="a"]{color:red}', access: "shared" }, "scoped": { document: '<main <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const flatQuid = lookup(locus_map_internal(locus).doc.must("page"), "a")!.quid;
     await locus.stage(w => w.doc.must("page").css.sel(sel(flatQuid)).set.color("red"));
     const revision = locus.rev + 1;

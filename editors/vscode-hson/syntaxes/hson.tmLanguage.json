@@ -4,6 +4,8 @@
   "scopeName": "source.hson",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#element-headers" },
+    { "include": "#part-references" },
     { "include": "#data-strings" },
     { "include": "#quoted-names" },
     { "include": "#unquoted-attribute-values" },
@@ -17,6 +19,77 @@
     { "include": "#structural-punctuation" }
   ],
   "repository": {
+    "element-headers": {
+      "comment": "Line-ending keyword names stay provisional so a later = can continue the header.",
+      "begin": "(<)[ \\t\\r\\n]*(?:((?!_hson_)[A-Za-z_:][A-Za-z0-9:._-]*)|(?='))",
+      "beginCaptures": { "1": { "name": "punctuation.definition.tag.begin.hson" }, "2": { "name": "entity.name.type.hson" } },
+      "end": "(?=[<\"\\[«]|[-+0-9]|(?:true|false|null)(?![A-Za-z0-9:._-]|[ \\t]*(?:=|//|\\r?$)))|(/)?(>)",
+      "endCaptures": { "1": { "name": "punctuation.definition.tag.self-closing.hson" }, "2": { "name": "punctuation.definition.tag.end.hson" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#part-references" },
+        { "include": "#quoted-names" },
+        { "include": "#reserved-names" },
+        { "include": "#quads" },
+        { "include": "#quids" },
+        { "name": "keyword.declaration.part.hson", "match": "hson:part(?![A-Za-z0-9:._-]|[ \\t]*=)" },
+        { "include": "#attribute-assignments" },
+        { "name": "constant.language.flag.hson", "match": "[A-Za-z_:][A-Za-z0-9:._-]*(?![A-Za-z0-9:._-]|[ \\t]*=)" }
+      ]
+    },
+    "attribute-assignments": {
+      "comment": "A bare = continues a prior-line key; that ambiguous name keeps its provisional flag scope. Pending values may cross blank or indented lines.",
+      "begin": "(?:([A-Za-z_:][A-Za-z0-9:._-]*)([ \\t]*))?(=)[ \\t\\r\\n]*",
+      "beginCaptures": { "1": { "name": "entity.other.attribute-name.hson" }, "3": { "name": "keyword.operator.assignment.hson" } },
+      "end": "(?=[<>]|/>)|(?<=[^ \\t\\r\\n])(?=[ \\t\\r\\n])",
+      "patterns": [
+        { "include": "#attribute-strings" },
+        { "include": "#part-references" },
+        { "name": "string.unquoted.attribute-value.hson", "match": "(?:/(?!>)|[$%#](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%#])+" }
+      ]
+    },
+    "attribute-strings": {
+      "begin": "\"", "name": "string.quoted.double.hson",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.hson" } },
+      "end": "\"|(?=\\r?$)",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.hson" } },
+      "patterns": [{ "include": "#part-references" }, { "include": "#string-escapes" }]
+    },
+    "part-references": {
+      "patterns": [
+        { "name": "meta.part.incoming.hson", "contentName": "variable.other.property.hson",
+          "begin": "(%)(\\{)",
+          "beginCaptures": { "1": { "name": "keyword.operator.interpolation.percent.hson" }, "2": { "name": "punctuation.definition.template-expression.begin.hson" } },
+          "end": "\\}|(?=\")|(?=\\r?$)",
+          "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.hson" } },
+          "patterns": [{ "include": "#part-selector-strings" }]
+        },
+        { "name": "meta.part.local.hson", "contentName": "variable.other.property.hson",
+          "begin": "(#)(\\{)",
+          "beginCaptures": { "1": { "name": "keyword.operator.interpolation.hash.hson" }, "2": { "name": "punctuation.definition.template-expression.begin.hson" } },
+          "end": "\\}|(?=\")|(?=\\r?$)",
+          "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.hson" } },
+          "patterns": [{ "include": "#part-selector-strings" }]
+        },
+        { "name": "meta.interpolation.hson",
+          "begin": "(\\$)(\\{)",
+          "beginCaptures": { "1": { "name": "keyword.operator.interpolation.dollar.hson" }, "2": { "name": "punctuation.definition.template-expression.begin.hson" } },
+          "end": "\\}|(?=\")|(?=\\r?$)",
+          "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.hson" } },
+          "patterns": [{ "include": "#part-selector-strings" }]
+        }
+      ]
+    },
+    "part-selector-strings": {
+      "comment": "Selector quotes are escaped by the enclosing Hson string; doubled escapes belong to the selector.",
+      "patterns": [{ "name": "string.quoted.double.hson",
+        "begin": "\\\\\"",
+        "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.hson" } },
+        "end": "\\\\\"|(?=\")|(?=\\r?$)",
+        "endCaptures": { "0": { "name": "punctuation.definition.string.end.hson" } },
+        "patterns": [{ "name": "constant.character.escape.hson", "match": "\\\\\\\\(?:\\\\.|.)" }]
+      }]
+    },
     "comments": {
       "patterns": [
         {
@@ -42,16 +115,16 @@
             "0": { "name": "punctuation.definition.string.end.hson" }
           },
           "patterns": [
-            {
-              "name": "constant.character.escape.hson",
-              "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})"
-            },
-            {
-              "name": "invalid.illegal.escape.hson",
-              "match": "\\\\(?:u[0-9A-Fa-f]{0,3}(?![0-9A-Fa-f])|.)"
-            }
+            { "include": "#part-references" },
+            { "include": "#string-escapes" }
           ]
         }
+      ]
+    },
+    "string-escapes": {
+      "patterns": [
+        { "name": "constant.character.escape.hson", "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})" },
+        { "name": "invalid.illegal.escape.hson", "match": "\\\\(?:u[0-9A-Fa-f]{0,3}(?![0-9A-Fa-f])|.)" }
       ]
     },
     "quoted-names": {
@@ -99,7 +172,12 @@
       "patterns": [
         {
           "name": "constant.other.quad.hson",
-          "match": "@:[A-Za-z_$][A-Za-z0-9_$]{0,127}(?=[ \\t\\r\\n<>\"'\\[\\]«»,=/]|$)"
+          "match": "(@)(:)([A-Za-z_$][A-Za-z0-9_$]{0,127})(?=[ \\t\\r\\n<>\"'\\[\\]«»,=/]|$)",
+          "captures": {
+            "1": { "name": "punctuation.definition.identity.hson" },
+            "2": { "name": "punctuation.separator.identity.hson" },
+            "3": { "name": "constant.other.identity.hson" }
+          }
         }
       ]
     },
@@ -107,7 +185,11 @@
       "patterns": [
         {
           "name": "constant.other.quid.hson",
-          "match": "@[0-9abcdefghjkmnpqrstvwxyz]{9}(?![A-Za-z0-9])"
+          "match": "(@)([0-9abcdefghjkmnpqrstvwxyz]{9})(?![A-Za-z0-9])",
+          "captures": {
+            "1": { "name": "punctuation.definition.identity.hson" },
+            "2": { "name": "constant.other.identity.hson" }
+          }
         }
       ]
     },

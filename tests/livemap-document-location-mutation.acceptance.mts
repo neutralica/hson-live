@@ -1,6 +1,7 @@
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, projected_element, raw_node } from "./helpers/mirror-unit6.mts";
@@ -43,7 +44,7 @@ check("authored text replacement stays a string location", () => {
   const map = element('<main "before"/>');
   const commit = map.at([0]).replace("after");
   assert.equal(map.at([0]).snap(), "after");
-  assert.equal(commit.operations[0]?.operation.op, "replace-content");
+  assert.equal(document_graph_operation(commit).op, "replace-content");
 });
 
 check("off-Schema replacement fails without advancing revision", () => {
@@ -77,7 +78,7 @@ check("delete shifts the next logical occupant into the fixed coordinate", () =>
   const map = fixture();
   const location = map.at([0]);
   const commit = location.delete();
-  assert.equal(commit.operations[0]?.operation.op, "remove-content");
+  assert.equal(document_graph_operation(commit).op, "remove-content");
   assert.equal(location, map.at([0]));
   assert.equal(location.asElement()?.attrs.get("id"), "b");
 });

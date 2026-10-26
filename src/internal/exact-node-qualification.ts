@@ -1,3 +1,4 @@
+import { PART_DECLARATION, part_structural_reference } from "./part-placeholder.js";
 import { ARR_TAG, ELEM_TAG, HSON_META_TRANSIT_PREFIX, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG, _TRANSIT_PREFIX } from '../core/constants.js';
 import { _throw_transform_err } from '../core/errors.js';
 import { hson_metadata_candidate_key, hson_metadata_policy, hson_metadata_value_is_valid } from '../core/hson-metadata.js';
@@ -274,10 +275,12 @@ export function qualify_exact_hson_graph(root: HsonNode, operation: string, root
     }
     if (node.$_attrs) {
       if (structural || role === 'member') fail(operation, child(path, '$_attrs'), 'attributes belong to named element roles');
+      const structure = part_structural_reference(node);
       for (const key of Object.keys(node.$_attrs)) {
         const attrPath = child(child(path, '$_attrs'), key);
         const lower = key.toLowerCase();
-        if (!is_valid_hson_attribute_name(key) || hson_metadata_candidate_key(key) !== undefined || lower.startsWith(HSON_META_TRANSIT_PREFIX) || lower.startsWith(_TRANSIT_PREFIX)) fail(operation, attrPath, 'invalid or reserved attribute name');
+        const declaration = key === PART_DECLARATION && node.$_attrs[key] === PART_DECLARATION;
+        if ((!is_valid_hson_attribute_name(key) && !(structure !== undefined && key === `#{${structure.reference}}`)) || lower === PART_DECLARATION && !declaration || hson_metadata_candidate_key(key) !== undefined && !declaration || lower.startsWith(HSON_META_TRANSIT_PREFIX) || lower.startsWith(_TRANSIT_PREFIX)) fail(operation, attrPath, 'invalid or reserved attribute name');
         if (key !== 'style') {
           const value: unknown = node.$_attrs[key];
           if (!runtime && typeof value !== 'string') fail(operation, attrPath, 'portable ordinary attribute values must be strings');

@@ -23,11 +23,11 @@ const replace = (writer: LocusHostedAggregateStageWriter, index = 0, member = "p
 function fixture() {
   const map = hsonLiveMap.fromLibraries({
     parts: { parts: {
-      leaf: { kind: "document", document: '<b @:root <span @:label "visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-      panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:red}' },
-      plain: { kind: "document", document: '<i/>' },
-      named: { kind: "document", document: '<i @:label/>' },
-      secret: { kind: "document", document: '<strong "PRIVATE_DEFINITION_SENTINEL"/>' },
+      leaf: { kind: "document", document: '<b hson:part @:root <span @:label "visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
+      panel: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:red}' },
+      plain: { kind: "document", document: '<i hson:part/>' },
+      named: { kind: "document", document: '<i hson:part @:label/>' },
+      secret: { kind: "document", document: '<strong hson:part "PRIVATE_DEFINITION_SENTINEL"/>' },
     } }, page: { document: '<main <footer/>/>' }, other: { data: { n: 0 } },
   });
   const a = authority(map), library = a.libraries()[1]!;
@@ -62,7 +62,7 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 export async function locus_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await check("mixed preparation keeps flat effects ordinary and rejection preserves every identity and topology owner", async () => {
     for (const cssOnly of [false, true]) {
-      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<b @:root/>', stylesheet: ':scope{padding:3px}' } } },
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<b hson:part @:root/>', stylesheet: ':scope{padding:3px}' } } },
         page: { document: '<main <hson-part @:part lib="parts" at="x"/>/>' }, flat: { document: '<html <head/> <body/>/>' } });
       const a = authority(map), ids = ["page", "flat"].map(name => a.libraries()[a.hostedRegistry().libraries.findIndex(e => e.name === name)]!);
       const ledger = a.identityEpoch().issued();
@@ -131,7 +131,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const accepted = await locus.stage(writer => {
       insert(writer); insert(writer, 1);
       const parts = writer.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
-      parts.at(["secret", "document"]).set( '<strong "UPDATED_PRIVATE_SENTINEL"/>');
+      parts.at(["secret", "document"]).set( '<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>');
     });
     assert.equal(accepted, gate.commit); assert.equal(f.map.rev, 1);
     assert.deepEqual(projected.operations.map(entry => entry.library), ["page", "page"]);
@@ -338,7 +338,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     assert.equal(gates, 1); assert.equal(f.map.rev, 1); locus.dispose();
     gates = 0;
     // Dynamic construction now installs the same complete evidence as initial composition.
-    const initial = hsonLiveMap.fromLibraries({ parts: { parts: { leaf: { kind: "document", document: '<b/>' } } } });
+    const initial = hsonLiveMap.fromLibraries({ parts: { parts: { leaf: { kind: "document", document: '<b hson:part/>' } } } });
     initial.addLibraries({ page: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } });
     const blocked = create({ map: initial, scopedDocuments: true, gate() { gates++; } });
     await blocked.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0]) }, "title", "new"));
@@ -384,7 +384,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     await locus.stage(writer => insert(writer, 0, "plain")); locus.dispose();
   });
   await check("Schema validates the final transaction while effects retain the complete operation prefix", async () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: { kind: "document", document: '<i/>' } } },
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: { kind: "document", document: '<i hson:part/>' } } },
       page: { document: '<main <footer/>/>', schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "footer" content "empty">]>>` } });
     const a = authority(map), library = a.libraries()[1]!, before = a.scopedDocumentState(library);
     const locus = create({ map, scopedDocuments: true });
@@ -411,7 +411,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     assert.equal(JSON.stringify(evidence[0]), retained); locus.dispose();
   });
   await check("interleaved document Libraries keep distinct ownership and per-Library ordinals", async () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: { kind: "document", document: '<i @:root/>' } } },
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: { kind: "document", document: '<i hson:part @:root/>' } } },
       page: { document: '<main <footer/>/>' }, second: { document: '<main <footer/>/>' } });
     const a = authority(map);
     const locus = create({ map, scopedDocuments: true, prepareGate(input) {

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
+import ts from "typescript";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -122,7 +123,7 @@ check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime d
   }
 });
 
-function browser_graph(sourcefile: string, contents: string): Readonly<{ inputs: readonly string[]; raw: number; gzip: number }> {
+function browser_graph(sourcefile: string, contents: string): Readonly<{ inputs: readonly string[]; allInputs: readonly string[]; raw: number; gzip: number }> {
   const build = esbuild.buildSync({
     absWorkingDir: repositoryRoot,
     stdin: {
@@ -178,7 +179,32 @@ function browser_graph(sourcefile: string, contents: string): Readonly<{ inputs:
     return file === undefined ? [] : [file.contents, Buffer.from("\n")];
   }));
   assert.ok(initialBytes.length > 0, `${sourcefile} browser bundle is empty`);
-  return { inputs: [...initialInputs], raw: initialBytes.length, gzip: gzipSync(initialBytes).length };
+  return { inputs: [...initialInputs], allInputs: [...new Set(allInputs)], raw: initialBytes.length, gzip: gzipSync(initialBytes).length };
+}
+
+function assert_deferred_part_processing(graph: ReturnType<typeof browser_graph>): void {
+  const implementations = ["validate_part_definition_flags", "transform_part_parameter_strings", "part_receiving_interface"];
+  const owners = (paths: readonly string[], name: string): string[] => paths.filter((path) => {
+    const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+    return source.statements.some((node) => ts.isFunctionDeclaration(node) && node.body !== undefined && node.name?.text === name);
+  });
+  const emittedInputs = graph.allInputs.map((input) => resolve(repositoryRoot, input))
+    .filter((path) => path.startsWith(resolve(repositoryRoot, "dist") + "/") && path.endsWith(".js"));
+  const initialInputs = new Set(graph.inputs.map((input) => resolve(repositoryRoot, input)));
+  const retained: string[] = [];
+  for (const name of implementations) {
+    const sourceOwners = owners(files, name);
+    assert.equal(sourceOwners.length, 1, `${name} requires one source implementation owner`);
+    const expectedOwner = resolve(repositoryRoot, "dist", relative(sourceRoot, sourceOwners[0]).replace(/\.[cm]?ts$/, ".js"));
+    // Check the actual bundle inputs too: stale emission must not invalidate source ownership.
+    const emittedOwners = owners(emittedInputs, name);
+    assert.deepEqual(emittedOwners, [expectedOwner], `${name} source/emitted implementation ownership differs`);
+    // Metafile contributions cover minification/inlining across the complete static closure.
+    // Deliberately conservative: even partial retention of an owner is forbidden, whether
+    // this particular function was tree-shaken or moved into an eager vocabulary module.
+    if (initialInputs.has(expectedOwner)) retained.push(`${name}: ${relative(repositoryRoot, expectedOwner)}`);
+  }
+  assert.deepEqual(retained, [], `endpoint Echo retained Part processing owners:\n${retained.join("\n")}`);
 }
 
 check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs separate", () => {
@@ -203,6 +229,7 @@ check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs s
     noSibling(graph, "locus", label);
   }
   assert.ok(subsystem(echo, "echo").length > 0, "Echo endpoint implementation is missing");
+  assert_deferred_part_processing(echo);
   assert.deepEqual(echo.inputs.filter((input) =>
     /(?:internal\/css\/inline-css|node_modules\/css-tree\/|attrs-utils\/parse-style|hson-utils\/split-attrs-meta|parsers\/parse-hson\.)/.test(input)), [],
     "endpoint data admission retained document/CSS attribute decoding");

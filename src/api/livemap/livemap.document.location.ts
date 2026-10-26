@@ -8,7 +8,6 @@ import type {
   LiveMapDocumentContent,
   LiveMapDocumentQuadLocation,
   LiveMapCommit,
-  LiveMapGraphOp,
   LiveMapDocumentRequestTarget,
   LiveMapDisposer,
   LiveMapGraphCommit,
@@ -42,7 +41,7 @@ type DocumentLocationMutations = Readonly<{
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
-  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp | LiveMapGraphRemoveContentOp>;
   remove: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -90,7 +89,7 @@ type DocumentLocation = Readonly<{
   watch: (listener: (next: HsonNode | Primitive | undefined) => void) => LiveMapDisposer;
   at: (path: readonly number[]) => DocumentLocation;
   id: (value: string) => DocumentLocation | undefined;
-  replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp | LiveMapGraphRemoveContentOp>;
   delete: () => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
   insert: (index: number, value: LiveMapDocumentContent) =>
     LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
@@ -106,7 +105,7 @@ export function make_livemap_document_quad_location(
   currentPath: () => readonly number[] | undefined,
   dispose: () => void,
   at: (path: readonly number[]) => DocumentLocation,
-  commit: <TOp extends LiveMapGraphOp>(value: LiveMapGraphCommit<TOp>) => LiveMapCommit<string, TOp>,
+  commit: (value: LiveMapGraphCommit) => LiveMapCommit,
   revision: () => number,
   guardedEdit: <T>(run: () => T, assertSubject: () => void) => T,
   representations: (path: readonly number[]) => Pick<LiveMapDocumentQuadLocation, "snap" | "hson">,
@@ -334,7 +333,7 @@ function replace_document_location(
   mutations: DocumentLocationMutations,
   path: readonly number[],
   replacement: LiveMapDocumentContent,
-): LiveMapGraphCommit<LiveMapGraphReplaceContentOp> {
+): LiveMapGraphCommit<LiveMapGraphReplaceContentOp | LiveMapGraphRemoveContentOp> {
   const resolution = resolve_mutable_document_location(owner.root(), mode, path, "replace-content");
   let slot: ReturnType<typeof lower_internal_document_content_slot>;
   try {

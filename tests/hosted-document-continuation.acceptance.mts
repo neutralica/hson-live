@@ -44,7 +44,7 @@ install_fake_document();
 
 // Scoped SSR still requires an exact native realization before attachment.
 {
-  const locus = hsonLiveMap.locus.create({ "parts": { parts: { item: { kind: "document", document: '<b @:root/>' } }, access: "private" }, "page": { document: '<main <hson-part lib="parts" at="item"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+  const locus = hsonLiveMap.locus.create({ "parts": { parts: { item: { kind: "document", document: '<b hson:part @:root/>' } }, access: "private" }, "page": { document: '<main <hson-part lib="parts" at="item"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
   const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://guard.invalid/locus", fetch: async () => {
     throw Error("Mismatched scoped continuation must reject before connecting");
   } });

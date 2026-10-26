@@ -1314,7 +1314,9 @@ function make_data_library(
           if (read() === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
         };
         assertMember();
-        const source = write_part_invocation(library.name, member, input);
+        const definition = validate_data_library(aggregate.root(library.identity), contract.mode, contract.validation)?.find(part => part.key === member);
+        if (definition === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
+        const source = write_part_invocation(library.name, member, input, definition.root);
         assertCurrent();
         assertMember();
         return source;
@@ -1512,9 +1514,9 @@ function make_document_library(
     ...mutation.flags,
   });
 
-  const multi_commit = <TOp extends LiveMapGraphOp>(commit: LiveMapGraphCommit<TOp>): LiveMapCommit<string, TOp> => {
+  const multi_commit = (commit: LiveMapGraphCommit): LiveMapCommit => {
     const aggregateCommit = aggregate.aggregateCommitForDocument(commit);
-    if (aggregateCommit !== undefined) return public_commit(aggregateCommit) as LiveMapCommit<string, TOp>;
+    if (aggregateCommit !== undefined) return public_commit(aggregateCommit);
     return Object.freeze({
       kind: "map" as const,
       changed: commit.changed,

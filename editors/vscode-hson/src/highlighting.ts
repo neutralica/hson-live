@@ -29,6 +29,11 @@ export async function load_hson_grammar(extensionRoot: string): Promise<IGrammar
 
 function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined {
   for (const scope of [...scopes].reverse()) {
+    if (scope === HSON_APPEARANCE.themeDerived.partDeclaration) return "hsonDeclaration";
+    if (scope === HSON_APPEARANCE.themeDerived.referencePath) return "hsonReference";
+    if (scope === HSON_APPEARANCE.themeDerived.interpolationBegin || scope === HSON_APPEARANCE.themeDerived.interpolationEnd) return "hsonInterpolationDelimiter";
+    if ((scope === HSON_APPEARANCE.themeDerived.quoteBegin || scope === HSON_APPEARANCE.themeDerived.quoteEnd)
+      && scopes.includes(HSON_APPEARANCE.themeDerived.quotedString)) return "hsonQuote";
     if (scope.startsWith("invalid.")) return "hsonInvalid";
     if (scope.startsWith("constant.character.escape.")) return "hsonEscape";
     if (scope.startsWith("entity.name.type.")) return "hsonType";
@@ -59,6 +64,8 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     // physical newlines. This is coloring only, never a parse/admission candidate.
     let body = "", offset = source.bodyRange.start;
     for (const hole of holes) {
+      // Discovery owns JavaScript boundaries. Leave both punctuation and
+      // expression contents to the TypeScript editor's native highlighting.
       body += text.slice(offset, hole.start) + text.slice(hole.start, hole.end).replace(/[^\r\n]/g, " ");
       offset = hole.end;
     }

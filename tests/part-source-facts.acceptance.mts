@@ -32,47 +32,47 @@ const Page = Text.schema\`<type "document" tag "main" content <sequence «<tag "
 const Shared = Text.document\`<main <hson-part lib="components" at="heading" content="hello" mixed-Case="x"/>/>\`;
 const deck = kit.liveMap.locus.create({ components: { parts: importedParts } });
 const fresh = maps.fromLibraries({ page: { document: Shared, schema: Page }, components: { parts: {
-  heading: { kind: "document", document: Text.document\`<h1 title="%{mixed-Case}" "%{content} %{content}"/>\` },
-  "a.b": { kind: "document", document: "<p/>" },
+  heading: { kind: "document", document: Text.document\`<h1 hson:part title="%{mixed-Case}" "%{content} %{content}"/>\` },
+  "a.b": { kind: "document", document: "<p hson:part/>" },
 } } });
-const reverse = kit.liveMap.locus.create({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } }, page: { document: Shared } });
+const reverse = kit.liveMap.locus.create({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } }, page: { document: Shared } });
 const lines = Text.document\`<main
   <hson-part lib="components" at="heading"/>
 />\`;
 const escaped = Text.document\`<p "%\u007bMixed-name}"/>\`;
 const nested = Text.document\`<div <hson-part lib="components" at="a.b" mixed-Case="v"/>/>\`;
-const another = maps.fromLibraries({ components: { parts: { different: { kind: "document", document: "<p/>" } } } });
+const another = maps.fromLibraries({ components: { parts: { different: { kind: "document", document: "<p hson:part/>" } } } });
 const later = deck.admit({ page: { document: Shared } });
 const added = fresh.addLibraries({ next: { document: Shared } });
-const resumed = kit.liveMap.locus.resume({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } } }, dynamic);
-const sub = submap.locus.create({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const ns = namespace.locus.create({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const subLocal = namespace.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const umbrellaLocal = kit.liveMap.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const literalName = maps.fromLibraries({ "mixed-Library": { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const computed = maps.fromLibraries({ [key]: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const computedLiteral = maps.fromLibraries({ ["components"]: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
-const partial = maps.fromLibraries({ ...dynamic, components: { parts: { heading: { kind: "document", document: "<h1/>" }, ...dynamic } } });
+const resumed = kit.liveMap.locus.resume({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } }, dynamic);
+const sub = submap.locus.create({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const ns = namespace.locus.create({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const subLocal = namespace.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const umbrellaLocal = kit.liveMap.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const literalName = maps.fromLibraries({ "mixed-Library": { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const computed = maps.fromLibraries({ [key]: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const computedLiteral = maps.fromLibraries({ ["components"]: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
+const partial = maps.fromLibraries({ ...dynamic, components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" }, ...dynamic } } });
 const opaque = maps.fromLibraries(dynamic);
 const alias = maps.fromLibraries(definitions);
 const conditional = maps.fromLibraries({ page: { document: condition ? Shared : Text.document\`<aside/>\` } });
 const badEscape = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`// \8
 <h1/>\` } } } });
-const optionalTag = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text?.document\`<h1/>\` } } } });
+const optionalTag = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text?.document\`<h1 hson:part/>\` } } } });
 const wrongProducer = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.canonical\`<h1/>\` } } } });
-const invalidRoot = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1/><p/>\` } } } });
-const invalidSibling = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1/>" }, bad: { kind: "document", document: "<p" } } } });
-const parameterBad = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 onclick="%{bad}" "%{good}"/>\` } } } });
-const structuredBad = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 style="color:%{bad}"/>\` } } } });
-const scriptBad = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<script "%{bad}"/>\` } } } });
-const malformedPlaceholder = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 "%{broken!}"/>\` } } } });
+const invalidRoot = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 hson:part/><p/>\` } } } });
+const invalidSibling = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" }, bad: { kind: "document", document: "<p" } } } });
+const parameterBad = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 hson:part onclick="%{bad}" "%{good}"/>\` } } } });
+const structuredBad = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 hson:part style="color:%{bad}"/>\` } } } });
+const scriptBad = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<script hson:part "%{bad}"/>\` } } } });
+const malformedPlaceholder = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`<h1 hson:part "%{broken!}"/>\` } } } });
 const unfinished = Text.document\`<main <hson-part lib="components" at="hea\`;
 const malformed = Text.document\`<main <hson-part lib="components" at="heading"/> <bad attr="\`;
 const dynamicCoordinate = Text.document\`<hson-part lib="\${key}" at="heading" content="\${dynamic}"/>\`;
 const partialQuoted = Text.document\`<main title="%{pre\${key}fix}" "%{pre\${key}fix}" <hson-part lib="co\${key}mponents" at="head\${key}ing"/><hson-part lib="components" at="heading"/>/>\`;
 const placeholderCoordinate = Text.document\`<hson-part lib="%{Library}" at="%{Member}"/>\`;
 const ordinaryString = maps.fromLibraries({ page: { document: '<hson-part lib="mixed-Library" at="\u0061.b"/>' } });
-const mismatch = kit.liveMap.locus.create({ page: { document: Shared, schema: Page }, components: { parts: { heading: { kind: "document", document: "<p \"%{content} %{mixed-Case}\"/>" } } } });
+const mismatch = kit.liveMap.locus.create({ page: { document: Shared, schema: Page }, components: { parts: { heading: { kind: "document", document: "<p hson:part \"%{content} %{mixed-Case}\"/>" } } } });
 const independent = Page.certify(Text.document\`<aside/>\`);
 const placementGood = Text.document\`<main <script src="/app.js" type="%{Script-Attr}"/> <style media=%{Style-Attr}/>/>\`;
 const placementBad = Text.document\`<main title="%{Good-name}" <script title="%{Own-attr}" <span title="%{Bad-attr}" "%{Bad-text}"/>/> <style <p id=%{Bad-style}/>/>/>\`;
@@ -89,7 +89,7 @@ function shadow(kit: typeof import("hson-live").hson, Text: typeof import("hson-
 const withCrlf = source.replaceAll("\n", "\r\n");
 writeFileSync(join(directory, "index.ts"), withCrlf);
 writeFileSync(join(directory, "definitions.ts"), 'import { Hson } from "hson-live/hson";\n'
-  + 'const heading = Hson.document`<h1 "%{content}"/>`;\n'
+  + 'const heading = Hson.document`<h1 hson:part "%{content}"/>`;\n'
   + 'export const parts = { heading: { kind: "document", document: heading } } as const;\n'
   + 'export const definitions = { components: { parts } };\n');
 writeFileSync(join(directory, "umbrella-only.ts"), 'import { Hson, hson, ANY_DOCUMENT } from "hson-live";\n'
@@ -263,14 +263,14 @@ const imports = 'import { Hson as Text, hson as kit, hsonLiveMap as maps } from 
 
 check("recovered TypeScript never qualifies a producer or establishes complete Parts evidence", () => {
   const malformed = imports + String.raw`
-const valid = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });
+const valid = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });
 const recovered = '<main <hson-part lib="components" at="heading"/> // \8\n/>';
 const broken = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: recovered } } } });
 const invalidTemplate = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: Text.document\`// \8
 <h1/>\` } } } });
 `.replaceAll('\\`', '`');
-  const eof = imports + 'const eof = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1/>';
-  const newline = imports + 'const newline = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1/>\n} } } });';
+  const eof = imports + 'const eof = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>';
+  const newline = imports + 'const newline = maps.fromLibraries({ components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>\n} } } });';
   const test = evidenceProject("syntax-recovery", { "index.ts": malformed, "eof.ts": eof, "newline.ts": newline });
   assert.ok(test.program.getSyntacticDiagnostics().length > 0);
   for (const name of ["broken", "invalidTemplate", "eof", "newline"]) {
@@ -295,13 +295,13 @@ check("complete member enumeration agrees with collection validation for every s
   const text = imports + [
     'const kind = "document";',
     'const complete = maps.fromLibraries({ page: { document: Text.document`<hson-part lib="components" at="template"/>` }, components: { parts: {',
-    '  literal: { kind: "document", document: Text.document`<p "%{mixed-Case}"/>` },',
-    '  template: { kind: `document`, document: "<p/>" },',
-    '  alias: { kind: kind, document: "<p/>" },',
-    '  shorthand: { kind, document: "<p/>" },',
+    '  literal: { kind: "document", document: Text.document`<p hson:part "%{mixed-Case}"/>` },',
+    '  template: { kind: `document`, document: "<p hson:part/>" },',
+    '  alias: { kind: kind, document: "<p hson:part/>" },',
+    '  shorthand: { kind, document: "<p hson:part/>" },',
     '} } });',
     'declare const unknownKind: string;',
-    'const partialKinds = maps.fromLibraries({ components: { parts: { known: { kind, document: "<p/>" }, unknown: { kind: unknownKind, document: "<p/>" } } } });',
+    'const partialKinds = maps.fromLibraries({ components: { parts: { known: { kind, document: "<p hson:part/>" }, unknown: { kind: unknownKind, document: "<p hson:part/>" } } } });',
   ].join("\r\n");
   const test = evidenceProject("kind-carriers", { "index.ts": text });
   const library = test.library("complete");
@@ -367,7 +367,7 @@ check("filtering direct, aliased and nested alternatives cannot upgrade receivin
     'const aliasChoice = maps.fromLibraries({ page: { document: selectionAlias } });',
     'const nestedChoice = maps.fromLibraries({ page: { document: nestedSelection } });',
     'const uncertainChoice = maps.fromLibraries({ page: { document: condition ? known : dynamic } });',
-    'const certainChoice = maps.fromLibraries({ page: { document: known }, components: { parts: { heading: { kind: "document", document: "<h1/>" } } } });',
+    'const certainChoice = maps.fromLibraries({ page: { document: known }, components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });',
   ].join("\n");
   const test = evidenceProject("alternative-certainty", { "index.ts": text });
   const known = test.document("known"); assert.equal(known.admission, "qualified");
@@ -414,11 +414,11 @@ check("malformed constructor and alias dependencies withdraw admission authority
     'const observed = Text.document`<aside <hson-part lib="bits" at="heading"/>/>`;',
     'const brokenOwner = kit.liveMap.locus.create({ broken: });',
     'const brokenAlias = brokenOwner; const brokenAlias2 = brokenAlias;',
-    'const brokenAdmission = brokenAlias2.admit({ page: { document: observed, schema: S }, bits: { parts: { heading: { kind: "document", document: "<h1/>" } } } });',
+    'const brokenAdmission = brokenAlias2.admit({ page: { document: observed, schema: S }, bits: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });',
     'const brokenLocal = maps.fromLibraries({ broken: }); const localAlias = brokenLocal;',
-    'const brokenAddition = localAlias.addLibraries({ bits: { parts: { heading: { kind: "document", document: "<h1/>" } } }, page: { document: observed, schema: S } });',
+    'const brokenAddition = localAlias.addLibraries({ bits: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } }, page: { document: observed, schema: S } });',
     'const validOwner = kit.liveMap.locus.create({});',
-    'const validAdmission = validOwner.admit({ page: { document: observed, schema: S }, bits: { parts: { heading: { kind: "document", document: "<h1/>" } } } });',
+    'const validAdmission = validOwner.admit({ page: { document: observed, schema: S }, bits: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });',
     'const validSibling = maps.fromLibraries({ page: { document: "<main/>", schema: S }, bits: { parts: {} } });',
   ].join("\r\n");
   const test = evidenceProject("constructor-dependencies", { "index.ts": text });
@@ -548,8 +548,8 @@ check("awaited resume aliases retain context while unsupported receiving transfo
     '  const pending = maps.locus.resume({}, configuration); const pendingAlias = pending;',
     '  const restored = await (pendingAlias); const restoredAlias = restored;',
     '  const observed = Text.document`<main <hson-part lib="bits" at="heading"/>/>`;',
-    '  const direct = directOwner.admit({ page: { document: observed }, bits: { parts: { heading: { kind: "document", document: "<h1/>" } } } });',
-    '  const aliased = restoredAlias.admit({ page: { document: observed }, bits: { parts: { heading: { kind: "document", document: "<h1/>" } } } });',
+    '  const direct = directOwner.admit({ page: { document: observed }, bits: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });',
+    '  const aliased = restoredAlias.admit({ page: { document: observed }, bits: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });',
     '  const awaitedReceiver = (await pendingAlias).admit({ bits: { parts: {} } });',
     '  let mutablePending = pending; const mutableOwner = await mutablePending;',
     '  const mutable = mutableOwner.admit({ bits: { parts: {} } });',
@@ -579,5 +579,37 @@ check("awaited resume aliases retain context while unsupported receiving transfo
   for (const name of ["mutable", "impostor", "typed", "arbitraryPromise"]) {
     assert.ok(!test.facts.batches.some(batch => ts.isVariableDeclaration(batch.call.parent) && batch.call.parent.name.getText() === name), name);
   }
+});
+check("structured arguments expose root names, selector spellings and whole forwarding without scanning data", () => {
+  const template = '<section hson:part slide:data="%{payload}" title="#{slide.title}" <hson-part at="child" data:payload="#{slide.details}" data:literal="\\\"%{phantom}\\\""/> <b ' + JSON.stringify('#{slide["odd}key"]}') + '/>/>';
+  const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
+    + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition} } } });';
+  const test = evidenceProject("structured-arguments", { "index.ts": text });
+  const definition = test.document("definition");
+  assert.equal(definition.parameterCompleteness, "complete");
+  assert.deepEqual(definition.parameters.map(parameter => parameter.name), ["payload"]);
+  assert.deepEqual(definition.receivingDeclarations.map(({name, incoming}) => ({name, incoming})), [{name:"slide", incoming:"payload"}]);
+  assert.equal(test.slice(definition.receivingDeclarations[0]!.location), JSON.stringify('"%{payload}"').slice(1, -1));
+  assert.deepEqual(definition.referenceIssues, []);
+  const uses = definition.parameters[0]!.uses;
+  assert.deepEqual(uses.map(use => use.reference).sort(), ['slide.details', 'slide.title', 'slide["odd}key"]']);
+  assert.ok(uses.every(use => use.structured && use.location.precision === "exact"));
+  assert.ok(uses.every(use => test.slice(use.location).includes("#{")));
+  assert.equal(definition.parameterSpellings.some(parameter => parameter.name === "phantom"), false);
+});
+check("optional source facts count authored values, excluding declarations and serialized data", () => {
+  const template = '<section hson:part part:optional d:data="%{payload}" <p part:optional "#{d.title}"/> <aside part:optional "Static"/> <hson-part part:optional at="leaf" data:payload="#{d.child}"/> <hson-part part:optional at="leaf" data:payload="\\\"%{literal}\\\""/>/>';
+  const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
+    + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition}, leaf:{kind:"document",document:"<p hson:part/>"} } } });';
+  const test = evidenceProject("optional-facts", { "index.ts": text });
+  const definition = test.document("definition");
+  assert.equal(definition.parameterCompleteness, "complete");
+  assert.equal(definition.partDeclarations.length, 1);
+  assert.equal(definition.partDeclarations[0]!.root, true);
+  assert.equal(test.slice(definition.partDeclarations[0]!.location), 'hson:part');
+  assert.ok(definition.definitionRoot);
+  assert.deepEqual(definition.optionalStructures.map(flag => [flag.root, flag.references]), [[true, 2], [false, 1], [false, 0], [false, 1], [false, 0]]);
+  for (const flag of definition.optionalStructures) assert.equal(test.slice(flag.location), 'part:optional');
+  assert.deepEqual(definition.parameterSpellings.map(parameter => parameter.name), ['d']);
 });
 events.terminal("pass");

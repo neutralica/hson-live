@@ -29,7 +29,7 @@ row.css.setMany({ _hover: validUnion, '& > p': validUnion, '@:item': validUnion,
 row.css.setMany(optionalReadonly);
 row.style.setMany({ color: undefined, width: { value: 2, unit: undefined } });
 documentRule.setMany({ _focus: validUnion });
-hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: 'document', document: '<p/>', css: { _hover: validUnion } } } } });
+hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: 'document', document: '<p hson:part/>', css: { _hover: validUnion } } } } });
 
 // A required union must retain evidence from its declaration-only member.
 // @ts-expect-error a declaration branch cannot hide a misspelled declaration
@@ -65,4 +65,4 @@ row.css.global.sel('.row').setMany({ _hover: declarationOrTypo });
 // @ts-expect-error async setters share recursive union validation
 void asyncRule.setMany({ _hover: declarationOrTypo });
 // @ts-expect-error Parts admission shares recursive union validation
-hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: 'document', document: '<p/>', css: { _hover: declarationOrTypo } } } } });
+hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: 'document', document: '<p hson:part/>', css: { _hover: declarationOrTypo } } } } });

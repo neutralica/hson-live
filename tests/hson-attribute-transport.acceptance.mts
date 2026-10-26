@@ -1,3 +1,4 @@
+import { Hson } from "../src/hson-authoring.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -544,6 +545,28 @@ check("reserved HTML transport lowering agrees across browser and Worker", () =>
     `<_hson_str data-x="lost">&quot;text&quot;</_hson_str>`,
     /obsolete Hson HTML carrier/,
   );
+});
+
+check("typed data quoted transport escapes Unicode separators and preserves exact multiline source", () => {
+  const value = { text: '  first  \n\n\tsecond "quoted" \\ literal\\n </> «» [] {} %{literal} // &amp;\r\nlast  ',
+    unicode: "雪😀 é \u0085 \u2028 \u2029", nested: [null, false, -0, { empty: "", blank: "  \n " }] };
+  const data = Hson.data.from(value);
+  const authored = Hson.document`<hson-part lib="parts" at="nav" data:slide="${data}"/>`;
+  assert.doesNotMatch(authored, /[\u0085\u2028\u2029]/);
+  for (const escape of ["\\u0085", "\\u2028", "\\u2029"]) assert.ok(authored.includes(escape));
+  const parsed = nodes(hsonTransform.fromHson(authored).toNode()).find(node => node.$_tag === "hson-part")!;
+  assert.equal(parsed.$_attrs?.["data:slide"], data);
+  assert.deepEqual(Hson.data.materialize(data), value);
+  const compact = hsonTransform.fromHson(data).toHson().noBreak().serialize();
+  const literal = `<hson-part lib="parts" at="nav" data:slide=${JSON.stringify(compact)}/>`;
+  const decoded = nodes(hsonTransform.fromHson(literal).toNode()).find(node => node.$_tag === "hson-part")!.$_attrs?.["data:slide"];
+  assert.equal(decoded, compact);
+  assert.equal(typeof decoded, "string");
+  if (typeof decoded !== "string") throw Error("Expected data string");
+  assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(compact)), value);
+  for (const raw of ["\n", "\r", "\t"]) assert.throws(() => hsonTransform.fromHson(`<p x="a${raw}b"/>`).toNode());
+  assert.throws(() => Hson.document`<hson-part data:x=${data}/>`);
+  assert.throws(() => Hson.document`<main ${data}/>`);
 });
 
 process.stdout.write(`# ${checks} ordinary attribute transport checks passed\n`);

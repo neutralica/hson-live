@@ -470,13 +470,14 @@ export type LiveMapDocumentFlagsMutationApi = Readonly<{
 
 export type LiveMapDocumentFlagsApi = LiveMapDocumentFlagsReadApi & LiveMapDocumentFlagsMutationApi;
 
-/** Detached content reader plus atomic single-slot structural mutations. */
+/** Detached content reader plus atomic single-slot structural mutations.
+ * A replacement whose optional Part root is omitted commits a removal. */
 export type LiveMapDocumentContentApi = (() => readonly NodeContent[number][]) & Readonly<{
   replace: (
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
-  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp | LiveMapGraphRemoveContentOp>;
   insert: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -1386,31 +1387,26 @@ type LiveMapSchemaUse<TSchema extends HsonSchema, TLibrary extends string> = {
   bivarianceHack(schema: TSchema): LiveMapCommit<TLibrary>;
 }["bivarianceHack"];
 
-type LiveMapLibraryDocumentCommit<
-  TLibrary extends string,
-  TOperation extends LiveMapGraphOp = LiveMapGraphOp,
-> = LiveMapCommit<TLibrary, TOperation>;
-
 type LiveMapLibraryDocumentAttrsApi<TLibrary extends string> = LiveMapDocumentAttrsReadApi & Readonly<{
   set: (target: LiveMapDocumentRequestTarget, name: string, value: LiveMapDocumentAttributeValue) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphSetAttrOp>;
+    LiveMapCommit<TLibrary>;
   drop: (target: LiveMapDocumentRequestTarget, name: string) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveAttrOp>;
+    LiveMapCommit<TLibrary>;
   setMany: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+    LiveMapCommit<TLibrary>;
   dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+    LiveMapCommit<TLibrary>;
   clear: (target: LiveMapDocumentRequestTarget) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+    LiveMapCommit<TLibrary>;
   replace: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+    LiveMapCommit<TLibrary>;
 }>;
 
 type LiveMapLibraryDocumentFlagsApi<TLibrary extends string> = LiveMapDocumentFlagsReadApi & Readonly<{
   set: (target: LiveMapDocumentRequestTarget, ...names: string[]) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+    LiveMapCommit<TLibrary>;
   clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+    LiveMapCommit<TLibrary>;
 }>;
 
 type LiveMapLibraryDocumentLocationInternal<
@@ -1463,8 +1459,8 @@ interface LiveMapLibraryDocumentLocationBase<
   asText: () => LiveMapLibraryDocumentTextLocation<TLibrary, DocumentRefinedRead<TValue, TDescriptor, { kind: "text" }>, TDescriptor> | undefined;
   replace: (
     value: InternalDocumentWritableItem<TDescriptor>,
-  ) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
-  delete: () => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveContentOp>;
+  ) => LiveMapCommit<TLibrary>;
+  delete: () => LiveMapCommit<TLibrary>;
 }
 
 type LiveMapLibraryDocumentElementCapabilities<
@@ -1482,16 +1478,16 @@ type LiveMapLibraryDocumentElementCapabilities<
         set: <const TName extends InternalAttrsName<TAttrs>>(
           name: TName,
           value: NoInfer<InternalAttrWriteValue<TAttrs, TName>>,
-        ) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphSetAttrOp>;
+        ) => LiveMapCommit<TLibrary>;
         drop: <const TName extends InternalAttrsName<TAttrs>>(name: TName) =>
-          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveAttrOp>;
+          LiveMapCommit<TLibrary>;
         setMany: (values: InternalAttrsSetManyInput<TAttrs>) =>
-          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+          LiveMapCommit<TLibrary>;
         dropMany: (names: readonly InternalAttrsName<TAttrs>[]) =>
-          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
-        clear: () => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+          LiveMapCommit<TLibrary>;
+        clear: () => LiveMapCommit<TLibrary>;
         replace: (values: InternalAttrsReplaceInput<TAttrs>) =>
-          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+          LiveMapCommit<TLibrary>;
       }>
     : never;
   flags: InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
@@ -1501,12 +1497,12 @@ type LiveMapLibraryDocumentElementCapabilities<
           [TIndex in keyof TNames]: TNames[TIndex] extends string
             ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]>
             : never;
-        }) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+        }) => LiveMapCommit<TLibrary>;
         clear: <const TNames extends string[]>(...names: TNames & {
           [TIndex in keyof TNames]: TNames[TIndex] extends string
             ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]>
             : never;
-        }) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+        }) => LiveMapCommit<TLibrary>;
       }>
     : never;
 }>;
@@ -1516,8 +1512,8 @@ type LiveMapLibraryDocumentContentCapabilities<
   TDescriptor,
 > = Readonly<{
   insert: (index: number, value: InternalDocumentInsertItem<TDescriptor>) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
-  move: (from: number, to: number) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphMoveContentOp>;
+    LiveMapCommit<TLibrary>;
+  move: (from: number, to: number) => LiveMapCommit<TLibrary>;
 }>;
 
 type LiveMapLibraryDocumentElementLocation<
@@ -1606,13 +1602,13 @@ export type LiveMapDocumentLibrary<
     root: () => HsonNode;
     content: (() => readonly NodeContent[number][]) & Readonly<{
       replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) =>
-        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
+        LiveMapCommit<TLibrary>;
       insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) =>
-        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
+        LiveMapCommit<TLibrary>;
       remove: (target: LiveMapDocumentRequestTarget, index: number) =>
-        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveContentOp>;
+        LiveMapCommit<TLibrary>;
       move: (target: LiveMapDocumentRequestTarget, from: number, to: number) =>
-        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphMoveContentOp>;
+        LiveMapCommit<TLibrary>;
     }>;
     byQuid: (quid: string) => HsonNode | undefined;
     attrs: LiveMapLibraryDocumentAttrsApi<TLibrary>;

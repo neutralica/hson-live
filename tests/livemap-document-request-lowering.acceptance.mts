@@ -1,10 +1,11 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, projected_element } from "./helpers/mirror-unit6.mts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import type { LiveMapGraphOp, LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
+import type { LiveMapCommit, LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-request-lowering",
@@ -27,10 +28,8 @@ function check(name: string, run: () => void): void {
 const Q1 = "000000701";
 const fixture = () => element(`<main <item @${Q1}/> <item/>/>`);
 const target = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path(parts) });
-const op = (map: LiveMapDocumentLibrary, mutate: () => { operations: readonly { operation: LiveMapGraphOp }[] }): LiveMapGraphOp => {
-  const entry = mutate().operations[0];
-  if (entry === undefined) throw new Error("Missing document operation");
-  return entry.operation;
+const op = (map: LiveMapDocumentLibrary, mutate: () => LiveMapCommit) => {
+  return document_graph_operation(mutate());
 };
 
 check("attribute requests lower to canonical path targets", () => {

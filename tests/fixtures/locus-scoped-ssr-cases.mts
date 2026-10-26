@@ -1,3 +1,4 @@
+import { Hson } from "../../src/hson-authoring.ts";
 import assert from "node:assert/strict";
 import { hsonLiveMap } from "../../src/api/livemap/index.ts";
 import { hsonTransform } from "../../src/api/transform/index.ts";
@@ -14,14 +15,14 @@ const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection 
   libraries: connection?.principalId === "denied" ? ["data"] : requested.libraries,
 });
 export const definition = [{ "parts": { parts: {
-    panel: { kind: "document", document: '<section @:root id="%{id}" <hson-part @:child at="leaf"/>/>', stylesheet: 'section{border:3px solid black}' },
-    leaf: { kind: "document", document: '<button @:root class="raw-leaf" <span @:label "Visible"/>/>',
+    panel: { kind: "document", document: '<section hson:part @:root id="%{id}" <hson-part @:child at="leaf"/>/>', stylesheet: 'section{border:3px solid black}' },
+    leaf: { kind: "document", document: '<button hson:part @:root class="raw-leaf" <span @:label "Visible"/>/>',
       // Equivalent textual controls exercise CSS-significant values before and after adoption.
       stylesheet: '.raw-leaf{--text-nbsp:\u00a0red\u00a0;--text-space:\\ ;--text-hex:\\31 } .raw-leaf span{font-family:\u00a0review\u00a0}',
       css: { '--review-nbsp': '\u00a0red\u00a0', '--review-space': '\\ ', '--review-hex': '\\31 ', fontFamily: '\u00a0review\u00a0', '--tone': 'rgb(10,20,30)', padding: '7px', '@:label': { color: 'var(--tone)' }, $media: { '(min-width: 0px)': { '@:label': { '--structured-media': 'present' } } } } },
-    global: { kind: "document", document: '<aside "Bare"/>', stylesheet: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
-    bare: { kind: "document", document: '<aside "Bare"/>' },
-    unused: { kind: "document", document: '<i "PRIVATE_TEMPLATE"/>', stylesheet: 'i{--private:PRIVATE_CSS}' },
+    global: { kind: "document", document: '<aside hson:part "Bare"/>', stylesheet: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
+    bare: { kind: "document", document: '<aside hson:part "Bare"/>' },
+    unused: { kind: "document", document: '<i hson:part "PRIVATE_TEMPLATE"/>', stylesheet: 'i{--private:PRIVATE_CSS}' },
   }, access: "private" }, "secret": { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>', stylesheet: 'body{--private:PRIVATE_LIBRARY_CSS}', access: "private" }, "page": { ...page, stylesheet: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', stylesheet: 'p{color:navy}', access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { authorizeProjection }] as const;
 export function node(source: string) {
   const value = hsonTransform.fromHson(source).toNode().$_content[0];
@@ -52,6 +53,30 @@ export async function fixture() {
 }
 
 export async function scoped_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await check("structured Part SSR and bootstrap expose only realized output at the captured revision", async () => {
+    const slide = Hson.data`<title "Visible" no -0 private "PRIVATE_ARGUMENT">`;
+    const control = (data: string) => Hson.document`<hson-part lib="parts" at="leaf" data:slide="${data}"/>`;
+    const locus = hsonLiveMap.locus.create({ parts: {access:'private', parts: {
+      panel: {kind:'document', document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child #{control}/>/>', stylesheet:':scope{color:red}'},
+      leaf: {kind:'document', document:'<b hson:part slide:data="%{slide}" @:root title="#{slide.title}" "#{slide.no}"/>'},
+    }}, page: {access:'shared', document:Hson.document`<html <head/> <body <hson-part @:one lib="parts" at="panel" doc:control="${control(slide)}"/> <hson-part @:two lib="parts" at="panel" doc:control="${control(slide)}"/>/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
+    try {
+      const session = await locus.session.create({libraries:['page','parts']});
+      const cut = session.now({html:'page'}); assert_cut(cut, 4);
+      assert.match(cut.html, /title="Visible">0<\/b>/);
+      assert.doesNotMatch(JSON.stringify(cut), /PRIVATE_ARGUMENT|data:slide|%\{slide/);
+      await assert.rejects(locus.stage(w => {
+        w.doc.must('page').at([1]).asElement().insert(0, node(Hson.document`<hson-part lib="parts" at="panel" doc:control="${control(slide)}"/>`));
+        w.doc.must('page').at([1]).asElement().insert(1, node('<hson-part lib="parts" at="panel" doc:control="broken"/>'));
+      }));
+      assert.deepEqual(session.now({html:'page'}), cut);
+      await locus.stage(w => w.doc.must('page').at([1,0]).replace(node(Hson.document`<hson-part lib="parts" at="panel" doc:control="${control(Hson.data`<title "Next" no 3>`)}"/>`)));
+      const next = session.now({html:'page'}); assert_cut(next, 4);
+      assert.equal(next.libs.revision, cut.libs.revision + 1); assert.match(next.html, /title="Next">3<\/b>/);
+      assert.match(cut.html, /title="Visible">0<\/b>/);
+    } finally { locus.dispose(); }
+  });
+
   await check("Library rendering is observational before any hosted session exists", async () => {
     const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
     const map = locus_map_internal(locus), aggregate = internal_livemap_aggregate_authority(map);

@@ -1,5 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
@@ -38,7 +39,7 @@ check("document mutation publishes one named map commit", () => {
   const commit = map.doc.must("page").document.attrs.set(rootTarget, "id", "main");
   assert.deepEqual(seen, [commit]);
   assert.equal(commit.operations[0]?.library, "page");
-  assert.equal(commit.operations[0]?.operation.op, "set-attr");
+  assert.equal(document_graph_operation(commit).op, "set-attr");
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
   map.doc.must("page").document.attrs.set(rootTarget, "id", "main");
   assert.equal(seen.length, 1);
@@ -125,7 +126,7 @@ check("bulk attrs methods produce one named replace operation", () => {
   ];
   assert.ok(commits.every((commit) => commit.operations.length === 1
     && commit.operations[0]?.library === "page"
-    && commit.operations[0]?.operation.op === "replace-attrs"));
+    && document_graph_operation(commit).op === "replace-attrs"));
   assert.equal(map.rev, 4);
   assert.deepEqual(attrs.keys(rootTarget), []);
 });

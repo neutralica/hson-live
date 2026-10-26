@@ -286,6 +286,24 @@ check("Part placeholders pair in quoted document text and ordinary attribute val
     assert.equal(typingSnippet(authored(body), '{'), body.includes('%|}') || body.includes('%|name}') ? '{$0' : '{$0}', body);
   }
 });
+check("Part placeholder typing reuses decoded selector closers and preserves incomplete suffixes", () => {
+  for (const reference of ['slide.title', 'slide.items[0].label', 'slide["odd.key"]', 'slide["brace}key"]',
+    String.raw`slide["quote\"key"]`, String.raw`slide["slash\\key"]`]) {
+    const value = JSON.stringify('%|' + reference + '}');
+    for (const body of ['<span ' + value + '/>', '<span title=' + value + '/>']) {
+      assertTypingResult(authored(body), '{', '{$0');
+    }
+  }
+  assertTypingResult(authored('<span "%{first} %|slide.items[0].label} %{last}"/>'), '{', '{$0');
+  assertTypingResult(authored('<span title=%|slide.title}/>'), '{', '{$0');
+  assert.equal(typingSnippet(authored('<span title=%|slide.items[0].label}/>'), '{'), undefined);
+  for (const suffix of ['slide.title', 'slide.items[0].', 'slide[0]', 'slide[-1]}']) {
+    assertTypingResult(authored('<span ' + JSON.stringify('%|' + suffix) + '/>'), '{', '{$0}');
+  }
+  for (const body of ['<span "%{slide.%|title}"/>', '<span "%{slide.items[%|0]}"/>']) {
+    assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+  }
+});
 check("Part placeholders exclude unsupported Part payloads and other template modes", () => {
   for (const body of ['<span %|/>', '<sp%|an/>', '<span style="color:%|"/>', '<span onClick="%|"/>',
     '<script "%|"/>', '<style <span "%|"/>/>', '<span ${fn("%|")}/>', '<span // %|\n/>',
@@ -335,7 +353,7 @@ check("authored document formatting preserves nested QUADs, connector admission,
     const formattedBody = result.slice(hostPrefix.length, -2);
     assert.deepEqual(parse_authored_document_library(formattedBody), parse_authored_document_library(body));
     const map = hsonLiveMap.fromLibraries({
-      parts: { parts: { content: { kind: "document", document: '<article "Body"/>' } } },
+      parts: { parts: { content: { kind: "document", document: '<article hson:part "Body"/>' } } },
       page: { document: formattedBody },
     });
     const page = map.doc.must("page");
@@ -849,4 +867,24 @@ check("bare member/value opener adjacency normalizes to one space through all fo
   const input = '<first<> second«1»>';
   const edits = structural_formatting_edits('/workspace/a.hson', 'hson', input, { tabSize: 2, insertSpaces: true }, { start: 6, end: 8 });
   assert.equal(applyEdits(input, edits), '<first <> second«1»>');
+});
+
+check("local Part references pair through the production checkpoint and preserve structural formatting", () => {
+  for (const body of ['<span "#|"/>', '<span title="#|"/>', '<hson-part #|/>', '<main c:doc="%{control}" <hson-part #|/>' , '<main <hson-part #|']) {
+    assertTypingResult(authored(body), '{', '{$0}');
+  }
+  assertTypingResult(authored('<hson-part #|control}/>'), '{', '{$0');
+  for (const body of ['<span #|/>', '<hson-part#|/>', '<hson-part lib="parts" at="x" #|/>', '<script "#|"/>', '<span // #|\n/>']) {
+    assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+  }
+  for (const sigil of ['%', '#']) for (const reference of ['model.items[0].label', 'model["odd}key"]']) {
+    assertTypingResult(authored('<p ' + JSON.stringify(sigil + '|' + reference + '}') + '/>'), '{', '{$0');
+  }
+  const body = '<main c:doc="%{control}" d:data="%{payload}"\n<hson-part #{c}/>\n<p ' + JSON.stringify('#{d["odd}key"][0].label}') + '/>\n/>';
+  const source = authored(body), formatted = format(source);
+  assert.ok(formatted.includes('<hson-part #{c}/>'));
+  assert.ok(formatted.includes(JSON.stringify('#{d["odd}key"][0].label}')));
+  assert.deepEqual(parse_authored_document_library(formatted.slice(formatted.indexOf('<main'), formatted.lastIndexOf('`'))).root,
+    parse_authored_document_library(body).root);
+  assert.equal(format(formatted), formatted);
 });

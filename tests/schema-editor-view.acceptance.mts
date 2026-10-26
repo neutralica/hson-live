@@ -337,7 +337,7 @@ const P = Hson.schema\`<type "document" tag "main" content "string">\`;
 const loc = hsonLiveMap.locus.create({
   deck: { data: { name: "Ada", values: [1] }, schema: S },
   page: { document: Hson.document\`<main "body"/>\`, schema: P, access: "shared" },
-  components: { parts: { submit: { kind: "document", document: Hson.document\`<button "submit"/>\` }, snap: { kind: "document", document: Hson.document\`<span/>\` } } },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part "submit"/>\` }, snap: { kind: "document", document: Hson.document\`<span hson:part/>\` } } },
 });
 const selected = loc.data.must("deck", S);
 const optional = loc.data("deck", S);
@@ -824,7 +824,7 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
   const prefix = 'import { Hson, hsonLiveMap, type HsonDocument } from "hson-live";\n'
     + 'const Page = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
     + 'const shell = Hson.document`<main <hson-part lib="bits" at="title"/>/>`;\n';
-  const good = 'bits: { parts: { title: { kind: "document", document: Hson.document`<h1 "Hello"/>` } } }';
+  const good = 'bits: { parts: { title: { kind: "document", document: Hson.document`<h1 hson:part "Hello"/>` } } }';
   const bad = good.replace('<h1', '<p');
   const source = prefix + [
     `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${good} });`,
@@ -833,7 +833,7 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
     `const map = hsonLiveMap.fromLibraries({ page: { document: Hson.document\`<main <hson-part lib="bits" at="title"/>/>\` }, ${bad} });`,
     'map.doc.must("page").schema.use(Page);',
     // These receiving contexts cannot borrow inventory from another call.
-    'const known = hsonLiveMap.fromLibraries({ bits: { parts: { title: { kind: "document", document: "<p/>" } } } });',
+    'const known = hsonLiveMap.fromLibraries({ bits: { parts: { title: { kind: "document", document: "<p hson:part/>" } } } });',
     'known.addLibraries({ page: { document: shell, schema: Page } });',
     'declare const dynamic: typeof known; dynamic.addLibraries({ page: { document: shell, schema: Page } });',
     'hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page } });',
@@ -873,22 +873,22 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
   const unknown = [
     'bits: { parts: opaque }',
     'bits: { parts: { ...opaque } }',
-    'bits: { parts: { [key]: { kind: "document", document: "<p/>" } } }',
+    'bits: { parts: { [key]: { kind: "document", document: "<p hson:part/>" } } }',
     'bits: { parts: { title: { kind: "document", document: getDocument() } } }',
-    'bits: { parts: { title: { kind: "document", document: "<p/>" }, broken: { kind: "document", document: "<p" } } }',
+    'bits: { parts: { title: { kind: "document", document: "<p hson:part/>" }, broken: { kind: "document", document: "<p" } } }',
     'bits: { parts: aliased }',
   ];
   for (const inventory of unknown) {
     test.edit("index.ts", prefix + 'declare const opaque: Record<string, { kind: "document"; document: string }>; declare const key: string; declare function getDocument(): string;\n'
-      + 'const aliased = { title: { kind: "document" as const, document: "<p/>" } };\n'
+      + 'const aliased = { title: { kind: "document" as const, document: "<p hson:part/>" } };\n'
       + `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${inventory} });`);
     assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0, inventory);
   }
   // Complete reference failures are now editor errors, while composition Schema
   // proof still withdraws rather than judging an unexpanded connector as markup.
   for (const { inventory, message } of [
-    { inventory: 'bits: { data: { title: { kind: "document", document: "<p/>" } } }', message: /Unknown Parts Library "bits"/ },
-    { inventory: 'bits: { parts: { other: { kind: "document", document: "<p/>" } } }', message: /Unknown Part member "title"/ },
+    { inventory: 'bits: { data: { title: { kind: "document", document: "<p hson:part/>" } } }', message: /Unknown Parts Library "bits"/ },
+    { inventory: 'bits: { parts: { other: { kind: "document", document: "<p hson:part/>" } } }', message: /Unknown Part member "title"/ },
   ]) {
     test.edit("index.ts", prefix + `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${inventory} });`);
     const errors = test.errors("index.ts").filter(error => error.code === 95002);
@@ -949,12 +949,12 @@ check("rejected Part producers retain source errors without receiving Schema con
     }
     // Repair only the producer: valid forward composition still proves a real
     // mismatch, and then the expected realized element clears that mismatch.
-    const repaired = source.replace(producer, 'Hson.document`<p/>`');
+    const repaired = source.replace(producer, 'Hson.document`<p hson:part/>`');
     test.edit("index.ts", repaired);
     const failures = test.errors("index.ts").filter(error => error.code === 95002);
     assert.equal(failures.length, 1, messages(failures));
     assert.match(messages(failures), /expected "h1"; received "p"/);
-    test.edit("index.ts", repaired.replace('<p/>', '<h1/>'));
+    test.edit("index.ts", repaired.replace('<p hson:part/>', '<h1 hson:part/>'));
     assert.deepEqual(test.errors("index.ts"), []);
   }
   test.service.dispose();

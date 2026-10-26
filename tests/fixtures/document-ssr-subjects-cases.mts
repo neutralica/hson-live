@@ -60,7 +60,7 @@ export function ssr_subject_fixture(): DocumentSsrSubjectFixture {
 export function flat_final_subject_fixture(): DocumentSsrSubjectFixture {
   const map = authored({
     layout: { document: '<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' },
-    components: { parts: { button: { kind: "document", document: '<button @:source/>' } } },
+    components: { parts: { button: { kind: "document", document: '<button hson:part @:source/>' } } },
     final: { document: '<html <head/> <body <button/> <button/>/>/>' },
   });
   const page = map.doc.must("final"), aggregate = owner(map), library = aggregate.libraries().at(-1)!;

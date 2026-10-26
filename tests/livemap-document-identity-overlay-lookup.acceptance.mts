@@ -1,6 +1,7 @@
 import { element } from "./helpers/mirror-unit6.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import type { LiveMapDocumentLibrary, LiveMapDocumentPath } from "../src/types/livemap.types.ts";
 import {
@@ -105,7 +106,9 @@ check("selected libraries expose no public replay or QUID-target mutation", () =
 check("path requests remain path-authoritative beside sparse identity", () => {
   const map = element(`<main <span @${Q1}/>/` + `>`);
   const commit = map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "target");
-  assert.deepEqual(commit.operations[0]?.operation.target, { kind: "path", path: [0, 0, 0] });
+  const operation = document_graph_operation(commit);
+  assert.equal(operation.op, "set-attr");
+  assert.deepEqual(operation.target, { kind: "path", path: [0, 0, 0] });
 });
 
 check("raw-QUID requests reject without building an overlay", () => {

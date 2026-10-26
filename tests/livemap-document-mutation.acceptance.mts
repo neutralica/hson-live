@@ -1,5 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { document_graph_operation } from "./helpers/document-library.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, path, projected_element } from "./helpers/mirror-unit6.mts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
@@ -38,7 +39,7 @@ check("attribute set, replacement, and no-op follow one revision stream", () => 
   const map = fixture();
   const first = map.document.attrs.set(root, "title", "hello");
   assert.equal(first.rev, 1);
-  assert.equal(first.operations[0]?.operation.op, "set-attr");
+  assert.equal(document_graph_operation(first).op, "set-attr");
   assert.equal(map.document.attrs.get(root, "title"), "hello");
   const unchanged = map.document.attrs.set(root, "title", "hello");
   assert.equal(unchanged.changed, false);
@@ -63,7 +64,7 @@ check("setMany preserves unspecified attributes in one commit", () => {
   map.document.attrs.set(root, "old", true);
   const commit = map.document.attrs.setMany(root, { a: 1, b: 2 });
   assert.equal(commit.operations.length, 1);
-  assert.equal(commit.operations[0]?.operation.op, "replace-attrs");
+  assert.equal(document_graph_operation(commit).op, "replace-attrs");
   assert.deepEqual(map.document.attrs.keys(root), ["a", "b", "old"]);
 });
 

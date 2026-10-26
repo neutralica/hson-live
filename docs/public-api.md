@@ -156,7 +156,7 @@ LiveMap owns local state, Locus owns authority state, and Echo owns composed rep
 
 ### 6. Parts — deferred authored invocation
 
-Admit `{ components: { parts: { heading: { kind: "document", document: '<h2 "%{content}"/>' } } } }`
+Admit `{ components: { parts: { heading: { kind: "document", document: '<h2 hson:part "%{content}"/>' } } } }`
 and select the member through `map.parts.must("components").at(["heading"])`.
 Its `.write({ content: "Hello" })` returns detached `HsonAuthored` connector source.
 Receiving document admission resolves the then-current definition and realizes an independent

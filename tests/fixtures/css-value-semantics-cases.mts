@@ -94,7 +94,7 @@ export function css_value_semantics_cases(check: (name: string, run: () => void)
     const decoded = decode_portable_document_stylesheet(JSON.parse(JSON.stringify(record)));
     assert.deepEqual(encode_portable_document_stylesheet(decoded), record);
     assert.match(render_portable_document_stylesheet(decoded), /color:;/);
-    const map: LiveMap = hsonLiveMap.fromLibraries({ parts: { parts: { sample: { kind: 'document', document: '<p @:label/>', css } } } });
+    const map: LiveMap = hsonLiveMap.fromLibraries({ parts: { parts: { sample: { kind: 'document', document: '<p hson:part @:label/>', css } } } });
     const authored = map.parts.must('parts').at(['sample']).snap()?.css;
     assert.deepEqual(authored, { color: '', __before: { content: '' }, '@:label': { color: '' },
       $media: { screen: { '& > a': { color: '' } } } });
@@ -276,7 +276,7 @@ export function css_value_semantics_cases(check: (name: string, run: () => void)
   });
   check('original values and late inline or Part failures preserve linked revisions commits and identity', () => {
     const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<main <p/>/>' },
-      parts: { parts: { sample: { kind: 'document', document: '<p/>', css: { color: 'blue' } } } } });
+      parts: { parts: { sample: { kind: 'document', document: '<p hson:part/>', css: { color: 'blue' } } } } });
     const page = map.doc.must('page');
     if (page.mode !== 'document') throw new Error('Expected document library');
     const mirror = hsonMirror(page);
@@ -300,7 +300,7 @@ export function css_value_semantics_cases(check: (name: string, run: () => void)
         }
         assert.throws(() => tree.css.anim.restart({ name: 'safe', duration: '1s', playState: value }));
         assert.throws(() => tree.css.global.var.set('tokens', value));
-        assert.throws(() => map.parts.must('parts').at(['sample']).replace({ kind: 'document', document: '<p/>',
+        assert.throws(() => map.parts.must('parts').at(['sample']).replace({ kind: 'document', document: '<p hson:part/>',
           css: { color: 'red', __before: { '--tokens': value } } }));
         assert.deepEqual(state(), before);
       }
@@ -463,15 +463,15 @@ export function css_value_semantics_cases(check: (name: string, run: () => void)
     const sheet = structured_part_stylesheet(css, new Set(['label']));
     assert.equal(sheet.rules.length, 1); assert.deepEqual(sheet.rules[0]!.declarations, [['width', '2rem']]);
     assert.equal(structured_part_stylesheet({ __before: { content: '"explicit"' } }, new Set()).rules[0]!.declarations[0]![1], '"explicit"');
-    const map: LiveMap = hsonLiveMap.fromLibraries({ parts: { parts: { sample: { kind: 'document', document: '<p @:label/>', css } } } });
+    const map: LiveMap = hsonLiveMap.fromLibraries({ parts: { parts: { sample: { kind: 'document', document: '<p hson:part @:label/>', css } } } });
     assert.deepEqual(map.parts.must('parts').at(['sample']).snap()?.css, { __before: {}, __after: {}, '@:label': { width: { value: 2, unit: 'rem' } } });
     const before = map.capture(), rev = map.rev;
     for (const invalid of [null, true, false]) {
-      assert.throws(() => map.parts.must('parts').at(['sample']).replace({ kind: 'document', document: '<p @:label/>',
+      assert.throws(() => map.parts.must('parts').at(['sample']).replace({ kind: 'document', document: '<p hson:part @:label/>',
         css: { color: 'red', __before: { content: invalid } } } as never));
       assert.deepEqual(map.capture(), before); assert.equal(map.rev, rev);
     }
-    assert.throws(() => map.parts.must('parts').at(['sample']).replace({ kind: 'document', document: '<p @:label/>',
+    assert.throws(() => map.parts.must('parts').at(['sample']).replace({ kind: 'document', document: '<p hson:part @:label/>',
       css: { backgroundColor: undefined, 'background-color': 'red' } } as never), /collision/);
     assert.deepEqual(map.capture(), before);
   });

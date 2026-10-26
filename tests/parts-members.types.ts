@@ -1,15 +1,15 @@
 import { Hson, ANY_DATA, type HsonSchema, type HsonAuthored } from "hson-live/hson";
-import { hsonLiveMap, type LiveMapDocumentPart, type LiveMapPartCollection, type LiveMapLibraryPathHandle } from "hson-live/livemap";
+import { hsonLiveMap, type LiveMapCommit, type LiveMapDocumentPart, type LiveMapPartCollection, type LiveMapLibraryPathHandle } from "hson-live/livemap";
 import type { LocusActionContext, LocusDataLocation, ReadDataLocation } from "hson-live/locus";
 import type { Echo } from "hson-live/echo";
 
 const definitions = { components: { parts: {
-  heading: { kind: "document", document: Hson.document`<h1/>` },
-  submit: { kind: "document", document: Hson.document`<button/>` },
-  snap: { kind: "document", document: "<p/>" },
-  call: { kind: "document", document: "<p/>" },
-  __defineGetter__: { kind: "document", document: "<p/>" },
-  then: { kind: "document", document: "<p/>" },
+  heading: { kind: "document", document: Hson.document`<h1 hson:part/>` },
+  submit: { kind: "document", document: Hson.document`<button hson:part/>` },
+  snap: { kind: "document", document: "<p hson:part/>" },
+  call: { kind: "document", document: "<p hson:part/>" },
+  __defineGetter__: { kind: "document", document: "<p hson:part/>" },
+  then: { kind: "document", document: "<p hson:part/>" },
 } } } as const;
 const map = hsonLiveMap.fromLibraries(definitions);
 const parts = map.parts.components;
@@ -20,8 +20,8 @@ parts.heading.at(["stylesheet"]).snap() satisfies string | undefined;
 parts.heading.at(["kind"]).snap() satisfies "document" | undefined;
 parts.heading.watch(value => value?.document satisfies string | undefined);
 parts.heading.asObject()?.object.keys();
-parts.heading.set({ kind: "document", document: "<h1/>", stylesheet: "h1{color:red}" });
-parts.heading.replace({ kind: "document", document: "<h2/>" });
+parts.heading.set({ kind: "document", document: "<h1 hson:part/>", stylesheet: "h1{color:red}" });
+parts.heading.replace({ kind: "document", document: "<h2 hson:part/>" });
 parts.heading.delete();
 parts.call.snap(); // Parts facades are objects, not functions.
 parts.snap() satisfies LiveMapPartCollection;
@@ -85,14 +85,14 @@ uncertain.parts.components?.heading;
 
 const locus = hsonLiveMap.locus.create(definitions);
 locus.parts.components.heading.snap() satisfies LiveMapDocumentPart | undefined;
-void locus.parts.components.heading.set({ kind: "document", document: "<h1/>", stylesheet: "" });
+void locus.parts.components.heading.set({ kind: "document", document: "<h1 hson:part/>", stylesheet: "" });
 void locus.stage(writer => {
-  writer.parts.components.heading.replace({ kind: "document", document: "<h3/>" });
+  writer.parts.components.heading.replace({ kind: "document", document: "<h3 hson:part/>" });
   // @ts-expect-error Stages have no observation API.
   writer.parts.components.heading.snap();
 });
 map.batch(writer => {
-  writer.parts.components.heading.set({ kind: "document", document: "<h1/>", stylesheet: "" });
+  writer.parts.components.heading.set({ kind: "document", document: "<h1 hson:part/>", stylesheet: "" });
   writer.parts.components.heading.asObject().object.setMany({ document: "<h3/>" });
   // @ts-expect-error Stage expiration is not bypassed by standalone document realization.
   writer.parts.components.heading.render();
@@ -281,3 +281,51 @@ localBase.write();
 locusBase.at([]).write();
 // @ts-expect-error General-purpose read handles do not promise Part authoring.
 actionBase.present()?.write();
+
+// HsonData uses the existing string branch of Part.write; no new wrapper or overload.
+parts.heading.write({ slide: Hson.data`<title "Visible">`, index: Hson.data`0` }) satisfies HsonAuthored;
+
+// Document edits return the aggregate stream, including CSS installation/retirement.
+const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {
+  optional: { kind: 'document', document: Hson.document`<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>`, stylesheet: 'p{color:red}' },
+  ordinary: { kind: 'document', document: Hson.document`<b hson:part/>`, stylesheet: 'b{color:blue}' },
+} }, page: { document: Hson.document`<main <i/>/>` } });
+const replacementCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
+  { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'optional', 'data:payload': '<>' }, $_content: [] });
+const ordinaryCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
+  { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'ordinary' }, $_content: [] });
+declare const aggregateCommit: LiveMapCommit<'page'>;
+aggregateCommit satisfies typeof replacementCommit;
+aggregateCommit satisfies typeof ordinaryCommit;
+declare const cssOperation: Extract<LiveMapCommit['operations'][number]['operation'], { domain: 'css' }>;
+cssOperation satisfies typeof replacementCommit.operations[number]['operation'];
+cssOperation satisfies typeof ordinaryCommit.operations[number]['operation'];
+for (const commit of [ordinaryCommit, replacementCommit]) for (const { operation } of commit.operations) {
+  // @ts-expect-error Aggregate operations are not all graph replacements.
+  operation.replacement;
+  // @ts-expect-error CSS and topology operations do not have graph op discriminants.
+  operation.op;
+  if ('domain' in operation && operation.domain === 'css') {
+    if (operation.kind === 'replace') operation.stylesheet.rules;
+    // @ts-expect-error A CSS operation cannot masquerade as a graph replacement.
+    operation.replacement;
+  } else if ('domain' in operation && operation.domain === 'graph') {
+    switch (operation.op) {
+      case 'replace-content': operation.replacement; break;
+      case 'remove-content':
+        operation.index satisfies number;
+        // @ts-expect-error Removal has no replacement payload.
+        operation.replacement;
+        break;
+      case 'replace-root': case 'set-attr': case 'remove-attr': case 'replace-attrs':
+      case 'insert-content': case 'move-content': case 'ensure-quid': break;
+      default: operation satisfies never;
+    }
+  }
+}
+
+// The JavaScript convention is prefix-free; explicit prefixes belong to authored connectors.
+// @ts-expect-error deprecated JavaScript sending prefix
+parts.heading.write({ "data:slide": Hson.data`null` });
+// @ts-expect-error Document sending prefix is also authored-only
+parts.heading.write({ "doc:control": Hson.document`<b/>` });

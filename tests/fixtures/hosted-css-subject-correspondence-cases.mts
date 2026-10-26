@@ -107,7 +107,7 @@ export async function hosted_css_dispatched_subject_cases() {
 
 export async function queued_fixture(scoped = false, subjects = 1, native = false) {
   const map: LiveMap = hsonLiveMap.fromLibraries({
-    parts: { parts: { panel: { kind: "document", document: '<section @:root <span @:label/>/>' } } },
+    parts: { parts: { panel: { kind: "document", document: '<section hson:part @:root <span @:label/>/>' } } },
     page: { document: scoped ? '<html <head/> <body <hson-part @:left lib="parts" at="panel"/> <hson-part @:right lib="parts" at="panel"/>/>/>'
       : `<html <head/> <body ${Array.from({ length: subjects }, (_, index) => `<p @:${index === 0 ? "label" : `subject${index}`}/>`).join(" ")}/>/>` },
     state: { data: { n: 0 } },
@@ -293,7 +293,7 @@ export async function hosted_css_scoped_subject_cases() {
 }
 
 export async function hosted_css_subject_durability_cases() {
-  const definitions = { parts: { parts: { panel: { kind: "document", document: '<section @:root <span @:label/>/>' } }, access: "private" },
+  const definitions = { parts: { parts: { panel: { kind: "document", document: '<section hson:part @:root <span @:label/>/>' } }, access: "private" },
     page: { document: '<html <head/> <body <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>/>', access: "shared" } } as const;
   const persistence = new MemoryCheckpointAdapter();
   const configuration = { logicalMapId: "css-subject-durability", persistence,

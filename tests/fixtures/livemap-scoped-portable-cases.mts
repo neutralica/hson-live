@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { hsonLiveMap, type LiveMap } from "../../src/index.ts";
+import { Hson, hsonLiveMap, type LiveMap } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { document_scoped_libraries_semantically_equal as equal,
@@ -28,13 +28,13 @@ function unchanged(f: { map: Pick<LiveMap, "capture" | "rev" | "commits">; aggre
 }
 function fixture() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
-    leaf: { kind: "document", document: '<button @:root <span @:label "Click"/>/>',
+    leaf: { kind: "document", document: '<button hson:part @:root <span @:label "Click"/>/>',
       css:{color:'blue','@:label':{display:'grid'}}, stylesheet: ':scope{color:blue} @supports(display:grid){[hson\\:quad="label"]{display:grid}}' },
-    panel: { kind: "document", document: '<section @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
+    panel: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>',
       css:{$media:{screen:{padding:3}}}, stylesheet: '@media screen{:scope{padding:3px}}' },
-    global: { kind: "document", document: '<i/>',
+    global: { kind: "document", document: '<i hson:part/>',
       stylesheet: ':scope{animation:glow 1s} @keyframes glow{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
-    empty: { kind: "document", document: '<em/>' },
+    empty: { kind: "document", document: '<em hson:part/>' },
   } }, page: { document: '<main/>' } });
   map.doc.must("page").css.stylesheet('main{margin:7px}');
   const aggregate = authority(map), owner = aggregate.libraries()[1]!;
@@ -62,6 +62,27 @@ export function scoped_portable_roundtrip(input: unknown): PortableDocumentScope
 }
 
 export function scoped_portable_cases(check: (name: string, run: () => void) => void) {
+  check("structured Part portable capture restores in a fresh runtime without source or argument environments", () => {
+    const map = hsonLiveMap.fromLibraries({ parts: {parts: {
+      panel: {kind:'document', document:'<section hson:part slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="#{slide.details}"/>/>'},
+      leaf: {kind:'document', document:'<b hson:part x:data="%{x}" @:root title="#{x.title}" "#{x.no}"/>', stylesheet:':scope{color:red}'},
+    }}, page:{document:'<main/>'} });
+    const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
+    const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;
+    const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" data:slide="${data}"/> <hson-part lib="parts" at="panel" data:slide="${data}"/>/>`);
+    const candidate = a.prepareScopedDocument(owner, {root:parsed.root, quads:parsed.declarations});
+    const portable = a.captureScopedDocument(candidate);
+    assert.doesNotMatch(JSON.stringify(portable), /PRIVATE_ARGUMENT|data:slide|hson-part|parameters|bindings.*slide/);
+    assert.ok(JSON.stringify(portable.root).includes('%{literal}'));
+    assert.equal(portable.scopes.occurrences.length, 4);
+    const receiving = receiver(), next = receiving.restore(copy(portable));
+    assert.ok(equal(portable, receiving.aggregate.captureScopedDocument(next)));
+    assert.notEqual(next.owner, candidate.owner);
+    assert.equal(next.scopes.occurrences.length, 4);
+    assert.ok(next.scopes.occurrences.every(scope => !candidate.issued.has(scope.rootQuid)));
+    assert.throws(() => receiving.map.parts.must('parts'));
+  });
+
   check("scoped Library capture is observational, stable, detached and candidate-authenticated", () => {
     const f = fixture(); let allocations = 0;
     allocator(f.aggregate.identityEpoch().owner, () => { allocations++; throw Error("capture allocated"); });

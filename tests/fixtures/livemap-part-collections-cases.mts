@@ -39,8 +39,8 @@ import { validate_document_path } from "../../src/api/livemap/livemap.document.p
 
 const css = '@layer base{}@layer theme{}@property --tone{syntax:"<color>";inherits:false;initial-value:red}@layer base{article{color:var(--tone)}@media (min-width:1px){article>span{display:block}}}@keyframes pulse{from{opacity:0}to{opacity:1}}article{animation:pulse 1s}';
 const parts = () => ({
-  "first/β": { kind: "document" as const, document: '<article @:root <span @:label "First"/> <i/>/>', stylesheet: css },
-  "二": { kind: "document" as const, document: '<a @:label href="/" "Second"/>', stylesheet: "" },
+  "first/β": { kind: "document" as const, document: '<article hson:part @:root <span @:label "First"/> <i/>/>', stylesheet: css },
+  "二": { kind: "document" as const, document: '<a hson:part @:label href="/" "Second"/>', stylesheet: "" },
 });
 const definition = (parts: LiveMapPartCollection) => ({ parts });
 const fixture = () => hsonLiveMap.fromLibraries({ collection: definition(parts()) });
@@ -67,7 +67,7 @@ function atomic(map: LiveMap, run: () => unknown, pattern?: RegExp) {
 const graph = (value: unknown) => projected_value_to_hson_root(admit_projected_value(value));
 function invalidSnapshot(snapshot: LiveMapSnapshot): LiveMapSnapshot {
   return { ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === "collection"
-    ? { ...entry, root: encode_hosted_root(graph({ good: { kind: "document", document: '<p/>' }, late: { kind: "document", document: '<p' } })) }
+    ? { ...entry, root: encode_hosted_root(graph({ good: { kind: "document", document: '<p hson:part/>' }, late: { kind: "document", document: '<p' } })) }
     : entry) };
 }
 async function projection(map: LiveMap, names: readonly string[], privateNames: readonly string[] = []) {
@@ -122,7 +122,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
 
   await check("installed Parts reject direct, widened, replayed, and reconstructed Schema attachment atomically", () => {
-    const definitions = { collection: { parts: { p: { kind: "document", document: "<p/>" } } }, state: { data: 1 } } as const;
+    const definitions = { collection: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, state: { data: 1 } } as const;
     const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
     const ordinary = hsonLiveMap.fromLibraries({ collection: { data: definitions.collection.parts }, state: { data: 1 } });
     const replay = data(ordinary).schema.use(schema);
@@ -147,50 +147,50 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       atomic(map, () => map.batch(writer => {
         const target = writer.parts.must(name);
         if (String(target.mode) === "document") throw Error("Expected data");
-        target.at(["p", "document"]).set('<p "discarded"/>');
+        target.at(["p", "document"]).set('<p hson:part "discarded"/>');
         library.schema.use(schema);
       }));
-      library.at(["p"]).replace({ kind: "document", document: '<p "valid after rejection"/>', stylesheet: "p{color:red}" });
+      library.at(["p"]).replace({ kind: "document", document: '<p hson:part "valid after rejection"/>', stylesheet: "p{color:red}" });
       map.batch(writer => { const target = writer.parts.must(name);
         if (String(target.mode) === "document") throw Error("Expected data");
-        target.at(["p", "document"]).set('<p "staged after rejection"/>'); });
-      assert.equal(library.snap(["p", "document"]), '<p "staged after rejection"/>');
+        target.at(["p", "document"]).set('<p hson:part "staged after rejection"/>'); });
+      assert.equal(library.snap(["p", "document"]), '<p hson:part "staged after rejection"/>');
       assert.equal(library.schema.get(), contract);
       assert.equal(data(map, "state").snap(), 1);
     }
   });
 
   await check("hosted, mirror, and client-local Parts retain the attachment restriction", async () => {
-    const map = hsonLiveMap.fromLibraries({ collection: { parts: { p: { kind: "document", document: "<p/>" } } } });
+    const map = hsonLiveMap.fromLibraries({ collection: { parts: { p: { kind: "document", document: "<p hson:part/>" } } } });
     const aggregate = owner(map), checkpoint = aggregate.captureSemanticCheckpoint();
     const mirror = make_livemap_mirror_from_semantic_checkpoint_internal(checkpoint);
     atomic(mirror, () => data(mirror).schema.use(ANY_DATA), /Part collections/);
     const snapshot = capture_selected_authority_projection_snapshot(map, await projection(map, ["collection"]));
-    const client = client_projection_map({ authority: snapshot, local: { local: { parts: { p: { kind: "document", document: "<p/>" } } } } });
+    const client = client_projection_map({ authority: snapshot, local: { local: { parts: { p: { kind: "document", document: "<p hson:part/>" } } } } });
     atomic(client, () => data(client, "local").schema.use(ANY_DATA), /Part collections/);
     atomic(client, () => data(client).schema.use(ANY_DATA), /Shared|Locus authority/);
-    data(client, "local").at(["p"]).replace({ kind: "document", document: "<aside/>" });
+    data(client, "local").at(["p"]).replace({ kind: "document", document: "<aside hson:part/>" });
     const locus = hsonLiveMap.locus.create({ "collection": { parts: {}, access: "shared" } });
     try {
       assert.equal("use" in locus.parts.must("collection").schema, false);
       const authorityMap = locus_map_internal(locus), before = owner(authorityMap).hostedPosition();
       atomic(authorityMap, () => data(authorityMap).schema.use(ANY_DATA));
       assert.deepEqual(owner(authorityMap).hostedPosition(), before);
-      await locus.parts.must("collection").at([]).replace({ p: { kind: "document", document: "<p/>" } });
-      await locus.stage(writer => { writer.parts.must("collection").at(["p", "document"]).set("<aside/>"); });
+      await locus.parts.must("collection").at([]).replace({ p: { kind: "document", document: "<p hson:part/>" } });
+      await locus.stage(writer => { writer.parts.must("collection").at(["p", "document"]).set("<aside hson:part/>"); });
     } finally { locus.dispose(); }
   });
 
   await check("reconstructed and hosted contracts cannot claim Parts plus a supplemental Schema", () => {
     const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
-    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: { p: { kind: "document", document: "<p/>" } }, schema } });
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: { p: { kind: "document", document: "<p hson:part/>" } }, schema } });
     const snapshot = ordinary.capture();
     const entries = snapshot.registry.libraries.map(entry => ({ ...entry, validation }));
     // The canonical registry owner rejects even internally reconstructed evidence.
     assert.throws(() => make_hosted_registry(entries.map(entry => ({ name: entry.name, mode: entry.mode, validation,
       identity: {}, schema }))), /Part collections/);
     assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "collection", family: "data", schema,
-      root: graph({ p: { kind: "document", document: "<p/>" } }), validation }]), /Part collections/);
+      root: graph({ p: { kind: "document", document: "<p hson:part/>" } }), validation }]), /Part collections/);
     const forged = { ...snapshot, registry: { ...snapshot.registry, libraries: entries },
       libraries: snapshot.libraries.map(entry => ({ ...entry, validation })) };
     assert.throws(() => install_libraries_snapshot(forged), /Part collections|registry/i);
@@ -229,9 +229,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("keys are ordinary data strings and local landmarks never synthesize a root name", () => {
     const map = hsonLiveMap.fromLibraries({ "arbitrary library": definition({
-      "slash/葉": { kind: "document", document: '<section <i @:label/>/>' },
-      "1 non QUAD key": { kind: "document", document: '<a @:label/>' },
-      controls: { kind: "document", document: '<b/>' }, button: { kind: "document", document: '<p/>' },
+      "slash/葉": { kind: "document", document: '<section hson:part <i @:label/>/>' },
+      "1 non QUAD key": { kind: "document", document: '<a hson:part @:label/>' },
+      controls: { kind: "document", document: '<b hson:part/>' }, button: { kind: "document", document: '<p hson:part/>' },
     }) });
     assert.deepEqual(read(map, "arbitrary library", "slash/葉").quads, [{ name: "label", path: [0, 0, 0] }]);
     assert.deepEqual(read(map, "arbitrary library", "1 non QUAD key").quads, [{ name: "label", path: [0] }]);
@@ -244,8 +244,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("source content distinctions and absent versus empty CSS survive exact materialization", () => {
     const map = hsonLiveMap.fromLibraries({ collection: definition({
-      absent: { kind: "document", document: '<p/>' }, empty: { kind: "document", document: '<p ""/>', stylesheet: "" },
-      text: { kind: "document", document: '<p "a" "b"/>' },
+      absent: { kind: "document", document: '<p hson:part/>' }, empty: { kind: "document", document: '<p hson:part ""/>', stylesheet: "" },
+      text: { kind: "document", document: '<p hson:part "a" "b"/>' },
     }) });
     assert.notDeepEqual(read(map, "collection", "absent").root, read(map, "collection", "empty").root);
     assert.equal(Object.hasOwn(read(map, "collection", "absent"), "css"), false);
@@ -269,15 +269,15 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("malformed late records reject atomically at initial and ordinary later admission", () => {
     const failures: unknown[] = [null, [], {}, { kind: "data", document: '<p/>' }, { kind: "document" },
       { kind: "document", document: "" }, { kind: "document", document: '"text"' },
-      { kind: "document", document: '<p/> <q/>' }, { kind: "document", document: '<p' },
-      { kind: "document", document: '<p/> trailing' }, { kind: "document", document: '<hson-part lib="x"/>' },
-      { kind: "document", document: '<p @000009001/>' }, { kind: "document", document: '<p @bad/>' },
-      { kind: "document", document: '<p @:1bad/>' }, { kind: "document", document: '<p @:same @:other/>' },
-      { kind: "document", document: '<p <i @:same/> <b @:same/>/>' },
-      { kind: "document", document: '<p/>', quads: [{ name: "a", path: [99] }] },
-      { kind: "document", document: '<p/>', stylesheet: undefined },
-      { kind: "document", document: '<p/>', schema: Hson.schema`<type "document" tag "p">` },
-      { kind: "document", document: '<p/>', schema: '<type "document" tag "p">' },
+      { kind: "document", document: '<p hson:part/> <q/>' }, { kind: "document", document: '<p' },
+      { kind: "document", document: '<p hson:part/> trailing' }, { kind: "document", document: '<hson-part lib="x"/>' },
+      { kind: "document", document: '<p hson:part @000009001/>' }, { kind: "document", document: '<p hson:part @bad/>' },
+      { kind: "document", document: '<p hson:part @:1bad/>' }, { kind: "document", document: '<p hson:part @:same @:other/>' },
+      { kind: "document", document: '<p hson:part <i @:same/> <b @:same/>/>' },
+      { kind: "document", document: '<p hson:part/>', quads: [{ name: "a", path: [99] }] },
+      { kind: "document", document: '<p hson:part/>', stylesheet: undefined },
+      { kind: "document", document: '<p hson:part/>', schema: Hson.schema`<type "document" tag "p">` },
+      { kind: "document", document: '<p hson:part/>', schema: '<type "document" tag "p">' },
       { kind: "document", document: { $_tag: "p", $_content: [], $_meta: { quid: "000009001" } } },
     ];
     for (const bad of failures) {
@@ -290,9 +290,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("descriptor-exact portable data admission rejects getters undefined hidden and nonportable fields", () => {
     let reads = 0;
-    const member = Object.defineProperty({ kind: "document", document: '<p/>' }, "stylesheet", { enumerable: true, get() { reads++; return ""; } });
+    const member = Object.defineProperty({ kind: "document", document: '<p hson:part/>' }, "stylesheet", { enumerable: true, get() { reads++; return ""; } });
     const collection = Object.defineProperty({}, "member", { enumerable: true, get() { reads++; return parts()["二"]; } });
-    const hidden = Object.defineProperty({ kind: "document", document: '<p/>' }, "extra", { value: true });
+    const hidden = Object.defineProperty({ kind: "document", document: '<p hson:part/>' }, "extra", { value: true });
     for (const input of [[], null, "text", { member }, collection, { hidden },
       { bad: { ...parts()["二"], extra: true } }, { bad: undefined }, { bad: () => 0 },
       { bad: new Date() }, { [Symbol("extra")]: parts()["二"] }]) {
@@ -315,12 +315,12 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       () => member.object.deleteMany(["kind", "document"]), () => member.object.renameKey("document", "unsupported"),
       () => library.at([]).asObject()!.object.setKey("late", invalid), () => library.at([]).asObject()!.object.setMany({ good: parts()["二"], late: invalid })];
     for (const fail of failures) atomic(map, fail);
-    doc.set('<section @:label/>');
+    doc.set('<section hson:part @:label/>');
     atomic(map, () => member.object.setKey("stylesheet", ""), /field access/);
     atomic(map, () => member.object.deleteKey("stylesheet"), /field access/);
-    member.replace({ kind: "document", document: '<section @:label/>', stylesheet: "" });
-    member.replace({ kind: "document", document: '<section @:label/>' });
-    library.at([]).asObject()!.object.setKey("extra", { kind: "document", document: '<div/>' });
+    member.replace({ kind: "document", document: '<section hson:part @:label/>', stylesheet: "" });
+    member.replace({ kind: "document", document: '<section hson:part @:label/>' });
+    library.at([]).asObject()!.object.setKey("extra", { kind: "document", document: '<div hson:part/>' });
     library.at([]).asObject()!.object.renameKey("extra", "new/葉"); library.at(["new/葉"]).delete();
     library.at([]).asObject()!.object.deleteMany(["二"]); assert.equal(owner(map).libraries().length, 1);
     library.at([]).asObject()!.object.clear(); assert.deepEqual(library.snap(), {}); assert.equal(owner(map).identityEpoch().issued().size, 0);
@@ -329,17 +329,17 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const map = fixture(), library = data(map);
     for (const fail of [() => library.at([]).set({ bad: {} }), () => library.at([]).replace({ bad: {} }),
       () => library.at([]).update(() => ({ bad: {} })), () => library.at([]).delete()]) atomic(map, fail);
-    library.at([]).replace({ only: { kind: "document", document: '<p/>' } });
+    library.at([]).replace({ only: { kind: "document", document: '<p hson:part/>' } });
     library.at([]).update(() => parts());
     const rev = map.rev;
     map.batch(writer => {
       writer.parts.must("collection").at(["first/β", "document"]).set('<bad');
       writer.parts.must("collection").at(["first/β", "kind"]).delete();
-      writer.parts.must("collection").at(["first/β", "document"]).set('<p @:label/>');
+      writer.parts.must("collection").at(["first/β", "document"]).set('<p hson:part @:label/>');
       writer.parts.must("collection").at(["first/β"]).set({ kind: "document" });
     });
     assert.equal(map.rev, rev + 1);
-    atomic(map, () => map.batch(writer => { writer.parts.must("collection").at(["二", "document"]).set('<p/>');
+    atomic(map, () => map.batch(writer => { writer.parts.must("collection").at(["二", "document"]).set('<p hson:part/>');
       writer.parts.must("collection").at(["first/β"]).replace({ ...parts()["first/β"], stylesheet: 42 as never }); }));
     atomic(map, () => map.batch(() => collect(map, "extra", parts())));
   });
@@ -348,7 +348,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     atomic(map, () => collect(map, "collection", parts()));
     atomic(map, () => map.addLibraries({ collection: { data: {} } } as never).commit);
     aggregate.claimManagement(manager);
-    try { atomic(map, () => collect(map, "next", parts())); atomic(map, () => data(map).at(["二", "document"]).set('<p/>')); }
+    try { atomic(map, () => collect(map, "next", parts())); atomic(map, () => data(map).at(["二", "document"]).set('<p hson:part/>')); }
     finally { aggregate.releaseManagement(manager); }
     atomic(map, () => acquire_projected_identity(data(map), ["first/β"]));
   });
@@ -359,10 +359,10 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     }));
     assert.equal(map.rev, rev + 1); assert.equal(map.parts.must("collection").at(["二"]).snap()?.stylesheet, '@layer one{}@layer two{}');
     const candidate = new Proxy(parts(), { ownKeys(target) {
-      library.at(["二", "document"]).set('<b/>'); return Reflect.ownKeys(target);
+      library.at(["二", "document"]).set('<b hson:part/>'); return Reflect.ownKeys(target);
     } });
     assert.throws(() => collect(map, "extra", candidate), /changed during capture/);
-    assert.equal(library.snap(["二", "document"]), '<b/>'); assert.throws(() => map.data.must("extra"));
+    assert.equal(library.snap(["二", "document"]), '<b hson:part/>'); assert.throws(() => map.data.must("extra"));
   });
   await check("late serialization and identity reentrancy fence Part admission and preserve independent effects", () => {
     for (const mode of ["throw", "management"]) {
@@ -420,7 +420,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       if (!entered && input === collection.root.payload) {
         assert.equal(detachedBoundReached, false);
         entered = true; TextEncoder.prototype.encode = encode;
-        library.at(["二", "document"]).set('<b/>');
+        library.at(["二", "document"]).set('<b hson:part/>');
       }
       return encode.call(this, input);
     };
@@ -428,7 +428,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     finally { TextEncoder.prototype.encode = encode; }
     assert.equal(result, undefined); assert.equal(detachedBoundReached, false);
     assert.equal(entered, true); assert.equal(map.rev, revision + 1);
-    assert.equal(library.snap(["二", "document"]), '<b/>');
+    assert.equal(library.snap(["二", "document"]), '<b hson:part/>');
   });
   await check("detached cut bounds and realization preserve captured siblings and completed source edits", () => {
     for (const phase of ["state-size", "html-size", "html-realization"]) {
@@ -445,7 +445,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       let entered = false, detachedBoundReached = false;
       const mutate = () => {
         entered = true; TextEncoder.prototype.encode = encode;
-        library.at(["二", "document"]).set('<b/>');
+        library.at(["二", "document"]).set('<b hson:part/>');
         data(map, "state").at(["count"]).set(1);
         body.attrs.set("data-cut", "after");
         page.css.sel("body").set.color("red");
@@ -473,7 +473,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
         assert.equal(data(restored, "state").snap(["count"]), 0);
         assert.equal(restoredPage.render(), capturedHtml);
       } finally { TextEncoder.prototype.encode = encode; }
-      assert.equal(map.rev, revision + 4); assert.equal(library.snap(["二", "document"]), '<b/>');
+      assert.equal(map.rev, revision + 4); assert.equal(library.snap(["二", "document"]), '<b hson:part/>');
       assert.equal(data(map, "state").snap(["count"]), 1);
       const current = map.cut({ html: "page" });
       assert.equal(current.libs.revision, revision + 4);
@@ -502,7 +502,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("capture selected cuts same-topology topology-changing and fresh restores retain the portable contract", () => {
     const map = fixture(), capture = map.capture(), cut = map.cut({ data: ["collection"], documents: [] }).libs;
-    assert.deepEqual(cut, capture); data(map).at(["二", "document"]).set('<p/>'); map.restore(capture);
+    assert.deepEqual(cut, capture); data(map).at(["二", "document"]).set('<p hson:part/>'); map.restore(capture);
     assert.deepEqual(map.capture(), capture); atomic(map, () => data(map).at(["二", "document"]).set('<p'));
     const fresh = install_libraries_snapshot(structuredClone(capture)).map;
     assert.deepEqual(fresh.capture(), capture); atomic(fresh, () => data(fresh).at(["二", "document"]).set('<p'));
@@ -550,7 +550,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     } finally { owner(mirror).releaseManagement(manager); }
   });
   await check("authorized projections preserve validation and private collections never enter wire state", async () => {
-    const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), hidden: definition({ secret: { kind: "document", document: '<secret-unique/>' } }) });
+    const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), hidden: definition({ secret: { kind: "document", document: '<secret-unique hson:part/>' } }) });
     const effective = await projection(map, ["collection", "hidden"], ["hidden"]);
     const snapshot = capture_selected_authority_projection_snapshot(map, effective);
     assert.deepEqual(snapshot.libraries.map(entry => entry.name), ["collection"]);
@@ -570,11 +570,11 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const map = fixture(), aggregate = owner(map), snapshot = make_portable_aggregate_snapshot(aggregate.captureHosted());
     const mirror = make_livemap_client_composition_from_portable_aggregate_internal(snapshot), manager = {};
     owner(mirror).claimManagement(manager);
-    const record = aggregate.commit([{ target: aggregate.target(aggregate.libraries()[0]!, ["二", "document"]), kind: "set", value: admit_projected_value('<p/>') }]);
+    const record = aggregate.commit([{ target: aggregate.target(aggregate.libraries()[0]!, ["二", "document"]), kind: "set", value: admit_projected_value('<p hson:part/>') }]);
     const replay = make_portable_aggregate_commit(record.hosted!)!;
     try {
       owner(mirror).replayClientHostedManaged(manager, replay, snapshot.revision);
-      assert.equal(data(mirror).snap(["二", "document"]), '<p/>');
+      assert.equal(data(mirror).snap(["二", "document"]), '<p hson:part/>');
       const badSource = hsonLiveMap.fromLibraries({ collection: { data: data(map).snap()! } });
       owner(badSource).setInitialHostedAuthority(snapshot.authority);
       const badCommit = owner(badSource).commit([{ target: owner(badSource).target(owner(badSource).libraries()[0]!, ["二", "document"]), kind: "set", value: admit_projected_value('<p') }]);
@@ -641,8 +641,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("hosted managed actions Echo acceptance durable replay and restart enforce the same collection contract", async () => {
     const adapter = new MemoryCheckpointAdapter();
-    const options = [{ "collection": { parts: parts(), access: "shared" }, "hidden": { parts: { secret: { kind: "document", document: '<secret-only/>' } }, access: "private" } }, { logicalMapId: "part-collection-durable", persistence: adapter, authorizeProjection: () => ({ libraries: ["collection", "hidden"] }), actions: {
-        valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "document"]).set('<p @:label/>'); },
+    const options = [{ "collection": { parts: parts(), access: "shared" }, "hidden": { parts: { secret: { kind: "document", document: '<secret-only hson:part/>' } }, access: "private" } }, { logicalMapId: "part-collection-durable", persistence: adapter, authorizeProjection: () => ({ libraries: ["collection", "hidden"] }), actions: {
+        valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二", "document"]).set('<p hson:part @:label/>'); },
         invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二"]).replace({ ...parts()["二"], stylesheet: 42 as never }); },
       } }] as const;
     const locus = await hsonLiveMap.locus.resume(options[0], options[1]), map = locus_map_internal(locus), pair = sockets();
@@ -658,15 +658,15 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       const accepted = await echo.action("valid"); assert.equal(accepted.type, "ack");
       assert.equal(adapter.appendCalls.length, appended + 1);
       const receiving = echo.parts.must("collection"); if (String(receiving.mode) === "document") throw Error("Expected data replica");
-      assert.equal(receiving.snap(["二", "document"]), '<p @:label/>');
+      assert.equal(receiving.snap(["二", "document"]), '<p hson:part @:label/>');
       assert.equal(pair.wire.some(raw => raw.includes('secret-only')), false);
       assert.equal(owner(map).identityEpoch().issued().size, 0);
     } finally { echo.dispose(); detach(); locus.dispose(); }
     const durable = await load_persistent_locus_hosted_aggregate_internal(options[1].logicalMapId, { persistence: adapter });
-    assert.ok(durable); assert.equal(data(durable!.map).snap(["二", "document"]), '<p @:label/>'); durable!.dispose();
+    assert.ok(durable); assert.equal(data(durable!.map).snap(["二", "document"]), '<p hson:part @:label/>'); durable!.dispose();
     const restarted = await hsonLiveMap.locus.resume(options[0], options[1]);
     try {
-      assert.equal(data(locus_map_internal(restarted)).snap(["二", "document"]), '<p @:label/>');
+      assert.equal(data(locus_map_internal(restarted)).snap(["二", "document"]), '<p hson:part @:label/>');
       const rev = restarted.rev, appended = adapter.appendCalls.length;
       assert.equal((await restarted.dispatchAction({ type: "action", id: "restart-invalid", name: "invalid" })).type, "error");
       assert.equal(restarted.rev, rev); assert.equal(adapter.appendCalls.length, appended);
@@ -693,9 +693,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       if (String(local.mode) === "document" || local.source !== "client-local") throw Error("Expected local data Library");
       assert.equal(read(map, "collection", "二").key, "二");
       atomic(map, () => data(map).at(["二", "document"]).set('<p'));
-      local.at(["二", "document"]).set('<p @:label/>');
+      local.at(["二", "document"]).set('<p hson:part @:label/>');
       install_client_local_initializers_internal(map, now.local);
-      assert.equal(local.snap(["二", "document"]), '<p @:label/>');
+      assert.equal(local.snap(["二", "document"]), '<p hson:part @:label/>');
       assert.equal(owner(map).hostedRegistry().libraries.find(entry => entry.name === "collection")!.validation, validation);
       assert.equal(locus.rev, 0); assert.equal(owner(map).identityEpoch().issued().size, 0);
       assert.equal(session.now().libs.libraries.some(entry => entry.name === "collection"), false);
@@ -780,8 +780,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.throws(() => encode_ssr_bootstrap(map.capture()), (error: unknown) => error instanceof Error && error.cause instanceof Error && /temporarily unsupported/.test(error.cause.message));
     assert.throws(() => encode_ssr_bootstrap(map.cut().libs), (error: unknown) => error instanceof Error && error.cause instanceof Error && /temporarily unsupported/.test(error.cause.message));
     const part = read(map, "collection", "二");
-    map.addLibraries({ source: { document: part.root } });
-    compose(map, "source", "page");
+    atomic(map, () => map.addLibraries({ invalid: { document: part.root } }), /hson:part/);
+    map.addLibraries({ source: { document: '<hson-part lib="collection" at="二"/>' } });
+    map.addLibraries({ page: { document: Hson.document.fromNode(map.doc.must("source").root()) } });
     const cut = map.cut({ data: [], documents: ["page"], html: "page" });
     assert.deepEqual(cut.libs.registry.libraries.map(entry => entry.name), ["page"]);
     assert.match(cut.html, /<a/);
@@ -795,7 +796,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("Part materialization is detached and collection values cannot become initial document shells", () => {
     const map = fixture(), materialized = read(map, "collection", "first/β"), initial = read(map, "collection", "first/β");
-    data(map).at(["first/β", "document"]).set('<section/>'); assert.deepEqual(materialized, initial);
+    data(map).at(["first/β", "document"]).set('<section hson:part/>'); assert.deepEqual(materialized, initial);
     assert.equal(owner(map).identityEpoch().issued().size, 0); atomic(map, () => compose(map, "collection", "page"));
     const ordinary = hsonLiveMap.fromLibraries({ source: { document: '<p/>' } }), source = ordinary.doc.must("source");
     if (source.mode !== "document") throw Error("Expected document"); source.css.stylesheet('p{color:red}');

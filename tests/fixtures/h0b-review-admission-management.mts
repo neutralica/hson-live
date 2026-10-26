@@ -9,7 +9,7 @@ export function review_admission_management() {
   const results: boolean[] = [];
   for (const replacementWork of [false, true]) {
     const map = hsonLiveMap.fromLibraries({
-      parts: { parts: { leaf: { kind: 'document', document: '<button @:root/>' } } },
+      parts: { parts: { leaf: { kind: 'document', document: '<button hson:part @:root/>' } } },
       initial: { data: 0 },
     });
     const a = authority(map), owner = {}, replacement = {};

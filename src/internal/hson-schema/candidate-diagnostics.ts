@@ -10,7 +10,11 @@ import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_definitions, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
-import { is_part_argument_attribute, is_part_parameter_name } from "../part-placeholder.js";
+import { is_part_argument_attribute, part_argument_name, whole_part_reference } from "../part-placeholder.js";
+import { qualify_hson_document_root } from "../../api/document/hson-document.js";
+import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
+import { is_ordinary_element_node } from "../../core/node-guards.js";
+import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
@@ -28,6 +32,47 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
     output.push({ file: where.file, start: where.start, end: where.end, code, message });
   };
   for (const document of facts.documents) {
+    // Grammar and declared-name conflicts are local facts; they require no receiver shape.
+    const isDefinition = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
+      && library.members.some(member => member.documents.includes(document))));
+    for (const flag of document.partDeclarations) {
+      if (flag.issue !== undefined) report(flag.location, "HSON_PART_DECLARATION_INVALID", flag.issue);
+      else if (!isDefinition && document.receivers.some(receiver => receiver.certainty === "certain" && receiver.library?.family === "document")) {
+        report(flag.location, "HSON_PART_DECLARATION_INVALID", "hson:part is only allowed on a governed Part definition root.");
+      }
+    }
+    if (isDefinition && document.admission === "qualified" && document.librarySourceAdmission === "qualified" && document.partDeclarations.every(flag => !flag.root)) {
+      report(document.definitionRoot, "HSON_PART_DECLARATION_MISSING", "Part definition root requires the hson:part flag.");
+    }
+    for (const flag of document.optionalStructures) {
+      if (flag.issue !== undefined) report(flag.location, "HSON_PART_OPTIONAL_INVALID", flag.issue);
+      else if (!isDefinition && document.receivers.some(receiver => receiver.certainty === "certain" && receiver.library?.family === "document")) {
+        report(flag.location, "HSON_PART_OPTIONAL_INVALID", "part:optional is only allowed within a governed Part definition.");
+      }
+    }
+    if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message);
+    if (document.admission === "qualified") for (const connector of document.connectors) {
+      const supplied = new Set<string>();
+      for (const attribute of connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name))) {
+        const argument = part_argument_name(attribute.name);
+        if (argument === undefined) {
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Invalid Part argument ${JSON.stringify(attribute.name)}.`);
+          continue;
+        }
+        if (supplied.has(argument.name)) report(attribute.nameLocation, "HSON_PART_ARGUMENT_CONFLICT", `Conflicting Part argument ${JSON.stringify(argument.name)}.`);
+        supplied.add(argument.name);
+        if (argument.kind !== "scalar" && attribute.value !== undefined && whole_part_reference(attribute.value) === undefined) {
+          try {
+            if (argument.kind === "data") admit_canonical_hson_data_value(attribute.value);
+            else {
+              const root = qualify_hson_document_root(parse_authored_document_library(attribute.value).root);
+              if (root.$_content.length !== 1 || !is_ordinary_element_node(root.$_content[0])) throw new TypeError("Document input requires one authored element.");
+            }
+          }
+          catch (cause) { report(attribute.valueLocation, argument.kind === "data" ? "HSON_PART_DATA_INVALID" : "HSON_PART_DOCUMENT_INVALID", `Invalid serialized ${argument.kind} for ${JSON.stringify(argument.name)}: ${String(cause)}`); }
+        }
+      }
+    }
     // Possible, conditional, multiple and open-world receivers cannot prove absence.
     // Do not filter alternatives to turn an ambiguous relationship into a certain one.
     if (document.admission !== "qualified" || document.librarySourceAdmission !== "qualified" || document.receivers.length !== 1) continue;
@@ -49,8 +94,8 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         || lib.valueLocation?.precision !== "exact" || at.valueLocation?.precision !== "exact") continue;
       const arguments_ = connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name));
       // Unknown values include interpolations, placeholders and structured attributes.
-      // Invalid connector inputs belong to the existing runtime/authoring validator.
-      if (arguments_.some(attribute => attribute.value === undefined || !is_part_parameter_name(attribute.name))) continue;
+      // Invalid local inputs were reported above; uncertainty still withholds absence claims.
+      if (arguments_.some(attribute => attribute.value === undefined || part_argument_name(attribute.name) === undefined)) continue;
       const libraries = batch.libraries.filter(library => library.name === lib.value);
       if (libraries.length === 0 || libraries.length === 1 && libraries[0]!.family !== "parts") {
         report(lib.valueLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(lib.value)}.`);
@@ -67,13 +112,20 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       if (member?.admission !== "qualified" || member.certainty !== "certain" || member.documents.length !== 1) continue;
       const definition = member.documents[0]!;
       if (definition.admission !== "qualified" || definition.parameterCompleteness !== "complete") continue;
-      const supplied = new Set(arguments_.map(attribute => attribute.name));
+      const supplied = new Set(arguments_.map(attribute => part_argument_name(attribute.name)!.name));
       const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
-      for (const name of vocabulary) if (!supplied.has(name)) {
+      const optionalRoot = definition.optionalStructures.some(flag => flag.root);
+      for (const name of vocabulary) if (!supplied.has(name)
+        && !(optionalRoot && !definition.receivingDeclarations.some(declaration => declaration.incoming === name && declaration.kind === "doc") && definition.parameters.find(parameter => parameter.name === name)?.uses.length === 0)) {
         report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)}.`);
       }
-      for (const attribute of arguments_) if (!vocabulary.has(attribute.name)) {
-        report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)}.`);
+      for (const attribute of arguments_) {
+        const argument = part_argument_name(attribute.name)!;
+        if (!vocabulary.has(argument.name)) {
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)}.`);
+        } else if (argument.kind !== (definition.receivingDeclarations.find(declaration => declaration.incoming === argument.name)?.kind ?? "scalar")) {
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface.`);
+        }
       }
     }
   }

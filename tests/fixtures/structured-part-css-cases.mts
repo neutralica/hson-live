@@ -11,7 +11,7 @@ import { encode_portable_document_stylesheet } from '../../src/internal/css/port
 import { locus_map_internal } from '../../src/internal/governor-maps.ts';
 import type { CssMap } from '../../src/core/style.types.ts';
 
-const nav = '<nav <a @:previous/> <span @:current/> <a @:next/>/>';
+const nav = '<nav hson:part <a @:previous/> <span @:current/> <a @:next/>/>';
 const style: CssMap = { color: 'red', borderRadius: { value: 50, unit: '%' },
   '& :is(a,span)': { textDecoration: 'none', _hover: { opacity: .5 } },
   __before: { color: 'blue' }, '@:current': { fontWeight: 'bold', '& > i': { color: 'green' }, _focus: { outline: '0' } },
@@ -24,7 +24,7 @@ function admit(css: unknown, document = nav) {
 }
 function realized() {
   return hsonLiveMap.fromLibraries({ parts: { parts: { nav: { kind: 'document', document: nav, stylesheet: ':scope{color:blue}', css: style },
-    outer: { kind: 'document', document: '<section <hson-part at="nav"/>/>', css: { padding: 3 } } } },
+    outer: { kind: 'document', document: '<section hson:part <hson-part at="nav"/>/>', css: { padding: 3 } } } },
     page: { document: '<html <head/> <body <hson-part lib="parts" at="outer"/> <hson-part lib="parts" at="nav"/>/>/>' } });
 }
 export async function structured_css_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
@@ -73,11 +73,11 @@ export async function structured_css_cases(check: (name: string, run: () => void
     assert.equal(calls,0);
   });
   await check('missing, duplicate and nested-namespace targets fail before any runtime issuance', () => {
-    for (const document of ['<p/>','<p @:current <i @:current/>/>','<p <hson-part at="child"/>/>']) {
+    for (const document of ['<p hson:part/>','<p hson:part @:current <i @:current/>/>','<p hson:part <hson-part at="child"/>/>']) {
       const m = hsonLiveMap.create(), a = authority(m); let calls=0;
       allocator(a.identityEpoch().owner,()=>{calls++;return '123456789';});
       const before=m.capture();
-      try { assert.throws(()=>m.addLibraries({parts:{parts:{child:{kind:'document',document:'<i @:current/>'},nav:part({'@:current':{color:'red'}},document)}}} as never)); }
+      try { assert.throws(()=>m.addLibraries({parts:{parts:{child:{kind:'document',document:'<i hson:part @:current/>'},nav:part({'@:current':{color:'red'}},document)}}} as never)); }
       finally { allocator(a.identityEpoch().owner,undefined); }
       assert.equal(calls,0); assert.deepEqual(m.capture(),before);
     }

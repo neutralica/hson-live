@@ -8,9 +8,9 @@ import { resolve_immutable_schema } from "../../../src/internal/hson-schema/sche
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { schema_reference_completion } from "./hson-schema-symbols.js";
 import type { HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
-import { collect_part_source_facts, type PartSourceFacts } from "../../../src/internal/hson-schema/part-source.js";
+import { collect_part_source_facts, part_write_context, type PartSourceFacts } from "../../../src/internal/hson-schema/part-source.js";
 
-export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }> }>;
+export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>; isSnippet?: true }>;
 type CachedDocument = Readonly<{
   version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult;
   schemaDeclarations: Map<ts.SourceFile, ReturnType<typeof discover_hson_schema_declarations>>;
@@ -51,7 +51,23 @@ export class HsonEditorCompletionCache {
     const site = [...cached.discovery.interpolated, ...cached.discovery.sources]
       .filter(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end)
       .sort((a, b) => a.bodyRange.end - a.bodyRange.start - (b.bodyRange.end - b.bodyRange.start))[0];
-    if (site === undefined) return [];
+    if (site === undefined) {
+      if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program) };
+      const context = part_write_context(this.typescript, cached.program, this.partFacts.facts, fileName, offset);
+      return context === undefined ? [] : context.names.map((name, index): HostCompletion => {
+        const scanner = this.typescript.createScanner(this.typescript.ScriptTarget.Latest, false, cached.file.languageVariant, name);
+        const identifier = scanner.scan() === this.typescript.SyntaxKind.Identifier && scanner.getTokenEnd() === name.length && scanner.getTokenValue() === name;
+        const quoted = this.typescript.createPrinter().printNode(this.typescript.EmitHint.Unspecified,
+          this.typescript.factory.createStringLiteral(name, context.quote === "'"), cached.file);
+        // A quoted key cannot be shorthand. Offer a native value slot rather than an invalid bare string property.
+        const isSnippet = context.quote === undefined && !context.assignment && !identifier;
+        const insertText = context.quote !== undefined ? quoted.slice(1, -1) : identifier ? name : quoted;
+        return { range: { start: context.start, end: context.end }, ...(isSnippet ? { isSnippet: true } : {}),
+          candidate: { label: name, kind: "member", insertText: insertText + (isSnippet ? ': "$0"' : ''),
+            detail: "Part argument from the authored definition (current governed definition may differ)",
+            certainty: "possible", sortText: String(index).padStart(4, "0") } };
+      });
+    }
     const interpolated = cached.discovery.interpolated.find(source => source === site);
     if (site.authoringKind === "schema" && interpolated === undefined) {
       const reference = schema_reference_completion(text.slice(site.bodyRange.start, site.bodyRange.end), offset - site.bodyRange.start);

@@ -56,7 +56,7 @@ for (const ext of ["ts", "tsx", "mts", "cts", "local.ts"]) {
 }
 const proofSource = 'import { Hson, type HsonData } from "hson-live";\nconst S = Hson.schema`<type "data" content <name "string">>`;\nconst bad: HsonData<typeof S> = Hson.data`<name 3>`;';
 writeFileSync(file("proof.ts"), proofSource);
-const partProducer = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav "%{current}"/>` } } as const;';
+const partProducer = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` } } as const;';
 writeFileSync(file("parts.ts"), partProducer);
 const originals = new Map(readdirSync(directory).map(name => [name, readFileSync(file(name))]));
 const child = spawn(process.execPath, [serverPath, "--globalPlugins", plugin, "--pluginProbeLocations", extension, "--disableAutomaticTypingAcquisition", "--logVerbosity", "verbose", "--logFile", file("server.log")], { stdio: ["pipe", "pipe", "pipe"] });
@@ -339,7 +339,7 @@ import { Thing, Page } from "./schema.js";
 const loc = hsonLiveMap.locus.create({
   deck: { data: { name: "Ada" }, schema: Thing },
   page: { document: Hson.document\`<main "hello"/>\`, schema: Page },
-  components: { parts: { submit: { kind: "document", document: Hson.document\`<button/>\` } } },
+  components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } },
 });
 `;
     for (const [expression, present, absent] of [
@@ -537,7 +537,7 @@ const loc = hsonLiveMap.locus.create({
   });
   await check("bundled static Part diagnostics use authored ranges and withdraw on unsaved repair or uncertainty", async () => {
     const prefix = 'import { Hson, hsonLiveMap as maps } from "hson-live";\r\nconst page = Hson.document`';
-    const suffix = '`;\r\nconst loc = maps.fromLibraries({ page: { document: page }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 "%{content}"/>` } } } });';
+    const suffix = '`;\r\nconst loc = maps.fromLibraries({ page: { document: page }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });';
     for (const [body, message, anchor] of [
       [String.raw`<hson-part lib="\u0061bsent" at="heading"/>`, /Unknown Parts Library/, '"\\u0061bsent"'],
       ['<hson-part lib="components" at="absent"/>', /Unknown Part member/, '"absent"'],

@@ -275,7 +275,7 @@ await check("multi-Library Data, Parts and scoped Document topology owns nested 
   map.commits.observe(commit => { publications += 1; later = commit; });
   const returned = map.addLibraries({
     state: { data: { values: [-0, 1] } },
-    parts: { parts: { badge: { kind: "document", document: '<b @:label "accepted"/>', stylesheet: ':scope{color:red}' } } },
+    parts: { parts: { badge: { kind: "document", document: '<b hson:part @:label "accepted"/>', stylesheet: ':scope{color:red}' } } },
     page: { document: '<main <hson-part lib="parts" at="badge"/>/>', stylesheet: "main{margin:0}" },
   }).commit;
   assert.deepEqual(later, expected);

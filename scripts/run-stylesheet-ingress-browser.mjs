@@ -43,7 +43,7 @@ assert.match(expected.mapCss, /content: var\(--message\);/);
 assert.match(expected.mapCss, /padding-left: 5px;\s+padding: 0;/);
 nodeTree.remove();
 
-const mixedSource=legacy_flat_styled_map({parts:{parts:{x:{kind:'document',document:'<section <button class="target"/>/>',
+const mixedSource=legacy_flat_styled_map({parts:{parts:{x:{kind:'document',document:'<section hson:part <button class="target"/>/>',
     stylesheet:'.target { border-left: 9px solid red; } /* unclosed',css:{'& button':{color:'green'}}}}},
     page:{document:'<html <head/> <body <hson-part @:one lib="parts" at="x"/> <hson-part @:two lib="parts" at="x"/> <button class="target" id="outside"/>/>/>',stylesheet:'.target { color:red; }'}});
 const mixedCut=mixedSource.cut({html:'page',documents:['page'],data:[]});

@@ -30,12 +30,14 @@ const page = (w: LocusHostedAggregateStageWriter) => { const d = w.doc.must("pag
 const listener = { event: "click", target: "element" as const, capture: false, once: false, passive: false,
   missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false };
 
-async function fixture(flat = false) {
+async function fixture(flat = false, structural = false) {
+  const supplied = '<hson-part lib="parts" at="leaf"/>';
+  const invocation = '<hson-part lib="parts" at="panel"' + (structural ? ' doc:control=' + JSON.stringify(supplied) : '') + '/>';
   const map = make_livemap_libraries({ parts: collection({
-    leaf: { kind: "document", document: '<button @:root <span @:label "Visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
-    panel: { kind: "document", document: '<section @:root <hson-part @:child at="leaf"/>/>', stylesheet: '@media screen{:scope{padding:3px}}' },
-    secret: { kind: "document", document: '<strong "PRIVATE_PART_SENTINEL"/>' },
-  }), page: { document: flat ? '<main @:page <footer @:footer/>/>' : '<main @:page <hson-part @:left lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer @:footer/>/>' },
+    leaf: { kind: "document", document: '<button hson:part @:root <span @:label "Visible"/>/>', stylesheet: ':scope{color:blue} [hson\\:quad="label"]{opacity:.5}' },
+    panel: { kind: "document", document: structural ? '<section hson:part control:doc="%{control}" @:root <hson-part @:child #{control}/>/>': '<section hson:part @:root <hson-part @:child at="leaf"/>/>', stylesheet: '@media screen{:scope{padding:3px}}' },
+    secret: { kind: "document", document: '<strong hson:part "PRIVATE_PART_SENTINEL"/>' },
+  }), page: { document: flat ? '<main @:page <footer @:footer/>/>' : '<main @:page ' + invocation.replace('<hson-part ', '<hson-part @:left ') + ' ' + invocation + ' <footer @:footer/>/>' },
   data: { data: { n: 0 } }, zpage: { document: flat ? '<aside/>' : '<aside <hson-part lib="parts" at="leaf"/>/>' },
   hidden: { document: '<p "PRIVATE_LIBRARY_SENTINEL"/>' } }, [], undefined,
   { page: structured_css_fixture(flat ? 'main{margin:7px}' : 'main{margin:7px} [hson\\:quad="footer"]{border:0}') });

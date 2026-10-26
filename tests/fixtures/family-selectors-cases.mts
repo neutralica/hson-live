@@ -7,7 +7,7 @@ const schema = Hson.schema`<type "data" content <count "number">>`;
 const same = HsonSchema.fromHson(schema.toHson());
 const other = Hson.schema`<type "data">`;
 const definitions = { page: { document: '<main "hello"/>' }, state: { data: { count: 1 }, schema },
-  components: { parts: { button: { kind: "document" as const, document: '<button/>' } } } };
+  components: { parts: { button: { kind: "document" as const, document: '<button hson:part/>' } } } };
 const collisions = ["must", "then", "toJSON", "name", "length", "call", "apply", "bind", "prototype",
   "constructor", "toString", "valueOf", "hasOwnProperty", "__proto__", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "caller", "arguments"];
 
@@ -143,12 +143,12 @@ export async function family_selector_echo_cases() {
     assert.equal(widgets, echo.parts("widgets", ANY_DATA));
     assert.equal(widgets.source, "client-local"); assert.equal(parts.source, "authority-projected");
     assert.equal("set" in parts.at([]), false);
-    assert.equal(parts.at(["button", "document"]).snap(), "<button/>");
+    assert.equal(parts.at(["button", "document"]).snap(), "<button hson:part/>");
     if (widgets.source === "client-local") {
-      widgets.at(["button", "document"]).set('<button "local"/>');
-      assert.equal(widgets.at(["button", "document"]).snap(), '<button "local"/>');
-      widgets.at([]).asObject()?.object.setKey("extra", { kind: "document", document: "<aside/>" });
-      assert.equal(widgets.at(["extra", "document"]).snap(), "<aside/>");
+      widgets.at(["button", "document"]).set('<button hson:part "local"/>');
+      assert.equal(widgets.at(["button", "document"]).snap(), '<button hson:part "local"/>');
+      widgets.at([]).asObject()?.object.setKey("extra", { kind: "document", document: "<aside hson:part/>" });
+      assert.equal(widgets.at(["extra", "document"]).snap(), "<aside hson:part/>");
       widgets.at(["extra"]).delete();
       assert.equal(widgets.at(["extra"]).snap(), undefined);
       const before = widgets.snap();

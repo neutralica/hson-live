@@ -1,3 +1,4 @@
+import { PART_DECLARATION, part_structural_reference } from "../internal/part-placeholder.js";
 // assert-invariants.ts
 
 import {
@@ -131,7 +132,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   if (!isVSN(n.$_tag) && n.$_attrs) {
     for (const key of Object.keys(n.$_attrs)) {
       const lowerKey = key.toLowerCase();
-      const metadataCandidate = hson_metadata_candidate_key(key);
+      const metadataCandidate = key === PART_DECLARATION && n.$_attrs[key] === PART_DECLARATION ? undefined : lowerKey === PART_DECLARATION ? "part" : hson_metadata_candidate_key(key);
       if (metadataCandidate !== undefined) {
         const policy = hson_metadata_policy(n.$_tag, metadataCandidate);
         push(
@@ -149,7 +150,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       if (lowerKey.startsWith(_TRANSIT_PREFIX)) {
         push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private ordinary-attribute transit name is forbidden`); if (cfg.throwOnFirst) return;
       }
-      if (!is_valid_hson_attribute_name(key)) {
+      if (!is_valid_hson_attribute_name(key) && !(key.startsWith("#{") && part_structural_reference(n) !== undefined)) {
         push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: invalid Hson attribute name`); if (cfg.throwOnFirst) return;
       }
     }
