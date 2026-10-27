@@ -21,9 +21,9 @@ By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and v
 
 ## Hson - syntax
 
-JSON and HTML occupy different domains but describe similar structural hierarchies. Hson expresses both.
+JSON and HTML are incompatible notations with similar underlying topologies. Hson expresses both by reconciling their structural differences.
 
-JSON expresses structure through objects, arrays, keys, and values:
+JSON expresses structure through keys, values, objects and arrays:
 
 ```json
 {
@@ -53,7 +53,7 @@ Its equivalent can be represented in Hson:
 >
 ```
 
-HTML expresses structure through elements, attributes, and ordered content:
+HTML expresses structure through parent and child nodes, elements, and attributes:
 
 ```html
 <article class="note">
