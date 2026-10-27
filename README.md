@@ -12,9 +12,9 @@ By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and v
 
 ## hson-live
 
-`hson-live` a full-stack TypeScript environment for creating "live" web content, built on the `Hson` notation and its capabilities. 
+`hson-live` is a full-stack TypeScript environment for creating "live" web content, built on the `Hson` notation and its capabilities. 
 
-**This project is experimental. It is working architectural research, not a finished product.**
+**This experimental project is in development. It is not a finished product. Do not use `hson-live` in production applications.**
 
 ---
 
@@ -275,133 +275,91 @@ hosted authority:      request/connection -> LiveHost -> application -> Locus
 
 Applications remain responsible for their own routes, domain topology, authority selection, actions, authorization policy, persistence, SSR, and response content. LiveHost supplies the common runtime machinery around those choices rather than defining application semantics itself.
 
-The  **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web `Request`/`Response` adaptation, origin and proxy policy, resource limits, heartbeat and backpressure handling, health reporting, graceful shutdown, and optional bounded Locus residency through `create_livehost_locus_registry()`.
+The  **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web `Request`/`Response` adaptation, origin and proxy policy, resource limits, heartbeat and backpressure handling, health reporting, graceful shutdown, and optional bounded Locus residency.
 
-Combined with Hson SSR, Echo, Reflect, and LiveTree, a LiveHost application may render useful HTML on the server and continue it in the browser as synchronized, reactive content. Progressive enhancement follows from the same composition rather than requiring a separate client application model.
 
 ---
 
 
-## Connecting the Live Stack
+## Components
 
 Hson's live subsystems are connected and mediated by three focused components: `Mirror`, `Locus`, and `Echo`.
 
-Mirror keeps LiveMap document state and LiveTree realization in sync. Locus governs an authoritative server-side LiveMap. Echo connects remote clients to that authority and maintains an exact replica LiveMap on the client.
+Mirror keeps LiveMap document state and LiveTree realization in sync. 
+Locus governs an authoritative server-side LiveMap. 
+Echo connects remote clients to that authority and maintains an exact replica LiveMap on the client.
 
-Together they connect local runtime state, hosted authority, and browser realization without introducing a second application-state model.
+These systems connect local runtime state, hosted authority, and browser realization within `hson-live`.
 
 ---
 
 
 ## Locus
 
-A server-side Locus authority governs one LiveMap for a hosted application, ordering accepted changes into a single canonical commit history.
+A server-side Locus manages the authoritative LiveMap for a hosted application's state, validating and ordering accepted changes into a single canonical commit history.
 
 Locus provides:
 
-- typed and validated actions;
-- action authorization;
-- canonical commit ordering;
-- bounded history;
-- resumable sessions;
-- path subscriptions;
-- transient connection events;
-- duplicate action-request handling;
-- snapshots and replay;
-- revision-gap detection;
-- recovery after disconnect;
-- document-state persistence contracts;
-- one-map bootstrap contribution; and
-- activity and quiescence observation.
+- action authorization and validation
+- canonical commit history
+- resumable client sessions
+- duplicate action-request reconciliation
+- snapshots, replay and revision-gap detection
+- recovery and persistence contracts
+- bootstrap and continuation 
+- activity and quiescence observation
 
-The authority itself remains transport-independent. Locus communicates through a small transport-agnostic interface, and does not depend directly on Node, browser, or Cloudflare networking APIs.
+The authority itself remains transport-independent. Locus communicates through a transport-agnostic interface and does not depend directly on Node, Cloudflare, or browser networking APIs. Platform-specific adapters connect Locus to transports including browser WebSockets and Node infrastructure.
 
-Platform-specific adapters connect Locus to real transports, including browser WebSockets and Node infrastructure; other runtimes can supply the same boundary without changing authority semantics.
+Applications define domain actions, authorization policy, event meaning, authority topology, retention policy, and Locus workflows. Locus supplies common authority, mutation ordering, session, history, and recovery machinery within application-defined boundaries.
 
-Applications retain domain ownership: they define actions and side effects, authorization policy, event meaning, authority topology and acquisition keys, retention policy, and cross-Locus workflows. Locus supplies the common authority, ordering, session, history, and recovery machinery within those application-defined boundaries.
-
-Remote clients with JavaScript enabled may participate through Echo, the corresponding browser endpoint.
+Remote clients with JavaScript enabled participate through Echo, the corresponding browser endpoint.
 
 ---
 
 
 ## Echo
 
-Echo is the hosted client counterpart to Locus.
+Echo LiveMap is the hosted client counterpart to Locus.
 
-It connects a remote endpoint to a Locus authority, manages sessions and recovery, and can optionally govern an exact client-side LiveMap replica that follows the accepted canonical commit stream.
-
-An endpoint-only Echo can issue actions and participate in hosted sessions without maintaining local canonical state. A replica-bearing Echo additionally installs and recovers a subordinate LiveMap, allowing streamed authoritative commits to converge into local application state.
-
-```text
-Locus
-  ↓
-authoritative LiveMap
-  ↓
-ordered accepted commits
-  ↓
-Echo
-  ↓
-replica LiveMap
-```
-
-Echo does not create competing authority or reconcile peer state. The Locus commit history remains canonical; Echo tracks and recovers toward that history.
+It connects a remote endpoint to a Locus authority, manages its sessions and recovery, and maintains an exact browser LiveMap replica that tracks the Locus commit stream. Echo does not compete for authority; it follows the canonical Locus commit history.
 
 Browser transports are supplied separately, allowing Echo to remain focused on hosted participation rather than network implementation.
 
 ---
 
-A hosted application can deliver an exact snapshot of authoritative state with its initial response, then continue that same state live through Echo. If the authority changes while the client is connecting or disconnected, Locus and Echo recover the missing history or replace the replica from a newer snapshot.
-
-Together, Locus and Echo allow one server-side LiveMap to remain the canonical source of truth while remote clients maintain synchronized local replicas and live browser realizations.
+Together, Locus and Echo allow one server-side Locus LiveMap to remain the canonical source of truth while remote clients maintain synchronized local replicas that reflect to the browser.
 
 ---
 
 
 ## Mirror
 
-Mirror connects a document LiveMap with a LiveTree runtime, keeping canonical document state and its live realization in sync.
+Mirror connects a LiveMap to a LiveTree runtime, keeping canonical document state and its live realization in sync.
 
-Accepted LiveMap changes are reflected into LiveTree, while semantic LiveTree edits flow back through the same state model.
-
-```text
-LiveMap
-   ↕
-Mirror
-   ↕
-LiveTree
-```
-
-In the browser, this allows canonical Hson document state to remain live as DOM content changes, without introducing a second application-state model.
+Via reflection, changes to LiveMap state are reflected synchronously to LiveTree and projected to the DOM. LiveTree interaction creates semantic edit requests that flow back through the same state model, arriving either at a browser-based LiveMap or a server-side Locus authority.
 
 ---
 
 
 ## VS Code extension
 
-The Hson VS Code extension provides syntax highlighting, diagnostics, and Schema-aware authoring support for Hson in the editor. It understands standalone `.hson` files, supported TypeScript authoring forms, and fenced `hson` blocks in Markdown.
+The Hson VS Code extension provides syntax highlighting, diagnostics, and Schema-aware authoring support for Hson in the editor. It supports standalone `.hson` files and fenced `hson` blocks in Markdown.
 
-Highlighting follows normal VS Code theme behavior, with a small amount of Hson-specific flair. 
+Highlighting follows user-configured VS Code themes, with a small amount of Hson-specific flair. 
 
-The Hson extension can validate against HsonSchema as Hson is being written, and surface mistakes such as invalid structure, literals, or document content before runtime. The same Schema information also supports generated TypeScript declarations, keeping editor feedback aligned with the project’s normal build and check tooling.
-
-The Hson extension provides commands for single-use Schema validation and type generation, as well as a constantly running `watch` mode. 
-
+The Hson extension can validate Hson against HsonSchema as it is written, surfacing mistakes such as typos, invalid structure, or Schema violations before runtime. The extension can also generate TypeScript type declarations directly from HsonSchema.
 
 ---
 
  
 ## Status
 
-hson-live is experimental and pre-stable. Core systems including Transform, Schema, LiveMap, LiveTree, Mirror, Locus, Echo, SSR/continuation, and LiveHost have substantial automated coverage, but public APIs may still change as the architecture is exercised through real applications.
+hson-live is experimental and pre-stable. Public APIs are likely to change as development progresses.
 
-The project currently favors single-authority hosted state rather than CRDT/offline merge, and distributed multi-process authority coordination remains outside the current model.
+Applications remain responsible for their own security policy and deployment environment.
 
-Use `fromUntrustedHtml` for untrusted HTML input. `fromTrustedHtml` deliberately bypasses sanitization and must only receive trusted source.
-
-LiveHost Node provides explicit production policy surfaces for origins, identity/admission, authorization, proxy trust, connection limits, heartbeat, and backpressure. Applications remain responsible for their own security policy and deployment environment.
-
-Evaluate API stability and operational requirements before using hson-live for security-critical or public production systems.
+It is currently **not** recommended to use hson-live for security-critical or public production systems.
 
 ---
 
