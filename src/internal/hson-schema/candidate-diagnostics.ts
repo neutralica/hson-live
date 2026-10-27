@@ -9,7 +9,9 @@ import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_definitions, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
-import { static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
+import { part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
+import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
+import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { is_part_argument_attribute, part_argument_name, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
@@ -57,6 +59,66 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         iterator.issue ?? "Part iteration is only allowed within a governed Part definition.");
     }
     if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message);
+    // A known invocation can disprove its own collection input. It never supplies
+    // a universal Schema for the reusable definition. Nested value checks also
+    // require evidence that every enclosing iterator reaches the checked source.
+    if (ordinaryReceiver && document.receivers.length === 1) {
+      const batch = facts.batches.find(batch => batch.call === document.receivers[0]!.batch);
+      for (const connector of document.connectors) {
+        if (!batch?.eligible || !connector.headerComplete) continue;
+        const lib = connector.attributes.find(attribute => attribute.name === "lib")?.value;
+        const at = connector.attributes.find(attribute => attribute.name === "at")?.value;
+        const libraries = batch.libraries.filter(library => library.name === lib && library.family === "parts" && library.certainty === "certain");
+        const members = libraries.length === 1 ? libraries[0]!.members.filter(member => member.name === at && member.certainty === "certain") : [];
+        const definition = members.length === 1 && members[0]!.documents.length === 1 ? members[0]!.documents[0] : undefined;
+        if (definition?.parameterCompleteness !== "complete") continue;
+        const inputs = new Map<string, OrderedProjectedValue | undefined>();
+        const literalInput = (name: string): OrderedProjectedValue | undefined => {
+          if (!inputs.has(name)) {
+            const argument = connector.attributes.find(attribute => attribute.name === name);
+            try { inputs.set(name, argument?.value === undefined ? undefined : admit_canonical_hson_data_value(argument.value)); }
+            catch { inputs.set(name, undefined); } // Serialized input diagnostics own invalid Data.
+          }
+          return inputs.get(name);
+        };
+        for (const iterator of definition.iteratorDeclarations) {
+          const origin = part_iterator_source_origin(definition, iterator), kind = iterator.declaration?.kind;
+          if (origin === undefined || kind === undefined || iterator.issue !== undefined) continue;
+          if (iterator.enclosingIterators === undefined || !iterator.enclosingIterators.every(where => {
+            const ancestor = definition.iteratorDeclarations.find(candidate => candidate.location.start === where.start && candidate.location.end === where.end);
+            const source = ancestor === undefined ? undefined : part_iterator_source_origin(definition, ancestor);
+            const declaration = ancestor?.declaration;
+            if (source === undefined || declaration === undefined || ancestor?.issue !== undefined) return false;
+            const input = literalInput(`data:${source.incoming}`);
+            if (input === undefined) return false;
+            const values = project_ordered_data(input, source.path, true);
+            // Schema member multiplicity, unknown inputs and empty collections
+            // cannot establish execution. Require all projected contexts to run:
+            // independently bound sources must not borrow reachability from a
+            // different outer element. Runtime owns uncertain correlations.
+            return values.length > 0 && values.every(value => declaration.kind === "array"
+              ? Array.isArray(value) && value.length > 0
+              : is_ordered_projected_object(value) && value.entries.length > 0);
+          })) continue;
+          const argument = connector.attributes.find(attribute => attribute.name === `data:${origin.incoming}`);
+          if (argument === undefined) continue;
+          let invalid = false;
+          const input = literalInput(argument.name);
+          if (input !== undefined) {
+            const values = project_ordered_data(input, origin.path);
+            invalid = values.some(value => kind === "array" ? !Array.isArray(value) : !is_ordered_projected_object(value));
+          }
+          // Unknown member multiplicity can be zero; withhold unconditional errors.
+          if (argument.dataSchema !== undefined && !origin.path.some(step => step === null || step === OBJECT_VALUE)) {
+            const nodes = project_schema_data(argument.dataSchema, origin.path);
+            invalid ||= nodes.length > 0 && nodes.every(node => node.kind !== "any" && node.kind !== "ref"
+              && (kind === "object" ? node.kind !== "object" : node.kind !== "array" && node.kind !== "tuple"));
+          }
+          if (invalid) report(argument.valueLocation?.precision === "exact" ? argument.valueLocation : argument.nameLocation,
+            "HSON_PART_REFERENCE_INVALID", `Part iterator ${JSON.stringify(iterator.declaration!.attribute)} requires ${kind} Data for this invocation.`);
+        }
+      }
+    }
     if (document.admission === "qualified") for (const connector of document.connectors) {
       const supplied = new Set<string>();
       for (const attribute of connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name))) {

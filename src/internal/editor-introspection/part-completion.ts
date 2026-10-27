@@ -1,12 +1,11 @@
 import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
 import { part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
-import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
+import { project_ordered_data, project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import type { CompiledHsonSchema } from "../hson-schema/compiler.js";
 import type { HsonEditorCandidate } from "./query.js";
 
@@ -87,9 +86,9 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
               const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
               if (origin === undefined) continue;
               const argument = connector.attributes.find(attr => attr.name === `data:${origin.incoming}`);
-              if (argument?.dataSchema !== undefined) for (const path of schema_paths(argument.dataSchema, origin.path, declaration.name)) add(path, 0, false);
+              if (argument?.dataSchema !== undefined) for (const path of schema_paths(argument.dataSchema, origin.path, declaration.name, prefix)) add(path, 0, false);
               if (argument?.value === undefined) continue;
-              try { for (const path of data_paths(project_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
+              try { for (const path of data_paths(project_ordered_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
               catch { /* Invalid or dynamic inputs provide no shape evidence. */ }
             }
           }
@@ -195,28 +194,12 @@ function data_paths(values: readonly OrderedProjectedValue[], root: string): rea
 
 const member_path = (root: string, key: string | number) => root + (typeof key === "number" ? `[${key}]` : is_part_parameter_name(key) ? `.${key}` : `[${JSON.stringify(key)}]`);
 
-/** Apply shared lexical selector evidence to an admitted immutable carrier. */
-function project_data(value: OrderedProjectedValue, path: SchemaDataPath): readonly OrderedProjectedValue[] {
-  let values = [value];
-  for (const key of path) {
-    const next: OrderedProjectedValue[] = [];
-    for (const value of values) {
-      if (key === null) {
-        if (Array.isArray(value)) for (const item of value) { if (next.length === 512) break; next.push(item); }
-      } else {
-        const child = ordered_projected_value_at(value, [key]);
-        if (child !== undefined) next.push(child);
-      }
-      if (next.length === 512) break;
-    }
-    values = next;
-  }
-  return values;
-}
-
 /** Advisory common members only; an invocation annotation is not a universal Part contract. */
-function schema_paths(schema: CompiledHsonSchema, origin: SchemaDataPath, root: string): readonly string[] {
-  const result: string[] = [], pending: { path: SchemaDataPath; spelling: string; depth: number }[] = [{ path: origin, spelling: root, depth: 0 }];
+function schema_paths(schema: CompiledHsonSchema, origin: SchemaDataPath, root: string, prefix: string): readonly string[] {
+  const reference = scan_part_reference(`#{${prefix}`, 0, true);
+  const selected = reference?.name === root ? reference.path.slice(0, /[.\]]$/.test(prefix) ? undefined : -1) : [];
+  const spelling = selected.reduce<string>(member_path, root);
+  const result: string[] = [], pending: { path: SchemaDataPath; spelling: string; depth: number }[] = [{ path: [...origin, ...selected], spelling, depth: 0 }];
   while (pending.length && result.length < 512) {
     const current = pending.pop()!;
     if (current.depth >= 16) continue;

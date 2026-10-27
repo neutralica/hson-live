@@ -395,5 +395,144 @@ check('iterator directives diagnose known ordinary Document receivers without in
   assert.deepEqual(inspect(application('<main title="for:item" "for:item=\\"#{literal}\\""/>')).codes, []);
   assert.deepEqual(inspect(imports + 'const unconnected = Hson.document`<main <li for:item="#{items}"/>/>`;').codes, []);
 });
+check("object iterator diagnostics share syntax validation and exact lexical ranges", () => {
+  const definition = (body: string) => '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
+  const body = '<ul hson:part items:data="%{items}" <li per:key:value="#{items}" "#{key}:#{value.title}"/>/>';
+  for (const invalid of ['per:', 'per::', 'per:key:', 'per:key:key', 'per:key:value:extra', 'per:bad.name', 'per:0key']) {
+    const result = inspect(application('<main/>', definition(body.replace('per:key:value', invalid))));
+    assert.ok(result.codes.includes('HSON_PART_REFERENCE_INVALID')); assert.ok(result.slices.includes(invalid));
+  }
+  for (const unrelated of ['', 'class="${dynamic}" ']) {
+    const source = body.replace('<ul hson:part ', '<ul hson:part ' + unrelated);
+    assert.deepEqual(inspect(application('<main/>', definition(source))).codes, []);
+    const outside = inspect(application('<main/>', definition(source.replace('/>/>', '/> <b "#{value}"/>/>'))));
+    assert.deepEqual(outside.codes, ['HSON_PART_REFERENCE_INVALID']); assert.deepEqual(outside.slices, ['"#{value}"']);
+    const scalar = inspect(application('<main/>', definition(source.replace('#{key}:#{value.title}', '#{key.value}'))));
+    assert.deepEqual(scalar.codes, ['HSON_PART_REFERENCE_INVALID']); assert.deepEqual(scalar.slices, ['"#{key.value}"']);
+  }
+  const duplicate = inspect(application('<main/>', definition(body.replace('per:key:value=', 'for:item="#{items}" per:key:value='))));
+  assert.ok(duplicate.slices.includes('per:key:value')); assert.ok(duplicate.diagnostics.some(issue => /one Part iterator/.test(issue.message)));
+  assert.deepEqual(inspect(application('<main/>', definition(body))).codes, []);
+  const ordinary = inspect(application('<main <b per:key="#{items}"/>/>'));
+  assert.deepEqual(ordinary.codes, ['HSON_PART_REFERENCE_INVALID']); assert.deepEqual(ordinary.slices, ['per:key']);
+});
+check("collection source diagnostics belong to proven invocations, never a universal Part Schema", () => {
+  const body = '<ul hson:part items:data="%{items}" <li per:key:value="#{items}" "#{key}"/>/>';
+  const definition = '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
+  const literal = (data: string) => application('<hson-part lib="components" at="list" data:items="' + data + '"/>', definition);
+  for (const data of ['«»', 'null', 'false', '2']) {
+    const result = inspect(literal(data));
+    assert.deepEqual(result.codes, ['HSON_PART_REFERENCE_INVALID']); assert.deepEqual(result.slices, ['"' + data + '"']);
+    assert.match(result.diagnostics[0]!.message, /requires object Data for this invocation/);
+  }
+  assert.deepEqual(inspect(literal('<>')).codes, []);
+  const annotated = (shape: string, input = '${records}', definitionBody = body) => imports
+    + 'import type { HsonData } from "hson-live"; const Records=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
+    + 'declare const records: HsonData<typeof Records>; const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + definitionBody + '`}}},'
+    + 'page:{document:Hson.document`<hson-part lib="components" at="list" data:items="' + input + '"/>`}});';
+  for (const shape of ['"number"', '<array "string">']) {
+    const result = inspect(annotated(shape));
+    assert.ok(result.facts.documents.some(document => document.connectors.some(connector => connector.attributes.some(attribute => attribute.dataSchema !== undefined))));
+    assert.deepEqual(result.codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.deepEqual(result.slices, ['data:items'], 'dynamic values use the exact sending attribute name');
+  }
+  for (const shape of ['<content <first "string" second "number">>', '"any"']) assert.deepEqual(inspect(annotated(shape)).codes, []);
+  assert.deepEqual(inspect(annotated('"number"', '${dynamic}')).codes, []);
+  const nested = '<ul hson:part items:data="%{items}" <li per::value="#{items}" <b per:key="#{value}" "#{key}"/>/>/>';
+  assert.deepEqual(inspect(annotated('<content <first <optional "number">>>', '${records}', nested)).codes, [], 'possibly empty outer iteration cannot prove execution');
+  assert.deepEqual(inspect(application('<main/>', definition)).codes, [], 'an uninvoked reusable Part has no inferred source type');
+});
+check("nested iterator value diagnostics require enclosing execution across for and per", () => {
+  for (const outer of ['for', 'per']) for (const inner of ['for', 'per']) {
+    const empty = outer === 'for' ? '«»' : '<>';
+    const nonempty = outer === 'for' ? '«0»' : '<first 0>';
+    const correct = inner === 'for' ? '«1»' : '<second 1>';
+    for (const unrelated of ['', ' class="${dynamic}"']) for (const shadow of [false, true]) {
+      const outerDirective = outer === 'for' ? 'for:alias' : 'per:key:alias';
+      const innerDirective = inner === 'for' ? `for:${shadow ? 'alias' : 'value'}` : `per:${shadow ? 'key' : 'name'}:${shadow ? 'alias' : 'value'}`;
+      const body = `<ul hson:part${unrelated} items:data="%{items}" other:data="%{other}" <li ${outerDirective}="#{items}" <b ${innerDirective}="#{other}" "#{${shadow ? 'alias' : 'value'}}"/>/>/>`;
+      const definition = '{list:{kind:"document",document:Hson.document`' + body + '`}}';
+      for (const items of [empty, nonempty]) for (const other of [correct, '2']) {
+        const invocation = `<hson-part lib="components" at="list" data:items="${items}" data:other="${other}"/>`;
+        const result = inspect(application(invocation, definition));
+        const invalid = items === nonempty && other === '2';
+        assert.deepEqual(result.codes, invalid && !unrelated ? ['HSON_PART_REFERENCE_INVALID'] : [], `${outer}/${inner}: ${items}, ${other}, shadow=${shadow}${unrelated}`);
+        if (invalid && !unrelated) assert.deepEqual(result.slices, ['"2"']);
+        const source = result.facts.documents.find(document => document.iteratorDeclarations.length === 2)!;
+        if (unrelated) assert.equal(source.parameterCompleteness, 'unknown', 'quoted definition slots retain existing interface uncertainty');
+        assert.deepEqual(source.iteratorDeclarations.map(iterator => iterator.enclosingIterators?.length), [0, 1]);
+        assert.deepEqual(source.iteratorDeclarations[1]!.enclosingIterators, [source.iteratorDeclarations[0]!.location]);
+        if (!unrelated) {
+          const run = () => hsonLiveMap.fromLibraries({ components: { parts: { list: { kind: 'document', document: body } } }, page: { document: invocation } });
+          if (invalid) assert.throws(run, /(?:requires|resolve to) .* Data/);
+          else {
+            const map = run();
+            if (items === empty) assert.equal(map.doc.must('page').render(), '<ul></ul>');
+          }
+        }
+      }
+      // A value interpolation in the outer input cannot prove nested execution.
+      assert.deepEqual(inspect(application('<hson-part lib="components" at="list" data:items="${dynamic}" data:other="2"/>', definition)).codes, []);
+    }
+    const body = `<ul hson:part items:data="%{items}" other:data="%{other}" <li ${outer}:item="#{items}" <b ${inner}:value="#{other}"/>/>/>`;
+    const invocation = `<main title="${'${dynamic}'}" <hson-part lib="components" at="list" data:items="${nonempty}" data:other="2"/>/>`;
+    assert.deepEqual(inspect(application(invocation, '{list:{kind:"document",document:Hson.document`' + body + '`}}')).codes, ['HSON_PART_REFERENCE_INVALID'], 'unrelated receiving interpolation does not hide a proven invocation error');
+  }
+});
+check("nested iterator structural diagnostics survive skipped execution", () => {
+  for (const outer of ['for:item', 'per:key:item']) for (const inner of ['for:value', 'per:name:value']) {
+    const empty = outer.startsWith('for:') ? '«»' : '<>';
+    const body = `<ul hson:part class="${'${dynamic}'}" items:data="%{items}" other:data="%{other}" <li ${outer}="#{items}" <b ${inner}="#{other}" "#{value}"/>/>/>`;
+    const invocation = `<hson-part lib="components" at="list" data:items="${empty}" data:other="2"/>`;
+    for (const invalid of [body.replace(inner, inner + ':extra:invalid'), body.replace('#{other}', '#{unknown}'),
+      body.replace('"#{value}"', '"#{missing}"'), body.replace(`${inner}=`, `for:duplicate="#{other}" ${inner}=`)]) {
+      const result = inspect(application(invocation, '{list:{kind:"document",document:Hson.document`' + invalid + '`}}'));
+      assert.ok(result.codes.includes('HSON_PART_REFERENCE_INVALID'), invalid);
+      assert.ok(result.diagnostics.every(issue => !issue.message.includes('requires ') || !issue.message.includes('Data for this invocation')), 'structural errors do not borrow a skipped value error');
+    }
+  }
+});
+check("nested collection projections preserve source-before-shadow and conservative Schema multiplicity", () => {
+  for (const outer of ['for', 'per']) for (const inner of ['for', 'per']) {
+    const outerDirective = outer === 'for' ? 'for:items' : 'per:key:items';
+    const innerDirective = inner === 'for' ? 'for:items' : 'per:key:items';
+    const body = `<ul hson:part items:data="%{items}" <li ${outerDirective}="#{items}" <b ${innerDirective}="#{items}"/>/>/>`;
+    const definition = '{list:{kind:"document",document:Hson.document`' + body + '`}}';
+    const correct = inner === 'for' ? '«»' : '<>';
+    const data = (value: string) => outer === 'for' ? `«${value}»` : `<first ${value}>`;
+    for (const value of [correct, '2']) {
+      const result = inspect(application(`<hson-part lib="components" at="list" data:items="${data(value)}"/>`, definition));
+      assert.deepEqual(result.codes, value === '2' ? ['HSON_PART_REFERENCE_INVALID'] : [], `${outer}/${inner} shadowed collection`);
+    }
+    const shape = outer === 'for' ? '<array "number">' : '<content <first <optional "number">>>';
+    const annotated = imports + 'import type { HsonData } from "hson-live"; const Items=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
+      + 'declare const items: HsonData<typeof Items>; const loc=maps.fromLibraries({components:{parts:' + definition + '},page:{document:Hson.document`<hson-part lib="components" at="list" data:items="${items}"/>`}});';
+    assert.deepEqual(inspect(annotated).codes, [], 'Schema collection elements do not establish outer execution');
+  }
+});
+check("independent inner Schemas require literal outer execution and deeper correlations remain conservative", () => {
+  for (const outer of ['for:item', 'per:key:item']) for (const inner of ['for:value', 'per:name:value']) {
+    const body = `<ul hson:part items:data="%{items}" other:data="%{other}" <li ${outer}="#{items}" <b ${inner}="#{other}"/>/>/>`;
+    const prefix = imports + 'import type { HsonData } from "hson-live"; const Other=Hson.schema`<type "data" defs <Input "number"> content <ref "Input">>`; declare const other:HsonData<typeof Other>;';
+    for (const nonempty of [false, true]) {
+      const items = outer.startsWith('for:') ? nonempty ? '«0»' : '«»' : nonempty ? '<first 0>' : '<>';
+      const result = inspect(prefix + 'const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + body
+        + '`}}},page:{document:Hson.document`<hson-part lib="components" at="list" data:items="' + items + '" data:other="${other}"/>`}});');
+      assert.deepEqual(result.codes, nonempty ? ['HSON_PART_REFERENCE_INVALID'] : []);
+      if (nonempty) assert.deepEqual(result.slices, ['data:other']);
+    }
+  }
+  const body = '<ul hson:part items:data="%{items}" <li for:item="#{items}" <b for:unused="#{item.children}" <i per:key="#{item.other}" "#{key}"/>/>/>/>';
+  const invocation = '<hson-part lib="components" at="list" data:items="«<children «» other 2>,<children «0» other <>>»"/>';
+  const result = inspect(application(invocation, '{list:{kind:"document",document:Hson.document`' + body + '`}}'));
+  assert.deepEqual(result.codes, [], 'a different element cannot establish execution for a skipped source');
+  assert.doesNotThrow(() => hsonLiveMap.fromLibraries({components:{parts:{list:{kind:'document',document:body}}},page:{document:invocation}}));
+  const boundedBody = body.replace('for:unused="#{item.children}"', 'for:child="#{item.children}" <em for:unused="#{child.children}"').replace('/>/>/>/>', '/>/>/>/>/>');
+  const children = Array.from({length: 512}, () => '<children «0»>').join(',');
+  const boundedInvocation = `<hson-part lib="components" at="list" data:items="«<children «${children}» other <>>,<children «<children «»>» other 2>»"/>`;
+  const bounded = inspect(application(boundedInvocation, '{list:{kind:"document",document:Hson.document`' + boundedBody + '`}}'));
+  assert.deepEqual(bounded.codes, [], 'truncated projections cannot prove all execution contexts');
+  assert.doesNotThrow(() => hsonLiveMap.fromLibraries({components:{parts:{list:{kind:'document',document:boundedBody}}},page:{document:boundedInvocation}}));
+});
 service.dispose();
 events.terminal("pass");

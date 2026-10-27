@@ -190,8 +190,9 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
       const source = observe(declaration.source, node, "iteration", undefined, declaration.attribute);
       previous.set(node, locals);
       locals = new Map(locals);
-      if (declaration.item !== undefined) locals.set(declaration.item, { name: declaration.item, kind: "data", node, elementOf: source });
-      if (declaration.index !== undefined) locals.set(declaration.index, { name: declaration.index, kind: "scalar", node });
+      if (declaration.value !== undefined) locals.set(declaration.value, { name: declaration.value, kind: "data", node, elementOf: source });
+      const ordinal = declaration.kind === "array" ? declaration.index : declaration.key;
+      if (ordinal !== undefined) locals.set(ordinal, { name: ordinal, kind: "scalar", node });
       scopes.set(node, locals); iterators.set(node, declaration);
     },
     leave(node) { const outer = previous.get(node); if (outer !== undefined) locals = outer; },

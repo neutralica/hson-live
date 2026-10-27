@@ -137,7 +137,7 @@ removal and inline style storage have separate contracts in the
 ## Parameters
 
 Descendant elements and ordinary Part connectors also support
-[structural array iteration](part-array-iteration.md). Its `for:` declaration
+[structural collection iteration](part-array-iteration.md). Its `for:`/`per:` declaration
 is consumed before connector argument classification or canonical publication.
 
 Connectors must be empty. Coordinates and construction directives are reserved;

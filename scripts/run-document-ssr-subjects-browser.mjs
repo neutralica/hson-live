@@ -20,69 +20,81 @@ import { Hson, hsonLiveMap } from "../src/index.ts";
 import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../src/api/livemap/livemap.libraries.ts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
-const fixture = ssr_subject_fixture();
-const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
-assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
-const components = styled_fixture();
-const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
-const componentDemand = document_css_subject_identities(encode_portable_document_stylesheet(componentOwner.stylesheet(finalIdentity)), "outbound");
-const componentCut = components.cut({html:"page", documents:["page"], data:[]});
-const selectors = selector_fixture(), selectorPage = selectors.doc.must("page");
-const selectorCut = selectors.cut({html:"page", documents:["page"], data:[]});
-const selectorPages = new Map([["/selectors", selectorCut]]);
-const optionalCut = optional_subject_fixture().cut({html:"page",documents:["page"],data:[]});
-const optionalPages = new Map([["/optional", optionalCut], ["/optional-restored",
-  install_libraries_snapshot(install_libraries_snapshot(optionalCut.libs).map.cut({documents:["page"],data:[]}).libs).map.cut({html:"page",documents:["page"],data:[]})]]);
-selectorPage.document.content.move({kind:"path",path:[0,0,1,0,0,0]},2,0);
-selectorPages.set("/selectors-moved", selectors.cut({html:"page", documents:["page"], data:[]}));
-const restoredSelectors = install_libraries_snapshot(install_libraries_snapshot(selectorCut.libs).map.cut({data:[],documents:["page"]}).libs).map;
-selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", documents:["page"], data:[]}));
-selectorPage.q("ancestor").delete();
-selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
-const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
-const iteration = hsonLiveMap.fromLibraries({ parts: { parts: {
-  Column: { kind: 'document', document: '<section hson:part items:data="%{items}" <hson-part for:item:i="#{items}" at="#{item.kind}" data:item="#{item}"/> <ul <li for:label="#{items[0].labels}" "#{label}"/>/>/>', css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
-  Heading: { kind: 'document', document: '<h1 hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'red' } },
-  Text: { kind: 'document', document: '<p hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'blue' } },
-} }, page: { document: Hson.document`<html <head/> <body <hson-part lib="parts" at="Column" data:items="${Hson.data.from([
-  { kind: 'Heading', id: 'iter-heading', text: 'Heading', labels: ['alpha', 'beta'] }, { kind: 'Text', id: 'iter-text', text: 'Body' },
-])}"/> <p class="content" id="iter-outside" "Outside"/>/>/>` } });
-const iterationOwner = internal_livemap_aggregate_authority(iteration);
-const iterationPages = new Map([['/iteration', iteration.doc.page.render()], ['/iteration-restored',
-  make_livemap_mirror_from_semantic_checkpoint_internal(iterationOwner.captureSemanticCheckpoint()).doc.must('page').render()]]);
-const iterationManager = {};
-iterationOwner.claimManagement(iterationManager);
-try {
-  const target = { kind: 'path', path: [0, 0, 1, 0, 0, 0] };
-  iterationOwner.accept(iterationOwner.prepareManaged(iterationManager, [{ kind: 'graph', target: iterationOwner.target(iterationOwner.libraries()[1], target.path),
-    operation: { domain: 'graph', op: 'remove-content', target, index: 0 } }], true));
-  iterationPages.set('/iteration-retired', iteration.doc.page.render());
-} finally { iterationOwner.releaseManagement(iterationManager); }
-// Keep the flat first-paint acceptance alongside genuine hosted scoped output.
-const hosted = await hosted_flat_subject_fixture();
-const scoped = await scoped_fixture();
-const scopedPages = new Map();
-function capture_scoped_pages(suffix = "") {
-  const captured = scoped.session.now({html:"page"});
-  const html = scoped.locus.doc.must("page").render();
-  assert.equal(html, captured.html);
-  assert.doesNotMatch(JSON.stringify(captured), /hson:part/);
-  scopedPages.set(`/hosted-scoped${suffix}`, captured);
-  scopedPages.set(`/library-scoped${suffix}`, { ...captured, html });
+const iterationOnly = process.argv.includes("--iteration-only");
+async function prepare_ssr_fixtures() {
+  const fixture = ssr_subject_fixture();
+  const cut = cut_document_ssr_internal(fixture.map, { html: "page" }, fixture.demanded);
+  assert.doesNotMatch(cut.html, /hson:quid|hson\\:quid/);
+  const components = styled_fixture();
+  const componentOwner = internal_livemap_aggregate_authority(components), finalIdentity = componentOwner.libraries().at(-1);
+  const componentDemand = document_css_subject_identities(encode_portable_document_stylesheet(componentOwner.stylesheet(finalIdentity)), "outbound");
+  const componentCut = components.cut({html:"page", documents:["page"], data:[]});
+  const selectors = selector_fixture(), selectorPage = selectors.doc.must("page");
+  const selectorCut = selectors.cut({html:"page", documents:["page"], data:[]});
+  const selectorPages = new Map([["/selectors", selectorCut]]);
+  const optionalCut = optional_subject_fixture().cut({html:"page",documents:["page"],data:[]});
+  const optionalPages = new Map([["/optional", optionalCut], ["/optional-restored",
+    install_libraries_snapshot(install_libraries_snapshot(optionalCut.libs).map.cut({documents:["page"],data:[]}).libs).map.cut({html:"page",documents:["page"],data:[]})]]);
+  selectorPage.document.content.move({kind:"path",path:[0,0,1,0,0,0]},2,0);
+  selectorPages.set("/selectors-moved", selectors.cut({html:"page", documents:["page"], data:[]}));
+  const restoredSelectors = install_libraries_snapshot(install_libraries_snapshot(selectorCut.libs).map.cut({data:[],documents:["page"]}).libs).map;
+  selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", documents:["page"], data:[]}));
+  selectorPage.q("ancestor").delete();
+  selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
+  const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
+  // Keep the flat first-paint acceptance alongside genuine hosted scoped output.
+  const hosted = await hosted_flat_subject_fixture();
+  const scoped = await scoped_fixture();
+  const scopedPages = new Map();
+  function capture_scoped_pages(suffix = "") {
+    const captured = scoped.session.now({html:"page"});
+    const html = scoped.locus.doc.must("page").render();
+    assert.equal(html, captured.html);
+    assert.doesNotMatch(JSON.stringify(captured), /hson:part/);
+    scopedPages.set(`/hosted-scoped${suffix}`, captured);
+    scopedPages.set(`/library-scoped${suffix}`, { ...captured, html });
+  }
+  capture_scoped_pages();
+  await scoped.locus.stage(w => {
+    w.doc.must("page").css.sel("#left button").setProp("padding", "11px");
+    w.doc.must("page").css.sel("#left span").setProp("color", "rgb(70,80,90)");
+  });
+  capture_scoped_pages("-changed");
+  await scoped.locus.stage(w => { w.doc.must("page").at([1,0]).replace(scoped_node('<hson-part lib="parts" at="bare"/>')); });
+  capture_scoped_pages("-retired");
+  await scoped.locus.stage(w => { w.doc.must("page").at([1,2]).delete(); w.doc.must("page").at([1,1]).delete(); w.doc.must("page").at([1,0]).delete(); });
+  capture_scoped_pages("-empty");
+  const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
+    write: false, platform: "browser", format: "iife", logLevel: "silent" });
+  const browserSource = bundle.outputFiles[0].text;
+  return { fixture, cut, componentDemand, componentCut, selectorPages, optionalPages, secondRepair, hosted, scoped, scopedPages, browserSource };
 }
-capture_scoped_pages();
-await scoped.locus.stage(w => {
-  w.doc.must("page").css.sel("#left button").setProp("padding", "11px");
-  w.doc.must("page").css.sel("#left span").setProp("color", "rgb(70,80,90)");
-});
-capture_scoped_pages("-changed");
-await scoped.locus.stage(w => { w.doc.must("page").at([1,0]).replace(scoped_node('<hson-part lib="parts" at="bare"/>')); });
-capture_scoped_pages("-retired");
-await scoped.locus.stage(w => { w.doc.must("page").at([1,2]).delete(); w.doc.must("page").at([1,1]).delete(); w.doc.must("page").at([1,0]).delete(); });
-capture_scoped_pages("-empty");
-const bundle = await build({ entryPoints: ["tests/browser/document-portable-graft.entry.mjs"], bundle: true,
-  write: false, platform: "browser", format: "iife", logLevel: "silent" });
-const browserSource = bundle.outputFiles[0].text;
+const { fixture, cut, componentDemand, componentCut, selectorPages, optionalPages, secondRepair, hosted, scoped, scopedPages, browserSource }
+  = iterationOnly ? {} : await prepare_ssr_fixtures();
+const iterationPages = new Map();
+for (const kind of ['array', 'object']) {
+  const entries = [
+    { kind: 'Heading', id: 'iter-heading', text: 'Heading', labels: ['alpha', 'beta'] }, { kind: 'Text', id: 'iter-text', text: 'Body' },
+  ];
+  const items = kind === 'array' ? entries : { heading: entries[0], text: entries[1] };
+  const iteration = hsonLiveMap.fromLibraries({ parts: { parts: {
+    Column: { kind: 'document', document: `<section hson:part items:data="%{items}" <hson-part ${kind === 'array' ? 'for:item:i' : 'per:i:item'}="#{items}" at="#{item.kind}" data:item="#{item}"/> <ul <li for:label="#{items${kind === 'array' ? '[0]' : '.heading'}.labels}" "#{label}"/>/>/>`, css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
+    Heading: { kind: 'document', document: '<h1 hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'red' } },
+    Text: { kind: 'document', document: '<p hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'blue' } },
+  } }, page: { document: Hson.document`<html <head/> <body <hson-part lib="parts" at="Column" data:items="${Hson.data.from(items)}"/> <p class="content" id="iter-outside" "Outside"/>/>/>` } });
+  const iterationOwner = internal_livemap_aggregate_authority(iteration);
+  iterationPages.set(`/iteration-${kind}`, iteration.doc.page.render());
+  iterationPages.set(`/iteration-${kind}-restored`,
+    make_livemap_mirror_from_semantic_checkpoint_internal(iterationOwner.captureSemanticCheckpoint()).doc.must('page').render());
+  const iterationManager = {};
+  iterationOwner.claimManagement(iterationManager);
+  try {
+    const target = { kind: 'path', path: [0, 0, 1, 0, 0, 0] };
+    iterationOwner.accept(iterationOwner.prepareManaged(iterationManager, [{ kind: 'graph', target: iterationOwner.target(iterationOwner.libraries()[1], target.path),
+      operation: { domain: 'graph', op: 'remove-content', target, index: 0 } }], true));
+    iterationPages.set(`/iteration-${kind}-retired`, iteration.doc.page.render());
+  } finally { iterationOwner.releaseManagement(iterationManager); }
+}
 const profile = await mkdtemp(join(tmpdir(), "hson-ssr-subjects-chrome-"));
 let chrome, socket, server;
 let stderr = "";
@@ -97,6 +109,7 @@ try {
   server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     if (iterationPages.has(request.url)) { response.end(iterationPages.get(request.url)); return; }
+    if (iterationOnly) { response.end(""); return; }
     const scopedPage = scopedPages.get(request.url);
     if (scopedPage) { response.end(scopedPage.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
@@ -162,12 +175,13 @@ try {
         padding: getComputedStyle(text).paddingLeft, outside: getComputedStyle(document.getElementById('iter-outside')).paddingLeft,
         labels: [...document.querySelectorAll('li')].map(li => [li.textContent, getComputedStyle(li).marginLeft]),
         children: [...document.querySelector('section').children].map(node => node.tagName),
-        controls: [...document.querySelectorAll('*')].some(node => [...node.attributes].some(attr => attr.name.startsWith('for:'))) };
+        controls: [...document.querySelectorAll('*')].some(node => [...node.attributes].some(attr => attr.name.startsWith('for:') || attr.name.startsWith('per:'))) };
     })()`);
     assert.deepEqual(evidence, { heading: path.endsWith('retired') ? null : 'rgb(255, 0, 0)', text: 'rgb(0, 0, 255)', padding: '7px', outside: '0px',
       labels: [['alpha', '9px'], ['beta', '9px']], children: path.endsWith('retired') ? ['P', 'UL'] : ['H1', 'P', 'UL'], controls: false });
     console.log(`Chrome structural iteration ${path}: ${JSON.stringify(evidence)}`);
   }
+  if (!iterationOnly) {
   for (const path of optionalPages.keys()) {
     await command("Page.navigate", {url:new URL(path,url).href});
     let loaded = false;
@@ -364,9 +378,10 @@ try {
   assert.equal(graftResult.result.value.passed, 21);
   console.log(`Chrome JavaScript-enabled portable graft passed: ${JSON.stringify(graftResult.result.value)}`);
 
+  }
 } finally {
-  hosted.locus.dispose();
-  scoped.locus.dispose();
+  hosted?.locus.dispose();
+  scoped?.locus.dispose();
   if (socket) { socket.terminate(); }
   if (chrome && chrome.exitCode === null) {
     const closed = new Promise(resolve => chrome.once("close",resolve)); chrome.kill("SIGTERM"); await closed;

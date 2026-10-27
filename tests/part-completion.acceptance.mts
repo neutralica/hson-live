@@ -523,7 +523,7 @@ check("iterator bindings complete at their lexical scope, with source-before-sha
   const repaired = complete(authored('<ul hson:part items:data="%{items}" <li for:new="#{items}" "#{|}"/>/>', memberApplication));
   assert.deepEqual(repaired.labels, ['items', 'new']);
   const fact = collect_part_source_facts(ts, repaired.program).documents.find(doc => doc.iteratorDeclarations.length)!;
-  assert.equal(fact.iteratorDeclarations[0]!.declaration!.item, 'new');
+  assert.equal(fact.iteratorDeclarations[0]!.declaration!.value, 'new');
   const span = fact.iteratorDeclarations[0]!.location;
   assert.equal(repaired.text.slice(span.start, span.end), 'for:new');
 });
@@ -582,6 +582,50 @@ check('interpolated Part completion refreshes imported Schema evidence with unch
   const entries = cache.complete(file('app.ts'), original.text, revision, original.offset, next);
   assert.deepEqual(entries.map(entry => entry.candidate.label), ['item.name']);
   assert.ok(entries.every(entry => entry.candidate.certainty === 'possible'));
+});
+check("object iterator bindings share scope, source-before-shadow and edit recovery", () => {
+  const prefix = '<ul hson:part items:data="%{items}" <li per:key:value="#{items}" ';
+  for (const decoration of ['', 'class="${dynamic}" ']) {
+    const body = prefix.replace('<ul hson:part ', '<ul hson:part ' + decoration);
+    assert.deepEqual(complete(authored(body + '"#{|}"/>/>', memberApplication)).labels, ['items', 'key', 'value']);
+    assert.deepEqual(complete(authored(body + '/> <b "#{|}"/>/>', memberApplication)).labels, ['items']);
+    assert.deepEqual(complete(authored(body + '<b per:value:next="#{va|}"/>/>/>', memberApplication)).labels, ['value']);
+    assert.deepEqual(complete(authored(body + '<b for:value:i="#{value.children}" "#{|}"/>/>/>', memberApplication)).labels, ['i', 'items', 'key', 'value']);
+    assert.deepEqual(complete(authored(body + '"#{|', memberApplication)).labels, ['items', 'key', 'value']);
+  }
+  assert.deepEqual(complete(authored(prefix.replace('per:key:value', 'per:key') + '"#{|}"/>/>', memberApplication)).labels, ['items', 'key']);
+  assert.deepEqual(complete(authored(prefix.replace('per:key:value', 'per::value') + '"#{|}"/>/>', memberApplication)).labels, ['items', 'value']);
+  assert.deepEqual(complete(authored(prefix.replace('per:key:value', 'per:data:doc') + '"#{|}"/>/>', memberApplication)).labels, ['data', 'doc', 'items']);
+  assert.deepEqual(complete(authored(prefix + '"#{key.|}"/>/>', memberApplication)).labels, []);
+  const repaired = complete(authored(prefix.replace('per:key:value', 'per:new:record') + '"#{|}"/>/>', memberApplication));
+  assert.deepEqual(repaired.labels, ['items', 'new', 'record']);
+  const fact = collect_part_source_facts(ts, repaired.program).documents.find(doc => doc.iteratorDeclarations.length)!;
+  const iterator = fact.iteratorDeclarations[0]!;
+  assert.equal(iterator.declaration!.kind, 'object'); assert.equal(iterator.declaration!.key, 'new'); assert.equal(iterator.declaration!.value, 'record');
+  assert.equal(repaired.text.slice(iterator.location.start, iterator.location.end), 'per:new:record');
+});
+check("object iterator property evidence preserves keys and conservative heterogeneous alternatives", () => {
+  const definition = (body: string) => 'components:{parts:{list:{kind:"document",document:Hson.document`' + body + '`}}}';
+  const body = '<ul hson:part items:data="%{items}" <li per:name:record="#{items}" "#{record.|}"/>/>';
+  const literal = complete(imports + 'const loc=maps.fromLibraries({' + definition(body)
+    + ',page:{document:Hson.document`<hson-part lib="components" at="list" data:items="<first <title \\\"a\\\" key \\\"real\\\">>"/>`}});');
+  assert.deepEqual(literal.labels, ['record.key', 'record.title']);
+  const application = (body: string, shape: string, input = '${records}') => imports
+    + 'import type { HsonData } from "hson-live"; const Records=Hson.schema`<type "data" content ' + shape + '>`;'
+    + 'const records: HsonData<typeof Records> = Hson.data`<>`; const loc=maps.fromLibraries({' + definition(body)
+    + ',page:{document:Hson.document`<hson-part lib="components" at="list" data:items="' + input + '"/>`}});';
+  const shape = '<first <content <title "string" count "number" children <array <content <caption "string">>>>> second <content <title "string" active "boolean" children <array <content <caption "string">>>>>>';
+  const result = complete(application(body, shape));
+  assert.deepEqual(result.labels, ['record.children', 'record.title']);
+  assert.ok(result.entries.every(entry => entry.candidate.certainty === 'possible'));
+  assert.deepEqual(complete(application(body.replace('#{record.|}', '#{items.|}'), shape)).labels,
+    ['items.first', 'items.first.children', 'items.first.count', 'items.first.title', 'items.second', 'items.second.active', 'items.second.children', 'items.second.title']);
+  assert.deepEqual(complete(application(body.replace('#{record.|}', '#{record.children[0].|}'), shape)).labels, ['record.children[0].caption']);
+  const nested = '<ul hson:part items:data="%{items}" <li per:name:record="#{items}" <b for:record="#{record.children}" "#{record.|}"/>/>/>';
+  assert.deepEqual(complete(application(nested, shape)).labels, ['record.caption']);
+  assert.deepEqual(complete(application(body, '<first <content <title "string">> second "number">')).labels, []);
+  assert.deepEqual(complete(application(body, shape, '${dynamic}')).labels, []);
+  assert.deepEqual(complete(application(body, shape.replaceAll('title "string"', 'name "string"'))).labels, ['record.children', 'record.name']);
 });
 service.dispose();
 events.terminal("pass");

@@ -852,12 +852,17 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     const iterator = repeated ? undefined : analysis.iterators.get(node);
     if (iterator !== undefined) {
       const binding = resolve_part_reference(iterator.source, { ...environment, locals });
-      if (binding.kind !== "data" || !Array.isArray(binding.value)) throw new TypeError(`Part iteration source must resolve to array Data in ${environment.context}.`);
-      if (binding.value.length === 0) emptyBody(node, locals, depth);
-      for (let index = 0; index < binding.value.length; index++) {
+      const collection = binding.kind === "data" ? binding.value : undefined;
+      const array = iterator.kind === "array" && Array.isArray(collection) ? collection : undefined;
+      const entries = iterator.kind === "object" && is_ordered_projected_object(collection) ? collection.entries : undefined;
+      if (array === undefined && entries === undefined) throw new TypeError(`Part iteration source must resolve to ${iterator.kind} Data in ${environment.context}.`);
+      const length = array?.length ?? entries!.length;
+      if (length === 0) emptyBody(node, locals, depth);
+      for (let index = 0; index < length; index++) {
         const inner = new Map(locals);
-        if (iterator.item !== undefined) inner.set(iterator.item, { kind: "data", value: binding.value[index] });
+        if (iterator.value !== undefined) inner.set(iterator.value, { kind: "data", value: array === undefined ? entries![index]![1] : array[index] });
         if (iterator.index !== undefined) inner.set(iterator.index, { kind: "scalar", value: index });
+        if (iterator.key !== undefined) inner.set(iterator.key, { kind: "scalar", value: entries![index]![0] });
         append(node, output, inner, new Map(), depth, true);
       }
       return;

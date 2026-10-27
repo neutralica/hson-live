@@ -19,7 +19,7 @@ import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_source } from "./schema-annotation.js";
 import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
-import type { SchemaDataPath } from "./data-projection.js";
+import { OBJECT_VALUE, type SchemaDataPath } from "./data-projection.js";
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
@@ -34,6 +34,14 @@ export function part_source_bindings_at(scopes: readonly PartLexicalScopeSource[
   for (const scope of scopes) if (scope.location.start <= position && position <= scope.location.end
     && (nearest === undefined || scope.location.end - scope.location.start < nearest.location.end - nearest.location.start)) nearest = scope;
   return nearest?.bindings;
+}
+/** Preserve the source's lexical origin, before the iterator introduces aliases. */
+export function part_iterator_source_origin(document: PartDocumentSource, iterator: PartDocumentSource["iteratorDeclarations"][number]): PartLocalSource["dataOrigin"] {
+  if (iterator.declaration === undefined || iterator.sourceLocation === undefined) return undefined;
+  const source = iterator.declaration.source;
+  const binding = part_source_bindings_at(document.lexicalScopes, iterator.sourceLocation.start)?.find(binding => binding.name === source.name);
+  const origin = binding?.dataOrigin;
+  return origin === undefined ? undefined : { incoming: origin.incoming, path: [...origin.path, ...source.path] };
 }
 export type PartConnectorSource = Readonly<{
   location: PartSourceLocation;
@@ -55,7 +63,9 @@ export type PartDocumentSource = Readonly<{
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
   receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
-  iteratorDeclarations: readonly Readonly<{ location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string }>[];
+  iteratorDeclarations: readonly Readonly<{ location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
+    /** Shared analyzer ancestry; undefined withholds execution proof. */
+    enclosingIterators?: readonly PartSourceLocation[] }>[];
   /** Nested node coverage; iterator source attributes retain their enclosing bindings. */
   lexicalScopes: readonly PartLexicalScopeSource[];
   definitionRoot?: PartSourceLocation;
@@ -211,7 +221,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
     const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }[] = [];
     const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
-    const iteratorDeclarations: { location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string }[] = [];
+    const iteratorDeclarations: { location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
+      enclosingIterators?: readonly PartSourceLocation[] }[] = [];
     const lexicalScopes: PartLexicalScopeSource[] = [];
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const partDeclarations: { location: PartSourceLocation; root: boolean; issue?: string }[] = [];
@@ -392,7 +403,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           if (binding.receiving !== undefined) return { incoming: binding.receiving.reference.name, path: [] };
           const source = binding.elementOf;
           const origin = source?.binding === undefined ? undefined : dataOrigin(source.binding, depth + 1);
-          return origin === undefined || source === undefined ? undefined : { incoming: origin.incoming, path: [...origin.path, ...source.reference.path, null] };
+          return origin === undefined || source === undefined ? undefined : { incoming: origin.incoming, path: [...origin.path, ...source.reference.path, analysis.iterators.get(binding.node)?.kind === "object" ? OBJECT_VALUE : null] };
         };
         const sourceBindings = (scope: ReadonlyMap<string, PartLocalDeclaration>): readonly PartLocalSource[] => {
           let result = sourceScopes.get(scope);
@@ -408,10 +419,17 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           return result;
         };
         const iterationReads = new Map(analysis.uses.filter(use => use.context === "iteration").map(use => [use.node, use]));
+        const iteratorNodes = [...analysis.iterators.keys()];
         for (const [node, scope] of analysis.scopes) {
           lexicalScopes.push({ location: nodeLocation(node), bindings: sourceBindings(scope) });
           const iterator = analysis.iterators.get(node);
           if (iterator !== undefined) {
+            const where = nodeLocation(node, iterator.attribute), path = paths.get(node)!;
+            const fact = iteratorDeclarations.find(fact => fact.location.start === where.start && fact.location.end === where.end);
+            if (fact !== undefined) fact.enclosingIterators = iteratorNodes.filter(ancestor => {
+              const parent = paths.get(ancestor)!;
+              return parent.length < path.length && parent.every((step, index) => path[index] === step);
+            }).map(ancestor => nodeLocation(ancestor, analysis.iterators.get(ancestor)!.attribute));
             const source = provenance.range({ kind: "attribute", owner: paths.get(node) ?? [], name: iterator.attribute, role: "value" });
             const sourceLocation = source === undefined ? undefined : map(source);
             const read = iterationReads.get(node);

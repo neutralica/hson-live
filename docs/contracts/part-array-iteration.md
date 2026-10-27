@@ -1,6 +1,7 @@
-# Structural array iteration in governed Parts
+# Structural collection iteration in governed Parts
 
-`for:` repeats a descendant element or an ordinary `lib`/`at` Part connector.
+`for:` (array elements) and `per:` (object members) repeat a descendant element
+or an ordinary `lib`/`at` Part connector.
 It is construction syntax in a governed Part definition. It cannot appear on
 the definition root or in a canonical Document. Each Part invocation still
 produces one rooted result, or zero through `part:optional`.
@@ -23,17 +24,22 @@ children, in that order. An empty array produces `<ul/>`.
 | `for:item` | Each member as Data |
 | `for:item:i` | Member Data and a zero-based scalar index |
 | `for::i` | Zero-based scalar index |
+| `per:key:value` | Exact string key and member Data |
+| `per:key` | Exact string key |
+| `per::value` | Member Data |
 
 Alias names use the existing Part parameter-name grammar,
 `[A-Za-z_][A-Za-z0-9_-]*`. They are case-sensitive; `data` and `doc` are valid
 aliases. An element may have one iterator. Two aliases in one directive must
-be different. Empty item aliases are legal only in the index-only form.
+be different. Only the first position may be empty; the second position, if
+written, must name a binding. Mixed `for:` and `per:` declarations on one
+element reject.
 
 The source is a whole local `#{...}` reference. Existing property, numeric
 index and quoted-key selectors work, for example `#{column.blocks}` or
-`#{rows[0].children}`. The source must resolve to array Data. Missing, null,
-scalar and object sources reject the candidate. Incoming `%{...}` parameters
-remain distinct from local references: receive incoming Data on the definition
+`#{rows[0].children}`. A `for:` source must resolve to array Data; a `per:`
+source must resolve to object Data. Missing, null, scalar and wrong-collection sources reject the
+candidate. Incoming `%{...}` parameters remain distinct from local references: receive incoming Data on the definition
 root before using it as a collection.
 
 The source resolves in the enclosing scope. The new aliases then apply to the
@@ -43,6 +49,27 @@ restores the outer bindings; aliases never leak to siblings. Local scalar
 indices render as strings in ordinary attributes and text. Connector scalar
 arguments retain the scalar representation; `data:i` cannot forward an index
 declared as a scalar.
+
+Object iteration reads the admitted ordered Data carrier directly. Numeric-looking
+keys retain their authored order; empty keys, punctuation, and slashes remain
+exact strings. Library/Part name restrictions do not apply to Data keys. Empty
+objects produce no repeated subtrees. Neither alias has synthetic `.key`,
+`.value`, or `.index` properties; property traversal of a bound value reads only
+its real Data members. A structured value remains Data and cannot render as
+scalar text or become Document markup implicitly.
+
+```hson
+<dl hson:part properties:data="%{properties}"
+  <div per:key:value="#{properties}"
+    <dt "#{key}"/>
+    <dd "#{value}"/>
+  />
+/>
+```
+
+The iterators may nest in either order and shadow outer aliases. `per:name:block`
+can directly decorate an ordinary connector with `at="#{block.kind}"` and
+`data:block="#{block}"`; it creates the same selected Part occurrence as `for:`.
 
 ## Direct Part selection
 
@@ -87,7 +114,7 @@ also uses the same interface and composition path.
 
 ## Optional content, identity and admission
 
-The iterator source is a control dependency. Reading an array alone does not
+The iterator source is a control dependency. Reading a collection alone does not
 make an optional ancestor present. Empty iterations contribute no body presence.
 Each realized body otherwise uses the existing two-phase `part:optional`
 analysis, including omission of ordinary elements. Literal-only loop bodies
@@ -130,7 +157,12 @@ analysis. Diagnostics locate invalid directive syntax and provable lexical
 errors in source. Completion offers visible bindings, respects shadowing and
 the source's enclosing scope, and recovers when edits repair the source.
 Literal admitted Data and directly supplied Schema-annotated Data can provide
-advisory element-property suggestions. Those observations do not establish an
+advisory value-property suggestions. Object member names retain their associated
+member schemas; an unknown entry value offers only properties shared across
+all known alternatives. No key-based narrowing or independent key/value type
+guarantee is inferred. Provably wrong collection kinds diagnose the particular
+invocation input; unknown inputs and possibly empty nested Schema projections
+withhold unconditional errors. Those observations do not establish an
 exhaustive Part input Schema or prove the validity of every possible invocation.
 Static Document Schema evaluation continues to use the actual composer.
 
@@ -140,7 +172,7 @@ a receiving interface. Structural slots and dynamic construction declarations
 withhold lexical proof; incomplete reference edits recover through the shared
 scanner and parser.
 
-This release adds no `per:`, `if:`, keyed reconciliation, automatic live Data
+This release adds no `if:`, keyed reconciliation, automatic live Data
 bindings, or iteration of structural Document placeholders. Changing source
 Data does not update an already realized Document; the application admits a
 new composition through its existing governed operation.

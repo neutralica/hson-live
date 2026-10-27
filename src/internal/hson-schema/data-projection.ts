@@ -1,8 +1,12 @@
+import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import type { CompiledHsonSchema, HsonSchemaDataSemanticNode } from "./compiler.js";
 
-/** A null step means an array member of unknown index. This is authoring
- * evidence only; selectors must be supported by every known alternative. */
-export type SchemaDataPath = readonly (string | number | null)[];
+/** Unknown object member, distinct from every authored string key. */
+export const OBJECT_VALUE = Symbol("object-value");
+/** null selects array elements; OBJECT_VALUE selects ordered object values.
+ * This is authoring evidence only, never a portable selector or identity. */
+export type SchemaDataPath = readonly (string | number | null | typeof OBJECT_VALUE)[];
 
 /** Shared bounded Schema traversal for Data completion and lexical Part aliases. */
 export function project_schema_data(schema: CompiledHsonSchema, selectors: SchemaDataPath,
@@ -21,11 +25,12 @@ export function project_schema_data(schema: CompiledHsonSchema, selectors: Schem
     return node.kind === "union" ? node.choices.flatMap(choice => expand(choice, seen)) : [node];
   };
   let nodes = expand(schema.semantic);
-  const path: (string | number | null)[] = [];
+  const path: (string | number | null | typeof OBJECT_VALUE)[] = [];
   for (const selector of selectors) {
     nodes = narrow(nodes, path);
     if (nodes.length === 0) return [];
     const next = nodes.map(node => {
+      if (selector === OBJECT_VALUE) return node.kind === "object" ? node.members.map(member => member.schema) : undefined;
       if (typeof selector === "string") {
         const member = node.kind === "object" ? node.members.find(member => member.name === selector) : undefined;
         return member === undefined ? undefined : [member.schema];
@@ -41,4 +46,26 @@ export function project_schema_data(schema: CompiledHsonSchema, selectors: Schem
   }
   nodes = narrow(nodes, path);
   return exhausted ? [] : nodes;
+}
+
+/** Apply shared lexical selector evidence to an admitted immutable carrier.
+ * Universal proofs require complete coverage; budget exhaustion then withholds results. */
+export function project_ordered_data(value: OrderedProjectedValue, path: SchemaDataPath, requireComplete = false): readonly OrderedProjectedValue[] {
+  let values = [value];
+  for (const key of path) {
+    const next: OrderedProjectedValue[] = [];
+    for (const value of values) {
+      if (key === null) {
+        if (Array.isArray(value)) for (const item of value) { if (next.length === 512) break; next.push(item); }
+      } else if (key === OBJECT_VALUE) {
+        if (is_ordered_projected_object(value)) for (const [, item] of value.entries) { if (next.length === 512) break; next.push(item); }
+      } else {
+        const child = ordered_projected_value_at(value, [key]);
+        if (child !== undefined) next.push(child);
+      }
+      if (next.length === 512) { if (requireComplete) return []; break; }
+    }
+    values = next;
+  }
+  return values;
 }
