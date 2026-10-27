@@ -301,5 +301,99 @@ check("Part declarations diagnose known ownership and local form with exact sour
   assert.deepEqual(inspect(imports + 'const source = Hson.document`<main <p hson:part/>/>`;').codes, ['HSON_PART_DECLARATION_INVALID']);
   assert.ok(produce_document_diagnostics({fileName: file('app.ts'), text: imports + 'Hson.document`<p hson:part=/>`;', languageId: 'typescript'}).length > 0);
 });
+check("iterator source facts use shared lexical validation and source-located diagnostics", () => {
+  const definition = (body: string) => '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
+  const body = '<ul hson:part items:data="%{items}" <li for:item:i="#{items}" "#{i}:#{item.title}"/>/>';
+  const good = inspect(application('<main/>', definition(body)));
+  assert.deepEqual(good.codes, []);
+  const source = good.facts.documents.find(document => document.iteratorDeclarations.length)!;
+  assert.equal(source.parameterCompleteness, 'complete');
+  assert.deepEqual(source.parameters.map(parameter => parameter.name), ['items']);
+  assert.equal(source.iteratorDeclarations[0]!.declaration!.index, 'i');
+  for (const invalid of ['for:', 'for:item:', 'for:item:item', 'for:item:i:extra']) {
+    const result = inspect(application('<main/>', definition(body.replace('for:item:i', invalid))));
+    assert.ok(result.codes.includes('HSON_PART_REFERENCE_INVALID'));
+    assert.ok(result.slices.includes(invalid));
+  }
+  const outside = inspect(application('<main/>', definition(body.replace('/>/>', '/> <b "#{item}"/>/>'))));
+  assert.deepEqual(outside.codes, ['HSON_PART_REFERENCE_INVALID']); assert.deepEqual(outside.slices, ['"#{item}"']);
+  const shadow = inspect(application('<main/>', definition('<ul hson:part items:data="%{items}" <li for:item="#{items}" <b for:item:i="#{item.children}" "#{item.name}:#{i}"/> "#{item.title}"/>/>')));
+  assert.deepEqual(shadow.codes, []);
+  const unused = inspect(application('<main/>', definition('<ul hson:part item:data="%{unused}" items:data="%{items}" <li for:item="#{items}" "#{item}"/>/>')));
+  assert.deepEqual(unused.codes, ['HSON_PART_REFERENCE_INVALID']);
+  assert.ok(unused.diagnostics[0]!.message.includes('Unused'));
+  const optionalShadow = '<ul hson:part part:optional x:data="%{unused}" items:data="%{items}" <li for:x="#{items}" "#{x}"/>/>';
+  const omitted = inspect(application('<hson-part lib="components" at="list" data:items="«»"/>', definition(optionalShadow)));
+  assert.deepEqual(omitted.codes, [], 'an inner alias use is not a use of the shadowed incoming parameter');
+  assert.deepEqual(omitted.facts.documents.find(document => document.iteratorDeclarations.length)!.parameters.find(parameter => parameter.name === 'unused')!.uses, []);
+  assert.deepEqual(inspect(application('<main/>', definition(body))).codes, [], 'repairs discard stale diagnostics');
+});
+check('quoted interpolation retains provable lexical errors and exact offending-use locations', () => {
+  const definition = (body: string) => '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
+  const prefix = '<ul hson:part class="${dynamic}" items:data="%{items}" ';
+  const good = inspect(application('<main/>', definition(prefix + '<li for:item:i="#{items}" "#{i}:#{item.title}"/>/>')));
+  assert.deepEqual(good.codes, []);
+  const invalid = inspect(application('<main/>', definition(prefix + '<li for:item:i="#{items}" "#{unknown}"/>/>')));
+  assert.deepEqual(invalid.codes, ['HSON_PART_REFERENCE_INVALID']);
+  assert.deepEqual(invalid.slices, ['"#{unknown}"']);
+  const sibling = inspect(application('<main/>', definition(prefix + '<li for:item="#{items}"/> <b "#{item}"/>/>')));
+  assert.deepEqual(sibling.slices, ['"#{item}"']);
+  const forwarded = inspect(application('<main/>', definition(prefix + '<hson-part for::items="#{items}" at="leaf" data:arg="#{items}"/>/>')));
+  assert.deepEqual(forwarded.codes, ['HSON_PART_REFERENCE_INVALID']);
+  assert.equal(forwarded.diagnostics[0]!.start, forwarded.text.indexOf('data:arg="#{items}"') + 'data:arg='.length);
+  const fragmented = inspect(application('<main/>', definition(prefix + '<li for:item="#{items}" title="#{unk${dynamic}nown}" "${dynamic}"/>/>')));
+  assert.deepEqual(fragmented.codes, [], 'a dynamic value cannot manufacture a provable reference');
+  const opaque = inspect(application('<main/>', definition('<ul hson:part ${dynamic} <li for:item="#{items}" "#{unknown}"/>/>')));
+  assert.deepEqual(opaque.codes, [], 'structural slots withhold lexical proof');
+  const dynamicSource = inspect(application('<main/>', definition('<ul hson:part items:data="%{items}" <li for:item="${dynamic}" "#{item}"/>/>')));
+  assert.deepEqual(dynamicSource.codes, [], 'an interpolated directive source cannot prove invalid syntax');
+  assert.deepEqual(inspect(application('<main <li for:item="${dynamic}"/>/>')).codes, ['HSON_PART_REFERENCE_INVALID'], 'ordinary Document placement is invalid regardless of its source value');
+});
+check('Part conflicts retain the offending attribute through unrelated interpolation and repeated spellings', () => {
+  const definition = (body: string) => '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
+  for (const unrelated of ['', ' class="${dynamic}"']) {
+    for (const [body, attribute, message] of [
+      [`<ul hson:part${unrelated} items:data="%{items}" title="%{items}" <li for:item="#{items}" "#{item}"/>/>`, 'title', 'Conflicting Part input "items".'],
+      [`<ul hson:part${unrelated} items:data="%{items}" extra:data="%{items}" title="%{items}" <li for:item="#{items}" data-extra="#{extra[0]}" "#{item}"/>/>`, 'title', 'Conflicting Part input "items".'],
+      [`<ul hson:part${unrelated} items:data="%{items}" items:doc="%{other}" <hson-part #{items}/>/>`, 'items:doc', 'Conflicting Part local binding "items".'],
+      [`<ul hson:part${unrelated} items:data="%{items}" content:doc="%{items}" <li for:item="#{items}" "#{item}"/> <hson-part #{content}/>/>`, 'content:doc', 'Conflicting Part input "items".'],
+    ]) {
+      const result = inspect(application('<main/>', definition(body)));
+      const value = attribute === 'items:doc' ? '"%{other}"' : '"%{items}"';
+      const start = result.text.indexOf(`${attribute}=${value}`) + attribute.length + 1;
+      assert.deepEqual(result.diagnostics.filter(diagnostic => diagnostic.message === message), [{
+        file: file('app.ts'), start, end: start + value.length, code: 'HSON_PART_REFERENCE_INVALID', message,
+      }], body);
+      const source = result.facts.documents.find(document => document.partDeclarations.length > 0);
+      assert.ok(source);
+      assert.equal(source.parameterCompleteness, 'unknown');
+      if (unrelated) assert.equal(source.admission, 'unknown');
+    }
+  }
+});
+check('Part conflict provenance does not upgrade incomplete or dynamically authored evidence', () => {
+  const definition = (body: string) => '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
+  for (const body of [
+    '<ul hson:part items:data="%{items}" title="%{items}',
+    '<ul hson:part ${dynamic} items:data="%{items}" title="%{items}" <li for:item="#{items}" "#{item}"/>/>',
+    '<ul hson:part items:data="${dynamic}" title="%{items}" <li for:item="#{items}" "#{item}"/>/>',
+    '<ul hson:part items:data="%{items}" title="%{it${dynamic}ems}" <li for:item="#{items}" "#{item}"/>/>',
+  ]) {
+    const result = inspect(application('<main/>', definition(body)));
+    assert.deepEqual(result.codes, [], body);
+    const source = result.facts.documents.find(document => document.partDeclarations.length > 0);
+    assert.ok(source);
+    assert.equal(source.parameterCompleteness, 'unknown');
+  }
+});
+check('iterator directives diagnose known ordinary Document receivers without interpreting literal text', () => {
+  for (const body of ['<main <li for:item="#{items}"/>/>', '<main for:item="#{items}"/>', '<main <li for:item:item="#{items}"/>/>']) {
+    const result = inspect(application(body));
+    assert.deepEqual(result.codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.ok(result.slices[0]!.startsWith('for:'));
+  }
+  assert.deepEqual(inspect(application('<main title="for:item" "for:item=\\"#{literal}\\""/>')).codes, []);
+  assert.deepEqual(inspect(imports + 'const unconnected = Hson.document`<main <li for:item="#{items}"/>/>`;').codes, []);
+});
 service.dispose();
 events.terminal("pass");

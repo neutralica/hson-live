@@ -1,3 +1,4 @@
+import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
 import { validate_part_definition_flags } from "../../internal/part-definition.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
@@ -61,6 +62,7 @@ export function assert_data_library_validation(validation: DataLibraryValidation
 export function validate_part_collection(value: OrderedProjectedValue): readonly ValidatedPart[] {
   if (!is_ordered_projected_object(value)) throw new TypeError("Part collection requires a string-keyed data object.");
   return Object.freeze(value.entries.map(([key, member]): ValidatedPart => {
+    assert_hson_identifier_name(key, "Part");
     if (!is_ordered_projected_object(member)) throw new TypeError("Part requires a data record.");
     const fields = new Map(member.entries);
     if (fields.size < 2 || fields.size > 4 || [...fields.keys()].some(name => name !== "kind" && name !== "document" && name !== "css" && name !== "stylesheet")

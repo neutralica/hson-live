@@ -136,8 +136,13 @@ removal and inline style storage have separate contracts in the
 
 ## Parameters
 
-Connectors must be empty. Every attribute other than `lib` and `at` is a named
-initial parameter. Names match `[A-Za-z_][A-Za-z0-9_-]*`. Values are supported
+Descendant elements and ordinary Part connectors also support
+[structural array iteration](part-array-iteration.md). Its `for:` declaration
+is consumed before connector argument classification or canonical publication.
+
+Connectors must be empty. Coordinates and construction directives are reserved;
+the remaining attributes supply named initial parameters. Names match
+`[A-Za-z_][A-Za-z0-9_-]*`. Scalar values are supported
 canonical scalars: string, finite number, boolean or null. Structural values,
 arrays, opaque objects and undefined are rejected, including structured `style`
 inputs. Missing parameters, unused/unknown inputs and malformed `%{name}` tokens

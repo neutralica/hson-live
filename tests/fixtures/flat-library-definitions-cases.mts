@@ -32,6 +32,23 @@ async function rejected(locus: Locus, definitions: unknown) {
   } finally { stop(); }
 }
 export async function flat_library_definition_cases() {
+  for (const name of ["a/b", "/a", "a/", "a//b"]) {
+    for (const definition of [{ data: 1 }, { document: "<main/>" }, { parts: components }]) {
+      assert.throws(() => hsonLiveMap.fromLibraries({ [name]: definition }), /Library name .*must not contain/);
+      assert.throws(() => hsonLiveMap.locus.create({ [name]: definition }), /Library name .*must not contain/);
+    }
+    const map = hsonLiveMap.fromLibraries({ valid: { data: 1 } });
+    const before = map.capture();
+    assert.throws(() => map.addLibraries({ earlier: { data: 1 }, [name]: { data: 2 } }), /Library name .*must not contain/);
+    assert.deepEqual(map.capture(), before);
+    assert.throws(() => map.data(name), /Library name .*must not contain/);
+    const locus = hsonLiveMap.locus.create({ valid: { data: 1 } });
+    await rejected(locus, { earlier: { data: 1 }, [name]: { data: 2 } });
+    locus.dispose();
+  }
+  const literalNames = hsonLiveMap.fromLibraries({ "a\\b": { data: 1 }, "a%2Fb": { data: 2 } });
+  assert.equal(literalNames.data.must("a\\b").snap(), 1);
+  assert.equal(literalNames.data.must("a%2Fb").snap(), 2);
   const minimal = hsonLiveMap.locus.create({ first: { data: 1 } });
   assert.equal(await minimal.admit({ page: { document: "<main/>" } }), undefined);
   assert.equal(minimal.doc.must("page").render(), "<main></main>");

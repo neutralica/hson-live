@@ -1,5 +1,28 @@
 import type ts from "typescript";
 import { hson_source_alias_eligible, hson_source_syntactic_eligibility, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { resolve_immutable_schema } from "./schema-identity.js";
+import { discover_hson_schema_declarations, type DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
+
+/** Advisory Schema provenance shared by Data and Part completion. An annotation
+ * supplies authoring context, not a runtime input contract or assignment proof.
+ * Callers may reuse declaration discovery within this exact source program. */
+export function annotated_data_schema_source(typescript: typeof ts, program: ts.Program, checker: ts.TypeChecker,
+  type: ts.TypeNode, eligible = hson_source_syntactic_eligibility(typescript, program),
+  declarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>()): string | undefined {
+  const annotation = resolve_hson_schema_annotation(typescript, checker, type, eligible);
+  if (annotation?.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return undefined;
+  return resolve_immutable_schema(typescript, checker, annotation.schema, producer => {
+    const file = producer.getSourceFile();
+    if (file.isDeclarationFile || program.isSourceFileFromExternalLibrary(file)
+      || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) return undefined;
+    let entries = declarations.get(file);
+    if (entries === undefined) {
+      entries = discover_hson_schema_declarations(typescript, file, checker, eligible);
+      declarations.set(file, entries);
+    }
+    return entries.find(found => found.declaration === producer && found.eligible)?.source;
+  }, new Set(), eligible, "type-query");
+}
 
 export type HsonSchemaAnnotation = Readonly<{
   kind: "data" | "document" | "hson" | "projected";

@@ -1,3 +1,4 @@
+import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
 import { hson_schema_digest } from "../schema/hson-schema.js";
@@ -187,6 +188,7 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
       || typeof value.fingerprint !== "string" || value.rootCodec !== "hson-exact-value") {
       throw new Error("Local initializer is malformed.");
     }
+    assert_hson_identifier_name(value.name, "Library");
     names.add(value.name);
     const schema = HsonSchema.fromHson(value.schema);
     const schemaSource = schema.toHson();

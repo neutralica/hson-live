@@ -19,6 +19,7 @@ import { livemap_document_identity_effects_for, type LiveMapDocumentIdentityEffe
 import type { HsonNode } from "../../src/core/types.ts";
 import type { LiveMap, LiveMapDocumentLibrary, LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 import { styled_composition_cases } from "./livemap-styled-composition-cases.mts";
+import { part_iteration_cases } from "./part-iteration-cases.mts";
 import { document_css_state_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { document_css_subject_identities } from "../../src/internal/css/css-identity-translation.ts";
 import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
@@ -53,6 +54,7 @@ function leaves(root: HsonNode): readonly unknown[] {
   return root.$_tag === STR_TAG || root.$_tag === VAL_TAG ? root.$_content : root.$_content.flatMap(child => is_Node(child) ? leaves(child) : [child]);
 }
 export function document_composition_cases(check: (name: string, run: () => void) => void) {
+  part_iteration_cases(check);
   check("Part declaration: mandatory root flag, retained source, deferred write and canonical removal", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<button hson:part @:root "%{label}"/>', ':scope{color:red}') } },
       page: { document: '<main/>' } });
@@ -613,7 +615,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     }
   });
 
-  for (const batch of [false, true]) check(`${batch ? "batch" : "direct"} equal Part replacement retires addressed identity and preserves unaddressed no-ops`, () => {
+  for (const batch of [false, true]) check(`${batch ? "batch" : "direct"} equal Part replacement retires addressed identity and renews occurrence ownership`, () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: part('<button hson:part/>'), styled: part('<button hson:part/>', 'button{color:red}') } },
       page: { document: '<button @:keep/>' } });
     const page = doc(map), aggregate = owner(map), id = aggregate.libraries()[1]!, old = page.q("keep")!;
@@ -625,11 +627,13 @@ export function document_composition_cases(check: (name: string, run: () => void
     };
     assert.equal(replace("plain").changed, true); assert.equal(old.active, false); assert.equal(page.q("keep"), undefined);
     assert.equal(aggregate.documentOverlay(id).pathForQuid(oldQuid), undefined); assert.deepEqual(page.root(), graph);
-    assert.equal(replace("plain").changed, false); assert.equal(map.rev, 1);
-    assert.equal(replace("styled").changed, true); assert.equal(map.rev, 2); assert.match(page.css.snapshot(), /color:red/);
+    const first = aggregate.documentScopes(id)!.occurrences[0]!;
+    assert.equal(replace("plain").changed, true); assert.equal(map.rev, 2);
+    assert.notEqual(aggregate.documentScopes(id)!.occurrences[0]!.lifetime, first.lifetime);
+    assert.equal(replace("styled").changed, true); assert.equal(map.rev, 3); assert.match(page.css.snapshot(), /color:red/);
     const styledQuid = aggregate.documentOverlay(id).quidAtPath(validate_document_path([0]))!;
     assert.ok(styledQuid); assert.notEqual(styledQuid, oldQuid); assert.deepEqual(page.root(), graph);
-    assert.equal(replace("plain").changed, true); assert.equal(map.rev, 3); assert.equal(page.css.snapshot(), "");
+    assert.equal(replace("plain").changed, true); assert.equal(map.rev, 4); assert.equal(page.css.snapshot(), "");
     assert.equal(aggregate.documentOverlay(id).pathForQuid(styledQuid), undefined); assert.deepEqual(page.root(), graph);
     assert.ok(aggregate.identityEpoch().issued().has(oldQuid)); assert.ok(aggregate.identityEpoch().issued().has(styledQuid));
   });
@@ -656,7 +660,7 @@ export function document_composition_cases(check: (name: string, run: () => void
         :doc(map).document.content.replace({kind:"path",path:[]},0,replacement);
     };
     const exhausted=fixture();allocator(owner(exhausted).identityEpoch().owner,()=>"invalid");
-    try{atomic(exhausted,()=>replace(exhausted),/No available destination QUID for Part CSS subject/);}finally{allocator(owner(exhausted).identityEpoch().owner,undefined);}
+    try{atomic(exhausted,()=>replace(exhausted),/No available destination QUID for scoped composition/);}finally{allocator(owner(exhausted).identityEpoch().owner,undefined);}
     const coexist=fixture('@keyframes clash{from{opacity:0}}');doc(coexist).css.stylesheet('@keyframes clash{from{opacity:1}}');
     assert.equal(replace(coexist).changed,true);assert.equal(doc(coexist).css.keyframes.has('clash'),false);
     const managed=fixture(),manager={};owner(managed).claimManagement(manager);
@@ -670,7 +674,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   });
 
   check("Part collections are inert; authored documents eagerly realize nested exact coordinates", () => {
-    const key = 'n/a "& 雪', lib = 'p/art 雪';
+    const key = 'na "& 雪', lib = 'part 雪';
     const map = hsonLiveMap.fromLibraries({
       [lib]: { parts: { [key]: part('<nav hson:part @:local <hson-part at="leaf" value="%{value}"/>/>'), leaf: part('<button hson:part @:local "%{value}"/>'),
         missing: part('<p hson:part <hson-part lib="absent" at="x"/>/>') } },
@@ -821,8 +825,8 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     });
   check("retained structural coverage: forest coordinates exact cross-collection context and one read per pair", () => {
     const selected = source('<button/>'); let reads = 0;
-    const result = expand_document_composition("shell", () => source('"before" <i @:before/> <main @:page <hson-part @:one lib="a/b" at=""/> <hson-part @:two lib="a/b" at=""/> <footer @:tail/>/> <b @:after/> "after"'), document_composition_options(undefined),
-      (lib, at) => { assert.equal(lib, "a/b"); assert.equal(at, ""); reads++; return selected; });
+    const result = expand_document_composition("shell", () => source('"before" <i @:before/> <main @:page <hson-part @:one lib="ab" at=""/> <hson-part @:two lib="ab" at=""/> <footer @:tail/>/> <b @:after/> "after"'), document_composition_options(undefined),
+      (lib, at) => { assert.equal(lib, "ab"); assert.equal(at, ""); reads++; return selected; });
     assert.equal(reads, 1);
     assert.deepEqual(result.quads, [{name:"after",path:[3]}, {name:"before",path:[1]}, {name:"one",path:[2,0,0]}, {name:"page",path:[2]}, {name:"tail",path:[2,0,2]}, {name:"two",path:[2,0,1]}]);
     assert.deepEqual(leaves(result.root), ["before", "after"]);
@@ -963,7 +967,8 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
       const main=graph.$_content[0];if(!is_Node(main)||!is_Node(main.$_content[0]))throw Error("main");
       const [a,b]=main.$_content[0].$_content;if(!is_Node(a)||!is_Node(b))throw Error("links");
       assert.notEqual(a,b);assert.notEqual(a.$_attrs,b.$_attrs);assert.notEqual(a.$_attrs?.style,b.$_attrs?.style);assert.notEqual(a.$_content,b.$_content);
-      assert.throws(()=>doc(map).document.attrs.set({kind:"path",path:[0,0,0]},'title','Edited'),/complete scoped effects/);
+      doc(map).document.attrs.set({kind:"path",path:[0,0,0]},'title','Edited');
+      assert.equal(doc(map).document.attrs.get({kind:"path",path:[0,0,0]},'title'),'Edited');
       assert.equal(doc(map).document.attrs.get({kind:"path",path:[0,0,1]},'title'),undefined);
       if(css === undefined){assert.equal(doc(map).render(),realize_document(doc(map).root(),[]));assert.match(doc(map).render(),/color.*blue/);}
       else {assert.equal(doc(map).css.snapshot(),[css,css].join("\n\n"));assert.throws(()=>doc(map).render());}

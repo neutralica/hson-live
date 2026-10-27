@@ -1,3 +1,4 @@
+import { assert_hson_identifier_name } from "../core/hson-name.js";
 /** Shared capability/protocol exclusions, including capabilities absent in some contexts. */
 export const PARTS_FACADE_RESERVED = [
   "family", "mode", "rev", "root", "snap", "hson", "must", "at", "schema", "source", "css",
@@ -20,6 +21,7 @@ export function make_parts_facade<T extends { at(path: readonly string[]): unkno
       if (typeof key !== "string" || Reflect.has(target, key) || reserved.has(key)) {
         return Reflect.get(target, key, receiver);
       }
+      assert_hson_identifier_name(key, "Part");
       if (!exists(key)) throw new Error(`Unknown Part member ${JSON.stringify(key)}.`);
       return target.at([key]);
     },

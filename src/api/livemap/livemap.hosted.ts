@@ -1,3 +1,5 @@
+import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
+import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { is_flat_document_effect, validate_flat_document_effect, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
 import { decode_document_scoped_library, own_document_scopes, own_topology_document_scopes } from "./livemap.document.scoped-portable.js";
 import { decode_document_scoped_operation, scoped_effect_matches_operation, portable_document_scoped_effect, encode_document_scoped_effects, validate_document_scoped_effects, type DocumentScopedEffect } from "./livemap.document.scoped-effects.js";
@@ -216,7 +218,7 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
     const { name, scope, mode, schema } = binding;
     const validation = own_data_library_validation(binding);
     assert_data_library_validation(validation, mode, scope);
-    must_library_name(name);
+    must_library_name(name, scope);
     if (names.has(name)) throw new HostedAggregateRepresentationError(`Hosted Library name ${JSON.stringify(name)} is duplicated.`);
     names.add(name);
     if (scope !== undefined && scope !== "hson-internal") {
@@ -867,6 +869,7 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   }
   for (const entry of registry.libraries) {
     const item = exact_record(entry, "Hosted registry entry");
+    if (typeof item.name === "string") assert_library_identifier(item.name, item.scope);
     exact_keys(item, ["name", "mode", "schema", "schemaDigest", "rootCodec",
       ...(Object.hasOwn(item, "scope") ? ["scope"] : []), ...(Object.hasOwn(item, "validation") ? ["validation"] : [])], "Hosted registry entry");
     const scope = Object.getOwnPropertyDescriptor(item, "scope");
@@ -1173,7 +1176,13 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
   });
 }
 
-function must_library_name(name: string): void {
+function assert_library_identifier(name: string, scope: unknown): void {
+  if (scope === "hson-internal" && name === INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME) return;
+  assert_hson_identifier_name(name, "Library");
+}
+
+function must_library_name(name: string, scope: unknown): void {
+  if (typeof name === "string") assert_library_identifier(name, scope);
   if (typeof name !== "string" || name.length === 0 || encoder.encode(name).byteLength > HOSTED_MAX_LIBRARY_NAME_BYTES) {
     throw new HostedAggregateRepresentationError("Hosted Library name is empty or exceeds its UTF-8 byte bound.");
   }

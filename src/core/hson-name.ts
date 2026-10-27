@@ -53,3 +53,8 @@ export function quote_hson_name(value: string): string {
 export function serialize_hson_name(value: string): string {
   return is_bare_hson_name(value) ? value : quote_hson_name(value);
 }
+
+/** Require an individual Library or Part identifier, not a path. */
+export function assert_hson_identifier_name(value: string, category: "Library" | "Part"): void {
+  if (value.includes("/")) throw new TypeError(`${category} name ${JSON.stringify(value)} must not contain "/".`);
+}

@@ -150,8 +150,6 @@ export type LiveMapLibraryState = {
   readonly mode: LiveMapRootMode;
   root: HsonNode;
   documentOverlay?: LiveMapDocumentIdentityOverlay;
-  /** Unscoped construction has no occurrence evidence; scoped admission must reject. */
-  documentScopesUnavailable?: true;
   /** Private hosted state, installed with graph, identity and CSS. */
   documentScopes?: import("./livemap.document.scoped-quad.js").DocumentScopedQuads;
   /** Library-local authored names bound only to legitimate runtime subjects. */

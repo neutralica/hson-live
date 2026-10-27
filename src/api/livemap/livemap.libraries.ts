@@ -1,3 +1,4 @@
+import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { selector_for_quid } from "../livetree/managers/css-render.js";
 import { assert_part_public_path } from "../../core/part-css-access.js";
 import { normalize_part_css_authoring, part_object_boundary } from "../../core/part-css-authoring.js";
@@ -158,6 +159,7 @@ function capture_library_definitions(definitions: readonly CanonicalLibraryDefin
   const names = new Set<string>();
   return definitions.map((definition) => {
     const { name, family, schema, root } = definition;
+    if (typeof name === "string") assert_hson_identifier_name(name, "Library");
     const quads = own_document_quads(definition);
     const validation = own_data_library_validation(definition);
     if (typeof name !== "string" || name === INTERACTION_RESERVED_LIBRARY_KEY || names.has(name)) {
@@ -537,6 +539,7 @@ export function admit_public_livemap_definitions(inputs: unknown, hosted = false
   const ownership: Record<string, "private" | "shared"> = Object.create(null);
   for (const name of Reflect.ownKeys(inputs)) {
     if (typeof name !== "string" || hosted && name.length === 0) throw new TypeError("Invalid Library name.");
+    assert_hson_identifier_name(name, "Library");
     const input = must_library_input(name, inputs[name], { hosted, css, ownership });
     definitions[name] = Object.hasOwn(input, "document") && typeof input.document !== "string"
       ? Object.freeze(Object.assign(Object.create(null), input, { document: admit_public_livemap_root(input.document, "document", `Library ${name}`) }))
@@ -909,6 +912,8 @@ function make_livemap_library_receiver(
   const readPart = (collection: string, member: string): ValidatedPart => {
     const checkCapture = aggregate.captureFence();
     if (typeof member !== "string") throw new TypeError("Part member key must be a string.");
+    assert_hson_identifier_name(collection, "Library");
+    assert_hson_identifier_name(member, "Part");
     const entry = named.get(collection);
     const contract = aggregate.hostedRegistry().libraries.find(candidate => candidate.name === collection);
     if (entry === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
@@ -1772,6 +1777,7 @@ function must_library_input(name: string, value: unknown, metadata?: {
   css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord>;
   ownership: Record<string, "private" | "shared">;
 }): NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
+  assert_hson_identifier_name(name, "Library");
   if (name === INTERACTION_RESERVED_LIBRARY_KEY) {
     throw new Error(`LiveMap Library name ${JSON.stringify(name)} is reserved for system state.`);
   }

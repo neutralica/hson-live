@@ -3,9 +3,8 @@ import { create_hson_source_program, discover_hson_tagged_templates, hson_source
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
 import { query_hson_editor_context, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
 import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
-import { resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
-import { resolve_immutable_schema } from "../../../src/internal/hson-schema/schema-identity.js";
-import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
+import { annotated_data_schema_source, resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
+import type { DiscoveredHsonSchemaDeclaration } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { schema_reference_completion } from "./hson-schema-symbols.js";
 import type { HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { collect_part_source_facts, part_write_context, type PartSourceFacts } from "../../../src/internal/hson-schema/part-source.js";
@@ -13,7 +12,7 @@ import { collect_part_source_facts, part_write_context, type PartSourceFacts } f
 export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>; isSnippet?: true }>;
 type CachedDocument = Readonly<{
   version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult;
-  schemaDeclarations: Map<ts.SourceFile, ReturnType<typeof discover_hson_schema_declarations>>;
+  schemaDeclarations: Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>;
   eligible: (node: ts.Node) => boolean;
 }>;
 
@@ -132,17 +131,7 @@ export class HsonEditorCompletionCache {
     const annotation = resolve_hson_schema_annotation(ts, document.checker, declaration.type, document.eligible);
     if (annotation === undefined) return undefined;
     if (annotation.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return null;
-    const source = resolve_immutable_schema(ts, document.checker, annotation.schema, producer => {
-      const file = producer.getSourceFile();
-      if (file.isDeclarationFile || document.program.isSourceFileFromExternalLibrary(file)
-        || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) return undefined;
-      let declarations = document.schemaDeclarations.get(file);
-      if (declarations === undefined) {
-        declarations = discover_hson_schema_declarations(ts, file, document.checker, document.eligible);
-        document.schemaDeclarations.set(file, declarations);
-      }
-      return declarations.find(found => found.declaration === producer && found.eligible)?.source;
-    }, new Set(), document.eligible, "type-query");
+    const source = annotated_data_schema_source(ts, document.program, document.checker, declaration.type, document.eligible, document.schemaDeclarations);
     if (source === undefined) return null;
     const raw = source;
     if (!this.schemas.has(raw)) {

@@ -220,7 +220,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/browser/canonical-interactions.acceptance.html","browser-runner"],["tests/browser/canonical-interactions.entry.mjs","browser-runner"]], sources: [["tests/browser/canonical-interactions.acceptance.html","c3991e5acf42a7b00183e725e330bb27e4f2687daeccf4f6412de160b24d893b"]] },
   "scripts/run-document-ssr-browser.mjs": { sha256: "f1262296748b9e04c876d047eb4462d70ee87d80df669ff39d4fc58128739bdd", route: browserRoute,
     targets: [["tests/browser/document-ssr.acceptance.html","browser-runner"],["tests/browser/document-ssr.entry.mjs","browser-runner"]], sources: [["tests/browser/document-ssr.acceptance.html","c96e5824cca7cfec31acab8d62e9dd42822cd08a377c0bdfa397cb8e7df6c44b"]] },
-  "scripts/run-document-ssr-subjects-browser.mjs": { sha256: "c5ae1f58f8993d56d3c7e28355dfcc244fd54f0216924d9f9e52bb0d0635ad7a", route: browserRoute,
+  "scripts/run-document-ssr-subjects-browser.mjs": { sha256: "58c605e3533abac2df16e690d6994debaa546ed48eb5d929fda44128bfa1bc58", route: browserRoute,
     targets: [["tests/browser/document-portable-graft.entry.mjs","browser-runner"]], sources: [] },
   "scripts/run-echo-http-browser.mjs": { sha256: "e66a9f4f2f78446b36f174d59f47ac2c92fb44135fadb8b4ec40bfa83e84dc89", route: browserRoute,
     targets: [["tests/browser/echo-http.entry.mjs","browser-runner"],["tests/browser/echo-http.acceptance.html","browser-runner"]], sources: [["tests/browser/echo-http.acceptance.html","fa40a5fe7f90958e4da4804434139b705f058fb1d24467395949329a5ca34020"]] },

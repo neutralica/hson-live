@@ -35,6 +35,8 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
     // Grammar and declared-name conflicts are local facts; they require no receiver shape.
     const isDefinition = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
       && library.members.some(member => member.documents.includes(document))));
+    const ordinaryReceiver = !isDefinition && document.receivers.some(receiver => receiver.library?.family === "document"
+      && (receiver.certainty === "certain" || receiver.placementCertain));
     for (const flag of document.partDeclarations) {
       if (flag.issue !== undefined) report(flag.location, "HSON_PART_DECLARATION_INVALID", flag.issue);
       else if (!isDefinition && document.receivers.some(receiver => receiver.certainty === "certain" && receiver.library?.family === "document")) {
@@ -49,6 +51,10 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       else if (!isDefinition && document.receivers.some(receiver => receiver.certainty === "certain" && receiver.library?.family === "document")) {
         report(flag.location, "HSON_PART_OPTIONAL_INVALID", "part:optional is only allowed within a governed Part definition.");
       }
+    }
+    for (const iterator of document.iteratorDeclarations) {
+      if (isDefinition && iterator.issue !== undefined || ordinaryReceiver) report(iterator.location, "HSON_PART_REFERENCE_INVALID",
+        iterator.issue ?? "Part iteration is only allowed within a governed Part definition.");
     }
     if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message);
     if (document.admission === "qualified") for (const connector of document.connectors) {

@@ -16,6 +16,8 @@ import { document_css_subject_identities } from "../src/internal/css/css-identit
 import { encode_portable_document_stylesheet, decode_portable_document_stylesheet, render_portable_document_stylesheet_carriers } from "../src/internal/css/portable-document-stylesheet.ts";
 import { fixture as scoped_fixture, node as scoped_node } from "../tests/fixtures/locus-scoped-ssr-cases.mts";
 import { hosted_flat_subject_fixture } from "../tests/fixtures/hosted-styled-part-ssr-cases.mts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
+import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../src/api/livemap/livemap.libraries.ts";
 
 // Source-only Chrome acceptance: no build and no writes to tracked distribution.
 const fixture = ssr_subject_fixture();
@@ -38,6 +40,24 @@ selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", doc
 selectorPage.q("ancestor").delete();
 selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
 const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
+const iteration = hsonLiveMap.fromLibraries({ parts: { parts: {
+  Column: { kind: 'document', document: '<section hson:part items:data="%{items}" <hson-part for:item:i="#{items}" at="#{item.kind}" data:item="#{item}"/> <ul <li for:label="#{items[0].labels}" "#{label}"/>/>/>', css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
+  Heading: { kind: 'document', document: '<h1 hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'red' } },
+  Text: { kind: 'document', document: '<p hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'blue' } },
+} }, page: { document: Hson.document`<html <head/> <body <hson-part lib="parts" at="Column" data:items="${Hson.data.from([
+  { kind: 'Heading', id: 'iter-heading', text: 'Heading', labels: ['alpha', 'beta'] }, { kind: 'Text', id: 'iter-text', text: 'Body' },
+])}"/> <p class="content" id="iter-outside" "Outside"/>/>/>` } });
+const iterationOwner = internal_livemap_aggregate_authority(iteration);
+const iterationPages = new Map([['/iteration', iteration.doc.page.render()], ['/iteration-restored',
+  make_livemap_mirror_from_semantic_checkpoint_internal(iterationOwner.captureSemanticCheckpoint()).doc.must('page').render()]]);
+const iterationManager = {};
+iterationOwner.claimManagement(iterationManager);
+try {
+  const target = { kind: 'path', path: [0, 0, 1, 0, 0, 0] };
+  iterationOwner.accept(iterationOwner.prepareManaged(iterationManager, [{ kind: 'graph', target: iterationOwner.target(iterationOwner.libraries()[1], target.path),
+    operation: { domain: 'graph', op: 'remove-content', target, index: 0 } }], true));
+  iterationPages.set('/iteration-retired', iteration.doc.page.render());
+} finally { iterationOwner.releaseManagement(iterationManager); }
 // Keep the flat first-paint acceptance alongside genuine hosted scoped output.
 const hosted = await hosted_flat_subject_fixture();
 const scoped = await scoped_fixture();
@@ -76,6 +96,7 @@ function assert_ordinary_rule_order(css) {
 try {
   server = createServer((request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    if (iterationPages.has(request.url)) { response.end(iterationPages.get(request.url)); return; }
     const scopedPage = scopedPages.get(request.url);
     if (scopedPage) { response.end(scopedPage.html.replace("</body>", '<script>document.documentElement.dataset.executed="yes"</script></body>')); return; }
     if (request.url === "/graft") { response.end("<!doctype html><html><head></head><body></body></html>"); return; }
@@ -126,6 +147,27 @@ try {
     assert.equal(result.exceptionDetails,undefined,JSON.stringify(result.exceptionDetails));
     return result.result.value;
   };
+  for (const path of iterationPages.keys()) {
+    await command('Page.navigate', { url: new URL(path, url).href });
+    let loaded = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      loaded = await evaluate(`document.readyState === 'complete' && location.pathname === ${JSON.stringify(path)} && !!document.getElementById('iter-outside')`);
+      if (loaded) break;
+      await delay(20);
+    }
+    assert.ok(loaded);
+    const evidence = await evaluate(`(() => {
+      const heading = document.getElementById('iter-heading'), text = document.getElementById('iter-text');
+      return { heading: heading && getComputedStyle(heading).color, text: getComputedStyle(text).color,
+        padding: getComputedStyle(text).paddingLeft, outside: getComputedStyle(document.getElementById('iter-outside')).paddingLeft,
+        labels: [...document.querySelectorAll('li')].map(li => [li.textContent, getComputedStyle(li).marginLeft]),
+        children: [...document.querySelector('section').children].map(node => node.tagName),
+        controls: [...document.querySelectorAll('*')].some(node => [...node.attributes].some(attr => attr.name.startsWith('for:'))) };
+    })()`);
+    assert.deepEqual(evidence, { heading: path.endsWith('retired') ? null : 'rgb(255, 0, 0)', text: 'rgb(0, 0, 255)', padding: '7px', outside: '0px',
+      labels: [['alpha', '9px'], ['beta', '9px']], children: path.endsWith('retired') ? ['P', 'UL'] : ['H1', 'P', 'UL'], controls: false });
+    console.log(`Chrome structural iteration ${path}: ${JSON.stringify(evidence)}`);
+  }
   for (const path of optionalPages.keys()) {
     await command("Page.navigate", {url:new URL(path,url).href});
     let loaded = false;

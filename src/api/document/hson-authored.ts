@@ -8,21 +8,22 @@ import { scan_ingested_hson_node_quids } from "../transform/utils/hson-utils/qui
 import { serialize_hson_authored_document_content } from "../transform/serializers/serialize-hson.js";
 import type { Tokens } from "../transform/token.types.js";
 import type { HsonAuthored } from "../transform/transform.types.js";
+import type { HsonSourceProvenanceBuilder } from "../../internal/hson-source-provenance/hson-source-provenance.js";
 
 /** @internal No owner or identity issuance: declarations belong to this one operation. */
-export function qualify_authored_document_source(source: string, quads: Map<HsonNode, string>): HsonNode {
-  const root = parse_hson_source(source, split_attrs_meta, { allowTopLevelDocumentText: true }, undefined, false,
+export function qualify_authored_document_source(source: string, quads: Map<HsonNode, string>, provenance?: HsonSourceProvenanceBuilder): HsonNode {
+  const root = parse_hson_source(source, split_attrs_meta, { allowTopLevelDocumentText: true }, provenance, false,
     (node, declaration) => { quads.set(node, declaration.value); });
   return qualify_hson_document_root(root);
 }
 
 /** @internal Slots contain independently qualified document nodes and retain their associations. */
 export function assemble_authored_document(tokens: Tokens[], values: readonly (readonly HsonNode[])[],
-  quads: Map<HsonNode, string>,
+  quads: Map<HsonNode, string>, provenance?: HsonSourceProvenanceBuilder,
 ): HsonNode {
   reject_portable_quid_tokens(tokens);
   const root = assemble_hson_tokens(tokens, split_attrs_meta,
-    { allowTopLevelDocumentText: true, interpolation: { mode: "document", values } }, undefined,
+    { allowTopLevelDocumentText: true, interpolation: { mode: "document", values } }, provenance,
     (node, declaration) => { quads.set(node, declaration.value); });
   scan_ingested_hson_node_quids(root, "Hson.document");
   assert_invariants(root, "authored document template");

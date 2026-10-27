@@ -3,6 +3,30 @@ import type { HsonNode } from "../core/types.js";
 export const PART_OPTIONAL = "part:optional";
 export const PART_DECLARATION = "hson:part";
 
+/** Reserved construction syntax, classified before receiving/sending attributes. */
+export function is_part_iterator_attribute(name: string): boolean { return name.startsWith("for:"); }
+
+export type PartIteratorDeclaration = Readonly<{ attribute: string; item?: string; index?: string; source: PartReference }>;
+
+export function part_iterator_declaration(name: string, value: unknown): PartIteratorDeclaration {
+  const fields = name.split(":");
+  const item = fields[1], index = fields[2];
+  if (fields[0] !== "for" || fields.length < 2 || fields.length > 3
+    || item === undefined || (item !== "" && !is_part_parameter_name(item))
+    || (fields.length === 2 ? item === "" : index === undefined || !is_part_parameter_name(index))
+    || item === index) throw new TypeError("Part iteration requires for:item, for:item:index, or for::index with distinct valid aliases.");
+  const source = typeof value === "string" ? whole_part_reference(value) : undefined;
+  if (source?.namespace !== "local") throw new TypeError("Part iteration requires one whole local #{} Data reference.");
+  return { attribute: name, ...(item === "" ? {} : { item }), ...(index === undefined ? {} : { index }), source };
+}
+
+export function part_node_iterator(node: HsonNode): PartIteratorDeclaration | undefined {
+  const attributes = Object.entries(node.$_attrs ?? {}).filter(([name]) => is_part_iterator_attribute(name));
+  if (attributes.length > 1) throw new TypeError("An element may declare only one Part iterator.");
+  const attribute = attributes[0];
+  return attribute === undefined ? undefined : part_iterator_declaration(attribute[0], attribute[1]);
+}
+
 /** Valued spellings must be rejected before ordinary string-flag normalization. */
 export function part_declaration_issue(value: unknown, valued = false): string | undefined {
   return !valued && value === PART_DECLARATION ? undefined : "hson:part requires a flag, without a value.";
@@ -15,7 +39,7 @@ export function part_optional_issue(value: unknown): string | undefined {
 
 /** Connector coordinates are reserved; every other public attribute is an input. */
 export function is_part_argument_attribute(name: string): boolean {
-  return !name.startsWith("#{") && name !== "lib" && name !== "at" && name !== PART_OPTIONAL && name !== PART_DECLARATION;
+  return !is_part_iterator_attribute(name) && !name.startsWith("#{") && name !== "lib" && name !== "at" && name !== PART_OPTIONAL && name !== PART_DECLARATION;
 }
 
 export function is_part_parameter_name(name: string): boolean {
@@ -108,7 +132,7 @@ export function part_reference_text(reference: PartReference): string {
 
 /** Connector sending syntax wins for the deliberately valid data:data spelling. */
 export function is_part_receiving_attribute(tag: string, name: string): boolean {
-  return (name.endsWith(":data") || name.endsWith(":doc"))
+  return !is_part_iterator_attribute(name) && (name.endsWith(":data") || name.endsWith(":doc"))
     && !(tag.toLowerCase() === "hson-part" && (name.startsWith("data:") || name.startsWith("doc:")));
 }
 

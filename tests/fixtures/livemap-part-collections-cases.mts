@@ -39,7 +39,7 @@ import { validate_document_path } from "../../src/api/livemap/livemap.document.p
 
 const css = '@layer base{}@layer theme{}@property --tone{syntax:"<color>";inherits:false;initial-value:red}@layer base{article{color:var(--tone)}@media (min-width:1px){article>span{display:block}}}@keyframes pulse{from{opacity:0}to{opacity:1}}article{animation:pulse 1s}';
 const parts = () => ({
-  "first/β": { kind: "document" as const, document: '<article hson:part @:root <span @:label "First"/> <i/>/>', stylesheet: css },
+  "firstβ": { kind: "document" as const, document: '<article hson:part @:root <span @:label "First"/> <i/>/>', stylesheet: css },
   "二": { kind: "document" as const, document: '<a hson:part @:label href="/" "Second"/>', stylesheet: "" },
 });
 const definition = (parts: LiveMapPartCollection) => ({ parts });
@@ -212,7 +212,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     let attempts = 0;
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => { attempts++; throw Error("No Part identity allocation"); });
     try {
-      map.commits.observe(commit => { assert.ok(read(map, "collection", "first/β")); commits.push(commit); });
+      map.commits.observe(commit => { assert.ok(read(map, "collection", "firstβ")); commits.push(commit); });
       const commit = collect(map, "collection", parts());
       assert.equal(commit.rev, 1); assert.equal(commits.length, 1); assert.equal(commit.operations.length, 1);
       const op = commit.operations[0]!.operation;
@@ -227,13 +227,38 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.equal(aggregate.identityEpoch().issued().size, 0); assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()), []); assert.equal(attempts, 0);
     } finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
   });
+  await check("slash-bearing Part identifiers reject at admission, mutation and reads", () => {
+    const map = fixture();
+    for (const name of ["a/b", "/a", "a/", "a//b"]) {
+      const member = { kind: "document" as const, document: "<p hson:part/>" };
+      assert.throws(() => hsonLiveMap.fromLibraries({ collection: { parts: { [name]: member } } }), /Part name .*must not contain/);
+      atomic(map, () => data(map).at([]).replace({ good: member, [name]: member }), /Part name .*must not contain/);
+      assert.throws(() => read(map, "collection", name), /Part name .*must not contain/);
+      assert.throws(() => map.parts.must("collection").at([name]), /Part name .*must not contain/);
+    }
+    const ordinary = hsonLiveMap.fromLibraries({ data: { data: { "a/b": "https://example.test/a/b" } } });
+    assert.equal(ordinary.data.must("data").snap(["a/b"]), "https://example.test/a/b");
+    assert.throws(() => hsonLiveMap.fromLibraries({ collection: { parts: { ok: { kind: "document", document: "<p hson:part/>" } } },
+      page: { document: '<main <hson-part lib="collection" at="a/b"/>/>' } }), /Part name .*must not contain/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<main <hson-part lib="a/b" at="ok"/>/>' } }), /Library name .*must not contain/);
+  });
+  await check("portable names and governed member roots reject slash on reconstruction", () => {
+    const map = fixture(), snapshot = map.capture(), entry = snapshot.registry.libraries[0]!;
+    assert.throws(() => make_hosted_registry([{ name: "bad/name", mode: "data-object", schema: data(map).schema.get(), identity: {} }]), /Library name .*bad\/name/);
+    assert.throws(() => install_libraries_snapshot({ ...snapshot, registry: { ...snapshot.registry,
+      libraries: [{ ...entry, name: "bad/name" }] } }), /Library name .*bad\/name/);
+    const invalid = { ...snapshot, libraries: snapshot.libraries.map(item => ({ ...item,
+      root: encode_hosted_root(graph({ "bad/name": { kind: "document", document: "<p hson:part/>" } })) })) };
+    atomic(map, () => map.restore(invalid), /Part name .*bad\/name/);
+    assert.throws(() => install_libraries_snapshot(invalid), /Part name .*bad\/name/);
+  });
   await check("keys are ordinary data strings and local landmarks never synthesize a root name", () => {
     const map = hsonLiveMap.fromLibraries({ "arbitrary library": definition({
-      "slash/葉": { kind: "document", document: '<section hson:part <i @:label/>/>' },
+      "slash葉": { kind: "document", document: '<section hson:part <i @:label/>/>' },
       "1 non QUAD key": { kind: "document", document: '<a hson:part @:label/>' },
       controls: { kind: "document", document: '<b hson:part/>' }, button: { kind: "document", document: '<p hson:part/>' },
     }) });
-    assert.deepEqual(read(map, "arbitrary library", "slash/葉").quads, [{ name: "label", path: [0, 0, 0] }]);
+    assert.deepEqual(read(map, "arbitrary library", "slash葉").quads, [{ name: "label", path: [0, 0, 0] }]);
     assert.deepEqual(read(map, "arbitrary library", "1 non QUAD key").quads, [{ name: "label", path: [0] }]);
     assert.equal(read(map, "arbitrary library", "button").quads, undefined);
     assert.equal(owner(map).identityEpoch().issued().size, 0);
@@ -256,7 +281,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.equal(Hson.document`<p @:label/>`, "<p @:label/>");
   });
   await check("CSS keeps the full owned stylesheet including ordering-only layers properties and keyframes", () => {
-    const map = fixture(), part = read(map, "collection", "first/β");
+    const map = fixture(), part = read(map, "collection", "firstβ");
     assert.deepEqual(part.css, opaque_document_stylesheet(css));
     assert.equal(part.css!.properties.length, 0); assert.equal(part.css!.keyframes.length, 0);
     assert.ok(part.css!.order!.length > 0);
@@ -306,7 +331,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.throws(() => hsonLiveMap.fromLibraries({ collection: accessor })); assert.equal(reads, 0);
   });
   await check("all data field and object mutation helpers validate the complete final collection before publication", () => {
-    const map = fixture(), library = data(map), member = library.at(["first/β"]).asObject()!, doc = member.at(["document"]);
+    const map = fixture(), library = data(map), member = library.at(["firstβ"]).asObject()!, doc = member.at(["document"]);
     const invalid = { kind: "document", document: '<p' };
     const failures = [() => doc.set('<p'), () => doc.replace('<p/> <q/>'), () => doc.update(() => '<p'),
       () => doc.delete(), () => member.set({ css: '@import "x";' }), () => member.replace(invalid),
@@ -321,7 +346,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     member.replace({ kind: "document", document: '<section hson:part @:label/>', stylesheet: "" });
     member.replace({ kind: "document", document: '<section hson:part @:label/>' });
     library.at([]).asObject()!.object.setKey("extra", { kind: "document", document: '<div hson:part/>' });
-    library.at([]).asObject()!.object.renameKey("extra", "new/葉"); library.at(["new/葉"]).delete();
+    library.at([]).asObject()!.object.renameKey("extra", "new葉"); library.at(["new葉"]).delete();
     library.at([]).asObject()!.object.deleteMany(["二"]); assert.equal(owner(map).libraries().length, 1);
     library.at([]).asObject()!.object.clear(); assert.deepEqual(library.snap(), {}); assert.equal(owner(map).identityEpoch().issued().size, 0);
   });
@@ -333,14 +358,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     library.at([]).update(() => parts());
     const rev = map.rev;
     map.batch(writer => {
-      writer.parts.must("collection").at(["first/β", "document"]).set('<bad');
-      writer.parts.must("collection").at(["first/β", "kind"]).delete();
-      writer.parts.must("collection").at(["first/β", "document"]).set('<p hson:part @:label/>');
-      writer.parts.must("collection").at(["first/β"]).set({ kind: "document" });
+      writer.parts.must("collection").at(["firstβ", "document"]).set('<bad');
+      writer.parts.must("collection").at(["firstβ", "kind"]).delete();
+      writer.parts.must("collection").at(["firstβ", "document"]).set('<p hson:part @:label/>');
+      writer.parts.must("collection").at(["firstβ"]).set({ kind: "document" });
     });
     assert.equal(map.rev, rev + 1);
     atomic(map, () => map.batch(writer => { writer.parts.must("collection").at(["二", "document"]).set('<p hson:part/>');
-      writer.parts.must("collection").at(["first/β"]).replace({ ...parts()["first/β"], stylesheet: 42 as never }); }));
+      writer.parts.must("collection").at(["firstβ"]).replace({ ...parts()["firstβ"], stylesheet: 42 as never }); }));
     atomic(map, () => map.batch(() => collect(map, "extra", parts())));
   });
   await check("ordinary Library uniqueness and aggregate authority fences apply uniformly", () => {
@@ -350,7 +375,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     aggregate.claimManagement(manager);
     try { atomic(map, () => collect(map, "next", parts())); atomic(map, () => data(map).at(["二", "document"]).set('<p hson:part/>')); }
     finally { aggregate.releaseManagement(manager); }
-    atomic(map, () => acquire_projected_identity(data(map), ["first/β"]));
+    atomic(map, () => acquire_projected_identity(data(map), ["firstβ"]));
   });
   await check("completed reentrant inner transitions survive invalid outer data candidates", () => {
     const map = fixture(), library = data(map), rev = map.rev;
@@ -403,7 +428,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     });
     const ledger = aggregate.identityEpoch().issued(), roots = aggregate.libraries().map(id => aggregate.root(id));
     map.capture(); map.cut(); aggregate.captureHosted(); aggregate.captureSemanticCheckpoint();
-    read(map, "collection", "first/β"); data(map).root(); data(map).at([]).hson();
+    read(map, "collection", "firstβ"); data(map).root(); data(map).at([]).hson();
     assert.deepEqual(map.capture(), before); assert.equal(aggregate.identityEpoch().issued(), ledger);
     aggregate.libraries().forEach((id, index) => assert.equal(aggregate.root(id), roots[index]));
   });
@@ -795,8 +820,8 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.deepEqual(receiving.capture(), cut.libs);
   });
   await check("Part materialization is detached and collection values cannot become initial document shells", () => {
-    const map = fixture(), materialized = read(map, "collection", "first/β"), initial = read(map, "collection", "first/β");
-    data(map).at(["first/β", "document"]).set('<section hson:part/>'); assert.deepEqual(materialized, initial);
+    const map = fixture(), materialized = read(map, "collection", "firstβ"), initial = read(map, "collection", "firstβ");
+    data(map).at(["firstβ", "document"]).set('<section hson:part/>'); assert.deepEqual(materialized, initial);
     assert.equal(owner(map).identityEpoch().issued().size, 0); atomic(map, () => compose(map, "collection", "page"));
     const ordinary = hsonLiveMap.fromLibraries({ source: { document: '<p/>' } }), source = ordinary.doc.must("source");
     if (source.mode !== "document") throw Error("Expected document"); source.css.stylesheet('p{color:red}');

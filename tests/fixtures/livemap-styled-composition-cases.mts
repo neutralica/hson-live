@@ -96,7 +96,7 @@ export function second_repair_fixture() {
   return map;
 }
 export function styled_composition_cases(check: (name: string, run: () => void) => void) {
-  check("styled replacement returns graph and CSS operations for ordinary replacement and optional retirement", () => {
+  check("styled replacement publishes complete scoped effects for replacement and optional retirement", () => {
     const map = hsonLiveMap.fromLibraries({parts:{parts:{
       ordinary:styled_part('<b hson:part/>', {color:'blue'}),
       optional:styled_part('<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>', {color:'red'}),
@@ -114,6 +114,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
         'domain' in operation ? `${operation.domain}/${operation.domain==='css'?operation.kind:operation.op}` : operation.kind);
       assert.deepEqual(sequence(ordinary),['graph/replace-content','css/replace']);
       assert.deepEqual(events.at(-1),ordinary);
+      assert.match(p.css.snapshot(), /color:blue/); assert.doesNotMatch(p.css.snapshot(), /color:red/);
       p.document.content.replace(target,1,connector('optional','<title 0>'));
       const a=owner(map),id=identity(map),issued=a.identityEpoch().issued();
       const retired=p.document.content.replace(target,1,connector('optional'));

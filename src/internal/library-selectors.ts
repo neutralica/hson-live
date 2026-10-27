@@ -1,3 +1,4 @@
+import { assert_hson_identifier_name } from "../core/hson-name.js";
 import { hson_schema_digest, type HsonSchema } from "../api/schema/hson-schema.js";
 
 /** A current binding resolved by its existing authority; never a second registry. @internal */
@@ -14,6 +15,7 @@ export function make_family_selectors<T>(resolve: (name: string) => FamilySelect
     function lookup(name: string, schema?: HsonSchema): T | undefined;
     function lookup(name: string, schema?: HsonSchema, required = false): T | undefined {
       if (typeof name !== "string") throw new TypeError("Library selection requires a string name.");
+      assert_hson_identifier_name(name, "Library");
       // The existing Schema authority rejects forged handles, including prototype spoofs.
       const digest = schema === undefined ? undefined : hson_schema_digest(schema);
       const selected = resolve(name);

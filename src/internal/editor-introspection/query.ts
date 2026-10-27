@@ -5,6 +5,7 @@ import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
 import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
 import { part_candidates } from "./part-completion.js";
+import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
 
 /** Locate compiler source facts only; completion and reference diagnostics are separate consumers. */
 export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number, includeLiteralEnd = false): Readonly<{
@@ -50,7 +51,7 @@ export function query_hson_editor_context(input: Readonly<{
   if (checkpoint === undefined) return { candidates: [], interpolationRoles, expectedKinds: [] };
   if (input.mode === "document" && input.parts !== undefined) {
     const source = query_hson_part_source(input.parts.facts, input.parts.file, input.parts.offset, true);
-    return { checkpoint, candidates: source === undefined ? [] : part_candidates(input.source, input.cursor!, checkpoint, input.parts.facts, source.document),
+    return { checkpoint, candidates: source === undefined ? [] : part_candidates(input.source, input.cursor!, checkpoint, input.parts.facts, source.document, input.parts.offset),
       interpolationRoles, expectedKinds: expected_kinds(checkpoint) };
   }
   const candidates = input.mode === "schema" ? schema_candidates(checkpoint)
@@ -98,20 +99,8 @@ function schema_candidates(context: HsonGrammarCheckpoint): readonly HsonEditorC
 
 function data_candidates(schema: CompiledHsonSchema, context: HsonGrammarCheckpoint): readonly HsonEditorCandidate[] {
   if (context.kind !== "member" && context.kind !== "value" || schema.semantic.kind === "document" || schema.semantic.kind === "document-element") return [];
-  const definitions = new Map(schema.definitions.map(definition => [definition.name, definition.schema]));
-  let budget = 256;
-  let exhausted = false;
-  const expand = (node: HsonSchemaDataSemanticNode, seen = new Set<string>()): readonly HsonSchemaDataSemanticNode[] => {
-    if (--budget < 0 || seen.size > 64) { exhausted = true; return []; }
-    if (node.kind === "ref") {
-      if (seen.has(node.name)) { exhausted = true; return []; }
-      const target = definitions.get(node.name);
-      return target === undefined || target.kind === "document-element" ? [] : expand(target, new Set(seen).add(node.name));
-    }
-    return node.kind === "union" ? node.choices.flatMap(choice => expand(choice, seen)) : [node];
-  };
-  const samePath = (left: readonly (string | number)[], right: readonly (string | number)[]): boolean => left.length === right.length && left.every((part, i) => part === right[i]);
-  const narrow = (nodes: readonly HsonSchemaDataSemanticNode[], path: readonly (string | number)[]): readonly HsonSchemaDataSemanticNode[] => {
+  const samePath = (left: SchemaDataPath, right: SchemaDataPath): boolean => left.length === right.length && left.every((part, i) => part === right[i]);
+  const narrow = (nodes: readonly HsonSchemaDataSemanticNode[], path: SchemaDataPath): readonly HsonSchemaDataSemanticNode[] => {
     if (nodes.length < 2) return nodes;
     // The compiler distinguishes object unions by required exact string members.
     // Match those facts only; this is not structural inference or validation.
@@ -123,23 +112,7 @@ function data_candidates(schema: CompiledHsonSchema, context: HsonGrammarCheckpo
       return fact === undefined || fact.kind === "unknown" || fact.kind === "scalar" && fact.value === member.schema.value;
     }));
   };
-  let nodes: readonly HsonSchemaDataSemanticNode[] = expand(schema.semantic);
-  const path: (string | number)[] = [];
-  for (const part of context.path) {
-    nodes = narrow(nodes, path);
-    if (nodes.length === 0) return [];
-    const next = nodes.map(node => {
-      if (typeof part === "string") return node.kind === "object" ? node.members.find(member => member.name === part)?.schema : undefined;
-      if (node.kind !== "array" && node.kind !== "tuple") return undefined;
-      if (node.refinements.some(({ rule }) => rule.kind === "collection-length" && rule.maximum !== undefined && part >= rule.maximum)) return undefined;
-      return node.kind === "array" ? node.item : node.items[part];
-    });
-    if (next.some(node => node === undefined)) return [];
-    nodes = next.flatMap(node => node === undefined ? [] : expand(node));
-    path.push(part);
-  }
-  nodes = narrow(nodes, path);
-  if (exhausted) return [];
+  const nodes = project_schema_data(schema, context.path, narrow);
   if (context.kind === "value") return value_candidates(nodes, context);
   if (nodes.length === 0 || nodes.some(node => node.kind !== "object")) return [];
   const first = nodes[0];

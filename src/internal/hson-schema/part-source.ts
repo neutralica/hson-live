@@ -1,28 +1,45 @@
-import { part_receiving_interface, transform_part_parameter_strings } from "../part-definition.js";
+import { analyze_part_definition, transform_part_parameter_strings, type PartLocalDeclaration } from "../part-definition.js";
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
+import { is_Node } from "../../core/node-guards.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
-import type { HsonSourceLexicalCollector, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
-import { tokenize_authored_document_library, scan_hson_template_segments, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
+import { HsonSourceProvenanceBuilder, type HsonSourceLexicalCollector, type HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
+import { tokenize_authored_document_library, scan_hson_template_segments, hson_grammar_checkpoint, hson_interpolation_roles, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { qualify_authored_document_source } from "../../api/document/hson-authored.js";
+import { assemble_authored_document, qualify_authored_document_source } from "../../api/document/hson-authored.js";
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { PART_DECLARATION, part_declaration_issue, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue } from "../part-placeholder.js";
+import { PART_DECLARATION, part_declaration_issue, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
+import { annotated_data_schema_source } from "./schema-annotation.js";
+import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
+import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
+import type { SchemaDataPath } from "./data-projection.js";
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
 export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }>[] }>;
+export type PartLocalSource = Readonly<{ name: string; kind: "scalar" | "data" | "doc"; location: PartSourceLocation; incoming?: string;
+  dataOrigin?: Readonly<{ incoming: string; path: SchemaDataPath }> }>;
+export type PartLexicalScopeSource = Readonly<{ location: PartSourceLocation; bindings: readonly PartLocalSource[] }>;
+
+/** Source projection of the shared analyzer's lexical identities. */
+export function part_source_bindings_at(scopes: readonly PartLexicalScopeSource[], position: number): readonly PartLocalSource[] | undefined {
+  let nearest: PartLexicalScopeSource | undefined;
+  for (const scope of scopes) if (scope.location.start <= position && position <= scope.location.end
+    && (nearest === undefined || scope.location.end - scope.location.start < nearest.location.end - nearest.location.start)) nearest = scope;
+  return nearest?.bindings;
+}
 export type PartConnectorSource = Readonly<{
   location: PartSourceLocation;
   headerComplete: boolean;
-  attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation }>[];
+  attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation;
+    dataSchema?: CompiledHsonSchema }>[];
 }>;
 export type PartDocumentSource = Readonly<{
   producer: ts.Expression;
@@ -38,12 +55,17 @@ export type PartDocumentSource = Readonly<{
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
   receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
+  iteratorDeclarations: readonly Readonly<{ location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string }>[];
+  /** Nested node coverage; iterator source attributes retain their enclosing bindings. */
+  lexicalScopes: readonly PartLexicalScopeSource[];
   definitionRoot?: PartSourceLocation;
   partDeclarations: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string }>[];
   optionalStructures: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string; references?: number }>[];
   referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string }>[];
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
-  receivers: readonly Readonly<{ batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }>[];
+  receivers: readonly Readonly<{ batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible";
+    /** A single immutable producer in a known receiving field; its values may remain unknown. */
+    placementCertain?: true }>[];
 }>;
 export type PartLibrarySource = Readonly<{
   name?: string;
@@ -115,8 +137,22 @@ export function static_part_inventory(typescript: typeof ts, checker: ts.TypeChe
 /** Bounded, demand-driven facts over existing official sources and receiving candidates. */
 export function collect_part_source_facts(typescript: typeof ts, program: ts.Program): PartSourceFacts {
   const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program);
+  const schemas = new Map<string, CompiledHsonSchema | undefined>();
+  const schemaDeclarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>();
+  const dataSchema = (input: ts.Expression | undefined): CompiledHsonSchema | undefined => {
+    if (input === undefined || !typescript.isIdentifier(input) || !sources.eligible(input)) return undefined;
+    const declaration = sources.declaration(input);
+    if (declaration?.type === undefined) return undefined;
+    const source = annotated_data_schema_source(typescript, program, checker, declaration.type, sources.eligible, schemaDeclarations);
+    if (source === undefined) return undefined;
+    if (!schemas.has(source)) {
+      const compiled = compile_hson_schema(source);
+      schemas.set(source, compiled.ok ? compiled.value : undefined);
+    }
+    return schemas.get(source);
+  };
   const documents = new Map<ts.Expression, PartDocumentSource>();
-  const relationships = new Map<PartDocumentSource, { batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }[]>();
+  const relationships = new Map<PartDocumentSource, PartDocumentSource["receivers"][number][]>();
   const object = (input: ts.Expression, seen = new Set<ts.Declaration>()): { node: ts.ObjectLiteralExpression; fresh: boolean } | undefined => {
     const node = sources.unwrap(input);
     if (typescript.isObjectLiteralExpression(node)) return { node, fresh: true };
@@ -175,6 +211,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
     const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }[] = [];
     const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
+    const iteratorDeclarations: { location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string }[] = [];
+    const lexicalScopes: PartLexicalScopeSource[] = [];
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const partDeclarations: { location: PartSourceLocation; root: boolean; issue?: string }[] = [];
     const roots: PartSourceLocation[] = [];
@@ -218,6 +256,25 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               continue;
             }
             const value = split_attrs_meta([attr]).attrs[attr.name];
+            if (is_part_iterator_attribute(attr.name)) {
+              const ranges = attributeRanges.get(attr), where = ranges?.name === undefined ? undefined : map(ranges.name);
+              if (where !== undefined) {
+                let declaration: PartIteratorDeclaration | undefined, issue: string | undefined;
+                // Dynamic values cannot prove directive syntax, but placement
+                // and duplicate declarations remain independent local facts.
+                if (attr.value?.direct !== true) {
+                  try { declaration = part_iterator_declaration(attr.name, value); }
+                  catch (error) { issue = String(error); }
+                }
+                if (tags.length === 0) issue = "Part iteration is only allowed on descendant elements, never the definition root.";
+                if (attrs.filter(attr => is_part_iterator_attribute(attr.name)).length !== 1) issue = "An element may declare only one Part iterator.";
+                const sourceLocation = ranges?.value === undefined ? undefined : map(ranges.value);
+                iteratorDeclarations.push({ location: where, ...(declaration === undefined ? {} : { declaration }),
+                  ...(sourceLocation === undefined ? {} : { sourceLocation }), ...(issue === undefined ? {} : { issue }) });
+              }
+              if (attr.value?.direct !== true && typeof value === "string") observeUses(value, ranges?.value, "attribute");
+              continue;
+            }
             if (attr.name.startsWith("#{")) {
               observeUses(attr.name, attributeRanges.get(attr)?.value, "structure");
               continue;
@@ -256,7 +313,13 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             if (name === undefined) return [];
             const valueRange = ranges?.value === undefined ? undefined : map(ranges.value);
             const value = attr.name.toLowerCase() === PART_DECLARATION ? undefined : split_attrs_meta([attr]).attrs[attr.name];
+            const directSlots = attr.value?.direct === true && attr.value.text === "" && attr.name.startsWith("data:")
+              ? slots.filter(slot => attr.start.index <= slot.offset && slot.offset <= attr.end.index) : [];
+            const expression = directSlots.length === 1 && typescript.isTaggedTemplateExpression(producer) && typescript.isTemplateExpression(producer.template)
+              ? producer.template.templateSpans[directSlots[0]!.substitution]?.expression : undefined;
+            const schema = dataSchema(expression);
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
+              ...(schema === undefined ? {} : { dataSchema: schema }),
               ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && !attr.name.startsWith("data:") && !attr.name.startsWith("doc:") ? {} : { value }) }];
           }) });
         },
@@ -264,51 +327,131 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     } catch { scanned = false; }
     const names = new Set<string>();
     let parameterCompleteness: "complete" | "unknown" = "unknown";
-    if (qualified && scanned && slots.length === 0) {
+    const completeAnalysis = qualified && scanned;
+    // Quoted slots cannot add structural declarations. Their values remain
+    // opaque, so local lexical facts survive without proving an input interface.
+    const valueSlots = (source: string) => slots.length > 0
+      && hson_interpolation_roles(source, "document", slots).every(role => role === "quoted-string");
+    const staticStructure = slots.length === 0 || valueSlots(text);
+    const lexicalComplete = completeAnalysis || spellingEligible && scanned && slots.length > 0 && staticStructure;
+    let analysisText: string | undefined = lexicalComplete ? text : undefined;
+    if (analysisText === undefined && spellingEligible) {
+      const checkpoint = hson_grammar_checkpoint(text, text.length, "document", slots);
+      // Close only scanner-proven unfinished reference/string/container slots.
+      // Recovered analysis contributes lexical completion, never diagnostics or
+      // receiving-interface proof. It uses the same parser and analyzer below.
+      if (checkpoint?.kind === "parameter" && checkpoint.quoted !== undefined) {
+        analysisText = text + (checkpoint.parameter?.complete ? "" : "}")
+          + (checkpoint.quoted.complete ? "" : '"') + checkpoint.quoted.closingDelimiters.join("");
+      }
+    }
+    if (analysisText !== undefined && (analysisText === text ? staticStructure : slots.length === 0 || valueSlots(analysisText))) {
       try {
-        const root = qualify_authored_document_source(text, new Map());
-        const counts = new Map<HsonNode, number>();
-        const optionalNodes = new Map<HsonNode, typeof optionalStructures[number]>();
-        let optionalIndex = 0;
-        const count = (node: HsonNode, amount: number) => counts.set(node, (counts.get(node) ?? 0) + amount);
-        transform_part_parameter_strings(root, (value, node) => {
-          const matches = part_placeholder_matches(value);
-          if (matches === undefined) throw new Error("Invalid Part placeholder");
-          count(node, matches.length);
-          return value;
-        }, (_reference, node) => { count(node, 1); }, undefined, {
-          inspect: true,
-          structure(_reference, node) { count(node, 1); },
-          enter(node) {
-            if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) {
-              const fact = optionalStructures[optionalIndex++];
-              if (fact !== undefined) optionalNodes.set(node, fact);
-            }
-          },
-          leave(node, parent) {
-            const references = counts.get(node) ?? 0, fact = optionalNodes.get(node);
-            if (fact !== undefined) fact.references = references;
-            if (parent !== undefined) count(parent, references);
-          },
+        const builder = new HsonSourceProvenanceBuilder();
+        const tokens = tokenize_authored_document_library(analysisText, builder,
+          slots.length === 0 ? undefined : { slots, substitutions: slots.map(() => "") });
+        for (const token of tokens) {
+          if (token.kind === "OPEN") for (const attr of token.rawAttrs) if (attr.value?.direct === true) {
+            if (is_part_iterator_attribute(attr.name) || is_part_receiving_attribute(token.tag, attr.name)
+              || attr.name === PART_DECLARATION || attr.name === PART_OPTIONAL) throw new Error("Dynamic Part declaration is not lexical evidence.");
+            // Never interpret reference spellings manufactured by a dynamic value
+            // or concatenated across a slot, including typed connector forwarding.
+            attr.value.text = "";
+          }
+          if (token.kind === "TEXT" && token.directValue !== undefined) token.directValue = "";
+        }
+        const root = assemble_authored_document(tokens, [], new Map(), builder);
+        const provenance = builder.finalize(root, analysisText.length);
+        const paths = new Map<HsonNode, readonly number[]>();
+        const pending: { node: HsonNode; path: readonly number[] }[] = [{ node: root, path: [] }];
+        while (pending.length) {
+          const { node, path } = pending.pop()!;
+          paths.set(node, path);
+          node.$_content.forEach((child, index) => { if (is_Node(child)) pending.push({ node: child, path: [...path, index] }); });
+        }
+        const nodeLocation = (node: HsonNode, attribute?: string, role: "name" | "value" = "name"): PartSourceLocation => {
+          const path = paths.get(node) ?? [];
+          const range = attribute === undefined ? provenance.range({ kind: "node", path, role: "coverage" })
+            : provenance.range({ kind: "attribute", owner: path, name: attribute, role });
+          return range === undefined ? location(producer) : map({ start: range.start, end: Math.min(range.end, text.length) }) ?? location(producer);
+        };
+        const analysis = analyze_part_definition(root, issue => {
+          if (!lexicalComplete) return;
+          const owner = nodeLocation(issue.node, issue.attribute,
+            issue.attribute?.startsWith("#{") ? "name" : "value");
+          if (issue.message === "Invalid Part placeholder." && referenceIssues.some(prior => prior.message === "Invalid Part property reference."
+            && owner.start <= prior.location.start && prior.location.end <= owner.end)) return;
+          referenceIssues.push({ location: owner, message: issue.message });
         });
-        const declared = new Map<string, typeof receivingDeclarations[number]>();
-        for (const declaration of receivingDeclarations) {
-          if (declared.has(declaration.name)) referenceIssues.push({ location: declaration.location, message: `Conflicting Part local binding ${JSON.stringify(declaration.name)}.` });
-          declared.set(declaration.name, declaration);
+        const declarationLocation = (binding: PartLocalDeclaration) => nodeLocation(binding.node,
+          binding.receiving === undefined ? analysis.iterators.get(binding.node)?.attribute : `${binding.name}:${binding.kind}`,
+          binding.receiving === undefined ? "name" : "value");
+        const sourceScopes = new Map<ReadonlyMap<string, PartLocalDeclaration>, readonly PartLocalSource[]>();
+        const dataOrigin = (binding: PartLocalDeclaration, depth = 0): PartLocalSource["dataOrigin"] => {
+          if (binding.kind !== "data" || depth > 64) return undefined;
+          if (binding.receiving !== undefined) return { incoming: binding.receiving.reference.name, path: [] };
+          const source = binding.elementOf;
+          const origin = source?.binding === undefined ? undefined : dataOrigin(source.binding, depth + 1);
+          return origin === undefined || source === undefined ? undefined : { incoming: origin.incoming, path: [...origin.path, ...source.reference.path, null] };
+        };
+        const sourceBindings = (scope: ReadonlyMap<string, PartLocalDeclaration>): readonly PartLocalSource[] => {
+          let result = sourceScopes.get(scope);
+          if (result === undefined) {
+            result = [...scope.values()].map(binding => {
+              const origin = dataOrigin(binding);
+              return { name: binding.name, kind: binding.kind, location: declarationLocation(binding),
+                ...(origin === undefined ? {} : { dataOrigin: origin }),
+                ...(binding.receiving === undefined ? {} : { incoming: binding.receiving.reference.name }) };
+            });
+            sourceScopes.set(scope, result);
+          }
+          return result;
+        };
+        const iterationReads = new Map(analysis.uses.filter(use => use.context === "iteration").map(use => [use.node, use]));
+        for (const [node, scope] of analysis.scopes) {
+          lexicalScopes.push({ location: nodeLocation(node), bindings: sourceBindings(scope) });
+          const iterator = analysis.iterators.get(node);
+          if (iterator !== undefined) {
+            const source = provenance.range({ kind: "attribute", owner: paths.get(node) ?? [], name: iterator.attribute, role: "value" });
+            const sourceLocation = source === undefined ? undefined : map(source);
+            const read = iterationReads.get(node);
+            // The source expression is outside this element's newly introduced bindings.
+            if (sourceLocation !== undefined && read !== undefined) {
+              lexicalScopes.push({ location: sourceLocation, bindings: sourceBindings(read.scope) });
+            }
+          }
         }
-        for (const use of uses) {
-          const declaration = declared.get(use.name);
-          const invalid = use.namespace === "incoming" ? use.structured || use.context === "structure" || use.supply !== undefined
-            || receivingDeclarations.some(declaration => declaration.incoming === use.name)
-            : declaration === undefined || (use.supply !== undefined && declaration.kind !== use.supply) || (use.structured && declaration.kind !== "data") || (use.context === "structure" && declaration.kind !== "doc");
-          if (invalid) referenceIssues.push({ location: use.location, message: `Part ${use.namespace} reference ${JSON.stringify(use.reference)} requires the matching declared representation and namespace.` });
+        if (completeAnalysis) {
+          const counts = new Map<HsonNode, number>();
+          const optionalNodes = new Map<HsonNode, typeof optionalStructures[number]>();
+          let optionalIndex = 0;
+          const count = (node: HsonNode, amount: number) => counts.set(node, (counts.get(node) ?? 0) + amount);
+          transform_part_parameter_strings(root, (value, node) => {
+            const matches = part_placeholder_matches(value);
+            if (matches === undefined) throw new Error("Invalid Part placeholder");
+            count(node, matches.length);
+            return value;
+          }, (_reference, node) => { count(node, 1); }, undefined, {
+            inspect: true,
+            structure(_reference, node) { count(node, 1); },
+            enter(node) {
+              if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) {
+                const fact = optionalStructures[optionalIndex++];
+                if (fact !== undefined) optionalNodes.set(node, fact);
+              }
+            },
+            leave(node, parent) {
+              const references = counts.get(node) ?? 0, fact = optionalNodes.get(node);
+              if (fact !== undefined) fact.references = references;
+              if (parent !== undefined) count(parent, references);
+            },
+          });
+          for (const declaration of analysis.receiving) if (!analysis.used.has(declaration) && !optionalStructures.some(fact => fact.root)) {
+            referenceIssues.push({ location: declarationLocation(declaration), message: `Unused Part ${declaration.kind} binding ${JSON.stringify(declaration.name)}.` });
+          }
+          for (const name of analysis.parameters.keys()) names.add(name);
+          parameterCompleteness = referenceIssues.length === 0 ? "complete" : "unknown";
         }
-        for (const declaration of receivingDeclarations) if (!uses.some(use => use.namespace === "local" && use.name === declaration.name) && !optionalStructures.some(fact => fact.root)) {
-          referenceIssues.push({ location: declaration.location, message: `Unused Part ${declaration.kind} binding ${JSON.stringify(declaration.name)}.` });
-        }
-        try { for (const name of part_receiving_interface(root).keys()) names.add(name); }
-        catch (error) { if (!referenceIssues.length) referenceIssues.push({ location: location(producer), message: String(error) }); }
-        parameterCompleteness = referenceIssues.length === 0 ? "complete" : "unknown";
       } catch { names.clear(); }
     }
     let librarySourceAdmission: "qualified" | "unknown" = "unknown";
@@ -316,14 +459,15 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       try { parse_authored_document_library(text); librarySourceAdmission = "qualified"; }
       catch { /* Keep authoring/completion facts; this source cannot establish a receiving Library. */ }
     }
-    const receivers: { batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible" }[] = [];
+    const receivers: PartDocumentSource["receivers"][number][] = [];
+    const inputs = new Map(uses.map(use => [use, use.namespace === "incoming" ? use.name
+      : part_source_bindings_at(lexicalScopes, use.location.start)?.find(binding => binding.name === use.name)?.incoming]));
     const result: PartDocumentSource = { producer, location: location(producer), authoredRanges, admission: qualified ? "qualified" : "unknown",
-      librarySourceAdmission, connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use =>
-        receivingDeclarations.some(declaration => use.namespace === "local" && declaration.incoming === name && declaration.name === use.name)
-        || use.namespace === "incoming" && use.name === name) })),
+      librarySourceAdmission, connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use => inputs.get(use) === name) })),
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
       ...(scanned && roots.length === 1 ? { definitionRoot: roots[0]! } : {}), partDeclarations,
-      parameterCompleteness, optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [], referenceIssues, receivers };
+      parameterCompleteness, optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [],
+      iteratorDeclarations: spellingEligible ? iteratorDeclarations : [], lexicalScopes: spellingEligible ? lexicalScopes : [], referenceIssues, receivers };
     documents.set(producer, result);
     relationships.set(result, receivers);
     return result;
@@ -332,8 +476,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const possible = sources.alternatives(input, "document");
     const found = possible.nodes.flatMap(node => { const observed = document(node); return observed === undefined ? [] : [observed]; });
     // Filtering observations cannot remove an alternative or its conditionality from the proof.
-    return { documents: found, certain: possible.complete && !possible.conditional && possible.nodes.length === 1
-      && found.length === 1 && found[0]!.admission === "qualified" };
+    const lexicalCertain = possible.complete && !possible.conditional && possible.nodes.length === 1 && found.length === 1;
+    return { documents: found, lexicalCertain, certain: lexicalCertain && found[0]!.admission === "qualified" };
   };
   const batches: PartSourceBatch[] = [];
   for (const file of program.getSourceFiles()) {
@@ -370,18 +514,19 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               }
               return [{ name: member.name, declaration: location(member.declaration), fresh: record?.fresh === true,
                 qualified,
-                evidence: source === undefined ? { documents: [], certain: false } : alternatives(source) }];
+                evidence: source === undefined ? { documents: [], lexicalCertain: false, certain: false } : alternatives(source) }];
             });
             if (eligible && evidence !== undefined && members?.complete && evidence.members.length === observedMembers.length
               && evidence.members.every(member => observedMembers.some(observed => observed.name === member.key))) memberCompleteness = "complete";
             const documentEvidence = body === undefined ? undefined : alternatives(body);
             const producerCertain = family === "parts" ? memberCompleteness === "complete" : family === "document" ? documentEvidence?.certain === true
               : family === "data" && sources.candidates(own!.get("data")!, "data") !== undefined;
+            const shapeCertain = eligible && definitions?.fresh && fields?.complete && definition?.fresh && sources.eligible(definitions.node)
+              && sources.eligible(entry.declaration);
             const library: PartLibrarySource = {
               ...(entry.name === undefined ? {} : { name: entry.name }), declaration: location(entry.declaration),
               ...(entry.declaration.name === undefined ? {} : { nameLocation: location(entry.declaration.name) }), family,
-              certainty: eligible && producerCertain && definitions?.fresh && fields?.complete && definition?.fresh && sources.eligible(definitions.node)
-                && sources.eligible(entry.declaration) ? "certain" : "possible",
+              certainty: shapeCertain && producerCertain ? "certain" : "possible",
               members: observedMembers.map(member => ({ name: member.name, declaration: member.declaration,
                 admission: member.qualified ? "qualified" : "unknown",
                 certainty: eligible && memberCompleteness === "complete" && collection?.fresh && member.fresh && member.evidence.certain ? "certain" : "possible",
@@ -390,7 +535,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             libraries.push(library);
             const relate = (related: ReturnType<typeof alternatives>, certain: boolean): void => {
               for (const found of related.documents) relationships.get(found)?.push({ batch: node, library,
-                certainty: certain && related.certain ? "certain" : "possible" });
+                certainty: certain && related.certain ? "certain" : "possible",
+                ...(family === "document" && shapeCertain && related.lexicalCertain ? { placementCertain: true } : {}) });
             };
             if (documentEvidence !== undefined) relate(documentEvidence, library.certainty === "certain");
             for (const member of observedMembers) relate(member.evidence, library.certainty === "certain" && memberCompleteness === "complete" && member.fresh);

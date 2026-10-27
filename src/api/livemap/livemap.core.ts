@@ -15,7 +15,7 @@ import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
 import { normalize_document_scoped_library_subjects, capture_document_scoped_library, decode_document_scoped_library, own_document_scopes, restore_document_scoped_library_styles } from "./livemap.document.scoped-portable.js";
-import { expand_document_composition, document_composition_options, has_part_connector, lower_part_content_operation, type DocumentCompositionStyle } from "./livemap.document.composition.js";
+import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle } from "./livemap.document.composition.js";
 import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
 import {
@@ -607,41 +607,6 @@ function make_livemap_registry_engine(
     return state;
   }
 
-  function compose_styles(root: HsonNode,
-    initialOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
-    occurrences: readonly DocumentCompositionStyle[], reserved: Set<string>,
-    before = empty_portable_document_stylesheet(), foreignPayloads: ReadonlySet<string> = new Set(), participantOwner?: object) {
-    const assertCurrent = capture_fence();
-    // Conflict admission precedes all candidate allocation.
-    merge_part_stylesheets([encode_portable_document_stylesheet(before), ...occurrences.map(item => item.css)]);
-    let overlay = initialOverlay;
-    const records = occurrences.map(occurrence => {
-      const demanded = new Set(document_css_subject_identities(occurrence.css, "inbound"));
-      const names = new Set<string>(), paths = new Set<string>();
-      const associations = occurrence.subjects.map(({ name, path }) => {
-        const coordinate = validate_document_path(path), key = JSON.stringify(coordinate);
-        if (!demanded.has(name) || names.has(name) || paths.has(key)
-          || !is_ordinary_element_node(resolve_document_path(root, "document", coordinate))) throw new Error("Part CSS requires exact bijective destination subject demand.");
-        names.add(name); paths.add(key);
-        let quid = overlay.quidAtPath(coordinate);
-        if (quid === undefined) {
-          quid = allocate_livemap_quid(mapIdentityEpoch.owner,
-            candidate => reserved.has(candidate) || mapIdentityEpoch.issued().has(candidate) || foreignPayloads.has(candidate)
-              || participantOwner !== undefined && livemap_document_identity_quid_unavailable(participantOwner, candidate),
-            candidate => ({ claimed: true, value: candidate }));
-          if (quid === undefined) throw new Error("No available destination QUID for Part CSS subject.");
-          reserved.add(quid);
-          overlay = register_livemap_document_identity_at_path(overlay, quid, coordinate).overlay;
-        }
-        return { name, quid, disposition: "authored" as const };
-      });
-      if (names.size !== demanded.size) throw new Error("Unresolved Part CSS destination subject.");
-      return translate_document_css_identities(occurrence.css, "inbound", { associations, assertCurrent }, true);
-    });
-    const stylesheet = merge_part_stylesheets([encode_portable_document_stylesheet(before), ...records]);
-    assertCurrent(); return { documentOverlay: overlay, stylesheet };
-  }
-
   // Detached candidate provenance only. Installed scope ownership remains on
   // each Library; Locus uses the existing aggregate transition controller.
   const scopedPreparations = new WeakSet<PreparedDocumentScopedLibrary>();
@@ -996,7 +961,7 @@ function make_livemap_registry_engine(
       continuity?: "same-epoch" | "new-epoch";
     }>[] = [],
     hostedIncremental = false,
-    scopedDocuments = false,
+    scopedDocuments = transitionController.managedExecutionOwner() === undefined,
     receivingScoped?: ReadonlyMap<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>,
     receivingRevision?: number,
     entryManagementFence?: () => void,
@@ -1045,7 +1010,6 @@ function make_livemap_registry_engine(
     };
     const scopedCandidates = new Map<LiveMapLibraryIdentity, PreparedDocumentScopedLibrary>();
     const scopedOrdinals = new Map<LiveMapLibraryIdentity, number>();
-    const unscopedConstructions = new Set<LiveMapLibraryIdentity>();
     const prevRev = mapRevision;
     const preparedIdentityGeneration = identityGeneration;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
@@ -1079,7 +1043,7 @@ function make_livemap_registry_engine(
     };
     for (const [identity, effect] of receivingFlat) {
       const state = require_library(identity);
-      if (state.mode !== "document" || state.documentScopes !== undefined || state.documentScopesUnavailable) throw new Error("Flat replay requires never-scoped document ownership.");
+      if (state.mode !== "document" || state.documentScopes !== undefined) throw new Error("Flat replay requires never-scoped document ownership.");
       const before = portable_quads(state);
       if (flat_document_fingerprint(state.root, before.css!, before.quads) !== effect.before) throw new Error("Stale flat document correspondence.");
     }
@@ -1104,18 +1068,6 @@ function make_livemap_registry_engine(
       const selected = validate_data_library(root, library.mode, library.validation)?.find(part => part.key === member);
       if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return selected;
-    };
-    const realizeOperation = (operation: LiveMapGraphOp, receivingRoot: HsonNode) => {
-      const input = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
-      if (!is_Node(input) || !has_part_connector(input)) return { operation, styles: Object.freeze<DocumentCompositionStyle[]>([]) };
-      const composed = expand_document_composition("ingress", () => ({ root: { $_tag: ROOT_TAG, $_content: [input] } }),
-        document_composition_options(undefined), readPartCandidate);
-      const realized = lower_part_content_operation(operation, composed.root, receivingRoot);
-      if (realized === undefined || realized.op === "remove-content") return { operation: realized, styles: [] };
-      if (operation.op !== "insert-content" && operation.op !== "replace-content") throw new Error("Unsupported Part construction operation.");
-      const prefix = [...operation.target.path, operation.index];
-      const styles = composed.styles.map(style => ({ ...style, subjects: style.subjects.map(subject => ({ ...subject, path: [...prefix, ...subject.path.slice(1)] })) }));
-      return { operation: realized, styles };
     };
     const system_candidate = (): AggregateSystemCandidate | undefined => {
       if (systemState === undefined || systemState.key !== INTERACTION_RESERVED_LIBRARY_KEY) return undefined;
@@ -1337,18 +1289,17 @@ function make_livemap_registry_engine(
       const incoming = write.kind !== "graph" ? undefined : write.operation.op === "insert-content" ? write.operation.content
         : write.operation.op === "replace-content" ? write.operation.replacement
         : write.operation.op === "replace-root" ? write.operation.root : undefined;
-      // Batch permission does not give a flat Library a scoped topology contract.
-      // Installed empty scopes and a Part admitted earlier in this batch retain provenance.
+      // Local writes retain complete Part construction evidence. Managed callers
+      // still opt into scoped preparation explicitly; replay supplies its own evidence.
+      // Installed empty scopes and earlier operations in this batch retain provenance.
       const scoped = receivingScoped?.has(write) || scopedDocuments && (library.documentScopes !== undefined
         || scopedCandidates.has(library.identity) || is_Node(incoming) && has_part_connector(incoming));
-      if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined || scopedCandidates.has(library.identity)
-        || library.documentScopesUnavailable && transitionController.managedExecutionOwner() !== undefined)) {
+      if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined || scopedCandidates.has(library.identity))) {
         throw new Error("Scoped document effects require private Locus/Echo preparation.");
       }
       if (write.kind === "css" && write.cssCommand !== undefined) {
         if (scoped) {
           assertScopedCurrent();
-          if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
         }
         if (library.mode !== "document" || target.path.length !== 0) throw new Error("CSS commands require a document Library root.");
         const operation = lower_document_css_command(cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity), write.cssCommand, name => {
@@ -1368,7 +1319,6 @@ function make_livemap_registry_engine(
         const candidate = candidate_for(library.identity);
         if (!is_aggregate_document_candidate(candidate)) throw new Error("Scoped operations require a document Library.");
         assertScopedCurrent();
-        if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence from initial or local Part construction.");
         const context = { owner: library.identity, root: candidate.root, overlay: candidate.overlay, issued: stagedIssuedLedger };
         const previous = scopedCandidates.get(library.identity);
         const before: PreparedDocumentScopedLibrary = previous === undefined ? {
@@ -1401,7 +1351,20 @@ function make_livemap_registry_engine(
         const operation = write.kind === "graph" ? step!.operation : local_scoped_css_operation(effect);
         operations.push(Object.freeze({ target: aggregate_target(library.identity, write.kind === "css" ? [] : document_operation_path(step!.operation)),
           operation, scoped: Object.freeze({ ...effect, ordinal }) }));
-        scopedOrdinals.set(library.identity, ordinal + 1);
+        let installed = next;
+        let nextOrdinal = ordinal + 1;
+        if (write.kind === "graph" && receiving === undefined && managementOwner === undefined
+          && !portable_document_stylesheet_equal(before.stylesheet, next.stylesheet)) {
+          const cssOperation = { domain: "css" as const, kind: "replace" as const,
+            stylesheet: encode_portable_document_stylesheet(next.stylesheet) };
+          installed = prepare_document_scoped_css_operation(next, cssOperation, nextOrdinal);
+          const cssEffect = installed.effects?.[0];
+          if (cssEffect === undefined) throw new Error("Missing scoped stylesheet replacement evidence.");
+          operations.push(Object.freeze({ target: aggregate_target(library.identity, []), operation: cssOperation,
+            scoped: Object.freeze(cssEffect) }));
+          nextOrdinal += 1;
+        }
+        scopedOrdinals.set(library.identity, nextOrdinal);
         if (step !== undefined) stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation);
         for (const quid of livemap_document_identity_quids(next.overlay)) {
           if (candidate.overlay.pathForQuid(quid) === undefined) constructionClaims.push({ library: library.identity, quid });
@@ -1415,8 +1378,8 @@ function make_livemap_registry_engine(
           if (step.operation.op === "replace-root") candidate.continuity = "same-epoch";
         }
         candidate.identityEffects.push(...next.identityEffects);
-        scopedCandidates.set(library.identity, next);
-        cssCandidates.set(library.identity, { before: stylesheet(library.identity), after: next.stylesheet });
+        scopedCandidates.set(library.identity, installed);
+        cssCandidates.set(library.identity, { before: cssCandidates.get(library.identity)?.before ?? stylesheet(library.identity), after: installed.stylesheet });
         continue;
       }
       if (write.kind === "css" && receivingFlat.has(library.identity)) {
@@ -1450,40 +1413,16 @@ function make_livemap_registry_engine(
           ? admit_public_document_graph_operation(write.operation)
           : write.operation;
         const incoming = admittedOperation.op === "insert-content" ? admittedOperation.content
-          : admittedOperation.op === "replace-content" ? admittedOperation.replacement : undefined;
+          : admittedOperation.op === "replace-content" ? admittedOperation.replacement
+          : admittedOperation.op === "replace-root" ? admittedOperation.root : undefined;
         if (is_Node(incoming) && has_part_connector(incoming)) {
-          if (transitionController.managedExecutionOwner() !== undefined) throw new Error("Scoped Part operations require complete scoped evidence and Echo support.");
+          throw new Error("Scoped Part construction requires complete scoped evidence and Echo support.");
         }
-        const construction = write.publicStaged === true ? realizeOperation(admittedOperation, candidate.root) : { operation: admittedOperation, styles: [] };
-        if (construction.operation === undefined) {
-          prepare_document_graph_operation(candidate.root, "document", admittedOperation, candidate.overlay);
-          continue;
-        }
-        if (is_Node(incoming) && has_part_connector(incoming) && construction.operation.op !== "remove-content") unscopedConstructions.add(library.identity);
         const priorRoot = candidate.root;
         const priorOverlay = candidate.overlay;
-        const planned = prepare_document_graph_operation(
-          candidate.root,
-          "document",
-          construction.operation,
-          candidate.overlay,
-        );
-        // Realization can add CSS/ownership and demand identity even when its
-        // markup equals the outgoing fragment. Plan all governed effects before
-        // deciding whether this operation is an observable transition.
-        const beforeStylesheet = construction.styles.length
-          ? cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity) : undefined;
-        const composed = beforeStylesheet === undefined ? undefined : compose_styles(
-          planned.root, planned.overlay, construction.styles,
-          new Set(enumerate_livemap_issued_quids(stagedIssuedLedger)),
-          retire_part_styles(beforeStylesheet, new Set(livemap_document_identity_quids(planned.overlay))),
-          undefined, library.identity,
-        );
+        const planned = prepare_document_graph_operation(candidate.root, "document", admittedOperation, candidate.overlay);
         if (!canonical_graph_equal(candidate.root, planned.root)
-          || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)
-          || composed !== undefined && beforeStylesheet !== undefined
-            && (!livemap_document_identity_overlay_equal(composed.documentOverlay, candidate.overlay)
-              || !portable_document_stylesheet_equal(beforeStylesheet, composed.stylesheet))) {
+          || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)) {
           if (planned.operation.op !== "replace-root") {
             stage_candidate_identity(
               livemap_document_identity_quids(candidate.overlay),
@@ -1494,35 +1433,11 @@ function make_livemap_registry_engine(
           candidate.overlay = planned.overlay;
           candidate.operations.push(planned.operation);
           candidate.identityEffects.push(...planned.identityEffects);
-          const graphOperationIndex = operations.length;
           operations.push(Object.freeze({
             target: aggregate_target(library.identity, document_operation_path(planned.operation)),
             operation: planned.operation,
           }));
           stage_interaction_paths(library, priorRoot, priorOverlay, planned.overlay, planned.operation);
-          if (composed !== undefined && beforeStylesheet !== undefined) {
-            for (const quid of livemap_document_identity_quids(composed.documentOverlay)) {
-              if (candidate.overlay.pathForQuid(quid) !== undefined) continue;
-              const path = composed.documentOverlay.pathForQuid(quid)!;
-              candidate.identityEffects.push({ kind: "introduced", quid, path });
-              constructionClaims.push({ library: library.identity, quid });
-            }
-            // New subjects belong to the incoming fragment, not an ensure-quid
-            // registration of an existing projected node. Carry exact owner-issued
-            // identity through the existing structural insertion/lineage proof.
-            if (planned.operation.op !== "insert-content" && planned.operation.op !== "replace-content") throw new Error("Invalid Part construction operation.");
-            const exact = clone_livemap_document_exact_view(candidate.root, "document", composed.documentOverlay);
-            const incoming = resolve_document_path(exact, "document", validate_document_path([...planned.operation.target.path, planned.operation.index]));
-            if (!is_Node(incoming)) throw new Error("Part construction lost its incoming graph.");
-            const operation: LiveMapGraphOp = planned.operation.op === "insert-content" ? { ...planned.operation, content: incoming }
-              : { ...planned.operation, replacement: incoming };
-            candidate.operations[candidate.operations.length - 1] = operation;
-            operations[graphOperationIndex] = { target: aggregate_target(library.identity, document_operation_path(operation)), operation };
-            stage_candidate_identity(livemap_document_identity_quids(candidate.overlay), livemap_document_identity_quids(composed.documentOverlay));
-            candidate.overlay = composed.documentOverlay;
-            cssCandidates.set(library.identity, { before: cssCandidates.get(library.identity)?.before ?? beforeStylesheet, after: composed.stylesheet });
-            operations.push({ target: aggregate_target(library.identity, []), operation: { domain: "css", kind: "replace", stylesheet: encode_portable_document_stylesheet(composed.stylesheet) } });
-          }
         }
         continue;
       }
@@ -1900,7 +1815,6 @@ function make_livemap_registry_engine(
               root: candidate.root,
               documentOverlay: candidate.overlay,
               documentQuads: nextQuadBindings.get(candidate.library.identity),
-              ...(unscopedConstructions.has(candidate.library.identity) ? { documentScopesUnavailable: true as const } : {}),
               ...(scopedCandidates.has(candidate.library.identity) ? { documentScopes: scopedCandidates.get(candidate.library.identity)!.scopes } : {}),
               projectedOverlay: undefined,
               projectedValue: undefined,
@@ -1977,13 +1891,14 @@ function make_livemap_registry_engine(
     let transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     try {
       const operation = candidate.operation;
-      const content = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement : undefined;
-      // Connector expansion replans the admitted public instruction. The preliminary
-      // candidate's derived evidence belongs to its unexpanded graph only.
+      const content = operation.op === "insert-content" ? operation.content : operation.op === "replace-content" ? operation.replacement
+        : operation.op === "replace-root" ? operation.root : undefined;
+      // Scoped preparation replans the admitted public instruction. The preliminary
+      // candidate's derived evidence does not include scopes or Part CSS.
       const instruction: LiveMapGraphOp = operation.op === "replace-content"
         ? { domain: "graph", op: "replace-content", target: operation.target, index: operation.index, replacement: operation.replacement }
         : operation;
-      transition = is_Node(content) && has_part_connector(content)
+      transition = library.documentScopes !== undefined || is_Node(content) && has_part_connector(content)
         ? prepare_authority_transition([{ target: aggregate_target(libraryIdentity, document_operation_path(operation)), kind: "graph", operation: instruction, publicStaged: true }])
         : prepare_authority_transition([], [{
         library: libraryIdentity,
@@ -2640,7 +2555,6 @@ function make_livemap_registry_engine(
         throw new Error("Selected hosted Library is unavailable.");
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
-      if (scoped && state.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence.");
       if (scoped && state.documentScopes !== undefined) {
         const captured = capture_document_scoped_library({ owner: state.identity, root: state.root,
           overlay: require_document_overlay(state.documentOverlay), issued: mapIdentityEpoch.issued(),
@@ -2724,7 +2638,6 @@ function make_livemap_registry_engine(
         ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
       if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
       if ("mode" in state) {
-        if (state.documentScopesUnavailable) throw new Error("Missing scoped checkpoint evidence.");
         if (state.documentScopes !== undefined) {
           const captured = capture_document_scoped_library({ owner: state.identity, root: state.root,
             overlay: require_document_overlay(state.documentOverlay), issued: mapIdentityEpoch.issued(),
@@ -2820,7 +2733,7 @@ function make_livemap_registry_engine(
       } else {
         Object.assign(candidate.state, {
           root: candidate.root,
-          documentScopes: candidate.documentScopes, documentScopesUnavailable: undefined,
+          documentScopes: candidate.documentScopes,
           ...candidate.addressState,
           projectedOverlay: candidate.prepared.projectedOverlay,
           projectedValue: candidate.projectedValue,
@@ -3309,7 +3222,7 @@ function make_livemap_registry_engine(
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
         const state = previous ?? make_livemap_library(prepared, schema, own_data_library_validation(entry));
         if (!scoped && previous?.documentScopes !== undefined) throw new Error("Scoped restoration requires private admission.");
-        if ((previous?.documentScopes !== undefined || previous?.documentScopesUnavailable) && encoded.scopes === undefined) {
+        if (previous?.documentScopes !== undefined && encoded.scopes === undefined) {
           throw new Error("Scoped restoration requires complete scoped evidence.");
         }
         const scopedCandidate = encoded.scopes === undefined ? undefined : reconstruct_scoped_library(state,
@@ -3413,7 +3326,7 @@ function make_livemap_registry_engine(
     for (const candidate of candidates) {
       if (candidate.changed) Object.assign(candidate.state, {
         root: candidate.root, documentOverlay: candidate.documentOverlay, documentQuads: candidate.documentQuads,
-        documentScopes: candidate.documentScopes, documentScopesUnavailable: undefined,
+        documentScopes: candidate.documentScopes,
         projectedOverlay: candidate.projectedOverlay, projectedValue: candidate.projectedValue,
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
@@ -3640,7 +3553,7 @@ function make_livemap_registry_engine(
       }
       return Object.freeze({ target, kind: "graph", operation: operation as LiveMapGraphOp });
     });
-    const transition = prepare_authority_transition(writes);
+    const transition = prepare_authority_transition(writes, [], false, false);
     if (transition.commit.hosted === undefined || JSON.stringify(transition.commit.hosted) !== JSON.stringify(input)) {
       transitionController.discardAuthority(transition);
       throw new Error("Hosted aggregate replay did not reproduce its exact semantic commit envelope.");
@@ -3674,8 +3587,7 @@ function make_livemap_registry_engine(
       for (const quid of enumerate_livemap_issued_quids(candidate.issued)) initialReserved.add(quid);
       Object.assign(state, { documentOverlay: candidate.overlay, documentScopes: candidate.scopes, stylesheet: candidate.stylesheet });
     } else if (entry.compositionStyles !== undefined) {
-      state.documentScopesUnavailable = true;
-      Object.assign(state, compose_styles(state.root, require_document_overlay(state.documentOverlay), entry.compositionStyles, initialReserved, state.stylesheet));
+      throw new Error("Part styles require complete scoped topology evidence.");
     }
     mark_quad_document_root(state.root, state.documentQuads);
   });
@@ -3803,7 +3715,7 @@ function make_livemap_registry_engine(
         seen.add(entry.library);
         const library = require_library(binding.identity);
         const state = decode_document_scoped_library(entry.state);
-        if (library.documentScopes !== undefined || library.documentScopesUnavailable
+        if (library.documentScopes !== undefined
           || !canonical_graph_equal(library.root, state.root)) throw new Error("Scoped initialization disagrees with its installed predecessor.");
         return { library, state };
       });
@@ -4154,7 +4066,6 @@ function make_livemap_registry_engine(
     documentScopes: (identity) => require_library(identity).documentScopes,
     scopedDocumentState: (identity) => {
       const library = require_library(identity), assertCurrent = capture_fence();
-      if (library.documentScopesUnavailable) throw new Error("Missing scoped predecessor evidence.");
       const context = { owner: identity, root: library.root, overlay: require_document_overlay(library.documentOverlay), issued: mapIdentityEpoch.issued() };
       return capture_document_scoped_library({ ...context,
         scopes: library.documentScopes ?? make_document_scoped_quads(context,

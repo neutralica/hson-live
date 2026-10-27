@@ -1,7 +1,9 @@
+import { assert_hson_identifier_name } from "./hson-name.js";
 /** Public boundary only: canonical composition reads remain unrestricted.
  * Call only after authenticating the Parts family, with absolute member coordinates.
  */
 export function assert_part_public_path(path: readonly (string | number)[]): void {
+  if (typeof path[0] === "string") assert_hson_identifier_name(path[0], "Part");
   if (path.length >= 2 && (path[1] === "css" || path[1] === "stylesheet")) {
     throw new TypeError("Part CSS fields require complete definition authoring; field access is unavailable.");
   }

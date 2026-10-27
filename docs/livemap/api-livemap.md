@@ -62,6 +62,8 @@ const commit = admission.commit;
 
 A hosted Locus exposes `locus.admit(definitions)`, which returns `Promise<void>` and resolves without a receipt after governed admission. Locus requires a nonempty batch and has no `addLibraries` method. Select newly admitted hosted libraries through `locus.data`, `locus.doc`, or `locus.parts`, using callable lookup or `.must(...)` for runtime-added names.
 
+Individual Library names and governed Part member names cannot contain `/`. Ordinary Data keys, document content, and path values may contain `/`. Connectors continue to use separate `lib` and `at` attributes.
+
 Construction-time names keep their family evidence. Use `.data`, `.doc`, or `.parts` for both known and runtime-added names. Callable lookup returns `undefined` for absence, a wrong family, or a mismatched optional Schema argument. `.must(name, schema?)` requires a match; known safe names also support property access. Selectors and retained Library references stay valid across unrelated admissions. Function/Object property names use callable lookup; selectors are not enumerable Library inventories.
 
 ## Selection and reads

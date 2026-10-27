@@ -395,15 +395,9 @@ export async function document_scoped_guard_cases() {
         () => local.batch(writer => writer.doc.must("page").at([1, 0]).asElement().flags.set("hidden")),
         () => local.batch(writer => writer.doc.must("page").css.sel("body").setProp("color", "red")),
       ];
-      if (governed) {
-        for (const run of runs) await run();
-        assert.equal(owner.rev, before.rev + 3); assert.equal(observations, 3);
-        assert.equal(page.at([1, 0]).asElement()!.attrs.get("title"), "blocked");
-      } else {
-        for (const run of runs) await assert.rejects(async () => { await run(); }, /scoped/i);
-        assert.deepEqual({ root: page.root(), css: page.css.snapshot(), rev: owner.rev }, before);
-        assert.equal(observations, 0);
-      }
+      for (const run of runs) await run();
+      assert.equal(owner.rev, before.rev + 3); assert.equal(observations, 3);
+      assert.equal(page.at([1, 0]).asElement()!.attrs.get("title"), "blocked");
       stop();
     }
   } finally { locus.dispose(); }

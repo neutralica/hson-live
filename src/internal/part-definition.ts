@@ -1,7 +1,7 @@
 import type { HsonNode, Primitive } from "../core/types.js";
 import { ROOT_TAG, STR_TAG } from "../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../core/node-guards.js";
-import { PART_DECLARATION, PART_OPTIONAL, part_declaration_issue, part_optional_issue, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration } from "./part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, part_declaration_issue, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
 /** Part admission validates flag form even for definitions never invoked. */
 export function validate_part_definition_flags(root: HsonNode): void {
@@ -12,6 +12,10 @@ export function validate_part_definition_flags(root: HsonNode): void {
   const stack = [root];
   while (stack.length) {
     const node = stack.pop()!;
+    const iterator = part_node_iterator(node);
+    if (iterator !== undefined && (node === element || !is_ordinary_element_node(node))) {
+      throw new TypeError("Part iteration is only allowed on descendant elements, never the definition root.");
+    }
     if (Object.hasOwn(node.$_attrs ?? {}, PART_DECLARATION)) {
       const issue = part_declaration_issue(node.$_attrs![PART_DECLARATION]);
       if (issue !== undefined || node !== element) throw new TypeError(issue ?? "hson:part is only allowed on the single Part definition root.");
@@ -26,14 +30,15 @@ export function validate_part_definition_flags(root: HsonNode): void {
 
 /** Shared placement checks over an already detached, qualified document. */
 export function transform_part_parameter_strings(root: HsonNode,
-  substitute: (value: string, node: HsonNode, owner: HsonNode) => Primitive | undefined,
-  forwarding?: (reference: PartReference, node: HsonNode, kind: "data" | "doc") => void,
+  substitute: (value: string, node: HsonNode, owner: HsonNode, attribute?: string) => Primitive | undefined,
+  forwarding?: (reference: PartReference, node: HsonNode, kind: "data" | "doc", attribute: string) => void,
   receiving?: (declarations: readonly PartReceivingDeclaration[]) => void,
   traversal?: Readonly<{
     enter?: (node: HsonNode, parent: HsonNode | undefined) => boolean | void;
     leave?: (node: HsonNode, parent: HsonNode | undefined) => void;
     inspect?: boolean;
     structure?: (reference: PartReference, node: HsonNode) => void;
+    iterator?: (declaration: PartIteratorDeclaration, node: HsonNode) => void;
   }>): void {
   const element = root.$_tag === ROOT_TAG && root.$_content.length === 1 && is_Node(root.$_content[0]) ? root.$_content[0] : undefined;
   const declarations = Object.entries(element?.$_attrs ?? {}).filter(([name]) => element !== undefined && is_part_receiving_attribute(element.$_tag, name))
@@ -46,11 +51,17 @@ export function transform_part_parameter_strings(root: HsonNode,
     if (job.leaving) { traversal?.leave?.(node, parent); continue; }
     if (traversal?.enter?.(node, parent) === false) continue;
     stack.push({ ...job, leaving: true });
+    const iterator = part_node_iterator(node);
+    if (iterator !== undefined) {
+      if (node === element || !is_ordinary_element_node(node)) throw new TypeError("Part iteration is only allowed on descendant elements, never the definition root.");
+      traversal?.iterator?.(iterator, node);
+    }
     if (has_part_reference(node.$_tag)) throw new TypeError("Part placeholders cannot occur in tags.");
     if (node.$_meta !== undefined && has_part_reference(JSON.stringify(node.$_meta))) throw new TypeError("Part placeholders cannot occur in identity metadata.");
     if (node.$_attrs !== undefined) {
       const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
       for (const [name, value] of Object.entries(node.$_attrs)) {
+        if (is_part_iterator_attribute(name)) continue;
         if (name === PART_DECLARATION) {
           const issue = part_declaration_issue(value);
           if (issue !== undefined || node !== element) throw new TypeError(issue ?? "hson:part is only allowed on the single Part definition root.");
@@ -77,10 +88,10 @@ export function transform_part_parameter_strings(root: HsonNode,
         if (issue !== undefined && (typeof value === "string" ? has_part_reference(value) : value !== null && typeof value === "object" && has_part_reference(JSON.stringify(value)))) throw new TypeError(issue);
         if (node.$_tag.toLowerCase() === "hson-part" && (name.startsWith("data:") || name.startsWith("doc:"))) {
           const reference = typeof value === "string" ? whole_part_reference(value) : undefined;
-          if (reference !== undefined) forwarding?.(reference, node, name.startsWith("data:") ? "data" : "doc");
+          if (reference !== undefined) forwarding?.(reference, node, name.startsWith("data:") ? "data" : "doc", name);
           attrs[name] = value;
         } else {
-          const replacement = typeof value === "string" ? substitute(value, node, owner) : value;
+          const replacement = typeof value === "string" ? substitute(value, node, owner, name) : value;
           if (replacement !== undefined) attrs[name] = replacement;
         }
       }
@@ -101,36 +112,94 @@ export function transform_part_parameter_strings(root: HsonNode,
   }
 }
 
-/** The exact surface spelling is its own flag representation. No private attribute alias. */
+/** Declaration objects are lexical identities, shared by all uses in their scope. */
+export type PartLocalDeclaration = Readonly<{ name: string; kind: PartArgumentKind; node: HsonNode; receiving?: PartReceivingDeclaration;
+  elementOf?: PartReferenceUse }>;
+type PartReceivingLocal = PartLocalDeclaration & Readonly<{ receiving: PartReceivingDeclaration }>;
+export type PartReferenceUse = Readonly<{ reference: PartReference; node: HsonNode; binding?: PartLocalDeclaration;
+  scope: ReadonlyMap<string, PartLocalDeclaration>;
+  context: "value" | "forwarding" | "structure" | "iteration"; supply?: "data" | "doc" }>;
+export type PartDefinitionAnalysis = Readonly<{
+  parameters: ReadonlyMap<string, PartArgumentKind>;
+  receiving: readonly PartReceivingLocal[];
+  scopes: ReadonlyMap<HsonNode, ReadonlyMap<string, PartLocalDeclaration>>;
+  iterators: ReadonlyMap<HsonNode, PartIteratorDeclaration>;
+  uses: readonly PartReferenceUse[];
+  used: ReadonlySet<PartLocalDeclaration>;
+}>;
+export type PartDefinitionIssue = Readonly<{ node: HsonNode; reference?: PartReference; attribute?: string; message: string }>;
+
+/** Shared semantic analysis for receiving interfaces, execution and source facts.
+ * Reporting consumers can retain precise local issues; execution fails closed. */
+export function analyze_part_definition(root: HsonNode, report?: (issue: PartDefinitionIssue) => void): PartDefinitionAnalysis {
+  const parameters = new Map<string, PartArgumentKind>();
+  const receiving: PartReceivingLocal[] = [], uses: PartReferenceUse[] = [];
+  const used = new Set<PartLocalDeclaration>();
+  const scopes = new Map<HsonNode, ReadonlyMap<string, PartLocalDeclaration>>();
+  const iterators = new Map<HsonNode, PartIteratorDeclaration>();
+  let locals = new Map<string, PartLocalDeclaration>();
+  const previous = new Map<HsonNode, Map<string, PartLocalDeclaration>>();
+  const issue = (node: HsonNode, message: string, reference?: PartReference, attribute?: string): void => {
+    if (report === undefined) throw new TypeError(message);
+    report({ node, message, ...(reference === undefined ? {} : { reference }), ...(attribute === undefined ? {} : { attribute }) });
+  };
+  const add = (reference: PartReference, kind: PartArgumentKind, node: HsonNode, attribute?: string) => {
+    const name = reference.name;
+    if (parameters.has(name) && parameters.get(name) !== kind) issue(node, `Conflicting Part input ${JSON.stringify(name)}.`, reference, attribute);
+    parameters.set(name, kind);
+  };
+  const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: "data" | "doc", attribute?: string) => {
+    const binding = reference.namespace === "local" ? locals.get(reference.name) : undefined;
+    const use: PartReferenceUse = { reference, node, context, scope: locals, ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }) };
+    uses.push(use);
+    if (reference.namespace === "incoming") {
+      if (reference.path.length || context !== "value") issue(node, context === "forwarding"
+        ? "Typed Part forwarding requires a declared local binding and #{} reference."
+        : "Structured Part inputs require a declared local binding and #{} reference.", reference, attribute);
+      add(reference, "scalar", node, attribute);
+    } else if (binding === undefined) {
+      issue(node, `Missing Part local declaration ${JSON.stringify(reference.name)}.`, reference, attribute);
+    } else {
+      used.add(binding);
+      if (context === "structure" ? binding.kind !== "doc"
+        : context === "iteration" ? binding.kind !== "data"
+        : reference.path.length && binding.kind !== "data") issue(node, "Part reference does not match its declared representation.", reference, attribute);
+      if (supply !== undefined && binding.kind !== supply) issue(node, "Typed Part forwarding requires the same declared representation.", reference, attribute);
+    }
+    return use;
+  };
+  transform_part_parameter_strings(root, (value, node, _owner, attribute) => {
+    const references = part_placeholder_matches(value);
+    if (references === undefined) issue(node, "Invalid Part placeholder.", undefined, attribute);
+    references?.forEach(reference => observe(reference, node, "value", undefined, attribute)); return value;
+  }, (reference, node, kind, attribute) => observe(reference, node, "forwarding", kind, attribute), declarations => {
+    const node = root.$_content[0];
+    if (!is_Node(node)) return;
+    for (const declaration of declarations) {
+      const attribute = `${declaration.name}:${declaration.kind}`;
+      if (locals.has(declaration.name)) issue(node, `Conflicting Part local binding ${JSON.stringify(declaration.name)}.`, declaration.reference, attribute);
+      const local: PartReceivingLocal = { name: declaration.name, kind: declaration.kind, node, receiving: declaration };
+      locals.set(local.name, local); receiving.push(local); add(declaration.reference, declaration.kind, node, attribute);
+    }
+  }, {
+    inspect: true,
+    enter(node) { scopes.set(node, locals); },
+    structure(reference, node) { observe(reference, node, "structure", undefined, part_reference_text(reference)); },
+    iterator(declaration, node) {
+      // The collection is read before this element's aliases shadow outer names.
+      const source = observe(declaration.source, node, "iteration", undefined, declaration.attribute);
+      previous.set(node, locals);
+      locals = new Map(locals);
+      if (declaration.item !== undefined) locals.set(declaration.item, { name: declaration.item, kind: "data", node, elementOf: source });
+      if (declaration.index !== undefined) locals.set(declaration.index, { name: declaration.index, kind: "scalar", node });
+      scopes.set(node, locals); iterators.set(node, declaration);
+    },
+    leave(node) { const outer = previous.get(node); if (outer !== undefined) locals = outer; },
+  });
+  return { parameters, receiving, scopes, iterators, uses, used };
+}
+
 /** One receiving interface normalizer, used by governed write and composition. */
 export function part_receiving_interface(root: HsonNode): ReadonlyMap<string, PartArgumentKind> {
-  const names = new Map<string, PartArgumentKind>(), locals = new Map<string, "data" | "doc">();
-  const add = (name: string, kind: PartArgumentKind) => {
-    if (names.has(name) && names.get(name) !== kind) throw new TypeError(`Conflicting Part input ${JSON.stringify(name)}.`);
-    names.set(name, kind);
-  };
-  const observe = (reference: PartReference, structure = false) => {
-    if (reference.namespace === "incoming") {
-      if (reference.path.length || structure) throw new TypeError("Structured Part inputs require a declared local binding and #{} reference.");
-      add(reference.name, "scalar");
-    } else {
-      const kind = locals.get(reference.name);
-      if (kind === undefined) throw new TypeError(`Missing Part local declaration ${JSON.stringify(reference.name)}.`);
-      if (structure ? kind !== "doc" : reference.path.length && kind !== "data") throw new TypeError("Part reference does not match its declared representation.");
-    }
-  };
-  transform_part_parameter_strings(root, value => {
-    const references = part_placeholder_matches(value);
-    if (references === undefined) throw new TypeError("Invalid Part placeholder.");
-    references.forEach(reference => observe(reference)); return value;
-  }, (reference, _node, kind) => {
-    observe(reference);
-    if (reference.namespace !== "local" || locals.get(reference.name) !== kind) throw new TypeError("Typed Part forwarding requires the same declared representation.");
-  }, declarations => {
-    for (const declaration of declarations) {
-      if (locals.has(declaration.name)) throw new TypeError(`Conflicting Part local binding ${JSON.stringify(declaration.name)}.`);
-      locals.set(declaration.name, declaration.kind); add(declaration.reference.name, declaration.kind);
-    }
-  }, { inspect: true, structure: reference => observe(reference, true) });
-  return names;
+  return analyze_part_definition(root).parameters;
 }

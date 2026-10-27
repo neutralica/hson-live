@@ -103,7 +103,7 @@ await check("capture and local install preserve the complete detached aggregate 
   assert.equal(installed.map.rev, snapshot.revision);
   assert.equal(data(installed.map, "state").snap(["count"]), 0);
   assert.equal(document(installed.map, "page").at([]).asElement()!.attrs.get("title"), "zero");
-  assert.throws(() => installed.map.data.must(INTERACTION_RESERVED_LIBRARY_KEY), /Unknown/);
+  assert.throws(() => installed.map.data.must(INTERACTION_RESERVED_LIBRARY_KEY), /Library name .*must not contain/);
   data(installed.map, "state").at(["count"]).set(2);
   assert.equal(JSON.stringify(snapshot), retained);
 });

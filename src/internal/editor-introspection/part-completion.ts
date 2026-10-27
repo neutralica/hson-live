@@ -1,15 +1,18 @@
 import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
-import type { PartSourceFacts, PartDocumentSource } from "../hson-schema/part-source.js";
+import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue } from "../part-placeholder.js";
+import { part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
+import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
+import type { CompiledHsonSchema } from "../hson-schema/compiler.js";
 import type { HsonEditorCandidate } from "./query.js";
 
 /** Advisory projections of compiler evidence; never infer an owner from a name. */
 export function part_candidates(source: string, cursor: number, checkpoint: HsonGrammarCheckpoint,
-  facts: PartSourceFacts, document: PartDocumentSource): readonly HsonEditorCandidate[] {
+  facts: PartSourceFacts, document: PartDocumentSource, offset: number): readonly HsonEditorCandidate[] {
   const { element, attribute } = checkpoint;
   if (element === undefined || checkpoint.pendingValue) return [];
   let prefix = checkpoint.parameter?.prefix ?? source.slice(checkpoint.range.start, cursor);
@@ -17,6 +20,8 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
   catch { return []; }
   const memberSource = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
     && library.members.some(member => member.documents.includes(document))));
+  const bindingsAt = (position: number): readonly PartLocalSource[] => part_source_bindings_at(document.lexicalScopes, position) ?? document.receivingDeclarations;
+  const visible = bindingsAt(offset);
   const optionalCandidate: HsonEditorCandidate[] = [];
   if (checkpoint.kind === "header" && memberSource && element.contentTags.length === 1
     && element.tag.toLowerCase() !== "hson-part" && PART_DECLARATION.startsWith(prefix)
@@ -53,8 +58,10 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     // Only actual member-source relationships establish a Part definition.
     if (!memberSource) return [];
     const receiving = attribute !== undefined && is_part_receiving_attribute(element.tag, attribute);
+    const iterationSource = attribute !== undefined && is_part_iterator_attribute(attribute);
     if (receiving && element.contentTags.length !== 1) return [];
     if (checkpoint.parameter.namespace === "incoming") {
+      if (iterationSource) return [];
       if (!receiving && (attribute?.startsWith("data:") || attribute?.startsWith("doc:"))) return [];
       const structured = new Set(document.receivingDeclarations.map(declaration => declaration.incoming));
       if (receiving) for (const declaration of document.receivingDeclarations) add(declaration.incoming, 0, false);
@@ -63,28 +70,37 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         if (use.namespace === "incoming" && !use.structured && use.supply === undefined && (receiving || !structured.has(parameter.name))) add(use.reference, 0, false);
       }
     } else if (!receiving) {
-      for (const declaration of document.receivingDeclarations) {
-        if ((!checkpoint.parameter.structural || declaration.kind === "doc") && (!attribute?.startsWith("data:") || declaration.kind === "data") && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(declaration.name, 0, document.parameterCompleteness === "complete");
+      for (const declaration of visible) {
+        if ((!checkpoint.parameter.structural || declaration.kind === "doc") && (!iterationSource || declaration.kind === "data")
+          && (!attribute?.startsWith("data:") || declaration.kind === "data") && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(declaration.name, 0, document.parameterCompleteness === "complete");
       }
       if (!checkpoint.parameter.structural && !attribute?.startsWith("doc:")) for (const batch of facts.batches) for (const library of batch.libraries) for (const member of library.members) {
         if (!member.documents.includes(document)) continue;
         for (const source of facts.documents) {
-          if (!source.receivers.some(receiver => receiver.batch === batch.call && receiver.certainty === "certain" && receiver.library?.family === "document")) continue;
+          // Literal coordinates establish a possible invocation even when its
+          // Data slot is dynamic. Suggestions never upgrade receiver certainty.
+          if (!source.receivers.some(receiver => receiver.batch === batch.call && receiver.library?.family === "document")) continue;
           for (const connector of source.connectors) {
             if (connector.attributes.find(attr => attr.name === "lib")?.value !== library.name
               || connector.attributes.find(attr => attr.name === "at")?.value !== member.name) continue;
-            for (const declaration of document.receivingDeclarations.filter(declaration => declaration.kind === "data")) {
-              const value = connector.attributes.find(attr => attr.name === `data:${declaration.incoming}`)?.value;
-              if (value === undefined) continue;
-              try { for (const path of data_paths(admit_canonical_hson_data_value(value), declaration.name)) add(path, 0, false); }
+            for (const declaration of visible.filter(declaration => declaration.kind === "data")) {
+              const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
+              if (origin === undefined) continue;
+              const argument = connector.attributes.find(attr => attr.name === `data:${origin.incoming}`);
+              if (argument?.dataSchema !== undefined) for (const path of schema_paths(argument.dataSchema, origin.path, declaration.name)) add(path, 0, false);
+              if (argument?.value === undefined) continue;
+              try { for (const path of data_paths(project_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
               catch { /* Invalid or dynamic inputs provide no shape evidence. */ }
             }
           }
         }
       }
       if (!checkpoint.parameter.structural) for (const parameter of document.parameterSpellings) for (const use of parameter.uses) {
-        const declaration = document.receivingDeclarations.find(declaration => declaration.name === parameter.name);
+        const declaration = visible.find(declaration => declaration.name === parameter.name);
+        const usedDeclaration = bindingsAt(use.location.start).find(declaration => declaration.name === parameter.name);
         if (use.namespace === "local" && declaration !== undefined
+          && declaration.location.start === usedDeclaration?.location.start
+          && (!iterationSource || declaration.kind === "data")
           && (!attribute?.startsWith("data:") || declaration.kind === "data")
           && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(use.reference, 0, document.parameterCompleteness === "complete");
       }
@@ -95,7 +111,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     if (element.attributes.some(attr => attr.name.startsWith("#{"))) return optionalCandidate;
     if (memberSource && checkpoint.kind === "header" && element.tag.toLowerCase() === "hson-part"
       && element.attributes.every(attr => attr.name === PART_OPTIONAL)) {
-      const structural = document.receivingDeclarations.filter(declaration => declaration.kind === "doc")
+      const structural = visible.filter(declaration => declaration.kind === "doc")
         .map(declaration => `#{${declaration.name}}`).filter(name => name.startsWith(prefix));
       return [...optionalCandidate, ...structural.map((label): HsonEditorCandidate => ({ label, insertText: label, kind: "reference",
         detail: "Insert a declared local Document", certainty: "certain", sortText: "0001" }))];
@@ -160,8 +176,8 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
 }
 
 /** Enumerate only observed immutable ordered Data; no receiving Schema is inferred. */
-function data_paths(value: OrderedProjectedValue, root: string): readonly string[] {
-  const result: string[] = [], pending = [{ value, path: root, depth: 0 }];
+function data_paths(values: readonly OrderedProjectedValue[], root: string): readonly string[] {
+  const result: string[] = [], pending = values.map(value => ({ value, path: root, depth: 0 }));
   while (pending.length && result.length < 512) {
     const current = pending.pop()!;
     if (current.depth >= 16) continue;
@@ -169,8 +185,47 @@ function data_paths(value: OrderedProjectedValue, root: string): readonly string
       ? current.value.map((value, index): readonly [number, OrderedProjectedValue] => [index, value])
       : is_ordered_projected_object(current.value) ? current.value.entries : [];
     for (const [key, value] of entries) {
-      const path = current.path + (typeof key === "number" ? `[${key}]` : is_part_parameter_name(key) ? `.${key}` : `[${JSON.stringify(key)}]`);
+      const path = member_path(current.path, key);
       result.push(path); pending.push({ value, path, depth: current.depth + 1 });
+      if (result.length === 512) break;
+    }
+  }
+  return result;
+}
+
+const member_path = (root: string, key: string | number) => root + (typeof key === "number" ? `[${key}]` : is_part_parameter_name(key) ? `.${key}` : `[${JSON.stringify(key)}]`);
+
+/** Apply shared lexical selector evidence to an admitted immutable carrier. */
+function project_data(value: OrderedProjectedValue, path: SchemaDataPath): readonly OrderedProjectedValue[] {
+  let values = [value];
+  for (const key of path) {
+    const next: OrderedProjectedValue[] = [];
+    for (const value of values) {
+      if (key === null) {
+        if (Array.isArray(value)) for (const item of value) { if (next.length === 512) break; next.push(item); }
+      } else {
+        const child = ordered_projected_value_at(value, [key]);
+        if (child !== undefined) next.push(child);
+      }
+      if (next.length === 512) break;
+    }
+    values = next;
+  }
+  return values;
+}
+
+/** Advisory common members only; an invocation annotation is not a universal Part contract. */
+function schema_paths(schema: CompiledHsonSchema, origin: SchemaDataPath, root: string): readonly string[] {
+  const result: string[] = [], pending: { path: SchemaDataPath; spelling: string; depth: number }[] = [{ path: origin, spelling: root, depth: 0 }];
+  while (pending.length && result.length < 512) {
+    const current = pending.pop()!;
+    if (current.depth >= 16) continue;
+    const nodes = project_schema_data(schema, current.path), first = nodes[0];
+    if (first?.kind !== "object" || nodes.some(node => node.kind !== "object")) continue;
+    for (const member of first.members) {
+      if (nodes.some(node => node.kind !== "object" || !node.members.some(other => other.name === member.name))) continue;
+      const spelling = member_path(current.spelling, member.name);
+      result.push(spelling); pending.push({ path: [...current.path, member.name], spelling, depth: current.depth + 1 });
       if (result.length === 512) break;
     }
   }
