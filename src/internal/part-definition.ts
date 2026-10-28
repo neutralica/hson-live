@@ -119,9 +119,12 @@ export type PartLocalDeclaration = Readonly<{ name: string; kind: PartArgumentKi
 type PartReceivingLocal = PartLocalDeclaration & Readonly<{ receiving: PartReceivingDeclaration }>;
 export type PartReferenceUse = Readonly<{ reference: PartReference; node: HsonNode; binding?: PartLocalDeclaration;
   scope: ReadonlyMap<string, PartLocalDeclaration>;
+  iterators: readonly HsonNode[];
   context: "value" | "forwarding" | "structure" | "iteration"; supply?: "data" | "doc" }>;
+export type PartRequiredness = "required" | "optional" | "conditional";
 export type PartDefinitionAnalysis = Readonly<{
   parameters: ReadonlyMap<string, PartArgumentKind>;
+  requiredness: ReadonlyMap<string, PartRequiredness>;
   receiving: readonly PartReceivingLocal[];
   scopes: ReadonlyMap<HsonNode, ReadonlyMap<string, PartLocalDeclaration>>;
   iterators: ReadonlyMap<HsonNode, PartIteratorDeclaration>;
@@ -138,6 +141,8 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   const used = new Set<PartLocalDeclaration>();
   const scopes = new Map<HsonNode, ReadonlyMap<string, PartLocalDeclaration>>();
   const iterators = new Map<HsonNode, PartIteratorDeclaration>();
+  let execution: readonly HsonNode[] = [];
+  const outerExecution = new Map<HsonNode, readonly HsonNode[]>();
   let locals = new Map<string, PartLocalDeclaration>();
   const previous = new Map<HsonNode, Map<string, PartLocalDeclaration>>();
   const issue = (node: HsonNode, message: string, reference?: PartReference, attribute?: string): void => {
@@ -151,7 +156,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   };
   const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: "data" | "doc", attribute?: string) => {
     const binding = reference.namespace === "local" ? locals.get(reference.name) : undefined;
-    const use: PartReferenceUse = { reference, node, context, scope: locals, ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }) };
+    const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }) };
     uses.push(use);
     if (reference.namespace === "incoming") {
       if (reference.path.length || context !== "value") issue(node, context === "forwarding"
@@ -188,6 +193,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
     iterator(declaration, node) {
       // The collection is read before this element's aliases shadow outer names.
       const source = observe(declaration.source, node, "iteration", undefined, declaration.attribute);
+      outerExecution.set(node, execution); execution = [...execution, node];
       previous.set(node, locals);
       locals = new Map(locals);
       if (declaration.value !== undefined) locals.set(declaration.value, { name: declaration.value, kind: "data", node, elementOf: source });
@@ -195,9 +201,27 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
       if (ordinal !== undefined) locals.set(ordinal, { name: ordinal, kind: "scalar", node });
       scopes.set(node, locals); iterators.set(node, declaration);
     },
-    leave(node) { const outer = previous.get(node); if (outer !== undefined) locals = outer; },
+    leave(node) {
+      const outer = previous.get(node); if (outer !== undefined) locals = outer;
+      const ancestry = outerExecution.get(node); if (ancestry !== undefined) execution = ancestry;
+    },
   });
-  return { parameters, receiving, scopes, iterators, uses, used };
+  const requiredness = new Map<string, PartRequiredness>();
+  const rootElement = root.$_content[0];
+  const optionalRoot = is_Node(rootElement) && Object.hasOwn(rootElement.$_attrs ?? {}, PART_OPTIONAL);
+  for (const [name, kind] of parameters) {
+    if (kind === "scalar") {
+      requiredness.set(name, uses.some(use => use.reference.namespace === "incoming" && use.reference.name === name && !use.reference.optional) ? "required" : "optional");
+      continue;
+    }
+    const declarations = receiving.filter(local => local.receiving.reference.name === name && !local.receiving.reference.optional);
+    // Data declarations on optional roots can remain entirely unexecuted. A
+    // direct strict read proves demand; lexical identities exclude shadowed aliases.
+    requiredness.set(name, declarations.length === 0 ? "optional" : kind === "doc" || !optionalRoot
+      || uses.some(use => declarations.some(local => local === use.binding)
+        && use.iterators.length === 0 && !use.reference.optional) ? "required" : "conditional");
+  }
+  return { parameters, requiredness, receiving, scopes, iterators, uses, used };
 }
 
 /** One receiving interface normalizer, used by governed write and composition. */

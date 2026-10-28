@@ -1,6 +1,7 @@
 import { part_coordinates } from "../../internal/part-coordinates.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
+import { part_contract_error } from "../../internal/part-contract.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
 import { PART_DECLARATION, PART_OPTIONAL, is_part_iterator_attribute, part_reference_text, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
@@ -180,9 +181,11 @@ export type DocumentCompositionStyle = Readonly<{
   subjects: readonly Readonly<{ name: string; path: readonly number[] }>[];
 }>;
 type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
-type PartBinding = Readonly<{ kind: "scalar"; value: Primitive }>
+type PartBinding = (Readonly<{ kind: "scalar"; value: Primitive | undefined }>
   | Readonly<{ kind: "data"; value: OrderedProjectedValue | undefined }>
-  | Readonly<{ kind: "doc"; value: string; document: DocumentCompositionSource }>;
+  | Readonly<{ kind: "doc"; value: string; document: DocumentCompositionSource }>
+  | Readonly<{ kind: "doc"; value: undefined; document?: never }>)
+  & Readonly<{ optionalAbsence?: true; missingInput?: string }>;
 type PartLocalNames = Map<HsonNode, readonly string[]>;
 type PartConnectorInspection = boolean | "literal";
 type PartEnvironment = {
@@ -192,6 +195,8 @@ type PartEnvironment = {
   names?: PartLocalNames;
   iterations?: ReadonlyMap<HsonNode, PartLocalNames>;
   readonly context: string;
+  readonly selected: string;
+  readonly signature: PartDefinitionAnalysis;
   omitted?: (node: HsonNode) => boolean;
   authoredArguments?: ReadonlyMap<HsonNode, readonly string[]>;
   structures?: ReadonlyMap<HsonNode, Extract<PartBinding, { kind: "doc" }>>;
@@ -287,8 +292,8 @@ export function expand_document_composition(
       const argument = part_argument_name(raw);
       if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}.`);
       const { name, kind } = argument;
-      if (!parameters.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)} for ${JSON.stringify(selected)}.`);
-      if (parameters.get(name) !== kind) throw new TypeError(`Part parameter ${JSON.stringify(name)} does not match the receiving interface of ${JSON.stringify(selected)}.`);
+      if (!parameters.has(name)) throw part_contract_error(selected, parameters, "unexpected", name, kind);
+      if (parameters.get(name) !== kind) throw part_contract_error(selected, parameters, "representation", name, kind);
     }
   };
   const validateConnector = (node: HsonNode, collection: unknown, environment: PartEnvironment, inspectInterface: PartConnectorInspection): void => {
@@ -597,7 +602,7 @@ export function expand_document_composition(
       if (structural !== undefined) {
         if (configuration?.use !== undefined) throw new TypeError("Structural Part does not support selection overrides.");
         const binding = frame.occurrence.parameters?.structures?.get(item);
-        if (binding === undefined) throw new TypeError("Structural Part reference requires a declared Document binding.");
+        if (binding === undefined || binding.value === undefined) throw new TypeError("Structural Part reference requires a declared Document binding.");
         charge(binding.value);
         const supplied = binding.document;
         const suppliedRoot = supplied.root.$_content[0];
@@ -637,7 +642,7 @@ export function expand_document_composition(
           if (reference !== undefined) {
             const binding = resolve_part_reference(reference, part_environment_at(frame.occurrence.parameters, item), true);
             if (binding.kind !== argument.kind) throw new TypeError("Typed Part forwarding requires the same declared representation.");
-            parameters.set(argument.name, binding);
+            if (binding.value !== undefined || !reference.optional && !binding.optionalAbsence) parameters.set(argument.name, binding);
           } else if (argument.kind === "doc") {
             parameters.set(argument.name, { kind: "doc", value, document: documentInput(item, raw, value) });
           } else {
@@ -653,10 +658,9 @@ export function expand_document_composition(
       }
       if (typeof lib !== "string" || typeof member !== "string") throw new TypeError("Composition Part coordinates must be strings.");
       const definition = part(lib, member);
-      validateArguments(definition, parameterNames, `${lib}/${member}`);
       const authoredArguments = frame.occurrence.parameters?.authoredArguments?.get(item);
-      if (authoredArguments !== undefined) validateArguments(definition, authoredArguments, `${lib}/${member}`);
-      const environment: PartEnvironment = { bindings: parameters, locals: new Map(), context };
+      validateArguments(definition, authoredArguments ?? parameterNames, `${lib}/${member}`);
+      const environment: PartEnvironment = { bindings: parameters, locals: new Map(), context, selected: `${lib}/${member}`, signature: analysis(definition) };
       const selected = { ...definition, root: substitute_part_parameters(definition, analysis(definition), environment, limits.maxCharacters - characters, preparation, (connector, inspectInterface, local) => validateConnector(connector, lib, local, inspectInterface)) };
       const content = selected.root.$_content;
       if (is_Node(content[0]) && environment.omitted?.(content[0])) {
@@ -780,11 +784,17 @@ function parameter_scalar(value: unknown): value is Primitive {
   return value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number" && Number.isFinite(value);
 }
 
-/** Only a proven missing property/index (or forwarded absence) can be optional. */
+/** Optionality permits absence, never an undeclared local or an invalid path. */
 function resolve_part_reference(reference: PartReference, environment: PartEnvironment | undefined, allowAbsent = false): PartBinding {
   const binding = (reference.namespace === "incoming" ? environment?.bindings : environment?.locals)?.get(reference.name);
   const context = environment?.context ?? "top-level invocation (no enclosing Part)";
-  if (binding === undefined) throw new TypeError(`Missing Part parameter ${JSON.stringify(reference.name)} for ${part_reference_text(reference)} in ${context}.`);
+  if (binding === undefined) {
+    if (reference.namespace === "incoming" && reference.optional && environment?.signature.parameters.get(reference.name) === "scalar") return { kind: "scalar", value: undefined };
+    throw new TypeError(`Missing Part parameter ${JSON.stringify(reference.name)} for ${part_reference_text(reference)} in ${context}.`);
+  }
+  if (binding.missingInput !== undefined && !reference.optional && environment !== undefined) {
+    throw part_contract_error(environment.selected, environment.signature.parameters, "missing", binding.missingInput, binding.kind);
+  }
   if (reference.namespace === "incoming" && (binding.kind !== "scalar" || reference.path.length)) throw new TypeError("Structured Part inputs require declared local ^{} references.");
   if (reference.path.length && binding.kind !== "data") throw new TypeError(`Part reference ${part_reference_text(reference)} requires a data binding in ${context}.`);
   let value = binding.value;
@@ -795,8 +805,8 @@ function resolve_part_reference(reference: PartReference, environment: PartEnvir
     }
     value = ordered_projected_value_at(value, [key]);
   }
-  if (value === undefined && !allowAbsent) throw new TypeError(`Missing Part path ${part_reference_text(reference)} in ${context}.`);
-  return binding.kind !== "data" ? binding : { kind: "data", value };
+  if (value === undefined && !allowAbsent && !reference.optional && !binding.optionalAbsence) throw new TypeError(`Missing Part path ${part_reference_text(reference)} in ${context}.`);
+  return binding.kind !== "data" ? binding : { ...binding, value };
 }
 
 /** The body pass borrows the lexical environment captured for this exact instance. */
@@ -814,19 +824,21 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
   budget: Readonly<{ node: (depth: number) => void; text: (length: number) => void }>,
   validateConnector: (node: HsonNode, inspectInterface: PartConnectorInspection, local: PartEnvironment) => void): HsonNode {
   const rootLocals = new Map<string, PartBinding>();
-  const missingDeclarations = new Set<string>();
+  for (const [name, requiredness] of analysis.requiredness) if (requiredness === "required" && !environment.bindings.has(name)) {
+    throw part_contract_error(environment.selected, analysis.parameters, "missing", name, analysis.parameters.get(name)!);
+  }
   for (const local of analysis.receiving) {
     const declaration = local.receiving;
-    const binding = environment.bindings.get(declaration.reference.name);
-    if (binding === undefined) {
-      if (declaration.kind === "doc") throw new TypeError(`Missing required Part Document input in ${environment.context}.`);
-      missingDeclarations.add(declaration.name); continue;
-    }
+    const supplied = environment.bindings.get(declaration.reference.name);
+    let binding: PartBinding;
+    if (supplied === undefined) {
+      // An optional receiving root carries absence through its local alias.
+      // Supplied values retain ordinary strict property/path validation.
+      if (declaration.reference.optional) binding = { kind: declaration.kind, value: undefined, optionalAbsence: true };
+      else binding = { kind: declaration.kind, value: undefined, missingInput: declaration.reference.name };
+    } else binding = supplied;
     if (binding.kind !== declaration.kind) throw new TypeError(`Part declaration ${JSON.stringify(declaration.name)} requires a ${declaration.kind} input.`);
     rootLocals.set(declaration.name, binding);
-  }
-  for (const [name, kind] of analysis.parameters) if (kind === "scalar" && !environment.bindings.has(name)) {
-    throw new TypeError(`Missing Part parameter ${JSON.stringify(name)} in ${environment.context}.`);
   }
   environment.locals = rootLocals;
   const nodeLocals = new Map<HsonNode, ReadonlyMap<string, PartBinding>>();
@@ -852,6 +864,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     const iterator = repeated ? undefined : analysis.iterators.get(node);
     if (iterator !== undefined) {
       const binding = resolve_part_reference(iterator.source, { ...environment, locals });
+      if (binding.value === undefined && (iterator.source.optional || binding.optionalAbsence)) { emptyBody(node, locals, depth); return; }
       const collection = binding.kind === "data" ? binding.value : undefined;
       const array = iterator.kind === "array" && Array.isArray(collection) ? collection : undefined;
       const entries = iterator.kind === "object" && is_ordered_projected_object(collection) ? collection.entries : undefined;
@@ -918,6 +931,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     structure(reference, node) {
       const binding = resolve_part_reference(reference, part_environment_at(environment, node));
       if (binding.kind !== "doc") throw new TypeError("Structural Part requires a declared Document binding.");
+      if (binding.value === undefined) { absent.add(node); return; }
       structures.set(node, binding);
       present.add(node);
     },
@@ -938,42 +952,47 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
   environment.structures = structures;
   // The normal composer checks included connectors against the selected Part.
   // Hidden or optional inputs must also prove their names before being discarded.
-  environment.authoredArguments = new Map(connectors.filter(connector => optional.has(connector))
+  environment.authoredArguments = new Map(connectors
     .map(connector => [connector, Object.keys(connector.$_attrs ?? {}).filter(is_part_argument_attribute)]));
   for (const connector of connectors) if (omitted(connector)) validateConnector(connector, true, part_environment_at(environment, connector)!);
   // Usage is authored, including absent optional branches; it is not a persistent dependency.
   const rootElement = copy.$_content[0];
   const rootAbsent = is_Node(rootElement) && omitted(rootElement);
   for (const name of environment.bindings.keys()) if (!analysis.parameters.has(name)) {
-    throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)} in ${environment.context}.`);
+    throw part_contract_error(environment.selected, analysis.parameters, "unexpected", name, environment.bindings.get(name)!.kind);
   }
   for (const local of analysis.receiving) if (!analysis.used.has(local) && !rootAbsent) {
     throw new TypeError(`Unused Part local binding ${JSON.stringify(local.name)} in ${environment.context}.`);
   }
   if (rootAbsent) return copy;
-  if (missingDeclarations.size) throw new TypeError(`Missing required Part data input in ${environment.context}.`);
-  for (const binding of environment.locals.values()) if (binding.value === undefined) {
-    throw new TypeError(`Missing required Part data input in ${environment.context}.`);
+  for (const local of analysis.receiving) {
+    const binding = rootLocals.get(local.name)!;
+    if (binding.value === undefined && !binding.optionalAbsence) {
+      throw part_contract_error(environment.selected, analysis.parameters, "missing", local.receiving.reference.name, local.kind);
+    }
   }
   transform_part_parameter_strings(copy, (value, node, owner) => {
     const found = matches(value);
     const whole = found.length === 1 && found[0]!.start === 0 && found[0]!.end === value.length;
     const read = (reference: PartReference): Primitive | undefined => {
       const binding = resolve_part_reference(reference, part_environment_at(environment, node), whole && optional.has(owner));
-      if (binding.value === undefined) {
-        if (node.$_tag === STR_TAG) absent.add(node);
-        return undefined;
-      }
+      if (binding.value === undefined) return undefined;
       if (!parameter_scalar(binding.value)) throw new TypeError(`Part reference ${part_reference_text(reference)} requires a primitive output in ${environment.context}.`);
       const output = binding.kind === "data" || reference.namespace === "local" && node.$_tag.toLowerCase() !== "hson-part"
         ? String(binding.value) : binding.value;
       if (typeof output === "string") bounded(output.length);
       return output;
     };
-    if (whole) { const value = read(found[0]!); if (typeof value === "string") budget.text(value.length); return value; }
+    const replacements = found.map(read);
+    // Omit the receiving position as a unit, after checking every reference.
+    if (replacements.some(value => value === undefined)) {
+      if (node.$_tag === STR_TAG) absent.add(node);
+      return undefined;
+    }
+    if (whole) { const value = replacements[0]; if (typeof value === "string") budget.text(value.length); return value; }
     let at = 0, result = "";
-    for (const match of found) {
-      const replacement = String(read(match));
+    for (const [index, match] of found.entries()) {
+      const replacement = String(replacements[index]);
       bounded(result.length + match.start - at + replacement.length);
       result += value.slice(at, match.start) + replacement; at = match.end;
     }

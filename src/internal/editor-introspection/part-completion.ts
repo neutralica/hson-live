@@ -68,7 +68,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
       if (receiving) for (const declaration of document.receivingDeclarations) add(declaration.incoming, 0, false);
       for (const parameter of document.parameters) if (receiving || !structured.has(parameter.name)) add(parameter.name, 0, document.parameterCompleteness === "complete");
       for (const parameter of document.parameterSpellings) for (const use of parameter.uses) {
-        if (use.namespace === "incoming" && !use.structured && use.supply === undefined && (receiving || !structured.has(parameter.name))) add(use.reference, 0, false);
+        if (use.namespace === "incoming" && !use.structured && use.supply === undefined && (receiving || !structured.has(parameter.name))) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, false);
       }
     } else if (!receiving) {
       for (const declaration of visible) {
@@ -103,7 +103,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
           && declaration.location.start === usedDeclaration?.location.start
           && (!iterationSource || declaration.kind === "data")
           && (!attribute?.startsWith("data:") || declaration.kind === "data")
-          && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(use.reference, 0, document.parameterCompleteness === "complete");
+          && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, document.parameterCompleteness === "complete");
       }
     }
     contextCount = 1;
@@ -190,8 +190,9 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         const quoted = JSON.stringify(selectorPrefix + label + selectorSuffix).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
         insertText = checkpoint.quoted === undefined ? quoted : quoted.slice(1, -1) + (checkpoint.quoted.complete ? "" : '"');
       } else if (checkpoint.kind === "parameter") {
+        if (checkpoint.parameter?.optional) insertText += "?";
         // Selectors may contain quoted keys; insert decoded references through the enclosing Hson string.
-        if (checkpoint.quoted !== undefined) insertText = JSON.stringify(label).slice(1, -1)
+        if (checkpoint.quoted !== undefined) insertText = JSON.stringify(insertText).slice(1, -1)
           .replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
         if (!checkpoint.parameter?.complete) insertText += "}";
       }

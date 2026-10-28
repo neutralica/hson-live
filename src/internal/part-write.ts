@@ -1,4 +1,5 @@
-import { part_receiving_interface } from "./part-definition.js";
+import { analyze_part_definition } from "./part-definition.js";
+import { part_contract_error } from "./part-contract.js";
 import type { HsonAuthored } from "../api/transform/transform.types.js";
 import { qualify_authored_document_source, serialize_authored_document } from "../api/document/hson-authored.js";
 import { part_argument_name } from "./part-placeholder.js";
@@ -29,7 +30,8 @@ export function forward_part_write<T extends object>(target: T, raw: object, ass
 /** @internal Pure connector authoring. The owner encloses caller capture in its fence. */
 export function write_part_invocation(library: string, member: string, input: readonly unknown[], definition: HsonNode): HsonAuthored {
   if (input.length > 1) throw new TypeError("Part.write requires at most one argument record.");
-  const receiving = part_receiving_interface(definition);
+  const analysis = analyze_part_definition(definition), receiving = analysis.parameters;
+  const selected = `${library}/${member}`, supplied = new Set<string>();
   const attrs: Record<string, string> = Object.create(null);
   attrs.lib = library;
   attrs.at = member;
@@ -48,7 +50,7 @@ export function write_part_invocation(library: string, member: string, input: re
         || name === "lib" || name === "at" || (kind === undefined || kind === "scalar") && (name === "style" || name === "__proto__")) {
         throw new TypeError("Invalid or reserved Part.write argument name.");
       }
-      if (kind === undefined) throw new TypeError(`Unknown Part.write argument ${JSON.stringify(name)}.`);
+      if (kind === undefined) throw part_contract_error(selected, receiving, "unexpected", name, "scalar");
       const field = Object.getOwnPropertyDescriptor(record, name);
       if (field === undefined || !field.enumerable || !Object.hasOwn(field, "value")) {
         throw new TypeError("Part.write arguments require own enumerable data fields.");
@@ -60,7 +62,11 @@ export function write_part_invocation(library: string, member: string, input: re
       }
       if (kind !== "scalar" && typeof value !== "string") throw new TypeError(`Part.write ${kind} arguments require serialized strings.`);
       attrs[kind === "scalar" ? name : `${kind}:${name}`] = String(value);
+      supplied.add(name);
     }
+  }
+  for (const [name, requiredness] of analysis.requiredness) if (requiredness === "required" && !supplied.has(name)) {
+    throw part_contract_error(selected, receiving, "missing", name, receiving.get(name)!);
   }
   const quads = new Map<HsonNode, string>();
   const source = serialize_authored_document({ $_tag: "hson-part", $_attrs: attrs, $_content: [] }, quads);

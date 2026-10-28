@@ -199,7 +199,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     for (const args of [{ 'data:model': model }, { control: false }, { unknown: 'x' }]) assert.throws(() => Reflect.apply(map.parts.components.page.write, undefined, [args]));
     const captured = source;
     map.parts.components.page.replace(part('<main hson:part "%{control}"/>'));
-    atomic(map, () => map.addLibraries({ bad: { document: captured } }), /receiving interface|Unknown Part parameter/);
+    atomic(map, () => map.addLibraries({ bad: { document: captured } }), /receiving interface|received unexpected/);
   });
 
   check("Part Document structure: ordinary source isolation, independent QUAD scopes and repeated invocation", () => {
@@ -229,7 +229,7 @@ export function document_composition_cases(check: (name: string, run: () => void
       const source = map.parts.parts.x.write({ control });
       atomic(map, () => map.addLibraries({ bad: { document: source } }));
     }
-    atomic(map, () => map.addLibraries({ bad: { document: map.parts.parts.x.write() } }), /Missing/);
+    atomic(map, () => map.addLibraries({ bad: { document: map.parts.parts.x.write() } }), /missing Document input/);
     assert.deepEqual(owner(map).captureSemanticCheckpoint(), before); assert.equal(owner(map).identityEpoch().issued(), issued);
     map.addLibraries({ page: { document: map.parts.parts.x.write({ control: '<b "Recovered"/>' }) } });
     assert.equal(doc(map).render(), '<main><b>Recovered</b></main>');
@@ -420,7 +420,7 @@ export function document_composition_cases(check: (name: string, run: () => void
       atomic(map, () => map.addLibraries({ bad: { document } }), /part:optional/);
     }
     atomic(map, () => map.addLibraries({ parts: { parts: { x: part('<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>') } },
-      bad: { document: '<hson-part lib="parts" at="x"/>' } }), /Missing Part parameter/);
+      bad: { document: '<hson-part lib="parts" at="x"/>' } }), /missing Data input/);
   });
 
   check("optional Parts: included structures keep strict descendants, partial strings and required inputs", () => {
@@ -592,7 +592,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     assert.deepEqual(add('ordinary', '<hson-part lib="parts" at="ordinary" data:x="false"/>'), ['false']);
     atomic(map, () => add('container', '<hson-part lib="parts" at="ordinary" data:x="<>"/>'), /primitive/);
     assert.deepEqual(add('array', Hson.document`<hson-part lib="parts" at="array" data:items="${Hson.data`«false,false,null,-0»`}"/>`), ['false:false:null:0']);
-    atomic(map, () => add('mixed', '<hson-part lib="parts" at="mixed" x="1"/>'), /Unknown Part parameter|Invalid Part data/);
+    atomic(map, () => add('mixed', '<hson-part lib="parts" at="mixed" x="1"/>'), /received unexpected|Invalid Part data/);
     map.parts.must('parts').at(['leaf', 'document']).set('<b hson:part "later"/>');
     assert.deepEqual(leaves(doc(map).root()), ['ten:two:one:0:%{other}', 'false', 'ten:two:one:0:%{other}', 'false']);
   });

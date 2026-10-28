@@ -60,7 +60,7 @@ export function part_argument_name(raw: string): Readonly<{ name: string; kind: 
 }
 
 export type PartArgumentKind = "scalar" | "data" | "doc";
-export type PartReference = Readonly<{ namespace: "incoming" | "local"; name: string; path: readonly (string | number)[]; reference: string; start: number; end: number }>;
+export type PartReference = Readonly<{ namespace: "incoming" | "local"; name: string; path: readonly (string | number)[]; optional: boolean; reference: string; start: number; end: number }>;
 
 /** One bounded selector scanner, shared by runtime, source facts and editor checkpoints.
  * Quoted property keys use JSON escapes; braces inside a key never close a reference. */
@@ -78,10 +78,14 @@ export function scan_part_reference(value: string, start: number, incomplete = f
   const atEnd = (): boolean => incomplete && (at === value.length || value[at] === "}");
   const root = name();
   const path: (string | number)[] = [];
-  const result = (): PartReference => ({ namespace, name: root ?? "", path, reference: value.slice(nameAt, at), start, end: at + (value[at] === "}" ? 1 : 0) });
+  let optional = false;
+  const result = (): PartReference => ({ namespace, name: root ?? "", path, optional, reference: value.slice(nameAt, at), start, end: at + (value[at] === "}" ? 1 : 0) });
   if (root === undefined) return atEnd() ? result() : undefined;
   while (at < value.length && value[at] !== "}") {
-    if (value[at] === ".") {
+    if (value[at] === "?") {
+      optional = true; at++;
+      return value[at] === "}" || atEnd() ? result() : undefined;
+    } else if (value[at] === ".") {
       at++;
       const key = name();
       if (key === undefined) return atEnd() ? result() : undefined;
@@ -161,16 +165,18 @@ export function part_receiving_declaration(raw: string, value: unknown): PartRec
 }
 
 /** Exact decoded replacement span, including selectors but excluding %{ and }. */
-export function part_reference_checkpoint(value: string, cursor: number): Readonly<{ start: number; end: number; prefix: string; complete: boolean; namespace: "incoming" | "local" }> | undefined {
+export function part_reference_checkpoint(value: string, cursor: number): Readonly<{ start: number; end: number; prefix: string; complete: boolean; optional?: true; namespace: "incoming" | "local" }> | undefined {
   let at = 0;
   while ((at = next_part_reference(value, at)) !== -1 && at + 2 <= cursor) {
     const match = scan_part_reference(value, at, true);
     if (match === undefined) return undefined;
     const complete = value[match.end - 1] === "}";
-    const end = match.end - (complete ? 1 : 0);
-    if (cursor <= end) {
+    const close = match.end - (complete ? 1 : 0);
+    const end = close - (match.optional ? 1 : 0);
+    if (cursor <= close) {
       if (scan_part_reference(value.slice(0, cursor), at, true) === undefined) return undefined;
-      return { namespace: match.namespace, start: at + 2, end, prefix: value.slice(at + 2, cursor), complete };
+      return { namespace: match.namespace, start: at + 2, end: close, prefix: value.slice(at + 2, Math.min(cursor, end)), complete,
+        ...(match.optional ? { optional: true } : {}) };
     }
     at = match.end;
   }

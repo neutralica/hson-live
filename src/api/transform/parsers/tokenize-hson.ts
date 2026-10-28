@@ -51,7 +51,7 @@ export type HsonGrammarCheckpoint = Readonly<{
   element?: Readonly<{ tag: string; start: number; attributes: readonly RawAttr[]; contentTags: readonly string[] }>;
   attribute?: string;
   /** Lexical observation only; consumers establish semantic Part placement. */
-  parameter?: Readonly<{ complete: boolean; prefix: string; namespace: "incoming" | "local"; structural?: boolean; rawAttribute?: RawAttr }>;
+  parameter?: Readonly<{ complete: boolean; prefix: string; namespace: "incoming" | "local"; optional?: true; structural?: boolean; rawAttribute?: RawAttr }>;
   /** Grammar slot only: an occupied value has not yet established an edit range. */
   pendingValue?: boolean;
 }>;
@@ -764,7 +764,8 @@ class HsonScanner {
             this.editorCheckpoint?.({ kind: "parameter", path: [], existing: [],
               range: { start: start.index + checkpoint.start, end: start.index + checkpoint.end },
               openContainers: [...this.editorContainers], element: this.editorElement,
-              parameter: { namespace: "local", structural: true, prefix: checkpoint.prefix, complete: checkpoint.complete } });
+              parameter: { namespace: "local", structural: true, prefix: checkpoint.prefix, complete: checkpoint.complete,
+                ...(checkpoint.optional ? { optional: true } : {}) } });
           }
         }
         if (tag.toLowerCase() !== "hson-part" || contentStarted || !separatedBeforeSlot || reference === undefined || reference.path.length) {
@@ -1324,6 +1325,7 @@ class HsonScanner {
       openContainers: [...this.editorContainers], ...(this.editorElement === undefined ? {} : { element: this.editorElement }),
       ...(this.editorAttribute === undefined ? {} : { attribute: this.editorAttribute }),
       ...(parameter === undefined ? {} : { parameter: { complete: parameterComplete, prefix: parameter.prefix, namespace: parameter.namespace,
+        ...(parameter.optional ? { optional: true } : {}),
         ...(rawAttribute === undefined ? {} : { rawAttribute }) } }),
       ...(quoted ? { quoted: { complete, closingDelimiters: [...this.editorClosingDelimiters].reverse() } } : {}) });
   }

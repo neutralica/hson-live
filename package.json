@@ -393,6 +393,7 @@
     "test:hson-structural-mode": "node --import=tsx tests/hson-structural-mode.acceptance.mts",
     "test:hson-completion-context": "node --import=tsx tests/hson-completion-context.acceptance.mts",
     "test:hson-editor-introspection": "node --import=tsx tests/hson-editor-introspection.acceptance.mts",
+    "test:part-optional-parameters": "node --import=tsx tests/part-optional-parameters.acceptance.mts",
     "test:part-source-facts": "node --import=tsx tests/part-source-facts.acceptance.mts",
     "test:object-literal-source-evidence": "node --import=tsx tests/object-literal-source-evidence.acceptance.mts",
     "test:part-completion": "node --import=tsx tests/part-completion.acceptance.mts",

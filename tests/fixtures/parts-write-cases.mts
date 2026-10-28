@@ -159,7 +159,7 @@ export async function parts_write_cases() {
   assert.ok(pageText.includes("h2")); assert.ok(pageText.includes("evil"));
   assert.ok(!pageText.includes('"$_tag":"script"')); assert.ok(!pageText.includes("later"));
   for (const parameters of [undefined, { content: "ok", extra: "bad" }]) {
-    assert.throws(() => receiving.addLibraries({ invalid: { document: parameters === undefined ? retained.write() : retained.write(parameters) } }), /Missing Part parameter|Unknown Part parameter|Unused Part parameter|Unknown Part.write argument/);
+    assert.throws(() => receiving.addLibraries({ invalid: { document: parameters === undefined ? retained.write() : retained.write(parameters) } }), /is missing|received unexpected/);
     assert.equal(receiving.doc("invalid"), undefined);
   }
   const scalarSource = receiving.parts.components.scalars.write({ ExactCase: "Mixed", count: 3, enabled: true, empty: null });
@@ -167,7 +167,7 @@ export async function parts_write_cases() {
   assert.match(JSON.stringify(receiving.doc.must("scalarPage").root()), /Mixed:3:true:null/);
   assert.throws(() => receiving.addLibraries({ wrongCase: { document: receiving.parts.components.scalars.write({
     exactcase: "wrong", count: 3, enabled: true, empty: null,
-  }) } }), /Unknown Part.write argument/);
+  }) } }), /received unexpected scalar input/);
   const incompatible = hsonLiveMap.create();
   assert.throws(() => incompatible.addLibraries({ page: { document: invocation } }));
   assert.equal(incompatible.doc("page"), undefined);

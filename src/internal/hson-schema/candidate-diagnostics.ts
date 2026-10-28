@@ -155,16 +155,16 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
     }
     // Possible, conditional, multiple and open-world receivers cannot prove absence.
     // Do not filter alternatives to turn an ambiguous relationship into a certain one.
-    if (document.admission !== "qualified" || document.librarySourceAdmission !== "qualified" || document.receivers.length !== 1) continue;
+    if ((document.librarySourceAdmission !== "qualified" && !document.valueIndependentAdmission) || document.receivers.length !== 1) continue;
     const receiver = document.receivers[0]!;
     // A stored Part can be composed after later admissions or governed writes.
     // Its collection relationship alone does not establish an initial execution context.
-    if (receiver.certainty !== "certain" || receiver.library?.family !== "document") continue;
+    if ((receiver.certainty !== "certain" && !receiver.placementCertain) || receiver.library?.family !== "document") continue;
     const batch = facts.batches.find(batch => batch.call === receiver.batch);
     if (batch === undefined || !batch.eligible || batch.receivingInventory !== "candidate-only"
-      || batch.inventoryCompleteness !== "complete" || batch.libraries.some(library => library.certainty !== "certain")) continue;
+      || batch.inventoryCompleteness !== "complete" || batch.libraries.some(library => library !== receiver.library && library.certainty !== "certain")) continue;
     for (const connector of document.connectors) {
-      if (!connector.headerComplete || connector.location.precision !== "exact") continue;
+      if (!connector.headerComplete) continue;
       const coordinates = part_source_coordinates(connector);
       if (coordinates === undefined || coordinates.issue !== undefined) continue;
       const lib = connector.attributes.find(attribute => attribute.name === "lib");
@@ -173,9 +173,9 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       const memberLocation = at?.valueLocation;
       const { library: libraryName, member: memberName } = coordinates;
       const arguments_ = connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name));
-      // Unknown values include interpolations, placeholders and structured attributes.
-      // Invalid local inputs were reported above; uncertainty still withholds absence claims.
-      if (arguments_.some(attribute => attribute.value === undefined || part_argument_name(attribute.name) === undefined)) continue;
+      // Argument names and representation prefixes are known independently of values.
+      if (arguments_.some(attribute => part_argument_name(attribute.name) === undefined
+        || attribute.value === undefined && !attribute.dynamicValue)) continue;
       const libraries = batch.libraries.filter(library => library.name === libraryName);
       if (libraries.length === 0 || libraries.length === 1 && libraries[0]!.family !== "parts") {
         report(libraryLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(libraryName)}.`);
@@ -194,16 +194,15 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       if (definition.admission !== "qualified" || definition.parameterCompleteness !== "complete") continue;
       const supplied = new Set(arguments_.map(attribute => part_argument_name(attribute.name)!.name));
       const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
-      const optionalRoot = definition.optionalStructures.some(flag => flag.root);
-      for (const name of vocabulary) if (!supplied.has(name)
-        && !(optionalRoot && !definition.receivingDeclarations.some(declaration => declaration.incoming === name && declaration.kind === "doc") && definition.parameters.find(parameter => parameter.name === name)?.uses.length === 0)) {
-        report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
+      for (const name of vocabulary) if (!supplied.has(name) && definition.signature?.requiredness.get(name) === "required") {
+        report(connector.location.precision === "exact" ? connector.location : at?.nameLocation ?? lib?.nameLocation,
+          "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
       }
       for (const attribute of arguments_) {
         const argument = part_argument_name(attribute.name)!;
         if (!vocabulary.has(argument.name)) {
           report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
-        } else if (argument.kind !== (definition.receivingDeclarations.find(declaration => declaration.incoming === argument.name)?.kind ?? "scalar")) {
+        } else if (argument.kind !== definition.signature?.parameters.get(argument.name)) {
           report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface of ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
         }
       }

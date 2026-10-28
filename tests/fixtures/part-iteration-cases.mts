@@ -81,7 +81,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       assert.throws(() => fixture(`<ul hson:part items:data="%{items}" ${child}/>`, {}), /local declaration|representation/);
     }
     for (const child of ['<li per:key="^{items}" "%{required}"/>', '<li per:key="^{items}" <hson-part at="absent"/>/>', '<li per:key="^{items}" onclick="^{key}"/>']) {
-      assert.throws(() => fixture(`<ul hson:part items:data="%{items}" ${child}/>`, {}), /Missing Part|absent|Unknown|event|attribute|handler/);
+      assert.throws(() => fixture(`<ul hson:part items:data="%{items}" ${child}/>`, {}), /Missing Part|is missing|absent|Unknown|event|attribute|handler/);
     }
     assert.throws(() => fixture('<main hson:part items:data="%{items}" content:doc="%{content}" <hson-part per:key="^{items}" ^{content}/>/>', {}), /Structural hson-part/);
   });
@@ -93,7 +93,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       for (const items of [[], ['x'], '', 'string', 0, false, null, { a: { title: 'valid' }, b: { title: {} } }, { a: { title: 'valid' }, b: {} }]) {
         atomic(map, () => map.addLibraries({ bad: { document: invocation(items) } }), /object Data|primitive output|Missing Part path/);
       }
-      atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="list"/>' } }), /Missing Part/);
+      atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="list"/>' } }), /missing Data input/);
       assert.equal(allocations, 0);
     } finally { allocator(owner(map).identityEpoch().owner, undefined); }
     assert.throws(() => fixture('<ul hson:part items:data="%{items}" <li per::v="^{items.missing}" part:optional "^{v}"/>/>', {}), /Missing Part path/);
@@ -202,7 +202,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
     for (const child of ['<li for:item="^{items}" "^{unknown}"/>', '<li for:item="^{items}" title="^{i}"/>', '<li for:item="^{items}"/> <b "^{item}"/>']) {
       assert.throws(() => fixture(`<ul hson:part items:data="%{items}" ${child}/>`, []), /Missing Part local declaration/);
     }
-    assert.throws(() => fixture('<ul hson:part items:data="%{items}" <li for:item="^{items}" "%{required}"/>/>', []), /Missing Part parameter/);
+    assert.throws(() => fixture('<ul hson:part items:data="%{items}" <li for:item="^{items}" "%{required}"/>/>', []), /missing scalar input/);
     assert.throws(() => fixture('<ul hson:part items:data="%{items}" <li for:item="^{items}" <hson-part at="absent"/>/>/>', []), /absent|Unknown/);
     assert.throws(() => fixture('<ul hson:part items:data="%{items}" <li for:item="^{items}" onclick="^{item}"/>/>', []), /event|attribute|handler/);
   });
@@ -216,7 +216,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       for (const items of [null, "string", 2, {}, [{ title: "first" }, { title: {} }], [{ title: "first" }, {}]]) {
         atomic(map, () => map.addLibraries({ bad: { document: invocation(items) } }), /array Data|primitive output|Missing Part path/);
       }
-      atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="list"/>' } }), /Missing Part/);
+      atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="list"/>' } }), /missing Data input/);
       assert.equal(allocations, 0);
     } finally { allocator(owner(map).identityEpoch().owner, undefined); }
     for (const source of ['^{items.missing}', '^{items[0].missing}']) assert.throws(() => fixture(`<main hson:part items:data="%{items}" <b part:optional for:item="${source}" "^{item}"/>/>`, [{}]), /Missing Part path|Invalid Part path/);
@@ -390,7 +390,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
           atomic(map, () => map.addLibraries({ bad: { document: invocation([blocks[0], late]) } }));
         }
         map.parts.parts.heading.replace({ ...column.heading, document: '<h1 hson:part "%{different}"/>' });
-        atomic(map, () => map.addLibraries({ bad: { document: invocation([blocks[1], blocks[0]]) } }), /Unknown Part parameter|receiving interface/);
+        atomic(map, () => map.addLibraries({ bad: { document: invocation([blocks[1], blocks[0]]) } }), /received unexpected|receiving interface/);
         map.parts.parts.heading.replace(column.heading);
         const schema = Hson.schema`<type "document" tag "aside" content "empty">`;
         atomic(map, () => map.addLibraries({ bad: { document: invocation(blocks), schema } }));

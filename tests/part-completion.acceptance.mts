@@ -695,5 +695,22 @@ check("old hash spelling never gains local-reference completion or recovery", ()
     assert.deepEqual(complete(prefix + body + '`;' + suffix).labels, []);
   }
 });
+check("optional references preserve markers through complete and incomplete edits", () => {
+  const suffix = '\nconst loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:page}}}});';
+  for (const [body, expected] of [
+    ['<p hson:part "%{content?}" "%{co|?}"/>', '<p hson:part "%{content?}" "%{content?}"/>'],
+    ['<p hson:part "%{content?}" "%{co?|}"/>', '<p hson:part "%{content?}" "%{content?}"/>'],
+    ['<p hson:part "%{content?}" "%{co|?"/>', '<p hson:part "%{content?}" "%{content?}"/>'],
+    ['<p hson:part d:data="%{payload?}" "^{d.title?}" "^{d.ti|?}"/>', '<p hson:part d:data="%{payload?}" "^{d.title?}" "^{d.title?}"/>'],
+    ['<main hson:part control:doc="%{content?}" <hson-part ^{con|?}/>/>' , '<main hson:part control:doc="%{content?}" <hson-part ^{control?}/>/>' ],
+    ['<main hson:part control:doc="%{content?}" <hson-part ^{con|?', '<main hson:part control:doc="%{content?}" <hson-part ^{control?}'],
+  ]) {
+    const label = body!.includes('^{d.ti|') ? 'd.title' : body!.includes('^{con|') ? 'control' : 'content';
+    const result = complete(authored(body!, suffix));
+    assert.ok(result.labels.includes(label), body);
+    assert.ok(result.labels.every(name => !name.endsWith('?')), 'optionality is syntax, not part of a parameter name');
+    assert.equal(applied(result, label), authored(expected!, suffix));
+  }
+});
 service.dispose();
 events.terminal("pass");

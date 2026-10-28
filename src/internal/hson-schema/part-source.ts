@@ -1,5 +1,5 @@
 import { part_coordinates } from "../part-coordinates.js";
-import { analyze_part_definition, transform_part_parameter_strings, type PartLocalDeclaration } from "../part-definition.js";
+import { analyze_part_definition, transform_part_parameter_strings, type PartLocalDeclaration, type PartDefinitionAnalysis } from "../part-definition.js";
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
@@ -24,7 +24,7 @@ import { OBJECT_VALUE, type SchemaDataPath } from "./data-projection.js";
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
-export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }>[] }>;
+export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }>[] }>;
 export type PartLocalSource = Readonly<{ name: string; kind: "scalar" | "data" | "doc"; location: PartSourceLocation; incoming?: string;
   dataOrigin?: Readonly<{ incoming: string; path: SchemaDataPath }> }>;
 export type PartLexicalScopeSource = Readonly<{ location: PartSourceLocation; bindings: readonly PartLocalSource[] }>;
@@ -50,6 +50,7 @@ export type PartConnectorSource = Readonly<{
   location: PartSourceLocation;
   headerComplete: boolean;
   attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation;
+    dynamicValue?: true;
     dataSchema?: CompiledHsonSchema }>[];
 }>;
 /** Static projection only: opaque coordinate values never establish selection. */
@@ -68,11 +69,15 @@ export type PartDocumentSource = Readonly<{
   admission: "qualified" | "unknown";
   /** Runtime Library-source admission is stronger than Hson authoring qualification (e.g. QUAD uniqueness). */
   librarySourceAdmission: "qualified" | "unknown";
+  /** Value-only interpolation with an otherwise admitted authored structure. */
+  valueIndependentAdmission?: true;
   connectors: readonly PartConnectorSource[];
   parameters: readonly PartParameterSource[];
   /** Lexical reuse suggestions only, never a qualified parameter inventory. */
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
+  /** The shared analyzer's contract evidence; absent for incomplete definitions. */
+  signature?: Pick<PartDefinitionAnalysis, "parameters" | "requiredness">;
   receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
   iteratorDeclarations: readonly Readonly<{ location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
     /** Shared analyzer ancestry; undefined withholds execution proof. */
@@ -230,7 +235,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     } else return undefined;
     const headers = new Map<number, PartConnectorSource>();
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
-    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; structured: boolean; supply?: "data" | "doc" }[] = [];
+    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }[] = [];
     const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
     const iteratorDeclarations: { location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
       enclosingIterators?: readonly PartSourceLocation[] }[] = [];
@@ -249,7 +254,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       const matches = typed ? whole === undefined ? undefined : [whole] : parsed;
       if (matches === undefined) referenceIssues.push({ location: mapped,
         message: invalid === undefined || invalid === "Invalid Part placeholder." ? "Invalid Part property reference." : invalid });
-      for (const match of matches ?? []) uses.push({ name: match.name, namespace: match.namespace, reference: match.reference, structured: match.path.length > 0,
+      for (const match of matches ?? []) uses.push({ name: match.name, namespace: match.namespace, reference: match.reference, optional: match.optional, structured: match.path.length > 0,
         location: mapped, context, ...(typed === undefined ? {} : { supply: typed }) });
     };
     const observedAttributes = new WeakSet<object>();
@@ -343,7 +348,9 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const expression = directSlots.length === 1 && typescript.isTaggedTemplateExpression(producer) && typescript.isTemplateExpression(producer.template)
               ? producer.template.templateSpans[directSlots[0]!.substitution]?.expression : undefined;
             const schema = dataSchema(expression);
+            const dynamicValue: true | undefined = attr.value?.direct === true || typeof value === "string" && has_part_reference(value) ? true : undefined;
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
+              ...(dynamicValue === undefined ? {} : { dynamicValue }),
               ...(schema === undefined ? {} : { dataSchema: schema }),
               ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && !attr.name.startsWith("data:") && !attr.name.startsWith("doc:") ? {} : { value }) }];
           }) });
@@ -352,6 +359,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     } catch { scanned = false; }
     const names = new Set<string>();
     let parameterCompleteness: "complete" | "unknown" = "unknown";
+    let signature: PartDocumentSource["signature"];
     const completeAnalysis = qualified && scanned;
     // Quoted slots cannot add structural declarations. Their values remain
     // opaque, so local lexical facts survive without proving an input interface.
@@ -483,22 +491,31 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           }
           for (const name of analysis.parameters.keys()) names.add(name);
           parameterCompleteness = referenceIssues.length === 0 ? "complete" : "unknown";
+          if (parameterCompleteness === "complete") signature = { parameters: analysis.parameters, requiredness: analysis.requiredness };
         }
       } catch { names.clear(); }
     }
     let librarySourceAdmission: "qualified" | "unknown" = "unknown";
+    let valueIndependentAdmission: true | undefined;
     if (qualified && scanned && slots.length === 0) {
       try { parse_authored_document_library(text); librarySourceAdmission = "qualified"; }
       catch { /* Keep authoring/completion facts; this source cannot establish a receiving Library. */ }
+    }
+    if (lexicalComplete && slots.length > 0 && staticStructure) {
+      // Quoted slots cannot add attributes or change QUAD ownership. Coordinate
+      // values stay opaque. Parse through the same Library admission boundary.
+      try { parse_authored_document_library(text); valueIndependentAdmission = true; }
+      catch { /* Invalid authored structure still withdraws contract proof. */ }
     }
     const receivers: PartDocumentSource["receivers"][number][] = [];
     const inputs = new Map(uses.map(use => [use, use.namespace === "incoming" ? use.name
       : part_source_bindings_at(lexicalScopes, use.location.start)?.find(binding => binding.name === use.name)?.incoming]));
     const result: PartDocumentSource = { producer, location: location(producer), authoredRanges, admission: qualified ? "qualified" : "unknown",
-      librarySourceAdmission, connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use => inputs.get(use) === name) })),
+      librarySourceAdmission, ...(valueIndependentAdmission === undefined ? {} : { valueIndependentAdmission }),
+      connectors: [...headers.values()], parameters: [...names].map(name => ({ name, uses: uses.filter(use => inputs.get(use) === name) })),
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
       ...(scanned && roots.length === 1 ? { definitionRoot: roots[0]! } : {}), partDeclarations,
-      parameterCompleteness, optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [],
+      parameterCompleteness, ...(signature === undefined ? {} : { signature }), optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [],
       iteratorDeclarations: spellingEligible ? iteratorDeclarations : [], lexicalScopes: spellingEligible ? lexicalScopes : [], referenceIssues, receivers };
     documents.set(producer, result);
     relationships.set(result, receivers);

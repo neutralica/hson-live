@@ -175,8 +175,8 @@ check("complete initial inventories diagnose only the failing coordinate or argu
 check("runtime parameter validation remains the authority, including coordinates and placement", () => {
   const components: LiveMapPartsLibraryInput = { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` } } };
   assert.doesNotThrow(() => hsonLiveMap.fromLibraries({ components, page: { document: valid } }));
-  assert.throws(() => hsonLiveMap.fromLibraries({ components, page: { document: valid.replace(' Title-Case="Title"', '') } }), /Missing Part parameter "Title-Case"/);
-  assert.throws(() => hsonLiveMap.fromLibraries({ components, page: { document: valid.replace('/>', ' extra="x"/>') } }), /Unknown Part parameter "extra"/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ components, page: { document: valid.replace(' Title-Case="Title"', '') } }), /missing scalar input Title-Case/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ components, page: { document: valid.replace('/>', ' extra="x"/>') } }), /unexpected scalar input extra/);
   for (const body of ['<h1 hson:part onclick="%{bad}"/>', '<style hson:part "%{bad}"/>', '<script hson:part "%{bad}"/>', '<h1 hson:part style="color:%{bad}"/>', '<h1 hson:part "%{bad!}"/>']) {
     const result = inspect(application('<hson-part lib="components" at="heading" extra="x"/>', '{ heading: { kind: "document", document: Hson.document`' + body + '` } }'));
     assert.deepEqual(result.codes, body.includes("%{bad!}") ? ["HSON_PART_REFERENCE_INVALID"] : [], body);
@@ -654,6 +654,57 @@ check("old executable hash references produce actionable migration diagnostics w
     assert.match(diagnostics[0]!.message, /Local Part references use \^\{/);
   }
   assert.deepEqual(inspect(application('<p title="#{literal} ^{literal}" "#{literal} ^{literal}"/>')).codes, []);
+});
+check("explicit optional references share requiredness and retain exact source facts", () => {
+  const definition = '{x:{kind:"document",document:Hson.document`<main hson:part model:data="%{payload?}" control:doc="%{content?}" title="%{title?}" "^{model.label?}" <hson-part ^{control?}/>/ >`}}'.replace('/ >', '/>');
+  const result = inspect(application('<hson-part at="components/x"/>', definition));
+  assert.deepEqual(result.codes, []);
+  const source = result.facts.documents.find(document => document.parameters.some(parameter => parameter.name === 'payload'))!;
+  assert.equal(source.parameterCompleteness, 'complete');
+  assert.deepEqual([...source.signature!.requiredness.values()], ['optional', 'optional', 'optional']);
+  assert.ok(source.parameters.flatMap(parameter => parameter.uses).every(use => use.optional));
+  assert.ok(source.parameters.flatMap(parameter => parameter.uses).some(use => result.text.slice(use.location.start, use.location.end).includes('^{model.label?}')));
+  const strict = inspect(application('<hson-part at="components/x"/>', definition.replace('%{title?}', '%{title}')));
+  assert.deepEqual(strict.codes, ['HSON_PART_ARGUMENT_MISSING']);
+  assert.match(strict.diagnostics[0]!.message, /title/);
+  const invalid = inspect(application('<hson-part at="components/x"/>', definition.replace('^{model.label?}', '^{unknown.label?}')));
+  assert.ok(invalid.codes.includes('HSON_PART_REFERENCE_INVALID'));
+  assert.ok(invalid.slices.some(slice => slice.includes('^{unknown.label?}')));
+});
+check("conditional Data beneath empty and nested iterators does not invent missing inputs", () => {
+  for (const child of ['<i for:row="^{rows}" "^{model.title}"/>',
+    '<i for:row="^{rows}" <b per:key:value="^{model}" "^{value}"/>/>']) {
+    const definition = '{x:{kind:"document",document:Hson.document`<main hson:part part:optional rows:data="%{rows}" model:data="%{payload}" ' + child + '/>`}}';
+    const result = inspect(application('<hson-part at="components/x" data:rows="«»"/>', definition));
+    assert.deepEqual(result.codes, []);
+    const source = result.facts.documents.find(document => document.signature?.parameters.has('payload'))!;
+    assert.equal(source.signature!.requiredness.get('payload'), 'conditional');
+    assert.deepEqual(inspect(application('<hson-part at="components/x" data:rows="«0»"/>', definition)).codes, [], 'composition determines executed conditional reads');
+    const required = inspect(application('<hson-part at="components/x" data:rows="«»"/>', definition.replace(' part:optional', '')));
+    assert.deepEqual(required.codes, ['HSON_PART_ARGUMENT_MISSING']);
+    assert.match(required.diagnostics[0]!.message, /payload/);
+  }
+});
+check("known names and representation mismatches survive dynamically evaluated values", () => {
+  const definition = '{x:{kind:"document",document:Hson.document`<h1 hson:part "%{content?}"/>`}}';
+  for (const [argument, code, slice] of [
+    ['data:block="${dynamic}"', 'HSON_PART_ARGUMENT_UNKNOWN', 'data:block'],
+    ['data:content="${dynamic}"', 'HSON_PART_ARGUMENT_INVALID', 'data:content'],
+    ['doc:content="${dynamic}"', 'HSON_PART_ARGUMENT_INVALID', 'doc:content'],
+    ['wrong="${dynamic}"', 'HSON_PART_ARGUMENT_UNKNOWN', 'wrong'],
+  ]) {
+    const result = inspect(application('<hson-part at="components/x" ' + argument + '/>', definition));
+    assert.deepEqual(result.codes, [code]);
+    assert.deepEqual(result.slices, [slice]);
+  }
+  const uncertain = application('<hson-part at="components/${dynamic}" data:block="${dynamic}"/>', definition);
+  assert.deepEqual(inspect(uncertain).codes, []);
+  const missing = inspect(application('<hson-part at="components/x" content="${dynamic}"/>', definition.replace('%{content?}', '%{content?} %{title}')));
+  assert.deepEqual(missing.codes, ['HSON_PART_ARGUMENT_MISSING']);
+  assert.deepEqual(missing.slices, ['at']);
+  assert.match(missing.diagnostics[0]!.message, /title/);
+  const duplicate = application('<main @:same <hson-part @:same at="components/x" wrong="${dynamic}"/>/>', definition);
+  assert.deepEqual(inspect(duplicate).codes, [], 'invalid QUAD ownership withdraws value-independent contract evidence');
 });
 service.dispose();
 events.terminal("pass");
