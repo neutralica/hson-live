@@ -576,7 +576,7 @@ try {
     && replayStyle.textContent === replayTarget.doc.must("page").css.snapshot());
   replayContinued.dispose();
 
-  const cascadeMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <p id=target "Target"/>/>/>' } });
+  const cascadeMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <p id="target" "Target"/>/>/>' } });
   cascadeMap.doc.must("page").css.sel("p").set.color("blue");
   const cascadeFrame = document.createElement("iframe");
   cascadeFrame.srcdoc = cascadeMap.doc.must("page").render();

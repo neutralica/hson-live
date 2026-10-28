@@ -51,7 +51,7 @@ function expect_rejection(value: unknown, code: string): void {
 
 check("exact graph payload round-trips nested nodes, typed attributes, structured style, and runtime QUIDs", () => {
   const source = detach_hson_root_value(parse_hson_exact_runtime(
-    `<main @000000001 <input @000000002 checked=false/>/>`,
+    `<main @000000001 <input @000000002 checked="false"/>/>`,
   ));
   assert.equal(source.$_tag, "_hson_elem");
   const main = source.$_content[0];

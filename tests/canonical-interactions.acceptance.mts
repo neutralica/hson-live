@@ -387,7 +387,7 @@ add_interaction(draft, { ...local("invalid", "run"), subject: { library: "page",
 });
 
 await check("batch and stage each admit document movement with interaction maintenance once", async () => {
-  const standalone = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=one/> <button id=two/>/>" } });
+  const standalone = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=\"one\"/> <button id=\"two\"/>/>" } });
   enable_interactions(standalone);
   const moved = Object.freeze({ domain: "graph" as const, op: "move-content" as const,
     target: Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0]) }), from: 0, to: 1 });
@@ -399,7 +399,7 @@ await check("batch and stage each admit document movement with interaction maint
   assert.equal(standalone.rev, 1);
   assert.match(JSON.stringify(internal_livemap_aggregate_authority(standalone).captureHosted()), /batch-move/);
 
-  const map = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=one/> <button id=two/>/>" } });
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=\"one\"/> <button id=\"two\"/>/>" } });
   enable_interactions(map);
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, test_application_catalog(map)) });
   try {

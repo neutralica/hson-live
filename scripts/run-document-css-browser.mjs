@@ -19,7 +19,7 @@ const chromeBinary = candidates.find((candidate) => (!candidate.includes("/") ||
 if (chromeBinary === undefined) throw new Error("Document CSS browser check requires Chrome or Chromium.");
 
 const map = hsonLiveMap.fromLibraries({ page: {
-  document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id=home-screen "Styled"/> <p id=layer-first-paint/> <p id="t " class=x/> <p id=animation-first-paint/> <p id=escaped-newline/>/>/>',
+  document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id="home-screen" "Styled"/> <p id="layer-first-paint"/> <p id="t " class="x"/> <p id="animation-first-paint"/> <p id="escaped-newline"/>/>/>',
 } });
 map.doc.must("page").css.stylesheet(String.raw`#home-screen { color: rgb(0, 0, 255); display: grid; }
   @layer { #layer-first-paint { color: red !important; } #layer-first-paint { color: blue !important; } }

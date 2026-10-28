@@ -128,7 +128,7 @@ const entry = `
   const selectorChecks = await css_selector_browser_cases();
   const lazyFrame = document.createElement("iframe"); document.body.append(lazyFrame);
   const lazyDoc = lazyFrame.contentDocument, lazyRuntime = create_livetree_runtime();
-  const lazyMap = hsonLiveMap.fromLibraries({page:{document:'<main <button class=lazy "go"/>/>'}});
+  const lazyMap = hsonLiveMap.fromLibraries({page:{document:'<main <button class="lazy" "go"/>/>'}});
   const lazyMirror = reflect_document_in_runtime(lazyMap.doc.must('page'), lazyRuntime);
   lazyDoc.body.append(project_livetree(subject_for_tree(lazyMirror.tree), 'html', lazyRuntime, lazyDoc));
   const lazyTree = lazyMirror.tree.find.must.byTag('button'), lazyElement = lazyTree.dom.el();
@@ -152,7 +152,7 @@ const entry = `
   continuation.push({name:'subject CSS acquires and reuses genuine linked native identity',pass:typeof demanded==='string' && lazyTree.node.$_meta?.quid===demanded && lazyRuntime.issuedQuids.size===1 && lazyRuntime.quidToNode.get(demanded)===subject_for_tree(lazyTree) && lazyElement.getAttribute('hson:quid')===demanded && lazyFrame.contentWindow.getComputedStyle(lazyElement).color==='rgb(0, 0, 255)' && lazyFrame.contentWindow.getComputedStyle(lazyElement).opacity==='0.7' && lazyMap.rev===lazyRev && lazyCommits===0});
   stopLazy(); lazyMirror.dispose(); lazyMirror.tree.remove(); dispose_livetree_runtime(lazyRuntime); lazyFrame.remove();
   const framed = document.createElement("iframe"); document.body.append(framed);
-  const continuedMap = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <button class=x "go"/>/>/>'}});
+  const continuedMap = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <button class="x" "go"/>/>/>'}});
   const page = continuedMap.doc.must("page");
   page.css.stylesheet('@layer { .x { color: red !important; } .x { color: blue !important; } }');
   const doc = framed.contentDocument; doc.open(); doc.write(page.render()); doc.close();

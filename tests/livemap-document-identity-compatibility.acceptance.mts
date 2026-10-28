@@ -155,14 +155,14 @@ check("data libraries with arrays expose no document identity surface", () => {
 });
 
 check("a large QUID-free document retains an empty sparse overlay", () => {
-  const children = Array.from({ length: 1_000 }, (_, index) => `<n data=${index}/>`).join("");
+  const children = Array.from({ length: 1_000 }, (_, index) => `<n data="${index}"/>`).join("");
   const map = element(`<main ${children}/>`);
   assert.equal(livemap_document_identity_overlay_for(map).size, 0);
   assert.equal(map.rev, 0);
 });
 
 check("one acquisition adds only one sparse overlay entry", () => {
-  const children = Array.from({ length: 1_000 }, (_, index) => `<n data=${index}/>`).join("");
+  const children = Array.from({ length: 1_000 }, (_, index) => `<n data="${index}"/>`).join("");
   const map = element(`<main ${children}/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   acquire_document_identity(map.document, target(0, 500));

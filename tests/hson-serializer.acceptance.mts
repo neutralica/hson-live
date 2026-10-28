@@ -178,7 +178,7 @@ check("canonicalize returns canonical valid Hson as a primitive string", () => {
 });
 
 check("canonicalize normalizes irregular and compact source to default readable output", () => {
-  assert.equal(canonicalize(`<tag count=2/>`), `<tag count="2"/>`);
+  assert.equal(canonicalize(`<tag count="2"/>`), `<tag count="2"/>`);
   assert.equal(
     canonicalize(`<p "first"<em "middle"/>"last"/>`),
     `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
@@ -320,7 +320,7 @@ check("fromHson.toNode accepts equivalent multiline and compact Hson", () => {
 
 check("fromHson.toNode preserves arrays and string-valued attributes", () => {
   const arrayNode = hson.fromHson(`«1,[true,null]»`).toNode();
-  const elementNode = hson.fromHson(`<tag count=2 disabled "value"/>`).toNode();
+  const elementNode = hson.fromHson(`<tag count="2" disabled "value"/>`).toNode();
   const tag = elementNode.$_content[0] as HsonNode;
   assert.deepEqual(Object.entries(tag.$_attrs ?? {}), [["count", "2"], ["disabled", "disabled"]]);
   assert.equal(arrayNode.$_content.length, 2);
@@ -620,12 +620,10 @@ check("programmatic typed ordinary attributes reject before serialization", () =
   });
 });
 
-check("quoted and unquoted attribute input both parse as strings", () => {
-  const unquoted = parse(`<tag count=2/>`);
+check("ordinary attribute literals require quotes and serialize as strings", () => {
+  assert.throws(() => parse(`<tag count=2/>`), /Literal attribute values require double quotes/);
   const quoted = parse(`<tag count="2"/>`);
-  assert.deepEqual(onlyElement(unquoted).$_attrs, { count: "2" });
   assert.deepEqual(onlyElement(quoted).$_attrs, { count: "2" });
-  assert.equal(readable(unquoted), `<tag count="2"/>`);
   assert.equal(readable(quoted), `<tag count="2"/>`);
 });
 

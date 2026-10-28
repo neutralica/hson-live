@@ -46,7 +46,7 @@ export function completion_context(source: string, cursor: number, unknownRanges
     const name = "d6" + "x".repeat(source.length + 1);
     const text = kind === "member" ? name + (trivia ? " null" : "")
       : kind === "tag" || kind === "header" ? name
-      : kind === "child" ? '""' : "null";
+      : kind === "child" ? '""' : kind === "attribute-value" ? '"null"' : "null";
     const width = kind === "member" ? name.length : text.length;
     probe = { kind, range: replacement, text: text + (trivia ? " " : ""), witness: { start: replacement.start, end: replacement.start + width } };
     throw stop;

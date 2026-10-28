@@ -464,7 +464,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("detached cut bounds and realization preserve captured siblings and completed source edits", () => {
     for (const phase of ["state-size", "html-size", "html-realization"]) {
       const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), state: { data: { count: 0 } },
-        page: { document: '<html <head/> <body data-cut=before/>/>' } });
+        page: { document: '<html <head/> <body data-cut="before"/>/>' } });
       const library = data(map), page = map.doc.must("page");
       if (page.mode !== "document") throw Error("Expected document");
       const body = page.at([]).at([1]).asElement(); assert.ok(body);

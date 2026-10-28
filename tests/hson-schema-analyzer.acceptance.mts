@@ -44,7 +44,7 @@ writeFileSync(producer, `import { Hson } from "hson-live";\nexport const UserSch
 writeFileSync(consumer, `import { Hson, type HsonData, type JsonFromSchema } from "hson-live"; import { FiniteSchema, TreeSchema, UserSchema } from "./producer.js";\nconst user: HsonData<typeof UserSchema> = Hson.data\`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>\`; void user;\nconst finite: HsonData<typeof FiniteSchema> = Hson.data\`<phase "playing" turn null signedZero -0>\`; void finite;\ndeclare const finiteValue: JsonFromSchema<typeof FiniteSchema>; const phase: "lobby" | "ready" | "playing" | "finished" = finiteValue.phase; const turn: "player1" | "player2" | null = finiteValue.turn; void phase; void turn;\nconst tree: HsonData<typeof TreeSchema> = Hson.data\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: JsonFromSchema<typeof TreeSchema>; const child: JsonFromSchema<typeof TreeSchema> | undefined = recursive.children[0]; const recursiveAge: JsonFromSchema<typeof TreeSchema>["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: JsonFromSchema<typeof UserSchema>; const age: JsonFromSchema<typeof UserSchema>["age"] = value.age; const code: JsonFromSchema<typeof UserSchema>["code"] = value.code; const key: JsonFromSchema<typeof UserSchema>["key"] = value.key; const values: JsonFromSchema<typeof UserSchema>["values"] = value.values; void age; void code; void key; void values;\nconst changedAge: JsonFromSchema<typeof UserSchema>["age"] = value.age + 1;\nconst changedCode: JsonFromSchema<typeof UserSchema>["code"] = value.code.slice(0);\nconst changedKey: JsonFromSchema<typeof UserSchema>["key"] = "abc";\nconst changedValues: JsonFromSchema<typeof UserSchema>["values"] = [...value.values];\nconst plainRecursiveAge: JsonFromSchema<typeof TreeSchema>["age"] = value.age;\nvoid changedAge; void changedCode; void changedKey; void changedValues; void plainRecursiveAge;\n`);
 writeFileSync(aliasSchema, `import { Hson as Author } from "hson-live";\nexport const AliasSchema = Author.schema\`<type "data" content <ok "boolean">>\`;\n`);
 writeFileSync(documentSchema, `import { Hson } from "hson-live";\nexport const PageSchema = Hson.schema\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\nexport const RepeatSchema = Hson.schema\`<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content "empty">> tag "list" content <repeat <ref "Item"> count 2>>\`;\nexport const DocumentSequenceSchema = Hson.schema\`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>\`;\n`);
-writeFileSync(documentConsumer, `type DocumentSchemaGraph<S extends import("hson-live").HsonSchema<unknown, "document">> = S extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never;\nimport { Hson, type HsonDocument } from "hson-live"; import { DocumentSequenceSchema, PageSchema, RepeatSchema } from "./document-schema.js";\nconst page: HsonDocument<typeof PageSchema> = PageSchema.certify(Hson.document\`<main id=hero <header/> <section "body"/>/>\`); void page;\nconst repeated: HsonDocument<typeof RepeatSchema> = RepeatSchema.certify(Hson.document\`<list <item code=ok-one/> <item code=ok-two/>/>\`); void repeated;\nconst documentSequence: HsonDocument<typeof DocumentSequenceSchema> = DocumentSequenceSchema.certify(Hson.document\`<item/><item/>\`); void documentSequence;\ndeclare const value: DocumentSchemaGraph<typeof PageSchema>; const rootTag: "_hson_root" = value.$_tag; const main = value.$_content[0]; const mainTag: "main" = main.$_tag; const child = main.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void mainTag; void childTag;\ndeclare const repeatValue: DocumentSchemaGraph<typeof RepeatSchema>; const list = repeatValue.$_content[0]; const repeatedChild = list.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: DocumentSchemaGraph<typeof RepeatSchema>["$_content"][0]["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: DocumentSchemaGraph<typeof PageSchema> = { $_tag: "_hson_root", $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: DocumentSchemaGraph<typeof PageSchema> = { ...value }; void rebuilt;\n`);
+writeFileSync(documentConsumer, `type DocumentSchemaGraph<S extends import("hson-live").HsonSchema<unknown, "document">> = S extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never;\nimport { Hson, type HsonDocument } from "hson-live"; import { DocumentSequenceSchema, PageSchema, RepeatSchema } from "./document-schema.js";\nconst page: HsonDocument<typeof PageSchema> = PageSchema.certify(Hson.document\`<main id="hero" <header/> <section "body"/>/>\`); void page;\nconst repeated: HsonDocument<typeof RepeatSchema> = RepeatSchema.certify(Hson.document\`<list <item code="ok-one"/> <item code="ok-two"/>/>\`); void repeated;\nconst documentSequence: HsonDocument<typeof DocumentSequenceSchema> = DocumentSequenceSchema.certify(Hson.document\`<item/><item/>\`); void documentSequence;\ndeclare const value: DocumentSchemaGraph<typeof PageSchema>; const rootTag: "_hson_root" = value.$_tag; const main = value.$_content[0]; const mainTag: "main" = main.$_tag; const child = main.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void mainTag; void childTag;\ndeclare const repeatValue: DocumentSchemaGraph<typeof RepeatSchema>; const list = repeatValue.$_content[0]; const repeatedChild = list.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: DocumentSchemaGraph<typeof RepeatSchema>["$_content"][0]["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: DocumentSchemaGraph<typeof PageSchema> = { $_tag: "_hson_root", $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: DocumentSchemaGraph<typeof PageSchema> = { ...value }; void rebuilt;\n`);
 writeFileSync(localStatic, `import { Hson, type HsonData, type JsonFromSchema } from "hson-live";\nconst SchemaTest = Hson.schema\`<type "data" content <name "string" score "number">>\`;\nconst testData: HsonData<typeof SchemaTest> = Hson.data\`<name "Ada" score 37>\`;\ndeclare const typed: JsonFromSchema<typeof SchemaTest>; const score: number = typed.score; void SchemaTest; void testData; void score;\n`);
 const aliasTypes = join(project, "alias-types.ts");
 writeFileSync(aliasTypes, `import type { HsonData, HsonDocument, HsonSchema, HsonFromSchema } from "hson-live";
@@ -75,7 +75,7 @@ type DocumentWrapper<S extends HsonSchema<unknown, "document">> = HsonDocument<S
 ${["Data<typeof UserSchema>", "Local", "Exported", "Chain", "ImportedData", "Wrapper<typeof UserSchema>", "Identity<ImportedData>", "HsonFromSchema<typeof UserSchema>", "DataHson", "DataHsonChain", "ImportedHsonData", "HsonWrapper<typeof UserSchema>"].map((type, index) =>
   `export const data${index}: ${type} = Hson.data\`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>\`;`).join("\n")}
 ${["HsonDocument<typeof PageSchema>", "DocumentLocal", "DocumentExported", "DocumentChain", "ImportedDocument", "DocumentWrapper<typeof PageSchema>", "HsonFromSchema<typeof PageSchema>", "DocHson", "DocHsonChain", "ImportedHsonDocument", "HsonWrapper<typeof PageSchema>"].map((type, index) =>
-  `export const doc${index}: ${type} = PageSchema.certify(Hson.document\`<main id=hero <header/> <section "body"/>/>\`);`).join("\n")}
+  `export const doc${index}: ${type} = PageSchema.certify(Hson.document\`<main id="hero" <header/> <section "body"/>/>\`);`).join("\n")}
 `);
 // Resolve the package's actual declarations while keeping the fixture under repo-local tmp.
 writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [resolve(root, "dist/index.d.ts")], "hson-live/hson": [resolve(root, "dist/hson-authoring.d.ts")] } }, include: ["./*.ts"] }, null, 2));
@@ -286,14 +286,14 @@ check("every refinement family fails invalid static authored Hson without the ex
 check("document static Hson rejects wrong tag, attrs, content order, and cardinality with no extension", () => {
   const original = readFileSync(documentConsumer, "utf8");
   for (const [from, to] of [
-    ['<main id=hero <header/> <section "body"/>/>', '<aside id=hero <header/> <section "body"/>/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main <header/> <section "body"/>/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main id=hero extra=yes <header/> <section "body"/>/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main id=hero <header/> <aside "body"/>/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main id=hero <section "body"/> <header/>/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main id=hero <header/> <section/>/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main id=hero/>'],
-    ['<main id=hero <header/> <section "body"/>/>', '<main id=hero <header/> <section "body"/> <section "extra"/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<aside id="hero" <header/> <section "body"/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main <header/> <section "body"/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main id="hero" extra="yes" <header/> <section "body"/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main id="hero" <header/> <aside "body"/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main id="hero" <section "body"/> <header/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main id="hero" <header/> <section/>/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main id="hero"/>'],
+    ['<main id="hero" <header/> <section "body"/>/>', '<main id="hero" <header/> <section "body"/> <section "extra"/>/>'],
   ] as const) {
     writeFileSync(documentConsumer, original.replace(from, to));
     const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy PageSchema/);
@@ -302,14 +302,14 @@ check("document static Hson rejects wrong tag, attrs, content order, and cardina
 });
 check("static repeated Hson enforces exact count, child shape, and referenced refinements", () => {
   const original = readFileSync(documentConsumer, "utf8");
-  const valid = '<list <item code=ok-one/> <item code=ok-two/>/>';
+  const valid = '<list <item code="ok-one"/> <item code="ok-two"/>/>';
   for (const candidate of [
     '<list/>',
-    '<list <item code=ok-one/>/>',
-    '<list <item code=ok-one/> <item code=ok-two/> <item code=ok-three/>/>',
-    '<list <item code=ok-one/> <wrong code=ok-two/>/>',
-    '<list <item code=bad/> <item code=ok-two/>/>',
-    '<list <item/> <item code=ok-two/>/>',
+    '<list <item code="ok-one"/>/>',
+    '<list <item code="ok-one"/> <item code="ok-two"/> <item code="ok-three"/>/>',
+    '<list <item code="ok-one"/> <wrong code="ok-two"/>/>',
+    '<list <item code="bad"/> <item code="ok-two"/>/>',
+    '<list <item/> <item code="ok-two"/>/>',
   ]) {
     writeFileSync(documentConsumer, original.replace(valid, candidate));
     const result = run("generate"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy RepeatSchema/);
@@ -340,7 +340,7 @@ check("repeat body, count, and repeated ref target participate in freshness", ()
 check("document optional attr omission and default-open attrs pass authoritatively", () => {
   const originalSchema = readFileSync(documentSchema, "utf8"), originalConsumer = readFileSync(documentConsumer, "utf8");
   writeFileSync(documentSchema, originalSchema.replace(" closed true", ""));
-  writeFileSync(documentConsumer, originalConsumer.replace("id=hero", "id=hero data-extra=yes"));
+  writeFileSync(documentConsumer, originalConsumer.replace('id="hero"', 'id="hero" data-extra="yes"'));
   assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr);
   writeFileSync(documentSchema, originalSchema); writeFileSync(documentConsumer, originalConsumer); assert.equal(run("generate").status, 0);
 });

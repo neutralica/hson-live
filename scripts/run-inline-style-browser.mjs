@@ -17,7 +17,7 @@ const script=fixture.match(/<script type="module">([\s\S]*?)<\/script>/)?.[1];
 assert.ok(script,'Missing browser acceptance script.');
 const plugins=baseline ? [{name:'source-oracle',setup(builder){builder.onLoad({filter:/\/src\/.*\.ts$/},async({path})=>({contents:snapshot ? await readFile(join(snapshot,relative(root,path)),'utf8') : execFileSync('git',['show',`HEAD:${relative(root,path)}`],{cwd:root,encoding:'utf8'}),loader:'ts'}));}}] : [];
 const bundle=await build({stdin:{contents:script,resolveDir:join(root,'tests/browser'),sourcefile:'inline-style.acceptance.html'},bundle:true,platform:'browser',format:'esm',target:'es2022',write:false,plugins});
-const map=hsonLiveMap.fromLibraries({page:{document:'<main id=ssr-root <p id=first-paint style="color:red!important;color:blue;margin:10px;margin-top:5px" "ready"/>/>'}});
+const map=hsonLiveMap.fromLibraries({page:{document:'<main id="ssr-root" <p id="first-paint" style="color:red!important;color:blue;margin:10px;margin-top:5px" "ready"/>/>'}});
 const cut=map.cut({html:'page'});
 const html=fixture.replace('<!-- SSR fixture is inserted by the source browser runner. -->',cut.html).replace(/<script type="module">[\s\S]*?<\/script>/,'<script type="module" src="/probe.js"></script>');
 const server=createServer((request,response)=>{if(request.url==='/probe.js'){response.setHeader('content-type','text/javascript');response.end(bundle.outputFiles[0].contents);}else if(request.url==='/__state'){response.setHeader('content-type','application/json');response.end(JSON.stringify(cut));}else{response.setHeader('content-type','text/html; charset=utf-8');response.end(html);}});

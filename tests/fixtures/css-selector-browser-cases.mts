@@ -15,7 +15,7 @@ export async function css_selector_browser_cases(): Promise<Check[]> {
   const checks: Check[] = [];
   const frame = document.createElement('iframe'); document.body.append(frame);
   const doc = frame.contentDocument!, win = frame.contentWindow!;
-  const tree = hsonLiveTree.fromHson('<main <button id=a class="scope a&b escaped,comma" data-x="a&b"/> <button id=b disabled=true class=scope/>/>', { isolated: true });
+  const tree = hsonLiveTree.fromHson('<main <button id="a" class="scope a&b escaped,comma" data-x="a&b"/> <button id="b" disabled="true" class="scope"/>/>', { isolated: true });
   const runtime = runtime_for_tree(tree);
   const flushRuntime = async () => { await Promise.resolve(); CssRuntimeManager.forRuntime(runtime).syncNow(); };
   try {
@@ -321,7 +321,7 @@ export async function css_selector_browser_cases(): Promise<Check[]> {
   for (const bound of [false, true]) {
     const frame = document.createElement('iframe'); document.body.append(frame);
     const doc = frame.contentDocument!, win = frame.contentWindow!;
-    const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <button id=a class="a a&b escaped,comma" data-x="a&b"/> <button id=b class=b/>/>/>' } });
+    const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <button id="a" class="a a&b escaped,comma" data-x="a&b"/> <button id="b" class="b"/>/>/>' } });
     const page = map.doc.must('page');
     page.css.sel('button').set.color('black');
     doc.open(); doc.write(page.render()); doc.close();

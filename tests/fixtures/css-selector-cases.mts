@@ -270,7 +270,7 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
   });
 
   check("singleton getters, rule keys, update order, scoped clear and recreation remain stable", () => {
-    const tree = hsonLiveTree.fromHson('<main <span class=child/>/>', { isolated: true });
+    const tree = hsonLiveTree.fromHson('<main <span class="child"/>/>', { isolated: true });
     try {
       tree.css.set.color('red'); tree.css.var.set('accent', 'teal');
       assert.equal(tree.css.get.color(), 'red'); assert.equal(tree.css.var.value('accent'), 'teal');

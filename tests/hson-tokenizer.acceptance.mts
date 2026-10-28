@@ -13,6 +13,8 @@ import { is_Node } from "../src/core/node-guards.ts";
 import type { JsonValue } from "../src/core/types.ts";
 import type { Tokens } from "../src/api/transform/token.types.ts";
 import { TransformError } from "../src/core/errors.ts";
+import { run_attribute_quoting_cases } from "./fixtures/hson-attribute-quoting-cases.mts";
+import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "transform.hson-tokenizer",
@@ -208,8 +210,8 @@ check("element grammar and canonical graph remain unchanged", () => {
     [`<a "text"/>`, `<a "text"/>`],
     [`<a flag/>`, `<a flag/>`],
     [`<a title="value"/>`, `<a title="value"/>`],
-    [`<a href=foo//bar/>`, `<a href="foo//bar"/>`],
-    [`<a href=// layout\nfoo//bar/>`, `<a href="foo//bar"/>`],
+    [`<a href="foo//bar"/>`, `<a href="foo//bar"/>`],
+    [`<a href=// layout\n"foo//bar"/>`, `<a href="foo//bar"/>`],
     [`<a <b/>/>`, `<a\n  <b/>\n/>`],
     [
       `<a style="color: red" "before" <b/> "after"/>`,
@@ -316,16 +318,16 @@ const token_cases = [
   },
   {
     name: "quoted key attributes flags and metadata",
-    source: `<'display name' @000000001 count=2 enabled=true missing=null disabled "Ada"/>`,
+    source: `<'display name' @000000001 count="2" enabled="true" missing="null" disabled "Ada"/>`,
     expected: [
       {
         kind: "OPEN",
         tag: "display name",
         quid: "000000001",
         attrs: [
-          { name: "count", value: { text: "2", quoted: false } },
-          { name: "enabled", value: { text: "true", quoted: false } },
-          { name: "missing", value: { text: "null", quoted: false } },
+          { name: "count", value: { text: "2", quoted: true } },
+          { name: "enabled", value: { text: "true", quoted: true } },
+          { name: "missing", value: { text: "null", quoted: true } },
           { name: "disabled" },
         ],
       },
@@ -382,7 +384,7 @@ const required_valid = [
   `<tag attr="value" flag "content"/>`,
   `<tag attr="value" flag"content"/>`,
   `<tag attr="value" flag "content" />`,
-  `<tag count=2/>`,
+  `<tag count="2"/>`,
   `<a 1 b 2>`,
   `<parent <child "value"/>/>`,
   `<'this is always a tag'
@@ -502,8 +504,8 @@ for (const [multiline, compact] of equivalent_layouts) {
   });
 }
 
-check("unquoted Hson attribute inputs retain their existing string parse contract", () => {
-  const root = parse_hson(`<tag count=2 enabled=true missing=null href=http://example.test/path disabled "content"/>`);
+check("quoted Hson attribute literals retain their string parse contract", () => {
+  const root = parse_hson(`<tag count="2" enabled="true" missing="null" href="http://example.test/path" disabled "content"/>`);
   const cluster = root.$_content[0];
   assert.ok(is_Node(cluster));
   const tag = cluster.$_content[0];
@@ -784,7 +786,7 @@ check("primitive-looking element names are flags before content and header error
     false: "false",
     null: "null",
   });
-  assert.deepEqual(authored_node(`<input true=true false=false null=null/>`).$_attrs, {
+  assert.deepEqual(authored_node(`<input true="true" false="false" null="null"/>`).$_attrs, {
     true: "true",
     false: "false",
     null: "null",
@@ -1131,5 +1133,14 @@ check("caret structural references use the authored header path and reject old h
   assert.deepEqual(parse_hson('<value "#{old} ^{local} %{incoming}">'), parse_json({ value: '#{old} ^{local} %{incoming}' }));
 });
 
-process.stdout.write(`# ${checks} Hson tokenizer checks passed\n`);
+let quotingChecks = 0;
+check("authored attribute quoting contract in Node", () => { quotingChecks = run_attribute_quoting_cases(); });
+const workerQuotingChecks = await new Promise<number>((resolve, reject) => {
+  const worker = repository_typescript_worker(new URL("./fixtures/hson-attribute-quoting.worker.mts", import.meta.url));
+  worker.once("message", resolve);
+  worker.once("error", reject);
+  worker.once("exit", code => { if (code !== 0) reject(new Error(`Attribute quoting Worker exited with ${code}`)); });
+});
+check("authored attribute quoting contract in Worker", () => { assert.equal(workerQuotingChecks, quotingChecks); });
+process.stdout.write(`# ${checks} Hson tokenizer checks passed (${quotingChecks} quoting checks per runtime)\n`);
 testEvents.terminal("pass");

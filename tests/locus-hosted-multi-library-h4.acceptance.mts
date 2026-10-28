@@ -386,7 +386,7 @@ await check("fresh-runtime local identity follows movement and precise updates a
 await check("transactional interaction state and path descriptors survive checkpoint-plus-tail restart", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main <button id=one/> <button id=two/>/>", schema: ButtonSchema },
+    page: { document: "<main <button id=\"one\"/> <button id=\"two\"/>/>", schema: ButtonSchema },
   });
   enable_interactions(map);
   const listener: InteractionDescriptor["listener"] = Object.freeze({

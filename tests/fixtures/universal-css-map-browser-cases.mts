@@ -14,7 +14,7 @@ export async function universal_css_map_browser_cases() {
   const doc = frame.contentDocument!, win = frame.contentWindow!;
   const raw = '/* exact raw */ .row { --raw: kept; } /* unclosed';
   const source = hsonLiveMap.fromLibraries({ page: {
-    document: '<html <head/> <body <section class=row <span @:label class=label/>/>/>/>', stylesheet: raw,
+    document: '<html <head/> <body <section class="row" <span @:label class="label"/>/>/>/>', stylesheet: raw,
   } });
   const cut = cut_document_ssr_internal(source, { html: 'page' }, [lookup_document_quad_internal(source.doc.must('page'), 'label')!.quid]);
   const receiver = restore_portable_document_receiver_internal(cut.libs), map = receiver.map;

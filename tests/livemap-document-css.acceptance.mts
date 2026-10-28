@@ -5,7 +5,7 @@ import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "../src/internal/css/portable-document-stylesheet.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
-const document = '<html <head <title "CSS"/> <style "body{font-size:12px;}"/>/> <body <main id=home-screen "Hello"/>/>/>';
+const document = '<html <head <title "CSS"/> <style "body{font-size:12px;}"/>/> <body <main id="home-screen" "Hello"/>/>/>';
 const map = hsonLiveMap.fromLibraries({ page: { document }, data: { data: { count: 1 } } });
 const page = map.doc.must("page");
 const data = map.data.must("data");

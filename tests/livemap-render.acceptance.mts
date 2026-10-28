@@ -46,7 +46,7 @@ try {
 }
 
 // Re-enter while capture clones the root, before it captures the stylesheet.
-const coherent = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body data-render=before/>/>' } });
+const coherent = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body data-render="before"/>/>' } });
 const page = coherent.doc.must("page");
 page.css.sel("body").set.color("blue");
 const revision = coherent.rev;
@@ -84,7 +84,7 @@ assert.match(updatedHtml, /color:red/);
 
 // The root payload is bounded once during capture, then again when render decodes
 // the fully detached candidate. Re-enter at that second read, beyond the source fence.
-const detached = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body data-render=before/>/>' } });
+const detached = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body data-render="before"/>/>' } });
 const detachedPage = detached.doc.must("page");
 detachedPage.css.sel("body").set.color("blue");
 const expectedHtml = detachedPage.render();

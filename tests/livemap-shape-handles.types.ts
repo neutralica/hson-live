@@ -84,7 +84,7 @@ if (false) {
   >;
   const libraries = hsonLiveMap.fromLibraries({
     page: {
-      document: `<main id=hero <section "body"/>/>`,
+      document: `<main id="hero" <section "body"/>/>`,
       schema: PageSchema,
     },
   });

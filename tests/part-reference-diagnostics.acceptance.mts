@@ -379,7 +379,7 @@ check("Part declarations diagnose known ownership and local form with exact sour
     assert.deepEqual(result.slices, [body.slice(0, -2)]);
   }
   assert.deepEqual(inspect(application('<main/>', definition('<button hson:part/>'))).codes, []);
-  for (const body of ['<p hson:part=""/>', '<p hson:part="hson:part"/>', '<p hson:part=true/>', '<p HSON:PART/>',
+  for (const body of ['<p hson:part=""/>', '<p hson:part="hson:part"/>', '<p hson:part="true"/>', '<p HSON:PART/>',
     '<p hson:part <b hson:part/>/>', '<p hson:part <hson-part hson:part at="x"/>/>']) {
     const result = inspect(application('<main/>', definition(body)));
     assert.ok(result.codes.includes('HSON_PART_DECLARATION_INVALID'), body);

@@ -62,9 +62,9 @@ check("quoted attribute value includes quotes", () => {
   const p = parse_hson_with_provenance(`<x id="a"/>`).provenance;
   assert.deepEqual(p.range(attr([0], "id", "value")), { start: 6, end: 9 });
 });
-check("unquoted attribute value is exact", () => {
-  const p = parse_hson_with_provenance(`<x id=abc/>`).provenance;
-  assert.deepEqual(p.range(attr([0], "id", "value")), { start: 6, end: 9 });
+check("unquoted complete reference value is exact", () => {
+  const p = parse_hson_with_provenance(`<x id=%{abc}/>`).provenance;
+  assert.deepEqual(p.range(attr([0], "id", "value")), { start: 6, end: 12 });
 });
 check("flag attributes have coverage and name but no value", () => {
   const p = parse_hson_with_provenance(`<x disabled/>`).provenance;

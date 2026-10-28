@@ -66,7 +66,7 @@ void crossIdentity; void dataAsSchema; void sliced; void appended;
 
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
 const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>, "state", typeof SameShapeOneSchema> = dataMap.data.must("state");
-const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id=hero <header/> <section "body"/>/>`, schema: PageSchema } });
+const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id="hero" <header/> <section "body"/>/>`, schema: PageSchema } });
 const governedDocument: LiveMapDocumentLibrary<DocumentSchemaGraph<typeof PageSchema>> = documentMap.doc.must("page");
 // @ts-expect-error A document Schema cannot govern a data map.
 dataMap.data.must("state").schema.use(PageSchema);

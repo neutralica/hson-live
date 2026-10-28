@@ -1,4 +1,4 @@
-import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_reference_checkpoint, scan_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
@@ -115,6 +115,73 @@ function isHsonTrivia(value: string): boolean {
 
 function isUnsupportedWhitespace(value: string): boolean {
   return value !== "" && /\p{White_Space}/u.test(value) && !isHsonTrivia(value);
+}
+
+type AttributeOperand = Readonly<{ end: number } & (
+  { kind: "quoted" | "reference" | "selector" }
+  | { kind: "invalid"; code: string; message: string }
+)>;
+
+/** Source-only classification shared with closer lookahead. Receiving semantics
+ * remain with Part admission; only invocation coordinates admit bare literals. */
+function classifyAttributeOperand(source: string, start: number, tag?: string, name?: string): AttributeOperand {
+  if (source[start] === '"') return { kind: "quoted", end: start };
+  let end = start;
+  let references = 0;
+  while (end < source.length) {
+    const ch = source[end]!;
+    if (source.startsWith("%{", end) || source.startsWith("^{", end) || source.startsWith("#{", end)) {
+      const legacy = source.startsWith("#{", end);
+      const reference = scan_part_reference(source, end);
+      if (reference === undefined) {
+        // Recovery bounds only, never a second reference parser. Do not consume
+        // a following attribute or element closer while reporting the operand.
+        let quotedKey = false;
+        while (end < source.length) {
+          const recoveryChar = source[end]!;
+          if (quotedKey) {
+            if (recoveryChar === "\\") { end = Math.min(end + 2, source.length); continue; }
+            if (recoveryChar === '"') quotedKey = false;
+          } else {
+            if (recoveryChar === "[" && source[end + 1] === '"') {
+              quotedKey = true;
+              end += 2;
+              continue;
+            }
+            if (isHsonTrivia(recoveryChar) || isUnsupportedWhitespace(recoveryChar)
+              || /[<>"]/.test(recoveryChar) || source.startsWith("/>", end)) break;
+          }
+          end++;
+        }
+        return { kind: "invalid", end, code: "HSON_PART_REFERENCE_INVALID",
+          message: legacy ? PART_LOCAL_REFERENCE_MIGRATION : "Invalid or incomplete Part reference in attribute value." };
+      }
+      references++;
+      end = reference.end;
+      continue;
+    }
+    if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || /[<>"'`«»\[\]]/.test(ch) || source.startsWith("/>", end)) break;
+    end++;
+  }
+  const text = source.slice(start, end);
+  const boundary = end === source.length || isHsonTrivia(source[end]!) || source.startsWith("/>", end)
+    || source[end] === '"' || source[end] === "<";
+  if (references !== 0) {
+    if (boundary && whole_part_reference(text) !== undefined) return { kind: "reference", end };
+    return { kind: "invalid", end, code: "HSON_ATTRIBUTE_QUOTES_REQUIRED",
+      message: "Partial attribute interpolation requires double quotes; only one complete Part reference may stand bare." };
+  }
+  if (tag?.toLowerCase() === "hson-part" && (name === "lib" || name === "at")) {
+    const segments = text.split("/");
+    if (boundary && segments.length <= (name === "lib" ? 1 : 2)
+      && segments.every(segment => segment.length > 0 && !/[\\{}=]/.test(segment))) {
+      return { kind: "selector", end };
+    }
+    return { kind: "invalid", end, code: "HSON_PART_SELECTOR_INVALID",
+      message: `Invalid bare ${name} selector; use a ${name === "lib" ? "Library name" : "member or Library/member"}, or double-quote the value.` };
+  }
+  return { kind: "invalid", end, code: text.includes("=") ? "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID" : "HSON_ATTRIBUTE_QUOTES_REQUIRED",
+    message: text.includes("=") ? "Malformed unquoted attribute value." : "Literal attribute values require double quotes." };
 }
 
 /**
@@ -857,7 +924,7 @@ class HsonScanner {
         }
         if (this.peek() === "=") {
           this.editorAttribute = name;
-          const attr = this.scanAttributeValue(name, namePos);
+          const attr = this.scanAttributeValue(tag, name, namePos);
           this.editorAttribute = undefined;
           this.assertUniqueAttribute(attrDeclarations, attr);
           attrs.push(attr);
@@ -1124,7 +1191,7 @@ class HsonScanner {
     });
   }
 
-  private scanAttributeValue(name: string, start: Position): RawAttr {
+  private scanAttributeValue(tag: string, name: string, start: Position): RawAttr {
     this.consumeExpected("=");
     this.skipTrivia();
     // Structural probes retain the grammar slot; completion needs occupied bounds.
@@ -1148,7 +1215,8 @@ class HsonScanner {
       this.rejectLegacyBacktick();
     }
 
-    if (!startsWithSlot && this.peek() === `"`) {
+    const operand = classifyAttributeOperand(this.source, this.index, tag, name);
+    if (!startsWithSlot && operand.kind === "quoted") {
       const valueStart = this.position();
       const { text, end, direct } = this.scanAttributeString(name);
       const attr = { name, value: { text, quoted: true, ...(direct === undefined ? {} : { direct }) }, start, end };
@@ -1166,17 +1234,12 @@ class HsonScanner {
     let end = valueStart;
     let recovered = false;
 
-    while (!this.atEnd() || this.editorRejectedSlot !== undefined && this.slotHere() !== undefined) {
-      const ch = this.peek();
+    while (this.index < operand.end || this.slotHere() !== undefined) {
       if (this.slotHere() !== undefined) {
         if (this.recoverRejectedSlots()) { recovered = true; continue; }
         this.rejectSlot("an unquoted attribute value; use name=\"${value}\"");
       }
-      if (this.atEnd()) break;
-      if (this.startsWith("/>")) break;
-      if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === `"` || ch === "'" || ch === "`" || ch === "«" || ch === "»" || ch === "[" || ch === "]") {
-        break;
-      }
+      if (this.index >= operand.end) break;
       end = this.position();
       const character = this.consume();
       text += character;
@@ -1184,17 +1247,15 @@ class HsonScanner {
     }
 
     if (!text && !recovered) this.fail(`missing attribute value for "${name}"`, start, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
-    if (text.includes("=")) {
-      this.fail(
-        `malformed unquoted attribute value for "${name}": "${text}"`,
-        valueStart,
-        "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID",
-      );
-    }
 
     if (this.editorMode === "document" && !recovered) {
       this.documentStringCheckpoint(valueStart.index, true, "attribute-value", observation, false);
       this.completionSlot("attribute-value", valueStart.index);
+    }
+
+    if (!recovered && operand.kind === "invalid") {
+      this.fail(`${operand.message} Attribute: "${name}".`, valueStart, operand.code,
+        [{ role: "value-end", pos: this.position() }]);
     }
 
     const attr = { name, value: { text, quoted: false }, start, end };
@@ -1555,7 +1616,7 @@ class HsonScanner {
     let quoteAttribute = false;
     let quoteMultiline = false;
     let expectAttributeValue = false;
-    let unquotedAttributeValue = false;
+    let invalidReference: Readonly<{ start: number; operand: AttributeOperand & { kind: "invalid" } }> | undefined;
 
     while (cursor < this.source.length) {
       const ch = this.source[cursor];
@@ -1597,20 +1658,6 @@ class HsonScanner {
         this.rejectLegacyBacktick(this.positionAt(cursor));
       }
 
-      // Element attributes retain the existing permissive unquoted value
-      // grammar, including literal slash runs such as `href=foo//bar`. A
-      // `//` inside that lexical value is not comment trivia.
-      if (unquotedAttributeValue) {
-        if (ch === "/" && next === ">") {
-          unquotedAttributeValue = false;
-        } else if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "[" || ch === "]" || ch === "«" || ch === "»") {
-          unquotedAttributeValue = false;
-        } else {
-          cursor += 1;
-          continue;
-        }
-      }
-
       const startsAttributeQuote = expectAttributeValue;
       if (expectAttributeValue) {
         if (isHsonTrivia(ch)) {
@@ -1635,9 +1682,15 @@ class HsonScanner {
           expectAttributeValue = false;
         } else if (ch !== `"` && ch !== "'" && ch !== "<" && ch !== ">") {
           expectAttributeValue = false;
-          unquotedAttributeValue = true;
-          cursor += 1;
-          continue;
+          const operand = classifyAttributeOperand(this.source, cursor);
+          if (operand.kind === "invalid" && operand.code === "HSON_PART_REFERENCE_INVALID"
+            && !this.templateSlots.some(slot => slot.offset >= cursor && slot.offset <= operand.end)) {
+            invalidReference ??= { start: cursor, operand };
+          }
+          if (operand.end > cursor) {
+            cursor = operand.end;
+            continue;
+          }
         } else expectAttributeValue = false;
       }
 
@@ -1694,7 +1747,6 @@ class HsonScanner {
 
       if (ch === "<") {
         expectAttributeValue = false;
-        unquotedAttributeValue = false;
         stack.push("<");
         cursor += 1;
         continue;
@@ -1711,7 +1763,6 @@ class HsonScanner {
       }
       if (ch === "/" && next === ">" && stack.at(-1) === "<") {
         expectAttributeValue = false;
-        unquotedAttributeValue = false;
         stack.pop();
         if (stack.length === 0) return CLOSE_KIND.elem;
         cursor += 2;
@@ -1719,7 +1770,6 @@ class HsonScanner {
       }
       if (ch === ">" && stack.at(-1) === "<") {
         expectAttributeValue = false;
-        unquotedAttributeValue = false;
         stack.pop();
         if (stack.length === 0) return CLOSE_KIND.obj;
         cursor += 1;
@@ -1738,6 +1788,10 @@ class HsonScanner {
       cursor += 1;
     }
 
+    if (invalidReference !== undefined && this.editorMode === undefined) {
+      this.fail(invalidReference.operand.message, this.positionAt(invalidReference.start), invalidReference.operand.code,
+        [{ role: "value-end", pos: this.positionAt(invalidReference.operand.end) }]);
+    }
     if (quoted === `"`) {
       const final = this.source[this.source.length - 1];
       this.fail(

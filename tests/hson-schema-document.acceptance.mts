@@ -110,8 +110,8 @@ check("repeat ref shares definition authority and preserves recursive descendant
   const repeat = compiled.value.graph.nodes[repeatIndex];
   assert.equal(repeat?.kind, "document-repeat");
   if (repeat?.kind === "document-repeat") assert.equal(compiled.value.graph.nodes[repeat.item]?.kind, "document-element");
-  assert.equal(evaluate(source, '<main <item code=ok-one/> <item code=ok-two/>/>').ok, true);
-  assert.equal(evaluate(source, '<main <item code=bad/>/>').ok, false);
+  assert.equal(evaluate(source, '<main <item code="ok-one"/> <item code="ok-two"/>/>').ok, true);
+  assert.equal(evaluate(source, '<main <item code="bad"/>/>').ok, false);
   assert.equal(compile_hson_schema('<type "document" defs <Data "string"> tag "main" content <repeat <ref "Data">>>').ok, false);
 
   const recursive = '<type "document" defs <Node <tag "node" content <repeat <ref "Node">>>> tag "main" content <repeat <ref "Node">>>';
@@ -161,18 +161,18 @@ check("tagless document roots expose sequence and repeat semantics", () => {
 });
 check("attrs default open, required, optional, flag, and optional flag semantics", () => {
   const source = '<type "document" tag "main" attrs <props <id "string" state <exact "ready"> hidden "flag" inert <optional "flag"> title <optional "string">>> content "empty">';
-  assert.equal(evaluate(source, '<main id=hero state=ready hidden data-extra=yes/>').ok, true);
-  assert.equal(evaluate(source, '<main id=hero state=ready hidden inert title=ok/>').ok, true);
-  assert.equal(evaluate(source, '<main state=ready hidden/>').ok, false);
-  assert.equal(evaluate(source, '<main id=hero state=wrong hidden/>').ok, false);
-  assert.equal(evaluate(source, '<main id=hero state=ready hidden=false/>').ok, false);
+  assert.equal(evaluate(source, '<main id="hero" state="ready" hidden data-extra="yes"/>').ok, true);
+  assert.equal(evaluate(source, '<main id="hero" state="ready" hidden inert title="ok"/>').ok, true);
+  assert.equal(evaluate(source, '<main state="ready" hidden/>').ok, false);
+  assert.equal(evaluate(source, '<main id="hero" state="wrong" hidden/>').ok, false);
+  assert.equal(evaluate(source, '<main id="hero" state="ready" hidden="false"/>').ok, false);
   assert.equal(schema('tag "main" attrs <props <count "number">> content "empty"').ok, false);
 });
 check("attrs explicit closed key set rejects undeclared attrs without exact-value semantics", () => {
   const source = '<type "document" tag "main" attrs <props <id "string"> closed true> content "empty">';
-  assert.equal(evaluate(source, '<main id=hero/>').ok, true);
-  assert.equal(evaluate(source, '<main id=another-value/>').ok, true);
-  assert.equal(evaluate(source, '<main id=hero data-extra=yes/>').ok, false);
+  assert.equal(evaluate(source, '<main id="hero"/>').ok, true);
+  assert.equal(evaluate(source, '<main id="another-value"/>').ok, true);
+  assert.equal(evaluate(source, '<main id="hero" data-extra="yes"/>').ok, false);
 });
 check("retired attrs exact closure spelling rejects", () => {
   assert.equal(schema('tag "main" attrs <props <id "string"> exact true> content "empty"').ok, false);
@@ -189,9 +189,9 @@ check("lowering is deterministic and canonically verified", () => {
 });
 check("runtime document certification preserves canonical string identity", () => {
   const pageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>`;
-  const candidate = Hson.canonical`<main id=hero data-extra=yes <section "body"/>/>`;
+  const candidate = Hson.canonical`<main id="hero" data-extra="yes" <section "body"/>/>`;
   assert.equal(pageSchema.certify(candidate), candidate);
-  assert.throws(() => pageSchema.certify(Hson.canonical`<main id=hero <aside "body"/>/>`));
+  assert.throws(() => pageSchema.certify(Hson.canonical`<main id="hero" <aside "body"/>/>`));
 });
 check("runtime certification uses canonical repeat and exact-count authority", () => {
   const repeatSchema: HsonSchema = Hson.schema`<type "document" defs <Item <tag "item" content "empty">> tag "main" content <repeat <ref "Item"> count 2>>`;
@@ -251,7 +251,7 @@ const performanceCases = [
   ["exact-count", '<type "document" tag "root" content <repeat <tag "item" content "empty"> count 3>>', '<root <item/> <item/> <item/>/>'],
   ["repeat-ref", '<type "document" defs <Item <tag "item" content "empty">> tag "root" content <repeat <ref "Item">>>', '<root <item/> <item/>/>'],
   ["recursive-repeat", '<type "document" defs <Node <tag "node" content <repeat <ref "Node">>>> tag "root" content <repeat <ref "Node">>>', '<root <node/> <node <node/>/>/>'],
-  ["composed-document", '<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content <repeat <tag "part" content "empty"> count 2>>> tag "root" content <repeat <ref "Item"> count 2>>', '<root <item code=ok-a <part/><part/>/> <item code=ok-b <part/><part/>/>/>'],
+  ["composed-document", '<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content <repeat <tag "part" content "empty"> count 2>>> tag "root" content <repeat <ref "Item"> count 2>>', '<root <item code="ok-a" <part/><part/>/> <item code="ok-b" <part/><part/>/>/>'],
 ] as const;
 const performanceTelemetry = performanceCases.map(([name, source, candidate]) => {
   const started = performance.now();

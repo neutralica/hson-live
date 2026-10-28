@@ -31,7 +31,7 @@ const map = admit_exact_runtime_livemap_libraries({
     schema: DynamicSchema,
   },
   page: {
-    document: parse_hson_exact_runtime(`<main @000009991 id=hero <section "body"/>/>`, { allowTopLevelDocumentText: true }),
+    document: parse_hson_exact_runtime(`<main @000009991 id="hero" <section "body"/>/>`, { allowTopLevelDocumentText: true }),
     schema: PageSchema,
   },
 });

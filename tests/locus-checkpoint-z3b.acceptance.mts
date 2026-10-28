@@ -196,7 +196,7 @@ await case_("two data and two document libraries retain system interactions and 
   const map = hsonLiveMap.fromLibraries({
     dataA: { data: { value: "A0" }, schema: Data },
     dataB: { data: { value: "B0" }, schema: Data },
-    pageA: { document: "<main <button id=one/> <button id=two/>/>", schema: Buttons },
+    pageA: { document: "<main <button id=\"one\"/> <button id=\"two\"/>/>", schema: Buttons },
     pageB: { document: "<main/>", schema: Page },
   });
   const id = "z3b-complete";

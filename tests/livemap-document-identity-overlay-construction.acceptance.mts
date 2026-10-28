@@ -110,7 +110,7 @@ check("sparse reverse lookup agrees at every retained path", () => {
 });
 
 check("moderate QUID-free fixtures remain storage-constant", () => {
-  const source = `<main ${Array.from({ length: 80 }, (_, index) => `<n data=${JSON.stringify(index)}/>`).join("")}/>`;
+  const source = `<main ${Array.from({ length: 80 }, (_, index) => `<n data="${index}"/>`).join("")}/>`;
   assert.equal(livemap_document_identity_overlay_for(element(source)).size, 0);
 });
 
