@@ -10,7 +10,7 @@ const definitions = { components: { parts: { heading, blank } }, ordinary: { dat
 
 export async function parts_write_cases() {
   const renamed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document",
-    document: '<p hson:part model:data="%{style}" other:data="%{__proto__}" "#{model.title}:#{other}"/>' } } } });
+    document: '<p hson:part model:data="%{style}" other:data="%{__proto__}" "^{model.title}:^{other}"/>' } } } });
   const protectedNames = Object.fromEntries([['style', Hson.data.from({ title: 'Own' })], ['__proto__', Hson.data.from(false)]]);
   const encoded = renamed.parts.parts.x.write(protectedNames);
   assert.match(encoded, /data:style=/); assert.match(encoded, /data:__proto__=/);
@@ -19,7 +19,7 @@ export async function parts_write_cases() {
 
   const changed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<p hson:part "%{value}"/>' } } } });
   const scalarCapture = changed.parts.parts.x.write({ value: '<b/>' });
-  changed.parts.parts.x.replace({ kind: "document", document: '<main hson:part c:doc="%{value}" <hson-part #{c}/>/>' });
+  changed.parts.parts.x.replace({ kind: "document", document: '<main hson:part c:doc="%{value}" <hson-part ^{c}/>/>' });
   assert.throws(() => changed.addLibraries({ bad: { document: scalarCapture } }), /receiving interface/);
   const documentCapture = changed.parts.parts.x.write({ value: '<b/>' });
   changed.parts.parts.x.replace({ kind: "document", document: '<p hson:part "%{value}"/>' });
@@ -27,7 +27,7 @@ export async function parts_write_cases() {
   assert.equal(changed.doc('bad'), undefined);
 
   const optional = hsonLiveMap.fromLibraries({ parts: { parts: {
-    x: { kind: "document", document: '<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>' },
+    x: { kind: "document", document: '<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>' },
   } } });
   for (const [name, value] of [['empty', {}], ['present', { title: 'Visible' }]] as const) {
     const written = optional.parts.parts.x.write({ payload: Hson.data.from(value) });
@@ -38,7 +38,7 @@ export async function parts_write_cases() {
     assert.doesNotMatch(result, /part:optional|hson-part|data:payload/);
   }
 
-  const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav hson:part slide:data="%{payload}" title="#{slide.title}" "#{slide.no}"/>' } } } });
+  const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav hson:part slide:data="%{payload}" title="^{slide.title}" "^{slide.no}"/>' } } } });
   const structuredAuthority = internal_livemap_aggregate_authority(structured);
   const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();
   const slide = Hson.data`<title "Navigation" no -0>`;

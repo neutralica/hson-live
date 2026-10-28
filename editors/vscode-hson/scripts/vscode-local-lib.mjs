@@ -101,6 +101,9 @@ function manifestStaticPaths(manifest) {
   for (const grammar of manifest.contributes?.grammars ?? []) {
     if (grammar.path) paths.add(String(grammar.path).replace(/^\.\//, ""));
   }
+  for (const theme of manifest.contributes?.themes ?? []) {
+    if (theme.path) paths.add(String(theme.path).replace(/^\.\//, ""));
+  }
   for (const root of typescriptPluginRoots(manifest)) paths.add(`${root}/package.json`);
   paths.delete("");
   return [...paths];
@@ -157,6 +160,10 @@ export async function validateVsix(vsixPath, expectedManifest) {
     throw new StageError("artifact validation failure", "packaged TypeScript server plugin contributions differ from the current manifest");
   }
 
+  for (const key of ["themes", "semanticTokenTypes", "semanticTokenScopes"]) {
+    if (!sameJson(manifest.contributes?.[key], expectedManifest.contributes?.[key]))
+      throw new StageError("artifact validation failure", `packaged ${key} contributions differ from the current manifest`);
+  }
   for (const path of manifestStaticPaths(expectedManifest)) {
     const entry = archive.file(`extension/${path}`);
     if (!entry) throw new StageError("artifact validation failure", `VSIX is missing extension/${path}`);
@@ -242,6 +249,10 @@ export async function sourceInputAuthority(extensionRoot, sourceMaps) {
     "package-lock.json",
     ".vscodeignore",
     "scripts/build.mjs",
+    "scripts/generate-themes.mjs",
+    "src/appearance.ts",
+    "src/tsserver-plugin/tsserver-plugin.ts",
+    "src/tsserver-plugin/native-semantic-tokens.ts",
     "scripts/vscode-local-lib.mjs",
     "scripts/vscode-local.mjs",
     ...manifestStaticPaths(manifest).filter(name => !name.startsWith("dist/")),

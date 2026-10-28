@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
-import { hson_document_self_closing_slash_ranges, hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/highlighting.js";
+import { hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/highlighting.js";
 import { produce_document_diagnostics } from "../src/document-diagnostics.js";
 import { start_diagnostics, type DiagnosticDocument, type DiagnosticHost } from "../src/diagnostics.js";
 import { Hson } from "../../../src/hson-authoring.js";
@@ -27,27 +27,29 @@ async function run(): Promise<void> {
     for (const fileName of ['/workspace/visible.ts', '/workspace/visible.tsx']) {
       const emitted = tokens(text, fileName);
       for (const path of ['data', 'slide.href', 'slide2.value']) {
-        const token = emitted.find(token => text.slice(token.range.start, token.range.end) === path);
-        assert.equal(token?.type, 'hsonReference', path);
-        assert.ok(token?.scopes.includes('variable.other.property.hson'), path);
+        const start = text.indexOf(path + '}');
+        const pieces = emitted.filter(token => token.range.start >= start && token.range.end <= start + path.length);
+        assert.equal(pieces.map(token => text.slice(token.range.start, token.range.end)).join(''), path);
+        assert.ok(pieces.every(token => token.type === 'hsonReference' && token.scopes.includes('variable.other.property.hson')), path);
+        if (path.includes('.')) assert.deepEqual(pieces.map(token => token.modifiers), [[], ['hsonReferenceSeparator'], ['hsonMember']]);
       }
-      for (const sigil of ['%', '#']) {
+      for (const sigil of ['%', '^']) {
         const start = text.indexOf(sigil + '{');
-        assert.equal(emitted.find(token => token.range.start === start)?.type, 'hsonOperator');
+        assert.equal(emitted.find(token => token.range.start === start)?.type, sigil === '%' ? 'hsonIncomingReferenceSigil' : 'hsonLocalReferenceSigil');
         assert.equal(emitted.find(token => token.range.start === start + 1)?.type, 'hsonInterpolationDelimiter');
       }
       const hole = text.indexOf('${data2}');
       assert.ok(emitted.every(token => token.range.end <= hole || token.range.start >= hole + '${data2}'.length));
       for (const token of emitted.filter(token => text.slice(token.range.start, token.range.end) === '"')) assert.equal(token.type, 'hsonQuote');
-      for (const [slice, type] of [['tag', 'hsonType'], ['hson:part', 'hsonDeclaration'], ['slide:data', 'hsonProperty'],
-        ['=', 'hsonOperator'], ['enabled', 'hsonKeyword'], ['svg', 'hsonType'], ['path', 'hsonType'], ['M2 10h4', 'hsonString']]) {
+      for (const [slice, type] of [['tag', 'hsonType'], ['hson', 'hsonDeclaration'], ['slide', 'hsonReceiving'],
+        ['=', 'hsonOperator'], ['enabled', 'hsonFlag'], ['svg', 'hsonType'], ['path', 'hsonType'], ['M2 10h4', 'hsonString']]) {
         assert.ok(emitted.some(token => text.slice(token.range.start, token.range.end) === slice && token.type === type), slice);
       }
     }
   });
   check("Part declaration has a distinct declaration scope and semantic token", () => {
     const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button hson:part disabled title="Save"/>`;';
-    const declaration = tokens(text).filter(token => text.slice(token.range.start, token.range.end) === 'hson:part');
+    const declaration = tokens(text).filter(token => text.slice(token.range.start, token.range.end) === 'hson');
     assert.equal(declaration.length, 1);
     assert.equal(declaration[0]!.type, 'hsonDeclaration');
     assert.ok(declaration[0]!.scopes.includes('keyword.declaration.part.hson'));
@@ -74,7 +76,7 @@ async function run(): Promise<void> {
       const pieces = highlights.filter(item => item.range.start >= start && item.range.end <= end);
       assert.deepEqual(pieces.map(token => text.slice(token.range.start, token.range.end)), ['@', ':', declaration.slice(2)]);
       assert.deepEqual(pieces.map(token => token.range), [{ start, end: start + 1 }, { start: start + 1, end: start + 2 }, { start: start + 2, end }]);
-      assert.deepEqual(pieces.map(token => token.type), ['hsonDelimiter', 'hsonDelimiter', 'hsonQuad']);
+      assert.deepEqual(pieces.map(token => token.type), ['hsonIdentityMarker', 'hsonColon', 'hsonQuad']);
       assert.ok(pieces.every(token => token.scopes.includes('constant.other.quad.hson')));
     }
     // The complete JavaScript substitution stays with the host editor.
@@ -83,7 +85,7 @@ async function run(): Promise<void> {
   });
 
   check("tagged identity declarations split punctuation without claiming strings or JavaScript values", () => {
-    const body = '<p @:actual @012345678 title="@:literal @000000001" "#{d[\\"@:key\\"]} ${"@:inside @000000001"}"/>\n// @:comment @000000001\n<b/>';
+    const body = '<p @:actual @012345678 title="@:literal @000000001" "^{d[\\"@:key\\"]} ${"@:inside @000000001"}"/>\n// @:comment @000000001\n<b/>';
     const text = 'import { Hson } from "hson-live/hson"; Hson.document`' + body + '`;';
     const emitted = tokens(text);
     assert.deepEqual(emitted.filter(token => token.scopes.includes('constant.other.identity.hson')).map(token => text.slice(token.range.start, token.range.end)), ['actual', '012345678']);
@@ -94,25 +96,25 @@ async function run(): Promise<void> {
   });
 
   check("tagged element names, valued keys and flags use distinct existing theme categories", () => {
-    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button data:model="value" model:data="value" part:optional="value" disabled/>\n<main part:optional <hson-part #{control}/>/>`;';
+    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button data:model="value" model:data="value" part:optional="value" disabled/>\n<main part:optional <hson-part ^{control}/>/>`;';
     const emitted = tokens(text);
-    for (const [slice, type, scope] of [['button', 'hsonType', 'entity.name.type.hson'], ['data:model', 'hsonProperty', 'entity.other.attribute-name.hson'], ['model:data', 'hsonProperty', 'entity.other.attribute-name.hson'], ['disabled', 'hsonKeyword', 'constant.language.flag.hson']]) {
+    for (const [slice, type, scope] of [['button', 'hsonType', 'entity.name.type.hson'], ['data', 'hsonSending', 'entity.other.attribute-name.sending.hson'], ['model', 'hsonSending', 'entity.other.attribute-name.sending.hson'], ['disabled', 'hsonFlag', 'constant.language.flag.hson']]) {
       const token = emitted.find(token => text.slice(token.range.start, token.range.end) === slice);
       assert.equal(token?.type, type); assert.ok(token?.scopes.includes(scope));
     }
-    assert.deepEqual(emitted.filter(token => text.slice(token.range.start, token.range.end) === 'part:optional').map(token => token.type), ['hsonProperty', 'hsonKeyword']);
+    assert.deepEqual(emitted.filter(token => text.slice(token.range.start, token.range.end) === 'optional').map(token => token.type), ['hsonDirective', 'hsonDirective']);
     assert.ok(!emitted.some(token => text.slice(token.range.start, token.range.end) === 'control' && token.type === 'hsonKeyword'));
   });
 
   check("tagged Hson values distinguish interpolation sigils, punctuation and following syntax", () => {
-    const body = '<p title="before ${value} %{incoming} #{d[\\"odd}key\\"][0]} after" next="done" "tail"/>\n<b/>';
+    const body = '<p title="before ${value} %{incoming} ^{d[\\"odd}key\\"][0]} after" next="done" "tail"/>\n<b/>';
     const text = 'import { Hson } from "hson-live/hson"; const value="safe"; Hson.document`' + body + '`;';
     const emitted = tokens(text);
     const at = (offset: number) => emitted.find(token => token.range.start === offset);
-    for (const [sigil, operation] of [['%', 'percent'], ['#', 'hash']]) {
+    for (const [sigil, operation] of [['%', 'percent'], ['^', 'caret']]) {
       const start = text.indexOf(sigil + '{');
       assert.equal(at(start)?.range.end, start + 1);
-      assert.equal(at(start)?.type, 'hsonOperator');
+      assert.equal(at(start)?.type, sigil === '%' ? 'hsonIncomingReferenceSigil' : 'hsonLocalReferenceSigil');
       assert.ok(at(start)?.scopes.includes(`keyword.operator.interpolation.${operation}.hson`));
       assert.ok(at(start + 1)?.scopes.includes('punctuation.definition.template-expression.begin.hson'));
       assert.equal(at(start + 1)?.type, 'hsonInterpolationDelimiter');
@@ -129,7 +131,7 @@ async function run(): Promise<void> {
     }
     const expression = text.indexOf('${value}') + 2;
     assert.ok(!emitted.some(token => token.range.start < expression + 'value'.length && token.range.end > expression));
-    assert.deepEqual(tokens('const ordinary = `"${value} %{incoming} #{local}"`;'), []);
+    assert.deepEqual(tokens('const ordinary = `"${value} %{incoming} ^{local}"`;'), []);
   });
 
   for (const eol of ["\n", "\r", "\r\n"]) {
@@ -170,20 +172,7 @@ async function run(): Promise<void> {
 
   check("official narrow /hson binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>'))));
   check("official root binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>', "Hson", "Hson", "hson-live"))));
-  check("document self-closing slash evidence is exact across standalone, Markdown, and tagged Hson", () => {
-    const standalone = '<article <p "a/b"/>/> <data "/">';
-    assert.deepEqual(hson_document_self_closing_slash_ranges(grammar, "/workspace/a.hson", "hson", standalone)
-      .map(range => standalone.slice(range.start, range.end)), ["/", "/"]);
 
-    const markdown = 'before\n```hson\n<p "a/b"/>\n```\nafter';
-    assert.deepEqual(hson_document_self_closing_slash_ranges(grammar, "/workspace/a.md", "markdown", markdown)
-      .map(range => markdown.slice(range.start, range.end)), ["/"]);
-
-    const tagged = source('<p "a/b"/>');
-    const ranges = hson_document_self_closing_slash_ranges(grammar, "/workspace/a.ts", "typescript", tagged);
-    assert.deepEqual(ranges.map(range => tagged.slice(range.start, range.end)), ["/"]);
-    assert.ok(ranges.every(range => tagged[range.end] === ">"));
-  });
   check("retired LiveMap fromHson constructors have no highlighting authority", () => {
     for (const text of [
       'import { hson } from "hson-live"; hson.liveMap.fromHson("<retired/>");',
@@ -482,7 +471,7 @@ async function run(): Promise<void> {
     ]);
     assert.deepEqual(manifest.contributes.colors.map((color: { defaults: object }) => color.defaults), [
       ...["#00adf6", "#c9d100", "#ff4a8c", "#39a500", "#00adf6", "#c9d100", "#ff4a8c", "#39a500", "#7247d4"]
-        .map(color => ({ dark: color, light: color, highContrast: color, highContrastLight: color })),
+        .map(color => ({ dark: color, light: color, highContrast: "editor.foreground", highContrastLight: "editor.foreground" })),
     ]);
   });
   check("Hson tag interpolation preserves literal highlighting and excludes expressions", () => {

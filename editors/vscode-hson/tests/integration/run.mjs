@@ -7,7 +7,9 @@ import { spawn } from "node:child_process";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const testRoot = await realpath(await mkdtemp(join(tmpdir(), "hson-vscode-")));
+// macOS Unix-domain sockets have a 103-character path limit. The Restricted
+// Mode launch uses this path directly, without test-electron's short-path setup.
+const testRoot = await realpath(await mkdtemp(join(process.platform === "darwin" ? "/tmp" : tmpdir(), "hson-vscode-")));
 const userDataDir = join(testRoot, "user");
 const extensionsDir = join(testRoot, "extensions");
 const restrictedUserDataDir = join(testRoot, "restricted-user");

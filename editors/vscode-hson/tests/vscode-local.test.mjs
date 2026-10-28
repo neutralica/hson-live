@@ -40,6 +40,7 @@ function fixtureManifest(version = "0.1.1") {
       typescriptServerPlugins: [{ name: "hson-schema-typescript-plugin", enableForWorkspaceTypeScriptVersions: true }],
       configuration: [{ title: "Hson", properties: { "hson.example": { type: "boolean", default: true } } }],
       languages: [{ id: "hson", configuration: "./language-configuration.json" }],
+      themes: [{ label: "Hson House Dark", uiTheme: "vs-dark", path: "./themes/hson-house-dark-color-theme.json" }, { label: "Hson House Light", uiTheme: "vs", path: "./themes/hson-house-light-color-theme.json" }],
       grammars: [{ language: "hson", scopeName: "source.hson", path: "./syntaxes/hson.tmLanguage.json" }],
     },
   };
@@ -49,15 +50,23 @@ async function makeFixture(label = "authority fixture with spaces") {
   const parent = await mkdtemp(join(tmpdir(), "hson-local-authority-"));
   const extensionRoot = join(parent, label, "editors", "vscode-hson");
   const fixtureRepository = resolve(extensionRoot, "../..");
+  await mkdir(join(extensionRoot, "themes"), { recursive: true });
   await mkdir(join(extensionRoot, "scripts"), { recursive: true });
   await mkdir(join(extensionRoot, "syntaxes"), { recursive: true });
   await mkdir(join(extensionRoot, "images"), { recursive: true });
   await mkdir(join(extensionRoot, "node_modules", "hson-schema-typescript-plugin", "dist"), { recursive: true });
   await mkdir(join(extensionRoot, "src"), { recursive: true });
+  await mkdir(join(extensionRoot, "src", "tsserver-plugin"), { recursive: true });
   await mkdir(join(extensionRoot, "node_modules", "vscode-oniguruma", "release"), { recursive: true });
   await writeFile(join(extensionRoot, "package.json"), `${JSON.stringify(fixtureManifest(), null, 2)}\n`);
   await writeFile(join(extensionRoot, "package-lock.json"), "{}\n");
   await writeFile(join(extensionRoot, ".vscodeignore"), "*.vsix\n");
+  for (const mode of ['dark', 'light']) await writeFile(join(extensionRoot, 'themes', `hson-house-${mode}-color-theme.json`), '{}\n');
+  await writeFile(join(extensionRoot, 'scripts', 'generate-themes.mjs'), '// generator fixture\n');
+  await writeFile(join(extensionRoot, 'src', 'appearance.ts'), '// palette fixture\n');
+  for (const name of ['tsserver-plugin.ts', 'native-semantic-tokens.ts']) {
+    await writeFile(join(extensionRoot, 'src', 'tsserver-plugin', name), '// plugin fixture\n');
+  }
   await writeFile(join(extensionRoot, "scripts", "build.mjs"), "// fixture builder\n");
   await writeFile(join(extensionRoot, "scripts", "vscode-local-lib.mjs"), "// fixture authority library\n");
   await writeFile(join(extensionRoot, "scripts", "vscode-local.mjs"), "// fixture authority command\n");
@@ -97,6 +106,8 @@ async function makeVsix(path, manifest, overrides = {}) {
     "dist/local-host-runner.cjs": overrides.runnerBundle ?? "module.exports = 2;\n",
     "dist/local-host-runner.cjs.map": runnerSourceMap,
     "dist/onig.wasm": "wasm",
+    "themes/hson-house-dark-color-theme.json": "{}\n",
+    "themes/hson-house-light-color-theme.json": "{}\n",
     "language-configuration.json": "{}\n",
     "syntaxes/hson.tmLanguage.json": "{}\n",
     "images/hson-icon.png": "fixture png",
@@ -245,6 +256,8 @@ await check("VSIX validation requires the manifest icon and TypeScript server pl
   const fixture = await makeFixture();
   try {
     for (const [label, missing, pattern] of [
+      ["dark-theme", "themes/hson-house-dark-color-theme.json", /missing extension\/themes\/hson-house-dark/],
+      ["light-theme", "themes/hson-house-light-color-theme.json", /missing extension\/themes\/hson-house-light/],
       ["icon", "images/hson-icon.png", /missing extension\/images\/hson-icon\.png/],
       ["plugin-package", "node_modules/hson-schema-typescript-plugin/package.json", /missing extension\/node_modules\/hson-schema-typescript-plugin\/package\.json/],
       ["plugin-main", "node_modules/hson-schema-typescript-plugin/dist/index.cjs", /missing extension\/node_modules\/hson-schema-typescript-plugin\/dist\/index\.cjs/],
@@ -274,6 +287,8 @@ await check("VSIX validation rejects wrong identity, version, configuration, and
       ["identity", m => { m.publisher = "wrong"; }, /expected terminal-gothic/],
       ["version", m => { m.version = "9.9.9"; }, /expected version/],
       ["configuration", m => { m.contributes.configuration = []; }, /configuration contributions differ/],
+      ["themes", m => { m.contributes.themes = []; }, /themes contributions differ/],
+      ["semantic-types", m => { m.contributes.semanticTokenTypes = []; }, /semanticTokenTypes contributions differ/],
       ["grammars", m => { m.contributes.grammars = []; }, /grammar contributions differ/],
     ]) {
       const manifest = fixtureManifest(); mutate(manifest);
@@ -457,6 +472,30 @@ await check("manifest icon and TypeScript plugin changes invalidate package auth
     await writeFile(join(fixture.extensionRoot, "node_modules", "hson-schema-typescript-plugin", "dist", "index.cjs"), "module.exports = 2;\n");
     result = await inspectPackageAuthority(fixture.extensionRoot);
     assert.equal(result.state, "stale");
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
+await check("palette, generator and both theme files invalidate source authority and installed payloads", async () => {
+  const fixture = await makeFixture();
+  try {
+    const packaged = await packageCurrentSource(await fixturePackageOptions(fixture));
+    for (const path of ['src/appearance.ts', 'src/tsserver-plugin/tsserver-plugin.ts', 'src/tsserver-plugin/native-semantic-tokens.ts', 'scripts/generate-themes.mjs', 'themes/hson-house-dark-color-theme.json', 'themes/hson-house-light-color-theme.json']) {
+      const file = join(fixture.extensionRoot, path), before = await readFile(file);
+      await writeFile(file, 'changed');
+      assert.equal((await inspectPackageAuthority(fixture.extensionRoot)).state, 'stale', path);
+      await writeFile(file, before);
+    }
+    const installed = join(fixture.parent, 'installed');
+    await extractInstalled(packaged.canonicalVsix, installed);
+    for (const mode of ['dark', 'light']) {
+      const path = `themes/hson-house-${mode}-color-theme.json`;
+      const file = join(installed, path), before = await readFile(file);
+      await writeFile(file, 'changed');
+      const comparison = await compareInstalledPayload(installed, packaged.canonicalVsix, fixtureManifest());
+      assert.equal(comparison.match, false);
+      assert.ok(comparison.mismatches.includes(`${path}: content differs`));
+      await writeFile(file, before);
+    }
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 

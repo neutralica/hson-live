@@ -238,8 +238,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     }
     const ordinary = hsonLiveMap.fromLibraries({ data: { data: { "a/b": "https://example.test/a/b" } } });
     assert.equal(ordinary.data.must("data").snap(["a/b"]), "https://example.test/a/b");
+    // Keep the connector valid so collection admission isolates the invalid Part key.
+    assert.throws(() => hsonLiveMap.fromLibraries({ collection: { parts: {
+      ok: { kind: "document", document: "<p hson:part/>" }, "a/b": { kind: "document", document: "<p hson:part/>" },
+    } },
+      page: { document: '<main <hson-part lib="collection" at="ok"/>/>' } }), /Part name .*must not contain/);
+    // A slash in at is a qualified coordinate, independently forbidden with lib.
     assert.throws(() => hsonLiveMap.fromLibraries({ collection: { parts: { ok: { kind: "document", document: "<p hson:part/>" } } },
-      page: { document: '<main <hson-part lib="collection" at="a/b"/>/>' } }), /Part name .*must not contain/);
+      page: { document: '<main <hson-part lib="collection" at="other/ok"/>/>' } }), /cannot combine lib with qualified at/);
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<main <hson-part lib="a/b" at="ok"/>/>' } }), /Library name .*must not contain/);
   });
   await check("portable names and governed member roots reject slash on reconstruction", () => {

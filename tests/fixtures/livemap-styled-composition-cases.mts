@@ -52,7 +52,7 @@ export function styled_fixture(count = 3) {
 export function optional_subject_fixture() {
   const gone = '[hson\\:quad="gone"]';
   return legacy_flat_styled_map({ parts: { parts: { optional: styled_part(
-    '<section hson:part d:data="%{payload}" <b @:gone part:optional "#{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
+    '<section hson:part d:data="%{payload}" <b @:gone part:optional "^{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
     {
       [`& .target:not(${gone})`]: {color:'red'}, '& .target': {color:'blue'},
       '& .is-target:not(.never)': {color:'blue'}, [`& .is-target:is(${gone},p)`]: {color:'red'},
@@ -80,7 +80,9 @@ export function selector_fixture() {
   }},page:{document:'<html <head/> <body <main <hson-part lib="parts" at="bare" id="bare0"/> <hson-part lib="parts" at="bare" id="bare1"/> <hson-part @:ancestor lib="parts" at="ancestor" id="ancestor"/> <hson-part lib="parts" at="sibling"/> <hson-part lib="parts" at="explicit"/>/> <section id="outside-section" class="a" <button id="outside" class="b" "Outside"/>/>/>/>'}});
 }
 export function second_repair_fixture() {
-  const map=legacy_flat_styled_map({parts:{parts:{
+  // Replacement is current scoped admission; retain the existing occurrence
+  // metadata so every owned CSS contribution has a declared occurrence root.
+  const map=hsonLiveMap.fromLibraries({parts:{parts:{
     equivalent:styled_part('<button hson:part id="%{id}"/>',{color:'rgb(10,20,30)',paddingLeft:'13px'}),
     colon:styled_part('<section hson:part id="%{id}" class="colon" <button id="%{id}-button" class="b" "Child"/>/>',
       {'& button:is(.b)':{color:'rgb(10,20,30)',marginRight:'23px',paddingRight:'17px',marginLeft:'19px'},'& button:not(.x)':{paddingLeft:'13px'},'& button:first-child':{borderTop:'5px solid rgb(1,2,3)'},'& button::before':{content:'"hello"'},'& button':{marginRight:'1px'},$media:{screen:{'& button:is(.b)':{letterSpacing:'3px'}}}}),
@@ -99,7 +101,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   check("styled replacement publishes complete scoped effects for replacement and optional retirement", () => {
     const map = hsonLiveMap.fromLibraries({parts:{parts:{
       ordinary:styled_part('<b hson:part/>', {color:'blue'}),
-      optional:styled_part('<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>', {color:'red'}),
+      optional:styled_part('<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>', {color:'red'}),
     }},page:{document:'<main <i/>/>'}});
     const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0])};
     const connector=(name:string,payload='<>')=>{

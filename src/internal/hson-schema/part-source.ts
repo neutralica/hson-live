@@ -1,3 +1,4 @@
+import { part_coordinates } from "../part-coordinates.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartLocalDeclaration } from "../part-definition.js";
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
@@ -30,9 +31,11 @@ export type PartLexicalScopeSource = Readonly<{ location: PartSourceLocation; bi
 
 /** Source projection of the shared analyzer's lexical identities. */
 export function part_source_bindings_at(scopes: readonly PartLexicalScopeSource[], position: number): readonly PartLocalSource[] | undefined {
+  // Canonical wrappers can share coverage with their element. The later element
+  // scope includes its iterator aliases; the narrower source value stays outside.
   let nearest: PartLexicalScopeSource | undefined;
   for (const scope of scopes) if (scope.location.start <= position && position <= scope.location.end
-    && (nearest === undefined || scope.location.end - scope.location.start < nearest.location.end - nearest.location.start)) nearest = scope;
+    && (nearest === undefined || scope.location.end - scope.location.start <= nearest.location.end - nearest.location.start)) nearest = scope;
   return nearest?.bindings;
 }
 /** Preserve the source's lexical origin, before the iterator introduces aliases. */
@@ -49,6 +52,14 @@ export type PartConnectorSource = Readonly<{
   attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation;
     dataSchema?: CompiledHsonSchema }>[];
 }>;
+/** Static projection only: opaque coordinate values never establish selection. */
+export function part_source_coordinates(connector: PartConnectorSource): ReturnType<typeof part_coordinates> | undefined {
+  const fields = (name: string) => connector.attributes.filter(attribute => attribute.name === name);
+  const libs = fields("lib"), ats = fields("at");
+  if (libs.length > 1 || ats.length > 1 || libs.some(attr => attr.value === undefined) || ats.some(attr => attr.value === undefined)) return undefined;
+  if (connector.attributes.some(attr => attr.name.startsWith("^{") || attr.name.startsWith("#{"))) return undefined;
+  return part_coordinates(libs[0]?.value, ats[0]?.value);
+}
 export type PartDocumentSource = Readonly<{
   producer: ts.Expression;
   location: PartSourceLocation;
@@ -232,9 +243,12 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       const mapped = range === undefined ? undefined : map(range);
       if (mapped === undefined) return;
       const whole = typed ? whole_part_reference(value) : undefined;
-      if (typed && whole === undefined && !value.startsWith("%{") && !value.startsWith("#{")) return; // Serialized data is opaque.
-      const matches = typed ? whole === undefined ? undefined : [whole] : part_placeholder_matches(value);
-      if (matches === undefined) referenceIssues.push({ location: mapped, message: "Invalid Part property reference." });
+      if (typed && whole === undefined && !value.startsWith("%{") && !value.startsWith("^{") && !value.startsWith("#{")) return; // Serialized data is opaque.
+      let invalid: string | undefined;
+      const parsed = part_placeholder_matches(value, message => { invalid = message; });
+      const matches = typed ? whole === undefined ? undefined : [whole] : parsed;
+      if (matches === undefined) referenceIssues.push({ location: mapped,
+        message: invalid === undefined || invalid === "Invalid Part placeholder." ? "Invalid Part property reference." : invalid });
       for (const match of matches ?? []) uses.push({ name: match.name, namespace: match.namespace, reference: match.reference, structured: match.path.length > 0,
         location: mapped, context, ...(typed === undefined ? {} : { supply: typed }) });
     };
@@ -286,7 +300,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               if (attr.value?.direct !== true && typeof value === "string") observeUses(value, ranges?.value, "attribute");
               continue;
             }
-            if (attr.name.startsWith("#{")) {
+            if (attr.name.startsWith("^{")) {
               observeUses(attr.name, attributeRanges.get(attr)?.value, "structure");
               continue;
             }
@@ -389,7 +403,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         const analysis = analyze_part_definition(root, issue => {
           if (!lexicalComplete) return;
           const owner = nodeLocation(issue.node, issue.attribute,
-            issue.attribute?.startsWith("#{") ? "name" : "value");
+            issue.attribute?.startsWith("^{") ? "name" : "value");
           if (issue.message === "Invalid Part placeholder." && referenceIssues.some(prior => prior.message === "Invalid Part property reference."
             && owner.start <= prior.location.start && prior.location.end <= owner.end)) return;
           referenceIssues.push({ location: owner, message: issue.message });

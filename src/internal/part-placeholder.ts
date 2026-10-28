@@ -2,6 +2,7 @@ import type { HsonNode } from "../core/types.js";
 
 export const PART_OPTIONAL = "part:optional";
 export const PART_DECLARATION = "hson:part";
+export const PART_LOCAL_REFERENCE_MIGRATION = "Local Part references use ^{...}; replace the old #{...} spelling.";
 
 /** Reserved construction syntax, classified before receiving/sending attributes. */
 export function is_part_iterator_attribute(name: string): boolean { return name.startsWith("for:") || name.startsWith("per:"); }
@@ -18,7 +19,8 @@ export function part_iterator_declaration(name: string, value: unknown): PartIte
     || (fields.length === 2 ? first === "" : second === undefined || !is_part_parameter_name(second))
     || first === second) throw new TypeError("Part iteration requires for:item[:index], for::index, per:key[:value], or per::value with distinct valid aliases.");
   const source = typeof value === "string" ? whole_part_reference(value) : undefined;
-  if (source?.namespace !== "local") throw new TypeError("Part iteration requires one whole local #{} Data reference.");
+  if (typeof value === "string" && value.startsWith("#{")) throw new TypeError(PART_LOCAL_REFERENCE_MIGRATION);
+  if (source?.namespace !== "local") throw new TypeError("Part iteration requires one whole local ^{} Data reference.");
   return fields[0] === "for"
     ? { attribute: name, kind: "array", ...(first === "" ? {} : { value: first }), ...(second === undefined ? {} : { index: second }), source }
     : { attribute: name, kind: "object", ...(first === "" ? {} : { key: first }), ...(second === undefined ? {} : { value: second }), source };
@@ -43,7 +45,7 @@ export function part_optional_issue(value: unknown): string | undefined {
 
 /** Connector coordinates are reserved; every other public attribute is an input. */
 export function is_part_argument_attribute(name: string): boolean {
-  return !is_part_iterator_attribute(name) && !name.startsWith("#{") && name !== "lib" && name !== "at" && name !== PART_OPTIONAL && name !== PART_DECLARATION;
+  return !is_part_iterator_attribute(name) && !name.startsWith("^{") && name !== "lib" && name !== "at" && name !== PART_OPTIONAL && name !== PART_DECLARATION;
 }
 
 export function is_part_parameter_name(name: string): boolean {
@@ -63,7 +65,7 @@ export type PartReference = Readonly<{ namespace: "incoming" | "local"; name: st
 /** One bounded selector scanner, shared by runtime, source facts and editor checkpoints.
  * Quoted property keys use JSON escapes; braces inside a key never close a reference. */
 export function scan_part_reference(value: string, start: number, incomplete = false): PartReference | undefined {
-  if (!["%{", "#{"].includes(value.slice(start, start + 2))) return undefined;
+  if (!["%{", "^{"].includes(value.slice(start, start + 2))) return undefined;
   const namespace = value[start] === "%" ? "incoming" : "local";
   let at = start + 2;
   const nameAt = at;
@@ -113,25 +115,28 @@ export function scan_part_reference(value: string, start: number, incomplete = f
   return value[at] === "}" || atEnd() ? result() : undefined;
 }
 
-export function part_placeholder_matches(value: string): readonly PartReference[] | undefined {
+export function part_placeholder_matches(value: string, invalid?: (message: string) => void): readonly PartReference[] | undefined {
   const matches: PartReference[] = [];
   let at = 0;
   while ((at = next_part_reference(value, at)) !== -1) {
     const match = scan_part_reference(value, at);
-    if (match === undefined) return undefined;
+    if (match === undefined) {
+      invalid?.(value.startsWith("#{", at) ? PART_LOCAL_REFERENCE_MIGRATION : "Invalid Part placeholder.");
+      return undefined;
+    }
     matches.push(match); at = match.end;
   }
   return matches;
 }
 
 export function whole_part_reference(value: string): PartReference | undefined {
-  if (!value.startsWith("%{") && !value.startsWith("#{")) return undefined;
+  if (!value.startsWith("%{") && !value.startsWith("^{")) return undefined;
   const match = scan_part_reference(value, 0);
   return match?.end === value.length ? match : undefined;
 }
 
 export function part_reference_text(reference: PartReference): string {
-  return `${reference.namespace === "incoming" ? "%" : "#"}{${reference.reference}}`;
+  return `${reference.namespace === "incoming" ? "%" : "^"}{${reference.reference}}`;
 }
 
 /** Connector sending syntax wins for the deliberately valid data:data spelling. */
@@ -184,7 +189,8 @@ export function part_placeholder_placement_issue(contentTags: readonly string[],
 
 export function part_structural_reference(node: HsonNode): PartReference | undefined {
   const attrs = node.$_attrs ?? {};
-  const keys = Object.keys(attrs).filter(name => name.startsWith("#{"));
+  if (Object.keys(attrs).some(name => name.startsWith("#{"))) throw new TypeError(PART_LOCAL_REFERENCE_MIGRATION);
+  const keys = Object.keys(attrs).filter(name => name.startsWith("^{"));
   if (!keys.length) return undefined;
   const key = keys[0]!;
   const reference = whole_part_reference(key);
@@ -196,8 +202,12 @@ export function part_structural_reference(node: HsonNode): PartReference | undef
   return reference;
 }
 
-export function has_part_reference(value: string): boolean { return /[%#]\{/.test(value); }
+export function has_part_reference(value: string): boolean { return /[%^]\{/.test(value); }
 function next_part_reference(value: string, start: number): number {
-  const incoming = value.indexOf("%{", start), local = value.indexOf("#{", start);
-  return incoming < 0 ? local : local < 0 ? incoming : Math.min(incoming, local);
+  const incoming = value.indexOf("%{", start), local = value.indexOf("^{", start);
+  // Legacy openers are invalid candidates, never executable references. Keeping
+  // them in this walk also skips reference-looking text inside quoted selectors.
+  const legacy = value.indexOf("#{", start);
+  const next = incoming < 0 ? local : local < 0 ? incoming : Math.min(incoming, local);
+  return next < 0 ? legacy : legacy < 0 ? next : Math.min(next, legacy);
 }

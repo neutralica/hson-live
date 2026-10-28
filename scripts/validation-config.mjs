@@ -199,7 +199,7 @@ const workerRoute = "Module-level test body launches the target through reposito
 const browserRoute = "Module-level setup bundles/serves the target, launches Chrome, navigates to the test page and awaits browser results.";
 const editorRoute = "Module-level VS Code launch selects the built extensionTestsPath and awaits completion; build-tests maps it to the declared source.";
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
-const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","519a557625ac30d16ac4cba89051d9b9ff4b4feae0141de25e3d2c66d7a2e8a5"]];
+const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","237517ae1697586119f61977a9f80443565c110ef181b90481d450b2fed3d40d"]];
 
 export const declaredExecution = Object.freeze({
   "scripts/run-document-css-reconciliation-browser.mjs": { sha256: "d2f13b8403334bd2af3f8ee86f741992a2305221c6090258a95410be48eef3d0", route: browserRoute,
@@ -210,9 +210,11 @@ export const declaredExecution = Object.freeze({
     targets: [["editors/vscode-hson/tests/integration/baseline.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-consumer.mjs": { sha256: "3f56c4a8bf99f6a9ac2521086a8005e3e060cdec530923822ea70fcfad215be3", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },
+  "editors/vscode-hson/tests/integration/run-house.mjs": { sha256: "9c7ba17f87b2986fdea20fdafe5f66b349770000f19afc07a6a75ec725e5aa2a", route: editorRoute,
+    targets: [["editors/vscode-hson/tests/integration/house.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-legibility.mjs": { sha256: "8b1e8b8492d0c996e932e31955ec7afd3606b4c186c69bb486607a0318b8c568", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/legibility.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "db85864b7a3bc0ae885e68659d7d122a9cd4273041b3b3bc8613f8d5219b637c", route: editorRoute,
+  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "8d922495a1e06cfe48e4deb3af82f6fc508d7987e85628be44d3e9320db2b1b4", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },
   "scripts/run-browser-realization-parser-closure.mjs": { sha256: "12ffbeca67bde08203a878a926165099761c75b48a139e2d50b2a4b674e3c041", route: browserRoute,
     targets: [["tests/browser/browser-realization-parser-closure.acceptance.html","browser-runner"],["tests/browser/browser-realization-parser-closure.entry.mjs","browser-runner"]], sources: [["tests/browser/browser-realization-parser-closure.acceptance.html","91f60fa5b5087cfeb3adc52fbe1e3aa0954379bd1c146cc0052d93d9f726bf32"]] },
@@ -220,7 +222,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/browser/canonical-interactions.acceptance.html","browser-runner"],["tests/browser/canonical-interactions.entry.mjs","browser-runner"]], sources: [["tests/browser/canonical-interactions.acceptance.html","c3991e5acf42a7b00183e725e330bb27e4f2687daeccf4f6412de160b24d893b"]] },
   "scripts/run-document-ssr-browser.mjs": { sha256: "f1262296748b9e04c876d047eb4462d70ee87d80df669ff39d4fc58128739bdd", route: browserRoute,
     targets: [["tests/browser/document-ssr.acceptance.html","browser-runner"],["tests/browser/document-ssr.entry.mjs","browser-runner"]], sources: [["tests/browser/document-ssr.acceptance.html","c96e5824cca7cfec31acab8d62e9dd42822cd08a377c0bdfa397cb8e7df6c44b"]] },
-  "scripts/run-document-ssr-subjects-browser.mjs": { sha256: "6dfeae26e8b0013cb66203d4dab75364a9a78cdf9672354320c0e0b376b909ca", route: browserRoute,
+  "scripts/run-document-ssr-subjects-browser.mjs": { sha256: "cb459ace71c547402f74262ed1965c87d8cd65c195ca257b7b44e98e606d490b", route: browserRoute,
     targets: [["tests/browser/document-portable-graft.entry.mjs","browser-runner"]], sources: [] },
   "scripts/run-echo-http-browser.mjs": { sha256: "e66a9f4f2f78446b36f174d59f47ac2c92fb44135fadb8b4ec40bfa83e84dc89", route: browserRoute,
     targets: [["tests/browser/echo-http.entry.mjs","browser-runner"],["tests/browser/echo-http.acceptance.html","browser-runner"]], sources: [["tests/browser/echo-http.acceptance.html","fa40a5fe7f90958e4da4804434139b705f058fb1d24467395949329a5ca34020"]] },
@@ -320,7 +322,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/locus-scoped-topology.worker.mts","worker-launch"],["tests/fixtures/locus-scoped-topology.worker.mts","subprocess-launch"]], sources: [...workerSources] },
   "tests/managed-stylesheet-fidelity.acceptance.mts": { sha256: "918b85917de89d58b113d2393df44ea2118555fdf83a2803c58e177482f95553", route: workerRoute,
     targets: [["tests/fixtures/managed-stylesheet.worker.mts","worker-launch"]], sources: [...workerSources] },
-  "tests/parts-members.acceptance.mts": { sha256: "8b279164a95554a54503e5ce12e63ad036bc3546c92a18c38f4ddb3e04471036", route: workerRoute,
+  "tests/parts-members.acceptance.mts": { sha256: "f7bdbadbffccb40235731843ed8630b3a1e654aa6b08746b488adf76914281fb", route: workerRoute,
     targets: [["tests/fixtures/parts-members.worker.mts","worker-launch"]], sources: [...workerSources] },
   "tests/portable-document-stylesheet.acceptance.mts": { sha256: "12ea86e13f47a79c432626832de88b2a518e73c3e22088fa31ab04e4d31b32fa", route: workerRoute,
     targets: [["tests/fixtures/portable-document-stylesheet.worker.mts","worker-launch"]], sources: [...workerSources] },

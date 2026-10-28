@@ -41,7 +41,9 @@ async function prepare_ssr_fixtures() {
   selectorPages.set("/selectors-restored", restoredSelectors.cut({html:"page", documents:["page"], data:[]}));
   selectorPage.q("ancestor").delete();
   selectorPages.set("/selectors-retired", selectors.cut({html:"page", documents:["page"], data:[]}));
-  const secondRepair=second_repair_fixture().cut({html:"page",documents:["page"],data:[]});
+  // Current replacement retains scopes; Library rendering supports scoped SSR
+  // without routing through the flat-only local snapshot/bootstrap contract.
+  const secondRepair={html:second_repair_fixture().doc.must("page").render()};
   // Keep the flat first-paint acceptance alongside genuine hosted scoped output.
   const hosted = await hosted_flat_subject_fixture();
   const scoped = await scoped_fixture();
@@ -78,9 +80,9 @@ for (const kind of ['array', 'object']) {
   ];
   const items = kind === 'array' ? entries : { heading: entries[0], text: entries[1] };
   const iteration = hsonLiveMap.fromLibraries({ parts: { parts: {
-    Column: { kind: 'document', document: `<section hson:part items:data="%{items}" <hson-part ${kind === 'array' ? 'for:item:i' : 'per:i:item'}="#{items}" at="#{item.kind}" data:item="#{item}"/> <ul <li for:label="#{items${kind === 'array' ? '[0]' : '.heading'}.labels}" "#{label}"/>/>/>`, css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
-    Heading: { kind: 'document', document: '<h1 hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'red' } },
-    Text: { kind: 'document', document: '<p hson:part @:root item:data="%{item}" id="#{item.id}" class="content" "#{item.text}"/>', css: { color: 'blue' } },
+    Column: { kind: 'document', document: `<section hson:part items:data="%{items}" <hson-part ${kind === 'array' ? 'for:item:i' : 'per:i:item'}="^{items}" at="^{item.kind}" data:item="^{item}"/> <ul <li for:label="^{items${kind === 'array' ? '[0]' : '.heading'}.labels}" "^{label}"/>/>/>`, css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
+    Heading: { kind: 'document', document: '<h1 hson:part @:root item:data="%{item}" id="^{item.id}" class="content" "^{item.text}"/>', css: { color: 'red' } },
+    Text: { kind: 'document', document: '<p hson:part @:root item:data="%{item}" id="^{item.id}" class="content" "^{item.text}"/>', css: { color: 'blue' } },
   } }, page: { document: Hson.document`<html <head/> <body <hson-part lib="parts" at="Column" data:items="${Hson.data.from(items)}"/> <p class="content" id="iter-outside" "Outside"/>/>/>` } });
   const iterationOwner = internal_livemap_aggregate_authority(iteration);
   iterationPages.set(`/iteration-${kind}`, iteration.doc.page.render());
@@ -375,7 +377,7 @@ try {
   const graftResult = await command("Runtime.evaluate", { expression: `runPortableGraftAcceptance(${JSON.stringify(payload)})`,
     awaitPromise:true, returnByValue:true });
   assert.equal(graftResult.exceptionDetails, undefined, JSON.stringify(graftResult.exceptionDetails));
-  assert.equal(graftResult.result.value.passed, 21);
+  assert.equal(graftResult.result.value.passed, 22);
   console.log(`Chrome JavaScript-enabled portable graft passed: ${JSON.stringify(graftResult.result.value)}`);
 
   }

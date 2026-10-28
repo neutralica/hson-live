@@ -280,7 +280,7 @@ export function qualify_exact_hson_graph(root: HsonNode, operation: string, root
         const attrPath = child(child(path, '$_attrs'), key);
         const lower = key.toLowerCase();
         const declaration = key === PART_DECLARATION && node.$_attrs[key] === PART_DECLARATION;
-        if ((!is_valid_hson_attribute_name(key) && !(structure !== undefined && key === `#{${structure.reference}}`)) || lower === PART_DECLARATION && !declaration || hson_metadata_candidate_key(key) !== undefined && !declaration || lower.startsWith(HSON_META_TRANSIT_PREFIX) || lower.startsWith(_TRANSIT_PREFIX)) fail(operation, attrPath, 'invalid or reserved attribute name');
+        if ((!is_valid_hson_attribute_name(key) && !(structure !== undefined && key === `^{${structure.reference}}`)) || lower === PART_DECLARATION && !declaration || hson_metadata_candidate_key(key) !== undefined && !declaration || lower.startsWith(HSON_META_TRANSIT_PREFIX) || lower.startsWith(_TRANSIT_PREFIX)) fail(operation, attrPath, 'invalid or reserved attribute name');
         if (key !== 'style') {
           const value: unknown = node.$_attrs[key];
           if (!runtime && typeof value !== 'string') fail(operation, attrPath, 'portable ordinary attribute values must be strings');

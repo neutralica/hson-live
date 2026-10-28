@@ -3,6 +3,9 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
+import { generateThemes } from "./generate-themes.mjs";
+
+await generateThemes();
 
 const extensionRoot = fileURLToPath(new URL("..", import.meta.url));
 await rm(new URL("../dist", import.meta.url), { recursive: true, force: true });

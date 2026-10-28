@@ -35,13 +35,16 @@ assert(inventory.commands["test:livetree-form-properties"].requirements.includes
 assert(inventory.commands["editors/vscode-hson:test:integration"].requirements.includes("vscode"));
 const legibilityCommand = "editors/vscode-hson:test:legibility:integration";
 const legibilityEntry = "editors/vscode-hson/tests/integration/legibility.ts";
-assert.deepEqual(inventory.commands[legibilityCommand].requirements, ["node", "subprocess", "vscode"]);
+assert.deepEqual(inventory.commands[legibilityCommand].requirements, ["node", "subprocess", "typescript-tooling", "vscode"]);
+assert(inventory.commands[legibilityCommand].requirementEvidence["typescript-tooling"]
+  .includes("editors/vscode-hson/scripts/generate-themes.mjs"));
 assert(inventory.commands[legibilityCommand].requirementEvidence.vscode.includes(legibilityEntry));
 const legibilityEdge = inventory.relationships.find(edge => edge.from === "editors/vscode-hson/tests/integration/run-legibility.mjs"
   && edge.to === legibilityEntry && edge.kind === "editor-runner");
 assert.equal(legibilityEdge.execution, true);
 assert.equal(legibilityEdge.verification, "reviewed-source-pinned");
 for (const [name, entry] of [["test:legibility:integration", legibilityEntry],
+  ["test:house:integration", "editors/vscode-hson/tests/integration/house.ts"],
   ["test:integration", "editors/vscode-hson/tests/integration/suite.ts"],
   ["test:integration:consumer", "editors/vscode-hson/tests/integration/suite.ts"],
   ["test:baseline:integration", "editors/vscode-hson/tests/integration/baseline.ts"],
@@ -52,6 +55,15 @@ for (const [name, entry] of [["test:legibility:integration", legibilityEntry],
   assert.equal(destination.destination, "editor");
   assert.equal(destination.invocation, "indirect");
   assert.equal(destination.context, "vscode");
+}
+for (const [registration, entry, requirement] of [
+  ["test:parts-members", "tests/fixtures/parts-members.worker.mts", "worker"],
+  ["test:document-ssr-subjects-browser", "tests/browser/document-portable-graft.entry.mjs", "chrome"],
+]) {
+  assert(inventory.commands[registration].suites.includes(entry));
+  assert(inventory.commands[registration].requirements.includes(requirement));
+  assert(inventory.suites.find(suite => suite.identity === entry).destinations
+    .some(route => route.registration === registration && route.invocation === "indirect"));
 }
 for (const name of ["test:validation-accounting", "test:transform-snapshot", "editors/vscode-hson:test:unit",
   "editors/vscode-hson:test:local-host-process"]) assert(!inventory.commands[name].requirements.includes("vscode"), name);

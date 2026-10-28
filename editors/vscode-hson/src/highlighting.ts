@@ -7,11 +7,10 @@ import { discover_hson_tagged_templates } from "../../../src/internal/embedded-h
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
-import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
-import { HSON_APPEARANCE, hsonTokenScopes } from "./appearance.js";
+import { hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance.js";
 
 export { hsonTokenScopes } from "./appearance.js";
-export type HsonHighlight = Readonly<{ range: HostSourceRange; type: keyof typeof hsonTokenScopes; scopes: readonly string[] }>;
+export type HsonHighlight = Readonly<{ range: HostSourceRange; type: HsonTokenType; scopes: readonly string[]; modifiers: readonly string[] }>;
 
 let wasm: Promise<void> | undefined;
 export async function load_hson_grammar(extensionRoot: string): Promise<IGrammar> {
@@ -29,11 +28,8 @@ export async function load_hson_grammar(extensionRoot: string): Promise<IGrammar
 
 function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined {
   for (const scope of [...scopes].reverse()) {
-    if (scope === HSON_APPEARANCE.themeDerived.partDeclaration) return "hsonDeclaration";
-    if (scope === HSON_APPEARANCE.themeDerived.referencePath) return "hsonReference";
-    if (scope === HSON_APPEARANCE.themeDerived.interpolationBegin || scope === HSON_APPEARANCE.themeDerived.interpolationEnd) return "hsonInterpolationDelimiter";
-    if ((scope === HSON_APPEARANCE.themeDerived.quoteBegin || scope === HSON_APPEARANCE.themeDerived.quoteEnd)
-      && scopes.includes(HSON_APPEARANCE.themeDerived.quotedString)) return "hsonQuote";
+    const exact = hsonTypeForScope(scope);
+    if (exact !== undefined) return exact;
     if (scope.startsWith("invalid.")) return "hsonInvalid";
     if (scope.startsWith("constant.character.escape.")) return "hsonEscape";
     if (scope.startsWith("entity.name.type.")) return "hsonType";
@@ -82,10 +78,10 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
         // A grammar token may span a masked hole; publish only literal pieces.
         for (const hole of holes) {
           if (hole.end <= start || hole.start >= end) continue;
-          if (start < hole.start) result.push({ range: { start, end: hole.start }, type, scopes: token.scopes });
+          if (start < hole.start) result.push({ range: { start, end: hole.start }, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
           start = Math.max(start, hole.end);
         }
-        if (start < end) result.push({ range: { start, end }, type, scopes: token.scopes });
+        if (start < end) result.push({ range: { start, end }, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
       }
       stack = tokens.ruleStack;
       offset += width;
@@ -108,7 +104,9 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
           end: runtimeOffset + Math.min(token.endIndex, line.replace(/\r$/, "").length),
         };
         const range = map_static_hson_range(source, runtimeRange);
-        if (range !== undefined && range.start < range.end) result.push({ range, type, scopes: token.scopes });
+        if (range !== undefined) for (const piece of physical_line_ranges(text, range)) {
+          result.push({ range: piece, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
+        }
       }
       stack = tokens.ruleStack;
       runtimeOffset += width;
@@ -117,40 +115,16 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
   return result.sort((a, b) => a.range.start - b.range.start);
 }
 
-function selfClosingSlashRanges(
-  grammar: IGrammar,
-  text: string,
-  baseOffset: number,
-): readonly HostSourceRange[] {
-  const ranges: HostSourceRange[] = [];
-  let offset = baseOffset;
-  let stack = INITIAL;
-  for (const { line, width } of physical_lines(text)) {
-    const tokens = grammar.tokenizeLine(line, stack);
-    for (const token of tokens.tokens) {
-      if (!token.scopes.includes(HSON_APPEARANCE.themeDerived.selfClosingSlash)) continue;
-      const end = Math.min(token.endIndex, line.replace(/\r$/, "").length);
-      if (token.startIndex < end) ranges.push(Object.freeze({ start: offset + token.startIndex, end: offset + end }));
-    }
-    stack = tokens.ruleStack;
-    offset += width;
+/** A cooked token can cover authored line continuations. Keep its mapped span,
+ * but emit only nonempty physical-line pieces accepted by semantic builders. */
+function* physical_line_ranges(text: string, range: HostSourceRange): Generator<HostSourceRange> {
+  let start = range.start;
+  for (const newline of text.slice(range.start, range.end).matchAll(/\r\n|\r|\n/g)) {
+    const end = range.start + newline.index;
+    if (start < end) yield { start, end };
+    start = end + newline[0].length;
   }
-  return Object.freeze(ranges);
-}
-
-/** Grammar-owned `/` ranges for the explicit Hson document delimiter accent. */
-export function hson_document_self_closing_slash_ranges(
-  grammar: IGrammar,
-  fileName: string,
-  languageId: "hson" | "typescript" | "typescriptreact" | "markdown",
-  text: string,
-): readonly HostSourceRange[] {
-  if (languageId === "hson") return selfClosingSlashRanges(grammar, text, 0);
-  if (languageId === "markdown") return Object.freeze(markdown_hson_fence_regions(text).flatMap(region =>
-    selfClosingSlashRanges(grammar, text.slice(region.bodyRange.start, region.bodyRange.end), region.bodyRange.start)));
-  return Object.freeze(hson_highlights(grammar, fileName, text)
-    .filter(token => token.scopes.includes(HSON_APPEARANCE.themeDerived.selfClosingSlash))
-    .map(token => token.range));
+  if (start < range.end) yield { start, end: range.end };
 }
 
 /** Retain exact host offsets while TextMate receives one physical line at a time. */

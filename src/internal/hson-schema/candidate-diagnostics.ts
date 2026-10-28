@@ -9,7 +9,7 @@ import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_definitions, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
-import { part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
+import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { is_part_argument_attribute, part_argument_name, whole_part_reference } from "../part-placeholder.js";
@@ -66,8 +66,9 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       const batch = facts.batches.find(batch => batch.call === document.receivers[0]!.batch);
       for (const connector of document.connectors) {
         if (!batch?.eligible || !connector.headerComplete) continue;
-        const lib = connector.attributes.find(attribute => attribute.name === "lib")?.value;
-        const at = connector.attributes.find(attribute => attribute.name === "at")?.value;
+        const coordinates = part_source_coordinates(connector);
+        if (coordinates === undefined || coordinates.issue !== undefined) continue;
+        const { library: lib, member: at } = coordinates;
         const libraries = batch.libraries.filter(library => library.name === lib && library.family === "parts" && library.certainty === "certain");
         const members = libraries.length === 1 ? libraries[0]!.members.filter(member => member.name === at && member.certainty === "certain") : [];
         const definition = members.length === 1 && members[0]!.documents.length === 1 ? members[0]!.documents[0] : undefined;
@@ -119,6 +120,17 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         }
       }
     }
+    for (const connector of document.connectors) {
+      if (!connector.headerComplete) continue;
+      const coordinates = part_source_coordinates(connector);
+      if (coordinates?.issue !== undefined) {
+        // Missing inherited context is invalid only at a proven ordinary receiver;
+        // an unseen consumer may register this source as a Part definition.
+        if (!ordinaryReceiver && coordinates.field === "lib" && !connector.attributes.some(attribute => attribute.name === "lib")) continue;
+        const attribute = connector.attributes.find(attribute => attribute.name === coordinates.field);
+        report(attribute?.valueLocation ?? attribute?.nameLocation ?? connector.location, "HSON_PART_COORDINATES_INVALID", coordinates.issue);
+      }
+    }
     if (document.admission === "qualified") for (const connector of document.connectors) {
       const supplied = new Set<string>();
       for (const attribute of connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name))) {
@@ -153,27 +165,27 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       || batch.inventoryCompleteness !== "complete" || batch.libraries.some(library => library.certainty !== "certain")) continue;
     for (const connector of document.connectors) {
       if (!connector.headerComplete || connector.location.precision !== "exact") continue;
-      const coordinate = (name: string) => {
-        const attributes = connector.attributes.filter(attribute => attribute.name === name);
-        return attributes.length === 1 ? attributes[0] : undefined;
-      };
-      const lib = coordinate("lib"), at = coordinate("at");
-      if (lib?.value === undefined || lib.value.length === 0 || at?.value === undefined
-        || lib.valueLocation?.precision !== "exact" || at.valueLocation?.precision !== "exact") continue;
+      const coordinates = part_source_coordinates(connector);
+      if (coordinates === undefined || coordinates.issue !== undefined) continue;
+      const lib = connector.attributes.find(attribute => attribute.name === "lib");
+      const at = connector.attributes.find(attribute => attribute.name === "at");
+      const libraryLocation = coordinates.qualified ? at?.valueLocation : lib?.valueLocation;
+      const memberLocation = at?.valueLocation;
+      const { library: libraryName, member: memberName } = coordinates;
       const arguments_ = connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name));
       // Unknown values include interpolations, placeholders and structured attributes.
       // Invalid local inputs were reported above; uncertainty still withholds absence claims.
       if (arguments_.some(attribute => attribute.value === undefined || part_argument_name(attribute.name) === undefined)) continue;
-      const libraries = batch.libraries.filter(library => library.name === lib.value);
+      const libraries = batch.libraries.filter(library => library.name === libraryName);
       if (libraries.length === 0 || libraries.length === 1 && libraries[0]!.family !== "parts") {
-        report(lib.valueLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(lib.value)}.`);
+        report(libraryLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(libraryName)}.`);
         continue;
       }
       const library = libraries.length === 1 ? libraries[0] : undefined;
       if (library?.family !== "parts" || library.memberCompleteness !== "complete") continue;
-      const members = library.members.filter(member => member.name === at.value);
+      const members = library.members.filter(member => member.name === memberName);
       if (members.length === 0) {
-        report(at.valueLocation, "HSON_PART_MEMBER_UNKNOWN", `Unknown Part member ${JSON.stringify(at.value)} in Parts Library ${JSON.stringify(lib.value)}.`);
+        report(memberLocation, "HSON_PART_MEMBER_UNKNOWN", `Unknown Part member ${JSON.stringify(memberName)} in Parts Library ${JSON.stringify(libraryName)}.`);
         continue;
       }
       const member = members.length === 1 ? members[0] : undefined;
@@ -185,14 +197,14 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       const optionalRoot = definition.optionalStructures.some(flag => flag.root);
       for (const name of vocabulary) if (!supplied.has(name)
         && !(optionalRoot && !definition.receivingDeclarations.some(declaration => declaration.incoming === name && declaration.kind === "doc") && definition.parameters.find(parameter => parameter.name === name)?.uses.length === 0)) {
-        report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)}.`);
+        report(connector.location, "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
       }
       for (const attribute of arguments_) {
         const argument = part_argument_name(attribute.name)!;
         if (!vocabulary.has(argument.name)) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)}.`);
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
         } else if (argument.kind !== (definition.receivingDeclarations.find(declaration => declaration.incoming === argument.name)?.kind ?? "scalar")) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface.`);
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface of ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
         }
       }
     }

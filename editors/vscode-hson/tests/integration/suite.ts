@@ -182,8 +182,8 @@ async function runTypingConveniences(workspace: string): Promise<void> {
     { label: 'attribute', body: 'document`<span title|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
     { label: 'interpolation', body: 'document`<span $|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'placeholder', body: 'document`<span title="%|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
-    { label: 'local placeholder', body: 'document`<span title="#|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
-    { label: 'structural Document reference', body: 'document`<main c:doc="%{control}" <hson-part #|/>/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'local placeholder', body: 'document`<span title="^|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'structural Document reference', body: 'document`<main c:doc="%{control}" <hson-part ^|/>/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'attribute after partial quote', body: 'document`<span title="${first} partial" next|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
     { label: 'partial quoted content', body: 'document`<span "before $|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'partial quoted attribute', body: 'document`<span title="$|after"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
@@ -431,8 +431,8 @@ async function runPartCompletions(workspace: string): Promise<void> {
   }
   for (const [body, label, expected] of [
     ['<h1 "%{Title-Case}" "%{Ti|}"/>', 'Title-Case', '<h1 "%{Title-Case}" "%{Title-Case}"/>'],
-    ['<main control:doc="%{control}" <hson-part #{co|}/>/>' , 'control', '<main control:doc="%{control}" <hson-part #{control}/>/>' ],
-    ['<main d:data="%{payload}" "#{d.title}" "#{d.ti|}"/>' , 'd.title', '<main d:data="%{payload}" "#{d.title}" "#{d.title}"/>' ],
+    ['<main control:doc="%{control}" <hson-part ^{co|}/>/>' , 'control', '<main control:doc="%{control}" <hson-part ^{control}/>/>' ],
+    ['<main d:data="%{payload}" "^{d.title}" "^{d.ti|}"/>' , 'd.title', '<main d:data="%{payload}" "^{d.title}" "^{d.title}"/>' ],
     ['<h1 title="%{content}" id=%{co|}/>', 'content', '<h1 title="%{content}" id=%{content}/>'],
     [String.raw`<h1 title="%{content}" id="%{\u0063o|}"/>`, 'content', '<h1 title="%{content}" id="%{content}"/>'],
     ['<script src="/app.js" title="%{content}" id="%{co|}"/>', 'content', '<script src="/app.js" title="%{content}" id="%{content}"/>'],
@@ -833,7 +833,7 @@ const loc = hsonLiveMap.locus.create({
     await typeArray("unrelated template stays literal", 'const value = `|`;', false);
     await typeArray("lookalike Hson stays literal", 'const Hson=String.raw; const x=Hson.canonical`|`;', false);
     await typeArray("non-array Hson position stays literal", hostPrefix + 'const x=Hson.canonical`<tag |/>`;', false);
-    await typeArray("Part selector bracket stays ASCII", hostPrefix + 'const x=Hson.document`<p d:data="%{payload}" "#{d.items|}"/>`;', false);
+    await typeArray("Part selector bracket stays ASCII", hostPrefix + 'const x=Hson.document`<p d:data="%{payload}" "^{d.items|}"/>`;', false);
     await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson.canonical`<data 1|`;');
     await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
     await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson.canonical`<a "bad\\q"|>`;');

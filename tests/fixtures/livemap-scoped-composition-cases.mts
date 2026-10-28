@@ -86,7 +86,7 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 export function scoped_composition_cases(check: (name: string, run: () => void) => void) {
   check("optional root scoped no-ops, replacement removal, root replacement and CSS lifetime", () => {
     const f = fixture('<main <i/>/>');
-    f.definitions.at([]).object.setKey('optional', part('<aside hson:part @:root part:optional d:data="%{payload}" "#{d.title}"/>', ':scope{color:orange}'));
+    f.definitions.at([]).object.setKey('optional', part('<aside hson:part @:root part:optional d:data="%{payload}" "^{d.title}"/>', ':scope{color:orange}'));
     const input = (data: object) => {
       const value = source(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(data)}"/>`).root.$_content[0];
       assert.ok(is_Node(value)); return value;
@@ -120,8 +120,8 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
 
   check("structured Part scoped insertion, replacement, removal and late rejection retain independent lifetimes", () => {
     const f = fixture('<main <i/>/>');
-    f.definitions.at([]).object.setKey('typed', part('<section hson:part slide:data="%{slide}" @:root title="#{slide.title}" <hson-part @:child at="typedLeaf" data:payload="#{slide}"/>/>', ':scope{color:red}'));
-    f.definitions.at([]).object.setKey('typedLeaf', part('<b hson:part payload:data="%{payload}" @:root "#{payload.title}"/>', ':scope{color:blue}'));
+    f.definitions.at([]).object.setKey('typed', part('<section hson:part slide:data="%{slide}" @:root title="^{slide.title}" <hson-part @:child at="typedLeaf" data:payload="^{slide}"/>/>', ':scope{color:red}'));
+    f.definitions.at([]).object.setKey('typedLeaf', part('<b hson:part payload:data="%{payload}" @:root "^{payload.title}"/>', ':scope{color:blue}'));
     const input = (title: string) => {
       const root = source(Hson.document`<hson-part lib="parts" at="typed" data:slide="${Hson.data.from({ title })}"/>`).root;
       const node = root.$_content[0]; assert.ok(is_Node(node)); return node;

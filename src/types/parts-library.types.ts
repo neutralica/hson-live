@@ -12,7 +12,7 @@ type Reserved = typeof PARTS_FACADE_RESERVED[number] | keyof Object;
 
 type Authoring = Readonly<{
   /** Author a detached, receiver-relative invocation. Plain keys use the current receiving root declarations to encode Data/Document strings;
-   * local:data="%{name}" and local:doc="%{name}" establish local #{} bindings. Admission validates selectors and usage. Ordinary fields retain scalar transport. */
+   * local:data="%{name}" and local:doc="%{name}" establish local ^{} bindings. Admission validates selectors and usage. Ordinary fields retain scalar transport. */
   write: {
     (): HsonAuthored;
     <const Args extends Readonly<Record<string, Primitive>>>(

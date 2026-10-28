@@ -64,8 +64,8 @@ export function scoped_portable_roundtrip(input: unknown): PortableDocumentScope
 export function scoped_portable_cases(check: (name: string, run: () => void) => void) {
   check("structured Part portable capture restores in a fresh runtime without source or argument environments", () => {
     const map = hsonLiveMap.fromLibraries({ parts: {parts: {
-      panel: {kind:'document', document:'<section hson:part slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="#{slide.details}"/>/>'},
-      leaf: {kind:'document', document:'<b hson:part x:data="%{x}" @:root title="#{x.title}" "#{x.no}"/>', stylesheet:':scope{color:red}'},
+      panel: {kind:'document', document:'<section hson:part slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="^{slide.details}"/>/>'},
+      leaf: {kind:'document', document:'<b hson:part x:data="%{x}" @:root title="^{x.title}" "^{x.no}"/>', stylesheet:':scope{color:red}'},
     }}, page:{document:'<main/>'} });
     const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
     const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;

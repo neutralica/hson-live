@@ -1119,5 +1119,17 @@ check("structural adjacency does not relax quoted names, scalars, attributes or 
   }
 });
 
+check("caret structural references use the authored header path and reject old hash spelling", () => {
+  const structural = authored_node('<hson-part part:optional ^{control}/>');
+  assert.deepEqual(structural.$_attrs, { 'part:optional': 'part:optional', '^{control}': '^{control}' });
+  const old = '<hson-part #{control}/>';
+  const error = expect_transform_error(old, 'HSON_PART_REFERENCE_INVALID', { index: 11, line: 1, column: 12 });
+  assert.match(error.message, /Local Part references use \^\{/);
+  for (const source of ['<p ^{control}/>', '<hson-part^{control}/>', '<hson-part ^{control.path}/>']) assert.throws(() => parse_hson(source));
+  // Reference-looking payloads remain strings in ordinary Documents and Data.
+  assert.equal(authored_content('<p "#{old} ^{local} %{incoming}"/>'), '#{old} ^{local} %{incoming}');
+  assert.deepEqual(parse_hson('<value "#{old} ^{local} %{incoming}">'), parse_json({ value: '#{old} ^{local} %{incoming}' }));
+});
+
 process.stdout.write(`# ${checks} Hson tokenizer checks passed\n`);
 testEvents.terminal("pass");

@@ -1,7 +1,7 @@
 import type { HsonNode, Primitive } from "../core/types.js";
 import { ROOT_TAG, STR_TAG } from "../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../core/node-guards.js";
-import { PART_DECLARATION, PART_OPTIONAL, part_declaration_issue, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
 /** Part admission validates flag form even for definitions never invoked. */
 export function validate_part_definition_flags(root: HsonNode): void {
@@ -76,7 +76,7 @@ export function transform_part_parameter_strings(root: HsonNode,
           if (node !== element) throw new TypeError("Part receiving declarations are only allowed on the single definition root.");
           continue; // Compile-time receiving interface; never part of realized attributes.
         }
-        if (name.startsWith("#{")) {
+        if (name.startsWith("^{")) {
           const reference = part_structural_reference(node);
           if (reference === undefined) throw new TypeError("Invalid structural Part reference.");
           traversal?.structure?.(reference, node);
@@ -87,6 +87,7 @@ export function transform_part_parameter_strings(root: HsonNode,
         const issue = part_placeholder_placement_issue([], { name, value });
         if (issue !== undefined && (typeof value === "string" ? has_part_reference(value) : value !== null && typeof value === "object" && has_part_reference(JSON.stringify(value)))) throw new TypeError(issue);
         if (node.$_tag.toLowerCase() === "hson-part" && (name.startsWith("data:") || name.startsWith("doc:"))) {
+          if (typeof value === "string" && value.startsWith("#{")) throw new TypeError(PART_LOCAL_REFERENCE_MIGRATION);
           const reference = typeof value === "string" ? whole_part_reference(value) : undefined;
           if (reference !== undefined) forwarding?.(reference, node, name.startsWith("data:") ? "data" : "doc", name);
           attrs[name] = value;
@@ -154,8 +155,8 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
     uses.push(use);
     if (reference.namespace === "incoming") {
       if (reference.path.length || context !== "value") issue(node, context === "forwarding"
-        ? "Typed Part forwarding requires a declared local binding and #{} reference."
-        : "Structured Part inputs require a declared local binding and #{} reference.", reference, attribute);
+        ? "Typed Part forwarding requires a declared local binding and ^{} reference."
+        : "Structured Part inputs require a declared local binding and ^{} reference.", reference, attribute);
       add(reference, "scalar", node, attribute);
     } else if (binding === undefined) {
       issue(node, `Missing Part local declaration ${JSON.stringify(reference.name)}.`, reference, attribute);
@@ -169,8 +170,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
     return use;
   };
   transform_part_parameter_strings(root, (value, node, _owner, attribute) => {
-    const references = part_placeholder_matches(value);
-    if (references === undefined) issue(node, "Invalid Part placeholder.", undefined, attribute);
+    const references = part_placeholder_matches(value, message => issue(node, message, undefined, attribute));
     references?.forEach(reference => observe(reference, node, "value", undefined, attribute)); return value;
   }, (reference, node, kind, attribute) => observe(reference, node, "forwarding", kind, attribute), declarations => {
     const node = root.$_content[0];

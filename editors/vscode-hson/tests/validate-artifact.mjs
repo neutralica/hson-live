@@ -1,3 +1,6 @@
+import { generateThemes } from "../scripts/generate-themes.mjs";
+await generateThemes({ check: true });
+
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";

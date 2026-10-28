@@ -1,8 +1,8 @@
 <tag hson:part
   slide:data="%{data}"
   slide2:data="${data2}"
-  href="#{slide.href}"
-  "#{slide2.value}"
+  href="^{slide.href}"
+  "^{slide2.value}"
 />
 <svg enabled viewBox="0 0 20 20"
   <path d="M2 10h4"/>

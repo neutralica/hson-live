@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import * as vscode from "vscode";
+import { nativeCompositionSupported } from "./native-composition.js";
 
 async function pause(): Promise<void> { await new Promise(resolve => setTimeout(resolve, 100)); }
 
@@ -82,12 +83,27 @@ export async function run(): Promise<void> {
   process.stdout.write("ok - real VS Code strengths, four shared colors, lowercase toggle, and separator color update and restore live without extension reload; contributed color overrides remain intact; Hson Settings command opens\n");
   const syntax = await vscode.commands.executeCommand("_workbench.captureSyntaxTokens", doc.uri);
   const grammarHighlighted = JSON.stringify(syntax).includes("entity.name.type.hson");
-  const semantic = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);
-  const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", doc.uri);
-  const semanticHighlighted = !!semantic?.data.length && !!legend?.tokenTypes.some(type => type.startsWith("hson"));
+  const nativeExtension = vscode.extensions.getExtension('vscode.typescript-language-features');
+  assert.ok(nativeExtension || !vscode.workspace.isTrusted, 'trusted host must expose the native TS service');
+  if (!nativeExtension) assert.ok(vscode.extensions.getExtension('vscode.typescript'), 'Restricted Mode retains the built-in TS syntax grammar');
+  await nativeExtension?.activate();
+  const compositionAvailable = nativeCompositionSupported && nativeExtension !== undefined;
+  let semanticHighlighted = false;
+  // Extension activation and the first TS project snapshot are asynchronous,
+  // including in the separate Restricted Mode profile.
+  for (let attempt = 0; attempt < (compositionAvailable ? 50 : 1); attempt++) {
+    const semantic = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);
+    const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", doc.uri);
+    semanticHighlighted = !!semantic?.data.length && !!legend?.tokenTypes.some(type => type.startsWith("hson"));
+    if (semanticHighlighted) break;
+    await pause();
+  }
   const diagnostics = () => vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "Hson");
   const edit = async (body: string) => {
-    const text = doc.getText(), start = text.indexOf("Hson.canonical`") + 5, end = text.indexOf("`", start);
+    const text = doc.getText(), tag = "Hson.canonical`";
+    const tagStart = text.indexOf(tag);
+    assert.notEqual(tagStart, -1, "baseline edit must target the authored Hson template");
+    const start = tagStart + tag.length, end = text.indexOf("`", start);
     const change = new vscode.WorkspaceEdit();
     change.replace(doc.uri, new vscode.Range(doc.positionAt(start), doc.positionAt(end)), body);
     assert.equal(await vscode.workspace.applyEdit(change), true);
@@ -100,7 +116,18 @@ export async function run(): Promise<void> {
   await edit("<thing !!!");
   const invalidCount = await waitFor(1);
   if (!probe) {
-    assert.ok(grammarHighlighted || semanticHighlighted, "official Hson must receive grammar-backed highlighting");
+    if (compositionAvailable) {
+      assert.ok(grammarHighlighted || semanticHighlighted, "official Hson must receive grammar-backed highlighting");
+    } else if (!nativeExtension) {
+      assert.equal(semanticHighlighted, false, 'Hson yields when the host disables the native TS service');
+      console.log(`ok - VS Code ${vscode.version}: Restricted Mode disables the native TS semantic extension; composed tokens unavailable`);
+    } else {
+      assert.equal(semanticHighlighted, false, "pre-1.96 hosts cannot acquire an atomic native snapshot");
+      const range = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));
+      const native = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentRangeSemanticTokens", doc.uri, range);
+      assert.ok(native?.data.length, "native TypeScript highlighting remains available on pre-1.96 hosts");
+      console.log(`ok - VS Code ${vscode.version}: native TS fallback; composed Hson tokens require 1.96+`);
+    }
     assert.equal(invalidCount, 1, "zero-Schema invalid Hson must be diagnosed");
   }
   await edit('\n <thing "readable" >\n');
@@ -110,7 +137,7 @@ export async function run(): Promise<void> {
   await edit("+1");
   const republishedCount = await waitFor(1);
   if (!probe) assert.equal(republishedCount, 1);
-  if (!probe) {
+  if (!probe && compositionAvailable) {
     const replace = async (text: string) => {
       const change = new vscode.WorkspaceEdit();
       change.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
@@ -132,7 +159,7 @@ export async function run(): Promise<void> {
     };
     for (const [imported, tag, pkg] of [["Hson", "Hson", "hson-live/hson"], ["Hson", "Hson", "hson-live"], ["Hson as author", "author", "hson-live/hson"]]) {
       for (const body of ['<thing 1>', '<thing !!!', '<thing ${dangerous()} other 1>']) {
-        await replace(`import { ${imported} } from "${pkg}"; const value=${tag}\`${body}\`;`);
+        await replace(`import { ${imported} } from "${pkg}"; const value=${tag}.canonical\`${body}\`;`);
         const tokens = await hsonTokens();
         assert.ok(tokens.some(token => token.text === 'thing'), `real Hson token: ${tag} ${body}`);
         const hole = doc.getText().indexOf('${'), end = doc.getText().indexOf('}',hole)+1;
@@ -140,9 +167,9 @@ export async function run(): Promise<void> {
       }
     }
     for (const text of [
-      'import { hson } from "hson-live"; hson.liveMap.fromHson("<thing/>");',
-      'import { hsonLiveMap } from "hson-live/livemap"; hsonLiveMap.fromHson(`<thing/>`);',
-      'import { hson } from "hson-live"; hson.liveMap.fromHson(`<thing "${value}"/>`);',
+      'import { hson } from "hson-live"; hson.transform.fromHson("<thing/>");',
+      'import { hsonTransform } from "hson-live/transform"; hsonTransform.fromHson(`<thing/>`);',
+      'import { hson } from "hson-live"; hson.transform.fromHson(`<thing "${value}"/>`);',
     ]) {
       await replace(text);
       const tokens = await hsonTokens();
@@ -150,7 +177,10 @@ export async function run(): Promise<void> {
       const hole = doc.getText().indexOf("${"), end = doc.getText().indexOf("}", hole) + 1;
       if (hole >= 0) assert.ok(tokens.every(token => token.end <= hole || token.start >= end));
     }
-    for (const text of ['const Hson=String.raw; Hson.canonical`<thing !!!`;',
+    for (const text of ['import { Hson } from "hson-live/hson"; Hson`<thing !!!`;',
+      'import { hson } from "hson-live"; hson.liveMap.fromHson("<thing/>");',
+      'import { hsonLiveMap } from "hson-live/livemap"; hsonLiveMap.fromHson(`<thing/>`);',
+      'const Hson=String.raw; Hson.canonical`<thing !!!`;',
       'import { Hson } from "other"; Hson.canonical`<thing !!!`;',
       'import { Hson } from "hson-live/hson"; function f(Hson:any){ Hson.canonical`<thing !!!`; }']) {
       await replace(text); assert.deepEqual(await hsonTokens(), [], 'unsupported binding must not keep stale Hson tokens');

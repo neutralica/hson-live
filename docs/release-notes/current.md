@@ -135,8 +135,8 @@ A major push into templating patterns as a first-class operation. Developed comp
 - Explicit Part declarations: Added the mandatory `hson:part` flag on the root of every governed Parts Library definition, visibly distinguishing Part source from ordinary Hson Documents.
 - Structured Data inputs: Parts can receive complete HsonData values, including nested objects and arrays, through explicit `data:` receiving declarations.
 - Authored Document inputs: Added corresponding `doc:` receiving declarations for supplying authored Hson Documents and deferred Part invocations.
-- Local binding syntax: Introduced `#{name}` and `#{path.to.value}` for references to locally declared Part data and documents, distinct from incoming `%{name}` parameters.
-- Structural Document placeholders: Added `<hson-part #{control}/>` for inserting supplied authored Documents or Part invocations directly into a Part's structure.
+- Local binding syntax: Introduced `^{name}` and `^{path.to.value}` for references to locally declared Part data and documents, distinct from incoming `%{name}` parameters.
+- Structural Document placeholders: Added `<hson-part ^{control}/>` for inserting supplied authored Documents or Part invocations directly into a Part's structure.
 - Optional composition: Added `part:optional` for conditionally realizing elements, subtrees, and nested Parts according to the presence of referenced values.
 - Nested structural composition: Supports recursively composed Parts with independent occurrence identities, authored QUAD scopes, and managed stylesheet ownership.
 
@@ -169,7 +169,7 @@ Expanded TextMate and semantic-token support to visually distinguish:
 
 - `hson:part` declarations and ordinary flags.
 - Tags, attribute names, assignment operators, and quoted values.
-- Incoming `%{}` versus local `#{}` placeholders.
+- Incoming `%{}` versus local `^{}` placeholders.
 - Placeholder sigils, braces, and property paths.
 - Structural Document insertion syntax.
 - QUAD/QUID identity punctuation and identifiers.
@@ -194,7 +194,91 @@ Updated existing theme integration, including the Dark 2026 theme, to provide mo
 
 ## Migration notes
 
+- Local Part references now use `^{...}` in text, attributes, typed forwarding, structural Document connectors, and `for:`/`per:` sources. Replace executable `#{...}` spellings; there is no compatibility alias. Incoming `%{...}` and authored `@:name` declarations retain their meanings. Leave ordinary literal text, CSS selectors, and colors unchanged.
 - Breaking authoring change: Every Part definition in a governed Parts Library must now include `hson:part` on its single root element.
 - Existing maintained Part definitions and stored-source expectations were migrated; ordinary Documents and `<hson-part>` invocation connectors do not use this declaration.
 - Part `.write()` callers use plain argument names; typed receiving declarations determine how values are transported.
 - No compatibility path was added for unmarked Part definitions.
+
+# Hson — Release Changelog
+
+October 2026 · Integrated baseline `8e0101fe`
+
+### 1. Unified structured CSS authoring
+
+- Established `CssMap` as the single public stylesheet authoring type across LiveTree, Documents, Parts, and hosted CSS.
+- Standardized declaration semantics: empty strings set values; `undefined` deletes.
+- Corrected selector composition, nesting, specificity, media rules, and containment.
+
+### 2. Opaque raw stylesheets
+
+- Raw CSS is now preserved verbatim rather than parsed, normalized, or rewritten.
+- Introduced independently owned, ordered stylesheet contributions and separate managed `<style>` carriers.
+- Updated canonical storage, serialization, transport, and restoration to preserve raw and structured CSS independently.
+
+### 3. CSS declaration validation
+
+- Replaced `css-tree`-based declaration validation with narrower, browser-independent containment checks.
+- Preserved structured-selector validation, declaration integrity, and atomic rejection of invalid inputs.
+- Expanded adversarial coverage for escaped values, malformed selectors, and declaration boundaries.
+
+### 4. TypeScript performance
+
+- Optimized `CssMapInputCheck` to avoid repeatedly expanding thousands of CSS properties.
+- Reduced measured LiveDemo type-checking from approximately 60–66 seconds to 5–6 seconds, with roughly 87% fewer instantiations.
+- Preserved all 7,751 public CSS properties and strict union validation, adding 17 regression assertions.
+
+### 5. Parts and structural composition
+
+- Integrated governed Parts with explicit `hson:part` declarations and definition-aware `.write()`.
+- Added structured `data:`/`doc:` inputs, `%{}` bindings, `^{}` scoped lookups, and structural placeholders.
+- Added optional Part composition, nested forwarding, and accurate replacement/retirement semantics.
+
+### 6. Part CSS ownership
+
+- Unified Part styling with structured `CssMap`.
+- Preserved occurrence-local CSS ownership, nested selector scoping, and specificity.
+- Improved cleanup and identity handling during optional composition, removal, and replacement.
+
+### 7. SSR and browser continuation
+
+- Improved managed stylesheet realization across SSR and browser adoption.
+- Repaired styled-root disposal and reuse, including rollback, retry, and duplicate-ownership prevention.
+- Verified scoped styling, no-JavaScript first paint, and lifecycle cleanup in actual browsers.
+
+### 8. Hosted CSS, Echo, and Locus
+
+- Improved CSS subject correspondence, authorization, and revocation across hosted state.
+- Preserved QUID/QUAD identity boundaries through publication, replay, and reconciliation.
+- Corrected revision accounting and CSS ownership during nested and optional Part composition.
+
+### 9. Canonical CSS and fixture fidelity
+
+- Preserved structured CSS records across Locus construction, capture, and restoration.
+- Corrected authority initialization ordering and removed obsolete parsed-CSS assumptions.
+- Updated fixtures for exact stylesheet content, carrier ordering, encoding, and ownership.
+
+### 10. TypeScript observability and editor tooling
+
+- Isolated per-project compiler analysis into short-lived processes to prevent heap exhaustion.
+- Verified diagnostic parity across 1,064 files and 13 projects, expanding observability acceptance to 33 checks.
+- Integrated updated Part syntax highlighting and authoring support.
+
+### 11. Testing and validation
+
+- Reconciled CSS and Parts acceptance suites across Node, Worker, and browser environments.
+- Updated fixtures, runners, and provenance checks without reducing coverage.
+- Passed comprehensive validation for both the CSS convergence and combined integration commits.
+
+### 12. Repository and development workflow
+
+- Integrated the CSS worktree and newer Parts development into `main`.
+- Removed redundant pre-push validation while retaining comprehensive precommit checks.
+- Established the validated combined baseline at `8e0101fe`.
+
+### Remaining work
+
+- CSS safety: Revisit structured CSS `</style>` admission policy before supporting untrusted input.
+- TypeScript: Address the pre-existing optional nested-union validation gap.
+- Dependencies: Complete removal of the remaining `css-tree` dependency.
+- LiveDemo: The new frozen Hson package is validated locally; public deployment and hosted TOWL verification remain outstanding.

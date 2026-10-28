@@ -12,6 +12,8 @@
   "include": [
     "src/**/*.ts",
     "tests/runtime.test.ts",
+    "tests/house.test.ts",
+    "tests/native-semantic-tokens.test.ts",
     "tests/workspace-diagnostics.test.ts",
     "tests/settings.test.ts",
     "tests/status-ui.test.ts",
@@ -23,6 +25,7 @@
     "tests/development-actions.test.ts",
     "tests/benchmark.ts",
     "tests/integration/suite.ts",
+    "tests/integration/house.ts",
     "tests/integration/baseline.ts",
     "tests/integration/legibility.ts",
     "tests/baseline.test.ts"

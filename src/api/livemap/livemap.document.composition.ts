@@ -1,3 +1,4 @@
+import { part_coordinates } from "../../internal/part-coordinates.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
@@ -280,14 +281,14 @@ export function expand_document_composition(
     if (result === undefined) { result = analyze_part_definition(definition.root); analyses.set(definition.root, result); }
     return result;
   };
-  const validateArguments = (definition: DocumentCompositionSource, supplied: readonly string[]): void => {
+  const validateArguments = (definition: DocumentCompositionSource, supplied: readonly string[], selected: string): void => {
     const parameters = analysis(definition).parameters;
     for (const raw of supplied) {
       const argument = part_argument_name(raw);
       if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}.`);
       const { name, kind } = argument;
-      if (!parameters.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)}.`);
-      if (parameters.get(name) !== kind) throw new TypeError(`Part parameter ${JSON.stringify(name)} does not match the receiving interface.`);
+      if (!parameters.has(name)) throw new TypeError(`Unknown Part parameter ${JSON.stringify(name)} for ${JSON.stringify(selected)}.`);
+      if (parameters.get(name) !== kind) throw new TypeError(`Part parameter ${JSON.stringify(name)} does not match the receiving interface of ${JSON.stringify(selected)}.`);
     }
   };
   const validateConnector = (node: HsonNode, collection: unknown, environment: PartEnvironment, inspectInterface: PartConnectorInspection): void => {
@@ -325,10 +326,11 @@ export function expand_document_composition(
       }
       return output + value.slice(at);
     };
-    const lib = coordinate(attrs.lib ?? collection), member = coordinate(attrs.at);
-    if (typeof lib !== "string" || !lib || typeof member !== "string") throw new TypeError("hson-part requires exact collection and member coordinates.");
+    const coordinates = part_coordinates(coordinate(attrs.lib), coordinate(attrs.at), collection);
+    if (coordinates.issue !== undefined) throw new TypeError(coordinates.issue);
+    const { library: lib, member } = coordinates;
     const definition = part(lib, member);
-    validateArguments(definition, Object.keys(attrs).filter(is_part_argument_attribute));
+    validateArguments(definition, Object.keys(attrs).filter(is_part_argument_attribute), `${lib}/${member}`);
   };
   const admitDocument = (source: string): DocumentCompositionSource => {
     charge(source);
@@ -614,13 +616,11 @@ export function expand_document_composition(
         continue;
       }
       const parameterNames = Object.keys(attrs).filter(is_part_argument_attribute);
-      const libField = Object.getOwnPropertyDescriptor(attrs, "lib");
-      let lib: unknown = libField === undefined ? frame.occurrence.collection : libField.value;
-      if (typeof lib !== "string" || lib.length === 0) throw new TypeError("hson-part requires an unambiguous nonempty collection lib.");
-      let member: unknown = Object.getOwnPropertyDescriptor(attrs, "at")?.value;
-      if (typeof member !== "string") throw new TypeError("hson-part requires an exact Part member at.");
+      const coordinates = part_coordinates(attrs.lib, attrs.at, frame.occurrence.collection);
+      if (coordinates.issue !== undefined) throw new TypeError(coordinates.issue);
+      let { library: lib, member } = coordinates;
       const parameters = new Map<string, PartBinding>();
-      const context = `${JSON.stringify([configuration?.use?.lib ?? lib, configuration?.use?.at ?? member])} at ${JSON.stringify([...frame.outputPath, frame.output.length])}`;
+      const context = `${JSON.stringify(`${configuration?.use?.lib ?? lib}/${configuration?.use?.at ?? member}`)} at ${JSON.stringify([...frame.outputPath, frame.output.length])}`;
       for (const raw of parameterNames) {
         const argument = part_argument_name(raw);
         const value: unknown = Object.getOwnPropertyDescriptor(attrs, raw)?.value;
@@ -653,9 +653,9 @@ export function expand_document_composition(
       }
       if (typeof lib !== "string" || typeof member !== "string") throw new TypeError("Composition Part coordinates must be strings.");
       const definition = part(lib, member);
-      validateArguments(definition, parameterNames);
+      validateArguments(definition, parameterNames, `${lib}/${member}`);
       const authoredArguments = frame.occurrence.parameters?.authoredArguments?.get(item);
-      if (authoredArguments !== undefined) validateArguments(definition, authoredArguments);
+      if (authoredArguments !== undefined) validateArguments(definition, authoredArguments, `${lib}/${member}`);
       const environment: PartEnvironment = { bindings: parameters, locals: new Map(), context };
       const selected = { ...definition, root: substitute_part_parameters(definition, analysis(definition), environment, limits.maxCharacters - characters, preparation, (connector, inspectInterface, local) => validateConnector(connector, lib, local, inspectInterface)) };
       const content = selected.root.$_content;
@@ -785,7 +785,7 @@ function resolve_part_reference(reference: PartReference, environment: PartEnvir
   const binding = (reference.namespace === "incoming" ? environment?.bindings : environment?.locals)?.get(reference.name);
   const context = environment?.context ?? "top-level invocation (no enclosing Part)";
   if (binding === undefined) throw new TypeError(`Missing Part parameter ${JSON.stringify(reference.name)} for ${part_reference_text(reference)} in ${context}.`);
-  if (reference.namespace === "incoming" && (binding.kind !== "scalar" || reference.path.length)) throw new TypeError("Structured Part inputs require declared local #{} references.");
+  if (reference.namespace === "incoming" && (binding.kind !== "scalar" || reference.path.length)) throw new TypeError("Structured Part inputs require declared local ^{} references.");
   if (reference.path.length && binding.kind !== "data") throw new TypeError(`Part reference ${part_reference_text(reference)} requires a data binding in ${context}.`);
   let value = binding.value;
   for (const key of reference.path) {

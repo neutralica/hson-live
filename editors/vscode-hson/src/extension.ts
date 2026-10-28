@@ -21,7 +21,7 @@ import {
   type WorkspaceDiagnosticSource,
   type WorkspaceSourceChange,
 } from "./workspace-diagnostics.js";
-import { hson_document_self_closing_slash_ranges, hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
+import { load_hson_grammar } from "./highlighting.js";
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
   hson_identity_presentation,
@@ -29,7 +29,8 @@ import {
 } from "./authoring-marker.js";
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
-import { HSON_APPEARANCE, HSON_DOCUMENT_SELF_CLOSING_SLASH } from "./appearance.js";
+import { document_semantic_tokens, hsonSemanticLegend } from "./semantic-tokens.js";
+import { HSON_APPEARANCE } from "./appearance.js";
 import { formatting_target_is_current } from "./formatting-target.js";
 import { HsonDelimiterDepthCache, HsonDepthDecorationSet } from "./delimiter-depth.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
@@ -516,22 +517,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(start_workspace_diagnostics(host, publisher));
   // Independent of Schema associations and completion providers.
-  const legend = new vscode.SemanticTokensLegend(Object.keys(hsonTokenScopes));
   const grammar = load_hson_grammar(context.extensionPath);
-  context.subscriptions.push(vscode.languages.registerDocumentSemanticTokensProvider(
-    [{ language: "typescript" }, { language: "typescriptreact" }], {
-      async provideDocumentSemanticTokens(document, cancellation) {
-        const version = document.version, text = document.getText();
-        const loaded = await grammar;
-        if (cancellation.isCancellationRequested || document.isClosed || document.version !== version) return undefined;
-        const builder = new vscode.SemanticTokensBuilder(legend);
-        for (const token of hson_highlights(loaded, document.fileName, text)) {
-          builder.push(new vscode.Range(document.positionAt(token.range.start), document.positionAt(token.range.end)), token.type);
-        }
-        if (cancellation.isCancellationRequested || document.version !== version) return undefined;
-        return builder.build();
-      },
-    }, legend));
+  const semanticChanges = new vscode.EventEmitter<void>();
+  context.subscriptions.push(semanticChanges,
+    vscode.workspace.onDidChangeTextDocument(() => semanticChanges.fire()),
+    vscode.workspace.onDidChangeConfiguration(() => semanticChanges.fire()),
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      [{ language: "typescript" }, { language: "typescriptreact" }], {
+        onDidChangeSemanticTokens: semanticChanges.event,
+        provideDocumentSemanticTokens: (document, cancellation) => document_semantic_tokens(document, cancellation, grammar),
+      }, hsonSemanticLegend));
   // TS/TSX islands retain host string metadata, so native bracket colors cannot
   // see them. Standalone Hson and Markdown continue using native colorization.
   const depthCache = new HsonDelimiterDepthCache();
@@ -601,18 +596,11 @@ export function activate(context: vscode.ExtensionContext): void {
           ?? new vscode.ThemeColor(HSON_LIBRARY_SEPARATOR_COLOR_ID),
         opacity: String(libraryStrength),
       }),
-    ], [
-      "hson.documentSelfClosingSlash",
-      vscode.window.createTextEditorDecorationType({
-        color: HSON_DOCUMENT_SELF_CLOSING_SLASH.color,
-        opacity: String(HSON_APPEARANCE.owned.strength[HSON_DOCUMENT_SELF_CLOSING_SLASH.strength]),
-      }),
     ]]));
   };
   replaceMarkerDecorations();
-  const presentMarkers = async (editor: vscode.TextEditor): Promise<void> => {
+  const presentMarkers = (editor: vscode.TextEditor): void => {
     const document = editor.document;
-    const version = document.version;
     const presentation = document.languageId === "typescript" || document.languageId === "typescriptreact"
       ? hson_identity_presentation(document.fileName, document.getText(), colorLibraryMarker)
       : document.languageId === "markdown"
@@ -629,23 +617,6 @@ export function activate(context: vscode.ExtensionContext): void {
       editor.setDecorations(separatorDecoration, presentation.separators.map(part =>
         new vscode.Range(document.positionAt(part.range.start), document.positionAt(part.range.end))));
     }
-    const slashDecoration = markerDecorations.get("hson.documentSelfClosingSlash");
-    if (slashDecoration === undefined) return;
-    const language = document.languageId === "hson" || document.languageId === "typescript"
-      || document.languageId === "typescriptreact" || document.languageId === "markdown"
-      ? document.languageId : undefined;
-    if (language === undefined) {
-      editor.setDecorations(slashDecoration, []);
-      return;
-    }
-    const loaded = await grammar;
-    if (document.isClosed || document.version !== version) return;
-    editor.setDecorations(slashDecoration, hson_document_self_closing_slash_ranges(
-      loaded,
-      document.fileName,
-      language,
-      document.getText(),
-    ).map(range => new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))));
   };
   const presentVisibleMarkers = (): void => {
     for (const editor of vscode.window.visibleTextEditors) void presentMarkers(editor);

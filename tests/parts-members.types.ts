@@ -287,7 +287,7 @@ parts.heading.write({ slide: Hson.data`<title "Visible">`, index: Hson.data`0` }
 
 // Document edits return the aggregate stream, including CSS installation/retirement.
 const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {
-  optional: { kind: 'document', document: Hson.document`<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>`, stylesheet: 'p{color:red}' },
+  optional: { kind: 'document', document: Hson.document`<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>`, stylesheet: 'p{color:red}' },
   ordinary: { kind: 'document', document: Hson.document`<b hson:part/>`, stylesheet: 'b{color:blue}' },
 } }, page: { document: Hson.document`<main <i/>/>` } });
 const replacementCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,

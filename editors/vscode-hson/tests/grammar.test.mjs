@@ -112,11 +112,11 @@ for (const [source, kind, pieces] of [
 ]) {
   const actual = await tokenize('source.hson', source);
   const begin = actual.findIndex(token => token.text === '@');
-  assert.deepEqual(actual.slice(begin, begin + pieces.length).map(({ text, scopes }) => ({ text, scopes })), pieces.map(([text, scope]) => ({ text, scopes: ['source.hson', `constant.other.${kind}.hson`, scope] })));
+  assert.deepEqual(actual.slice(begin, begin + pieces.length).map(({ text, scopes }) => ({ text, scopes })), pieces.map(([text, scope]) => ({ text, scopes: ['source.hson', 'variable.other.constant.hson', `constant.other.${kind}.hson`, ...(scope === 'punctuation.separator.identity.hson' ? ['keyword.operator.hson'] : []), scope] })));
   assert.deepEqual(actual.find(token => token.text === 'next')?.scopes, ['source.hson', 'entity.other.attribute-name.hson']);
   assert.deepEqual(actual.filter(token => token.line === 1), (await tokenize('source.hson', '<b/>')).map(token => ({ ...token, line: 1 })));
 }
-for (const source of ['<p "@:literal @012345678"/>', '// @:comment @012345678', '<p "%{d[\\"@:key\\"]} #{d[\\"@012345678\\"]} ${value}"/>']) {
+for (const source of ['<p "@:literal @012345678"/>', '// @:comment @012345678', '<p "%{d[\\"@:key\\"]} ^{d[\\"@012345678\\"]} ${value}"/>']) {
   assert.ok(!(await tokenize('source.hson', source)).some(token => token.scopes.includes('constant.other.identity.hson')), source);
 }
 for (const value of ['@01234567', '@0123456789', '@iiiiiiiii']) {
@@ -124,13 +124,10 @@ for (const value of ['@01234567', '@0123456789', '@iiiiiiiii']) {
 }
 
 const header = await tokenize('source.hson', '<button data:model="one" model:data="two" part:optional="true" disabled/>\n<next part:optional/>');
-assert.deepEqual(header.filter(token => ['button', 'data:model', 'model:data', 'disabled', 'next', 'part:optional'].includes(token.text)).map(({ text, scopes }) => ({ text, scopes })), [
-  { text: 'button', scopes: ['source.hson', 'entity.name.type.hson'] },
-  ...['data:model', 'model:data', 'part:optional'].map(text => ({ text, scopes: ['source.hson', 'entity.other.attribute-name.hson'] })),
-  { text: 'disabled', scopes: ['source.hson', 'constant.language.flag.hson'] },
-  { text: 'next', scopes: ['source.hson', 'entity.name.type.hson'] },
-  { text: 'part:optional', scopes: ['source.hson', 'constant.language.flag.hson'] },
-]);
+for (const [name, scope] of [['button', 'entity.name.type.hson'], ['data:model', 'entity.other.attribute-name.sending.hson'],
+  ['model:data', 'entity.other.attribute-name.receiving.hson'], ['part:optional', 'keyword.other.directive.hson'],
+  ['disabled', 'constant.language.flag.hson']]) assert.ok(has(header, name, scope), name);
+assert.equal(header.filter(token => token.text === ':' && token.scopes.at(-1) === 'punctuation.separator.attribute.hson').length, 4);
 for (const value of ['one', 'two', 'true']) assert.deepEqual(header.find(token => token.text === value)?.scopes, ['source.hson', 'string.quoted.double.hson']);
 assert.deepEqual((await tokenize('source.hson', '<button class=card disabled/>')).filter(token => ['class', 'card', 'disabled'].includes(token.text)).map(({ text, scopes }) => ({ text, scopes })), [
   { text: 'class', scopes: ['source.hson', 'entity.other.attribute-name.hson'] },
@@ -149,11 +146,17 @@ for (const name of ['true-flag', 'false.key', 'null:flag']) {
     const source = `<item ${name}${assigned ? '="value"' : ''} disabled model:data="done"/> <next enabled/>`;
     const actual = await tokenize('source.hson', source);
     const expected = await tokenize('source.hson', `<item ordinary${assigned ? '="value"' : ''} disabled model:data="done"/> <next enabled/>`);
-    assert.deepEqual(actual.map(token => token.text === name ? { ...token, text: 'ordinary' } : token), expected, source);
+    const baseScope = assigned ? 'entity.other.attribute-name.hson' : 'constant.language.flag.hson';
+    assert.ok(has(actual, name, baseScope));
+    const first = actual.findIndex(token => name.startsWith(token.text) && token.scopes.includes(baseScope));
+    let end = first, combined = '';
+    while (combined.length < name.length) combined += actual[end++].text;
+    assert.equal(combined, name);
+    assert.deepEqual([...actual.slice(0, first), { ...actual[first], text: 'ordinary', scopes: ['source.hson', baseScope] }, ...actual.slice(end)], expected, source);
   }
 }
 const keywordFlags = await tokenize('source.hson', '<item true-flag false.key null:flag/>');
-assert.deepEqual(keywordFlags.filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['true-flag', 'false.key', 'null:flag']);
+assert.deepEqual(keywordFlags.filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['true-flag', 'false.key', 'null', ':', 'flag']);
 for (const primitive of ['true', 'false', 'null']) {
   const actual = await tokenize('source.hson', `<value ${primitive}>\n<next enabled/>`);
   assert.deepEqual(actual.find(token => token.text === primitive)?.scopes, ['source.hson', `constant.language.${primitive === 'null' ? 'null' : 'boolean'}.hson`]);
@@ -163,13 +166,14 @@ for (const primitive of ['true', 'false', 'null']) {
   assert.deepEqual(assigned.find(token => token.text === 'disabled')?.scopes, ['source.hson', 'constant.language.flag.hson']);
 }
 for (const trivia of ['\n', '\r\n  ', '\n\n\t']) {
-  for (const value of ['"done"', 'plain', String.raw`"#{d[\"odd}key\"]} after"`]) {
+  for (const value of ['"done"', 'plain', String.raw`"^{d[\"odd}key\"]} after"`]) {
     const source = `<item true-flag model:data${trivia}=\n  ${value} disabled next="kept"/>\n<next enabled/>`;
     const actual = await tokenize('source.hson', source);
     // A prior-line name remains provisionally a flag: TextMate cannot look
     // ahead into another physical line. Assignment and all following tokens
     // must still be identical to the ordinary same-line assignment.
-    assert.deepEqual(actual.find(token => token.text === 'model:data')?.scopes, ['source.hson', 'constant.language.flag.hson']);
+    assert.ok(has(actual, 'model:data', 'entity.other.attribute-name.receiving.hson'));
+    assert.ok(has(actual, 'model:data', 'constant.language.flag.hson'));
     const expected = await tokenize('source.hson', `<item true-flag model:data=${value} disabled next="kept"/>\n<next enabled/>`);
     const tail = tokens => {
       const start = tokens.findIndex(token => token.text === '='); assert.ok(start >= 0, source);
@@ -187,15 +191,14 @@ for (const name of ['true', 'false', 'null', 'true-flag', 'false.key', 'model:da
     const tail = tokens => tokens.slice(tokens.findIndex(token => token.text === '='))
       .filter(token => token.text.trim()).map(({ text, scopes }) => ({ text, scopes }));
     assert.deepEqual(tail(actual), tail(expected), source);
-    assert.deepEqual(actual.find(token => token.text === name)?.scopes,
-      ['source.hson', trivia.includes('\n') ? 'constant.language.flag.hson' : 'entity.other.attribute-name.hson'], source);
+    assert.ok(has(actual, name, trivia.includes('\n') ? 'constant.language.flag.hson' : 'entity.other.attribute-name.hson'), source);
   }
 }
 const consecutive = '<item true\n="one" false\n=two null\n="three" data:key="four" true-flag false.key null:flag/> <next enabled/>';
 const ordinaryConsecutive = await tokenize('source.hson', consecutive.replaceAll('\n', ' '));
 assert.deepEqual((await tokenize('source.hson', consecutive)).filter(token => token.text.trim()).map(({ text, scopes }) => ({ text, scopes })),
   ordinaryConsecutive.filter(token => token.text.trim()).map(({ text, scopes }) => ({ text,
-    scopes: ['true', 'false', 'null'].includes(text) ? ['source.hson', 'constant.language.flag.hson'] : scopes })));
+    scopes: ['true', 'false', 'null'].includes(text) && !scopes.includes('meta.attribute.qualifier.hson') ? ['source.hson', 'constant.language.flag.hson'] : scopes })));
 
 for (const source of ['<item true-flag false.key null:flag', '<item true-flag\n<next enabled/>', '<item model:data\n=\n<next enabled/>',
   '<item true\n<next enabled/>', '<item false\n=\n<next enabled/>', '<item null // pending\n<next enabled/>']) {
@@ -203,27 +206,30 @@ for (const source of ['<item true-flag false.key null:flag', '<item true-flag\n<
   if (source.includes('<next')) {
     assert.deepEqual(actual.find(token => token.text === 'next')?.scopes, ['source.hson', 'entity.name.type.hson'], source);
     assert.deepEqual(actual.find(token => token.text === 'enabled')?.scopes, ['source.hson', 'constant.language.flag.hson'], source);
-  } else assert.deepEqual(actual.filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['true-flag', 'false.key', 'null:flag']);
+  } else assert.deepEqual(actual.filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['true-flag', 'false.key', 'null', ':', 'flag']);
 }
 assert.deepEqual((await tokenize('source.hson', '<item disabled\n  enabled/>')).filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['disabled', 'enabled']);
 
-const structural = await tokenize('source.hson', '<hson-part part:optional #{control}/>\n<b/>');
-assert.deepEqual(structural.filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['part:optional']);
-assert.ok(has(structural, '#', 'keyword.operator.interpolation.hash.hson'));
+const structural = await tokenize('source.hson', '<hson-part part:optional ^{control}/>\n<b/>');
+assert.deepEqual(structural.filter(token => token.scopes.includes('constant.language.flag.hson')).map(token => token.text), ['part', ':', 'optional']);
+assert.ok(has(structural, '^', 'keyword.operator.interpolation.caret.hson'));
 assert.deepEqual(structural.find(token => token.text === 'b')?.scopes, ['source.hson', 'entity.name.type.hson']);
-for (const [sigil, scope] of [['%', 'percent'], ['#', 'hash']]) {
+for (const [sigil, scope] of [['%', 'percent'], ['^', 'caret']]) {
   const actual = await tokenize('source.hson', `<p title=prefix${sigil}{value} disabled/>`);
   assert.ok(has(actual, sigil, `keyword.operator.interpolation.${scope}.hson`));
   assert.ok(has(actual, 'disabled', 'constant.language.flag.hson'));
 }
 assert.ok(!hasScope(await tokenize('source.hson', '<p title=@:text value=@012345678/>'), 'constant.other.identity.hson'));
 
-const references = await tokenize("source.hson", '<main d:data="%{payload}" title="#{d.title}" <hson-part #{control}/>/ >');
+const references = await tokenize("source.hson", '<main d:data="%{payload}" title="^{d.title}" <hson-part ^{control}/>/ >');
 assert.ok(hasScope(references, "meta.part.incoming.hson"));
 assert.ok(hasScope(references, "meta.part.local.hson"));
+const oldReferences = await tokenize('source.hson', '<p title="#{d.title}" "#{d.title}"/>');
+assert.ok(!hasScope(oldReferences, 'meta.part.local.hson'));
+assert.ok(!hasScope(oldReferences, 'keyword.operator.interpolation.caret.hson'));
 
 // Compare the complete following-token sequence, including on the same line.
-for (const sigil of ['%', '#', '$']) {
+for (const sigil of ['%', '^', '$']) {
   for (const key of ['odd}key', 'quote"key', 'slash\\key', 'slash\\"}key', '']) {
     const value = JSON.stringify(`${sigil}{d[${JSON.stringify(key)}][0]["nested"]} plain`);
     const source = `<p value=${value} next="after" "tail"/>\n<b next="after" "tail"/>`;
@@ -242,7 +248,7 @@ for (const sigil of ['%', '#', '$']) {
   }
 }
 
-for (const [sigil, scope] of [['$', 'dollar'], ['%', 'percent'], ['#', 'hash']]) {
+for (const [sigil, scope] of [['$', 'dollar'], ['%', 'percent'], ['^', 'caret']]) {
   const actual = await tokenize('source.hson', `<p title="before ${sigil}{value} after"/>\n<b/>`);
   const meta = sigil === '$' ? 'meta.interpolation.hson' : sigil === '%' ? 'meta.part.incoming.hson' : 'meta.part.local.hson';
   const base = ['source.hson', 'string.quoted.double.hson', meta];
@@ -425,7 +431,8 @@ for (const scopeName of ["source.hson", "text.html.markdown"]) {
 process.stdout.write("ok - native standalone and Markdown bracket metadata excludes quoted names and multiline strings\n");
 
 const partDeclaration = await tokenize('source.hson', '<button hson:part disabled/>');
-assert.deepEqual(partDeclaration.filter(token => token.text === 'hson:part').map(token => token.scopes), [['source.hson', 'keyword.declaration.part.hson']]);
+assert.ok(has(partDeclaration, 'hson:part', 'keyword.declaration.part.hson'));
+assert.ok(has(partDeclaration, ':', 'punctuation.separator.attribute.hson'));
 
 const visible = await tokenize('source.hson', await readFile(new URL('./fixtures/visible-highlighting.hson', import.meta.url), 'utf8'));
 for (const path of ['data', 'slide.href', 'slide2.value']) {
@@ -454,13 +461,15 @@ if (process.env.HSON_VSCODE_THEMES) {
   }
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const fallbacks = manifest.contributes.semanticTokenScopes[0].scopes;
+  const extra = await tokenize('source.hson', '<p @:identity @012345678>');
   const cases = [
-    ['data', 'hsonReference'], ['slide.href', 'hsonReference'], ['slide2.value', 'hsonReference'],
-    ['%', 'hsonOperator'], ['#', 'hsonOperator'], ['{', 'hsonInterpolationDelimiter'], ['}', 'hsonInterpolationDelimiter'],
+    ['identity', 'hsonQuad'], ['012345678', 'hsonQuid'], ['@', 'hsonIdentityMarker'], [':', 'hsonColon'],
+    ['data', 'hsonReference'], ['href', 'hsonReference.hsonMember'], ['value', 'hsonReference.hsonMember'], ['.', 'hsonReference.hsonReferenceSeparator'],
+    ['%', 'hsonIncomingReferenceSigil'], ['^', 'hsonLocalReferenceSigil'], ['{', 'hsonInterpolationDelimiter'], ['}', 'hsonInterpolationDelimiter'],
     ['"', 'hsonQuote'], ['=', 'hsonOperator'], ['M2 10h4', 'hsonString'],
-    ['tag', 'hsonType'], ['slide:data', 'hsonProperty'], ['enabled', 'hsonKeyword'], ['hson:part', 'hsonDeclaration'],
+    ['tag', 'hsonType'], ['slide', 'hsonReceiving'], ['enabled', 'hsonFlag'], ['hson', 'hsonDeclaration'],
   ];
-  const stacks = [...cases.map(([text]) => visible.find(token => token.text === text).scopes),
+  const stacks = [...cases.map(([text]) => [...visible, ...extra].find(token => token.text === text && (!['data', 'href', 'value', '.'].includes(text) || token.scopes.includes('variable.other.property.hson'))).scopes),
     ...Object.values(fallbacks).flat().map(scope => scope.split(' '))];
   for (const name of ['2026-light', '2026-dark', 'light_plus', 'dark_plus']) {
     const theme = await readTheme(resolve(process.env.HSON_VSCODE_THEMES, name + '.json'));
@@ -483,16 +492,29 @@ if (process.env.HSON_VSCODE_THEMES) {
     };
     const resolved = new Map();
     for (const [text, type] of cases) {
-      const standalone = foreground(visible.find(token => token.text === text).scopes);
+      const standalone = foreground([...visible, ...extra].find(token => token.text === text && (!['data', 'href', 'value', '.'].includes(text) || token.scopes.includes('variable.other.property.hson'))).scopes);
       const embedded = fallbacks[type].map(scope => foreground(scope.split(' '))).find(color => color !== sentinel);
       assert.ok(embedded, `${name}: missing ${type} fallback`);
       assert.equal(embedded, standalone, `${name}: standalone/embedded ${text}`);
       resolved.set(text, standalone);
     }
-    for (const path of ['data', 'slide.href', 'slide2.value']) assert.notEqual(resolved.get(path), resolved.get('M2 10h4'), `${name}: path versus string`);
+    for (const path of ['data', 'href', 'value']) assert.notEqual(resolved.get(path), resolved.get('M2 10h4'), `${name}: path versus string`);
     assert.notEqual(resolved.get('{'), resolved.get('data'), `${name}: braces versus path`);
     assert.notEqual(resolved.get('%'), resolved.get('{'), `${name}: sigil versus brace`);
     const host = await themed.loadGrammar('source.ts');
+    const ordinary = 'export const parts = { card: 1, render() { let value = this.card; return value; } };';
+    const nativeTokens = host.tokenizeLine(ordinary, INITIAL).tokens;
+    for (const [start, end, scope] of [
+      [0, 6, 'keyword.control.export.ts'], [7, 12, 'storage.type.ts'], [43, 46, 'storage.type.ts'],
+      [66, 72, 'keyword.control.flow.ts'], [23, 27, 'meta.object-literal.key.ts'],
+      [32, 38, 'entity.name.function.ts'], [60, 64, 'variable.other.property.ts'],
+      [21, 22, 'punctuation.definition.block.ts'], [38, 39, 'punctuation.definition.parameters.begin.ts'],
+      [39, 40, 'punctuation.definition.parameters.end.ts'],
+    ]) {
+      const token = nativeTokens.find(token => token.startIndex === start && token.endIndex === end);
+      assert.ok(token?.scopes.includes(scope), `${ordinary.slice(start, end)}: native ${scope} at [${start},${end})`);
+      assert.ok(token.scopes.every(scope => !scope.endsWith('.hson')));
+    }
     const line = 'const value = Hson.document`<tag slide2:data="${data2}"/>`;';
     const lexical = host.tokenizeLine(line, INITIAL).tokens;
     const binary = host.tokenizeLine2(line, INITIAL).tokens;

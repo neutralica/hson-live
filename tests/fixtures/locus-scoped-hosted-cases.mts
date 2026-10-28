@@ -118,7 +118,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
   for (const kind of ["http", "websocket"] as const) await check(`optional Part ${kind}: SSR, atomic omission, source-free replay and restoration`, async () => {
     const input = (value: object) => node(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(value)}"/>`);
     const locus = hsonLiveMap.locus.create({ parts: { access: 'private', parts: {
-      optional: { kind: 'document', document: '<article hson:part @:root part:optional d:data="%{payload}" <h1 "#{d.title}"/> <p @:note part:optional "#{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
+      optional: { kind: 'document', document: '<article hson:part @:root part:optional d:data="%{payload}" <h1 "^{d.title}"/> <p @:note part:optional "^{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
     } }, count: { access: 'shared', data: { n: 0 } }, flat: { access: 'shared', document: '<main/>' }, page: { access: 'shared', document: '<html <head/> <body <hson-part @:gone lib="parts" at="optional" data:payload="<>"/> <hson-part @:left lib="parts" at="optional" data:payload="<title \\"Left\\">"/> <hson-part @:right lib="parts" at="optional" data:payload="<title \\"Right\\">"/>/>/>' } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const client = await receiver(locus, kind, ['page']);
     try {
@@ -173,8 +173,8 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
     const data = Hson.data`<title "Visible" extra "PRIVATE_ARGUMENT">`;
     const control = (data: string) => Hson.document`<hson-part lib="parts" at="y" data:payload="${data}"/>`;
     const locus = hsonLiveMap.locus.create({ parts: {access:'private',parts:{
-      x:{kind:'document',document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child #{control}/>/>'},
-      y:{kind:'document',document:'<b hson:part payload:data="%{payload}" @:root "#{payload.title}"/>'},
+      x:{kind:'document',document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child ^{control}/>/>'},
+      y:{kind:'document',document:'<b hson:part payload:data="%{payload}" @:root "^{payload.title}"/>'},
     }}, page:{access:'shared',document:Hson.document`<main <hson-part @:left lib="parts" at="x" doc:control="${control(data)}"/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
     const client = await receiver(locus, kind, ['page']);
     try {

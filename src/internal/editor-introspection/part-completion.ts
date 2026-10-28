@@ -1,10 +1,11 @@
+import { part_coordinates } from "../part-coordinates.js";
 import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
-import { part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
+import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_matches, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
+import { part_source_coordinates, part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
 import { project_ordered_data, project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import type { CompiledHsonSchema } from "../hson-schema/compiler.js";
 import type { HsonEditorCandidate } from "./query.js";
@@ -41,9 +42,10 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
   };
   let contextCount = document.receivers.length;
   let detail: string;
+  let selectorPrefix = "", selectorSuffix = "";
   if (checkpoint.kind === "parameter") {
     if (attribute === PART_OPTIONAL || attribute === PART_DECLARATION) return [];
-    if (checkpoint.parameter?.structural && element.attributes.some(attr => attr.name !== PART_OPTIONAL && !attr.name.startsWith("#{"))) return [];
+    if (checkpoint.parameter?.structural && element.attributes.some(attr => attr.name !== PART_OPTIONAL && !attr.name.startsWith("^{"))) return [];
     const rawAttribute = checkpoint.parameter?.rawAttribute;
     if (checkpoint.parameter === undefined || !checkpoint.parameter.structural && attribute !== rawAttribute?.name) return [];
     try {
@@ -52,7 +54,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
       const tags = decoded === undefined ? element.contentTags : element.contentTags.slice(0, -1);
       if (part_placeholder_placement_issue(tags, decoded) !== undefined) return [];
       if (element.tag.toLowerCase() === "hson-part" && (decoded?.name.startsWith("data:") || decoded?.name.startsWith("doc:"))
-        && (typeof decoded.value !== "string" || !decoded.value.startsWith("%{") && !decoded.value.startsWith("#{"))) return [];
+        && (typeof decoded.value !== "string" || !decoded.value.startsWith("%{") && !decoded.value.startsWith("^{"))) return [];
     } catch { return []; }
     // Only actual member-source relationships establish a Part definition.
     if (!memberSource) return [];
@@ -80,8 +82,8 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
           // Data slot is dynamic. Suggestions never upgrade receiver certainty.
           if (!source.receivers.some(receiver => receiver.batch === batch.call && receiver.library?.family === "document")) continue;
           for (const connector of source.connectors) {
-            if (connector.attributes.find(attr => attr.name === "lib")?.value !== library.name
-              || connector.attributes.find(attr => attr.name === "at")?.value !== member.name) continue;
+            const coordinates = part_source_coordinates(connector);
+            if (coordinates?.library !== library.name || coordinates?.member !== member.name) continue;
             for (const declaration of visible.filter(declaration => declaration.kind === "data")) {
               const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
               if (origin === undefined) continue;
@@ -107,24 +109,48 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     contextCount = 1;
     detail = "Part parameter spelling (new names are allowed)";
   } else {
-    if (element.attributes.some(attr => attr.name.startsWith("#{"))) return optionalCandidate;
+    if (element.attributes.some(attr => attr.name.startsWith("^{"))) return optionalCandidate;
     if (memberSource && checkpoint.kind === "header" && element.tag.toLowerCase() === "hson-part"
       && element.attributes.every(attr => attr.name === PART_OPTIONAL)) {
       const structural = visible.filter(declaration => declaration.kind === "doc")
-        .map(declaration => `#{${declaration.name}}`).filter(name => name.startsWith(prefix));
+        .map(declaration => `^{${declaration.name}}`).filter(name => name.startsWith(prefix));
       return [...optionalCandidate, ...structural.map((label): HsonEditorCandidate => ({ label, insertText: label, kind: "reference",
         detail: "Insert a declared local Document", certainty: "certain", sortText: "0001" }))];
     }
     if (element.tag.toLowerCase() !== "hson-part" || checkpoint.kind !== "header" && checkpoint.kind !== "attribute-value") return optionalCandidate;
-    const coordinate = (name: string): string | undefined => {
+    const coordinate = (name: string, preserveReferences = false): string | undefined => {
       const attrs = element.attributes.filter(attr => attr.name === name);
       if (attrs.length !== 1 || attrs[0]?.value === undefined || attrs[0].value.direct) return undefined;
       const value = split_attrs_meta([attrs[0]]).attrs[name];
-      return typeof value === "string" && !has_part_reference(value) ? value : undefined;
+      return typeof value === "string" && (preserveReferences || !has_part_reference(value)) ? value : undefined;
     };
-    const libraryName = coordinate("lib"), memberName = coordinate("at");
-    const selectingLibrary = checkpoint.kind === "attribute-value" && attribute === "lib";
-    const selectingMember = checkpoint.kind === "attribute-value" && attribute === "at";
+    const lib = coordinate("lib"), authoredAt = coordinate("at", true);
+    const at = authoredAt !== undefined && !has_part_reference(authoredAt) ? authoredAt : undefined;
+    const coordinates = part_coordinates(lib, at);
+    let libraryName = coordinates.library ?? lib;
+    const memberName = coordinates.member;
+    const selectingAt = checkpoint.kind === "attribute-value" && attribute === "at";
+    const compact = selectingAt && !element.attributes.some(attr => attr.name === "lib");
+    const separator = compact ? prefix.indexOf("/") : -1;
+    const selectingLibrary = checkpoint.kind === "attribute-value" && (attribute === "lib" || compact && separator < 0);
+    const selectingMember = selectingAt && !selectingLibrary;
+    if (compact && selectingLibrary) {
+      // The scanner owns a whole-value edit. Preserve authored members without
+      // treating their references as a statically selected Part.
+      if (authoredAt === undefined && element.attributes.some(attr => attr.name === "at")) return optionalCandidate;
+      if (authoredAt !== undefined) {
+        const references = part_placeholder_matches(authoredAt), slash = authoredAt.indexOf("/");
+        if (references === undefined || references.some(reference => slash < 0 || reference.start < slash)) return optionalCandidate;
+        if (slash >= 0) selectorSuffix = authoredAt.slice(slash + 1);
+      }
+    }
+    if (compact && separator >= 0) {
+      const partial = part_coordinates(undefined, prefix + (prefix.endsWith("/") ? "_" : ""));
+      if (partial.issue !== undefined) return optionalCandidate;
+      libraryName = partial.library;
+      selectorPrefix = libraryName + "/";
+      prefix = prefix.slice(separator + 1);
+    }
     if (!selectingLibrary && !selectingMember && checkpoint.kind !== "header") return [];
     if (!selectingLibrary && libraryName === undefined || checkpoint.kind === "header" && memberName === undefined) return optionalCandidate;
     const existing = new Set(element.attributes.filter(attr => attr.start.index < checkpoint.range.start || attr.start.index >= checkpoint.range.end).map(attr => part_argument_name(attr.name)?.name ?? attr.name));
@@ -135,7 +161,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         if (library.family !== "parts" || library.name === undefined || !selectingLibrary && library.name !== libraryName) continue;
         const certain = receiver.certainty === "certain" && batch.inventoryCompleteness === "complete"
           && batch.receivingInventory === "candidate-only" && library.certainty === "certain";
-        if (selectingLibrary) { add(library.name, index, certain); continue; }
+        if (selectingLibrary) { add(compact ? library.name + "/" : library.name, index, certain); continue; }
         for (const member of library.members) {
           if (member.admission !== "qualified") continue;
           // A lexical member key alone cannot authorize an unsupported producer.
@@ -161,7 +187,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
       const certainty = evidence.certain && evidence.contexts.size === contextCount ? "certain" : "possible";
       let insertText = label;
       if (checkpoint.kind === "attribute-value") {
-        const quoted = JSON.stringify(label).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
+        const quoted = JSON.stringify(selectorPrefix + label + selectorSuffix).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
         insertText = checkpoint.quoted === undefined ? quoted : quoted.slice(1, -1) + (checkpoint.quoted.complete ? "" : '"');
       } else if (checkpoint.kind === "parameter") {
         // Selectors may contain quoted keys; insert decoded references through the enclosing Hson string.
@@ -196,7 +222,7 @@ const member_path = (root: string, key: string | number) => root + (typeof key =
 
 /** Advisory common members only; an invocation annotation is not a universal Part contract. */
 function schema_paths(schema: CompiledHsonSchema, origin: SchemaDataPath, root: string, prefix: string): readonly string[] {
-  const reference = scan_part_reference(`#{${prefix}`, 0, true);
+  const reference = scan_part_reference(`^{${prefix}`, 0, true);
   const selected = reference?.name === root ? reference.path.slice(0, /[.\]]$/.test(prefix) ? undefined : -1) : [];
   const spelling = selected.reduce<string>(member_path, root);
   const result: string[] = [], pending: { path: SchemaDataPath; spelling: string; depth: number }[] = [{ path: [...origin, ...selected], spelling, depth: 0 }];

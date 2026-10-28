@@ -269,7 +269,7 @@ export function structural_typing_snippet(
   if (region?.kind !== "template" || region.authoringKind === undefined || region.authoringKind === "schema"
     || region.protectedRanges.some(range => cursor > range.start && cursor < range.end)) return undefined;
   const text = evidence.text;
-  if ((typed === "=" || (text[cursor - 1] === "%" || text[cursor - 1] === "#"))
+  if ((typed === "=" || (text[cursor - 1] === "%" || text[cursor - 1] === "^"))
     && templateInterpolationRoles(text, region).some(role => role === undefined)) return undefined;
   if (typed === "=") {
     if (!region.authoredDocument) return undefined;
@@ -287,21 +287,21 @@ export function structural_typing_snippet(
     return '="$0"';
   }
   const sigil = text[cursor - 1];
-  if (sigil !== "$" && sigil !== "%" && sigil !== "#") return undefined;
+  if (sigil !== "$" && sigil !== "%" && sigil !== "^") return undefined;
   let escapeStart = cursor - 2;
   while (escapeStart >= region.bodyRange.start && text[escapeStart] === "\\") escapeStart--;
   if ((cursor - 2 - escapeStart) % 2 !== 0) return undefined;
-  if (sigil === "%" || sigil === "#") {
+  if (sigil === "%" || sigil === "^") {
     if (!region.authoredDocument) return undefined;
     const body = maskProtectedSource(text, region);
     if (body === undefined) return undefined;
     const local = cursor - region.bodyRange.start;
-    if (sigil === "#") {
+    if (sigil === "^") {
       const probe = body.slice(0, local) + "{" + body.slice(local);
       const checkpoint = hson_grammar_checkpoint(probe, local + 1, "document");
       if (checkpoint?.parameter?.structural && checkpoint.element !== undefined
         && part_placeholder_placement_issue(checkpoint.element.contentTags) === undefined
-        && checkpoint.element.attributes.every(attr => attr.name === "part:optional" || attr.name.startsWith("#{"))) {
+        && checkpoint.element.attributes.every(attr => attr.name === "part:optional" || attr.name.startsWith("^{"))) {
         return checkpoint.parameter.complete ? "{$0" : "{$0}";
       }
     }
@@ -500,7 +500,7 @@ function lexicalRanges(source: string, authoredDocument = false): Readonly<{
       recordAttribute(attribute, roles) {
         if (roles.value === undefined) return;
         attributeValues.push(roles.value);
-        if (attribute.name.startsWith("#{") || source[roles.value.start] === '"') literals.push(roles.value);
+        if (attribute.name.startsWith("^{") || source[roles.value.start] === '"') literals.push(roles.value);
       },
     };
     if (authoredDocument) tokenize_authored_document_library(source, collector);

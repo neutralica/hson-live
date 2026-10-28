@@ -63,7 +63,7 @@ map.addLibraries({page: {document: invocation}});
 assert.match(JSON.stringify(map.doc.must('page').root()), /button/);
 const styled = hsonLiveMap.fromLibraries({parts:{parts:{
   ordinary:{kind:'document',document:'<b hson:part/>',stylesheet:'b{color:blue}'},
-  optional:{kind:'document',document:'<p hson:part part:optional d:data="%{payload}" "#{d.title}"/>',stylesheet:'p{color:red}'},
+  optional:{kind:'document',document:'<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>',stylesheet:'p{color:red}'},
 }},page:{document:'<main <i/>/>'}});
 const page = styled.doc.must('page'), target = {kind:'path',path:[0,0]};
 const replacement = (at, payload) => ({$_tag:'hson-part',$_attrs:{lib:'parts',at,...(payload===undefined?{}:{'data:payload':payload})},$_content:[]});

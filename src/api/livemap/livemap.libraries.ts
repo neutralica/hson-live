@@ -191,14 +191,14 @@ function realize_authored_definitions(definitions: readonly CanonicalLibraryDefi
     const definition = byName.get(collection);
     if (definition === undefined) {
       if (readExisting !== undefined) return readExisting(collection, member);
-      throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+      throw new Error(`Unknown Part collection ${JSON.stringify(collection)} while selecting ${JSON.stringify(`${collection}/${member}`)}.`);
     }
     if (definition.family !== "data" || definition.validation !== PART_COLLECTION_VALIDATION) {
       throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
     }
     const parts = validate_data_library(definition.root, classify_live_root_mode(definition.root, "data"), definition.validation);
     const part = parts?.find(part => part.key === member);
-    if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
+    if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify(`${collection}/${member}`)}.`);
     return part;
   };
   return definitions.map(definition => {
@@ -916,13 +916,13 @@ function make_livemap_library_receiver(
     assert_hson_identifier_name(member, "Part");
     const entry = named.get(collection);
     const contract = aggregate.hostedRegistry().libraries.find(candidate => candidate.name === collection);
-    if (entry === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
+    if (entry === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)} while selecting ${JSON.stringify(`${collection}/${member}`)}.`);
     if (entry.family !== "data" || contract?.validation !== PART_COLLECTION_VALIDATION) {
       throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
     }
     const parts = validate_data_library(aggregate.root(entry.identity), contract.mode, contract.validation);
     const part = parts?.find(candidate => candidate.key === member);
-    if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
+    if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify(`${collection}/${member}`)}.`);
     checkCapture();
     return part;
   };

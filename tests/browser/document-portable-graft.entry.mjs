@@ -239,33 +239,37 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     assert(!again.selected.css.snapshot().includes(retired)&&again.doc.querySelector(marker).textContent===again.selected.css.snapshot(),'owned CSS disappears in the accepted mutation');
     const thirdCut=again.map.cut({data:[],documents:['page'],html:'page'}),third=await page(thirdCut.html,thirdCut.libs),thirdGraft=third.run();
     assert(third.doc.querySelectorAll('section').length===2&&third.correspondence.associations.length===2,'no stale generated rules or identities after re-graft');
-    const priorElements=[third.root,...third.root.querySelectorAll('*')],parent=third.correspondence.associations.find(entry=>entry.name==='slot1').path.slice(0,-1);
-    addParts(third.map,'runtimeParts',{x:{kind:'document',document:'<section hson:part id="runtime-part" <button id="runtime-button" "Runtime"/>/>',css:{'& button':{color:'rgb(90,91,92)'}}}});
-    const runtimeConnector=hsonTransform.fromHson('<hson-part lib="runtimeParts" at="x"/>').toNode().$_content[0];
-    const namespace=runtime_for_tree(thirdGraft.tree),foreignRuntimeId='23456789a';
-    namespace.issuedQuids.add(foreignRuntimeId);
-    const beforeInsertion=third.map.capture(),beforeDom=third.root.outerHTML;
-    allocator(owner(third.map).identityEpoch().owner,()=>foreignRuntimeId);
-    try { rejects(()=>third.selected.document.content.insert({kind:'path',path:parent},2,runtimeConnector),'runtime namespace exhaustion rejects before canonical publication'); }
-    finally { allocator(owner(third.map).identityEpoch().owner,undefined); }
-    equal(third.map.capture(),beforeInsertion,'runtime collision leaves canonical graph CSS and identity unchanged');
-    assert(third.root.outerHTML===beforeDom&&thirdGraft.mirror.status==='active','runtime collision leaves retained DOM and Mirror active');
-    third.selected.document.content.insert({kind:'path',path:parent},2,runtimeConnector);
-    const runtimeRoot=third.doc.getElementById('runtime-part');
-    assert(runtimeRoot,`runtime reflection: ${thirdGraft.mirror.status}: ${thirdGraft.mirror.failure?.message}; cause ${thirdGraft.mirror.failure?.cause?.message}; canonical ${JSON.stringify(third.selected.root())}`);
-    const runtimeId=runtimeRoot.getAttribute('hson:quid');
-    assert(runtimeId&&third.doc.defaultView.getComputedStyle(third.doc.getElementById('runtime-button')).color==='rgb(90, 91, 92)','runtime connector admission and CSS realization are synchronous');
-    assert(!third.doc.querySelector('hson-part')&&!JSON.stringify(third.selected.root()).includes('hson-part'),'runtime connector never publishes unresolved markup');
-    priorElements.forEach(element=>assert(element.isConnected&&third.root.contains(element),'runtime admission retains existing Elements'));
-    third.selected.document.content.remove({kind:'path',path:parent},2);
-    assert(!third.doc.getElementById('runtime-part')&&!third.selected.css.snapshot().includes(runtimeId),'runtime occurrence and owned CSS retire together');
-    const finalCut=third.map.cut({data:[],documents:['page'],html:'page'}),final=await page(finalCut.html,finalCut.libs),finalGraft=final.run();
-    rejects(()=>final.map.data.must('runtimeParts'),'runtime definitions omitted from final graft');
-    assert(final.doc.querySelectorAll('section').length===2&&final.correspondence.associations.length===2,'runtime removal leaves no stale CSS or identity in capture and re-graft');
-    finalGraft.dispose();final.frame.remove();
 
     thirdGraft.dispose();third.frame.remove();
     regraft.dispose();again.frame.remove();continued.dispose();f.frame.remove();
+  });
+  await check('native continuation admits and retires current scoped Parts without historical flat metadata', async () => {
+    const map=hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body <section id="kept-one"/> <section id="kept-two"/>/>/>'}});
+    const selected=map.doc.must('page'),frame=document.createElement('iframe');
+    frame.srcdoc=selected.render();const loaded=new Promise(resolve=>frame.onload=resolve);document.body.append(frame);await loaded;
+    const doc=frame.contentDocument,root=doc.documentElement,continued=continue_document({map,document:selected,root});
+    const priorElements=[root,...root.querySelectorAll('*')],parent=[0,0,1,0];
+    addParts(map,'runtimeParts',{x:{kind:'document',document:'<section hson:part id="runtime-part" <button id="runtime-button" "Runtime"/>/>',css:{'& button':{color:'rgb(90,91,92)'}}}});
+    const runtimeConnector=hsonTransform.fromHson('<hson-part lib="runtimeParts" at="x"/>').toNode().$_content[0];
+    const namespace=runtime_for_tree(continued.tree),foreignRuntimeId='23456789a';
+    namespace.issuedQuids.add(foreignRuntimeId);
+    const beforeInsertion=owner(map).captureSemanticCheckpoint(),beforeDom=root.outerHTML;
+    allocator(owner(map).identityEpoch().owner,()=>foreignRuntimeId);
+    try { rejects(()=>selected.document.content.insert({kind:'path',path:parent},2,runtimeConnector),'runtime namespace exhaustion rejects before canonical publication'); }
+    finally { allocator(owner(map).identityEpoch().owner,undefined); }
+    equal(owner(map).captureSemanticCheckpoint(),beforeInsertion,'runtime collision leaves canonical graph CSS and identity unchanged');
+    assert(root.outerHTML===beforeDom&&continued.mirror.status==='active','runtime collision leaves retained DOM and Mirror active');
+    selected.document.content.insert({kind:'path',path:parent},2,runtimeConnector);
+    const runtimeRoot=doc.getElementById('runtime-part');
+    assert(runtimeRoot,`runtime reflection: ${continued.mirror.status}: ${continued.mirror.failure?.message}; cause ${continued.mirror.failure?.cause?.message}; canonical ${JSON.stringify(selected.root())}`);
+    const runtimeId=runtimeRoot.getAttribute('hson:quid');
+    assert(runtimeId&&doc.defaultView.getComputedStyle(doc.getElementById('runtime-button')).color==='rgb(90, 91, 92)','runtime connector admission and CSS realization are synchronous');
+    assert(!doc.querySelector('hson-part')&&!JSON.stringify(selected.root()).includes('hson-part'),'runtime connector never publishes unresolved markup');
+    priorElements.forEach(element=>assert(element.isConnected&&root.contains(element),'runtime admission retains existing Elements'));
+    selected.document.content.remove({kind:'path',path:parent},2);
+    assert(!doc.getElementById('runtime-part')&&!selected.css.snapshot().includes(runtimeId),'runtime occurrence and owned CSS retire together');
+    assert(continued.mirror.status==='active'&&doc.querySelectorAll('section').length===2,'runtime removal preserves native continuation');
+    continued.dispose();frame.remove();
   });
   await check('ordinary carrier-free SSR uses the unchanged exact continuation path', async () => {
     const receiver = restore(structuredClone(libs)), selected = receiver.map.doc.must('page'); selected.css.clearAll();
@@ -326,12 +330,14 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
         : selected.document.content.move(parent,0,1);
       assert(moved.changed && doc.body.lastElementChild === button && button.getAttribute('hson:quid') === quid, 'move retains exact Element and carrier');
       equal(read(doc,button),['rgb(10, 20, 30)','13px'],'CSS follows moved root');
-      selected.css.sel(`[hson\\:quid="${quid}"]`).set.color("rgb(40,50,60)");
+      // Scoped CSS changes use the coordinated transaction path; the direct
+      // flat stylesheet publisher requires the legacy snapshot contract.
+      map.batch(draft => draft.doc.must('page').css.sel(`[hson\\:quid="${quid}"]`).set.color("rgb(40,50,60)"));
       assert(button.getAttribute('hson:quid') === quid, 'independent subject CSS retains carrier');
-      selected.css.stylesheet('body{margin:0}');
+      map.batch(draft => draft.doc.must('page').css.stylesheet('body{margin:0}'));
       assert(button.getAttribute('hson:quid') === null && doc.querySelectorAll('[hson\\:quid]').length === 0, 'last CSS demand removes carrier from surviving Element');
       equal(read(doc,button),['rgb(0, 0, 0)','6px'],'teardown restores native default styles');
-      selected.css.clearAll(); assert(!doc.querySelector(marker),'empty managed CSS removes style');
+      map.batch(draft => draft.doc.must('page').css.clearAll()); assert(!doc.querySelector(marker),'empty managed CSS removes style');
       // Reintroduce demand at index zero, then remove the new Part through the
       // same supported operation family. No public replacement lineage exists.
       selected.document.content.move(parent,1,0);

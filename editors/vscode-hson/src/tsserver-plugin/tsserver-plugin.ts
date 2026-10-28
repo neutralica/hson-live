@@ -1,9 +1,11 @@
 import type ts from "typescript";
 import { create_schema_language_service } from "../schema-language-service.js";
+import { register_native_semantic_tokens } from "./native-semantic-tokens.js";
 
 function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginModule {
   return {
     create(info): ts.LanguageService {
+      register_native_semantic_tokens(modules.typescript, info);
       return create_schema_language_service(modules.typescript, info.languageService, info.languageServiceHost, info.project.getProjectName(), (file, text) => {
         const path = modules.typescript.server.toNormalizedPath(file);
         if (text === undefined) {

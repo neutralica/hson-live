@@ -77,9 +77,9 @@ Hson faithfully represents JSON objects, arrays, and typed values, including non
 
 HTML's browser- and context-dependent parsing rules present a moving target for accurate representation. Hson requires XML compatibility, but will attempt to normalize non-compliant HTML to its structurally equivalent XML representation before admittance.
 
-Some HTML edge cases are not supported for security or other ambiguity reasons. In particular, empty `<script>` tags are permitted when carrying `src` attributes, but not inline logic.
+Some HTML edge cases are not supported for security or other ambiguity reasons. In particular, empty `<script>` tags are permitted when carrying only `src` attributes, but not with inline logic.
 
-Invalid content is rejected rather than silently repaired. After admission and normalization, content remains structurally equivalent even across repeated round-trip transformations.
+Invalid content is rejected rather than repaired. After admission and normalization, content remains structurally equivalent even across repeated round-trip transformations.
 
 ---
 

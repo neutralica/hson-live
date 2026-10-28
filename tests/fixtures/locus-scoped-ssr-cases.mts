@@ -57,8 +57,8 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
     const slide = Hson.data`<title "Visible" no -0 private "PRIVATE_ARGUMENT">`;
     const control = (data: string) => Hson.document`<hson-part lib="parts" at="leaf" data:slide="${data}"/>`;
     const locus = hsonLiveMap.locus.create({ parts: {access:'private', parts: {
-      panel: {kind:'document', document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child #{control}/>/>', stylesheet:':scope{color:red}'},
-      leaf: {kind:'document', document:'<b hson:part slide:data="%{slide}" @:root title="#{slide.title}" "#{slide.no}"/>'},
+      panel: {kind:'document', document:'<section hson:part control:doc="%{control}" @:root <hson-part @:child ^{control}/>/>', stylesheet:':scope{color:red}'},
+      leaf: {kind:'document', document:'<b hson:part slide:data="%{slide}" @:root title="^{slide.title}" "^{slide.no}"/>'},
     }}, page: {access:'shared', document:Hson.document`<html <head/> <body <hson-part @:one lib="parts" at="panel" doc:control="${control(slide)}"/> <hson-part @:two lib="parts" at="panel" doc:control="${control(slide)}"/>/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
     try {
       const session = await locus.session.create({libraries:['page','parts']});

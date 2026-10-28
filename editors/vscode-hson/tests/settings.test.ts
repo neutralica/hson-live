@@ -30,7 +30,7 @@ const formattingGroup = groups.find(group => group.title === "Hson › Formattin
 assert.ok(appearanceGroup); assert.ok(localHostGroup); assert.ok(formattingGroup);
 check("settings expose the appearance, bounded local-app, and formatting groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App", "Hson › Formatting"]));
 check("the appearance authority distinguishes owned values from theme-derived scopes", () => {
-  assert.deepEqual(Object.keys(HSON_APPEARANCE), ["owned", "themeDerived", "native"]);
+  assert.deepEqual(Object.keys(HSON_APPEARANCE), ["owned", "themeDerived", "house", "native"]);
   assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => value.endsWith(".hson")));
   assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => !value.startsWith("#")));
 });
@@ -41,14 +41,13 @@ check("manifest color defaults mirror the owned appearance palette", () => {
   const defaultsById = Object.fromEntries(manifest.contributes.colors.map((color: { id: string; defaults: Record<string, string> }) => [color.id, color.defaults]));
   for (const marker of hsonIdentityMarkers) {
     const expected = HSON_APPEARANCE.owned.colors[marker.colorSetting];
-    assert.deepEqual(defaultsById[marker.colorId], { dark: expected, light: expected, highContrast: expected, highContrastLight: expected });
+    assert.deepEqual(defaultsById[marker.colorId], { dark: expected, light: expected, highContrast: "editor.foreground", highContrastLight: "editor.foreground" });
   }
   const separator = HSON_APPEARANCE.owned.librarySeparator;
-  assert.deepEqual(defaultsById[separator.colorId], { dark: separator.color, light: separator.color, highContrast: separator.color, highContrastLight: separator.color });
+  assert.deepEqual(defaultsById[separator.colorId], { dark: separator.color, light: separator.color, highContrast: "editor.foreground", highContrastLight: "editor.foreground" });
 });
-check("document self-closing slash reuses the owned violet at soft strength", () => {
-  assert.equal(HSON_APPEARANCE.owned.documentSelfClosingSlash.color, HSON_APPEARANCE.owned.librarySeparator.color);
-  assert.equal(HSON_APPEARANCE.owned.documentSelfClosingSlash.strength, "soft");
+check("document self-closing slash belongs to the theme", () => {
+  assert.equal("documentSelfClosingSlash" in HSON_APPEARANCE.owned, false);
   assert.equal(HSON_APPEARANCE.themeDerived.selfClosingSlash, "punctuation.definition.tag.self-closing.hson");
 });
 check("native bracket-pair declarations mirror the appearance authority", () => {
