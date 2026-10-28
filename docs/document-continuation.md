@@ -270,17 +270,21 @@ continuation when the browser imports `hson-live/scout`. Its import registers
 automatically. Manual `continue_hosted_document` remains available.
 
 The application supplies ordinary hosted-continuation options through one
-provider. The provider can be configured before or after Scout connects and
-may load session material asynchronously. Keep credentials and transport
-configuration out of the element and canonical document:
+`ScoutProvider(payload?: string)`. The provider can be configured before or
+after Scout connects and may load session material asynchronously. Scout passes
+its optional text payload unchanged; an empty declaration, including empty text
+nodes, supplies `undefined`. Existing zero-argument providers remain valid.
+Transport configuration stays in application code, outside the element and
+canonical document:
 
 ```ts
 import { configure_scout } from "hson-live/scout";
 import { hsonLiveMap } from "hson-live";
 
 const transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
-const continuationPromise = configure_scout(async () => {
-  const { now, credential } = await loadApplicationSession();
+const continuationPromise = configure_scout(async (payload) => {
+  // Application-owned helper: interpret and validate payload, or load a session.
+  const { now, credential } = await loadApplicationSession(payload);
   return {
     now,
     credential,
@@ -309,13 +313,33 @@ disposal retain their ordinary separate ownership rules. One configuration
 delivers one page ignition result; Scouts in other Documents do not start a
 second unowned continuation after that result settles.
 
-For a full-document response, the application/page envelope appends the fixed
-Scout suffix **after** its authored closing `</body>` and before `</html>`:
+Scout accepts only text nodes containing ASCII letters `A-Z` and `a-z`, digits
+`0-9`, underscore (`_`), hyphen (`-`), and equals (`=`). These characters do not
+introduce HTML markup, character references, or whitespace, so literal payload
+text survives HTML parsing unchanged. Multiple text nodes form one payload in
+document order. Whitespace, comments, child elements, and attributes other than
+the required `hidden` are rejected. Use `hidden` or `hidden="hidden"`, not
+`hidden="until-found"`.
+
+This is a restricted transport alphabet, not a base64url encoding validator.
+For example, `=`, `A=B`, and `A` are accepted opaque strings. The provider owns
+all decoding and application-format validation; Scout does not infer a format,
+decode content, or inspect session information. A provider may choose base64url
+as its own encoding, but acceptance by Scout does not establish encoding validity.
+
+For a full-document response, the application/page envelope appends Scout
+**after** its authored closing `</body>` and before `</html>`. Add no whitespace
+between these pieces, because text outside Scout would remain during exact
+adoption. An empty Scout remains valid:
 
 ```html
-</body>
-<hson-scout hidden></hson-scout>
-</html>
+</body><hson-scout hidden></hson-scout></html>
+```
+
+An optional opaque payload uses the same placement:
+
+```html
+</body><hson-scout hidden>Az09_-</hson-scout></html>
 ```
 
 For fragment SSR, the application first constructs the HTML/body envelope.
@@ -325,10 +349,15 @@ as the final body child. With JavaScript disabled, it remains hidden and inert,
 but structural selectors such as `:last-child`, `:nth-child`, and `:empty` can
 observe that extra child.
 
-When the browser runtime is present, Scout validates its empty `hidden`
-declaration, calls the provider once, and prepares hosted continuation without
-adopting the DOM. It then removes itself before the prepared controller starts
-exact adoption, Mirror, Echo synchronization, interactions, and CSS binding.
+When the browser runtime is present, Scout waits for `DOMContentLoaded` if the
+document is still parsing, so connection before all payload text has arrived
+does not deliver partial content. Registration after parsing needs no readiness
+wait. The one-shot listener is removed when the claim starts or is cancelled or
+retired. Scout then validates its declaration, calls the provider once for that
+claim, and prepares hosted continuation without adopting the DOM. It removes
+itself and its entire payload synchronously and immediately starts exact DOM
+adoption, with no asynchronous gap between removal and adoption. The ordinary
+controller handles Mirror, Echo synchronization, interactions, and CSS binding.
 A provider or preparation failure leaves Scout hidden in place and rejects the
 configured Promise. After handoff, ordinary continuation cleanup handles start
 failure. Scout keeps only a weak document-keyed consumed marker after success;
@@ -338,8 +367,12 @@ releases its claim, and a replacement invokes the same configured provider for
 its own attempt. Late results from the abandoned attempt are ignored. A
 same-document move preserves the claim; moving a claimed Scout to another
 Document cancels it and makes that element inert. The element has no Shadow DOM
-or page lifecycle callbacks. A second Scout in the same document is removed
+or ongoing page lifecycle hooks. A second Scout in the same document is removed
 without another provider call. If a manual continuation already owns the exact
 root, Scout is redundant and removes itself; distinct manual roots retain their
 normal behavior. A restored BFCache page relies on its existing continuation,
 not on Scout running again.
+
+Scout provides one-shot ignition. Ongoing synchronization, reconnects, and
+continuation ownership belong to the resulting hosted continuation and Echo;
+they do not depend on retaining or recreating Scout.

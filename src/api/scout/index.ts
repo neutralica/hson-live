@@ -1,8 +1,8 @@
 import type { HostedDocumentContinuation } from "../continuation/continuation.types.js";
 import type { HostedContinuationOptions } from "../continuation/continue-hosted-document.lazy.js";
 
-/** Application-owned material for one hosted browser continuation. */
-export type ScoutProvider = () => HostedContinuationOptions | Promise<HostedContinuationOptions>;
+/** Application-owned options; payload is unchanged opaque transport text, or undefined for an empty Scout. */
+export type ScoutProvider = (payload?: string) => HostedContinuationOptions | Promise<HostedContinuationOptions>;
 
 type ScoutClaim = {
   document: Document | undefined;
@@ -32,13 +32,17 @@ export function configure_scout(configuration: ScoutProvider): Promise<HostedDoc
   return result;
 }
 
-function validate_declaration(element: HTMLElement): void {
+function validate_declaration(element: HTMLElement): string | undefined {
   const hidden = element.getAttribute("hidden");
+  const payload = element.textContent ?? "";
+  // Validate transport characters only: no markup, character references, or whitespace.
   if (element.attributes.length !== 1 || hidden === null
     || (hidden !== "" && hidden.toLowerCase() !== "hidden")
-    || element.childNodes.length !== 0) {
-    throw new Error("Scout requires an empty <hson-scout hidden></hson-scout> declaration.");
+    || Array.from(element.childNodes).some((child) => child.nodeType !== 3)
+    || /[^A-Za-z0-9_=-]/.test(payload)) {
+    throw new Error("Scout requires <hson-scout hidden> with optional text using only A-Z, a-z, 0-9, _, -, and =.");
   }
+  return payload === "" ? undefined : payload;
 }
 
 function current(claim: ScoutClaim): boolean {
@@ -51,6 +55,7 @@ function current(claim: ScoutClaim): boolean {
 
 function cancel(claim: ScoutClaim): void {
   const doc = claim.document;
+  doc?.removeEventListener("DOMContentLoaded", wakeWaiting);
   if (doc !== undefined && records.get(doc) === claim) records.delete(doc);
   waiting.delete(claim);
   const wasActive = activeClaim === claim;
@@ -72,6 +77,7 @@ function retireWaiting(): void {
 function settle(claim: ScoutClaim, phase: "consumed" | "failed" | "redundant"): boolean {
   const doc = claim.document;
   if (doc === undefined || records.get(doc) !== claim) return false;
+  doc.removeEventListener("DOMContentLoaded", wakeWaiting);
   records.set(doc, { phase });
   waiting.delete(claim);
   if (activeClaim === claim) activeClaim = undefined;
@@ -111,6 +117,13 @@ function wakeWaiting(): void {
 function ignite(claim: ScoutClaim): void {
   if (claim.phase !== "waiting" || provider === undefined || resolveResult === undefined
     || activeClaim !== undefined || !current(claim)) return;
+  // A parser-created element can connect before its text arrives. Defer/module
+  // startup already runs after parsing; early registration waits for that boundary.
+  if (claim.document?.readyState === "loading") {
+    claim.document.addEventListener("DOMContentLoaded", wakeWaiting, { once: true });
+    return;
+  }
+  claim.document?.removeEventListener("DOMContentLoaded", wakeWaiting);
   waiting.delete(claim);
   activeClaim = claim;
   claim.phase = "running";
@@ -122,8 +135,8 @@ function ignite(claim: ScoutClaim): void {
 
 async function run(claim: ScoutClaim, configured: ScoutProvider): Promise<void> {
   // Do not keep an element or Document local across provider/module-import awaits.
-  if (claim.owner !== undefined) validate_declaration(claim.owner);
-  const options = await configured();
+  const payload = claim.owner === undefined ? undefined : validate_declaration(claim.owner);
+  const options = await configured(payload);
   if (!current(claim)) return;
   if (options.root.ownerDocument !== claim.document) {
     throw new Error("Scout continuation root belongs to a different document.");

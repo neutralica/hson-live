@@ -83,7 +83,8 @@ const fakeBrowser = `
       this.childNodes = [];
       this.removals = 0;
     }
-    getAttribute(name) { return name === "hidden" ? "" : null; }
+    getAttribute(name) { return this.attributes.find((attribute) => attribute.name === name)?.value ?? null; }
+    get textContent() { return this.childNodes.map((child) => child.textContent ?? "").join(""); }
     remove() {
       this.isConnected = false;
       this.removals += 1;
@@ -104,9 +105,116 @@ const fakeBrowser = `
   }
 `;
 
+for (const [name, chunks] of [
+  ["empty declaration", []],
+  ["empty text node", [""]],
+  ["opaque text payload", ["Az09_-"]],
+  ["complete transport alphabet", ["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_=-"]],
+  ["opaque equals sign", ["="]],
+  ["opaque interior equals sign", ["A=B"]],
+  ["opaque single character", ["A"]],
+  ["opaque repeated equals signs", ["===="]],
+  ["multiple text nodes", ["Az", "", "09", "_-", "Zg=="]],
+] as const) {
+  case_run(`${name} reaches the provider unchanged`, `
+    ${fakeBrowser}
+    const chunks = ${JSON.stringify(chunks)};
+    const scout = new Scout();
+    scout.childNodes = chunks.map((textContent) => ({ nodeType: 3, textContent }));
+    connect(new EventTarget(), scout);
+    const failure = new Error("Expected provider failure");
+    let calls = 0;
+    const result = configure_scout((payload) => {
+      calls += 1;
+      if (payload !== (chunks.join("") || undefined)) throw new Error("Payload changed");
+      throw failure;
+    }).catch((cause) => cause);
+    if (await result !== failure || calls !== 1 || !scout.isConnected) {
+      throw new Error("Payload delivery or provider failure lifecycle changed");
+    }
+  `);
+}
+
+for (const [name, attributes, children] of [
+  ["element child", [{ name: "hidden", value: "" }], [{ nodeType: 1, textContent: "Az09_-" }]],
+  ["comment child", [{ name: "hidden", value: "" }], [{ nodeType: 8, textContent: "" }]],
+  ["unsupported attribute", [{ name: "hidden", value: "" }, { name: "src", value: "wrong" }], []],
+  ["missing hidden", [], []],
+  ["invalid hidden", [{ name: "hidden", value: "until-found" }], []],
+  ["whitespace payload", [{ name: "hidden", value: "" }], [{ nodeType: 3, textContent: " Az09_-\n" }]],
+  ["trailing newline", [{ name: "hidden", value: "" }], [{ nodeType: 3, textContent: "Az09_-\n" }]],
+  ["ordinary base64 punctuation", [{ name: "hidden", value: "" }], [{ nodeType: 3, textContent: "Az+/" }]],
+  ["raw JSON payload", [{ name: "hidden", value: "" }], [{ nodeType: 3, textContent: '{"now":{}}' }]],
+] as const) {
+  case_run(`${name} rejects before the provider`, `
+    ${fakeBrowser}
+    const scout = new Scout();
+    scout.attributes = ${JSON.stringify(attributes)};
+    scout.childNodes = ${JSON.stringify(children)};
+    connect(new EventTarget(), scout);
+    let calls = 0;
+    const result = configure_scout(() => { calls += 1; throw new Error("Provider ran"); })
+      .catch((cause) => cause);
+    if (!(await result instanceof Error) || calls !== 0 || !scout.isConnected) {
+      throw new Error("Malformed declaration reached provider or was removed");
+    }
+  `);
+}
+
+case_run("parser readiness captures all text and ignores a removed claimant", `
+  ${fakeBrowser}
+  const { getEventListeners } = await import("node:events");
+  const doc = new EventTarget();
+  doc.readyState = "loading";
+  let calls = 0;
+  configure_scout((payload) => {
+    calls += 1;
+    if (payload !== "Az09_-") throw new Error("Incomplete parser payload");
+    return new Promise(() => {});
+  });
+  const removed = connect(doc);
+  if (getEventListeners(doc, "DOMContentLoaded").length !== 1) throw new Error("Readiness listener missing");
+  removed.remove();
+  await Promise.resolve();
+  if (getEventListeners(doc, "DOMContentLoaded").length !== 0) throw new Error("Cancellation retained readiness listener");
+  const scout = connect(doc);
+  scout.remove();
+  connect(doc, scout);
+  await Promise.resolve();
+  if (getEventListeners(doc, "DOMContentLoaded").length !== 1) throw new Error("Move changed readiness listener ownership");
+  scout.childNodes.push({ nodeType: 3, textContent: "Az" });
+  await Promise.resolve();
+  if (calls !== 0) throw new Error("Provider ran before parsing completed");
+  scout.childNodes.push({ nodeType: 3, textContent: "09_-" });
+  doc.readyState = "interactive";
+  doc.dispatchEvent(new Event("DOMContentLoaded"));
+  doc.dispatchEvent(new Event("DOMContentLoaded"));
+  if (calls !== 1 || !scout.isConnected) throw new Error("Readiness duplicated or lost ignition");
+  if (getEventListeners(doc, "DOMContentLoaded").length !== 0) throw new Error("Ignition retained readiness listener");
+`);
+
+case_run("readiness observed before its event cleans up before terminal failure", `
+  ${fakeBrowser}
+  const { getEventListeners } = await import("node:events");
+  const doc = new EventTarget();
+  doc.readyState = "loading";
+  connect(doc);
+  let calls = 0;
+  const failure = new Error("Expected provider failure");
+  const result = configure_scout(() => { calls += 1; throw failure; }).catch((cause) => cause);
+  doc.readyState = "interactive";
+  const replacementDocument = new EventTarget();
+  const retired = connect(replacementDocument);
+  if (getEventListeners(doc, "DOMContentLoaded").length !== 0) throw new Error("Ignition retained readiness listener");
+  if (await result !== failure || retired.isConnected) throw new Error("Terminal failure retained a waiting claim");
+  doc.dispatchEvent(new Event("DOMContentLoaded"));
+  replacementDocument.dispatchEvent(new Event("DOMContentLoaded"));
+  if (calls !== 1) throw new Error("Readiness revived terminal Scout");
+`);
+
 case_run("removed waiting Scout releases its claim for a replacement", `
   ${fakeBrowser}
-  const doc = {};
+  const doc = new EventTarget();
   const first = connect(doc);
   const loser = connect(doc);
   first.remove();
@@ -125,7 +233,7 @@ case_run("removed waiting Scout releases its claim for a replacement", `
 
 case_run("late provider work cannot revive a removed Scout", `
   ${fakeBrowser}
-  const doc = {};
+  const doc = new EventTarget();
   const first = connect(doc);
   let resolveFirst;
   let calls = 0;
@@ -148,7 +256,7 @@ case_run("late provider work cannot revive a removed Scout", `
 
 case_run("same-document movement keeps one claim and provider call", `
   ${fakeBrowser}
-  const doc = {};
+  const doc = new EventTarget();
   const scout = connect(doc);
   let calls = 0;
   configure_scout(() => { calls += 1; return new Promise(() => {}); });
@@ -160,8 +268,8 @@ case_run("same-document movement keeps one claim and provider call", `
 
 case_run("cross-document movement cancels the old claim and makes the moved Scout inert", `
   ${fakeBrowser}
-  const firstDocument = {};
-  const secondDocument = {};
+  const firstDocument = new EventTarget();
+  const secondDocument = new EventTarget();
   const moved = connect(firstDocument);
   let resolveFirst;
   let calls = 0;
@@ -189,7 +297,7 @@ case_run("cross-document movement cancels the old claim and makes the moved Scou
 
 case_run("four Scouts leave only one claimant", `
   ${fakeBrowser}
-  const doc = {};
+  const doc = new EventTarget();
   const scouts = Array.from({ length: 4 }, () => connect(doc));
   let calls = 0;
   configure_scout(() => { calls += 1; return new Promise(() => {}); });

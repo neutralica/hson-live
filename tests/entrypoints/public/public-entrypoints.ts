@@ -67,6 +67,20 @@ import {
 declare const scoutProvider: ScoutProvider;
 const scoutContinuation: Promise<HostedDocumentContinuation> = configure_scout(scoutProvider);
 void scoutContinuation;
+declare const scoutOptions: Awaited<ReturnType<ScoutProvider>>;
+const legacyScoutProvider: ScoutProvider = () => scoutOptions;
+const payloadScoutProvider: ScoutProvider = async (payload) => {
+  const opaque: string | undefined = payload;
+  void opaque;
+  return scoutOptions;
+};
+void legacyScoutProvider;
+void payloadScoutProvider;
+void scoutProvider();
+void scoutProvider("Az09_-");
+void scoutProvider(undefined);
+// @ts-expect-error Scout delivers opaque transport text, not a decoded record.
+void scoutProvider({ now: {} });
 // @ts-expect-error Scout's browser registration is deliberately absent from the root entrypoint.
 import { configure_scout as rootScoutConfiguration } from "hson-live";
 void rootScoutConfiguration;

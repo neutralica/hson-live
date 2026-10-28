@@ -3,13 +3,20 @@ import { continue_hosted_document } from "../../dist/index.js";
 import { hsonLiveMap } from "hson-live/livemap";
 import { continuation_root_is_active } from "../../dist/api/continuation/continuation.common.js";
 import { prepare_hosted_document_internal } from "../../dist/api/continuation/continue-hosted-document.js";
+import { set_document_adoption_fault_hook_for_tests } from "../../dist/api/continuation/continuation.adopt.js";
 import { get_node_for_el } from "../../dist/api/livetree/utils/node-map-helpers.js";
 
 const scenario = location.pathname.slice(1);
+const smallPayload = "eyJvcGFxdWUiOiJBenlfLTA5In0";
+const largePayload = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-".repeat(16384) + "Zg==";
+const expectedPayload = scenario === "payload-large" || scenario === "parser-early" ? largePayload
+  : scenario === "scout-first" || scenario === "provider-first" ? undefined : smallPayload;
 const fail = (message) => { throw new Error(message); };
 const check = (value, message) => { if (!value) fail(message); };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const report = async (status, detail) => fetch(`/__result?scenario=${encodeURIComponent(scenario)}&status=${status}&detail=${encodeURIComponent(detail)}`);
+const canonicalNodes = (node) => node.localName === "hson-scout" ? []
+  : [node, ...Array.from(node.childNodes).flatMap(canonicalNodes)];
 
 const errors = [];
 window.addEventListener("error", (event) => {
@@ -28,18 +35,43 @@ async function until(test, message) {
 
 async function main() {
   check(customElements.get("hson-scout") !== undefined, "Scout did not register");
+  if (scenario === "parser-early" || scenario === "payload-module") {
+    check(document.readyState === (scenario === "parser-early" ? "loading" : "interactive"),
+      "Parser readiness fixture ran at the wrong boundary");
+    let calls = 0;
+    const failure = new Error("Expected capture-only provider failure");
+    const result = configure_scout((payload) => {
+      calls += 1;
+      check(document.readyState !== "loading", "Provider ran before parsing finished");
+      check(payload === expectedPayload, "Parser delivered incomplete or changed payload");
+      throw failure;
+    }).catch((cause) => cause);
+    await until(() => calls === 1, "Parser provider did not run");
+    check(await result === failure, "Parser capture failed");
+    const scout = document.querySelector("hson-scout");
+    check(calls === 1 && scout?.textContent === expectedPayload, "Capture changed provider failure lifecycle");
+    check(getComputedStyle(scout).display === "none", "Failed Scout exposed its payload");
+    check(document.body.childNodes.length === 2 && document.body.lastChild === scout,
+      "After-body parsing added unwanted whitespace nodes");
+    return;
+  }
   const html = document.documentElement;
   const body = document.body;
   const mainElement = document.querySelector("main");
   const button = document.querySelector("button");
+  const originalNodes = canonicalNodes(html);
   let calls = 0;
   let manualOptions;
   let suppliedOptions;
   let result;
   let releaseFirstProvider;
   const setupPromise = fetch(`/setup?scenario=${encodeURIComponent(scenario)}`).then((response) => response.json());
-  const configuration = async () => {
+  const configuration = async (payload) => {
     calls += 1;
+    if (scenario !== "manual-collision" && scenario !== "preparing-collision") {
+      check(payload === (scenario === "removed-waiting" || calls > 1 ? undefined : expectedPayload),
+        "Provider received changed or incomplete payload");
+    }
     if ((scenario === "removed-pending" || scenario === "cross-document-move") && calls === 1) {
       await new Promise((resolve) => { releaseFirstProvider = resolve; });
       return { root: html };
@@ -111,6 +143,13 @@ async function main() {
   } else {
     check(document.querySelector("hson-scout") !== null, "Parsed Scout was missing");
     check(document.body.lastElementChild?.tagName === "HSON-SCOUT", "Parser did not place Scout last in body");
+    check(document.body.childNodes.length === 2 && document.body.lastChild?.localName === "hson-scout",
+      "After-body placement added unwanted whitespace nodes");
+    if (scenario === "payload-split") {
+      const text = document.querySelector("hson-scout").firstChild;
+      text.splitText(7).splitText(5);
+      check(document.querySelector("hson-scout").childNodes.length === 3, "Text-node split fixture failed");
+    }
     if (scenario === "scout-first") {
       await sleep(60);
       check(document.querySelector("hson-scout") !== null, "Scout disappeared before provider");
@@ -153,12 +192,32 @@ async function main() {
   }
 
   const scoutElements = [...document.querySelectorAll("hson-scout")];
+  if (scenario === "payload" || scenario === "payload-large" || scenario === "payload-split") {
+    let removalMicrotaskRan = false;
+    const scout = scoutElements[0];
+    const remove = scout.remove;
+    scout.remove = function () {
+      remove.call(this);
+      queueMicrotask(() => { removalMicrotaskRan = true; });
+    };
+    set_document_adoption_fault_hook_for_tests(() => {
+      check(!removalMicrotaskRan, "Scout yielded between removal and exact adoption");
+      check(document.querySelector("hson-scout") === null && document.body.childNodes.length === 1
+        && document.body.firstChild === mainElement, "Scout or payload remained during exact adoption");
+      check(scoutElements.every((element) => !element.isConnected), "Scout remained connected during adoption");
+    });
+  }
   if (scenario === "provider-failure" || scenario === "preparation-failure" || scenario.startsWith("malformed")) {
     await until(() => calls === (scenario.startsWith("malformed") ? 0 : 1), "Unexpected provider invocation");
     await sleep(100);
     check(document.querySelector("hson-scout") !== null, "Scout disappeared before handoff");
     check((await result).status === "failure", "Pre-handoff failure did not reject result");
     check(errors.length === 0, "Scout failure was reported twice");
+    if (!scenario.startsWith("malformed")) {
+      check(document.querySelector("hson-scout").textContent === expectedPayload,
+        "Pre-handoff failure discarded the payload");
+      check(getComputedStyle(document.querySelector("hson-scout")).display === "none", "Failure exposed payload");
+    }
     check(html === document.documentElement && button === document.querySelector("button"), "Failure changed application DOM");
     if (scenario === "preparation-failure") {
       document.querySelector("hson-scout").remove();
@@ -186,15 +245,20 @@ async function main() {
   await until(() => document.querySelector("hson-scout") === null, "Scout did not remove itself");
   await until(() => continuation_root_is_active(html), "Hosted continuation never became active");
   const outcome = await result;
+  set_document_adoption_fault_hook_for_tests(undefined);
   check(outcome.status === "success" && outcome.continuation.mirror.status === "active"
     && outcome.continuation.echo.sync.status === "caught_up",
   "Scout did not return the ordinary completed hosted continuation");
   check(scoutElements.every((element) => get_node_for_el(element) === undefined),
     "Scout entered LiveTree or Mirror correspondence");
-  check(document.body.lastElementChild === mainElement, "Body retained infrastructure child");
+  check(document.body.childNodes.length === 1 && document.body.lastChild === mainElement,
+    "Body retained Scout, payload, or whitespace nodes");
   check(html === document.documentElement && body === document.body
     && mainElement === document.querySelector("main") && button === document.querySelector("button"),
   "SSR DOM identity changed");
+  const adoptedNodes = canonicalNodes(html);
+  check(originalNodes.length === adoptedNodes.length
+    && originalNodes.every((node, index) => node === adoptedNodes[index]), "Canonical SSR nodes were replaced or reordered");
   const baseline = await fetch("/handled").then((response) => response.json());
   await until(async () => {
     button.click();
