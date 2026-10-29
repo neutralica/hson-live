@@ -26,12 +26,14 @@ type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; comp
 export function static_part_reference_diagnostics(facts: PartSourceFacts): readonly StaticSchemaDiagnostic[] {
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
-  const report = (where: PartSourceLocation | undefined, code: string, message: string): void => {
+  const report = (where: PartSourceLocation | undefined, code: string, message: string, declaration?: PartSourceLocation): void => {
     if (where?.precision !== "exact") return;
     const key = JSON.stringify([where.file, where.start, where.end, code, message]);
     if (reported.has(key)) return;
     reported.add(key);
-    output.push({ file: where.file, start: where.start, end: where.end, code, message });
+    output.push({ file: where.file, start: where.start, end: where.end, code, message,
+      ...(declaration?.precision !== "exact" ? {} : { related: [{ file: declaration.file, start: declaration.start, end: declaration.end,
+        message: "Relevant Part declaration." }] }) });
   };
   for (const document of facts.documents) {
     // Grammar and declared-name conflicts are local facts; they require no receiver shape.
@@ -58,7 +60,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       if (isDefinition && iterator.issue !== undefined || ordinaryReceiver) report(iterator.location, "HSON_PART_REFERENCE_INVALID",
         iterator.issue ?? "Part iteration is only allowed within a governed Part definition.");
     }
-    if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message);
+    if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message, issue.declaration);
     // A known invocation can disprove its own collection input. It never supplies
     // a universal Schema for the reusable definition. Nested value checks also
     // require evidence that every enclosing iterator reaches the checked source.
@@ -116,7 +118,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
               && (kind === "object" ? node.kind !== "object" : node.kind !== "array" && node.kind !== "tuple"));
           }
           if (invalid) report(argument.valueLocation?.precision === "exact" ? argument.valueLocation : argument.nameLocation,
-            "HSON_PART_REFERENCE_INVALID", `Part iterator ${JSON.stringify(iterator.declaration!.attribute)} requires ${kind} Data for this invocation.`);
+            "HSON_PART_REFERENCE_INVALID", `Part iterator ${JSON.stringify(iterator.declaration!.attribute)} requires ${kind} Data for this invocation.`, iterator.location);
         }
       }
     }
@@ -194,16 +196,19 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       if (definition.admission !== "qualified" || definition.parameterCompleteness !== "complete") continue;
       const supplied = new Set(arguments_.map(attribute => part_argument_name(attribute.name)!.name));
       const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
+      const contractLocation = (name: string) => definition.bindingSources?.declarations.find(binding => binding.incoming === name)?.location
+        ?? definition.bindingSources?.references.find(use => use.reference.namespace === "incoming" && use.reference.name === name)?.root
+        ?? member.declaration;
       for (const name of vocabulary) if (!supplied.has(name) && definition.signature?.requiredness.get(name) === "required") {
         report(connector.location.precision === "exact" ? connector.location : at?.nameLocation ?? lib?.nameLocation,
-          "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
+          "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`, contractLocation(name));
       }
       for (const attribute of arguments_) {
         const argument = part_argument_name(attribute.name)!;
         if (!vocabulary.has(argument.name)) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`, member.declaration);
         } else if (argument.kind !== definition.signature?.parameters.get(argument.name)) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface of ${JSON.stringify(`${libraryName}/${memberName}`)}.`);
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface of ${JSON.stringify(`${libraryName}/${memberName}`)}.`, contractLocation(argument.name));
         }
       }
     }

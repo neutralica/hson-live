@@ -5,6 +5,8 @@ import { spawn } from "node:child_process";
 import { resolveCliArgsFromVSCodeExecutablePath } from "@vscode/test-electron";
 import { validateVsix, compareInstalledPayload } from "../../scripts/vscode-local-lib.mjs";
 
+import { binding_color_port, monitor_binding_colors } from "./binding-colors.mjs";
+
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const executable = process.env.HSON_VSCODE_EXECUTABLE ?? "/Applications/Visual Studio Code.app/Contents/MacOS/Code";
 const testRoot = await realpath(await mkdtemp('/tmp/hson-house-'));
@@ -76,9 +78,15 @@ try {
     if (!comparison.match) throw new Error('Installed payload differs: ' + JSON.stringify(comparison));
   }
   console.log('HOUSE_WORKSPACE=' + workspace);
-  await run([workspace, '--new-window', '--skip-welcome', '--skip-release-notes', '--disable-updates', '--disable-workspace-trust', ...profile,
-    '--extensionDevelopmentPath=' + developmentPath, '--extensionTestsPath=' + join(root, '.test-dist/house-integration.cjs')],
-    { ...process.env, HSON_HOUSE_WORKSPACE: workspace });
+  const colorPort = await binding_color_port();
+  const colors = monitor_binding_colors(workspace, colorPort);
+  try {
+    await run([workspace, '--new-window', '--skip-welcome', '--skip-release-notes', '--disable-updates', '--disable-workspace-trust', ...profile,
+      '--remote-debugging-port=' + colorPort,
+      '--extensionDevelopmentPath=' + developmentPath, '--extensionTestsPath=' + join(root, '.test-dist/house-integration.cjs')],
+      { ...process.env, HSON_HOUSE_WORKSPACE: workspace, HSON_BINDING_COLORS: '1', HSON_BINDING_SOURCE_ROOT: resolve(root, '../..') });
+  } finally { colors.stop(); await colors.done; }
+  console.log(await readFile(join(workspace, 'binding-color-report.json'), 'utf8'));
   console.log(await readFile(join(workspace, 'house-report.json'), 'utf8'));
 } finally {
   if (process.env.HSON_HOUSE_KEEP !== '1') await rm(testRoot, { recursive: true, force: true });

@@ -2,11 +2,21 @@ import type ts from "typescript";
 import { install_live_schema_view } from "./schema-editor-view.js";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges } from "./schema-editor-proof.js";
 import { HsonEditorCompletionCache } from "./editor-completion.js";
+import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
+import { part_definition_target } from "../../../src/internal/editor-introspection/part-definition-target.js";
 
 /** Only this boundary translates positions. Neither service ever writes authored source. */
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string, registerEvidence?: (file: string, text: string | undefined) => void): ts.LanguageService {
   const view = install_live_schema_view(typescript, host, projectPath, registerEvidence);
   const completion = new HsonEditorCompletionCache(typescript);
+  const hsonDefinition = (file: string, offset: number): ts.DefinitionInfoAndBoundSpan | undefined => {
+    const program = view.authoredService.getProgram();
+    const target = program === undefined ? undefined : part_definition_target(collect_part_source_facts(typescript, program), file, offset);
+    return target === undefined ? undefined : { textSpan: { start: target.origin.start, length: target.origin.end - target.origin.start }, definitions: [{
+      fileName: target.target.file, textSpan: { start: target.target.start, length: target.target.end - target.target.start },
+      kind: typescript.ScriptElementKind.variableElement, name: target.name, containerKind: typescript.ScriptElementKind.unknown, containerName: "",
+    }] };
+  };
   const hsonCompletions = (file: string, offset: number) => {
     const program = view.authoredService.getProgram();
     const source = program?.getSourceFile(file);
@@ -87,10 +97,12 @@ export function create_schema_language_service(typescript: typeof ts, service: t
       ...(result.displayParts === undefined ? {} : { displayParts: result.displayParts.map(part => ({ ...part, text: view.display_text(file, part.text) })) }),
     };
   };
-  proxy.getDefinitionAtPosition = (file, offset) => documents(service.getDefinitionAtPosition(file, position(file, offset)));
+  proxy.getDefinitionAtPosition = (file, offset) => hsonDefinition(file, offset)?.definitions ?? documents(service.getDefinitionAtPosition(file, position(file, offset)));
   proxy.getTypeDefinitionAtPosition = (file, offset) => documents(service.getTypeDefinitionAtPosition(file, position(file, offset)));
   proxy.getImplementationAtPosition = (file, offset) => documents(service.getImplementationAtPosition(file, position(file, offset)));
   proxy.getDefinitionAndBoundSpan = (file, offset) => {
+    const hson = hsonDefinition(file, offset);
+    if (hson !== undefined) return hson;
     const result = service.getDefinitionAndBoundSpan(file, position(file, offset));
     const textSpan = result === undefined ? undefined : span(file, result.textSpan);
     return result === undefined || textSpan === undefined ? undefined : { ...result, textSpan, definitions: documents(result.definitions) };

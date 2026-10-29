@@ -255,7 +255,7 @@ for (const [sigil, scope] of [['$', 'dollar'], ['%', 'percent'], ['^', 'caret']]
   assert.deepEqual(actual.slice(actual.findIndex(token => token.text === sigil), actual.findIndex(token => token.text === sigil) + 4).map(({ text, scopes }) => ({ text, scopes })), [
     { text: sigil, scopes: [...base, `keyword.operator.interpolation.${scope}.hson`] },
     { text: '{', scopes: [...base, 'punctuation.definition.template-expression.begin.hson'] },
-    { text: 'value', scopes: sigil === '$' ? base : [...base, 'variable.other.property.hson'] },
+    { text: 'value', scopes: sigil === '$' ? base : [...base, 'variable.other.property.hson', ...(sigil === '%' ? ['variable.parameter.incoming.hson'] : [])] },
     { text: '}', scopes: [...base, 'punctuation.definition.template-expression.end.hson'] },
   ]);
   assert.ok(has(actual, sigil, `keyword.operator.interpolation.${scope}.hson`));
@@ -532,4 +532,39 @@ if (process.env.HSON_VSCODE_THEMES) {
   }
 } else {
   console.log('skip - installed theme foreground checks (set HSON_VSCODE_THEMES to theme-defaults/themes)');
+}
+
+// Both iterator families permit an omitted first alias and a second alias.
+for (const form of ['for:item', 'for:item:i', 'for::i', 'per:key:value', 'per::value']) {
+  for (const scope of ['source.hson', 'text.html.markdown']) {
+    const source = `<hson-part ${form}=^{blocks}/>`;
+    const tokens = await tokenize(scope, scope === 'source.hson' ? source : '```hson\n' + source + '\n```');
+    assert.ok(has(tokens, form, 'keyword.control.iteration.hson'), `${scope}: ${form}`);
+    for (const alias of form.split(':').slice(1).filter(Boolean)) {
+      assert.ok(has(tokens, alias, 'keyword.control.iteration.hson'), `${scope}: alias ${alias}`);
+    }
+  }
+}
+
+const referenceExample = `<div class="column" hson:part part:optional
+  blocks:data=%{someBlocks}
+  <hson-part for:each=^{blocks} at=^{each.kind} data:block=^{each}/>
+/>`;
+for (const scope of ['source.hson', 'text.html.markdown']) {
+  for (const quoted of [false, true]) {
+    for (const renamed of [false, true]) {
+      let source = renamed ? referenceExample.replaceAll('blocks', 'rows').replaceAll('each', 'entry') : referenceExample;
+      if (quoted) source = source.replace(/=([%^]\{[^}]+\})/g, '="$1"');
+      source = source.replace('/>', ' missing=^{unknown}/>');
+      const tokens = await tokenize(scope, scope === 'source.hson' ? source : '```hson\n' + source + '\n```');
+      assert.ok(has(tokens, 'someBlocks', 'variable.parameter.incoming.hson'));
+      for (const root of [renamed ? 'rows' : 'blocks', renamed ? 'entry' : 'each', 'unknown']) {
+        assert.ok(has(tokens, root, 'variable.other.property.hson'));
+        assert.ok(!has(tokens, root, 'variable.parameter.incoming.hson'));
+      }
+      assert.ok(has(tokens, 'kind', 'meta.reference.member.hson'));
+      assert.ok(has(tokens, '%', 'keyword.operator.interpolation.percent.hson'));
+      assert.ok(has(tokens, '^', 'keyword.operator.interpolation.caret.hson'));
+    }
+  }
 }

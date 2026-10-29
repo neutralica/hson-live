@@ -9,6 +9,7 @@ await build({
   absWorkingDir: extensionRoot,
   entryPoints: {
     house: "tests/house.test.ts",
+    bindings: "tests/bindings.test.ts",
     "native-semantic": "tests/native-semantic-tokens.test.ts",
     "house-integration": "tests/integration/house.ts",
     unit: "tests/runtime.test.ts",

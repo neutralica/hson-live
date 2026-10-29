@@ -13,6 +13,7 @@
     "src/**/*.ts",
     "tests/runtime.test.ts",
     "tests/house.test.ts",
+    "tests/bindings.test.ts",
     "tests/native-semantic-tokens.test.ts",
     "tests/workspace-diagnostics.test.ts",
     "tests/settings.test.ts",

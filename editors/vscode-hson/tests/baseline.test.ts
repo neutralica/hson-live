@@ -30,7 +30,7 @@ async function run(): Promise<void> {
         const start = text.indexOf(path + '}');
         const pieces = emitted.filter(token => token.range.start >= start && token.range.end <= start + path.length);
         assert.equal(pieces.map(token => text.slice(token.range.start, token.range.end)).join(''), path);
-        assert.ok(pieces.every(token => token.type === 'hsonReference' && token.scopes.includes('variable.other.property.hson')), path);
+        assert.ok(pieces.every(token => token.type === (path === 'data' ? 'hsonIncomingReference' : 'hsonReference') && token.scopes.includes('variable.other.property.hson')), path);
         if (path.includes('.')) assert.deepEqual(pieces.map(token => token.modifiers), [[], ['hsonReferenceSeparator'], ['hsonMember']]);
       }
       for (const sigil of ['%', '^']) {

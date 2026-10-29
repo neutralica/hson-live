@@ -315,6 +315,14 @@
     },
     {
       "scope": [
+        "variable.parameter.incoming.hson"
+      ],
+      "settings": {
+        "foreground": "#d99db5"
+      }
+    },
+    {
+      "scope": [
         "variable.other.property.hson",
         "punctuation.accessor.hson",
         "punctuation.section.selector.begin.hson",
@@ -402,6 +410,7 @@
     "hsonColon": "#5b7594",
     "hsonEscape": "#d4ba86",
     "hsonInvalid": "#f08b94",
+    "hsonIncomingReference": "#d99db5",
     "hsonReference": "#d99db5",
     "hsonInterpolationDelimiter": "#7f718b",
     "hsonQuote": "#778571",

@@ -199,7 +199,7 @@ const workerRoute = "Module-level test body launches the target through reposito
 const browserRoute = "Module-level setup bundles/serves the target, launches Chrome, navigates to the test page and awaits browser results.";
 const editorRoute = "Module-level VS Code launch selects the built extensionTestsPath and awaits completion; build-tests maps it to the declared source.";
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
-const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","237517ae1697586119f61977a9f80443565c110ef181b90481d450b2fed3d40d"]];
+const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","481044d2398b6a059e38d087ce1b233aefbf6f9dc6a2617d53c043831f3a03bc"]];
 
 export const declaredExecution = Object.freeze({
   "scripts/run-document-css-reconciliation-browser.mjs": { sha256: "d2f13b8403334bd2af3f8ee86f741992a2305221c6090258a95410be48eef3d0", route: browserRoute,
@@ -210,7 +210,7 @@ export const declaredExecution = Object.freeze({
     targets: [["editors/vscode-hson/tests/integration/baseline.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-consumer.mjs": { sha256: "3f56c4a8bf99f6a9ac2521086a8005e3e060cdec530923822ea70fcfad215be3", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run-house.mjs": { sha256: "9c7ba17f87b2986fdea20fdafe5f66b349770000f19afc07a6a75ec725e5aa2a", route: editorRoute,
+  "editors/vscode-hson/tests/integration/run-house.mjs": { sha256: "cdc225ad029a61872810501a7ff4abe2231f49faa9d719b95ddfe7d9d7dcae78", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/house.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-legibility.mjs": { sha256: "8b1e8b8492d0c996e932e31955ec7afd3606b4c186c69bb486607a0318b8c568", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/legibility.ts","editor-runner"]], sources: [...editorSources] },

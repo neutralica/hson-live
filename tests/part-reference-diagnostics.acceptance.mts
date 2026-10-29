@@ -706,5 +706,35 @@ check("known names and representation mismatches survive dynamically evaluated v
   const duplicate = application('<main @:same <hson-part @:same at="components/x" wrong="${dynamic}"/>/>', definition);
   assert.deepEqual(inspect(duplicate).codes, [], 'invalid QUAD ownership withdraws value-independent contract evidence');
 });
+check("shared binding declarations enrich existing diagnostics without moving their primary ranges", () => {
+  const definition = '{x:{kind:"document",document:Hson.document`<main hson:part model:data=%{payload} <hson-part doc:body=^{model}/>/ >`}}'.replace('/ >', '/>');
+  const mismatch = inspect(application('<hson-part at="components/x"/>', definition));
+  const issue = mismatch.diagnostics.find(issue => issue.message.includes('same declared representation'))!;
+  assert.ok(issue);
+  assert.equal(mismatch.text.slice(issue.start, issue.end), '^{model}');
+  assert.equal(issue.related?.length, 1);
+  assert.equal(mismatch.text.slice(issue.related![0]!.start, issue.related![0]!.end), 'model');
+  assert.equal(issue.related![0]!.start, mismatch.text.indexOf('model:data'));
+  assert.equal(issue.related![0]!.file, file('app.ts'));
+  const validDefinition = definition.replace('<hson-part doc:body=^{model}/>', '<p title=^{model.title}/>');
+  const contract = inspect(application('<hson-part at="components/x"/>', validDefinition));
+  assert.deepEqual(contract.codes, ['HSON_PART_ARGUMENT_MISSING']);
+  const missing = contract.diagnostics[0]!;
+  assert.equal(contract.text.slice(missing.related![0]!.start, missing.related![0]!.end), 'model');
+  assert.equal(collect_part_source_facts(ts, contract.program), contract.facts, 'immutable Program reuses analysis for diagnostics, completion and navigation');
+  const edited = inspect(application('<hson-part at="components/x"/>', validDefinition.replaceAll('model', 'renamed')));
+  assert.notEqual(edited.facts, contract.facts);
+  assert.equal(edited.text.slice(edited.diagnostics[0]!.related![0]!.start, edited.diagnostics[0]!.related![0]!.end), 'renamed');
+});
+check("native TypeScript member navigation retains authored declarations through Parts mapped types", () => {
+  const source = imports + 'const components = { heading: {kind:"document",document:"<h1 hson:part/>"} } as const;'
+    + 'const loc = maps.locus.create({components:{parts:components}}); components.heading; loc.parts.components.heading;';
+  edit('app.ts', source);
+  const direct = service.getDefinitionAtPosition(file('app.ts'), source.indexOf('components.heading') + 12);
+  const governed = service.getDefinitionAtPosition(file('app.ts'), source.lastIndexOf('heading') + 2);
+  assert.equal(direct?.length, 1); assert.equal(governed?.length, 1);
+  assert.deepEqual(governed![0]!.textSpan, direct![0]!.textSpan);
+  assert.equal(governed![0]!.textSpan.start, source.indexOf('heading:'));
+});
 service.dispose();
 events.terminal("pass");

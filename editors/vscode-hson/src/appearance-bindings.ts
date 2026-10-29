@@ -14,7 +14,8 @@ export const syntaxBindings = {
   "iteration.name": { scopes: [scope.iteration], selector: "hsonIteration" },
   "reference.incoming.marker": { scopes: [scope.interpolationPercent], selector: "hsonIncomingReferenceSigil" },
   "reference.local.marker": { scopes: [scope.interpolationCaret], selector: "hsonLocalReferenceSigil" },
-  "reference.content": { scopes: [scope.referencePath], selector: "hsonReference" },
+  "reference.incoming.content": { scopes: [scope.incomingReferenceName], selector: "hsonIncomingReference" },
+  "reference.local.content": { scopes: [scope.referencePath], selector: "hsonReference" },
   "reference.member": { scopes: [scope.referenceMember], selector: "hsonReference.hsonMember" },
   "reference.separator": { scopes: [scope.referenceSeparator], selector: "hsonReference.hsonReferenceSeparator" },
   "reference.selectorOpen": { scopes: [scope.selectorBegin], selector: "hsonReference.hsonSelectorOpen" },
@@ -66,7 +67,8 @@ export const tokenAppearancePaths = {
   "hsonColon": "punctuation.colon",
   "hsonEscape": "escape.character",
   "hsonInvalid": "invalid.character",
-  "hsonReference": "reference.content",
+  "hsonReference": "reference.local.content",
+  "hsonIncomingReference": "reference.incoming.content",
   "hsonInterpolationDelimiter": "punctuation.referenceOpen",
   "hsonQuote": "punctuation.quoteOpen"
 } as const;
@@ -82,7 +84,7 @@ export const legacyRolePaths = {
   "quad": "identity.quad",
   "incomingReference": "reference.incoming.marker",
   "localReference": "reference.local.marker",
-  "referencePath": "reference.content",
+  "referencePath": "reference.local.content",
   "text": "value.string",
   "number": "value.number",
   "primitive": "value.primitive",

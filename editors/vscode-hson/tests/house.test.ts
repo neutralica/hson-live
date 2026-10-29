@@ -89,7 +89,7 @@ async function run() {
         assert.equal(at(match.index)?.type, type);
         assert.deepEqual(at(match.index)?.range, { start: match.index, end: match.index + 1 });
         assert.equal(at(match.index + 1)?.type, 'hsonInterpolationDelimiter');
-        assert.equal(at(match.index + 2)?.type, 'hsonReference');
+        assert.equal(at(match.index + 2)?.type, match[0].startsWith('%') ? 'hsonIncomingReference' : 'hsonReference');
       }
     }
     for (const [needle, type] of [['hson:', 'hsonDeclaration'], ['slide:', 'hsonReceiving'], ['part:', 'hsonDirective'],
@@ -176,7 +176,7 @@ async function run() {
     assert.ok(analysis.uses.every(use => use.context === 'iteration'
       && use.reference.namespace === 'local' && use.binding?.kind === 'data'));
   }
-  for (const entry of [reference.incoming.marker, reference.local.marker, reference.content, reference.member,
+  for (const entry of [reference.incoming.marker, reference.local.marker, reference.local.content, reference.member,
     reference.separator, reference.selectorOpen, reference.selectorClose, punctuation.referenceOpen, punctuation.referenceClose]) {
     for (const example of entry.examples) {
       const analysis = analyzeExample('<section slide:data=%{payload} slides:data=%{collection} ' + example.code + '/>');

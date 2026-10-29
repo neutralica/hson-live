@@ -6,6 +6,8 @@ import { document_semantic_tokens, hsonSemanticLegend, nativeTokenTypes, nativeT
 import { load_hson_grammar } from "../../src/highlighting.js";
 import { nativeCompositionSupported } from "./native-composition.js";
 
+import { run_binding_intelligence } from "./bindings.js";
+
 const pause = () => new Promise(resolve => setTimeout(resolve, 100));
 function decode(document: vscode.TextDocument, tokens: vscode.SemanticTokens, legend: vscode.SemanticTokensLegend) {
   let line = 0, character = 0;
@@ -24,6 +26,7 @@ export async function run(): Promise<void> {
   assert.ok(workspace);
   const extension = vscode.extensions.getExtension('terminal-gothic.hson-language');
   assert.ok(extension); await extension.activate();
+  await run_binding_intelligence(workspace, extension.extensionPath);
   const manifest = JSON.parse(await readFile(join(extension.extensionPath, 'package.json'), 'utf8'));
   assert.deepEqual(hsonSemanticLegend.tokenTypes, [...nativeTokenTypes,
     ...manifest.contributes.semanticTokenTypes.map((entry: { id: string }) => entry.id)]);

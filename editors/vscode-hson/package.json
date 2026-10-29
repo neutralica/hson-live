@@ -39,7 +39,7 @@
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
-    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/development-actions.cjs && node ./.test-dist/structural.cjs && node ./.test-dist/status-ui.cjs && node ./.test-dist/house.cjs && node ./.test-dist/native-semantic.cjs && node ./tests/themes.test.mjs",
+    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/development-actions.cjs && node ./.test-dist/structural.cjs && node ./.test-dist/status-ui.cjs && node ./.test-dist/house.cjs && node ./.test-dist/bindings.cjs && node ./.test-dist/native-semantic.cjs && node ./tests/themes.test.mjs",
     "test:local-host-process": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/local-host-process.cjs && node ./.test-dist/local-host-extension.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
@@ -421,6 +421,7 @@
       },
       {
         "id": "hsonReceiving",
+        "superType": "parameter",
         "description": "Hson receiving"
       },
       {
@@ -429,6 +430,7 @@
       },
       {
         "id": "hsonIteration",
+        "superType": "variable",
         "description": "Hson iteration"
       },
       {
@@ -494,6 +496,11 @@
       {
         "id": "hsonInvalid",
         "description": "Hson invalid"
+      },
+      {
+        "id": "hsonIncomingReference",
+        "superType": "parameter",
+        "description": "Hson referencePath"
       },
       {
         "id": "hsonReference",
@@ -591,6 +598,10 @@
           ],
           "hsonInvalid": [
             "invalid.illegal.hson"
+          ],
+          "hsonIncomingReference": [
+            "variable.parameter.incoming.hson",
+            "variable.parameter"
           ],
           "hsonReference": [
             "variable.other.property.hson",
@@ -798,6 +809,10 @@
           "hsonInvalid": [
             "invalid.illegal.hson"
           ],
+          "hsonIncomingReference": [
+            "variable.parameter.incoming.hson",
+            "variable.parameter"
+          ],
           "hsonReference": [
             "variable.other.property.hson",
             "punctuation.accessor.hson",
@@ -1003,6 +1018,10 @@
           ],
           "hsonInvalid": [
             "invalid.illegal.hson"
+          ],
+          "hsonIncomingReference": [
+            "variable.parameter.incoming.hson",
+            "variable.parameter"
           ],
           "hsonReference": [
             "variable.other.property.hson",

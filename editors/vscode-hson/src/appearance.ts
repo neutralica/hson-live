@@ -7,8 +7,8 @@
  * Intensity blends foreground toward ui.editor["editor.background"] at build time.
  * General syntax and UI are emitted only into the optional House themes.
  *
- * Current shared classifications: incoming/local reference contents share
- * reference.content (incoming/local can gain their own content entries later); strings and boolean/null each share one classification.
+ * Incoming parameters and local roots have independent classifications.
+ * Local roots retain a shared fallback without declaration-origin resolution.
  * quoteClose shares quoteOpen's semantic classification, and identity's colon
  * shares punctuation.colon. Keep each pair's effective styles equal;
  * generation rejects divergence rather than promising unavailable distinctions.
@@ -128,6 +128,11 @@ export const HSON_APPEARANCE = {
       },
       reference: {
         incoming: {
+          content: {
+            label: "Incoming parameter name",
+            examples: [{ code: '<p "%{slide}"/>', highlight: "slide" }],
+            inherits: "reference.local.content"
+          },
           marker: {
             label: "Incoming reference marker",
             examples: [
@@ -140,6 +145,17 @@ export const HSON_APPEARANCE = {
           }
         },
         local: {
+          content: {
+            label: "Local reference root (unresolved or shared binding fallback)",
+            examples: [
+              { code: "<p \"^{slide.title}\"/>", highlight: "slide" }
+            ],
+            house: {
+              dark: { foreground: "#d99db5" },
+              light: { foreground: "#28313D" }
+            }
+          },
+
           marker: {
             label: "Local reference marker",
             examples: [
@@ -151,44 +167,33 @@ export const HSON_APPEARANCE = {
             }
           }
         },
-        content: {
-          label: "Reference content (incoming and local)",
-          examples: [
-            { code: "<p \"%{slide}\"/>", highlight: "slide" },
-            { code: "<p \"^{slide.title}\"/>", highlight: "slide" }
-          ],
-          house: {
-            dark: { foreground: "#d99db5" },
-            light: { foreground: "#28313D" }
-          }
-        },
         member: {
           label: "Local reference member",
           examples: [
             { code: "<p \"^{slide.title}\"/>", highlight: "title" }
           ],
-          inherits: "reference.content"
+          inherits: "reference.local.content"
         },
         separator: {
           label: "Reference member separator",
           examples: [
             { code: "<p \"^{slide.title}\"/>", highlight: "." }
           ],
-          inherits: "reference.content"
+          inherits: "reference.local.content"
         },
         selectorOpen: {
           label: "Reference selector opening bracket",
           examples: [
             { code: "<p \"^{slides[0]}\"/>", highlight: "[" }
           ],
-          inherits: "reference.content"
+          inherits: "reference.local.content"
         },
         selectorClose: {
           label: "Reference selector closing bracket",
           examples: [
             { code: "<p \"^{slides[0]}\"/>", highlight: "]" }
           ],
-          inherits: "reference.content"
+          inherits: "reference.local.content"
         }
       },
       value: {

@@ -46,9 +46,10 @@ function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined
   return undefined;
 }
 
-export function hson_highlights(grammar: IGrammar, fileName: string, text: string): readonly HsonHighlight[] {
-  const tags = discover_hson_tagged_templates(fileName, text);
-  const calls = discover_static_from_hson_sources(fileName, text);
+export function hson_highlights(grammar: IGrammar, fileName: string, text: string,
+  discovery?: Readonly<{ tags?: ReturnType<typeof discover_hson_tagged_templates>; calls?: ReturnType<typeof discover_static_from_hson_sources> }>): readonly HsonHighlight[] {
+  const tags = discovery?.tags ?? discover_hson_tagged_templates(fileName, text);
+  const calls = discovery?.calls ?? discover_static_from_hson_sources(fileName, text);
   const result: HsonHighlight[] = [];
   const noHoles: readonly HostSourceRange[] = [];
   const interpolated = tags.interpolated.map(source => ({ source, holes: source.substitutionRanges }));

@@ -7,20 +7,21 @@ import { is_official_hson_package_binding, read_supported_hson_import_symbols } 
 import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
-import { HsonSourceProvenanceBuilder, type HsonSourceLexicalCollector, type HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
+import type { HsonSourceLexicalCollector, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
 import { tokenize_authored_document_library, scan_hson_template_segments, hson_grammar_checkpoint, hson_interpolation_roles, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { assemble_authored_document, qualify_authored_document_source } from "../../api/document/hson-authored.js";
+import { qualify_authored_document_source } from "../../api/document/hson-authored.js";
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { PART_DECLARATION, part_declaration_issue, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration } from "../part-placeholder.js";
+import { PART_DECLARATION, part_declaration_issue, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_source } from "./schema-annotation.js";
 import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { OBJECT_VALUE, type SchemaDataPath } from "./data-projection.js";
+import { project_part_bindings, parse_part_binding_source, type PartBindingSources } from "../editor-introspection/part-bindings.js";
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
@@ -84,10 +85,12 @@ export type PartDocumentSource = Readonly<{
     enclosingIterators?: readonly PartSourceLocation[] }>[];
   /** Nested node coverage; iterator source attributes retain their enclosing bindings. */
   lexicalScopes: readonly PartLexicalScopeSource[];
+  /** Exact declarations and reference roots from the same lexical analysis. */
+  bindingSources?: PartBindingSources;
   definitionRoot?: PartSourceLocation;
   partDeclarations: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string }>[];
   optionalStructures: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string; references?: number }>[];
-  referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string }>[];
+  referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string; declaration?: PartSourceLocation }>[];
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
   receivers: readonly Readonly<{ batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible";
     /** A single immutable producer in a known receiving field; its values may remain unknown. */
@@ -161,7 +164,10 @@ export function static_part_inventory(typescript: typeof ts, checker: ts.TypeChe
 }
 
 /** Bounded, demand-driven facts over existing official sources and receiving candidates. */
+const sourceFacts = new WeakMap<ts.Program, PartSourceFacts>();
 export function collect_part_source_facts(typescript: typeof ts, program: ts.Program): PartSourceFacts {
+  const cached = sourceFacts.get(program);
+  if (cached !== undefined) return cached;
   const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program);
   const schemas = new Map<string, CompiledHsonSchema | undefined>();
   const schemaDeclarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>();
@@ -243,7 +249,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const partDeclarations: { location: PartSourceLocation; root: boolean; issue?: string }[] = [];
     const roots: PartSourceLocation[] = [];
-    const referenceIssues: { location: PartSourceLocation; message: string }[] = [];
+    const referenceIssues: { location: PartSourceLocation; message: string; declaration?: PartSourceLocation;
+      reference?: PartReference }[] = [];
     const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure", typed?: "data" | "doc"): void => {
       const mapped = range === undefined ? undefined : map(range);
       if (mapped === undefined) return;
@@ -360,6 +367,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const names = new Set<string>();
     let parameterCompleteness: "complete" | "unknown" = "unknown";
     let signature: PartDocumentSource["signature"];
+    let bindingSources: PartBindingSources | undefined;
     const completeAnalysis = qualified && scanned;
     // Quoted slots cannot add structural declarations. Their values remain
     // opaque, so local lexical facts survive without proving an input interface.
@@ -380,21 +388,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     }
     if (analysisText !== undefined && (analysisText === text ? staticStructure : slots.length === 0 || valueSlots(analysisText))) {
       try {
-        const builder = new HsonSourceProvenanceBuilder();
-        const tokens = tokenize_authored_document_library(analysisText, builder,
-          slots.length === 0 ? undefined : { slots, substitutions: slots.map(() => "") });
-        for (const token of tokens) {
-          if (token.kind === "OPEN") for (const attr of token.rawAttrs) if (attr.value?.direct === true) {
-            if (is_part_iterator_attribute(attr.name) || is_part_receiving_attribute(token.tag, attr.name)
-              || attr.name === PART_DECLARATION || attr.name === PART_OPTIONAL) throw new Error("Dynamic Part declaration is not lexical evidence.");
-            // Never interpret reference spellings manufactured by a dynamic value
-            // or concatenated across a slot, including typed connector forwarding.
-            attr.value.text = "";
-          }
-          if (token.kind === "TEXT" && token.directValue !== undefined) token.directValue = "";
-        }
-        const root = assemble_authored_document(tokens, [], new Map(), builder);
-        const provenance = builder.finalize(root, analysisText.length);
+        const { root, provenance } = parse_part_binding_source(analysisText, slots);
         const paths = new Map<HsonNode, readonly number[]>();
         const pending: { node: HsonNode; path: readonly number[] }[] = [{ node: root, path: [] }];
         while (pending.length) {
@@ -414,8 +408,12 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             issue.attribute?.startsWith("^{") ? "name" : "value");
           if (issue.message === "Invalid Part placeholder." && referenceIssues.some(prior => prior.message === "Invalid Part property reference."
             && owner.start <= prior.location.start && prior.location.end <= owner.end)) return;
-          referenceIssues.push({ location: owner, message: issue.message });
+          referenceIssues.push({ location: owner, message: issue.message, reference: issue.reference });
         });
+        if (analysisText === text && spellingEligible) bindingSources = project_part_bindings(root, analysis, provenance, text, map);
+        for (const issue of referenceIssues) if (issue.reference !== undefined) {
+          issue.declaration = bindingSources?.references.find(use => use.reference === issue.reference)?.declaration?.location;
+        }
         const declarationLocation = (binding: PartLocalDeclaration) => nodeLocation(binding.node,
           binding.receiving === undefined ? analysis.iterators.get(binding.node)?.attribute : `${binding.name}:${binding.kind}`,
           binding.receiving === undefined ? "name" : "value");
@@ -516,6 +514,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       parameterSpellings: spellingEligible ? [...new Set(uses.map(use => use.name))].map(name => ({ name, uses: uses.filter(use => use.name === name) })) : [],
       ...(scanned && roots.length === 1 ? { definitionRoot: roots[0]! } : {}), partDeclarations,
       parameterCompleteness, ...(signature === undefined ? {} : { signature }), optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [],
+      ...(bindingSources === undefined ? {} : { bindingSources }),
       iteratorDeclarations: spellingEligible ? iteratorDeclarations : [], lexicalScopes: spellingEligible ? lexicalScopes : [], referenceIssues, receivers };
     documents.set(producer, result);
     relationships.set(result, receivers);
@@ -606,7 +605,9 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     if (receivers.length !== 0 || found.connectors.length === 0) continue;
     for (const batch of batches) receivers.push({ batch: batch.call, certainty: "possible" });
   }
-  return { batches, documents: [...documents.values()] };
+  const facts = { batches, documents: [...documents.values()] };
+  sourceFacts.set(program, facts);
+  return facts;
 }
 
 /** Advisory write-key evidence from an immutable coordinate expression. A later governed

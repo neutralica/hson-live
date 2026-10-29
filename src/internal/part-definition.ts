@@ -118,6 +118,7 @@ export type PartLocalDeclaration = Readonly<{ name: string; kind: PartArgumentKi
   elementOf?: PartReferenceUse }>;
 type PartReceivingLocal = PartLocalDeclaration & Readonly<{ receiving: PartReceivingDeclaration }>;
 export type PartReferenceUse = Readonly<{ reference: PartReference; node: HsonNode; binding?: PartLocalDeclaration;
+  attribute?: string;
   scope: ReadonlyMap<string, PartLocalDeclaration>;
   iterators: readonly HsonNode[];
   context: "value" | "forwarding" | "structure" | "iteration"; supply?: "data" | "doc" }>;
@@ -156,7 +157,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   };
   const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: "data" | "doc", attribute?: string) => {
     const binding = reference.namespace === "local" ? locals.get(reference.name) : undefined;
-    const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }) };
+    const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(attribute === undefined ? {} : { attribute }), ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }) };
     uses.push(use);
     if (reference.namespace === "incoming") {
       if (reference.path.length || context !== "value") issue(node, context === "forwarding"

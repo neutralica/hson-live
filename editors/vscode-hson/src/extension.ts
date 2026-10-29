@@ -30,6 +30,7 @@ import {
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, marker_strength, marker_color } from "./settings.js";
 import { document_semantic_tokens, hsonSemanticLegend } from "./semantic-tokens.js";
+import { HsonBindingCache, binding_definition_at } from "./binding-intelligence.js";
 import { HSON_BRANDING } from "./appearance-branding.generated.js";
 import { formatting_target_is_current } from "./formatting-target.js";
 import { HsonDelimiterDepthCache, HsonDepthDecorationSet } from "./delimiter-depth.js";
@@ -81,6 +82,18 @@ function toRange(text: string, spec: DocumentDiagnosticSpec): vscode.Range {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  const bindingCache = new HsonBindingCache();
+  context.subscriptions.push({ dispose: () => bindingCache.clear() },
+    vscode.workspace.onDidCloseTextDocument(document => bindingCache.forget(document.uri.toString())),
+    vscode.languages.registerDefinitionProvider(["hson", "markdown", "typescript", "typescriptreact"], {
+      provideDefinition(document, position) {
+        const target = binding_definition_at(bindingCache.get(adaptDocument(document)), document.offsetAt(position));
+        return target === undefined ? undefined : [{ originSelectionRange: new vscode.Range(document.positionAt(target.origin.start), document.positionAt(target.origin.end)),
+          targetUri: vscode.Uri.parse(target.uri),
+          targetRange: new vscode.Range(document.positionAt(target.target.start), document.positionAt(target.target.end)),
+          targetSelectionRange: new vscode.Range(document.positionAt(target.target.start), document.positionAt(target.target.end)) }];
+      },
+    }));
   const structuralEvidence = new StructuralDocumentEvidenceCache(8);
   const evidenceFor = (document: vscode.TextDocument, language: StructuralHostLanguage) => structuralEvidence.get(
     document.uri.toString(),
@@ -508,9 +521,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeTextDocument(() => semanticChanges.fire()),
     vscode.workspace.onDidChangeConfiguration(() => semanticChanges.fire()),
     vscode.languages.registerDocumentSemanticTokensProvider(
-      [{ language: "typescript" }, { language: "typescriptreact" }], {
+      ["hson", "markdown", "typescript", "typescriptreact"], {
         onDidChangeSemanticTokens: semanticChanges.event,
-        provideDocumentSemanticTokens: (document, cancellation) => document_semantic_tokens(document, cancellation, grammar),
+        provideDocumentSemanticTokens: (document, cancellation) => document_semantic_tokens(document, cancellation, grammar, bindingCache),
       }, hsonSemanticLegend));
   // TS/TSX islands retain host string metadata, so native bracket colors cannot
   // see them. Standalone Hson and Markdown continue using native colorization.

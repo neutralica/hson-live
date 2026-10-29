@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as configuration from "../scripts/validation-config.mjs";
@@ -196,10 +196,32 @@ put("tests/entry.mts", "");
 mkdirSync(resolve(fixture, "tests/browser"));
 const scoutPath = "scripts/run-scout-browser.mjs";
 const scout = readFileSync(resolve(root, scoutPath), "utf8");
-for (const [path] of configuration.declaredExecution[scoutPath].targets) put(path, "");
-const browserConfig = { ...config, declaredExecution: { [scoutPath]: configuration.declaredExecution[scoutPath] } };
+const scoutEvidence = configuration.declaredExecution[scoutPath];
+for (const [path] of scoutEvidence.targets) put(path, "");
+// A target can also be pinned helper evidence. Keep those bytes authentic;
+// inventory inspection reads the fixture sources without executing the helper.
+for (const [path] of scoutEvidence.sources) put(path, readFileSync(resolve(root, path), "utf8"));
+const browserConfig = { ...config, declaredExecution: { [scoutPath]: scoutEvidence } };
 const browserCommand = scripts => { scripts["test:scout"] = `node ${scoutPath}`; };
 put(scoutPath, scout);
+assertInventory(probe(browserCommand, browserConfig));
+for (const [path] of scoutEvidence.sources) {
+  const authentic = readFileSync(resolve(fixture, path), "utf8");
+  put(path, authentic + "\n// Deliberately stale fixture evidence.\n");
+  const stale = probe(browserCommand, browserConfig);
+  assert.throws(() => assertInventory(stale), /declaration evidence/);
+  assert(stale.relationships.filter(edge => edge.declared).every(edge => edge.verification === "declared-unverified"));
+  put(path, authentic);
+  assertInventory(probe(browserCommand, browserConfig));
+}
+const missingTarget = "tests/browser/scout.entry.mjs";
+rmSync(resolve(fixture, missingTarget));
+const missing = probe(browserCommand, browserConfig);
+assert.throws(() => assertInventory(missing), /declaration evidence: scripts\/run-scout-browser\.mjs -> tests\/browser\/scout\.entry\.mjs/);
+for (const edge of missing.relationships.filter(edge => edge.declared)) {
+  assert.equal(edge.execution, edge.to !== missingTarget, "only the missing target loses its verified route");
+}
+put(missingTarget, "");
 assertInventory(probe(browserCommand, browserConfig));
 const lines = scout.split("\n"), imports = lines.filter(line => line.startsWith("import ")), body = lines.filter(line => !line.startsWith("import "));
 for (const changed of [imports.join("\n") + "\nasync function unused(){\n" + body.join("\n") + "\n}",
@@ -237,7 +259,7 @@ for (const stage of failed.report.stages.filter(stage => stage.status !== "skipp
 }
 let launched = false;
 const blocked = await runStages({ root: executionRoot, mode: "fixture-preflight", identity, configuration: {},
-  preflight() { return assertInventory(probe(scripts => { delete scripts["test:html-source-producer"]; })); }, stages: [{ name: "never" }],
+  preflight() { return assertInventory(probe(scripts => { browserCommand(scripts); delete scripts["test:html-source-producer"]; }, browserConfig)); }, stages: [{ name: "never" }],
   execute() { launched = true; throw new Error("must not execute"); } });
 assert.equal(launched, false);
 assert.notEqual(blocked.exitStatus, 0);

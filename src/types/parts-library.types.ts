@@ -98,7 +98,8 @@ export type PartsLibrary<D, H, L, C extends Context = "local", N extends string 
       <const Child extends LivePath>(path: Child & PublicPartPath<Child>): LiveMapPathValue<LiveMapPartCollection, Child>;
     };
   } : {}) & {
-  readonly [K in Exclude<LibraryCertainNames<Members<D>>, Reserved | keyof H>]: GovernedLocation<L, C, [K], LiveMapDocumentPart | undefined, N, R>;
+  // Map over the authored keys before filtering, retaining their declaration symbols.
+  readonly [K in keyof Members<D> as K extends LibraryCertainNames<Members<D>> ? K extends Reserved | keyof H ? never : K : never]: GovernedLocation<L, C, [K & string], LiveMapDocumentPart | undefined, N, R>;
 } & {
-  readonly [K in Exclude<Extract<keyof Members<D>, string>, LibraryCertainNames<Members<D>> | Reserved | keyof H>]?: GovernedLocation<L, C, [K], LiveMapDocumentPart | undefined, N, R>;
+  readonly [K in keyof Members<D> as K extends string ? K extends LibraryCertainNames<Members<D>> | Reserved | keyof H ? never : K : never]?: GovernedLocation<L, C, [K & string], LiveMapDocumentPart | undefined, N, R>;
 };

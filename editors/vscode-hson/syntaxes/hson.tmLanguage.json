@@ -53,7 +53,7 @@
         },
         {
           "name": "keyword.control.iteration.hson",
-          "match": "(?<![A-Za-z0-9:._-])(?:for:[A-Za-z_][A-Za-z0-9._-]*|per:[A-Za-z_][A-Za-z0-9._-]*(?::[A-Za-z_][A-Za-z0-9._-]*)?)(?![A-Za-z0-9:._-])",
+          "match": "(?<![A-Za-z0-9:._-])(?:for|per):(?:[A-Za-z_][A-Za-z0-9._-]*(?::[A-Za-z_][A-Za-z0-9._-]*)?|:[A-Za-z_][A-Za-z0-9._-]*)(?![A-Za-z0-9:._-])",
           "captures": {
             "0": {
               "patterns": [
@@ -255,7 +255,7 @@
           "beginCaptures": { "1": { "name": "keyword.operator.interpolation.percent.hson" }, "2": { "name": "punctuation.definition.template-expression.begin.hson" } },
           "end": "\\}|(?=\")|(?=\\r?$)",
           "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.hson" } },
-          "patterns": [{ "include": "#part-reference-members" }]
+          "patterns": [{ "include": "#part-reference-members" }, { "name": "variable.parameter.incoming.hson", "match": "[A-Za-z_][A-Za-z0-9_-]*" }]
         },
         { "name": "meta.part.local.hson", "contentName": "variable.other.property.hson",
           "begin": "(\\^)(\\{)",
