@@ -1,3 +1,5 @@
+import { hsonGrammarScopes, hsonNativeBrackets } from "../src/appearance-internals.js";
+import { HSON_BRANDING } from "../src/appearance-branding.generated.js";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -7,7 +9,6 @@ import {
   HSON_SETTINGS_QUERY,
   APPEARANCE_COLOR_KEYS,
   appearance_color,
-  marker_color_key,
   marker_strength,
 } from "../src/settings.js";
 
@@ -29,29 +30,29 @@ const localHostGroup = groups.find(group => group.title === "Hson › Local App"
 const formattingGroup = groups.find(group => group.title === "Hson › Formatting");
 assert.ok(appearanceGroup); assert.ok(localHostGroup); assert.ok(formattingGroup);
 check("settings expose the appearance, bounded local-app, and formatting groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App", "Hson › Formatting"]));
-check("the appearance authority distinguishes owned values from theme-derived scopes", () => {
-  assert.deepEqual(Object.keys(HSON_APPEARANCE), ["owned", "themeDerived", "house", "native"]);
-  assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => value.endsWith(".hson")));
-  assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => !value.startsWith("#")));
+check("the appearance authority distinguishes appearance values from internal grammar scopes", () => {
+  assert.deepEqual(Object.keys(HSON_APPEARANCE), ["syntax", "ui", "branding"]);
+  assert.ok(Object.values(hsonGrammarScopes).every(value => value.endsWith(".hson")));
+  assert.ok(Object.values(hsonGrammarScopes).every(value => !value.startsWith("#")));
 });
 check("manifest semantic scope fallbacks mirror the appearance authority", () => {
   assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes, hsonTokenScopes);
 });
-check("manifest color defaults mirror the owned appearance palette", () => {
+check("manifest color defaults mirror the branding appearance palette", () => {
   const defaultsById = Object.fromEntries(manifest.contributes.colors.map((color: { id: string; defaults: Record<string, string> }) => [color.id, color.defaults]));
   for (const marker of hsonIdentityMarkers) {
-    const expected = HSON_APPEARANCE.owned.colors[marker.colorSetting];
+    const expected = HSON_APPEARANCE.branding.palette[marker.colorSetting];
     assert.deepEqual(defaultsById[marker.colorId], { dark: expected, light: expected, highContrast: "editor.foreground", highContrastLight: "editor.foreground" });
   }
-  const separator = HSON_APPEARANCE.owned.librarySeparator;
+  const separator = HSON_BRANDING.librarySeparator;
   assert.deepEqual(defaultsById[separator.colorId], { dark: separator.color, light: separator.color, highContrast: "editor.foreground", highContrastLight: "editor.foreground" });
 });
 check("document self-closing slash belongs to the theme", () => {
-  assert.equal("documentSelfClosingSlash" in HSON_APPEARANCE.owned, false);
-  assert.equal(HSON_APPEARANCE.themeDerived.selfClosingSlash, "punctuation.definition.tag.self-closing.hson");
+  assert.equal("documentSelfClosingSlash" in HSON_APPEARANCE.branding, false);
+  assert.equal(hsonGrammarScopes.selfClosingSlash, "punctuation.definition.tag.self-closing.hson");
 });
 check("native bracket-pair declarations mirror the appearance authority", () => {
-  assert.deepEqual(languageConfiguration.colorizedBracketPairs, HSON_APPEARANCE.native.colorizedBracketPairs);
+  assert.deepEqual(languageConfiguration.colorizedBracketPairs, hsonNativeBrackets.colorizedBracketPairs);
 });
 check("standalone Hson contributes ordinary overridable two-space editor defaults", () => {
   assert.deepEqual(manifest.contributes.configurationDefaults, {
@@ -81,9 +82,9 @@ check("appearance surface contains only the finalized eight controls", () => ass
   ],
 ));
 check("library strength has the exact stable key", () => assert.ok(properties["hson.appearance.libraryMarkerStrength"]));
-check("library strength defaults to full presence", () => assert.equal(properties["hson.appearance.libraryMarkerStrength"].default, HSON_APPEARANCE.owned.strength.strong));
+check("library strength defaults to full presence", () => assert.equal(properties["hson.appearance.libraryMarkerStrength"].default, HSON_APPEARANCE.branding.library.opacity));
 check("authoring strength has the exact stable key", () => assert.ok(properties["hson.appearance.authoringMarkerStrength"]));
-check("authoring strength defaults to seventy percent", () => assert.equal(properties["hson.appearance.authoringMarkerStrength"].default, HSON_APPEARANCE.owned.strength.soft));
+check("authoring strength defaults to seventy percent", () => assert.equal(properties["hson.appearance.authoringMarkerStrength"].default, HSON_APPEARANCE.branding.authoring.opacity));
 check("strength range is zero through one", () => {
   for (const key of ["hson.appearance.libraryMarkerStrength", "hson.appearance.authoringMarkerStrength"]) {
     assert.equal(properties[key].minimum, 0); assert.equal(properties[key].maximum, 1);
@@ -96,7 +97,7 @@ check("strength settings retain bounds without broken multiple-of restrictions",
 check("appearance settings are window scoped", () => assert.equal(properties["hson.appearance.libraryMarkerStrength"].scope, "window"));
 check("four shared color fields have approved defaults and accept empty-or-hex overrides", () => {
   assert.deepEqual(APPEARANCE_COLOR_KEYS, ["blue", "yellow", "pink", "green"]);
-  const defaults = HSON_APPEARANCE.owned.colors;
+  const defaults = HSON_APPEARANCE.branding.palette;
   for (const key of APPEARANCE_COLOR_KEYS) {
     const property = properties[`hson.appearance.${key}`];
     assert.equal(property.default, defaults[key]); assert.equal(property.scope, "window");
@@ -104,19 +105,20 @@ check("four shared color fields have approved defaults and accept empty-or-hex o
     assert.ok(pattern.test("")); assert.ok(pattern.test("#00adf6")); assert.ok(!pattern.test("blue"));
   }
 });
-check("each explicit hue is shared by its lowercase and uppercase marker letters", () => {
-  for (const [lower, upper, key] of [["h", "H", "blue"], ["s", "S", "yellow"], ["o", "O", "pink"], ["n", "N", "green"]]) {
-    assert.equal(marker_color_key(lower), key); assert.equal(marker_color_key(upper), key);
+check("default library and authoring markers retain the four shared hue settings", () => {
+  for (const publicName of ["hson", "Hson"]) {
+    assert.deepEqual(hsonIdentityMarkers.filter(marker => marker.publicName === publicName).map(marker => marker.colorSetting),
+      ["blue", "yellow", "pink", "green"]);
   }
 });
 check("orange is hard-migrated to pink", () => assert.equal(properties["hson.appearance.orange"], undefined));
 check("lowercase branding toggle defaults on and is window scoped", () => {
-  assert.equal(properties["hson.appearance.colorLibraryMarker"].default, HSON_APPEARANCE.owned.colorLibraryMarker);
+  assert.equal(properties["hson.appearance.colorLibraryMarker"].default, HSON_APPEARANCE.branding.library.enabled);
   assert.equal(properties["hson.appearance.colorLibraryMarker"].scope, "window");
 });
 check("library separator has the approved violet default and accepted hex forms", () => {
   const property = properties["hson.appearance.librarySeparatorColor"];
-  assert.equal(property.default, HSON_APPEARANCE.owned.librarySeparator.color); assert.equal(property.scope, "window");
+  assert.equal(property.default, HSON_BRANDING.librarySeparator.color); assert.equal(property.scope, "window");
   const pattern = new RegExp(property.pattern ?? "");
   for (const value of ["", "#abc", "#abcd", "#abcdef", "#abcdef12"]) assert.ok(pattern.test(value));
   assert.ok(!pattern.test("violet"));
@@ -152,15 +154,15 @@ check("marker strength clamps invalid low and high values", () => {
   assert.equal(marker_strength(-1, 0.5), 0); assert.equal(marker_strength(2, 0.5), 1);
 });
 check("marker strength falls back for non-finite input", () => assert.equal(marker_strength(Number.NaN, 0.6), 0.6));
-check("production TypeScript contains no second hard-coded branded palette", () => {
+check("production TypeScript has no second owner-authored branding palette", () => {
   const sourceRoot = resolve(__dirname, "../src");
   const visit = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);
     return entry.isDirectory() ? visit(path) : entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
   });
-  const palette = [...Object.values(HSON_APPEARANCE.owned.colors), HSON_APPEARANCE.owned.librarySeparator.color];
+  const palette = [...Object.values(HSON_APPEARANCE.branding.palette), HSON_BRANDING.librarySeparator.color];
   for (const path of visit(sourceRoot)) {
-    if (path.endsWith("appearance.ts")) continue;
+    if (path.endsWith("appearance.ts") || path.endsWith("appearance-branding.generated.ts")) continue;
     const source = readFileSync(path, "utf8");
     for (const color of palette) assert.equal(source.includes(color), false, `${path} duplicates ${color}`);
   }

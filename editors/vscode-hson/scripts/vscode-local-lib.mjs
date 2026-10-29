@@ -250,6 +250,8 @@ export async function sourceInputAuthority(extensionRoot, sourceMaps) {
     ".vscodeignore",
     "scripts/build.mjs",
     "scripts/generate-themes.mjs",
+    "scripts/appearance-catalog.mjs",
+    "src/appearance-bindings.ts",
     "src/appearance.ts",
     "src/tsserver-plugin/tsserver-plugin.ts",
     "src/tsserver-plugin/native-semantic-tokens.ts",

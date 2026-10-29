@@ -7,9 +7,9 @@ import { discover_hson_tagged_templates } from "../../../src/internal/embedded-h
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
-import { hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance.js";
+import { hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance-internals.js";
 
-export { hsonTokenScopes } from "./appearance.js";
+export { hsonTokenScopes } from "./appearance-internals.js";
 export type HsonHighlight = Readonly<{ range: HostSourceRange; type: HsonTokenType; scopes: readonly string[]; modifiers: readonly string[] }>;
 
 let wasm: Promise<void> | undefined;

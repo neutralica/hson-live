@@ -5,9 +5,9 @@ import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedd
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
   hsonIdentityMarkers,
-} from "./appearance.js";
+} from "./appearance-branding.generated.js";
 
-export { HSON_LIBRARY_SEPARATOR_COLOR_ID, hsonIdentityMarkers } from "./appearance.js";
+export { HSON_LIBRARY_SEPARATOR_COLOR_ID, hsonIdentityMarkers } from "./appearance-branding.generated.js";
 
 export type HsonIdentityMarkerPart = Readonly<{
   kind: "marker";

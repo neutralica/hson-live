@@ -28,9 +28,9 @@ import {
   hsonIdentityMarkers,
 } from "./authoring-marker.js";
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
-import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
+import { HSON_SETTINGS_QUERY, marker_strength, marker_color } from "./settings.js";
 import { document_semantic_tokens, hsonSemanticLegend } from "./semantic-tokens.js";
-import { HSON_APPEARANCE } from "./appearance.js";
+import { HSON_BRANDING } from "./appearance-branding.generated.js";
 import { formatting_target_is_current } from "./formatting-target.js";
 import { HsonDelimiterDepthCache, HsonDepthDecorationSet } from "./delimiter-depth.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
@@ -78,21 +78,6 @@ function toRange(text: string, spec: DocumentDiagnosticSpec): vscode.Range {
     positionAt(text, spec.range.start),
     positionAt(text, spec.range.end),
   );
-}
-
-function explicitAppearanceColor(
-  appearance: vscode.WorkspaceConfiguration,
-  key: string,
-): string | undefined {
-  const inspected = appearance.inspect<string>(key);
-  if (inspected === undefined) return undefined;
-  const explicitlyConfigured = inspected.globalValue !== undefined
-    || inspected.workspaceValue !== undefined
-    || inspected.workspaceFolderValue !== undefined
-    || inspected.globalLanguageValue !== undefined
-    || inspected.workspaceLanguageValue !== undefined
-    || inspected.workspaceFolderLanguageValue !== undefined;
-  return explicitlyConfigured ? appearance_color(appearance.get<string>(key)) : undefined;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -578,22 +563,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const replaceMarkerDecorations = (): void => {
     for (const decoration of markerDecorations.values()) decoration.dispose();
     const appearance = vscode.workspace.getConfiguration("hson.appearance");
-    const libraryStrength = marker_strength(appearance.get<number>("libraryMarkerStrength"), HSON_APPEARANCE.owned.strength.strong);
-    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), HSON_APPEARANCE.owned.strength.soft);
-    colorLibraryMarker = appearance.get<boolean>("colorLibraryMarker", HSON_APPEARANCE.owned.colorLibraryMarker);
+    const libraryStrength = marker_strength(appearance.get<number>("libraryMarkerStrength"), HSON_BRANDING.libraryOpacity);
+    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), HSON_BRANDING.authoringOpacity);
+    colorLibraryMarker = appearance.get<boolean>("colorLibraryMarker", HSON_BRANDING.colorLibraryMarker);
     markerDecorations = new Map(hsonIdentityMarkers.map((marker): [string, vscode.TextEditorDecorationType] => {
-      const colorKey = marker_color_key(marker.letter);
-      const explicitColor = colorKey === undefined ? undefined : explicitAppearanceColor(appearance, colorKey);
       return [marker.colorId,
         vscode.window.createTextEditorDecorationType({
-          color: explicitColor ?? new vscode.ThemeColor(marker.colorId),
+          color: marker_color(appearance, marker, new vscode.ThemeColor(marker.colorId)),
           opacity: String(marker.strength === "strong" ? libraryStrength : authoringStrength),
         })];
     }).concat([[
       HSON_LIBRARY_SEPARATOR_COLOR_ID,
       vscode.window.createTextEditorDecorationType({
-        color: explicitAppearanceColor(appearance, "librarySeparatorColor")
-          ?? new vscode.ThemeColor(HSON_LIBRARY_SEPARATOR_COLOR_ID),
+        color: marker_color(appearance, HSON_BRANDING.librarySeparator, new vscode.ThemeColor(HSON_LIBRARY_SEPARATOR_COLOR_ID)),
         opacity: String(libraryStrength),
       }),
     ]]));

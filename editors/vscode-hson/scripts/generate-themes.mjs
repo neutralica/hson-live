@@ -1,14 +1,18 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { transform } from "esbuild";
+import { build } from "esbuild";
+import { resolveCatalog, validateExamples } from "./appearance-catalog.mjs";
+
 import ts from "typescript";
 
 const root = new URL("../", import.meta.url);
 export async function appearanceSource() {
-  const { code } = await transform(await readFile(new URL("src/appearance.ts", root), "utf8"), { loader: "ts", format: "esm" });
-  return import(`data:text/javascript;base64,${Buffer.from(code).toString("base64")}`);
+  const result = await build({ stdin: { contents: 'export * from "./src/appearance.ts"; export * from "./src/appearance-internals.ts"; export * from "./src/appearance-bindings.ts";', resolveDir: fileURLToPath(root), loader: "ts" }, bundle: true, write: false, platform: "node", format: "esm" });
+  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
+const { syntaxBindings, syntaxExamplePath, tokenAppearancePaths, generalRules, generalSemanticPaths, uiColorOrder } = await appearanceSource();
+
 export function validateGrammarScopes(definitions, grammar) {
   const emitted = new Set();
   const visit = value => {
@@ -31,54 +35,75 @@ export function blend(foreground, background, intensity = 1) {
     + parseInt(background.slice(i, i + 2), 16) * (1 - intensity)).toString(16).padStart(2, "0")).join("");
 }
 export function houseTheme(appearance, definitions, mode) {
-  const { house } = appearance;
-  const ui = Object.fromEntries(Object.entries(house.ui).map(([key, value]) => [key, value[mode]]));
-  const intensity = { ...house.intensity, ...house.intensityOverrides[mode] };
-  const roles = Object.fromEntries(Object.entries(house.roles).map(([key, value]) => [key, blend(value[mode], ui.background, intensity[key])]));
-  const colors = {
-    "editor.background": ui.background, "editor.foreground": ui.foreground,
-    "foreground": ui.foreground, "focusBorder": ui.accent,
-    "editor.selectionBackground": ui.selection, "editor.lineHighlightBackground": ui.surface,
-    "editorCursor.foreground": ui.accent, "editorLineNumber.foreground": roles.comment,
-    "editorLineNumber.activeForeground": ui.foreground,
-    "sideBar.background": ui.surface, "sideBar.foreground": ui.foreground, "sideBar.border": ui.border,
-    "activityBar.background": ui.surface, "activityBar.foreground": ui.foreground,
-    "statusBar.background": ui.surface, "statusBar.foreground": ui.foreground,
-    "titleBar.activeBackground": ui.surface, "titleBar.activeForeground": ui.foreground,
-    "editorGroupHeader.tabsBackground": ui.surface, "tab.activeBackground": ui.background,
-    "tab.activeForeground": ui.foreground, "tab.inactiveBackground": ui.surface,
-    "panel.background": ui.surface, "panel.border": ui.border,
-    "input.background": ui.background, "input.foreground": ui.foreground, "input.border": ui.border,
-    "list.activeSelectionBackground": ui.selection, "list.activeSelectionForeground": ui.foreground,
+  const styles = resolveCatalog(appearance);
+  const background = styles.get('ui.editor.editor.background')?.[mode].foreground;
+  const style = path => {
+    const value = styles.get(path)?.[mode];
+    if (!value) throw new Error(`Unknown appearance binding: ${path}`);
+    return value;
   };
-  for (let i = 0; i < 6; i++) colors[`editorBracketHighlight.foreground${i + 1}`] = roles[house.bracketRoles[i % house.bracketRoles.length]];
-  const rule = (scope, role) => ({ scope, settings: { foreground: roles[role] } });
+  const color = path => {
+    const value = style(path);
+    return blend(value.foreground, background, value.intensity);
+  };
+  const syntaxColor = path => color(`syntax.hson.${path}`);
+  const colors = {};
+  // Preserve generated serialization order as well as values.
+  const uiEntries = { ...appearance.ui.editor, ...appearance.ui.workbench };
+  for (const id of [...new Set([...uiColorOrder, ...Object.keys(uiEntries)])]) {
+    const family = Object.hasOwn(appearance.ui.editor, id) ? 'editor' : 'workbench';
+    const path = `ui.${family}.${id}`;
+    const value = style(path);
+    // Existing native UI palette colors retain their authored casing; syntax
+    // inheritance (line numbers and brackets) uses the effective House color.
+    const entry = uiEntries[id];
+    colors[id] = entry.inherits?.startsWith('syntax.') || value.intensity !== undefined ? color(path) : value.foreground;
+  }
+  const rule = (scope, foreground) => ({ scope, settings: { foreground } });
+  const semanticTokenColors = {
+    ...Object.fromEntries(Object.entries(generalSemanticPaths).map(([type, path]) => [type, color(path)])),
+    ...Object.fromEntries(Object.keys(definitions).map(type => [type, syntaxColor(tokenAppearancePaths[type])])),
+    '*.hsonQualifier': syntaxColor('attribute.qualifier'),
+    'hsonReceiving.hsonQualifier': syntaxColor('part.receivingArgument'),
+    'hsonReceiving.hsonLocalName': syntaxColor('part.receivingKind'),
+  };
+  const tokenColors = [
+    ...generalRules.map(({ scopes, path }) => rule(scopes, color(path))),
+    ...Object.entries(definitions).map(([type, definition]) => rule(definition.scopes, semanticTokenColors[type])),
+    rule(syntaxBindings['attribute.qualifier'].scopes, syntaxColor('attribute.qualifier')),
+    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['attribute.qualifier'].scopes[0]}`], syntaxColor('part.receivingArgument')),
+    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['part.receivingKind'].scopes[0]}`], syntaxColor('part.receivingKind')),
+  ];
+  for (const [path, binding] of Object.entries(syntaxBindings)) {
+    const foreground = syntaxColor(path), selector = binding.selector;
+    if (['attribute.qualifier', 'part.receivingKind'].includes(path)) continue;
+    const base = selector.split('.')[0];
+    if (foreground === semanticTokenColors[base]) continue;
+    // No invented modifiers: these pairs are still inseparable in TS/TSX.
+    if (selector === base) throw new Error(`${path} shares ${selector} with ${tokenAppearancePaths[base]}; keep their effective styles equal until classification supports separation`);
+    semanticTokenColors[selector] = foreground;
+    tokenColors.push(rule(binding.scopes, foreground));
+  }
   return {
     $schema: "vscode://schemas/color-theme", name: `Hson House ${mode === "dark" ? "Dark" : "Light"}`,
-    type: mode, semanticHighlighting: true, colors,
-    tokenColors: [
-      rule(["comment"], "comment"), rule(["string"], "text"), rule(["constant.numeric"], "number"),
-      rule(["keyword", "storage", "constant.language"], "primitive"), rule(["entity.name.type", "support.type"], "element"),
-      rule(["entity.name.function", "support.function"], "sending"), rule(["variable", "entity.other.attribute-name"], "attribute"),
-      rule(["punctuation"], "structure"), rule(["constant.character.escape"], "escape"), rule(["invalid"], "invalid"),
-      ...Object.values(definitions).map(definition => rule(definition.scopes, definition.role)),
-      rule([appearance.themeDerived.attributeQualifier], "qualifier"),
-      rule([`${appearance.themeDerived.receiving} ${appearance.themeDerived.attributeQualifier}`], "receiving"),
-      rule([`${appearance.themeDerived.receiving} ${appearance.themeDerived.attributeLocalName}`], "qualifier"),
-    ],
-    semanticTokenColors: {
-      type: roles.element, class: roles.element, interface: roles.element, enum: roles.element,
-      typeParameter: roles.element, namespace: roles.element, variable: roles.attribute, parameter: roles.attribute,
-      property: roles.attribute, function: roles.sending, method: roles.sending, enumMember: roles.number,
-      ...Object.fromEntries(Object.entries(definitions).map(([type, definition]) => [type, roles[definition.role]])),
-      // A wildcard plus one modifier ties a base type's specificity in VS Code;
-      // keep this later so qualifiers override the base without coloring locals.
-      "*.hsonQualifier": roles.qualifier,
-      // Receiving syntax places the binding first and its data/doc kind last.
-      "hsonReceiving.hsonQualifier": roles.receiving,
-      "hsonReceiving.hsonLocalName": roles.qualifier,
-    },
+    type: mode, semanticHighlighting: true, colors, tokenColors, semanticTokenColors,
   };
+}
+
+export function brandingRuntime(branding) {
+  const identityMarkers = Object.entries({ library: 'hson', authoring: 'Hson' }).flatMap(([family, publicName]) =>
+    Array.from(publicName).map(letter => {
+      const colorSetting = branding[family].letters[letter];
+      if (!Object.hasOwn(branding.palette, colorSetting)) throw new Error(`Unknown branding palette reference: ${family}.${letter} -> ${colorSetting}`);
+      return { publicName, letter, colorId: `hson.${family}Marker.${letter.toLowerCase()}`, colorSetting, strength: family === 'library' ? 'strong' : 'soft' };
+    }));
+  for (const family of ['library', 'authoring']) {
+    const opacity = branding[family].opacity;
+    if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) throw new Error(`branding.${family}: opacity must be between 0 and 1`);
+  }
+  return { colors: branding.palette, libraryOpacity: branding.library.opacity, authoringOpacity: branding.authoring.opacity,
+    colorLibraryMarker: branding.library.enabled, identityMarkers,
+    librarySeparator: { colorId: 'hson.libraryMarker.separator', colorSetting: 'librarySeparatorColor', color: branding.library.separator.color } };
 }
 // Replace only generated values; preserve all other manifest text and concurrent edits.
 function replaceValue(text, path, value) {
@@ -101,6 +126,7 @@ function replaceValue(text, path, value) {
 }
 export async function generateThemes({ check = false } = {}) {
   const { HSON_APPEARANCE: appearance, hsonTokenDefinitions: definitions, hsonTokenScopes: scopes, hsonTokenModifierDefinitions: modifiers } = await appearanceSource();
+  await validateExamples(appearance, syntaxBindings, syntaxExamplePath);
   validateGrammarScopes({ ...definitions, ...modifiers }, JSON.parse(await readFile(new URL("syntaxes/hson.tmLanguage.json", root), "utf8")));
   const contributions = ["dark", "light"].map(mode => ({
     label: `Hson House ${mode === "dark" ? "Dark" : "Light"}`, uiTheme: mode === "dark" ? "vs-dark" : "vs",
@@ -116,7 +142,13 @@ export async function generateThemes({ check = false } = {}) {
     semanticTokenScopes: [{ scopes }, ...["typescript", "typescriptreact"].map(language => ({ language, scopes }))],
   })) manifest = replaceValue(manifest, ["contributes", key], value);
   const parsed = JSON.parse(manifest);
-  const { owned } = appearance;
+  const owned = brandingRuntime(appearance.branding);
+  outputs.set(new URL('src/appearance-branding.generated.ts', root),
+    '// Generated from appearance.ts; edit the catalog and run themes:generate.\n'
+    + 'export const HSON_BRANDING = ' + JSON.stringify(owned, null, 2) + ' as const;\n'
+    + 'export type AppearanceColorKey = keyof typeof HSON_BRANDING.colors;\n'
+    + 'export const hsonIdentityMarkers = HSON_BRANDING.identityMarkers;\n'
+    + 'export const HSON_LIBRARY_SEPARATOR_COLOR_ID = HSON_BRANDING.librarySeparator.colorId;\n');
   for (const color of parsed.contributes.colors) {
     const marker = owned.identityMarkers.find(marker => marker.colorId === color.id);
     const value = marker ? owned.colors[marker.colorSetting] : owned.librarySeparator.color;
@@ -125,7 +157,7 @@ export async function generateThemes({ check = false } = {}) {
   manifest = replaceValue(manifest, ["contributes", "colors"], parsed.contributes.colors);
   for (const group of parsed.contributes.configuration) for (const [key, value] of Object.entries(group.properties)) {
     const name = key.replace(/^hson\.appearance\./, "");
-    const defaults = { ...owned.colors, libraryMarkerStrength: owned.strength.strong, authoringMarkerStrength: owned.strength.soft,
+    const defaults = { ...owned.colors, libraryMarkerStrength: owned.libraryOpacity, authoringMarkerStrength: owned.authoringOpacity,
       colorLibraryMarker: owned.colorLibraryMarker, librarySeparatorColor: owned.librarySeparator.color };
     if (key.startsWith("hson.appearance.") && name in defaults) value.default = defaults[name];
   }

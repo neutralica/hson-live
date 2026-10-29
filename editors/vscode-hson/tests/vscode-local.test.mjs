@@ -64,6 +64,8 @@ async function makeFixture(label = "authority fixture with spaces") {
   for (const mode of ['dark', 'light']) await writeFile(join(extensionRoot, 'themes', `hson-house-${mode}-color-theme.json`), '{}\n');
   await writeFile(join(extensionRoot, 'scripts', 'generate-themes.mjs'), '// generator fixture\n');
   await writeFile(join(extensionRoot, 'src', 'appearance.ts'), '// palette fixture\n');
+  await writeFile(join(extensionRoot, 'src', 'appearance-bindings.ts'), '// appearance bindings fixture\n');
+  await writeFile(join(extensionRoot, 'scripts', 'appearance-catalog.mjs'), '// catalog validation fixture\n');
   for (const name of ['tsserver-plugin.ts', 'native-semantic-tokens.ts']) {
     await writeFile(join(extensionRoot, 'src', 'tsserver-plugin', name), '// plugin fixture\n');
   }
@@ -479,7 +481,7 @@ await check("palette, generator and both theme files invalidate source authority
   const fixture = await makeFixture();
   try {
     const packaged = await packageCurrentSource(await fixturePackageOptions(fixture));
-    for (const path of ['src/appearance.ts', 'src/tsserver-plugin/tsserver-plugin.ts', 'src/tsserver-plugin/native-semantic-tokens.ts', 'scripts/generate-themes.mjs', 'themes/hson-house-dark-color-theme.json', 'themes/hson-house-light-color-theme.json']) {
+    for (const path of ['src/appearance.ts', 'src/appearance-bindings.ts', 'scripts/appearance-catalog.mjs', 'src/tsserver-plugin/tsserver-plugin.ts', 'src/tsserver-plugin/native-semantic-tokens.ts', 'scripts/generate-themes.mjs', 'themes/hson-house-dark-color-theme.json', 'themes/hson-house-light-color-theme.json']) {
       const file = join(fixture.extensionRoot, path), before = await readFile(file);
       await writeFile(file, 'changed');
       assert.equal((await inspectPackageAuthority(fixture.extensionRoot)).state, 'stale', path);

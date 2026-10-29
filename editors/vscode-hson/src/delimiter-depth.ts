@@ -1,5 +1,5 @@
 import { INITIAL, type IGrammar } from "vscode-textmate";
-import { HSON_APPEARANCE } from "./appearance.js";
+import { hsonGrammarScopes } from "./appearance-internals.js";
 import type { StructuralDocumentEvidence, StructuralRange } from "./structural-editing.js";
 
 export type HsonDelimiterDepth = Readonly<{
@@ -12,7 +12,7 @@ export type HsonDelimiterDepth = Readonly<{
 export function hson_delimiter_depths(grammar: IGrammar, evidence: StructuralDocumentEvidence): readonly HsonDelimiterDepth[] {
   if (evidence.languageId === "markdown") return Object.freeze([]);
   const result: HsonDelimiterDepth[] = [];
-  const scope = HSON_APPEARANCE.themeDerived;
+  const scope = hsonGrammarScopes;
   for (const region of evidence.regions) {
     const pieces: string[] = [];
     let cursor = region.bodyRange.start;

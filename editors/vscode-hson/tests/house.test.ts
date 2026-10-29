@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { INITIAL } from "vscode-textmate";
 import { hson_highlights, load_hson_grammar } from "../src/highlighting.js";
 import { HSON_APPEARANCE, hsonTokenDefinitions, hsonTokenModifierDefinitions, hsonTokenScopes, type HsonTokenType } from "../src/appearance.js";
+import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
+import { analyze_part_definition } from "../../../src/internal/part-definition.js";
 
 async function run() {
   const grammar = await load_hson_grammar(resolve(__dirname, '..'));
@@ -147,7 +149,44 @@ async function run() {
     }
   }
   assert.notEqual(hsonTokenDefinitions.hsonLocalReferenceSigil.role, hsonTokenDefinitions.hsonIncomingReferenceSigil.role);
-  assert.deepEqual(HSON_APPEARANCE.house.intensity, { assignment: .75, colon: .75, quote: .6, localReference: .75 });
+  for (const mode of ['dark', 'light'] as const) {
+    const { punctuation, reference } = HSON_APPEARANCE.syntax.hson;
+    assert.deepEqual([punctuation.assignment.house[mode].intensity, punctuation.colon.house[mode].intensity,
+      punctuation.quoteOpen.house[mode].intensity, reference.local.marker.house[mode].intensity], [.75, .75, .6, .75]);
+  }
+  // Check these catalog illustrations with the existing Part contracts, supplying
+  // surrounding declarations where a local reference or descendant is required.
+  const { part, iteration, reference, punctuation } = HSON_APPEARANCE.syntax.hson;
+  const analyzeExample = (code: string) => analyze_part_definition(parse_authored_document_library(code).root);
+  for (const entry of [part.receivingArgument, part.receivingKind, punctuation.colon]) {
+    for (const example of entry.examples) {
+      const receiving = analyzeExample(example.code).receiving;
+      assert.deepEqual(receiving.map(local => [local.name, local.kind, local.receiving.reference.namespace]),
+        [['slide', 'data', 'incoming']], entry.label);
+    }
+  }
+  for (const example of part.sendingArgument.examples) {
+    const analysis = analyzeExample('<section slide:data=%{slide} ' + example.code + '/>');
+    assert.deepEqual(analysis.uses.map(use => [use.context, use.reference.namespace, use.binding?.kind]),
+      [['forwarding', 'local', 'data']]);
+  }
+  for (const example of iteration.name.examples) {
+    const analysis = analyzeExample('<section rows:data=%{rows} items:data=%{items} ' + example.code + '/>');
+    assert.equal(analysis.iterators.size, 1);
+    assert.ok(analysis.uses.every(use => use.context === 'iteration'
+      && use.reference.namespace === 'local' && use.binding?.kind === 'data'));
+  }
+  for (const entry of [reference.incoming.marker, reference.local.marker, reference.content, reference.member,
+    reference.separator, reference.selectorOpen, reference.selectorClose, punctuation.referenceOpen, punctuation.referenceClose]) {
+    for (const example of entry.examples) {
+      const analysis = analyzeExample('<section slide:data=%{payload} slides:data=%{collection} ' + example.code + '/>');
+      assert.ok(analysis.uses.length > 0, entry.label);
+      for (const use of analysis.uses) {
+        if (use.reference.path.length) assert.equal(use.reference.namespace, 'local', entry.label);
+      }
+    }
+  }
+  console.log('ok - receiving, sending, iteration and reference catalog examples satisfy existing Part contracts');
   console.log('ok - House exact TS/TSX sigil, colon, role, quote and standalone scope/range parity');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -449,7 +449,7 @@ See `LICENSE` for the full terms.
 
 Much of this codebase is generated.
 
-The ideas for Hson and its syntax - as well as the potential Hson represented, the macro architecture, and fine-grained API/DX decisions - are entirely my own. These ideas arose in the process of learning the foundations of vanilla web development. As I immersed myself in the fundamentals and the specs, I saw what I thought might be an untried solution to the problem of view-state separation.
+The ideas for Hson and its syntax - as well as the potential Hson represented, the macro architecture, and API/DX decisions - are entirely my own.
 
 `hson-live` was begun in April of 2025 with the help of ChatGPT 4.1. Coding agents were not yet available in this first year of development. If this project was vibe-coded, it was not vibe-debugged: I spent a year scouring and hand-editing the codebase myself alongside applying patches suggested by models.
 

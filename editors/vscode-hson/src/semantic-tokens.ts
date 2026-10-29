@@ -5,7 +5,7 @@ import { hson_highlights } from "./highlighting.js";
 import { nativeTokenTypes, nativeTokenModifiers, read_native_tokens, NATIVE_SEMANTIC_COMMAND,
   SEMANTIC_DOCUMENT_LIMIT } from "./native-semantic-tokens.js";
 
-import { hsonTokenDefinitions, hsonTokenModifierDefinitions } from "./appearance.js";
+import { hsonTokenDefinitions, hsonTokenModifierDefinitions } from "./appearance-internals.js";
 
 export { nativeTokenTypes, nativeTokenModifiers } from "./native-semantic-tokens.js";
 export const hsonSemanticLegend = new vscode.SemanticTokensLegend([...nativeTokenTypes, ...Object.keys(hsonTokenDefinitions)], [...nativeTokenModifiers, ...Object.keys(hsonTokenModifierDefinitions)]);
