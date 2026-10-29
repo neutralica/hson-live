@@ -67,6 +67,7 @@ const PACKAGE_EXPORTS = `
 ./number
 ./mirror
 ./scout
+./scout/auto
 ./ssr
 ./transform
 `.trim().split(/\s+/).sort();
@@ -349,6 +350,7 @@ await check("packed consumer resolves only curated package entrypoints", () => {
       encoding: "utf8",
     });
     assert.equal(extracted.status, 0, extracted.stderr);
+    assert.ok(readFileSync(join(packageRoot, "dist/scout-auto.js"), "utf8") === readFileSync(resolve(repositoryRoot, "dist/scout-auto.js"), "utf8"), "Packed Scout asset differs from published output");
     writeFileSync(join(consumerRoot, "package.json"), JSON.stringify({ private: true, type: "module" }));
 
     const accepted = spawnSync(process.execPath, ["--input-type=module", "--eval", `

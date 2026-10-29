@@ -10,3 +10,4 @@ export type {
   DecodedSsrBootstrap,
   SsrBootstrapCodecOptions,
 } from "./ssr-bootstrap.types.js";
+export { deliver_scout } from "./scout-delivery.js";

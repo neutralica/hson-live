@@ -21,6 +21,9 @@
   "type": "module",
   "sideEffects": [
     "./dist/api/scout/index.js",
+    "./dist/api/scout/scout.runtime.js",
+    "./dist/api/scout/auto.js",
+    "./dist/scout-auto.js",
     "./dist/internal/hson-schema/compiler-project-watch.js",
     "./dist/hson-schema.mjs"
   ],
@@ -104,6 +107,10 @@
     "./diagnostics/transform-test-oracle": {
       "types": "./dist/diagnostics/transform-test-oracle.d.ts",
       "import": "./dist/diagnostics/transform-test-oracle.js"
+    },
+    "./scout/auto": {
+      "types": "./dist/api/scout/auto.d.ts",
+      "import": "./dist/scout-auto.js"
     }
   },
   "scripts": {

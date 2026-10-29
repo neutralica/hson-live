@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { tokenize_authored_document_library } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
 import { hsonLiveMap } from "../../../src/api/livemap/livemap.public.js";
@@ -280,7 +281,7 @@ check("interpolation pairing rejects names, comments, escapes, schema and JavaSc
   }
 });
 check("Part placeholders pair in quoted document text and ordinary attribute values", () => {
-  for (const body of ['<span "%|"/>', '<span "Hello %|!"/>', '<span title="%|"/>', '<span title=%|/>', '<span title=prefix-%|/>', '<script src="%|"/>', '<style media="%|"/>',
+  for (const body of ['<span "%|"/>', '<span "Hello %|!"/>', '<span title="%|"/>', '<span title=%|/>', '<script src="%|"/>', '<style media="%|"/>',
     '<span @:label title="prefix %| suffix"/>', '<main <span "%{first}%|"/>/>',
     '<span ${fragment} "%|"/>', '<span "%|%{last}"/>', '<span "%{first}%|%{last}"/>', '<span title="%|}"/>', '<span "%|name}"/>']) {
     assert.equal(typingSnippet(authored(body), '{'), body.includes('%|}') || body.includes('%|name}') ? '{$0' : '{$0}', body);
@@ -296,12 +297,48 @@ check("Part placeholder typing reuses decoded selector closers and preserves inc
   }
   assertTypingResult(authored('<span "%{first} %|slide.items[0].label} %{last}"/>'), '{', '{$0');
   assertTypingResult(authored('<span title=%|slide.title}/>'), '{', '{$0');
-  assert.equal(typingSnippet(authored('<span title=%|slide.items[0].label}/>'), '{'), undefined);
+  assertTypingResult(authored('<span title=%|slide.items[0].label}/>'), '{', '{$0');
   for (const suffix of ['slide.title', 'slide.items[0].', 'slide[0]', 'slide[-1]}']) {
     assertTypingResult(authored('<span ' + JSON.stringify('%|' + suffix) + '/>'), '{', '{$0}');
   }
   for (const body of ['<span "%{slide.%|title}"/>', '<span "%{slide.items[%|0]}"/>']) {
     assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+  }
+});
+check("bare Part reference witnesses preserve source and validate the whole document", () => {
+  for (const sigil of ['%', '^']) {
+    for (const [suffix, snippet] of [['/>', '{$0}'], ['}/>', '{$0'], ['name}/>', '{$0'],
+      ['model.items[0].label}/>', '{$0'], ['model["brace}key"]}/>', '{$0']] as const) {
+      assertTypingResult(authored('<span title=' + sigil + '|' + suffix), '{', snippet);
+    }
+    for (const body of ['<span title=prefix-' + sigil + '|/>', '<span title=' + sigil + '|suffix/>',
+      '<span title=' + sigil + '|}suffix/>', '<span title=' + sigil + '|}'+ sigil + '{other}/>',
+      '<span title=' + sigil + '|model[-1]}/>', '<span title=' + sigil + '{na|}/>',
+      '<span onClick=' + sigil + '|/>', '<style <span title=' + sigil + '|/>/>']) {
+      assert.equal(typingSnippet(authored(body), '{'), undefined, body);
+    }
+    for (const body of ['<script src=' + sigil + '|/>', '<style media=' + sigil + '|/>',
+      '<main ${before} <span title=' + sigil + '|/> ${after}/>',
+      '<main d:data="%{payload}" <span title=' + sigil + '|/>/>',
+      '<hson-part lib="parts" at="card" title=' + sigil + '|/>',
+      '<main @:card <span title=' + sigil + '|/>/>',
+      '<main "😀"\r\n <span title=' + sigil + '|/> <i/>/>']) {
+      assertTypingResult(authored(body), '{', '{$0}');
+    }
+    assert.throws(() => tokenize_authored_document_library('<span title=' + sigil + '{}/>'));
+    assert.doesNotThrow(() => tokenize_authored_document_library('<span title=' + sigil + '{name}/>'));
+  }
+});
+check("bare references fall back when attribute lowering rejects incomplete values", () => {
+  for (const sigil of ['%', '^']) {
+    for (const name of ['style', 'hson:part']) {
+      const source = authored('<span ' + name + '=' + sigil + '|/>');
+      assert.doesNotThrow(() => assert.equal(typingSnippet(source, '{'), undefined));
+      assert.throws(() => tokenize_authored_document_library('<span ' + name + '=' + sigil + '{/>'));
+    }
+    for (const name of ['title', 'data-title']) {
+      assertTypingResult(authored('<span ' + name + '=' + sigil + '|/>'), '{', '{$0}');
+    }
   }
 });
 check("Part placeholders exclude unsupported Part payloads and other template modes", () => {

@@ -72,3 +72,10 @@ export function write_part_invocation(library: string, member: string, input: re
   const source = serialize_authored_document({ $_tag: "hson-part", $_attrs: attrs, $_content: [] }, quads);
   return serialize_authored_document(qualify_authored_document_source(source, quads), quads);
 }
+
+/** @internal Accept only an existing governed Part authoring capability. */
+export function write_scout_part_internal(part: object, payload: string): HsonAuthored {
+  const write = writers.get(part);
+  if (write === undefined) throw new TypeError("Scout delivery requires a governed Part member.");
+  return write({ payload });
+}

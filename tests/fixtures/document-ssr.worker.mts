@@ -1,7 +1,10 @@
+import { scout_delivery_cases } from "../scout-delivery.cases.mts";
 import { parentPort } from "node:worker_threads";
 import { hsonLiveMap } from "../../src/api/livemap/index.ts";
 import { Hson } from "../../src/hson-authoring.ts";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "../../src/api/ssr/index.ts";
+
+await scout_delivery_cases();
 
 const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>` } });
 const result = map.cut({ html: "page" });

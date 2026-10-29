@@ -182,6 +182,8 @@ async function runTypingConveniences(workspace: string): Promise<void> {
     { label: 'attribute', body: 'document`<span title|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
     { label: 'interpolation', body: 'document`<span $|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'placeholder', body: 'document`<span title="%|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'bare incoming placeholder', body: 'document`<span title=%|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'bare local placeholder', body: 'document`<span title=^|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'local placeholder', body: 'document`<span title="^|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'structural Document reference', body: 'document`<main c:doc="%{control}" <hson-part ^|/>/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'attribute after partial quote', body: 'document`<span title="${first} partial" next|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
@@ -190,6 +192,16 @@ async function runTypingConveniences(workspace: string): Promise<void> {
     { label: 'adjacent partial quoted expression', body: 'document`<span title="pre${first}$|suffix"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'placeholder after partial quote', body: 'document`<span "${first} %|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
   ];
+  for (const sigil of ['%', '^']) {
+    for (const name of ['style', 'hson:part']) {
+      const before = await setup(prefix + 'document`<span ' + name + '=' + sigil + '|/>`;');
+      await vscode.commands.executeCommand('type', { text: '{' });
+      assert.equal(document.getText(), before.text.slice(0, before.offset) + '{' + before.text.slice(before.offset), name + sigil + ' literal fallback preserves all surrounding source');
+      selectionAt(before.offset + 1);
+      assert.ok(!document.getText().includes('hson_editor_probe'));
+      process.stdout.write(`ok - ${name}=${sigil}: native literal fallback source and cursor\n`);
+    }
+  }
   for (const fixture of cases) {
     const before = await setup(prefix + fixture.body);
     await vscode.commands.executeCommand('type', { text: fixture.typed });
@@ -242,7 +254,7 @@ async function runTypingConveniences(workspace: string): Promise<void> {
   process.stdout.write('ok - current host: multiline CRLF/astral and nested template source/cursor regressions\n');
   process.stdout.write('ok - current host: QUAD/hyphenated/Part attributes, Data and quoted interpolation, text placeholders, existing structural and «» snippets\n');
   // Existing closers use one opener snippet and leave the existing brace intact.
-  for (const body of ['data`$|}`;', 'document`<span "%|}"/>`;', 'data`$|fn({ value: 1 })}`;', 'document`<span "%|name}"/>`;',
+  for (const body of ['document`<span title=%|model.items[0].label}/>`;', 'document`<span title=^|}/>`;', 'data`$|}`;', 'document`<span "%|}"/>`;', 'data`$|fn({ value: 1 })}`;', 'document`<span "%|name}"/>`;',
     'document`<span title="pre$|}suffix"/>`;', 'document`<span title="pre$|name}suffix"/>`;']) {
     const before = await setup(prefix + body);
     await vscode.commands.executeCommand('type', { text: '{' });

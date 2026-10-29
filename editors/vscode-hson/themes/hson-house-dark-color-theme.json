@@ -180,7 +180,7 @@
         "keyword.control.iteration.hson"
       ],
       "settings": {
-        "foreground": "#ac9f88"
+        "foreground": "#ac8f88"
       }
     },
     {
@@ -386,7 +386,7 @@
     "hsonDirective": "#9989b6",
     "hsonReceiving": "#86b7c6",
     "hsonSending": "#b685af",
-    "hsonIteration": "#ac9f88",
+    "hsonIteration": "#ac8f88",
     "hsonLocalReferenceSigil": "#b6b2a9",
     "hsonIncomingReferenceSigil": "#9b9a85",
     "hsonString": "#abb0b0",

@@ -8,7 +8,20 @@ import type {
   LiveMap,
 } from "../../types/livemap.types.js";
 
-const CONTINUATION_ROOTS = new WeakMap<Element, "preparing" | "active">();
+// Versioned, realm-local storage for the existing exact-root reservation contract.
+// No canonical identities live here. Independently bundled entrypoints share it.
+const ROOT_RESERVATIONS = Symbol.for("hson-live.continuation-root-reservations.v1");
+function continuation_roots(): WeakMap<Element, "preparing" | "active"> {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, ROOT_RESERVATIONS);
+  if (descriptor !== undefined) {
+    if (descriptor.configurable || descriptor.writable || descriptor.enumerable
+      || !(descriptor.value instanceof WeakMap)) throw new Error("Incompatible Hson continuation reservation storage.");
+    return descriptor.value;
+  }
+  const roots = new WeakMap<Element, "preparing" | "active">();
+  Object.defineProperty(globalThis, ROOT_RESERVATIONS, { value: roots });
+  return roots;
+}
 
 /** @internal Exact-root reservation collision. */
 export class ContinuationRootReservedError extends Error {
@@ -51,29 +64,30 @@ export function validate_continuation_root(root: unknown): asserts root is Eleme
 }
 
 export function reserve_continuation_root(root: Element): () => void {
-  if (CONTINUATION_ROOTS.has(root)) {
+  const roots = continuation_roots();
+  if (roots.has(root)) {
     throw new ContinuationRootReservedError();
   }
-  CONTINUATION_ROOTS.set(root, "preparing");
+  roots.set(root, "preparing");
   let released = false;
   return (): void => {
     if (released) return;
     released = true;
-    CONTINUATION_ROOTS.delete(root);
+    roots.delete(root);
   };
 }
 
 /** @internal Distinguish an established manual continuation from an in-flight root claim. */
 export function continuation_root_is_active(root: Element): boolean {
-  return CONTINUATION_ROOTS.get(root) === "active";
+  return continuation_roots().get(root) === "active";
 }
 
 /** @internal Mark the exact root only after adoption and continuation establishment. */
 export function activate_continuation_root(root: Element): void {
-  if (CONTINUATION_ROOTS.get(root) !== "preparing") {
+  if (continuation_roots().get(root) !== "preparing") {
     throw new Error("Continuation root was not reserved for preparation.");
   }
-  CONTINUATION_ROOTS.set(root, "active");
+  continuation_roots().set(root, "active");
 }
 
 function is_document_library(value: unknown): value is LiveMapDocumentLibrary {

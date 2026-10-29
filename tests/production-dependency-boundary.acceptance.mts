@@ -97,6 +97,9 @@ check("side-effect metadata retains Scout registration and Schema tooling startu
   const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8")) as { sideEffects?: unknown };
   assert.deepEqual(manifest.sideEffects, [
     "./dist/api/scout/index.js",
+    "./dist/api/scout/scout.runtime.js",
+    "./dist/api/scout/auto.js",
+    "./dist/scout-auto.js",
     "./dist/internal/hson-schema/compiler-project-watch.js",
     "./dist/hson-schema.mjs",
   ]);
@@ -104,7 +107,7 @@ check("side-effect metadata retains Scout registration and Schema tooling startu
     assert.ok(existsSync(resolve(repositoryRoot, path)), `${path} is not an emitted package path`);
   }
   const scout = browser_graph("scout-import-for-effect.mjs", 'import "hson-live/scout";');
-  assert.ok(scout.inputs.some((input) => /api\/scout\/index\.js$/.test(input)), "Scout registration was discarded");
+  assert.ok(scout.inputs.some((input) => /api\/scout\/scout\.runtime\.js$/.test(input)), "Scout registration was discarded");
 });
 
 check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime dependency", () => {

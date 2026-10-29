@@ -1,3 +1,4 @@
+import { register_scout_session, register_scout_capture } from "../../internal/scout-delivery-session.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
@@ -265,6 +266,7 @@ export function create_registry_locus_internal<
     return result;
   }
 
+  const serverCreated = new WeakSet<LocusSession>();
   function retained_session(sessionId: LocusSessionId): LocusSession | undefined {
     const currentKey = authority.sessions.key(sessionId);
     if (disposed || currentKey === undefined) return undefined;
@@ -288,7 +290,10 @@ export function create_registry_locus_internal<
           local: effective.local,
           initializerDigest: effective.initializerDigest,
         });
-        return html === undefined ? base : Object.freeze({ ...base, ...cut_hosted_projection(snapshot, html) });
+        if (html === undefined) return base;
+        const captured = Object.freeze({ ...base, ...cut_hosted_projection(snapshot, html) });
+        register_scout_capture(captured, session);
+        return captured;
       });
     }
     const session: LocusSession = Object.freeze({
@@ -299,6 +304,45 @@ export function create_registry_locus_internal<
       now,
       update: (scope, context) => authority.sessions.updateProjection(sessionId, scope, context, key),
       revoke: () => !disposed && authority.sessions.key(sessionId) === key && authority.sessions.revoke(sessionId),
+    });
+    let deliveryStarted = false;
+    register_scout_session(session, { map: options.map,
+      assert() {
+        if (disposed || authority.sessions.key(sessionId) !== key) throw new LocusProjectionUnavailableError();
+      },
+      begin(claimed) {
+        if (deliveryStarted) throw new Error("A session can own only one initial Scout delivery.");
+        const diagnostic = authority.sessions.debug().sessions.find(item => item.sessionId === sessionId);
+        if (!serverCreated.has(session) || diagnostic?.activeConnectionEpoch !== 1 || diagnostic.state !== "attached") {
+          throw new Error("Scout delivery requires an unattached server-created session.");
+        }
+        deliveryStarted = true;
+        claimed();
+        let pending = true;
+        let cancelTimer: (() => void) | undefined;
+        const cancel = () => {
+          if (!pending) return;
+          pending = false;
+          stop();
+          cancelTimer?.();
+        };
+        const stop = authority.sessions.onChange(event => {
+          const id = event.kind === "fenced" ? event.sessionId : event.session.sessionId;
+          if (id === sessionId && (event.kind === "attached" && event.attachment === "reattached"
+            || event.kind === "revoked" || event.kind === "expired")) cancel();
+        });
+        const expire = () => {
+          if (!pending) return;
+          cancel();
+          if (authority.sessions.key(sessionId) === key && authority.sessions.debug().sessions.some(item => item.sessionId === sessionId && item.activeConnectionEpoch === 1)) session.revoke();
+        };
+        try {
+          if (options.sessions?.schedule !== undefined) cancelTimer = options.sessions.schedule(30_000, expire);
+          else { const timer = setTimeout(expire, 30_000); cancelTimer = () => clearTimeout(timer); }
+          // A supplied scheduler may synchronously attach, dispose, or expire.
+          if (!pending) cancelTimer();
+        } catch (cause) { cancel(); throw cause; }
+      },
     });
     capabilities.set(sessionId, session);
     return session;
@@ -319,6 +363,7 @@ export function create_registry_locus_internal<
         const id = await authority.create_session(scope, creation);
         const session = retained_session(id);
         if (session === undefined) throw new LocusProjectionUnavailableError();
+        serverCreated.add(session);
         return session;
       },
       get: retained_session,

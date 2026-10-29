@@ -1,3 +1,4 @@
+import { register_echo_terminal_observer_internal } from "./echo.terminal.internal.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
@@ -334,6 +335,17 @@ export function create_lazy_replica_echo_internal<
   };
   const governedEcho = Object.freeze(publicEcho) as unknown as Echo<TMap, TActions>;
   register_echo_map_internal(governedEcho, options.map);
+  register_echo_terminal_observer_internal(governedEcho, listener => {
+    let active = true;
+    const check = () => {
+      if (echo.session.status === "failed" || echo.session.status === "ended") {
+        queueMicrotask(() => { if (active) listener(); });
+      }
+    };
+    const stop = connection.onReadyChange(check);
+    check();
+    return () => { active = false; stop(); };
+  });
   return Object.freeze({
     echo: governedEcho,
     rawSession: echo.session,

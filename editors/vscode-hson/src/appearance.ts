@@ -35,7 +35,7 @@ export const HSON_APPEARANCE = {
         name: {
           label: "Attribute name",
           examples: [
-            { code: "<button class=\"primary\"/>", highlight: "class" }
+            { code: '<button class="primary"/>', highlight: "class" }
           ],
           house: {
             dark: { foreground: "#84a9d6" },
@@ -121,7 +121,7 @@ export const HSON_APPEARANCE = {
             { code: "<section per:item=^{items}/>", highlight: "item", occurrence: 1 }
           ],
           house: {
-            dark: { foreground: "#ac9f88" },
+            dark: { foreground: "#ac8f88" },
             light: { foreground: "#7A602B" }
           }
         }

@@ -244,3 +244,5 @@ try {
   locus?.dispose();
   await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
+
+await import("./run-scout-auto-browser.mjs");

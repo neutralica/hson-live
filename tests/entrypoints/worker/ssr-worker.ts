@@ -1,5 +1,6 @@
 import type { LiveMapHtmlCut } from "hson-live/livemap";
 import {
+  deliver_scout,
   encode_ssr_bootstrap,
   decode_ssr_bootstrap,
   DocumentSsrError,
@@ -27,3 +28,9 @@ void libraries.cut().libs;
 void session.now().libs;
 void aggregateLocal.document;
 void aggregateHosted.document;
+
+// Standard server delivery uses the same coherent capture already selected above.
+const response: Response = deliver_scout(session, aggregateHosted,
+  librariesAuthority.parts.must("ui").at(["scout"]),
+  { endpoint: "/_hson", module: "/assets/scout-auto.js" });
+void response;

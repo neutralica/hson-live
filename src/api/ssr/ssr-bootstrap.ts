@@ -343,7 +343,8 @@ function emit_quoted_string(value: string, write: (fragment: string) => void): v
   write(`"`);
 }
 
-function encode_base64url(bytes: Uint8Array): string {
+/** @internal Shared transport encoding. */
+export function encode_base64url(bytes: Uint8Array): string {
   const chunks: string[] = [];
   for (let start = 0; start < bytes.length; start += BASE64URL_INPUT_CHUNK_BYTES) {
     const end = Math.min(start + BASE64URL_INPUT_CHUNK_BYTES, bytes.length);
@@ -365,7 +366,8 @@ function encode_base64url(bytes: Uint8Array): string {
   return chunks.join("");
 }
 
-function base64url_equals(bytes: Uint8Array, expected: string): boolean {
+/** @internal Shared transport encoding. */
+export function base64url_equals(bytes: Uint8Array, expected: string): boolean {
   if (expected.length !== base64url_length(bytes.length)) return false;
   let offset = 0;
   for (let index = 0; index < bytes.length; index += 3) {
@@ -458,7 +460,8 @@ function compare_canonical_json_text(value: unknown, expected: string): boolean 
   return equal && offset === expected.length;
 }
 
-function decode_base64url(value: string): Uint8Array {
+/** @internal Shared transport encoding. */
+export function decode_base64url(value: string): Uint8Array {
   const length = Math.floor(value.length * 3 / 4);
   const output = new Uint8Array(length);
   let offset = 0;

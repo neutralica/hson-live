@@ -1,3 +1,4 @@
+import { scout_delivery_cases } from "./scout-delivery.cases.mts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -310,4 +311,47 @@ case_run("four Scouts leave only one claimant", `
 events.case_begin("root output has no Scout import", "root output has no Scout import");
 assert.doesNotMatch(readFileSync(resolve(repositoryRoot, "dist/index.js"), "utf8"), /api\/scout/);
 events.case_end("root output has no Scout import", "pass");
+await scout_delivery_cases();
+const { build } = await import("esbuild");
+const published = await build({ entryPoints: ["dist/api/scout/auto.js"], bundle: true, format: "esm", platform: "browser",
+  target: "es2022", minify: true, write: false, metafile: true, legalComments: "none" });
+assert.ok(published.outputFiles[0].text === readFileSync("dist/scout-auto.js", "utf8"), "Published Scout asset is stale");
+assert.equal(Object.values(published.metafile.outputs)[0].imports.length, 0);
+const included = Object.entries(Object.values(published.metafile.outputs)[0].inputs).filter(([, value]) => value.bytesInOutput > 0).map(([path]) => path);
+assert.equal(included.filter(path => path.endsWith("/livetree/livetree.js")).length, 1);
+assert.equal(included.some(path => /api\/livehost\/|locus\.(session|registry|aggregate\.authority)\.js|node_modules\/ws\//.test(path)), false);
+case_run("automatic asset imports safely without a browser", `await import("hson-live/scout/auto");`);
+case_run("explicit deployment modes cannot replace an owner", `
+  ${fakeBrowser}
+  configure_scout(() => new Promise(() => {}));
+  const { configure_scout_internal } = await import("./dist/api/scout/scout.runtime.js");
+  let rejected = false;
+  try { configure_scout_internal("standard", () => new Promise(() => {})); } catch { rejected = true; }
+  if (!rejected) throw new Error("Standard startup replaced advanced owner");
+`);
+case_run("cancelled standard provision releases late resources", `
+  ${fakeBrowser}
+  const { configure_scout_internal } = await import("./dist/api/scout/scout.runtime.js");
+  let resolveProvision, disposed = 0;
+  configure_scout_internal("standard", () => new Promise(resolve => { resolveProvision = resolve; }));
+  const scout = connect(new EventTarget());
+  scout.remove(); await Promise.resolve();
+  resolveProvision({ options: {}, dispose() { disposed++; } });
+  await Promise.resolve(); await Promise.resolve();
+  if (disposed !== 1) throw new Error("Cancelled provision retained resources");
+`);
+case_run("failed standard preparation releases owned resources", `
+  ${fakeBrowser}
+  const { configure_scout_internal } = await import("./dist/api/scout/scout.runtime.js");
+  let disposed = 0;
+  const result = configure_scout_internal("standard", () => ({ options: { root: null }, dispose() { disposed++; } })).catch(cause => cause);
+  const scout = connect(new EventTarget());
+  if (!(await result instanceof Error) || disposed !== 1 || !scout.isConnected) throw new Error("Preparation failure leaked resources or removed SSR");
+`);
+case_run("reservation protocol collisions fail closed", `
+  Object.defineProperty(globalThis, Symbol.for("hson-live.continuation-root-reservations.v1"), {value:{}});
+  const common = await import("./dist/api/continuation/continuation.common.js");
+  let rejected=false;try{common.reserve_continuation_root({})}catch(error){rejected=/Incompatible/.test(error.message)}
+  if(!rejected)throw Error("Reservation collision was accepted");
+`);
 events.terminal("pass");

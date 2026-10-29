@@ -239,17 +239,20 @@ function parses(source: string, authoredDocument = false): boolean {
   } catch { return false; }
 }
 
-function templateInterpolationRoles(text: string, region: StructuralRegion) {
+function templateInterpolationRoles(text: string, region: StructuralRegion, insertion?: Readonly<{ offset: number; text: string }>) {
   if (region.authoringKind === undefined || region.protectedRanges.length === 0) return [];
+  const literal = (start: number, end: number): string => insertion !== undefined && insertion.offset >= start && insertion.offset <= end
+    ? text.slice(start, insertion.offset) + insertion.text + text.slice(insertion.offset, end)
+    : text.slice(start, end);
   let source = "";
   let start = region.bodyRange.start;
   const slots: HsonTemplateSlot[] = [];
   for (const range of region.protectedRanges) {
-    source += text.slice(start, range.start);
+    source += literal(start, range.start);
     slots.push({ offset: source.length, substitution: slots.length });
     start = range.end;
   }
-  source += text.slice(start, region.bodyRange.end);
+  source += literal(start, region.bodyRange.end);
   return hson_interpolation_roles(source, region.authoringKind, slots);
 }
 
@@ -269,9 +272,8 @@ export function structural_typing_snippet(
   if (region?.kind !== "template" || region.authoringKind === undefined || region.authoringKind === "schema"
     || region.protectedRanges.some(range => cursor > range.start && cursor < range.end)) return undefined;
   const text = evidence.text;
-  if ((typed === "=" || (text[cursor - 1] === "%" || text[cursor - 1] === "^"))
-    && templateInterpolationRoles(text, region).some(role => role === undefined)) return undefined;
   if (typed === "=") {
+    if (templateInterpolationRoles(text, region).some(role => role === undefined)) return undefined;
     if (!region.authoredDocument) return undefined;
     const body = maskProtectedSource(text, region);
     if (body === undefined) return undefined;
@@ -296,6 +298,28 @@ export function structural_typing_snippet(
     const body = maskProtectedSource(text, region);
     if (body === undefined) return undefined;
     const local = cursor - region.bodyRange.start;
+    const checkpoint = hson_grammar_checkpoint(body.slice(0, local) + "{" + body.slice(local), local + 1, "document");
+    const attr = checkpoint?.parameter?.rawAttribute;
+    if (checkpoint?.kind === "parameter" && attr?.value?.quoted === false
+      && attr.start.index === local - 1 && checkpoint.range.start === local + 1
+      && checkpoint.element !== undefined) {
+      let lowered: unknown;
+      try {
+        lowered = split_attrs_meta([attr]).attrs[attr.name];
+      } catch {
+        return undefined;
+      }
+      if (part_placeholder_placement_issue(checkpoint.element.contentTags.slice(0, -1), { name: attr.name, value: lowered }) !== undefined
+        || typeof lowered !== "string") return undefined;
+      const suffix = body.slice(local);
+      const complete = part_reference_checkpoint(sigil + "{" + suffix, 2)?.complete === true;
+      const insertion = complete ? suffix[0] === "}" ? "{hson_editor_probe" : "{" : "{hson_editor_probe}";
+      const candidate = body.slice(0, local) + insertion + suffix;
+      if (!parses(candidate, true)
+        || templateInterpolationRoles(text, region, { offset: cursor, text: insertion }).some(role => role === undefined)) return undefined;
+      return complete ? "{$0" : "{$0}";
+    }
+    if (templateInterpolationRoles(text, region).some(role => role === undefined)) return undefined;
     if (sigil === "^") {
       const probe = body.slice(0, local) + "{" + body.slice(local);
       const checkpoint = hson_grammar_checkpoint(probe, local + 1, "document");
