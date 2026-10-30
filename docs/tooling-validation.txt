@@ -1,0 +1,88 @@
+Staged-candidate pre-commit validation
+
+From the repository root, run:
+
+    node scripts/validate-staged.mjs
+
+The pre-commit hook runs that same command automatically during an ordinary
+git commit. Stage the intended changes first. Unstaged and untracked development
+can continue during validation. Changing the staged tree, HEAD commit, or HEAD
+branch invalidates the result and requires another run. A standalone successful
+run is diagnostic evidence; it is never a reusable commit authorization.
+
+The runner copies the active index (including Git's temporary index for partial
+commits), computes its tree through that private copy, records HEAD, and creates
+a private Git checkout of that exact tree,
+and executes the candidate's tooling there. It does not stash, reset, clean, or
+lock the developer's working directory. It does not register a Git worktree.
+Final verification also uses a fresh private index copy; neither tree calculation
+acquires or updates the developer's index, so concurrent invocations do not
+compete for its lock. The private candidate/final index files remain with reports.
+The checkout shares Git objects for reading, with its own index and refs.
+Checkout attributes disable smudge filters, EOL/encoding conversion and ident
+expansion so tools read the exact staged blobs, including export-ignore files.
+Tracked symlinks and submodules are rejected before executing candidate stages.
+Repositories without an initial HEAD commit and conflicted indexes are rejected.
+
+Root and editor npm ci installs are independently attempted inside the checkout;
+node_modules, dist, and .hson are never linked to the developer's copies. npm's
+normal download cache may be shared. Fresh installs can require network access
+and add time. Installation failures remain failures even if later stages pass.
+If root dependencies cannot be installed, inventory is reported unavailable and
+the original commands are still attempted so independently runnable work can
+produce diagnostics. Known root-build wrapper dependencies remain enforced.
+
+The check gate retains every existing ordinary stage, its ordering, its original
+package command, existing timeouts, inventory policy, and three approved root
+build reuse wrappers. No application test bodies or inventories change here.
+All independent stages are attempted after failures, including inventory failure.
+Inventory-declared root build consumers and the three wrappers are blocked after
+a failed root build; explicit dependencies are also recorded and enforced.
+An editor installation failure blocks check:editor and schema-editor-tsserver.
+Unrelated failures do not discard a successfully established root build; its
+existing source, artifact and compiler-dependency guards still run before reuse.
+Cancellation and incomplete process cleanup stop further launches.
+
+Reports are printed at startup and completion and retained under:
+
+    $(git rev-parse --git-common-dir)/validation-reports/<unique-run>/
+
+candidate.json records the candidate tree, initial/final HEAD and branch, final
+index tree, outcome, cleanup, and setup/gate report locations. Setup and gate
+reports contain stage status, commands, exit codes, signals, dependency blockers,
+timestamps, durations, inventory and observer evidence. Stage stdout and stderr
+are captured together without truncation in numbered .log files beside each
+stage ledger. External report artifact paths are relative to that ledger's
+directory. JSON ledgers are replaced atomically after transitions. Reports are
+not pruned automatically; remove old run directories deliberately when no longer
+needed. The private checkout is removed on success, failure and handled signals.
+
+Each stage owns a POSIX process group. Cancellation, timeout, abnormal exit and
+background descendants of a successful stage receive TERM followed by KILL;
+cleanup completes before the next stage starts. Windows only guarantees direct
+child termination. Detached descendants that create their own sessions escape
+this mechanism. This is checkout isolation, not a sandbox for hostile commands.
+SIGKILL, machine failure or an abrupt runtime crash can leave a private checkout
+or a running/pending ledger. candidate.json records the checkout location for
+manual recovery. Reports survive ordinary cleanup, but are not power-loss/fsync
+guarantees. Invocations have independent checkout/report directories and do not
+share validation permissions or a mutable latest-success token.
+
+The final index-tree and HEAD/branch checks occur after checkout cleanup. Git's
+pre-commit interface does not provide an atomic lock spanning that check, hook
+return, and commit finalization. Another process can still change the index or
+HEAD in that final interval (including while the last report is written). Avoid
+concurrent staging/committing while a commit finishes. Eliminating that race
+requires a separately designed commit transaction; this hook does not claim it.
+
+Focused orchestration checks (short synthetic stages and disposable Git repos):
+
+    node tests/tooling/validate-staged.mjs
+    node tests/validation-accounting.acceptance.mjs
+    node tests/validation-root-build-reuse.acceptance.mjs
+    node scripts/run-current-acceptance.mjs --preflight
+
+These checks do not execute the Hson application gate. The new focused probe is
+invoked directly so the existing application inventory remains unchanged.
+Ordinary npm run check, check:full and check:extended retain their prior behavior;
+use the staged-candidate command above for isolated, collect-all validation.

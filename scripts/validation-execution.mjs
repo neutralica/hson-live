@@ -1,13 +1,17 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { resolve, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertRootBuildPublication } from "./validation-build-publication.mjs";
 
 const hash = input => createHash("sha256").update(input).digest("hex");
+// Hook-local Git variables (especially GIT_INDEX_FILE) must never redirect a
+// validation child back into the developer's checkout.
+export const validationEnvironment = () => Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+  !name.startsWith("GIT_") && !/^npm_config_(?:prefix|local_prefix|workspace|workspaces)$/i.test(name)));
 export function sourceIdentity(root) {
-  const git = args => spawnSync("git", args, { cwd: root, encoding: "utf8" });
+  const git = args => spawnSync("git", args, { cwd: root, encoding: "utf8", env: validationEnvironment() });
   const head = git(["rev-parse", "HEAD"]);
   const listing = git(["ls-files", "-co", "--exclude-standard", "-z"]);
   if (head.status !== 0 || listing.status !== 0) throw new Error("Cannot record validation source identity");
@@ -51,10 +55,10 @@ function rootBuildArtifacts(root) {
 }
 
 // Process-level wall durations only. No per-test or CPU-time claims are made.
-// Existing command output is inherited and exit semantics stay with the caller.
+// Output can be inherited or captured in full; exit semantics stay with the caller.
 export async function runStages({ root, mode, stages, preflight, configuration, identify = () => sourceIdentity(root), identity = identify(), execute,
-  rootBuildPrerequisites = {} }) {
-  const parent = resolve(root, "tmp/validation-timing");
+  rootBuildPrerequisites = {}, collectAll = false, reportRoot, captureOutput = false, blockedStages = {} }) {
+  const parent = reportRoot ?? resolve(root, "tmp/validation-timing");
   mkdirSync(parent, { recursive: true });
   const folder = mkdtempSync(resolve(parent, `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}-`));
   const eventFile = resolve(folder, "events.jsonl");
@@ -66,9 +70,12 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
     stages: [{ name: "inventory-preflight", status: "pending" }, ...stages.map(stage => ({ name: stage.name, command: stage.command, status: "pending" }))],
     nestedObservation: "Node preload observes child_process calls and Node process lifetimes. Non-Node descendants and explicitly replaced environments may be unobservable; missing end events remain incomplete.",
     cancellationPolicy: process.platform === "win32" ? "Terminate and reap the direct child; descendant cleanup is incomplete on Windows."
-      : "Each stage owns a new process group. On cancellation, timeout or abnormal exit send SIGTERM, then SIGKILL after 1000 ms, only to that group; reap the direct child.",
+      : "Each stage owns a new process group. On cancellation, timeout, abnormal exit or surviving descendants send SIGTERM, then SIGKILL after 1000 ms, only to that group; reap the direct child.",
     rootBuildInvocations: 0, rootBuildReuses: 0 };
-  const save = () => writeFileSync(reportPath, JSON.stringify(report, null, 2) + "\n");
+  const save = () => {
+    writeFileSync(reportPath + ".tmp", JSON.stringify(report, null, 2) + "\n");
+    renameSync(reportPath + ".tmp", reportPath);
+  };
   save();
   const runStart = performance.now();
   let stoppedBy = null;
@@ -163,7 +170,14 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
       child.once("error", failure => { error ??= failure; if (child.pid) stop(); });
       // 'exit' reaps the leader before 'close'. Descendants may still own stdio
       // or the group, so begin cleanup here and finish it before the next stage.
-      child.once("exit", (status, childSignal) => { if (status !== 0 || childSignal) stop(); });
+      child.once("exit", (status, childSignal) => {
+        if (status !== 0 || childSignal) stop();
+        else if (grouped && child.pid) {
+          // Successful shells can also leave background writers behind.
+          try { process.kill(-child.pid, 0); stop(); }
+          catch (failure) { if (failure.code !== "ESRCH") { cleanupError ??= failure; stop(); } }
+        }
+      });
       child.once("close", async (status, childSignal) => {
         clearTimeout(deadline);
         if (child.pid && (status !== 0 || childSignal || error)) stop();
@@ -206,7 +220,7 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
       row.exitStatus = result.status; row.signal = result.signal ?? null;
       if (result.error) row.error = result.error.message;
       if (result.cleanup) row.cleanup = result.cleanup;
-      row.status = cancellation ? "cancelled" : result.status === 0 && !result.signal && !result.error
+      row.status = cancellation ? "cancelled" : result.status === 0 && !result.signal && !result.error && result.cleanup?.status !== "incomplete"
         && !["failed", "incomplete"].includes(row.caseCompletion?.status) ? "passed" : "failed";
     } catch (error) { row.status = "failed"; row.exitStatus = 1; row.error = error.message; }
     row.endedAt = new Date().toISOString(); row.wallMs = performance.now() - begin;
@@ -220,11 +234,12 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
         const contents = JSON.stringify(inventory, null, 2) + "\n";
         const inventoryPath = resolve(folder, "inventory.json");
         writeFileSync(inventoryPath, contents);
-        report.inventory = { path: relative(root, inventoryPath), sha256: hash(contents) };
+        report.inventory = { path: relative(reportRoot ? folder : root, inventoryPath), sha256: hash(contents) };
       }
       return { status: 0 };
     })) {
-      stoppedBy = "inventory-preflight"; exitStatus = 1;
+      if (!collectAll) stoppedBy = "inventory-preflight";
+      exitStatus = 1;
       console.error(report.stages[0].error);
     }
     for (const [index, stage] of stages.entries()) {
@@ -233,6 +248,15 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
       await new Promise(done => setImmediate(done));
       if (cancellation) { stoppedBy = `cancelled: ${cancellation}`; exitStatus = cancellation === "SIGINT" ? 130 : 143; }
       if (stoppedBy) { row.status = "skipped"; row.skippedBecause = stoppedBy; save(); continue; }
+      const dependencies = [...(stage.dependsOn ?? [])];
+      if (collectAll && stage.name !== "build" && (Object.hasOwn(rootBuildPrerequisites, stage.name)
+        || inventory?.commands?.[stage.name]?.prerequisites?.includes("root build output"))) dependencies.push("build");
+      row.dependsOn = [...new Set(dependencies)];
+      const blocked = row.dependsOn.filter(name => report.stages.find(prior => prior.name === name)?.status !== "passed");
+      if (Object.hasOwn(blockedStages, stage.name) || blocked.length) {
+        row.status = "blocked"; row.blockedBecause = Object.hasOwn(blockedStages, stage.name) ? blockedStages[stage.name] : blocked;
+        exitStatus ||= 1; save(); continue;
+      }
       console.log(`[${index + 1}/${stages.length}] ${stage.name}`);
       const passed = await timed(row, async () => {
         let executable = stage.executable ?? "npm", args = stage.args ?? ["run", stage.name];
@@ -254,12 +278,22 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
           row.executedCommand = body;
           row.rootBuildPrerequisite = { stage: "build", inputsSha256: rootBuild.inputs, artifactsSha256: rootBuild.artifacts };
         }
-        const result = await (execute ?? launch)(executable, args, {
-          cwd: root, stdio: "inherit", ...(stage.timeout ? { timeout: stage.timeout } : {}),
-          env: { ...process.env, HSON_VALIDATION_EVENTS: eventFile, HSON_VALIDATION_ROOT: root, HSON_VALIDATION_STAGE: stage.name,
-            HSON_VALIDATION_BUILD_PUBLICATION: building ? publicationFile : "",
-            NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${observe}${building ? ` --import=${observePublication}` : ""}`.trim() },
-        });
+        let log;
+        let result;
+        try {
+          if (captureOutput) {
+            row.log = `${index + 1}.log`;
+            log = openSync(resolve(folder, row.log), "w", 0o600);
+            save();
+          }
+          result = await (execute ?? launch)(executable, args, {
+            cwd: root, stdio: log === undefined ? "inherit" : ["ignore", log, log], ...(stage.timeout ? { timeout: stage.timeout } : {}),
+            env: { ...validationEnvironment(), PWD: root, INIT_CWD: root,
+              HSON_VALIDATION_EVENTS: eventFile, HSON_VALIDATION_ROOT: root, HSON_VALIDATION_STAGE: stage.name,
+              HSON_VALIDATION_BUILD_PUBLICATION: building ? publicationFile : "",
+              NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${observe}${building ? ` --import=${observePublication}` : ""}`.trim() },
+          });
+        } finally { if (log !== undefined) closeSync(log); }
         row.caseCompletion = caseCompletionFor(stage.name, collectEvents());
         if (result.status === 0 && !result.signal && !result.error && !cancellation) {
           if (building) {
@@ -278,9 +312,9 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
         return result;
       });
       if (!passed) {
-        rootBuild = null;
+        if (!collectAll || stage.name === "build") rootBuild = null;
         exitStatus = row.exitStatus || 1;
-        if (!stage.continueOnFailure || row.cleanup?.status === "incomplete") stoppedBy = stage.name;
+        if ((!collectAll && !stage.continueOnFailure) || row.cleanup?.status === "incomplete") stoppedBy = stage.name;
       }
     }
     collectEvents();
@@ -297,7 +331,7 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
     report.status = cancellation ? "cancelled" : exitStatus === 0 ? "passed" : "failed";
     if (cancellation) report.cancellationSignal = cancellation;
     report.endedAt = new Date().toISOString(); report.wallMs = performance.now() - runStart; report.exitStatus = exitStatus;
-    report.events = relative(root, eventFile);
+    report.events = relative(reportRoot ? folder : root, eventFile);
     report.nestedCommands = events.filter(event => event.type === "command-start").length;
     save();
     console.log(`Validation report: ${relative(root, reportPath)} (${report.rootBuildInvocations} root build invocations)`);

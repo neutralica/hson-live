@@ -129,6 +129,31 @@ try {
     assert.equal(result.report.rootBuildReuses, 3);
     assert.equal(result.report.stages[2].status, "passed");
   });
+  await check("collect-all preserves a guarded root build across an unrelated failure", async () => {
+    const f = fixture();
+    const unrelated = { name: "unrelated", executable: process.execPath, args: ["-e", "process.exit(11)"] };
+    const result = await f.run([f.rows()[0], unrelated, ...f.rows(names)], { collectAll: true });
+    assert.equal(result.exitStatus, 11);
+    assert.equal(result.report.rootBuildReuses, 3);
+    assert.deepEqual(result.report.stages.slice(1).map(row => row.status), ["passed", "failed", "passed", "passed", "passed"]);
+    assert.deepEqual(f.trace(), [{ type: "build" }, ...names.map(name => ({ type: "body", name }))]);
+  });
+  await check("collect-all continues guarded consumers after an original suite failure", async () => {
+    const f = fixture({ bodyTail: `if(process.env.HSON_VALIDATION_STAGE===${JSON.stringify(names[0])}) process.exit(23);` });
+    const result = await f.run(f.rows(), { collectAll: true });
+    assert.equal(result.exitStatus, 23);
+    assert.equal(result.report.rootBuildReuses, 2);
+    assert.deepEqual(result.report.stages.slice(1).map(row => row.status), ["passed", "failed", "passed", "passed"]);
+    assert.deepEqual(f.trace(), [{ type: "build" }, ...names.map(name => ({ type: "body", name }))]);
+  });
+  await check("collect-all blocks failed root-build dependents and runs independent work", async () => {
+    const f = fixture({ buildTail: "process.exit(19);" });
+    const independent = { name: "independent", executable: process.execPath, args: ["-e", "process.exit(0)"] };
+    const result = await f.run([...f.rows(), independent], { collectAll: true });
+    assert.notEqual(result.exitStatus, 0);
+    assert.deepEqual(result.report.stages.slice(1).map(row => row.status), ["failed", "blocked", "blocked", "blocked", "passed"]);
+    assert.deepEqual(f.trace(), [{ type: "build" }]);
+  });
   await check("failed orchestrated prerequisite cannot be reused even when continuation is requested", async () => {
     const f = fixture({ buildTail: "process.exit(19);" });
     const stages = f.rows(); stages[0].continueOnFailure = true;

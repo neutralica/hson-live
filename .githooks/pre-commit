@@ -1,2 +1,2 @@
 #!/bin/sh
-npm run check
+exec node scripts/validate-staged.mjs
