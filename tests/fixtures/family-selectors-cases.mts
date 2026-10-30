@@ -40,7 +40,7 @@ export async function family_selector_cases() {
   const reflected = Reflect.ownKeys(map.doc);
   map.addLibraries(Object.fromEntries(collisions.map(name => [name, { document: '<aside/>' }])));
   for (const name of collisions) {
-    assert.equal(map.doc.must(name).render(), '<aside></aside>');
+    assert.equal(map.doc.must(name).render(), '<!doctype html><html><head></head><body><aside></aside></body></html>');
     assert.equal(map.doc(name), map.doc.must(name));
     if (name.startsWith("__") && name !== "__proto__") assert.equal(typeof Reflect.get(map.doc, name), "function");
   }

@@ -30,7 +30,7 @@ try {
   const locus = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], logicalMapId: "h2-restart", persistence: new FileCheckpointAdapter(file) });
   let revision: number;
   try {
-    await locus.stage(w => { w.doc.must("flat").at([]).asElement().attrs.set("title", "checkpoint"); w.doc.must("bare").at([0]).delete(); });
+    await locus.stage(w => { w.doc.must("flat").at([]).asElement().attrs.set("title", "checkpoint"); w.doc.must("bare").at([1, 0, 0]).delete(); });
     await hsonLiveMap.locus.checkpoint(locus);
     await locus.admit({ "later": { ...page, access: "shared" } });
     await locus.stage(w => { w.doc.must("page").at([1,0]).delete(); w.doc.must("page").at([]).asElement().attrs.set("title", "tail"); w.doc.must("page").css.sel("body").setProp("color", "purple"); });

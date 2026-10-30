@@ -26,27 +26,27 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const Empty = Hson.schema`<type "document" tag "main" content "empty">`;
-const Nested = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content <sequence [<tag "button" content "empty">]>>]>>`;
-const Items = Hson.schema`<type "document" tag "main" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>`;
-const Multi = Hson.schema`<type "document" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>`;
-const Text = Hson.schema`<type "document" tag "main" content "string">`;
+const Empty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const Nested = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "section" content <sequence [<tag "button" content "empty">]>>]>>]>>]>>`;
+const Items = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>]>>]>>`;
+const Multi = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>]>>]>>`;
+const Text = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
 const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries({ page: { document, schema } });
-const find = (page: LiveMapDocumentLibrary, id: string, scope: readonly number[] = []) => find_internal_document_id(page, page.at(scope), id);
-const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
+const find = (page: LiveMapDocumentLibrary, id: string, scope: readonly number[] = []) => find_internal_document_id(page, page.at([1, 0, ...scope]), id);
+const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path: [0, 0, 1, 0, ...path] });
 const item = (id?: string): HsonNode => ({ $_tag: "item", ...(id === undefined ? {} : { $_attrs: { id } }), $_content: [] });
 
 check("root discovery includes the ordinary root", () => {
   const page = registry('<main id="root"/>', Empty).doc.must("page");
-  assert.deepEqual(find(page, "root")?.path(), []);
+  assert.deepEqual(find(page, "root")?.path(), [1, 0]);
 });
 check("nested descendant discovery uses logical edges", () => {
   const page = registry('<main <section <button id="x"/>/>/>', Nested).doc.must("page");
-  assert.deepEqual(find(page, "x")?.path(), [0, 0]);
+  assert.deepEqual(find(page, "x")?.path(), [1, 0, 0, 0]);
 });
-check("multi-root discovery visits later content", () => {
-  const page = registry('<item/> <item id="later"/>', Multi).doc.must("page");
-  assert.deepEqual(find(page, "later")?.path(), [1]);
+check("body content discovery visits later children", () => {
+  const page = registry('<main <item/> <item id="later"/>/>', Multi).doc.must("page");
+  assert.deepEqual(find(page, "later")?.path(), [1, 0, 1]);
 });
 check("missing and out-of-range scopes return undefined", () => {
   const page = registry('<main <item/>/>').doc.must("page");
@@ -55,11 +55,11 @@ check("missing and out-of-range scopes return undefined", () => {
 });
 check("duplicate IDs choose first preorder match", () => {
   const page = registry('<main <item id="x"/> <item id="x"/>/>').doc.must("page");
-  assert.deepEqual(find(page, "x")?.path(), [0]);
+  assert.deepEqual(find(page, "x")?.path(), [1, 0, 0]);
 });
 check("scope includes itself and excludes siblings and ancestors", () => {
   const page = registry('<main id="root" <item id="scope"/> <item id="outside"/>/>').doc.must("page");
-  assert.deepEqual(find(page, "scope", [0])?.path(), [0]);
+  assert.deepEqual(find(page, "scope", [0])?.path(), [1, 0, 0]);
   assert.equal(find(page, "root", [0]), undefined);
   assert.equal(find(page, "outside", [0]), undefined);
 });
@@ -67,38 +67,38 @@ check("text and QUID metadata are never ID candidates", () => {
   const text = registry('<main "id=x"/>', Text).doc.must("page");
   assert.equal(find(text, "x"), undefined);
   const page = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime('<main @00000000f/>', { allowTopLevelDocumentText: true }), schema: Empty },
+    page: { document: parse_hson_exact_runtime('<html <head/> <body <main @00000000f/>/>/>', { allowTopLevelDocumentText: true }), schema: Empty },
   }).doc.must("page");
   assert.equal(find(page, "00000000f"), undefined);
 });
 check("ID matching is exact and case-sensitive", () => {
   const page = registry('<main <item id="Target"/>/>').doc.must("page");
   assert.equal(find(page, "target"), undefined);
-  assert.deepEqual(find(page, "Target")?.path(), [0]);
+  assert.deepEqual(find(page, "Target")?.path(), [1, 0, 0]);
 });
 check("empty string IDs remain discoverable", () => {
   const page = registry('<main id=""/>', Empty).doc.must("page");
-  assert.deepEqual(find(page, "")?.path(), []);
+  assert.deepEqual(find(page, "")?.path(), [1, 0]);
 });
 check("discovery returns an interned selected-library location", () => {
   const page = registry('<main <item id="x"/>/>').doc.must("page");
-  assert.equal(find(page, "x"), page.at([0]));
-  assert.equal(find(page, "x"), page.at([]).id("x"));
+  assert.equal(find(page, "x"), page.at([1, 0, 0]));
+  assert.equal(find(page, "x"), page.at([1, 0]).id("x"));
 });
 check("insertion and movement refresh search without moving old locations", () => {
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
   const old = find(page, "x");
   page.document.content.insert(target(0, 0), 0, item());
   assert.equal((document_hson_value(old?.hson()) as HsonNode)?.$_attrs?.id, undefined);
-  assert.deepEqual(find(page, "x")?.path(), [1]);
+  assert.deepEqual(find(page, "x")?.path(), [1, 0, 1]);
   page.document.content.move(target(0, 0), 1, 2);
-  assert.deepEqual(find(page, "x")?.path(), [2]);
+  assert.deepEqual(find(page, "x")?.path(), [1, 0, 2]);
 });
 check("removal and replacement update fresh discovery", () => {
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
   page.document.content.replace(target(0, 0), 0, item("y"));
   assert.equal(find(page, "x"), undefined);
-  assert.deepEqual(find(page, "y")?.path(), [0]);
+  assert.deepEqual(find(page, "y")?.path(), [1, 0, 0]);
   page.document.content.remove(target(0, 0), 0);
   assert.equal(find(page, "y"), undefined);
 });
@@ -107,9 +107,9 @@ check("registry restore refreshes search", () => {
   const initial = map.capture();
   const page = map.doc.must("page");
   page.document.content.move(target(0, 0), 0, 1);
-  assert.deepEqual(find(page, "x")?.path(), [1]);
+  assert.deepEqual(find(page, "x")?.path(), [1, 0, 1]);
   map.restore(initial);
-  assert.deepEqual(find(page, "x")?.path(), [0]);
+  assert.deepEqual(find(page, "x")?.path(), [1, 0, 0]);
 });
 check("internal discovery is non-minting and absent from public exports", () => {
   const map = registry('<main <item id="x"/>/>');

@@ -27,7 +27,7 @@ function check(name: string, run: () => void): void {
 const Q1 = "000000711";
 const Q2 = "000000712";
 const source = () => element(`<main <item @${Q1}/> <item @${Q2}/>/` + `>`);
-const p = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path(parts) });
+const p = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, ...parts]) });
 const carrier = p(0, 0);
 const item = (index: number) => p(0, 0, index);
 const commit = (map: LiveMapDocumentLibrary, operations: readonly LiveMapGraphOp[]) => commit_document_operations(map, operations);
@@ -41,7 +41,7 @@ check("staged paths address the current ordinal after movement", () => {
   assert.equal(map.document.byQuid(Q1)?.$_attrs?.moved, true);
   const operation = result.operations[1]?.operation;
   assert.deepEqual(operation !== undefined && "domain" in operation && operation.domain === "graph" && operation.op === "set-attr"
-    ? operation.target.path : undefined, [0, 0, 1]);
+    ? operation.target.path : undefined, [0, 0, 1, 0, 0, 0, 1]);
 });
 
 check("paths do not retarget through QUID continuity", () => {
@@ -71,7 +71,7 @@ check("inserted portable content is addressable at its staged path", () => {
     { domain: "graph", op: "set-attr", target: item(0), name: "inserted", value: true },
   ]);
   assert.equal(map.document.attrs.get(item(0), "inserted"), true);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 1]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 1]);
 });
 
 check("path mutation retains sparse identity lookup without minting", () => {

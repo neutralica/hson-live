@@ -559,7 +559,7 @@ check("nested iterator value diagnostics require enclosing execution across for 
           if (invalid) assert.throws(run, /(?:requires|resolve to) .* Data/);
           else {
             const map = run();
-            if (items === empty) assert.equal(map.doc.must('page').render(), '<ul></ul>');
+            if (items === empty) assert.equal(map.doc.must('page').render(), '<!doctype html><html><head></head><body><ul></ul></body></html>');
           }
         }
       }

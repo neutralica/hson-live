@@ -49,12 +49,12 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     state=apply_portable_document_css_op(state,{domain:'css',kind:'replace',stylesheet:opaque_document_stylesheet(' replacement ')});
     assert.deepEqual(render_portable_document_stylesheet_carriers(state),[' replacement ']);
   });
-  check("raw transport safety is enforced at HTML realization without modifying stored text", () => {
+  check("raw CSS retains exact transport text but unsafe full Documents reject at admission", () => {
     for(const text of ['</style>', '</STYLE >', 'a\rb', '\0', '\ud800']) {
-      const map=hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>',stylesheet:text}});
-      const page=map.doc.must('page');assert.equal(page.css.snapshot(),text);
-      assert.equal(install_libraries_snapshot(map.capture()).map.doc.must('page').css.snapshot(),text);
-      assert.throws(()=>page.render());
+      const sheet = decode_portable_document_stylesheet(opaque_document_stylesheet(text));
+      assert.equal(render_portable_document_stylesheet(sheet), text);
+      assert.throws(() => hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>',stylesheet:text}}));
+
     }
   });
   check("selector identities and public lookup preserve significant terminal characters", () => {

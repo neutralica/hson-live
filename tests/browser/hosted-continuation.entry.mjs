@@ -289,7 +289,7 @@ globalThis.hostedResume = async rev => {
 globalThis.hostedTopologies = async ({ variants, endpoint }) => {
   for (const variant of variants) {
     const host = await frame(variant.url), doc = host.contentDocument;
-    const root = variant.document === 'live' ? doc.querySelector('main') : doc.documentElement;
+    const root = doc.documentElement;
     const nodes = [root, ...root.querySelectorAll('*')];
     const transport = hsonLiveMap.echo.transport.http({ endpoint });
     const options = { now: variant.cut, credential: variant.credential, transport, root };

@@ -167,6 +167,8 @@ const content = (): HsonNode => {
   assert.ok(is_Node(node));
   return node;
 };
+const documentMainPath = [1, 0] as const;
+const documentMainFirstChildPath = [...documentMainPath, 0] as const;
 for (const route of ["insert", "replace", "attrs"] as const) await check(`Document ${route} remains intact across aggregate and Document observers and Mirror`, () => {
   const map: LiveMap = hsonLiveMap.fromLibraries({ page: { document: "<main <p/>/>" } });
   const page = map.doc.must("page");
@@ -184,9 +186,9 @@ for (const route of ["insert", "replace", "attrs"] as const) await check(`Docume
   map.commits.observe(commit => { second = graph_op(commit); });
   page.watch(() => { watches += 1; });
   try {
-    const returned = route === "insert" ? page.at([]).asElement()!.insert(0, content())
-      : route === "replace" ? page.at([0]).replace(content())
-      : page.at([0]).asElement()!.attrs.replace({ title: "admitted", style: { opacity: "0" } });
+    const returned = route === "insert" ? page.at(documentMainPath).asElement()!.insert(0, content())
+      : route === "replace" ? page.at(documentMainFirstChildPath).replace(content())
+      : page.at(documentMainFirstChildPath).asElement()!.attrs.replace({ title: "admitted", style: { opacity: "0" } });
     assert.deepEqual(second, expected);
     assert.deepEqual(documentSecond, expected);
     assert.deepEqual(graph_op(returned), expected);
@@ -214,7 +216,7 @@ for (const route of ["insert", "replace", "attrs"] as const) await check(`Docume
       assert.equal(hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [payload] }).toHson().serialize(), hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [content()] }).toHson().serialize());
     }
     // Later legitimate canonical mutation must still succeed and reconcile.
-    page.at([0]).asElement()!.attrs.set("title", "later");
+    page.at(documentMainFirstChildPath).asElement()!.attrs.set("title", "later");
     assert.equal(mirror.status, "active");
     assert.equal(mirror.sourceRevision, 2);
     assert.equal(map.rev, 2);
@@ -248,14 +250,14 @@ await check("Document Library addition protects opaque stylesheet contributions 
   assert.equal(first?.operations[0]?.operation, returned.operations[0]?.operation);
   immutable(returned);
   const page = map.doc.must("page"), root = page.root(), retained = structuredClone(returned);
-  assert.equal(page.hson(), "<main/>");
+  assert.equal(page.hson(), "<html\n  <head/>\n  <body\n    <main/>\n  />\n/>");
   assert.equal(page.css.snapshot(), "main { color: red; }");
   assert.deepEqual([map.rev, returned.prevRev, returned.rev, publications], [1, 0, 1, 1]);
   attack(returned);
   assert.deepEqual(page.root(), root);
   assert.equal(page.css.snapshot(), "main { color: red; }");
   page.css.sel("main").set.color("blue");
-  page.at([]).asElement()!.attrs.set("title", "later");
+  page.at(documentMainPath).asElement()!.attrs.set("title", "later");
   assert.equal(page.css.snapshot(), "main { color: red; }\n\nmain{color:blue;}");
   assert.match(page.hson(), /later/);
   assert.deepEqual([map.rev, publications], [3, 3]);
@@ -298,7 +300,7 @@ await check("multi-Library Data, Parts and scoped Document topology owns nested 
   map.data.must("state").at(["values", 1]).set(2);
   const authority = create_locus_hosted_aggregate_internal({ map, scopedDocuments: true });
   try {
-    await authority.stage(writer => { writer.doc.must("page").at([]).asElement().attrs.set("title", "later"); });
+    await authority.stage(writer => { writer.doc.must("page").at(documentMainPath).asElement().attrs.set("title", "later"); });
   } finally { authority.dispose(); }
   assert.deepEqual(map.data.must("state").snap(), { values: [-0, 2] });
   assert.equal(map.rev, 3);
@@ -338,7 +340,7 @@ await check("hosted mixed Data, Document and CSS descriptions resist earlier aut
     const returned = await authority.stage(writer => {
       writer.data.must("state").at(["items"]).set([{ deep: [-0] }]);
       const draft = writer.doc.must("page");
-      draft.at([]).asElement().insert(0, content());
+      draft.at(documentMainPath).asElement().insert(0, content());
       draft.css.sel("main").setProp("color", "red");
     });
     assert.ok(returned !== undefined && expected !== undefined);
@@ -357,7 +359,7 @@ await check("hosted mixed Data, Document and CSS descriptions resist earlier aut
     assert.deepEqual([map.rev, publications, mirror.sourceRevision, mirror.status], [1, 1, 1, "active"]);
     await authority.stage(writer => {
       writer.data.must("state").at(["items", 0, "deep", 0]).set(2);
-      writer.doc.must("page").at([0]).asElement().attrs.set("title", "later");
+      writer.doc.must("page").at(documentMainFirstChildPath).asElement().attrs.set("title", "later");
     });
     assert.deepEqual([map.rev, publications, mirror.sourceRevision, mirror.status], [2, 2, 2, "active"]);
     assert.deepEqual(returned, retained);

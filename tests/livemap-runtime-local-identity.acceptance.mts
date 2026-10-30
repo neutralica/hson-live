@@ -40,7 +40,7 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const docTarget = (...segments: number[]) => Object.freeze({ kind: "path" as const, path: validate_document_path([0, ...segments]) });
+const docTarget = (...segments: number[]) => Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, ...segments]) });
 const Q1 = "00004b001";
 const Q2 = "00004b002";
 const DataSchema = Hson.schema`<type "data" content <child <optional "any"> value <optional "any"> first <optional "any"> second <optional "any"> moved <optional "any">>>`;
@@ -56,7 +56,7 @@ check("document identity changes only runtime overlay and issued ledger", () => 
   assert.equal(map.rev, 0);
   assert.equal(commits, 0);
   assert.equal(canonical_hson_graph_equal(before, map.root()), true);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 1, 0, 0]);
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(map.document.byQuid(Q1)?.$_meta?.quid, Q1);
   assert.equal(livemap_identity_epoch_accounting(map).issued, issued + 1);
@@ -209,7 +209,7 @@ check("local Mirror demand installs one QUID in map, LiveTree, and DOM", () => {
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");
   assert.equal(tree.quid, quid);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(quid), [0, 0, 1]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(quid), [0, 0, 1, 0, 0, 0, 1]);
   binding.dispose();
 });
 

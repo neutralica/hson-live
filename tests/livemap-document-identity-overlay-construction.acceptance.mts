@@ -77,16 +77,16 @@ check("nested QUID-free graphs retain no per-node identity entries", () => {
 });
 
 check("one root QUID maps to its document-content slot", () => {
-  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0, 0, 1, 0, 0]);
 });
 
 check("one multiNodeDocument sibling QUID maps to its direct cluster slot", () => {
-  assert.deepEqual(livemap_document_identity_overlay_for(multiNodeDocument(`<a/> <b @${Q1}/>`)).pathForQuid(Q1), [1]);
+  assert.deepEqual(livemap_document_identity_overlay_for(multiNodeDocument(`<a/> <b @${Q1}/>`)).pathForQuid(Q1), [0, 0, 1, 0, 1]);
 });
 
 check("nested element paths include canonical content carriers exactly", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main <section @${Q1}/>/` + `>`));
-  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
 });
 
 check("sparse documents retain exactly their present QUID count", () => {
@@ -98,15 +98,15 @@ check("sparse forward paths are exact at root and nested locations", () => {
   const overlay = livemap_document_identity_overlay_for(
     element(`<main @${Q1} <a @${Q2}/> <b <c @${Q3}/>/>/>`),
   );
-  assert.deepEqual(overlay.pathForQuid(Q1), [0]);
-  assert.deepEqual(overlay.pathForQuid(Q2), [0, 0, 0]);
-  assert.deepEqual(overlay.pathForQuid(Q3), [0, 0, 1, 0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 1, 0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q2), [0, 0, 1, 0, 0, 0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q3), [0, 0, 1, 0, 0, 0, 1, 0, 0]);
 });
 
 check("sparse reverse lookup agrees at every retained path", () => {
   const overlay = livemap_document_identity_overlay_for(multiNodeDocument(`<a @${Q1}/> <b @${Q2}/>`));
-  assert.equal(overlay.quidAtPath(validate_document_path([0])), Q1);
-  assert.equal(overlay.quidAtPath(validate_document_path([1])), Q2);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0])), Q1);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 1])), Q2);
 });
 
 check("moderate QUID-free fixtures remain storage-constant", () => {
@@ -140,7 +140,7 @@ check("ineligible QUID placement rejects during overlay construction", () => {
 
 check("returned paths are detached from graph storage and frozen", () => {
   const path = livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1);
-  assert.deepEqual(path, [0]);
+  assert.deepEqual(path, [0, 0, 1, 0, 0]);
   assert.equal(Object.isFrozen(path), true);
 });
 
@@ -157,15 +157,15 @@ check("overlay facade exposes no graph node or backing Map", () => {
 
 check("unquidded paths have no reverse overlay entry", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main @${Q1} <span/>/>`));
-  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), undefined);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 0])), undefined);
 });
 
 check("registry construction retains only supplied document QUIDs", () => {
   const map = element(`<main @${Q1} <span/>/>`);
   const overlay = livemap_document_identity_overlay_for(map);
   assert.equal(overlay.size, 1);
-  assert.deepEqual(overlay.pathForQuid(Q1), [0]);
-  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), undefined);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 1, 0, 0]);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 0])), undefined);
 });
 
 check("direct scanner construction never invokes QUID minting", () => {
@@ -185,12 +185,12 @@ check("repeated construction is deterministic in both directions", () => {
   const first = build_livemap_document_identity_overlay(root, "document");
   const second = build_livemap_document_identity_overlay(root, "document");
   assert.deepEqual(first.pathForQuid(Q2), second.pathForQuid(Q2));
-  assert.equal(first.quidAtPath(validate_document_path([0])), second.quidAtPath(validate_document_path([0])));
+  assert.equal(first.quidAtPath(validate_document_path([0, 0, 1, 0, 0])), second.quidAtPath(validate_document_path([0, 0, 1, 0, 0])));
 });
 
 check("one-node and multi-node document paths share one rooted coordinate model", () => {
-  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0]);
-  assert.deepEqual(livemap_document_identity_overlay_for(multiNodeDocument(`<main @${Q1}/> <aside/>`)).pathForQuid(Q1), [0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0, 0, 1, 0, 0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(multiNodeDocument(`<main @${Q1}/> <aside/>`)).pathForQuid(Q1), [0, 0, 1, 0, 0]);
 });
 
 process.stdout.write(`1..${checks}\n`);

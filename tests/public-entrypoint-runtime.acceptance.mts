@@ -160,7 +160,7 @@ check("construction facades preserve root and subpath identity and immutability"
     if (!Object.isFrozen(rootMap) || !Object.isFrozen(hson.liveMap)) throw new Error("LiveMap facade is mutable");
     if (!Object.isFrozen(rootTree) || !Object.isFrozen(hson.liveTree)) throw new Error("LiveTree facade is mutable");
     if ("fromTrustedHtml" in hson.liveMap || "fromUntrustedHtml" in hson.liveMap) throw new Error("browser compatibility shape remains");
-    const registry = rootMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema\`<type "document" tag "main" content "empty">\` } });
+    const registry = rootMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema\`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>\` } });
     if (registry.doc.must("page").mode !== "document" || registry.doc.must("page").root().$_content.length !== 1) throw new Error("named document registry did not close");
     if (subpathMap.fromLibraries !== rootMap.fromLibraries) throw new Error("registry constructor identity diverged");
     let genericEmptyRejected = false;

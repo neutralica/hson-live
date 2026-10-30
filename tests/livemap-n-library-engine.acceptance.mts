@@ -14,7 +14,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 const DataSchema = Hson.schema`<type "data" content <value "number">>`;
 const ColorSchema = Hson.schema`<type "data" content <value "string">>`;
 const ViewSchema = Hson.schema`<type "data" content <value "boolean">>`;
-const DocumentSchema = Hson.schema`<type "document" tag "main" content <sequence []>>`;
+const DocumentSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence []>>]>>]>>`;
 const Q1 = "000000001";
 const Q2 = "000000002";
 const Q3 = "000000003";

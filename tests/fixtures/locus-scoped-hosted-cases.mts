@@ -125,7 +125,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
       const audit = await locus.session.create({ libraries: ['flat', 'count'] });
       const flatBefore = audit.now().libs.libraries.find(entry => entry.name === 'flat')!;
       await locus.stage(w => {
-        w.doc.must('flat').at([]).asElement().insert(0, input({}));
+        w.doc.must('flat').at([1, 0]).asElement().insert(0, input({}));
         w.data.must('count').at(['n']).set(1);
       });
       const flatAfter = audit.now().libs.libraries.find(entry => entry.name === 'flat')!;
@@ -182,7 +182,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
       assert.doesNotMatch(JSON.stringify(now), /PRIVATE_ARGUMENT|data:slide|hson-part|%\{slide/);
       assert.throws(() => client.echo.parts.must('parts'));
       assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
-      await locus.stage(w => w.doc.must('page').at([0]).replace(node(Hson.document`<hson-part lib="parts" at="x" doc:control="${control(Hson.data`<title "Updated">`)}"/>`)));
+      await locus.stage(w => w.doc.must('page').at([1, 0, 0]).replace(node(Hson.document`<hson-part lib="parts" at="x" doc:control="${control(Hson.data`<title "Updated">`)}"/>`)));
       await caught(client.echo, locus);
       assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
       assert.match(JSON.stringify(document(client.echo).root()), /Updated/);
@@ -202,7 +202,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         assert.deepEqual(now.libs.libraries.map(e => e.name), ["bare", "data", "flat", "page"]);
         const scopes = now.libs.libraries.find(e => e.name === "page")!.scopes!;
         assert.equal(scopes.occurrences.length, 4);
-        assert.deepEqual(scopes.occurrences.map(o => o.parent), [null, [0, 0, 0], null, [0, 0, 1]]);
+        assert.deepEqual(scopes.occurrences.map(o => o.parent), [null, [0, 0, 1, 0, 0, 0, 0], null, [0, 0, 1, 0, 0, 0, 1]]);
         assert.equal(now.libs.libraries.find(e => e.name === "bare")!.scopes!.occurrences.length, 1);
         assert.equal(document(a.echo, "bare").css.snapshot(), "");
         assert.ok(document(a.echo, "flat").q("flat"));
@@ -211,10 +211,10 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         assert.deepEqual(document(a.echo).root(), locus.doc.must("page").root());
         assert.throws(() => a.echo.parts.must("parts")); assert.throws(() => a.echo.data.must("hidden")); assert.throws(() => denied.echo.doc.must("page"));
         privateAbsent(JSON.stringify(now));
-        // This fragment has CSS but no explicit html/head, which remains invalid SSR.
-        assert.throws(() => a.session.now({ html: "page" }), /browser-parser realization/);
+        // Admission supplies head/body before occurrence CSS is planned.
+        assert.match(a.session.now({ html: "page" }).html, /^<!doctype html><html><head><style/);
         assert.match(a.session.now({ html: "bare" }).html, /Bare/);
-        assert.throws(() => document(a.echo).render(), /browser-parser realization/);
+        assert.match(document(a.echo).render(), /^<!doctype html><html><head><style/);
         assert.throws(() => locus.cut({ html: "page" }), /scoped|Echo/i);
         const opaque = '/* opaque Part text */ .native-label { border: 0; }';
         assert.ok(document(a.echo).css.snapshot().includes(opaque));
@@ -225,36 +225,36 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         const stop = a.echo.commits.observe(() => { revisions.push(a.echo.sync.appliedRev!); });
         const left = document(a.echo).q("left")!, right = document(a.echo).q("right")!;
         await locus.stage(w => {
-          w.doc.must("page").at([]).asElement().attrs.setMany({ title: "one" });
-          w.doc.must("page").at([0, 0]).asElement().flags.set("hidden");
+          w.doc.must("page").at([1, 0]).asElement().attrs.setMany({ title: "one" });
+          w.doc.must("page").at([1, 0, 0, 0]).asElement().flags.set("hidden");
           w.doc.must("page").css.sel("main").setProp("color", "blue");
           w.data.must("data").at(["n"]).set(1);
         });
         await caught(a.echo, locus); await caught(b.echo, locus); await caught(denied.echo, locus);
-        assert.equal(document(a.echo).at([]).asElement()!.attrs.get("title"), "one");
-        assert.equal(document(a.echo).at([0, 0]).asElement()!.flags.has("hidden"), true);
+        assert.equal(document(a.echo).at([1, 0]).asElement()!.attrs.get("title"), "one");
+        assert.equal(document(a.echo).at([1, 0, 0, 0]).asElement()!.flags.has("hidden"), true);
         assert.match(document(a.echo).css.snapshot(), /color:blue/);
         assert.equal(left.active, true); assert.equal(right.active, true);
         const rev = locus.rev;
-        await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "one");
+        await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "one");
         assert.equal(locus.rev, rev);
         const unchanged = { graph: document(a.echo).root(), css: document(a.echo).css.snapshot(), rev: a.echo.sync.appliedRev, observations: revisions.length };
-        await assert.rejects(locus.stage(w => { w.doc.must("page").css.clearAll(); w.doc.must("page").at([99]).asElement().attrs.set("bad", true); }));
-        await assert.rejects(document(a.echo).at([]).asElement()!.attrs.set("title", "denied"));
+        await assert.rejects(locus.stage(w => { w.doc.must("page").css.clearAll(); w.doc.must("page").at([1, 0, 99]).asElement().attrs.set("bad", true); }));
+        await assert.rejects(document(a.echo).at([1, 0]).asElement()!.attrs.set("title", "denied"));
         assert.deepEqual({ graph: document(a.echo).root(), css: document(a.echo).css.snapshot(), rev: a.echo.sync.appliedRev, observations: revisions.length }, unchanged);
         const data = a.echo.data.must("data"); assert.ok(String(data.mode) !== "document" && data.source === "authority-projected"); assert.equal("set" in data.at(["n"]), false);
-        await document(b.echo).at([]).asElement()!.attrs.set("title", "remote");
+        await document(b.echo).at([1, 0]).asElement()!.attrs.set("title", "remote");
         await caught(a.echo, locus);
-        await locus.doc.must("page").at([0]).delete();
+        await locus.doc.must("page").at([1, 0, 0]).delete();
         await caught(a.echo, locus);
-        assert.equal(left.active, false); assert.equal(right.active, true); assert.deepEqual(right.path(), [0]);
+        assert.equal(left.active, false); assert.equal(right.active, true); assert.deepEqual(right.path(), [1, 0, 0]);
         assert.equal((document(a.echo).css.snapshot().match(/margin:7px/g) ?? []).length, 1);
         assert.equal(a.session.now().libs.libraries.find(e => e.name === "page")!.scopes!.occurrences.length, 2);
         const survivingIds = subjectIds(document(a.echo).css.snapshot());
         const retiredId = idsA.find(id => !survivingIds.includes(id)); assert.ok(retiredId);
         const beforeClaims = { graph: document(a.echo).root(), css: document(a.echo).css.snapshot(), rev: a.echo.sync.appliedRev, observations: revisions.length };
         for (const id of [survivingIds[0]!, retiredId]) {
-          await assert.rejects(document(b.echo).at([]).asElement()!.attrs.setMany({ "$_quid": id }));
+          await assert.rejects(document(b.echo).at([1, 0]).asElement()!.attrs.setMany({ "$_quid": id }));
         }
         assert.equal(locus.rev, 3); assert.equal(left.active, false); assert.equal(right.active, true);
         assert.deepEqual({ graph: document(a.echo).root(), css: document(a.echo).css.snapshot(), rev: a.echo.sync.appliedRev, observations: revisions.length }, beforeClaims);
@@ -276,14 +276,14 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         const revokedPage = document(b.echo), beforeRevoke = revokedPage.root();
         const revokedNow = b.session.now(), revokedCredential = b.session.credential!, beforeRevocation = locus.rev;
         assert.equal(b.session.revoke(), true);
-        const rejected = revokedPage.at([]).asElement()!.attrs.set("title", "revoked");
+        const rejected = revokedPage.at([1, 0]).asElement()!.attrs.set("title", "revoked");
         const rejection = assert.rejects(rejected);
         await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(locus.rev, beforeRevocation);
         b.echo.dispose(); await rejection;
         const staleRoute = route(kind, locus, "writer");
         try { await assert.rejects(hsonLiveMap.echo.create({ now: revokedNow, credential: revokedCredential, transport: staleRoute.transport })); }
         finally { staleRoute.dispose(); }
-        await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "after-revoke");
+        await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "after-revoke");
         assert.deepEqual(revokedPage.root(), beforeRevoke);
         assert.throws(() => b.session.now());
         const beforeDispose = a.echo.sync.appliedRev; a.echo.dispose();
@@ -322,15 +322,15 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
         const left = document(a.echo).q("left")!, right = document(a.echo).q("right")!;
         const oldIds = subjectIds(document(a.echo).css.snapshot());
         a.echo.disconnect();
-        await locus.doc.must("page").at([0]).replace(node('<hson-part lib="parts" at="panel"/>'));
-        await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "missed");
+        await locus.doc.must("page").at([1, 0, 0]).replace(node('<hson-part lib="parts" at="panel"/>'));
+        await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "missed");
         assert.equal(a.echo.sync.appliedRev, 0);
         await new Promise<void>(resolve => setImmediate(resolve)); a.echo.connect(); await caught(a.echo, locus);
         assert.equal(a.echo.sync.strategy, "replay"); assert.equal(left.active, false); assert.equal(right.active, true);
         assert.equal(local.snap(["n"]), 42);
         const session = await locus.session.create({ libraries: names }, { connection: { principalId: "reader" } });
         const stale = session.now();
-        await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "current");
+        await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "current");
         const fresh = await receiving(locus, kind, session, "reader", stale);
         try {
           assert.equal(fresh.echo.sync.strategy, "reconcile");
@@ -421,7 +421,7 @@ export async function hosted_scoped_rejection_cases(check: (name: string, run: (
             return [JSON.stringify(message)];
           };
           await locus.stage(w => {
-            w.doc.must("page").at([0]).replace(node('<hson-part lib="parts" at="panel"/>'));
+            w.doc.must("page").at([1, 0, 0]).replace(node('<hson-part lib="parts" at="panel"/>'));
             w.doc.must("page").css.sel("main").setProp("color", "green");
             w.data.must("data").at(["n"]).set(9);
           });
@@ -441,7 +441,7 @@ export async function hosted_scoped_rejection_cases(check: (name: string, run: (
     try {
       let observations = 0; const stop = active.echo.commits.observe(() => observations++);
       active.control.transform = raw => JSON.parse(raw).type === "commit" ? [raw, raw] : [raw];
-      await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "one");
+      await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "one");
       await until(() => active.echo.sync.status === "failed", "duplicate fences the stream");
       const graph = document(active.echo).root();
       assert.deepEqual(graph, locus.doc.must("page").root());
@@ -453,12 +453,12 @@ export async function hosted_scoped_rejection_cases(check: (name: string, run: (
         if (!dropped && JSON.parse(raw).type === "commit") { dropped = true; return []; }
         return [raw];
       };
-      await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "two");
-      await locus.doc.must("page").at([]).asElement()!.attrs.set("title", "three");
+      await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "two");
+      await locus.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "three");
       await until(() => active.echo.sync.status === "failed", "out-of-order rejection");
       assert.equal(active.echo.sync.appliedRev, 1); assert.deepEqual(document(active.echo).root(), graph);
       delete active.control.transform; active.echo.disconnect(); await new Promise<void>(resolve => setImmediate(resolve)); active.echo.connect(); await caught(active.echo, locus);
-      assert.equal(active.echo.sync.strategy, "replay"); assert.equal(document(active.echo).at([]).asElement()!.attrs.get("title"), "three");
+      assert.equal(active.echo.sync.strategy, "replay"); assert.equal(document(active.echo).at([1, 0]).asElement()!.attrs.get("title"), "three");
     } finally { active.dispose(); locus.dispose(); }
   });
 }

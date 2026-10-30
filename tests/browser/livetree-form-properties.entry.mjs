@@ -326,7 +326,7 @@ try {
   });
 
   await check("bound scalars and async author attributes while native current state stays browser-owned", async () => {
-    const schema = Hson.schema`<type "document" tag "input" content "empty">`;
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "input" content "empty">]>>]>>`;
     const map = hson.liveMap.fromLibraries({ page: { document: '<input value="authored"/>', schema } });
     const binding = hsonMirror(map.doc.must("page")), tree = binding.tree.find.must.byTag("input"), el = realize(tree);
     el.value = "dirty";

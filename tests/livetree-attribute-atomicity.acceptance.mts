@@ -1,3 +1,4 @@
+import { complete_html } from "./helpers/document-library.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hson } from "../src/index.ts";
@@ -230,7 +231,7 @@ check("candidate qualification rejects non-element attribute ownership before an
 });
 
 check("bound accepted revisions survive native failure and Mirror fences subsequent delegation", () => {
-  const schema = Hson.schema`<type "document" tag "button" content "empty">`;
+  const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">]>>]>>`;
   const map = hson.liveMap.fromLibraries({ page: { document: '<button a="before" b="before"/>', schema } });
   const binding = hsonMirror(map.doc.must("page")), tree = binding.tree.find.must.byTag("button");
   const subject = retained_subject(tree), el = new FakeElement("button"); link_node_to_el(subject, el as unknown as Element);
@@ -239,10 +240,10 @@ check("bound accepted revisions survive native failure and Mirror fences subsequ
   try {
     assert.equal(tree.attrs.replace({ a: "accepted", b: "accepted" }), tree);
     assert.equal(map.rev, 1); assert.equal(commits, 1); assert.equal(binding.status, "failed"); assert.equal(binding.sourceRevision, 0);
-    assert.equal(map.doc.must("page").render(), '<button a="accepted" b="accepted"></button>');
+    assert.equal(map.doc.must("page").render(), complete_html('<button a="accepted" b="accepted"></button>'));
     assert.throws(() => tree.attrs.set("later", "rejected"), /failed|active/i); assert.equal(map.rev, 1);
     assert.equal(tree.dom.el(), el); assert.equal(retained_subject(tree), subject);
-    map.doc.must("page").document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "later", "authority");
+    map.doc.must("page").document.attrs.set({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) }, "later", "authority");
     assert.equal(map.rev, 2); assert.equal(commits, 2); assert.equal(binding.sourceRevision, 0); assert.equal(binding.status, "failed");
     assert.equal(tree.attrs.get("later"), undefined);
   } finally { stop(); binding.dispose(); unlinkNode(subject); binding.tree.remove(); }

@@ -50,7 +50,7 @@ void scalar.data.must("value").at([]).asScalar();
 void ANY_DOCUMENT.toHson();
 
 const documentMap = hsonLiveMap.fromLibraries({
-  page: { document: `<main <button id="target" "Save"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "button" attrs <props <id "string">> content "string">]>>` },
+  page: { document: `<html <head/> <body <main <button id="target" "Save"/>/>/>/>`, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" attrs <props <id "string">> content "string">]>>]>>]>>` },
 });
 const page = documentMap.doc.must("page");
 if (page.mode === "document") {

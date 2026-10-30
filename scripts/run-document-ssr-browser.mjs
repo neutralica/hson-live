@@ -18,6 +18,8 @@ import { capture_selected_authority_projection_snapshot } from "../dist/api/locu
 import { locus_local_initializer_digest } from "../dist/api/locus/locus.local-initializer.js";
 import { cut_hosted_projection } from "../dist/internal/document-cut.js";
 
+const frame = html => `<iframe srcdoc="${html.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}"></iframe>`;
+
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
 await mkdir(temporaryRoot, { recursive: true });
@@ -62,11 +64,11 @@ try {
   ], { encoding: "utf8" });
   if (bundle.status !== 0) throw new Error(bundle.stderr || "Document SSR browser bundle failed.");
 
-  const LocalPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-revision <optional "string">>> content <sequence [<tag "p" content "string">]>>`;
+  const LocalPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" data-revision <optional "string">>> content <sequence [<tag "p" content "string">]>>]>>]>>`;
   const localMap = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime(`<main id="local-ssr" <p @000005201 "ab"/>/>`, { allowTopLevelDocumentText: true }), schema: LocalPageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main id="local-ssr" <p @000005201 "ab"/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: LocalPageSchema },
   });
-  localMap.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
+  localMap.doc.must("page").document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "data-revision", "N");
   const local = localMap.cut({ html: "page" });
   assert.doesNotMatch(local.html, /hson:quid|000005201/);
   assert.doesNotMatch(JSON.stringify(local.libs), /000005201|"quid"/);
@@ -83,22 +85,22 @@ try {
     return { multiple, cut, serverQuids };
   });
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
-  const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
+  const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>]>>]>>`;
   const localSelectionMap = admit_exact_runtime_livemap_libraries({
     state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
     omitted: { data: true },
-    page: { document: parse_hson_exact_runtime('<main id="local-libraries-ssr" <button @000005204/>/>', { allowTopLevelDocumentText: true }), schema: LocalLibrariesPageSchema },
+    page: { document: parse_hson_exact_runtime('<html <head/> <body <main id="local-libraries-ssr" <button @000005204/>/>/>/>', { allowTopLevelDocumentText: true }), schema: LocalLibrariesPageSchema },
   });
   const localSelection = localSelectionMap.cut({ data: ["state"], documents: ["page"], html: "page" });
   assert.doesNotMatch(localSelection.html, /hson:quid|000005204/);
   assert.doesNotMatch(JSON.stringify(localSelection.libs), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
 
   const StateSchema = Hson.schema`<type "data" content <count "number">>`;
-  const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
-  const AdminSchema = Hson.schema`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
+  const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>]>>]>>`;
+  const AdminSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">]>>]>>`;
   const browserInteraction = Object.freeze({
     id: "ssr-click",
-    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
+    subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "browser",
     key: "clicker",
@@ -106,7 +108,7 @@ try {
   });
   const authorityInteraction = Object.freeze({
     id: "ssr-authoritative",
-    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
+    subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "locus",
     key: "state.interaction",
@@ -126,8 +128,8 @@ try {
   });
   await librariesLocus.stage((draft) => {
     draft.data.must("state").at(["count"]).set(1);
-    draft.doc.must("page").at([]).asElement().attrs.set("data-recovered", "page");
-    draft.doc.must("admin").at([]).asElement().attrs.set("data-recovered", "admin");
+    draft.doc.must("page").at([1, 0]).asElement().attrs.set("data-recovered", "page");
+    draft.doc.must("admin").at([1, 0]).asElement().attrs.set("data-recovered", "admin");
   });
 
   librariesSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
@@ -218,7 +220,9 @@ try {
       return;
     }
     if (url.pathname === "/__quad-incompatible") {
-      await quadLocus.stage(draft => { draft.doc.must("page").content.replace({ kind: "path", path: [] }, 0, { $_tag: "aside", $_content: [] }); });
+      const before = quadMap.capture();
+      await assert.rejects(quadLocus.stage(draft => { draft.doc.must("page").content.replace({ kind: "path", path: [] }, 0, { $_tag: "aside", $_content: [] }); }));
+      assert.deepEqual(quadMap.capture(), before);
       response.writeHead(204).end();
       return;
     }
@@ -258,9 +262,9 @@ try {
       moduleSource = moduleMatch[1];
       content = content
         .replace(moduleMatch[0], `<script type="module" src="/test.js"></script>`)
-        .replace("<!--LOCAL_SSR-->", local.html)
-        .replace("<!--LOCAL_LIBRARIES_SSR-->", localSelection.html)
-        .replace("<!--LIBRARIES_SSR-->", libraries.html)
+        .replace("<!--LOCAL_SSR-->", frame(local.html))
+        .replace("<!--LOCAL_LIBRARIES_SSR-->", frame(localSelection.html))
+        .replace("<!--LIBRARIES_SSR-->", frame(libraries.html))
         .replace("</body>", `<script>
           (() => {
             const fail = (event) => {

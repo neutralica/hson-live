@@ -12,7 +12,7 @@ assert.equal(locus.incarnationId, source.incarnation, "durable authority positio
 const a = await receiver(locus, "http", ["page", "data", "later", "flat", "bare"]);
 const flat = await receiver(locus, "websocket", ["flat"]);
 try {
-  assert.equal(document(a.echo).at([]).asElement()!.attrs.get("title"), "durable-tail");
+  assert.equal(document(a.echo).at([1, 0]).asElement()!.attrs.get("title"), "durable-tail");
   assert.equal(a.session.now().libs.libraries.find(e => e.name === "page")!.scopes!.occurrences.length, 2);
   assert.equal(a.session.now().libs.libraries.find(e => e.name === "later")!.scopes!.occurrences.length, 4);
   assert.equal(a.session.now().libs.libraries.find(e => e.name === "bare")!.scopes!.occurrences.length, 0);
@@ -26,12 +26,12 @@ try {
   for (const match of source.css.matchAll(/hson\\:quid="([^"]+)"/g)) assert.ok(!document(a.echo).css.snapshot().includes(match[1]!));
   assert.throws(() => a.echo.parts.must("parts"));
   await locus.stage(w => {
-    w.doc.must("page").at([]).asElement().attrs.set("title", "after-restart");
+    w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "after-restart");
     w.doc.must("bare").css.sel("main").setProp("color", "blue");
     w.doc.must("flat").at([]).asElement().attrs.set("title", "after-restart");
   });
   await caught(a.echo, locus); await caught(flat.echo, locus);
-  assert.equal(document(a.echo).at([]).asElement()!.attrs.get("title"), "after-restart");
+  assert.equal(document(a.echo).at([1, 0]).asElement()!.attrs.get("title"), "after-restart");
   assert.equal(a.session.now().libs.libraries.find(e => e.name === "bare")!.scopes!.occurrences.length, 0);
   assert.equal(flat.session.now().libs.libraries[0]!.scopes, undefined);
   assert.match(flat.session.now({ html: "flat" }).html, /after-restart/);

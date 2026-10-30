@@ -15,7 +15,7 @@ export async function parts_write_cases() {
   const encoded = renamed.parts.parts.x.write(protectedNames);
   assert.match(encoded, /data:style=/); assert.match(encoded, /data:__proto__=/);
   renamed.addLibraries({ page: { document: encoded } });
-  assert.equal(renamed.doc.must('page').render(), '<p>Own:false</p>');
+  assert.equal(renamed.doc.must('page').render(), '<!doctype html><html><head></head><body><p>Own:false</p></body></html>');
 
   const changed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<p hson:part "%{value}"/>' } } } });
   const scalarCapture = changed.parts.parts.x.write({ value: '<b/>' });
@@ -155,7 +155,7 @@ export async function parts_write_cases() {
   } } });
   receiving.addLibraries({ page: { document: Hson.document`<section ${invocation} ${parts.blank.write()}/>` } });
   const pageText = JSON.stringify(receiving.doc.must("page").root());
-  assert.equal(receiving.doc.must("page").at([0]).asElement()!.attrs.get("title"), originalContent);
+  assert.equal(receiving.doc.must("page").at([1, 0, 0]).asElement()!.attrs.get("title"), originalContent);
   assert.ok(pageText.includes("h2")); assert.ok(pageText.includes("evil"));
   assert.ok(!pageText.includes('"$_tag":"script"')); assert.ok(!pageText.includes("later"));
   for (const parameters of [undefined, { content: "ok", extra: "bad" }]) {

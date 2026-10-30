@@ -77,11 +77,11 @@ async function inspect_no_js(child, profile, url, payload) {
     assert.ok(ready, "No-JavaScript SSR page did not finish parsing.");
     assert.deepEqual(await evaluate(`(() => {
       const scout = document.querySelector('hson-scout'), button = document.querySelector('button');
-      return { registered: customElements.get('hson-scout') !== undefined,
+      return { mode: document.compatMode, registered: customElements.get('hson-scout') !== undefined,
         hidden: getComputedStyle(scout).display === 'none', payload: scout.textContent,
         children: document.body.childNodes.length, last: document.body.lastChild === scout,
         text: button.textContent, visible: button.getBoundingClientRect().width > 0 };
-    })()`), { registered: false, hidden: true, payload, children: 2, last: true, text: "Save", visible: true });
+    })()`), { mode: "CSS1Compat", registered: false, hidden: true, payload, children: 2, last: true, text: "Save", visible: true });
     return { status: "pass" };
   } finally {
     for (const task of pending.values()) clearTimeout(task.timeout);
@@ -109,7 +109,7 @@ try {
   let httpCalls = 0;
   let setupCalls = 0;
   locus = hsonLiveMap.locus.create({ "page": { document:
-      '<html <head <script src="/bundle.js" defer/>/> <body <main <button "Save"/>/>/>/>', access: "shared" } }, { interactions: [interaction], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }), actions: { save: () => { handled += 1; } } });
+      '<html <head <script src="/bundle.js" defer/>/> <main <button "Save"/>/>/>', access: "shared" } }, { interactions: [interaction], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }), actions: { save: () => { handled += 1; } } });
   const map = locus_map_internal(locus);
   socketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
@@ -121,6 +121,7 @@ try {
   if (socketAddress === null || typeof socketAddress === "string") throw new Error("Scout socket server has no address.");
   const websocketUrl = `ws://127.0.0.1:${socketAddress.port}`;
   const canonical = map.cut({ html: "page" }).html;
+  assert.match(canonical, /^<!doctype html>/);
   assert.match(canonical, /<\/body><\/html>$/);
   assert.doesNotMatch(canonical, /hson-scout/);
   assert.doesNotMatch(JSON.stringify(map.capture()), /hson-scout/);

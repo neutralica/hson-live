@@ -1,3 +1,4 @@
+import { complete_html } from "./helpers/document-library.mts";
 import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
@@ -19,8 +20,8 @@ import type { HsonNode } from "../src/core/types.ts";
 import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>`;
-const AdminSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>]>>]>>`;
+const AdminSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
 const QUID = "000009701";
 
 const testEvents = create_test_event_emitter("libraries.ssr");
@@ -35,8 +36,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 function map_fixture(multiple = false) {
   return admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime(`<main title="zero" <item @${QUID}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
-    ...(multiple ? { admin: { document: "<aside/>", schema: AdminSchema } } : {}),
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main title="zero" <item @${QUID}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    ...(multiple ? { admin: { document: "<html <head/> <body <aside/>/>/>", schema: AdminSchema } } : {}),
   });
 }
 
@@ -44,7 +45,7 @@ function hosted_map_fixture(multiple = false) {
   return hsonLiveMap.fromLibraries({
     state: { data: { count: 0 }, schema: StateSchema },
     page: { document: '<main title="zero" <item/>/>', schema: PageSchema },
-    ...(multiple ? { admin: { document: "<aside/>", schema: AdminSchema } } : {}),
+    ...(multiple ? { admin: { document: "<html <head/> <body <aside/>/>/>", schema: AdminSchema } } : {}),
   });
 }
 
@@ -93,7 +94,7 @@ await check("capture and local install preserve the complete detached aggregate 
   ]);
   assert.equal(snapshot.registry.libraries[2]?.scope, "hson-internal");
   map.data.must("state").at(["count"]).set(1);
-  map.doc.must("page").at([]).asElement()!.attrs.set("title", "source-moved");
+  map.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "source-moved");
   assert.equal(JSON.stringify(snapshot), retained);
 
   const installed = install_libraries_snapshot(snapshot);
@@ -102,7 +103,7 @@ await check("capture and local install preserve the complete detached aggregate 
   assert.deepEqual(installed.map.capture(), snapshot);
   assert.equal(installed.map.rev, snapshot.revision);
   assert.equal(data(installed.map, "state").snap(["count"]), 0);
-  assert.equal(document(installed.map, "page").at([]).asElement()!.attrs.get("title"), "zero");
+  assert.equal(document(installed.map, "page").at([1, 0]).asElement()!.attrs.get("title"), "zero");
   assert.throws(() => installed.map.data.must(INTERACTION_RESERVED_LIBRARY_KEY), /Library name .*must not contain/);
   data(installed.map, "state").at(["count"]).set(2);
   assert.equal(JSON.stringify(snapshot), retained);
@@ -116,7 +117,7 @@ await check("explicit HTML cut transfers all families by default", () => {
   assert.equal(ssr.document, "page");
   assert.equal(repeated.html, ssr.html);
   assert.deepEqual(repeated.libs, ssr.libs);
-  assert.match(ssr.html, /^<main/);
+  assert.match(ssr.html, /^<!doctype html><html><head><\/head><body><main/);
   assert.equal(ssr.libs.libraries.length, 3);
   assert.equal(ssr.libs.registry.libraries.some((entry) => entry.name === "state"), true);
   assert.equal(ssr.libs.registry.libraries.some((entry) => entry.scope === "hson-internal"), true);
@@ -128,8 +129,8 @@ await check("HTML selection switches realization while retaining default state",
   const admin = (map as import("../src/types/livemap.types.ts").LiveMap).cut({ html: "admin" });
   assert.equal(page.document, "page");
   assert.equal(admin.document, "admin");
-  assert.match(page.html, /^<main/);
-  assert.match(admin.html, /^<aside/);
+  assert.match(page.html, /^<!doctype html><html><head><\/head><body><main/);
+  assert.match(admin.html, /^<!doctype html><html><head><\/head><body><aside/);
   assert.deepEqual(page.libs, admin.libs);
   assert.equal(install_libraries_snapshot(page.libs).map.doc.must("admin").mode, "document");
   assert.throws(() => map.cut({ html: "state" } as any));
@@ -148,7 +149,7 @@ await check("hidden storage travels automatically and cannot be selected", () =>
 
 await check("retired server QUID history stays outside local SSR/install", () => {
   const map = map_fixture();
-  map.doc.must("page").at([]).at([0]).delete();
+  map.doc.must("page").at([1, 0]).at([0]).delete();
   const ssr = map.cut({ html: "page" });
   assert.equal("identity" in ssr.libs, false);
   assert.equal(JSON.stringify(ssr.libs).includes(QUID), false);
@@ -182,11 +183,11 @@ await check("cut retains its HTML, data and interactions after source mutation",
   enable_interactions(map);
   const before = map.capture();
   const ssr = map.cut({ html: "page" });
-  map.doc.must("page").at([]).asElement()!.attrs.set("title", "one");
+  map.doc.must("page").at([1, 0]).asElement()!.attrs.set("title", "one");
   map.data.must("state").at(["count"]).set(1);
   add_interaction(map, Object.freeze({
     id: "after-cut",
-    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
+    subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }),
     listener: Object.freeze({
       event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
@@ -203,7 +204,7 @@ await check("cut retains its HTML, data and interactions after source mutation",
 
 await check("state-only defaults and explicit family empties reconstruct as independent topologies", () => {
   const map = hsonLiveMap.fromLibraries({ state: { data: { count: 7 }, schema: StateSchema },
-    page: { document: "<main/>", schema: PageSchema }, admin: { document: "<aside/>", schema: AdminSchema } });
+    page: { document: "<main/>", schema: PageSchema }, admin: { document: "<html <head/> <body <aside/>/>/>", schema: AdminSchema } });
   const names = (libs: import("../src/types/livemap.types.ts").LiveMapSnapshot) => libs.registry.libraries.map(entry => entry.name);
   assert.deepEqual(Object.keys(map.cut()), ["libs"]);
   assert.deepEqual(map.cut().libs, map.capture());
@@ -246,7 +247,7 @@ await check("HTML selection is normalized once before detached state capture", (
   const cut = map.cut(options);
   assert.equal(reads, 1);
   assert.equal(cut.document, "page");
-  assert.equal(cut.html, "<main></main>");
+  assert.equal(cut.html, complete_html("<main></main>"));
 });
 
 await check("runtime admissions and dynamic strings retain cut admission and reconstruction", () => {
@@ -255,12 +256,12 @@ await check("runtime admissions and dynamic strings retain cut admission and rec
   const selected = map.cut({ data: ["laterState"], documents: ["later"], html: "later" });
   const name: "later" = selected.document;
   assert.equal(name, "later");
-  assert.equal(selected.html, "<aside></aside>");
+  assert.equal(selected.html, complete_html("<aside></aside>"));
   assert.deepEqual(selected.libs.registry.libraries.map(entry => entry.name), ["later", "laterState"]);
   assert.deepEqual(install_libraries_snapshot(selected.libs).map.cut().libs, selected.libs);
   const documentName: string = "page";
   const dataName: string = "laterState";
-  assert.equal(map.cut({ data: [dataName], documents: [documentName], html: documentName }).html, "<main></main>");
+  assert.equal(map.cut({ data: [dataName], documents: [documentName], html: documentName }).html, complete_html("<main></main>"));
   for (const invalid of ["missing", "state", INTERACTION_RESERVED_LIBRARY_KEY]) {
     const dynamicName: string = invalid;
     assert.throws(() => map.cut({ documents: [dynamicName], html: dynamicName }));
@@ -274,7 +275,7 @@ await check("interaction storage follows selected documents and preserves enable
   assert.equal(map.cut({ data: [], documents: [] }).libs.libraries.length, 0);
   enable_interactions(map);
   for (const library of ["page", "admin"]) add_interaction(map, {
-    id: `${library}-click`, subject: { library, path: [0, 0, 0] },
+    id: `${library}-click`, subject: { library, path: [0, 0, 1, 0, 0, 0, 0] },
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
     kind: "browser", key: "noop", args: Hson.data.from(null),
@@ -315,7 +316,7 @@ await check("subset contracts retain the current governing Schema after tighteni
 await check("aggregate-scale roots are consumable without changing ordinary exact-value limits", () => {
   const payload = "x".repeat(5 * 1024 * 1024);
   const map = hsonLiveMap.fromLibraries({ large: { data: { payload } }, page: { document: `<main "${payload}"/>` }, omitted: { data: false } });
-  assert.equal(map.doc.must("page").render(), `<main>${payload}</main>`);
+  assert.equal(map.doc.must("page").render(), complete_html(`<main>${payload}</main>`));
   const cut = map.cut({ data: ["large"], documents: ["page"], html: "page" });
   assert.ok(cut.libs.libraries.every(entry => entry.root.payload.length > 4 * 1024 * 1024));
   const installed = install_libraries_snapshot(cut.libs).map;
@@ -347,13 +348,12 @@ await check("hosted rendering preserves its fence and produces the existing aggr
   locus.dispose();
 });
 
-await check("only the selected document must satisfy parser realization", async () => {
-  const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content "empty">` },
-    broken: { document: '<p <div "direct DOM only"/>/>', schema: Hson.schema`<type "document" tag "p" content <sequence [<tag "div" content "string">]>>` },
-  });
+await check("every admitted document satisfies parser realization before selection", async () => {
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+  const before = map.capture();
+  assert.throws(() => map.addLibraries({ broken: { document: '<p <div "direct DOM only"/>/>' } }), /implicitly close/);
+  assert.deepEqual(map.capture(), before);
   assert.equal(map.cut({ html: "page" }).document, "page");
-  expect_phase("realize", () => map.cut({ html: "broken" }));
 });
 
 await check("HTML cut retains complete transferable state", async () => {

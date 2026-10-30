@@ -12,11 +12,11 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-const LocalDocSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const LocalDocSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
 const PrivateSchema: HsonSchema = Hson.schema`<type "data" content <PRIVATE_SCHEMA_SENTINEL "string">>`;
 const UnselectedSchema: HsonSchema = Hson.schema`<type "data" content <UNSELECTED_SCHEMA_SENTINEL "string">>`;
-const HiddenDocSchema: HsonSchema = Hson.schema`<type "document" tag "hidden" content "empty">`;
+const HiddenDocSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "hidden" content "empty">]>>]>>`;
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false });
 

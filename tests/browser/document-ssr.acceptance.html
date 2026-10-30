@@ -319,20 +319,20 @@ try {
   const incompatibleRoot = incompatibleFrame.contentDocument.documentElement;
   await fetch("/__quad-incompatible");
   const incompatibleTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
-  let incompatibleRejected = false;
-  try { await continue_hosted_document({ now: currentQuadCut, credential: state.quadCredential,
-    transport: incompatibleTransport, document: "page", root: incompatibleRoot }); }
-  catch (error) { incompatibleRejected = error.phase === "mirror" || error.phase === "recover"; }
-  check("incompatible authoritative root still rejects without native replacement", incompatibleRejected
-    && incompatibleFrame.contentDocument.documentElement === incompatibleRoot && incompatibleRoot.localName === "html"
-    && get_node_for_el(incompatibleRoot) === undefined && incompatibleRoot.getAttribute("hson:quid") === null);
+  const preserved = await continue_hosted_document({ now: currentQuadCut, credential: state.quadCredential,
+    transport: incompatibleTransport, document: "page", root: incompatibleRoot });
+  check("rejected incomplete authority replacement preserves recoverable native root", preserved.tree.dom.el() === incompatibleRoot
+    && incompatibleFrame.contentDocument.documentElement === incompatibleRoot && incompatibleRoot.localName === "html");
+  preserved.dispose(); preserved.echo.dispose();
   incompatibleTransport.dispose(); incompatibleFrame.remove();
 
   const decodedLocalBootstrap = decode_ssr_bootstrap(state.encoded.local);
   check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);
-  const localRoot = document.querySelector("#local-ssr");
+  const localDocument = document.querySelector("#local-shell iframe").contentDocument;
+  const localRoot = localDocument.documentElement, localMain = localDocument.querySelector("#local-ssr");
+  check("completed local capture parses in standards mode", localDocument.compatMode === "CSS1Compat");
   check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");
-  const localParagraph = localRoot.firstElementChild;
+  const localParagraph = localMain.firstElementChild;
   const localText = localParagraph.firstChild;
   const localMap = install_libraries_snapshot(decodedLocalBootstrap.bootstrap).map;
   const localPage = localMap.doc.must(state.local.document);
@@ -350,7 +350,7 @@ try {
     && Object.isFrozen(localObservation.$_content) && localHostObservation !== historic_root_for_tree(localContinuation.tree));
   check("local observation cannot mutate adopted root", !Reflect.set(localObservation, '$_tag', 'bad'));
   check("local root identity survives continuation", localContinuation.tree.dom.el() === localRoot);
-  check("local element identity survives continuation", localRoot.firstElementChild === localParagraph);
+  check("local element identity survives continuation", localMain.firstElementChild === localParagraph);
   check("local text identity survives continuation", localParagraph.firstChild === localText);
   check("local continuation writes nothing", observer.takeRecords().length === 0);
   check("local revision is exact N", localMap.rev === state.local.libs.revision && localMap.rev === 1);
@@ -376,8 +376,8 @@ try {
   check("Node and browser-compatible local SSR bytes match", browserLocal.html === state.local.html);
   check("browser local rendering matches its continuation", JSON.stringify(browserLocal.libs) === JSON.stringify(localMap.capture()));
 
-  const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
-  const localButton = localLibrariesRoot.firstElementChild;
+  const localLibrariesRoot = document.querySelector("#local-libraries-shell iframe").contentDocument.documentElement;
+  const localButton = localLibrariesRoot.querySelector("button");
   const decodedLocalLibraries = decode_ssr_bootstrap(state.encoded.localSelection);
   check("browser Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalLibraries.bootstrap) === state.encoded.localSelection);
   const localInstalled = install_libraries_snapshot(decodedLocalLibraries.bootstrap);
@@ -396,7 +396,7 @@ try {
   });
   check("local aggregate continuation resolves the selected document name", state.localSelection.document === "page");
   check("local aggregate continuation preserves root identity", localLibrariesContinuation.tree.dom.el() === localLibrariesRoot);
-  check("local aggregate continuation preserves descendant identity", localLibrariesRoot.firstElementChild === localButton);
+  check("local aggregate continuation preserves descendant identity", localLibrariesRoot.querySelector("button") === localButton);
   check("local aggregate continuation writes nothing", localObserver.takeRecords().length === 0);
   check("local aggregate install restores the complete snapshot", localInstalled.map.data.must("state").snap(["count"]) === 7 && localInstalled.map.rev === state.localSelection.libs.revision);
   localObserver.disconnect();
@@ -619,8 +619,8 @@ try {
   cascadeContinued.dispose();
   cascadeFrame.remove();
 
-  const librariesRoot = document.querySelector("#libraries-ssr");
-  const librariesButton = librariesRoot.firstElementChild;
+  const librariesRoot = document.querySelector("#libraries-shell iframe").contentDocument.documentElement;
+  const librariesButton = librariesRoot.querySelector("button");
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
   check("hosted carrier is the projected hosted family", decodedHostedLibraries.kind === "hosted-projection");
@@ -648,9 +648,9 @@ try {
   check("aggregate sync catches projected N up to N+1", librariesEcho.sync.status === "caught_up"
     && librariesEcho.sync.appliedRev === state.libraries.libs.revision + 1 && librariesMap.rev === 1);
   check("unverified stale current state reconciles through the adopted Mirror", librariesEcho.sync.strategy === "reconcile"
-    && librariesRoot.firstElementChild === librariesButton);
-  check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
-  check("other public document converges", librariesEcho.doc.must("admin").at([]).attrs.get("data-recovered") === "admin");
+    && librariesRoot.querySelector("button") === librariesButton);
+  check("selected aggregate DOM converges", librariesRoot.querySelector("main").getAttribute("data-recovered") === "page");
+  check("other public document converges", librariesEcho.doc.must("admin").at([1, 0]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.data.must("state").snap(["count"]) === 1);
   const beforeReconnectEpoch = librariesEcho.session.epoch;
   await fetch("/__close-libraries-socket");
@@ -671,7 +671,7 @@ try {
   check("aggregate browser identity is acquired locally", typeof librariesLocalQuid === "string" && librariesButton.getAttribute("hson:quid") === librariesLocalQuid);
   await withoutObservationReads(() => librariesButtonTree.async.attrs.set("data-async", "accepted"));
   check("hosted Mirror retains exact subject after async convergence", subject_for_tree(librariesContinuation.tree) === hostedSubject
-    && librariesContinuation.tree.dom.el() === librariesRoot && librariesRoot.firstElementChild === librariesButton);
+    && librariesContinuation.tree.dom.el() === librariesRoot && librariesRoot.querySelector("button") === librariesButton);
   const afterAsync = librariesButtonTree.node;
   check("hosted readonly observations show fresh async state", afterAsync.$_attrs?.['data-async'] === 'accepted'
     && afterAsync !== librariesButtonTree.node && Object.isFrozen(afterAsync.$_attrs));

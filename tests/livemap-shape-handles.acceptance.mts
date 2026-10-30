@@ -12,7 +12,7 @@ type ArrayShape = Readonly<{ flags: readonly number[] }>;
 const DataSchema = Hson.schema`<type "data" content <count "number" nested <content <value "number">>>>` as HsonSchema<RuntimeShape, "data">;
 const ArraySchema = Hson.schema`<type "data" content <flags <array <content "number" unique true minlen 1 maxlen 3>>>>` as HsonSchema<ArrayShape, "data">;
 const DynamicSchema = Hson.schema`<type "data" content <maybe <optional "any"> choice "any">>`;
-const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">>> content <sequence [<tag "section" content "string">]>>`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" hidden <optional "flag">>> content <sequence [<tag "section" content "string">]>>]>>]>>`;
 
 const map = admit_exact_runtime_livemap_libraries({
   state: {
@@ -31,7 +31,7 @@ const map = admit_exact_runtime_livemap_libraries({
     schema: DynamicSchema,
   },
   page: {
-    document: parse_hson_exact_runtime(`<main @000009991 id="hero" <section "body"/>/>`, { allowTopLevelDocumentText: true }),
+    document: parse_hson_exact_runtime(`<html <head/> <body <main @000009991 id="hero" <section "body"/>/>/>/>`, { allowTopLevelDocumentText: true }),
     schema: PageSchema,
   },
 });
@@ -66,15 +66,15 @@ dynamic.at(["choice"]).asObject()!.object.setKey("value", 4);
 assert.deepEqual(dynamic.at(["choice"]).snap(), { value: 4 });
 
 const page = map.doc.must("page");
-page.at([]).asElement()!.attrs.set("id", "root");
-page.at([]).asElement()!.flags.set("hidden");
-assert.equal(page.at([]).asElement()!.attrs.get("id"), "root");
-assert.equal(page.at([]).asElement()!.flags.has("hidden"), true);
-assert.equal(page.at([0, 0]).kind(), "text");
-assert.notEqual(page.at([0, 0]).asText(), undefined);
-assert.equal(page.at([0, 0]).asElement(), undefined);
-page.at([0, 0]).replace("next");
-assert.equal(page.at([0, 0]).snap(), "next");
+page.at([1, 0]).asElement()!.attrs.set("id", "root");
+page.at([1, 0]).asElement()!.flags.set("hidden");
+assert.equal(page.at([1, 0]).asElement()!.attrs.get("id"), "root");
+assert.equal(page.at([1, 0]).asElement()!.flags.has("hidden"), true);
+assert.equal(page.at([1, 0, 0, 0]).kind(), "text");
+assert.notEqual(page.at([1, 0, 0, 0]).asText(), undefined);
+assert.equal(page.at([1, 0, 0, 0]).asElement(), undefined);
+page.at([1, 0, 0, 0]).replace("next");
+assert.equal(page.at([1, 0, 0, 0]).snap(), "next");
 assert.equal(page.document.byQuid("000009991")?.$_tag, "main");
 
 assert.equal(map.rev, 7);

@@ -204,7 +204,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const state = map.data.must("state"), page = map.doc.must("page");
     assert.equal(state.schema.get(), ANY_DATA); assert.equal(page.schema.get(), ANY_DOCUMENT);
     assert.equal(data(map, "state").schema.use(Hson.schema`<type "data" content <count "number">>` as HsonSchema<unknown, "data">).changed, true);
-    assert.equal(map.doc.must(String("page")).schema.use(Hson.schema`<type "document" tag "main" content "empty">`).changed, true);
+    assert.equal(map.doc.must(String("page")).schema.use(Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`).changed, true);
     atomic(map, () => state.at(["count"]).set("bad" as never));
     atomic(map, () => page.at([0]).replace("<aside/>"));
     state.at(["count"]).set(2);
@@ -310,7 +310,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       { kind: "document", document: '<p hson:part <i @:same/> <b @:same/>/>' },
       { kind: "document", document: '<p hson:part/>', quads: [{ name: "a", path: [99] }] },
       { kind: "document", document: '<p hson:part/>', stylesheet: undefined },
-      { kind: "document", document: '<p hson:part/>', schema: Hson.schema`<type "document" tag "p">` },
+      { kind: "document", document: '<p hson:part/>', schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "p">]>>]>>` },
       { kind: "document", document: '<p hson:part/>', schema: '<type "document" tag "p">' },
       { kind: "document", document: { $_tag: "p", $_content: [], $_meta: { quid: "000009001" } } },
     ];

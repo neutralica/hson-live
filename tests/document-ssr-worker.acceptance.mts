@@ -4,9 +4,9 @@ import { Hson } from "../src/hson-authoring.ts";
 import { encode_ssr_bootstrap } from "../src/api/ssr/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
-const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>` } });
+const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>` } });
 const node = map.cut({ html: "page" });
-const largeMap = hsonLiveMap.fromLibraries({ page: { document: `<main "worker-large:${"x".repeat(5 * 1_024 * 1_024)}"/>`, schema: Hson.schema`<type "document" tag "main" content "string">` } });
+const largeMap = hsonLiveMap.fromLibraries({ page: { document: `<main "worker-large:${"x".repeat(5 * 1_024 * 1_024)}"/>`, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>` } });
 const largeLibs = largeMap.cut({ html: "page" }).libs;
 const worker = await new Promise<Readonly<{
   html: string;
@@ -15,8 +15,7 @@ const worker = await new Promise<Readonly<{
   decoded: unknown;
   largeEncoded: string;
   largeDecoded: unknown;
-  emptyRoot: unknown;
-  emptySsrRejected: boolean;
+  emptyAdmissionRejected: boolean;
   hasDocument: boolean;
 }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/document-ssr.worker.mts", import.meta.url));
@@ -36,6 +35,5 @@ assert.equal(worker.encoded, encode_ssr_bootstrap(node.libs));
 assert.deepEqual(worker.decoded, { kind: "libraries", bootstrap: node.libs });
 assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeLibs));
 assert.deepEqual(worker.largeDecoded, { kind: "libraries", bootstrap: largeLibs });
-assert.deepEqual(worker.emptyRoot, { $_tag: "_hson_root", $_content: [] });
-assert.equal(worker.emptySsrRejected, true);
+assert.equal(worker.emptyAdmissionRejected, true);
 process.stdout.write("Document SSR Worker parity acceptance passed.\n");

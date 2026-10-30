@@ -1,3 +1,4 @@
+import { body_root } from "./helpers/document-library.mts";
 import type { DocumentGraphReplaceContentOp } from "../src/api/livemap/livemap.document.lineage.ts";
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { echo_map_internal } from "../src/internal/governor-maps.js";
@@ -28,7 +29,7 @@ import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const QUID = "000008205";
 const RECOVERY_QUID = "000008207";
 const RECOVERY_NEXT_QUID = "000008208";
@@ -128,9 +129,7 @@ function make_client_map(server: ReturnType<typeof make_map>): ReturnType<typeof
 }
 
 function reflected_document_element(reflection: ReturnType<typeof hsonMirror>) {
-  const node = retained_subject(reflection.tree).$_content[0];
-  if (node === null || typeof node !== "object") throw new Error("Expected reflected document element.");
-  return create_livetree(node).adoptRoots(retained_historic_root(reflection.tree));
+  return reflection.tree.find.must.byTag("main");
 }
 
 function wait_for_aggregate_revision(map: ReturnType<typeof make_map>, revision: number): Promise<void> {
@@ -164,7 +163,7 @@ function insert_item(_quid = QUID) {
   return {
     domain: "graph" as const,
     op: "insert-content" as const,
-    target: { kind: "path" as const, path: validate_document_path([0]) },
+    target: { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0]) },
     index: 0,
     content: {
       $_tag: "_hson_elem" as const,
@@ -177,13 +176,13 @@ function remove_item() {
   return {
     domain: "graph" as const,
     op: "remove-content" as const,
-    target: { kind: "path" as const, path: validate_document_path([0]) },
+    target: { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0]) },
     index: 0,
   };
 }
 
 function page_item(map: ReturnType<typeof make_map>): import("../src/core/types.js").HsonNode | undefined {
-  const main = map.doc.must("page").root().$_content[0];
+  const main = body_root(map.doc.must("page").root());
   if (typeof main !== "object" || main === null) return undefined;
   const wrapper = main.$_content[0];
   if (typeof wrapper !== "object" || wrapper === null) return undefined;
@@ -249,7 +248,7 @@ draft.doc.must("page").graph(insert_item()); })();
   if (invalid.type === "error") assert.match(invalid.error.message, /schema/i);
   const wrongLibrary = await client.action("document.content.remove", {
       library: "state",
-      target: { kind: "path", path: [0] },
+      target: { kind: "path", path: [0, 0, 1, 0, 0] },
       index: 0,
     });
   assert.equal(wrongLibrary.type, "error");
@@ -279,7 +278,7 @@ draft.doc.must("page").graph(insert_item()); })();
   const serverAuthority = internal_livemap_aggregate_authority(serverMap);
   const serverPage = serverAuthority.libraries()[2];
   if (serverPage === undefined) throw new Error("Expected server page Library.");
-  serverAuthority.acquireLocalDocumentIdentity(serverPage, validate_document_path([0, 0, 0]), QUID);
+  serverAuthority.acquireLocalDocumentIdentity(serverPage, validate_document_path([0, 0, 1, 0, 0, 0, 0]), QUID);
   assert.equal(serverMap.rev, 1);
   assert.equal(page_item(clientMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
@@ -300,15 +299,15 @@ draft.doc.must("page").graph(insert_item()); })();
   assert.equal(client.sync.appliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
   const reflectedWrite = reflectedMain.async.attrs.set("title", "echoed");
-  assert.equal(serverMap.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
+  assert.equal(serverMap.doc.must("page").document.attrs.get({ kind: "path", path: [0, 0, 1, 0, 0] }, "title"), undefined);
   await wait_for_aggregate_revision(clientMap, 3);
   await reflectedWrite;
-  assert.equal(serverMap.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
+  assert.equal(serverMap.doc.must("page").document.attrs.get({ kind: "path", path: [0, 0, 1, 0, 0] }, "title"), "echoed");
   assert.equal(reflectedMain.attrs.get("title"), "echoed");
   assert.equal(reflection.sourceRevision, 3);
   const replacementRequest = JSON.parse(JSON.stringify({
     library: "page",
-    target: { kind: "path", path: [0, 0] },
+    target: { kind: "path", path: [0, 0, 1, 0, 0, 0] },
     index: 0,
     replacement: encode_locus_portable_graph_content({ $_tag: "item", $_attrs: { title: "lineage" }, $_content: [] }),
     lineage: [{ source: [], destination: [] }],
@@ -368,7 +367,7 @@ await check("named document Echo authoring honors aggregate authorization and co
 
 await check("named Mirror text replacement carries empty portable lineage through Echo and Locus", async () => {
   install_fake_document();
-  const TextPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "string">>>`;
+  const TextPageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "string">>>]>>]>>`;
   const definitions = { page: { document: "<main <item \"old\"/>/>", schema: TextPageSchema } } as const;
   let serverMap = hsonLiveMap.fromLibraries(definitions);
   const locus = create_locus_fixture(authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }));
@@ -566,7 +565,7 @@ draft.doc.must("page").graph(insert_item()); })();
   const locusA = internal_livemap_aggregate_authority(serverMap);
   const locusPageA = locusA.libraries()[2];
   if (locusPageA === undefined) throw new Error("Expected page Library.");
-  locusA.acquireLocalDocumentIdentity(locusPageA, validate_document_path([0]), LOCUS_RESTART_A_QUID);
+  locusA.acquireLocalDocumentIdentity(locusPageA, validate_document_path([0, 0, 1, 0, 0]), LOCUS_RESTART_A_QUID);
   assert.equal(serverMap.rev, 2);
   assert.equal(clientMap.doc.must("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
   const checkpointStarted = performance.now();
@@ -597,7 +596,7 @@ draft.doc.must("page").graph(insert_item()); })();
   const locusPageB = locusB.libraries()[2];
   if (locusPageB === undefined) throw new Error("Expected restored page Library.");
   assert.equal(locusB.resolveQuid(LOCUS_RESTART_A_QUID), undefined);
-  locusB.acquireLocalDocumentIdentity(locusPageB, validate_document_path([0]), LOCUS_RESTART_B_QUID);
+  locusB.acquireLocalDocumentIdentity(locusPageB, validate_document_path([0, 0, 1, 0, 0]), LOCUS_RESTART_B_QUID);
   assert.equal(restoredMap.rev, 2);
   assert.equal(clientMap.doc.must("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
   const restoredRetainedStatus = read_locus_retained_action_status_internal(restored, {

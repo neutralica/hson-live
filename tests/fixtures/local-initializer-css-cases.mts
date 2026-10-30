@@ -156,7 +156,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
     const client = compose(snapshot, local_initializers({ ui: { data: {} } })), aggregate = owner(client);
     const outer = with_css(local_initializers({ outer: { document: '<aside "outer-collision"/>' } })[0]!, 'aside{color:red}');
     const collision = with_css(local_initializers({ outer: { document: '<article/>',
-      schema: Hson.schema`<type "document" tag "article" content "empty">` } })[0]!, 'article{color:blue}');
+      schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "article" content "empty">]>>]>>` } })[0]!, 'article{color:blue}');
     const inner = with_css(local_initializers({ inner: { document: '<main/>' } })[0]!, 'main{color:green}');
     const accepted = [inner, collision], observed = observe_seeds(client, accepted);
     let afterInner = client.capture(), registry = aggregate.hostedRegistry(), ledger = aggregate.identityEpoch().issued();

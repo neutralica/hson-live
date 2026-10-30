@@ -32,16 +32,16 @@ try {
   let baseline: string;
   try {
     await locus.stage(w => {
-      w.doc.must("page").at([]).asElement().attrs.set("title", "checkpoint");
+      w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "checkpoint");
       w.doc.must("flat").at([]).asElement().attrs.set("title", "checkpoint");
       w.doc.must("flat").css.sel("body").setProp("color", "navy");
-      w.doc.must("bare").at([0]).delete();
+      w.doc.must("bare").at([1, 0, 0]).delete();
     });
     await hsonLiveMap.locus.checkpoint(locus);
     await locus.admit({ "later": { ...page, access: "shared" } });
     await locus.stage(w => {
-      w.doc.must("page").at([0]).delete();
-      w.doc.must("page").at([]).asElement().attrs.set("title", "durable-tail");
+      w.doc.must("page").at([1, 0, 0]).delete();
+      w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "durable-tail");
       w.doc.must("page").css.sel("main").setProp("color", "teal");
       w.doc.must("flat").at([]).asElement().attrs.set("title", "durable-tail");
       w.doc.must("flat").css.sel("body").setProp("color", "maroon");

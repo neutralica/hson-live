@@ -212,7 +212,7 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
     if (operation.op === "replace-root") {
       const root = normalize_document_root(operation.root);
       composition = expand_document_composition("ingress", () => ({ root }),
-        document_composition_options(undefined), authority.readPart);
+        document_composition_options(undefined), authority.readPart, "document");
       authority.assertCurrent();
       operation = { ...operation, root: composition.root };
     } else if (is_Node(content) && has_part_connector(content)) {

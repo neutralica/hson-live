@@ -10,11 +10,12 @@ import { make_livemap_from_authored_libraries_internal as authored } from "../..
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { encode_authoritative_scoped_commit, type HostedAggregateCommit, type PrivateScopedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
-import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
+import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { document_css_subject_identities } from "../../src/internal/css/css-identity-translation.ts";
 import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 import { node } from "./locus-scoped-ssr-cases.mts";
 import type { LiveMap, LiveMapStagedWriter } from "../../src/types/livemap.types.ts";
+const path = (relative: readonly number[]) => validate_document_path([0, 0, 1, 0, ...relative]);
 const sel = (id: string) => `[hson\\:quid="${id}"]`;
 const page = (map: LiveMap) => { const lib = map.doc.must("page"); if (lib.mode !== "document") throw Error("document"); return lib; };
 function staged(writer: LiveMapStagedWriter<LiveMap, void>) {
@@ -95,9 +96,9 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       return effect;
     };
     const first = replay(() => source.batch(w => {
-      staged(w).at([0]).asElement().attrs.set("title", "accepted");
-      staged(w).at([0]).asElement().flags.set("disabled");
-      staged(w).at([0,0]).replace("After");
+      staged(w).at([1,0,0]).asElement().attrs.set("title", "accepted");
+      staged(w).at([1,0,0]).asElement().flags.set("disabled");
+      staged(w).at([1,0,0,0]).replace("After");
     }), effect => {
       const variants = [
         { ...effect, prevRev: 1, rev: 2 },
@@ -129,13 +130,13 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
     const demanded = state(receiver).overlay.quidAtPath(path([0,0,2]))!;
     assert.ok(demanded); assert.notEqual(demanded, "222222222");
     assert.equal(state(receiver).ledger.has("222222222"), false);
-    replay(() => source.batch(w => staged(w).at([]).asElement().move(2,0)));
+    replay(() => source.batch(w => staged(w).at([1,0]).asElement().move(2,0)));
     assert.equal(state(receiver).overlay.quidAtPath(path([0,0,0])), demanded);
     assert.equal(state(receiver).overlay.quidAtPath(path([0,0,1])), retained);
     for (const cssFirst of [false, true]) {
       replay(() => source.batch(w => {
         if (cssFirst) structured(w, "");
-        staged(w).at([0]).delete();
+        staged(w).at([1,0,0]).delete();
         if (!cssFirst) structured(w, `${sel(styled)}{color:green}`);
       }));
       const retired = cssFirst ? retained : demanded;
@@ -143,13 +144,13 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       assert.equal(state(receiver).ledger.has(retired), true);
     }
     atomic(source, () => replace_structured_fixture(page(source), `${sel(styled)}{color:red}`));
-    replay(() => source.batch(w => staged(w).at([]).asElement().insert(0, node('<button "New"/>'))));
+    replay(() => source.batch(w => staged(w).at([1,0]).asElement().insert(0, node('<button "New"/>'))));
     active.aggregate.acquireLocalDocumentIdentity(active.id, path([0,0,0]), "333333333");
     replay(() => source.batch(w => structured(w, `${sel("333333333")}{color:purple}`)));
     const fresh = state(receiver).overlay.quidAtPath(path([0,0,0]))!;
     assert.ok(fresh); assert.notEqual(fresh, retained); assert.notEqual(fresh, demanded);
-    atomic(source, () => source.batch(w => staged(w).at([0]).delete()));
-    replay(() => source.batch(w => { staged(w).at([0]).replace(node('<strong "Replacement"/>')); structured(w, ""); }));
+    atomic(source, () => source.batch(w => staged(w).at([1,0,0]).delete()));
+    replay(() => source.batch(w => { staged(w).at([1,0,0]).replace(node('<strong "Replacement"/>')); structured(w, ""); }));
     assert.equal(state(receiver).overlay.pathForQuid(fresh), undefined);
     assert.equal(state(receiver).ledger.has(fresh), true);
     assert.deepEqual(document_css_subject_identities(encode_portable_document_stylesheet(receiving.aggregate.stylesheet(receiving.id)), "outbound"), []);
@@ -194,7 +195,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       const applied = new Promise<void>(resolve => {
         const stop = echo.commits.observe(() => queueMicrotask(() => { if (echo.sync.appliedRev === revision) { stop(); resolve(); } }));
       });
-      await locus.stage(w => { w.doc.must("page").at([0]).asElement().attrs.set("title", "flat"); w.doc.must("scoped").at([0]).asElement().flags.set("hidden"); });
+      await locus.stage(w => { w.doc.must("page").at([1,0,0]).asElement().attrs.set("title", "flat"); w.doc.must("scoped").at([1,0,0]).asElement().flags.set("hidden"); });
       await applied;
       assert.equal(aggregate.documentScopes(id), undefined);
       const scoped = aggregate.libraries()[aggregate.hostedRegistry().libraries.findIndex(e => e.name === "scoped")]!;
@@ -202,7 +203,7 @@ export async function flat_correspondence_cases(check: (name: string, run: () =>
       assert.equal(aggregate.documentOverlay(id).quidAtPath(path([0,0,0])), quid);
       assert.throws(() => echo.parts.must("parts"));
       const before = session.now();
-      await assert.rejects(locus.stage(w => { w.doc.must("page").at([0]).delete(); w.doc.must("scoped").at([0]).delete(); }));
+      await assert.rejects(locus.stage(w => { w.doc.must("page").at([1,0,0]).delete(); w.doc.must("scoped").at([1,0,0]).delete(); }));
       assert.deepEqual(session.now(), before); assert.equal(echo.sync.appliedRev, revision);
       assert.throws(() => page(map).document.attrs.set({ kind: "path", path: path([0]) }, "title", "forbidden"));
       await locus.admit({ "added": { document: '<aside @:new "Dynamic"/>', stylesheet: '[hson\\:quad="new"]{color:purple}', access: "shared" } });

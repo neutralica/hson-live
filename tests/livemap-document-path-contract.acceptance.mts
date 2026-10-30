@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { element as document_library } from "./helpers/mirror-unit6.mts";
+import { normalize_document_root } from "../src/api/livemap/livemap.document.ts";
 import {
   append_document_path,
   compare_document_paths,
@@ -45,7 +45,8 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const element = document_library;
+// Path primitives operate on normalized structural graphs, before Document admission.
+const element = (source: string) => normalize_document_root(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
 
 function multiNodeDocument(source: string): HsonNode {
   return parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true });
@@ -115,15 +116,15 @@ check("parent returns the canonical ancestor and root has none", () => {
 
 check("empty path addresses the internal document authority without exposing a named segment", () => {
   const map = element(`<main id="root"/>`);
-  const endpoint = resolve_document_path(map.root(), map.mode, path());
+  const endpoint = resolve_document_path(map, "document", path());
   assert.equal(typeof endpoint === "object" && endpoint !== null && endpoint.$_tag, "_hson_root");
 });
 
 check("single-node document paths begin at the first root-content coordinate", () => {
   const map = element(`<main <section id="nested"/>/>`);
-  const main = resolve_document_path(map.root(), map.mode, path(0));
-  const cluster = resolve_document_path(map.root(), map.mode, path(0, 0));
-  const nested = resolve_document_path(map.root(), map.mode, path(0, 0, 0));
+  const main = resolve_document_path(map, "document", path(0));
+  const cluster = resolve_document_path(map, "document", path(0, 0));
+  const nested = resolve_document_path(map, "document", path(0, 0, 0));
   assert.equal(typeof main === "object" && main !== null && main.$_tag, "main");
   assert.equal(typeof cluster === "object" && cluster !== null && cluster.$_tag, "_hson_elem");
   assert.equal(typeof nested === "object" && nested !== null && nested.$_tag, "section");
@@ -162,7 +163,7 @@ check("out-of-range canonical content ownership reports a distinct failure", () 
 });
 
 check("exact-node discovery returns a canonical path in both modes", () => {
-  const elementRoot = element(`<main <span/>/>`).root();
+  const elementRoot = element(`<main <span/>/>`);
   const elementTarget = resolve_document_path(elementRoot, "document", path(0, 0, 0));
   if (typeof elementTarget !== "object" || elementTarget === null) throw new Error("Expected node");
   assert.deepEqual(find_document_node_path(elementRoot, "document", elementTarget), [0, 0, 0]);

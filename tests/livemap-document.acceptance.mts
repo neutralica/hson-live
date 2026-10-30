@@ -97,9 +97,9 @@ function mutate_content(content: readonly NodeContent[number][]): void {
   mutable.push({ $_tag: "changed-content", $_content: [] });
 }
 
-const MainText = Hson.schema`<type "document" tag "main" content "string">`;
-const MainP = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
-const MainTwoP = Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "string"> count 2>>`;
+const MainText = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
+const MainP = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
+const MainTwoP = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "p" content "string"> count 2>>]>>]>>`;
 const EmptyDocument = Hson.schema`<type "document" content <sequence []>>`;
 const TextDocument = Hson.schema`<type "document" content "string">`;
 const NumberData = Hson.schema`<type "data" content <value "number">>`;
@@ -120,30 +120,27 @@ check("one-library registries classify data and document roots", () => {
   const object = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
   const array = hsonLiveMap.fromLibraries({ state: { data: [1, 2], schema: NumberArray } });
   const document = hsonLiveMap.fromLibraries({ page: { document: '<main "text"/>', schema: MainText } });
-  const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } });
-  assert.deepEqual([object.data.must("state").mode, array.data.must("state").mode, document.doc.must("page").mode, empty.doc.must("page").mode], ["data-object", "data-array", "document", "document"]);
-  assert.deepEqual(empty.doc.must("page").root(), { $_tag: "_hson_root", $_content: [] });
+  assert.deepEqual([object.data.must("state").mode, array.data.must("state").mode, document.doc.must("page").mode], ["data-object", "data-array", "document"]);
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } }), /exactly one/);
 });
 
-check("empty document and quoted empty text remain distinct", () => {
-  const empty = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } }).doc.must("page");
-  const quoted = hsonLiveMap.fromLibraries({ page: { document: '""', schema: TextDocument } }).doc.must("page");
-  assert.equal(quoted.root().$_content.length, 1);
-  assert.notDeepEqual(quoted.root(), empty.root());
+check("empty and text-only source remain distinct representations and both reject governed admission", () => {
+  const empty = { $_tag: "_hson_root", $_content: [] };
+  const quoted = hsonTransform.fromHson('""').toNode();
+  assert.equal(quoted.$_content.length, 1); assert.notDeepEqual(quoted, empty);
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: empty } }), /exactly one/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: quoted, schema: TextDocument } }), /document source requires ROOT or ELEM/);
+  assert.throws(() => Hson.document.fromNode(empty), /at least one content item/);
+  assert.throws(() => hsonTransform.fromNode(empty).toHson().serialize(), /internal attachment carrier/);
 });
 
-check("empty runtime document reads stay graph-native and source admission rejects", () => {
+check("blank source rejects while explicit empty html completes", () => {
   for (const source of ["", " ", "\t", "\n", "\r\n", "// comment", " \t// comment\n"]) {
-    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source, schema: EmptyDocument } }), /has no semantic value/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source } }), /has no semantic value/);
   }
-  const map = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } });
-  const page = map.doc.must("page");
-  assert.ok(page.at([]).asRoot());
-  assert.equal(page.at([0]).snap(), undefined);
-  assert.deepEqual(page.document.content(), []);
-  assert.throws(() => Hson.document.fromNode(page.root()), /at least one content item/);
-  assert.throws(() => hsonTransform.fromNode(page.root()).toHson().serialize(), /internal attachment carrier/);
-  assert.throws(() => page.render());
+  const page = hsonLiveMap.fromLibraries({ page: { document: '<html/>' } }).doc.must("page");
+  assert.ok(page.at([]).asElement());
+  assert.equal(page.render(), '<!doctype html><html><head></head><body></body></html>');
 });
 
 check("malformed canonical roots and generated QUID claims reject at admission", () => {
@@ -153,7 +150,7 @@ check("malformed canonical roots and generated QUID claims reject at admission",
 });
 
 check("document input and detached reads do not share graph ownership", () => {
-  const source = parse_hson_exact_runtime('<main id="original" <p "x"/>/>', { allowTopLevelDocumentText: true });
+  const source = parse_hson_exact_runtime('<html <head/> <body <main id="original" <p "x"/>/>/>/>', { allowTopLevelDocumentText: true });
   const map = admit_exact_runtime_livemap_libraries({ page: { document: source, schema: MainP } });
   const page = map.doc.must("page");
   const baseline = page.root();
@@ -179,7 +176,7 @@ check("ordinary data input is detached and selected library reads remain exact",
 });
 
 check("local QUID identity is sparse and portable capture omits it", () => {
-  const source = parse_hson_exact_runtime('<main @000000001 <p "one"/> <p @000000005 "two"/>/>', { allowTopLevelDocumentText: true });
+  const source = parse_hson_exact_runtime('<html <head/> <body <main @000000001 <p "one"/> <p @000000005 "two"/>/>/>/>', { allowTopLevelDocumentText: true });
   const map = admit_exact_runtime_livemap_libraries({ page: { document: source, schema: MainTwoP } });
   const page = map.doc.must("page");
   const root = page.root();
@@ -193,7 +190,7 @@ check("local QUID identity is sparse and portable capture omits it", () => {
 });
 
 check("duplicate and malformed document QUIDs reject before registry construction", () => {
-  assert.throws(() => admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime('<main <p @000000006 "a"/> <p @000000006 "b"/>/>', { allowTopLevelDocumentText: true }), schema: MainTwoP } }), /duplicate quid/);
+  assert.throws(() => admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime('<html <head/> <body <main <p @000000006 "a"/> <p @000000006 "b"/>/>/>/>', { allowTopLevelDocumentText: true }), schema: MainTwoP } }), /duplicate quid/);
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<main @/>', schema: MainText } }));
 });
 

@@ -1,3 +1,4 @@
+import { body_root } from "./helpers/document-library.mts";
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
@@ -86,8 +87,8 @@ function element(source: string): LiveMapDocumentLibrary {
 }
 
 function raw_node(root: HsonNode, path: readonly number[]): HsonNode {
-  let current: HsonNode = root;
-  for (const segment of path) {
+  let current: HsonNode = root.$_tag === "_hson_root" && path[0] === 0 ? body_root(root) : root;
+  for (const segment of current === root ? path : path.slice(1)) {
     const child = current.$_content[segment];
     if (!is_Node(child)) throw new Error(`Expected node at raw path ${path.join("/")}`);
     current = child;
@@ -107,7 +108,7 @@ function mount(node: HsonNode): AttributeProjection {
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: validate_document_path([0, ...segments]) };
+  return { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, ...segments]) };
 }
 
 function document_element(root: HsonNode): HsonNode {
@@ -133,7 +134,7 @@ for (const mode of ["native", "fallback"] as const) {
         for (const [round, value] of [-0, 0, -0].entries()) {
           assert.equal(map.document.attrs.set(path(), "count", value).changed, true);
           tree.attrs.set("style", { width: { value, unit: "px" } });
-          const observation = binding.tree.node.$_content[0];
+          const observation = binding.tree.find.must.byTag("main").node;
           assert.ok(typeof observation === "object" && observation !== null);
           const style = observation.$_attrs?.style;
           assert.ok(style !== null && typeof style === "object");
@@ -174,7 +175,7 @@ check("initial binding owns a detached graph and indexes raw canonical paths", (
   assert.deepEqual(binding.tree.node, canonicalRead);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, map.rev);
-  assert.equal(binding.diagnostics().registeredElements, 3);
+  assert.equal(binding.diagnostics().registeredElements, 6);
   binding.dispose();
 });
 

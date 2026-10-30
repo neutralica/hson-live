@@ -12,7 +12,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-st
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const LocalSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const authority = hsonLiveMap.fromLibraries({
   visibleA: { data: { value: "A0" }, schema: DataSchema },

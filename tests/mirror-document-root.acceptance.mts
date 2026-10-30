@@ -40,7 +40,7 @@ check("registry restoration constructs a fresh reflected root and DOM", () => {
   const originalRoot = raw_node(retained_subject(originalTree), []);
   const originalDom = project_livetree(originalRoot) as unknown as FakeElement;
   const source = element(`<main @000000501 class="new" <p "next"/>/>`);
-  source.document.attrs.set({ kind: "path", path: [0] }, "revision", 1);
+  source.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "revision", 1);
   restore(map, source);
   const nextRoot = raw_node(retained_subject(binding.tree), []);
   assert.equal(binding.status, "active");
@@ -51,7 +51,7 @@ check("registry restoration constructs a fresh reflected root and DOM", () => {
   assert.equal(nextRoot.$_attrs?.class, "new");
   assert.equal(binding.sourceRevision, 1);
   create_livetree(raw_node(nextRoot, [0, 0])).adoptRoots(nextRoot).attrs.set("after", "restore");
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0, 0, 0] }, "after"), "restore");
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0, 0, 1, 0, 0, 0, 0] }, "after"), "restore");
   binding.dispose();
 });
 

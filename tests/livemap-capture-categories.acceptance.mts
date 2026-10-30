@@ -9,8 +9,8 @@ import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 
 const Q1 = "000000v71";
 const Q2 = "000000v72";
-const Empty = Hson.schema`<type "document" tag "main" content "empty">`;
-const Nested = Hson.schema`<type "document" tag "main" content <sequence [<tag "i" content "empty">]>>`;
+const Empty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const Nested = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "i" content "empty">]>>]>>]>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.capture-categories", title: "Registry document capture identity boundary",
   category: "LiveMap", runtime: "node",
@@ -28,7 +28,7 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 const exact = (source: string) => admit_exact_runtime_livemap_libraries({
-  page: { document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: source.includes("<i ") ? Nested : Empty },
+  page: { document: parse_hson_exact_runtime(`<html <head/> <body ${source}/>/>`, { allowTopLevelDocumentText: true }), schema: source.includes("<i ") ? Nested : Empty },
 });
 const ordinary = (source: string) => hsonLiveMap.fromLibraries({ page: { document: source, schema: Empty } });
 

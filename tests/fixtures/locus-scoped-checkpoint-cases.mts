@@ -189,7 +189,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
     const f = await fixture();
     try {
       const before = f.a.captureSemanticCheckpoint(), lifetimes = f.a.documentScopes(f.pageId)!.occurrences.map(s => s.lifetime);
-      const batch = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 1, node('<hson-part lib="parts" at="panel"/>')));
+      const batch = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0,0,1,0,0, 0]) }, 1, node('<hson-part lib="parts" at="panel"/>')));
       const after = f.a.captureSemanticCheckpoint();
       assert.equal(checkpoint_libraries_equal(before.libraries, after.libraries), true);
       assert.equal(after.revision, before.revision + 1); assert.ok(batch.operations.length > 0);
@@ -298,7 +298,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
       const presented = clone(checkpoint), adapter = new Reentrant(), paused = adapter.deferChunk();
       const pending = write(presented, adapter, ownership); await paused.entered;
       await f.stage(w => {
-        page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "later");
+        page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "later");
         const data = w.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(22);
       });
       paused.release(); await pending;
@@ -420,7 +420,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
       const restored = await resume(checkpoint.authority.logicalMapId, { persistence: adapter }); assert.ok(restored); restored.dispose();
       let rejected = false;
       const stop = f.l.on_commit(commit => { assert.ok(durable_aggregate_commit(commit).commit.operationCount); rejected = true; });
-      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next")); stop(); assert.equal(rejected, true);
+      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "next")); stop(); assert.equal(rejected, true);
       await f.stage(w => page(w).css.stylesheet("main{color:red}"));
       assert.equal(adapter.appendCalls.length, 0);
       const forgedTail: any = { format: "hson-locus-durable-aggregate-record", logicalMapId: checkpoint.authority.logicalMapId,

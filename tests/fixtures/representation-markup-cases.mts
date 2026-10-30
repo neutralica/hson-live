@@ -1,4 +1,6 @@
 import { hsonLiveMap } from "hson-live/livemap";
+import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.js";
+import { document_markup } from "../../src/internal/document-representation.js";
 
 /** Run unchanged in Node, actual Workers, and Chromium. */
 export function representation_markup_cases() {
@@ -32,12 +34,20 @@ export function representation_markup_cases() {
     ['<main @:subject "a" "" "b"/>', undefined, '<main>ab</main>'],
   ];
   for (const [document, path, expected] of cases) {
-    const map = hsonLiveMap.fromLibraries({ page: { document } });
-    const page = map.doc.must("page"), before = JSON.stringify(map.capture());
-    equal(path === undefined ? page.snap() : page.at(path).snap(), expected);
-    equal(path === undefined ? page.must.snap() : page.at(path).must.snap(), expected);
-    equal(JSON.stringify(map.capture()), before);
-    equal(map.rev, 0);
+    // Contextual markup permits incomplete representations without governed admission.
+    const root = parse_authored_document_library(document).root;
+    const before = JSON.stringify(root);
+    equal(document_markup(root, path), expected);
+    equal(JSON.stringify(root), before);
   }
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+  const page = map.doc.must("page"), before = JSON.stringify(map.capture());
+  equal(page.snap(), "<html><head></head><body><main></main></body></html>");
+  equal(page.must.snap(), page.snap());
+  equal(page.at([1, 0]).snap(), "<main></main>");
+  equal(page.at([1, 0]).must.snap(), page.at([1, 0]).snap());
+  equal(page.render(), "<!doctype html><html><head></head><body><main></main></body></html>");
+  equal(JSON.stringify(map.capture()), before);
+  equal(map.rev, 0);
   return cases.length;
 }

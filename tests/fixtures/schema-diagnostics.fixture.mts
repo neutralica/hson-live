@@ -156,9 +156,9 @@ export function run_schema_diagnostic_cases(): void {
     assert.equal(collision.slice(failure.relatedRange.start, failure.relatedRange.end), '"a"');
   }
 
-  const page: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;
+  const page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence «<tag "h1">»>>]>>]>>`;
   const pageCompiled = compiled_hson_schema_of(page);
-  const shell = '<main <hson-part lib="bits" at="title" text="Hello"/>/>';
+  const shell = '<html <head/> <body <main <hson-part lib="bits" at="title" text="Hello"/>/>/>/>';
   const parts = { title: { kind: "document", document: '<h1 hson:part "%{text}"/>' } } satisfies LiveMapPartCollection;
   const inventory = new Map<string, unknown>([["bits", parts]]);
   const candidateDoc = { source: shell, family: "document" } as const;
@@ -183,8 +183,8 @@ export function run_schema_diagnostic_cases(): void {
     child: { kind: "document", document: '<span hson:part/>' },
   }]]);
   assert.equal(evaluate_static_schema_candidate(pageCompiled,
-    { source: '<main <hson-part lib="bits" at="title"/>/>', family: "document" }, nested).kind, "valid");
-  const plain = evaluate_static_schema_candidate(pageCompiled, { source: '<main <p/>/>', family: "document" });
+    { source: '<html <head/> <body <main <hson-part lib="bits" at="title"/>/>/>/>', family: "document" }, nested).kind, "valid");
+  const plain = evaluate_static_schema_candidate(pageCompiled, { source: '<html <head/> <body <main <p/>/>/>/>', family: "document" });
   assert.equal(plain.kind, "invalid");
   assert.ok(plain.kind === "invalid" && plain.range !== undefined);
   // Static realization never installs a runtime or touches existing authority.
@@ -200,7 +200,7 @@ export function run_schema_diagnostic_cases(): void {
     // A swallowed issuance error would return unknown and fail this assertion.
     assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, inventory).kind, "valid");
     assert.equal(evaluate_static_schema_candidate(pageCompiled,
-      { source: '<main <hson-part @:title lib="bits" at="title" text="Hello"/>/>', family: "document" }, inventory).kind, "valid");
+      { source: '<html <head/> <body <main <hson-part @:title lib="bits" at="title" text="Hello"/>/>/>/>', family: "document" }, inventory).kind, "valid");
   } finally { globalThis.crypto.getRandomValues = random; stop(); stopPosition(); }
   assert.equal(map.rev, before.revision); assert.deepEqual(aggregate.hostedPosition(), before.position);
   assert.equal(aggregate.identityEpoch().issued(), before.ledger); assert.deepEqual(map.doc.must("page").snap(), before.root);

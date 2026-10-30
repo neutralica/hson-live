@@ -80,7 +80,7 @@ check("one library has a fixed Schema while independent registries can reuse it"
 });
 
 check("document library admission consumes HsonSchema", () => {
-  const schema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content "string">]>>`;
+  const schema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "section" content "string">]>>]>>]>>`;
   const map = hsonLiveMap.fromLibraries({ page: { document: '<main <section "body"/>/>', schema } });
   assert.equal(map.doc.must("page").mode, "document");
   assert.equal(map.doc.must("page").schema.get(), schema);

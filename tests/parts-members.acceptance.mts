@@ -65,7 +65,7 @@ const styled = hsonLiveMap.fromLibraries({parts:{parts:{
   ordinary:{kind:'document',document:'<b hson:part/>',stylesheet:'b{color:blue}'},
   optional:{kind:'document',document:'<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>',stylesheet:'p{color:red}'},
 }},page:{document:'<main <i/>/>'}});
-const page = styled.doc.must('page'), target = {kind:'path',path:[0,0]};
+const page = styled.doc.must('page'), target = {kind:'path',path:[0,0,1,0,0,0]};
 const replacement = (at, payload) => ({$_tag:'hson-part',$_attrs:{lib:'parts',at,...(payload===undefined?{}:{'data:payload':payload})},$_content:[]});
 const sequence = commit => commit.operations.map(({operation}) => operation.domain==='css' ? 'css/'+operation.kind : operation.domain+'/'+operation.op);
 assert.deepEqual(sequence(page.document.content.replace(target,0,replacement('ordinary'))),['graph/replace-content','css/replace']);

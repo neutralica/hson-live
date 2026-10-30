@@ -65,8 +65,8 @@ function replay(f: ReturnType<typeof sender>, operations: readonly LiveMapGraphO
 
 export function scoped_effect_fixture() {
   const f = sender();
-  const operations = [insert([0, 0], 0, "globals"), move([0, 0], 0, 2), replace([0, 0], 0, "green"),
-    insert([0, 0, 0, 0, 0, 0], 1, "plain"), remove([0, 0], 2)];
+  const operations = [insert([0, 0, 1, 0, 0, 0], 0, "globals"), move([0, 0, 1, 0, 0, 0], 0, 2), replace([0, 0, 1, 0, 0, 0], 0, "green"),
+    insert([0, 0, 1, 0, 0, 0, 0, 0, 0, 0], 1, "plain"), remove([0, 0, 1, 0, 0, 0], 2)];
   const next = f.a.prepareScopedDocumentOperations(f.before, operations);
   return { initial: f.a.captureScopedDocument(f.before), effects: f.a.captureScopedDocumentEffects(next), final: f.a.captureScopedDocument(next) };
 }
@@ -80,71 +80,71 @@ export function scoped_effect_receive(input: ReturnType<typeof scoped_effect_fix
 
 export function scoped_effect_cases(check: (name: string, run: () => void) => void) {
   check("incremental repeated nested named and unnamed Parts agree across independent runtimes", () => {
-    const f = sender(), r = replay(f, [insert([0, 0], 1, "panel"), insert([0, 0], 3, "plain")]);
+    const f = sender(), r = replay(f, [insert([0, 0, 1, 0, 0, 0], 1, "panel"), insert([0, 0, 1, 0, 0, 0], 3, "plain")]);
     assert.equal(r.result.scopes.occurrences.length, 7);
-    assert.equal(at(r.result, [0, 0, 1]).bindings.find(b => b.name === "child")?.kind, "part");
+    assert.equal(at(r.result, [0, 0, 1, 0, 0, 0, 1]).bindings.find(b => b.name === "child")?.kind, "part");
     assert.equal(new Set(r.result.scopes.occurrences.map(s => s.lifetime)).size, 7);
     assert.ok(render(r.result.stylesheet).includes("padding:7px"));
     for (const scope of r.result.scopes.occurrences) assert.ok(!r.next.scopes.occurrences.some(s => s.rootQuid === scope.rootQuid));
     assert.equal(r.map.doc.must("page").q("middle"), undefined);
   });
   check("named connector introduction into a surviving namespace and later retirement use opposite coordinates", () => {
-    const f = sender(), prepared = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0], 0, "plain")]);
+    const f = sender(), prepared = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0, 1, 0, 0, 0], 0, "plain")]);
     // Operation-local Library evidence seam: the graph instruction itself has
     // no namespace fields. Public named-operation authoring stays out of scope.
     const next = { ...prepared, scopes: make_document_scoped_quads(prepared,
-      [...prepared.scopes.document, { name: "introduced", kind: "part", quid: at(prepared, [0, 0, 0]).rootQuid }], prepared.scopes.occurrences) };
+      [...prepared.scopes.document, { name: "introduced", kind: "part", quid: at(prepared, [0, 0, 1, 0, 0, 0, 0]).rootQuid }], prepared.scopes.occurrences) };
     const step = prepared.steps[0]!;
     const effect = capture_document_scoped_effect(f.before, next, step.operation, step.styles, 0);
-    assert.deepEqual(effect.added.map(entry => entry.binding.path), [[0, 0, 0]]);
+    assert.deepEqual(effect.added.map(entry => entry.binding.path), [[0, 0, 1, 0, 0, 0, 0]]);
     const initial = f.a.captureScopedDocument(f.before), r = receiver(initial), peer = receiver(initial);
     const wire = encode_document_scoped_effects([effect]);
     const result = r.a.prepareScopedDocumentEffectReplay(r.before, wire), other = peer.a.prepareScopedDocumentEffectReplay(peer.before, wire);
     assert.equal(result.scopes.document.find(binding => binding.name === "introduced")?.kind, "part");
-    const retired = r.a.prepareScopedDocumentOperations(result, [move([0, 0], 0, 2), remove([0, 0], 2)]);
+    const retired = r.a.prepareScopedDocumentOperations(result, [move([0, 0, 1, 0, 0, 0], 0, 2), remove([0, 0, 1, 0, 0, 0], 2)]);
     const effects = r.a.captureScopedDocumentEffects(retired);
-    assert.deepEqual(JSON.parse(effects).effects[1].removed[0].binding.path, [0, 0, 2]);
+    assert.deepEqual(JSON.parse(effects).effects[1].removed[0].binding.path, [0, 0, 1, 0, 0, 0, 2]);
     const received = peer.a.prepareScopedDocumentEffectReplay(other, effects);
     assert.ok(equal(r.a.captureScopedDocument(retired), peer.a.captureScopedDocument(received)));
     assert.equal(received.scopes.document.some(binding => binding.name === "introduced"), false);
   });
   check("movement preserves occurrence lifetimes and CSS ownership", () => {
-    const f = sender(), r = replay(f, [move([0, 0], 0, 1)]);
-    assert.equal(at(r.result, [0, 0, 1]).lifetime, at(r.before, [0, 0, 0]).lifetime);
+    const f = sender(), r = replay(f, [move([0, 0, 1, 0, 0, 0], 0, 1)]);
+    assert.equal(at(r.result, [0, 0, 1, 0, 0, 0, 1]).lifetime, at(r.before, [0, 0, 1, 0, 0, 0, 0]).lifetime);
     assert.equal(render(r.result.stylesheet), render(r.before.stylesheet));
     const effect = JSON.parse(r.wire).effects[0];
     assert.deepEqual(effect.created, []); assert.deepEqual(effect.retired, []);
   });
   check("named connector retirement and graph-equivalent replacement remain meaningful", () => {
-    const f = sender(), r = replay(f, [replace([0, 0], 0, "green")]);
+    const f = sender(), r = replay(f, [replace([0, 0, 1, 0, 0, 0], 0, "green")]);
     assert.ok(canonical_graph_equal(r.result.root, r.before.root)); assert.equal(r.result.changed, true);
-    assert.notEqual(at(r.result, [0, 0, 0]).lifetime, at(r.before, [0, 0, 0]).lifetime);
+    assert.notEqual(at(r.result, [0, 0, 1, 0, 0, 0, 0]).lifetime, at(r.before, [0, 0, 1, 0, 0, 0, 0]).lifetime);
     assert.equal(r.result.scopes.document.some(b => b.name === "left"), false);
     assert.ok(render(r.result.stylesheet).includes("green"));
     const e = JSON.parse(r.wire).effects[0]; assert.equal(e.retired.length, 2); assert.equal(e.created.length, 2);
   });
   check("identical graph, names and CSS still retire and recreate occurrence lifetime", () => {
-    const f = sender('<hson-part lib="parts" at="leaf"/>'), r = replay(f, [replace([], 0, "leaf")]);
+    const f = sender('<hson-part lib="parts" at="leaf"/>'), r = replay(f, [replace([0, 0, 1, 0], 0, "leaf")]);
     assert.ok(equal(f.a.captureScopedDocument(f.before), f.a.captureScopedDocument(r.next)));
-    assert.notEqual(at(r.result, [0]).lifetime, at(r.before, [0]).lifetime);
+    assert.notEqual(at(r.result, [0, 0, 1, 0, 0]).lifetime, at(r.before, [0, 0, 1, 0, 0]).lifetime);
     const e = JSON.parse(r.wire).effects[0]; assert.equal(e.before, e.after); assert.ok(e.retired.length); assert.ok(r.result.changed);
   });
   check("successive coordinates carry insertion, movement, replacement and nested insertion", () => {
     const input = scoped_effect_fixture(); scoped_effect_receive(input);
     const effects = JSON.parse(input.effects).effects;
     assert.deepEqual(effects.map((e: { ordinal: number }) => e.ordinal), [0, 1, 2, 3, 4]);
-    assert.deepEqual(effects[0].created[0].root, [0, 0, 0]);
-    assert.deepEqual(effects[4].retired[0].root, [0, 0, 2]);
+    assert.deepEqual(effects[0].created[0].root, [0, 0, 1, 0, 0, 0, 0]);
+    assert.deepEqual(effects[4].retired[0].root, [0, 0, 1, 0, 0, 0, 2]);
     assert.equal(effects.some((e: object) => Object.hasOwn(e, "root") || Object.hasOwn(e, "scopes") || Object.hasOwn(e, "snapshot")), false);
   });
   check("later private operations continue from a replayed candidate", () => {
-    const f = sender(), r = replay(f, [insert([0, 0], 0, "plain")]);
-    const sourceNext = f.a.prepareScopedDocumentOperations(r.next, [move([0, 0], 0, 2)]);
+    const f = sender(), r = replay(f, [insert([0, 0, 1, 0, 0, 0], 0, "plain")]);
+    const sourceNext = f.a.prepareScopedDocumentOperations(r.next, [move([0, 0, 1, 0, 0, 0], 0, 2)]);
     const result = r.a.prepareScopedDocumentEffectReplay(r.result, f.a.captureScopedDocumentEffects(sourceNext));
     assert.ok(equal(f.a.captureScopedDocument(sourceNext), r.a.captureScopedDocument(result)));
   });
   check("independent label renaming preserves complete CSS correspondence without receiving identity claims", () => {
-    const f = sender(), next = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0], 0, "globals")]);
+    const f = sender(), next = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0, 1, 0, 0, 0], 0, "globals")]);
     const wire = JSON.parse(f.a.captureScopedDocumentEffects(next));
     let ordinal = 0; const labels = new Set<string>();
     for (const e of wire.effects) for (const style of e.styles) {
@@ -162,17 +162,17 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     } finally { allocator(r.a.identityEpoch().owner, undefined); }
   });
   check("internal automatic replacement correspondence preserves root QUID but retires scope and complete owned CSS", () => {
-    const f = sender('<hson-part lib="parts" at="globals"/>'), old = at(f.before, [0]);
+    const f = sender('<hson-part lib="parts" at="globals"/>'), old = at(f.before, [0, 0, 1, 0, 0]);
     const replacement = node('<em/>'); assign_hson_node_quid(replacement, old.rootQuid);
     // Same-runtime exact evidence only, never caller-authored lineage.
-    const planned = prepare_document_graph_operation(f.before.root, "document", { domain: "graph", op: "replace-content", target: target([]), index: 0, replacement }, f.before.overlay);
+    const planned = prepare_document_graph_operation(f.before.root, "document", { domain: "graph", op: "replace-content", target: target([0, 0, 1, 0]), index: 0, replacement }, f.before.overlay);
     const context = { ...f.before, root: planned.root, overlay: planned.overlay };
     const scopes = make_document_scoped_quads(context, [], [{ ...old, lifetime: new_document_quad_occurrence(f.owner) }]);
     const candidate = prepare_document_scoped_library_styles({ ...context, scopes, steps: [{ operation: planned.operation, context, scopes, styles: [] }], initialStyles: [] }, f.before.stylesheet, f.before);
     const effect = capture_document_scoped_effect(f.before, candidate, planned.operation, [], 0);
-    const r = receiver(f.a.captureScopedDocument(f.before)), local = at(r.before, [0]);
+    const r = receiver(f.a.captureScopedDocument(f.before)), local = at(r.before, [0, 0, 1, 0, 0]);
     const result = r.a.prepareScopedDocumentEffectReplay(r.before, encode_document_scoped_effects([effect]));
-    assert.equal(at(result, [0]).rootQuid, local.rootQuid); assert.notEqual(at(result, [0]).lifetime, local.lifetime);
+    assert.equal(at(result, [0, 0, 1, 0, 0]).rootQuid, local.rootQuid); assert.notEqual(at(result, [0, 0, 1, 0, 0]).lifetime, local.lifetime);
     assert.equal(render(result.stylesheet).includes("pulse"), false); assert.equal(render(result.stylesheet).includes("--tone"), false);
     assert.equal(result.issued.size, r.before.issued.size);
   });
@@ -182,14 +182,14 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     ["duplicated operation", w => w.effects.splice(1, 0, w.effects[0])],
     ["stale precondition", w => w.effects[0].before = "0".repeat(64)],
     ["missing scope retirement", w => w.effects[2].retired = []],
-    ["forged namespace binding", w => w.effects[0].created[0].bindings[0].path = [0]],
+    ["forged namespace binding", w => w.effects[0].created[0].bindings[0].path = [0, 0, 1, 0, 0]],
     ["invalid later graph after valid prefix", w => { const op = JSON.parse(w.effects[4].graph); op.index = 999; w.effects[4].graph = JSON.stringify(op); }],
     ["forged postcondition after valid prefix", w => w.effects[4].after = "0".repeat(64)],
     ["missing CSS subject", w => w.effects[0].styles[0].subjects = []],
     ["duplicated CSS subject", w => w.effects[0].styles[0].subjects.push(w.effects[0].styles[0].subjects[0])],
     ["missing CSS contribution", w => w.effects[0].styles = []],
     ["mismatched CSS label", w => w.effects[0].styles[0].subjects[0].name = "_x00000001"],
-    ["forged occurrence parent", w => w.effects[0].created[0].parent = [0]],
+    ["forged occurrence parent", w => w.effects[0].created[0].parent = [0, 0, 1, 0, 0]],
     ["generated graph identity claim", w => { const op = JSON.parse(w.effects[0].graph), content = node('<em/>'); assign_hson_node_quid(content, "x00000001"); op.content = encode_exact_hson_value(content); w.effects[0].graph = JSON.stringify(op); }],
     ["runtime witness", w => { const op = JSON.parse(w.effects[0].graph); op.target.witness = "a00000001"; w.effects[0].graph = JSON.stringify(op); }],
     ["forged receiving ledger", w => w.effects[0].issued = ["a00000001"]],
@@ -213,11 +213,11 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     assert.equal(calls, 0);
   });
   check("mismatched, forged and foreign receiving candidates reject", () => {
-    const f = sender(), next = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0], 0)]), wire = f.a.captureScopedDocumentEffects(next);
+    const f = sender(), next = f.a.prepareScopedDocumentOperations(f.before, [insert([0, 0, 1, 0, 0, 0], 0)]), wire = f.a.captureScopedDocumentEffects(next);
     const r = receiver(f.a.captureScopedDocument(f.before));
     assert.throws(() => r.a.prepareScopedDocumentEffectReplay({ ...r.before }, wire), /another Library/);
     assert.throws(() => r.a.prepareScopedDocumentEffectReplay(f.before, wire), /another Library/);
-    const changed = r.a.prepareScopedDocumentOperations(r.before, [remove([0, 0], 0)]);
+    const changed = r.a.prepareScopedDocumentOperations(r.before, [remove([0, 0, 1, 0, 0, 0], 0)]);
     assert.throws(() => r.a.prepareScopedDocumentEffectReplay(changed, wire), /stale|mismatched/);
     const result = r.a.prepareScopedDocumentEffectReplay(r.before, wire);
     assert.throws(() => r.a.prepareScopedDocumentEffectReplay(result, wire), /stale|mismatched/);
@@ -245,12 +245,12 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     assert.equal(r.map.data.must("other").at(["n"]).snap(), 1);
   });
   check("schema validates the completed batch before issuance, allowing transient intermediate graphs", () => {
-    const f = sender('<main/>'), first = replace([], 0, "plain");
-    const schema = Hson.schema`<type "document" tag "main">`;
+    const f = sender('<main/>'), first = replace([0, 0, 1, 0], 0, "plain");
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main">]>>]>>`;
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>', schema } });
     const a = authority(map), owner = a.libraries()[0]!;
     const before = a.prepareScopedDocumentRestoration(owner, f.a.captureScopedDocument(f.before));
-    const next = f.a.prepareScopedDocumentOperations(f.before, [first, { domain: "graph", op: "replace-content", target: target([]), index: 0, replacement: node('<main/>') }]);
+    const next = f.a.prepareScopedDocumentOperations(f.before, [first, { domain: "graph", op: "replace-content", target: target([0, 0, 1, 0]), index: 0, replacement: node('<main/>') }]);
     const result = a.prepareScopedDocumentEffectReplay(before, f.a.captureScopedDocumentEffects(next));
     assert.ok(equal(f.a.captureScopedDocument(next), a.captureScopedDocument(result)));
     const invalid = f.a.prepareScopedDocumentOperations(f.before, [first]);
@@ -260,9 +260,9 @@ export function scoped_effect_cases(check: (name: string, run: () => void) => vo
     assert.equal(calls, 0); assert.equal(a.identityEpoch().issued().size, 0);
   });
   check("semantic no-op operation preserves changed=false and issues no identity", () => {
-    const f = sender(), r = replay(f, [move([0, 0], 0, 0)]);
+    const f = sender(), r = replay(f, [move([0, 0, 1, 0, 0, 0], 0, 0)]);
     assert.equal(r.result.changed, false); assert.equal(r.result.issued.size, r.before.issued.size);
-    assert.equal(at(r.result, [0, 0, 0]).lifetime, at(r.before, [0, 0, 0]).lifetime);
+    assert.equal(at(r.result, [0, 0, 1, 0, 0, 0, 0]).lifetime, at(r.before, [0, 0, 1, 0, 0, 0, 0]).lifetime);
   });
   check("initial captures cannot substitute for missing incremental evidence", () => {
     const f = sender(), r = receiver(f.a.captureScopedDocument(f.before));

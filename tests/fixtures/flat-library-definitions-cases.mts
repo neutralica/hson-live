@@ -51,7 +51,7 @@ export async function flat_library_definition_cases() {
   assert.equal(literalNames.data.must("a%2Fb").snap(), 2);
   const minimal = hsonLiveMap.locus.create({ first: { data: 1 } });
   assert.equal(await minimal.admit({ page: { document: "<main/>" } }), undefined);
-  assert.equal(minimal.doc.must("page").render(), "<main></main>");
+  assert.equal(minimal.doc.must("page").render(), "<!doctype html><html><head></head><body><main></main></body></html>");
   assert.equal("addLibraries" in minimal, false);
   assert.equal("batch" in minimal.admit, false);
   minimal.dispose();

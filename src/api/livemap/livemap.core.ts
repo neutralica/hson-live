@@ -1,3 +1,4 @@
+import { assert_complete_document, complete_document_source } from "../../internal/complete-document.js";
 import { selector_for_quid } from "../livetree/managers/css-render.js";
 import { canonical_flat_correspondence, flat_document_fingerprint, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
 import { own_commit_description } from "./livemap.commit-description.js";
@@ -84,7 +85,7 @@ import {
 } from "./livemap.document.capture.js";
 import { clone_livemap_document_exact_view, livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
-import { classify_live_root_mode, prepare_livemap_root } from "./livemap.document.js";
+import { classify_live_root_mode, normalize_document_root, prepare_livemap_root } from "./livemap.document.js";
 import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
 import {
   admit_public_document_graph_operation,
@@ -603,6 +604,7 @@ function make_livemap_registry_engine(
     const translated = portable !== undefined && document_css_mentions_subject_identity(portable)
       ? translate_document_css_identities(portable, "inbound", { associations: correspondence, assertCurrent }, true, exactOverlay !== undefined) : portable;
     const state = { ...addressState, ...(translated === undefined ? {} : { stylesheet: decode_portable_document_stylesheet(translated) }) };
+    if (prepared.mode === "document") assert_complete_document(prepared.root, render_portable_document_stylesheet_carriers(state.stylesheet ?? empty_portable_document_stylesheet()));
     assertCurrent();
     return state;
   }
@@ -641,6 +643,7 @@ function make_livemap_registry_engine(
 
   function finish_scoped_preparation(candidate: PreparedDocumentScopedLibrary, operations: readonly LiveMapGraphOp[] = []): PreparedDocumentScopedLibrary {
     const library = require_library(candidate.owner);
+    assert_complete_document(candidate.root, render_portable_document_stylesheet_carriers(candidate.stylesheet));
     if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, candidate.root);
     candidate.assertCurrent();
     // Authentication must also protect the graph that the scopes and CSS were
@@ -671,7 +674,9 @@ function make_livemap_registry_engine(
     authority.assertCurrent();
     const candidate = prepare_document_scoped_reconstruction({ owner: library.identity, root: prepared.root,
       overlay: require_document_overlay(prepared.documentOverlay), issued }, portable.scopes, authority, foreignPayloads);
-    return restore_document_scoped_library_styles(candidate, portable);
+    const restored = restore_document_scoped_library_styles(candidate, portable);
+    assert_complete_document(restored.root, render_portable_document_stylesheet_carriers(restored.stylesheet));
+    return restored;
   }
 
   function scoped_aliases(candidate: PreparedDocumentScopedLibrary): DocumentQuadBindings {
@@ -1340,7 +1345,8 @@ function make_livemap_registry_engine(
       // still opt into scoped preparation explicitly; replay supplies its own evidence.
       // Installed empty scopes and earlier operations in this batch retain provenance.
       const scoped = receivingScoped?.has(write) || scopedDocuments && (library.documentScopes !== undefined
-        || scopedCandidates.has(library.identity) || is_Node(incoming) && has_part_connector(incoming));
+        || scopedCandidates.has(library.identity) || write.kind === "graph" && write.operation.op === "replace-root"
+        || is_Node(incoming) && has_part_connector(incoming));
       if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined || scopedCandidates.has(library.identity))) {
         throw new Error("Scoped document effects require private Locus/Echo preparation.");
       }
@@ -1708,6 +1714,11 @@ function make_livemap_registry_engine(
         cssCandidates.set(state.identity, { before, after: next });
         state.stylesheet = next;
         operations.push({ target: aggregate_target(state.identity, []), operation: { domain: "css", kind: "replace", stylesheet: encode_portable_document_stylesheet(next) } });
+      }
+    }
+    for (const state of afterStates) {
+      if (state.mode === "document" && (candidates.has(state.identity) || cssCandidates.has(state.identity))) {
+        assert_complete_document(state.root, render_portable_document_stylesheet_carriers(state.stylesheet ?? empty_portable_document_stylesheet()));
       }
     }
     const afterActive = aggregate_quid_locations(afterStates);
@@ -2264,8 +2275,11 @@ function make_livemap_registry_engine(
       return part;
     };
     definitions = definitions.map(definition => {
-      if (definition.authored !== true || definition.family !== "document" || !has_part_connector(definition.root)) return definition;
-      const result = expand_document_composition(definition.name, () => ({ root: definition.root, ...(definition.quads === undefined ? {} : { quads: definition.quads }) }), document_composition_options(undefined), readPart);
+      if (definition.authored !== true || definition.family !== "document") return definition;
+      if (!has_part_connector(definition.root)) return { ...definition, ...complete_document_source({
+        root: normalize_document_root(definition.root), quads: own_document_quads(definition),
+      }) };
+      const result = expand_document_composition(definition.name, () => ({ root: definition.root, ...(definition.quads === undefined ? {} : { quads: definition.quads }) }), document_composition_options(undefined), readPart, "document");
       const { quads: sourceQuads, ...ordinary } = definition;
       return { ...ordinary, root: result.root, ...(result.quads === undefined ? {} : { quads: result.quads }), compositionStyles: result.styles, compositionScopes: result.scoped };
     });
@@ -2321,6 +2335,7 @@ function make_livemap_registry_engine(
       if (css !== undefined) {
         if (family !== "document") throw new TypeError("Initial CSS requires a document Library.");
       }
+      if (state.mode === "document") assert_complete_document(state.root, render_portable_document_stylesheet_carriers(state.stylesheet!));
       candidateAuthority.assertCurrent();
       if (state.mode !== "document") state.projectedValue = must_projected_root_value(state.root);
       return Object.freeze({ name, state, hsonSchema, css });
@@ -2539,6 +2554,7 @@ function make_livemap_registry_engine(
     }
     const next = apply_portable_document_css_op(current, normalizedOp);
     portable_quads({ ...state, stylesheet: next });
+    assert_complete_document(state.root, render_portable_document_stylesheet_carriers(next));
     const prevRev = mapRevision;
     if (portable_document_stylesheet_equal(current, next)) {
       return Object.freeze({ kind: "aggregate", changed: false, prevRev, rev: prevRev,
@@ -3657,6 +3673,7 @@ function make_livemap_registry_engine(
     } else if (entry.compositionStyles !== undefined) {
       throw new Error("Part styles require complete scoped topology evidence.");
     }
+    if (state.mode === "document") assert_complete_document(state.root, render_portable_document_stylesheet_carriers(state.stylesheet!));
     mark_quad_document_root(state.root, state.documentQuads);
   });
   if (initialReserved.size) {
@@ -3724,7 +3741,7 @@ function make_livemap_registry_engine(
       const authority = scoped_preparation_authority(), library = require_library(identity);
       if (library.mode !== "document") throw new Error("Scoped preparation requires a document Library.");
       const composition = expand_document_composition("candidate", () => source,
-        document_composition_options(undefined), authority.readPart);
+        document_composition_options(undefined), authority.readPart, "document");
       authority.assertCurrent();
       const prepared = prepare_livemap_root(composition.root, "document");
       const candidate = prepare_document_scoped_composition({ owner: library.identity, root: composition.root,

@@ -180,16 +180,16 @@ export async function parts_member_echo_cases() {
       assert.deepEqual(library.at([]).snap(), library.snap());
       assert.deepEqual(Reflect.apply(library.at([]).snap, undefined, [["heading", "document"]]), library.snap());
     }
-    const document = echo.doc.must("page"), documentMust = document.must, fragmentMust = document.at([0]).must;
-    assert.equal(documentMust.snap(), "<main><b>text</b></main>"); assert.equal(fragmentMust.snap(), "<b>text</b>");
+    const document = echo.doc.must("page"), documentMust = document.must, fragmentMust = document.at([1, 0, 0]).must;
+    assert.equal(documentMust.snap(), "<html><head></head><body><main><b>text</b></main></body></html>"); assert.equal(fragmentMust.snap(), "<b>text</b>");
     assert.equal(fragmentMust.hson(), Hson.document`<b "text"/>`);
-    const localDocument = echo.doc.must("localPage"), localDocumentMust = localDocument.at([0]).must;
+    const localDocument = echo.doc.must("localPage"), localDocumentMust = localDocument.at([1, 0, 0]).must;
     if (localDocument.source !== "client-local") throw Error("Expected client-local document");
     assert.equal(localDocumentMust.snap(), "<i>local</i>");
-    localDocument.at([0]).replace("changed");
+    localDocument.at([1, 0, 0]).replace("changed");
     assert.equal(localDocumentMust.snap(), "changed"); assert.equal(localDocumentMust.hson(), Hson.document`"changed"`);
-    const element = document.at([0]).asElement()!, elementMust = element.must;
-    await locus.doc.page.at([0]).replace("after");
+    const element = document.at([1, 0, 0]).asElement()!, elementMust = element.must;
+    await locus.doc.page.at([1, 0, 0]).replace("after");
     await until(() => fragmentMust.snap() === "after");
     assert.equal(element.snap(), undefined); assert.throws(elementMust.snap);
 
@@ -239,10 +239,10 @@ export async function parts_member_echo_cases() {
     assert.throws(documentMust.snap); assert.throws(fragmentMust.hson);
     assert.throws(() => projected.snap()); assert.throws(projectedMust.snap); assert.throws(projectedMust.hson); assert.throws(() => Reflect.get(parts, "heading"));
     assert.equal(echo.parts.must("widgets"), widgets); assert.deepEqual(local.snap(), heading);
-    const activeDocument = echo.doc.must("page"), activeFragment = activeDocument.at([0]);
+    const activeDocument = echo.doc.must("page"), activeFragment = activeDocument.at([1, 0, 0]);
     const activeProjected = Reflect.get(echo.parts.must("components"), "heading").must;
     const activeProjectedWrite = Reflect.get(echo.parts.must("components"), "heading").write;
-    const activeLocalDocument = echo.doc.must("localPage"), activeLocalFragment = activeLocalDocument.at([0]);
+    const activeLocalDocument = echo.doc.must("localPage"), activeLocalFragment = activeLocalDocument.at([1, 0, 0]);
     assert.equal(session.revoke(), true);
     echo.disconnect(); await until(() => echo.session.status !== "attached");
     await assert.rejects(echo.session.reattach());

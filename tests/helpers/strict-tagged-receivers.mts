@@ -84,7 +84,7 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
     const content = { format: "hson-graph-portable", payload: exact_tagged_payload(invalid.value) };
     for (const action of ["insert", "replace"] as const) {
       const resolution = resolve_locus_document_action(page, `document.content.${action}`, {
-        target: { kind: "path", path: [] }, index: 0, [action === "insert" ? "content" : "replacement"]: content,
+        target: { kind: "path", path: [0, 0, 1, 0] }, index: 0, [action === "insert" ? "content" : "replacement"]: content,
       });
       assert.equal(resolution.kind, "invalid", `${action}: ${invalid.name}`);
       unchanged();
@@ -98,14 +98,18 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
   const validContent = { format: "hson-graph-portable", payload: exact_tagged_payload(tagged_node("span")) };
   for (const action of ["insert", "replace"] as const) {
     const ready = resolve_locus_document_action(page, `document.content.${action}`, {
-      target: { kind: "path", path: [] }, index: 1, [action === "insert" ? "content" : "replacement"]: validContent,
+      target: { kind: "path", path: [0, 0, 1, 0] }, index: 1, [action === "insert" ? "content" : "replacement"]: validContent,
     });
     assert.equal(ready.kind, "ready");
     if (ready.kind !== "ready") throw new Error("Expected valid document action.");
     ready.execute();
   }
   assert.equal(canonical_hson_graph_equal(page.root(), { $_tag: "_hson_root", $_content: [
-    { $_tag: "main", $_content: [] }, { $_tag: "span", $_content: [] },
+    { $_tag: "html", $_content: [{ $_tag: "_hson_elem", $_content: [
+      { $_tag: "head", $_content: [] }, { $_tag: "body", $_content: [{ $_tag: "_hson_elem", $_content: [
+        { $_tag: "main", $_content: [] }, { $_tag: "span", $_content: [] },
+      ] }] },
+    ] }] },
   ] }), true);
 
   const author = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Page } });
@@ -116,7 +120,7 @@ export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections
   const unsubscribe = authority.observe(commit => { hosted = commit.hosted; });
   const authorPage = author.doc.must("page");
   if (authorPage.mode !== "document") throw new Error("Expected author page.");
-  authorPage.document.content.insert({ kind: "path", path: [] }, 1, { $_tag: "span", $_content: [] });
+  authorPage.document.content.insert({ kind: "path", path: [0, 0, 1, 0] }, 1, { $_tag: "span", $_content: [] });
   unsubscribe();
   if (!hosted) throw new Error("Expected hosted commit.");
   const validCommit = make_portable_aggregate_commit(hosted);

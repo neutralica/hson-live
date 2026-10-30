@@ -266,27 +266,25 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
   });
   check("managed marker collision reaches managed CSS planning", () => {
     const map = hsonLiveMap.fromLibraries({page:{document:'<html data-hson-managed-document-css="authored" <head/> <body/>/>'}}), page = map.doc.must("page");
-    replace_structured_fixture(page, 'p{color:red}');
-    rejects_realization_at(() => render(page,[]), /^Authored markup uses the reserved managed document CSS marker\.$/);
+    const before = map.capture();
+    assert.throws(() => replace_structured_fixture(page, 'p{color:red}'), /reserved managed document CSS marker/);
+    assert.deepEqual(map.capture(), before);
   });
   check("unsafe style sentinel rejects CSS admission and rawtext SSR realization", () => {
     const map = hsonLiveMap.fromLibraries({page:{document:'<html <head/> <body/>/>'}}), page = map.doc.must("page");
     const before = map.capture(), candidate = capture(page,[]), unsafe = 'p{content:"</style>"}';
-    page.css.stylesheet(unsafe);
-    assert.equal(page.css.snapshot(),unsafe);
-    rejects_realization_at(() => page.render(), /style RAWTEXT contains a parser-significant closing sentinel/);
+    assert.throws(() => page.css.stylesheet(unsafe), /style RAWTEXT contains a parser-significant closing sentinel/);
+    assert.deepEqual(map.capture(), before);
     rejects_realization_at(() => realize_document(candidate.root,[unsafe],{}), /style RAWTEXT contains a parser-significant closing sentinel/);
   });
-  check("managed CSS requires an html shell and incomplete full documents reject earlier in browser planning", () => {
-    const fragment = hsonLiveMap.fromLibraries({page:{document:'<main/>'}}).doc.must("page");
-    assert.doesNotThrow(() => render(fragment,[]));
-    fragment.css.stylesheet('main{color:red}');
-    rejects_realization_at(() => render(fragment,[]), /^Nonempty document CSS requires an explicit html\/head document root\.$/);
-    const missing = hsonLiveMap.fromLibraries({page:{document:'<html <body/>/>'}}).doc.must("page");
-    // Full html planning requires head then body even before managed CSS is added.
-    for (const css of ["", "p{color:red}"]) {
-      missing.css.stylesheet(css);
-      rejects_realization_at(() => render(missing,[]), /a full document requires exactly ordered canonical <head> and <body> children/);
+  check("managed CSS uses completed head structure while detached realization remains strict", () => {
+    for (const document of ['<main/>', '<html <body/>/>']) {
+      const page = hsonLiveMap.fromLibraries({ page: { document } }).doc.must("page");
+      for (const css of ["", "p{color:red}"]) {
+        page.css.stylesheet(css);
+        assert.doesNotThrow(() => render(page, []));
+        assert.match(page.render(), /^<!doctype html><html><head>/);
+      }
     }
   });
   check("reentrant identity graph and CSS changes invalidate capture with no SSR output", () => {

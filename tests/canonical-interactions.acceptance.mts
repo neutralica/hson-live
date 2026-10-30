@@ -38,7 +38,7 @@ import { authority_projection_as_client_composition_internal } from "../src/api/
 
 install_fake_document();
 
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 let quidSequence = 8340;
 let currentQ = "000008340";
@@ -77,7 +77,7 @@ function map_fixture() {
   currentQ = quidSequence.toString().padStart(9, "0");
   const map = admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime(`<main <button @${currentQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${currentQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
   enable_interactions(map);
   return map;
@@ -113,10 +113,10 @@ async function activate_echo(echo: Readonly<{
 }
 
 function local(id: string, key: string, args: HsonData = Hson.data.from(null), override: Partial<InteractionListener> = {}): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener: Object.freeze({ ...listener, ...override }), kind: "browser", key, args });
+  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }), listener: Object.freeze({ ...listener, ...override }), kind: "browser", key, args });
 }
 function authoritative(id: string, key: string, payload: HsonData): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus", key, payload });
+  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }), listener, kind: "locus", key, payload });
 }
 
 function canonical_descriptors(map: ReturnType<typeof map_fixture>) {
@@ -160,7 +160,7 @@ await check("hidden storage is aggregate state but not public selection", () => 
 
   const late = admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime(`<main <button @${currentQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${currentQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
   assert.equal(internal_livemap_aggregate_authority(late).captureHosted().registry.libraries.every(
     (entry) => !Object.hasOwn(entry, "scope"),
@@ -390,7 +390,7 @@ await check("batch and stage each admit document movement with interaction maint
   const standalone = hsonLiveMap.fromLibraries({ page: { document: "<main <button id=\"one\"/> <button id=\"two\"/>/>" } });
   enable_interactions(standalone);
   const moved = Object.freeze({ domain: "graph" as const, op: "move-content" as const,
-    target: Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0]) }), from: 0, to: 1 });
+    target: Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, 0]) }), from: 0, to: 1 });
   const batchCommit = standalone.batch(batch => {
     batch.doc.must("page").graph(moved);
     add_interaction(batch, local("batch-move", "run"));
@@ -547,7 +547,7 @@ await check("activation snapshots every caller-owned runtime option and cannot i
   const firstTarget = new Target(); link_node_to_el(retained_subject(subject), firstTarget as unknown as Element);
 
   const alternatePage = admit_exact_runtime_livemap_libraries({ page: {
-    document: parse_hson_exact_runtime(`<main <button @${currentQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
+    document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${currentQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
   } }).doc.must("page");
   const alternateReflection = reflect_document_in_runtime(alternatePage, create_livetree_runtime());
   const alternateSubject = alternateReflection.tree.find.must.byQuid(currentQ);
@@ -802,7 +802,7 @@ await check("exact subject replacement disposes A and materializes once on B", (
   const localQ = "000009001";
   assert.notEqual(currentQ, localQ);
   const page = admit_exact_runtime_livemap_libraries({ page: {
-    document: parse_hson_exact_runtime(`<main <button @${localQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
+    document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${localQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
   } }).doc.must("page");
   const reflection = hsonMirror(page);
   project_livetree(retained_subject(reflection.tree));
@@ -815,7 +815,7 @@ await check("exact subject replacement disposes A and materializes once on B", (
   firstElement.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);
   const replacement = { $_tag: "button", $_content: [] };
-  page.at([0]).replace(replacement);
+  page.at([1, 0, 0]).replace(replacement);
   assert.equal(reflection.tree.find.byQuid(localQ), undefined);
   project_livetree(retained_subject(reflection.tree));
   const second = reflection.tree.find.must.byTag("button");
@@ -913,7 +913,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   });
   enable_interactions(authorityMap);
   set_livemap_document_quid_candidate_source_for_tests(authorityMap.doc.must("page").document, () => currentQ);
-  acquire_document_identity(authorityMap.doc.must("page").document, { kind: "path", path: validate_document_path([0, 0, 0]) });
+  acquire_document_identity(authorityMap.doc.must("page").document, { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 0]) });
   add_interaction(authorityMap, authoritative("echo", "save", exact));
   let handled: HsonData | undefined;
   const configured = test_public_projection(authorityMap);
@@ -936,7 +936,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   if (!("document" in page)) throw new Error("Expected document library.");
   const localQ = "000009999";
   set_livemap_document_quid_candidate_source_for_tests(page.document, () => localQ);
-  acquire_document_identity(page.document, { kind: "path", path: validate_document_path([0, 0, 0]) });
+  acquire_document_identity(page.document, { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 0]) });
   assert.equal(page.document.byQuid(currentQ), undefined);
   const subject = reflection.tree.find.must.byQuid(localQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);

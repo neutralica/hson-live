@@ -53,19 +53,19 @@ async function until(predicate: () => boolean): Promise<void> {
   assert.fail("Expected asynchronous Echo synchronization.");
 }
 
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content <repeat <tag "button" content "empty">>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
+const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content <repeat <tag "button" content "empty">>>]>>]>>`;
 const listener: InteractionListener = Object.freeze({ event: "click", target: "element", capture: false,
   once: false, passive: false, missingTarget: "throw", preventDefault: false,
   stopPropagation: false, stopImmediatePropagation: false });
 
 function descriptor(id: string, library: "page" | "panel", key = "run", once = false): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library, path: [0, 0, 0] }), listener: Object.freeze({ ...listener, once }),
+  return Object.freeze({ id, subject: Object.freeze({ library, path: [0, 0, 1, 0, 0, 0, 0] }), listener: Object.freeze({ ...listener, once }),
     kind: "browser", key, args: null });
 }
 
 function locus_descriptor(id: string, library: "page" | "panel", key = "save"): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library, path: [0, 0, 0] }), listener,
+  return Object.freeze({ id, subject: Object.freeze({ library, path: [0, 0, 1, 0, 0, 0, 0] }), listener,
     kind: "locus", key, payload: null });
 }
 
@@ -467,11 +467,11 @@ for (const sharedFeature of [true, false]) {
   const revision = client.rev;
   const seen: Record<string, readonly number[]>[] = [];
   const stop = internal_livemap_aggregate_authority(client).observe(() => seen.push(paths(client)));
-  panel.document.content.move({ kind: "path", path: [0, 0] }, 0, 1);
+  panel.document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, 1);
   assert.equal(client.rev, revision + 1);
-  assert.deepEqual(paths(client), { moving: [0, 0, 1] });
-  assert.deepEqual(seen, [{ moving: [0, 0, 1] }]);
-  panel.document.content.remove({ kind: "path", path: [0, 0] }, 1);
+  assert.deepEqual(paths(client), { moving: [0, 0, 1, 0, 0, 0, 1] });
+  assert.deepEqual(seen, [{ moving: [0, 0, 1, 0, 0, 0, 1] }]);
+  panel.document.content.remove({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 1);
   assert.deepEqual(paths(client), {});
   stop(); replica.dispose();
   process.stdout.write("ok - local path move and removal are atomic\n");
@@ -487,7 +487,7 @@ for (const sharedFeature of [true, false]) {
   const replacement = is_Node(bucket) ? bucket.$_content[0] : undefined;
   if (!is_Node(replacement)) throw new Error("Expected replacement button.");
   const before = client.rev;
-  panel.document.content.replace({ kind: "path", path: [0, 0] }, 0, replacement);
+  panel.document.content.replace({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, replacement);
   assert.equal(client.rev, before + 1);
   assert.deepEqual(paths(client), {});
   replica.dispose();
@@ -505,10 +505,10 @@ for (const sharedFeature of [true, false]) {
   if (!is_Node(replacement)) throw new Error("Expected replacement root element.");
   const beforeRev = client.rev;
   const beforeCursor = replica.clientProjection()?.revision;
-  panel.document.content.replace({ kind: "path", path: [] }, 0, replacement);
+  panel.document.content.replace({ kind: "path", path: [0, 0, 1, 0] }, 0, replacement);
   assert.equal(client.rev, beforeRev + 1);
   assert.equal(replica.clientProjection()?.revision, beforeCursor);
   assert.deepEqual(paths(client), {});
   replica.dispose();
-  process.stdout.write("ok - local top-level root element replacement retires descriptor atomically\n");
+  process.stdout.write("ok - local authored body element replacement retires descriptor atomically\n");
 }

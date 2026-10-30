@@ -55,7 +55,9 @@ async function main() {
       "After-body parsing added unwanted whitespace nodes");
     return;
   }
+  check(document.compatMode === "CSS1Compat", "Complete capture did not parse in standards mode");
   const html = document.documentElement;
+  const head = document.head;
   const body = document.body;
   const mainElement = document.querySelector("main");
   const button = document.querySelector("button");
@@ -253,7 +255,7 @@ async function main() {
     "Scout entered LiveTree or Mirror correspondence");
   check(document.body.childNodes.length === 1 && document.body.lastChild === mainElement,
     "Body retained Scout, payload, or whitespace nodes");
-  check(html === document.documentElement && body === document.body
+  check(html === document.documentElement && head === document.head && body === document.body
     && mainElement === document.querySelector("main") && button === document.querySelector("button"),
   "SSR DOM identity changed");
   const adoptedNodes = canonicalNodes(html);

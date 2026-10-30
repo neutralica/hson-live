@@ -1,3 +1,4 @@
+import { body_root } from "../helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, continue_document } from "../../src/index.ts";
 import { LiveTree } from "../../src/api/livetree/livetree.ts";
@@ -92,7 +93,12 @@ export function cut8_copy_cases(check: (name: string, run: () => void) => void):
       assert.notEqual(copy.style.width, original.style.width);
     });
     case_("public library reads and document/portable captures remain exact", () => {
-      const document: HsonNode = { $_tag: "_hson_root", $_content: [style_branch()] };
+      const document: HsonNode = { $_tag: "_hson_root", $_content: [
+        { $_tag: "html", $_content: [{ $_tag: "_hson_elem", $_content: [
+          { $_tag: "head", $_content: [] },
+          { $_tag: "body", $_content: [{ $_tag: "_hson_elem", $_content: [style_branch()] }] },
+        ] }] },
+      ] };
       const map = hsonLiveMap.fromLibraries({ data: { data: { nested: [0, -0] } }, page: { document } });
       const authority = internal_livemap_aggregate_authority(map);
       const checkpoint = authority.captureSemanticCheckpoint();
@@ -108,7 +114,7 @@ export function cut8_copy_cases(check: (name: string, run: () => void) => void):
       assert.ok(canonical_hson_graph_equal(restored.doc.must("page").root(), document));
       assert.ok(canonical_hson_graph_equal(restored.data.must("data").root(), root));
       const observed = map.doc.must("page").root();
-      const main = observed.$_content[0];
+      const main = body_root(observed);
       assert.ok(typeof main === "object" && main !== null);
       style_leaf(main, "width").value = 17;
       assert.ok(canonical_hson_graph_equal(map.doc.must("page").root(), document));
@@ -233,16 +239,20 @@ export function cut8_copy_cases(check: (name: string, run: () => void) => void):
         if (lowered !== undefined) root.setAttribute(lowered.name, lowered.value);
       }
       const map = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [branch] } } });
-      const continuation = continue_document({ map, root: root as unknown as Element });
+      const html = new FakeElement("html"), head = new FakeElement("head"), body = new FakeElement("body");
+      html.appendChild(head); html.appendChild(body); body.appendChild(root);
+      const continuation = continue_document({ map, root: html as unknown as Element });
+      const main = continuation.tree.find.must.byTag("main");
       try {
-        assert.equal(continuation.tree.dom.el(), root);
-        assert.ok(canonical_hson_graph_equal(continuation.tree.node, branch));
-        assert_style_fidelity(subject_for_tree(continuation.tree));
-        continuation.tree.attrs.set("title", "continued");
+        assert.equal(continuation.tree.dom.el(), html);
+        assert.equal(main.dom.el(), root);
+        assert.ok(canonical_hson_graph_equal(main.node, branch));
+        assert_style_fidelity(subject_for_tree(main));
+        main.attrs.set("title", "continued");
         assert.equal(map.rev, 1);
         assert.equal(root.getAttribute("title"), "continued");
-        assert_style_fidelity(subject_for_tree(continuation.tree));
-        assert.equal(subject_for_tree(continuation.tree).$_meta, undefined, "continuation remains sparse");
+        assert_style_fidelity(subject_for_tree(main));
+        assert.equal(subject_for_tree(main).$_meta, undefined, "continuation remains sparse");
       } finally {
         continuation.dispose(); continuation.tree.remove();
         if (documentDescriptor === undefined) Reflect.deleteProperty(globalThis, "document");

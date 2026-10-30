@@ -1,3 +1,4 @@
+import { body_root, complete_hson } from "../helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
@@ -58,13 +59,13 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
   });
   check("object iteration: optional presence follows repeated outputs, including present null and empty keys", () => {
     const body = '<main hson:part items:data="%{items}" <section part:optional <i per::value="^{items}" part:optional "^{value.title}"/>/> <aside <b per::value="^{items}" part:optional "^{value.title}"/>/>/>';
-    for (const items of [{}, { a: {}, b: {} }]) assert.equal(doc(fixture(body, items)).hson(), '<main\n  <aside/>\n/>');
+    for (const items of [{}, { a: {}, b: {} }]) assert.equal(doc(fixture(body, items)).hson(), complete_hson('<main\n  <aside/>\n/>'));
     assert.deepEqual(leaves(doc(fixture(body, { a: {}, b: { title: null } })).root()), ['null', 'null']);
     const root = '<main hson:part part:optional items:data="%{items}" <b per:key="^{items}" "^{key}"/>/>';
-    assert.equal(doc(fixture(root, {})).root().$_content.length, 0);
+    assert.throws(() => fixture(root, {}), /exactly one/);
     assert.deepEqual(leaves(doc(fixture(root, { '': {} })).root()), ['']);
-    assert.equal(doc(fixture(root.replace('"^{key}"', '"literal"'), { a: 1 })).root().$_content.length, 0);
-    assert.equal(doc(fixture('<ul hson:part items:data="%{items}" <li per::v="^{items}" "^{v}"/>/>', {})).hson(), '<ul/>');
+    assert.throws(() => fixture(root.replace('"^{key}"', '"literal"'), { a: 1 }), /exactly one/);
+    assert.equal(doc(fixture('<ul hson:part items:data="%{items}" <li per::v="^{items}" "^{v}"/>/>', {})).hson(), complete_hson('<ul/>'));
   });
   check("object iteration: malformed declarations and invalid references reject even for empty objects", () => {
     const base = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
@@ -158,9 +159,9 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       assert.doesNotMatch(text, /for:|hson:part|items:data/);
       assert.doesNotMatch(hsonTransform.fromHson(Hson.document.fromNode(output)).toJson().serialize(), /for:/);
       assert.equal(scopes(map).occurrences.length, 1 + items.length);
-      if (!items.length) assert.equal(text, '<ul/>');
+      if (!items.length) assert.equal(text, complete_hson('<ul/>'));
       else {
-        const ul = output.$_content[0]; assert.ok(is_Node(ul));
+        const ul = body_root(output); assert.ok(is_Node(ul));
         const cluster = ul.$_content[0]; assert.ok(is_Node(cluster));
         for (const [index, child] of cluster.$_content.entries()) {
           assert.ok(is_Node(child)); assert.equal(child.$_attrs?.["data-index"], String(index));
@@ -183,11 +184,10 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
   });
   check("iteration: optional presence follows realized bodies, not control reads", () => {
     const body = '<main hson:part items:data="%{items}" <section part:optional <i for:item="^{items}" part:optional "^{item.title}"/>/> <aside <b for:item="^{items}" part:optional "^{item.title}"/>/>/>';
-    for (const items of [[], [{}, {}]]) assert.equal(doc(fixture(body, items)).hson(), '<main\n  <aside/>\n/>');
+    for (const items of [[], [{}, {}]]) assert.equal(doc(fixture(body, items)).hson(), complete_hson('<main\n  <aside/>\n/>'));
     assert.deepEqual(leaves(doc(fixture(body, [{}, { title: "present" }])).root()), ["present", "present"]);
-    assert.equal(doc(fixture('<main hson:part items:data="%{items}" <section part:optional <i for:item="^{items}" "literal"/>/>/>', [1])).hson(), '<main/>');
-    const map = fixture('<main hson:part part:optional items:data="%{items}" <i for:item="^{items}" "^{item}"/>/>', []);
-    assert.equal(doc(map).root().$_content.length, 0); assert.equal(scopes(map)?.occurrences.length ?? 0, 0);
+    assert.equal(doc(fixture('<main hson:part items:data="%{items}" <section part:optional <i for:item="^{items}" "literal"/>/>/>', [1])).hson(), complete_hson('<main/>'));
+    assert.throws(() => fixture('<main hson:part part:optional items:data="%{items}" <i for:item="^{items}" "^{item}"/>/>', []), /exactly one/);
   });
   check("iteration: declaration and lexical errors are independent of collection cardinality", () => {
     const base = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
@@ -258,7 +258,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
     };
     for (const batch of [false, true]) check(`iteration: public ${batch ? 'batch' : 'direct'} writes preserve scopes, checkpoints and CSS lifetimes`, () => {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: column }, page: { document: '<main <i/>/>' } });
-      const page = doc(map), target = { kind: 'path' as const, path: path([0, 0]) };
+      const page = doc(map), target = { kind: 'path' as const, path: path([0, 0, 1, 0, 0, 0]) };
       const insert = (items: unknown) => {
         const content = element(invocation(items));
         return batch ? map.batch(writer => writer.doc.must('page').content.insert(target, 1, content))
@@ -284,7 +284,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
         writer.doc.must('page').content.insert(target, 1, element(invocation(blocks)));
         writer.doc.must('page').content.insert(target, 2, element(invocation([{ kind: 'absent' }])));
       }));
-      const children = { kind: 'path' as const, path: path([0, 0, 1, 0]) };
+      const children = { kind: 'path' as const, path: path([0, 0, 1, 0, 0, 0, 1, 0]) };
       page.document.content.move(children, 0, 1);
       assert.deepEqual(leaves(page.root()), ['Paragraph', 'Title']);
       assert.equal(scopes(map).occurrences[1]!.lifetime, rows[0]!.lifetime);
@@ -297,7 +297,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       assert.equal(scopes(map).occurrences.length, 2);
       assert.ok(scopes(map).occurrences.every(scope => !initial.occurrences.some(previous => previous.lifetime === scope.lifetime)));
       assert.match(page.css.snapshot(), /color:blue/); assert.doesNotMatch(page.css.snapshot(), /color:red/);
-      page.document.attrs.set({ kind: 'path', path: [0] }, 'title', 'edited');
+      page.document.attrs.set({ kind: 'path', path: [0, 0, 1, 0, 0] }, 'title', 'edited');
       page.document.content.remove(target, 1);
       assert.equal(scopes(map).occurrences.length, 0); assert.equal(page.css.snapshot(), '');
       assert.ok(owner(map).captureSemanticCheckpoint().libraries.find(library => library.name === 'page')!.scopes);
@@ -307,7 +307,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       const map = hsonLiveMap.fromLibraries({ parts: { parts: {
         list: part(`<main hson:part items:data="%{items}" <section ${kind === 'array' ? 'for:item' : 'per::item'}="^{items}" @:row <b for:item="^{item}" @:label "^{item}"/>/>/>`),
       } }, page: { document: '<aside <i/>/>' } });
-      const page = doc(map), target = { kind: 'path' as const, path: path([0, 0]) };
+      const page = doc(map), target = { kind: 'path' as const, path: path([0, 0, 1, 0, 0, 0]) };
       page.document.content.insert(target, 1, element('<em/>'));
       page.document.content.replace(target, 1, element('<strong/>'));
       page.document.content.remove(target, 1);
@@ -325,7 +325,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
     });
     check('iteration: public preparation discards identities after allocator or final Schema rejection', () => {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: column }, page: { document: '<main <i/>/>' } });
-      const authority = owner(map), target = { kind: 'path' as const, path: path([0, 0]) };
+      const authority = owner(map), target = { kind: 'path' as const, path: path([0, 0, 1, 0, 0, 0]) };
       let allocations = 0;
       allocator(authority.identityEpoch().owner, () => {
         if (++allocations === 3) throw new Error('public late allocator failure');
@@ -335,7 +335,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
         atomic(map, () => doc(map).document.content.insert(target, 1, element(invocation(blocks))), /public late allocator failure/);
         assert.equal(allocations, 3);
       } finally { allocator(authority.identityEpoch().owner, undefined); }
-      const schema = Hson.schema`<type "document" defs <Item <tag "i" content "empty">> tag "main" content <repeat <ref "Item"> count 1>>`;
+      const schema = Hson.schema`<type "document" defs <Item <tag "i" content "empty">> tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <ref "Item"> count 1>>]>>]>>`;
       const constrained = hsonLiveMap.fromLibraries({ parts: { parts: column }, page: { document: '<main <i/>/>', schema } });
       atomic(constrained, () => doc(constrained).document.content.insert(target, 1, element(invocation(blocks))));
       assert.equal(scopes(constrained), undefined);
@@ -347,7 +347,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
         assert.deepEqual(leaves(doc(map).root()), items.map(item => item.text));
       }
       const map = columnMap(), before = scopes(map), p = doc(map);
-      assert.equal(p.hson(), '<section\n  <h1 class="content" "Title"/>\n  <p class="content" "Paragraph"/>\n/>');
+      assert.equal(p.hson(), complete_hson('<section\n  <h1 class="content" "Title"/>\n  <p class="content" "Paragraph"/>\n/>'));
       assert.equal(before.occurrences.length, 3);
       const rows = before.occurrences.filter(occurrence => occurrence.bindings.some(binding => binding.name === 'row'));
       assert.equal(rows.length, 2);
@@ -360,8 +360,8 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       const authority = owner(map), manager = {}, library = authority.libraries()[0]!;
       authority.claimManagement(manager);
       try {
-        const transition = authority.prepareManaged(manager, [{ kind: 'graph', target: authority.target(library, [0, 0]),
-          operation: { domain: 'graph', op: 'remove-content', target: { kind: 'path', path: path([0, 0]) }, index: 0 } }], true);
+        const transition = authority.prepareManaged(manager, [{ kind: 'graph', target: authority.target(library, [0, 0, 1, 0, 0, 0]),
+          operation: { domain: 'graph', op: 'remove-content', target: { kind: 'path', path: path([0, 0, 1, 0, 0, 0]) }, index: 0 } }], true);
         assert.deepEqual(scopes(map), before, 'preparation cannot publish scopes or CSS');
         authority.accept(transition);
       } finally { authority.releaseManagement(manager); }

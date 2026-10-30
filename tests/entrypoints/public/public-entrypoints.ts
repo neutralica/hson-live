@@ -1086,7 +1086,7 @@ declare const pathHandle: LiveMapLibraryPathHandle;
 // @ts-expect-error LiveMap path handles have no public QUID identity.
 void pathHandle.quid;
 
-const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`, schema: Hson.schema`<type "document" tag "main" content "empty">` } }).doc.must("page");
+const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<html <head/> <body <main/>/>/>`, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>` } }).doc.must("page");
 {
   // @ts-expect-error Document LiveMaps expose no public live canonical-node debug escape.
   publicDocumentMap.debug.node([]);

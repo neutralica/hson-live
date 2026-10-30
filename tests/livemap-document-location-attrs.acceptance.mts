@@ -1,5 +1,6 @@
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
+import { body_root } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { document_graph_operation } from "./helpers/document-library.mts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -30,16 +31,16 @@ const check = (name: string, run: () => void): void => {
     testEvents.terminal("fail");
     throw error;
   } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
-const EmptyMain = Hson.schema`<type "document" tag "main" content "empty">`;
-const TextMain = Hson.schema`<type "document" tag "main" content "string">`;
-const ButtonMain = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-const SectionMain = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content <sequence [<tag "button" content "empty">]>>]>>`;
+const EmptyMain = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const TextMain = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
+const ButtonMain = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
+const SectionMain = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "section" content <sequence [<tag "button" content "empty">]>>]>>]>>]>>`;
 const registry = (source: string) => {
   const schema = source.includes("<section") ? SectionMain : source.includes("<button") ? ButtonMain : source.includes('"text"') ? TextMain : EmptyMain;
   return hsonLiveMap.fromLibraries({ page: { document: source, schema } });
 };
 const element = (source: string) => registry(source).doc.must("page");
-const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
+const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path: [0, 0, 1, 0, ...path] });
 const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]): void => assert.throws(run, (error: unknown) => error instanceof LiveMapDocumentMutationError && error.code === expected);
 const equivalent = (
   source: string,
@@ -52,35 +53,35 @@ const equivalent = (
   assert.deepEqual(left.root(), right.root());
 };
 
-check("get reads detached ordinary attrs", () => { assert.equal(element(`<main id="root"/>`).at([]).asElement()!.attrs.get("id"), "root"); });
-check("has preserves falsey values", () => { const map = element(`<main/>`); map.at([]).asElement()!.attrs.set("hidden", false); assert.equal(map.at([]).asElement()!.attrs.has("hidden"), true); });
-check("keys preserves canonical sorted ordering", () => { const map = element(`<main/>`); map.at([]).asElement()!.attrs.replace({ zeta: 1, alpha: 2 }); assert.deepEqual(map.at([]).asElement()!.attrs.keys(), ["alpha", "zeta"]); });
-check("must.get returns existing values", () => { const attrs = element(`<main id="root"/>`).at([]).asElement()!.attrs; assert.equal(attrs.must.get("id"), "root"); assert.equal(attrs.must, attrs.must); assert.equal(Object.isFrozen(attrs.must), true); });
-check("must.get preserves missing-attribute error", () => { assert.throws(() => element(`<main/>`).at([]).asElement()!.attrs.must.get("id"), LiveMapDocumentAttributeNotFoundError); });
-check("set delegates one canonical set-attr", () => { const map = element(`<main/>`); const commit = map.at([]).asElement()!.attrs.set("title", "hello"); assert.equal(document_graph_operation(commit).op, "set-attr"); assert.equal(map.at([]).asElement()!.attrs.get("title"), "hello"); });
-check("setMany delegates canonical replace-attrs", () => { const map = element(`<main id="old"/>`); const commit = map.at([]).asElement()!.attrs.setMany({ class: "ready", count: 2 }); assert.equal(document_graph_operation(commit).op, "replace-attrs"); assert.deepEqual(map.at([]).asElement()!.attrs.keys(), ["class", "count", "id"]); });
-check("drop delegates one canonical remove-attr", () => { const map = element(`<main id="root"/>`); assert.equal(document_graph_operation(map.at([]).asElement()!.attrs.drop("id")).op, "remove-attr"); assert.equal(map.at([]).asElement()!.attrs.has("id"), false); });
-check("dropMany delegates canonical replace-attrs", () => { const map = element(`<main/>`); map.at([]).asElement()!.attrs.replace({ a: 1, b: 2, c: 3 }); assert.equal(document_graph_operation(map.at([]).asElement()!.attrs.dropMany(["a", "c"])).op, "replace-attrs"); assert.deepEqual(map.at([]).asElement()!.attrs.keys(), ["b"]); });
-check("replace installs one exact public bag", () => { const map = element(`<main id="old"/>`); map.at([]).asElement()!.attrs.replace({ role: "main", enabled: true }); assert.deepEqual(map.at([]).asElement()!.attrs.keys(), ["enabled", "role"]); });
-check("clear preserves canonical empty bag behavior", () => { const map = element(`<main id="old"/>`); assert.equal(document_graph_operation(map.at([]).asElement()!.attrs.clear()).op, "replace-attrs"); assert.deepEqual(map.at([]).asElement()!.attrs.keys(), []); });
-check("invalid names preserve attrs validation", () => { code(() => element(`<main/>`).at([]).asElement()!.attrs.set("bad name", "x"), "INVALID_DOCUMENT_ATTRIBUTE_NAME"); code(() => element(`<main/>`).at([]).asElement()!.attrs.get("hson:quid"), "PROTECTED_DOCUMENT_METADATA"); });
-check("nested element attrs lower through hidden carriers", () => { const map = element(`<main <section <button/>/>/>`); map.at([0, 0]).asElement()!.attrs.set("id", "submit"); assert.equal(map.at([0, 0]).asElement()!.attrs.get("id"), "submit"); });
+check("get reads detached ordinary attrs", () => { assert.equal(element(`<main id="root"/>`).at([1, 0]).asElement()!.attrs.get("id"), "root"); });
+check("has preserves falsey values", () => { const map = element(`<main/>`); map.at([1, 0]).asElement()!.attrs.set("hidden", false); assert.equal(map.at([1, 0]).asElement()!.attrs.has("hidden"), true); });
+check("keys preserves canonical sorted ordering", () => { const map = element(`<main/>`); map.at([1, 0]).asElement()!.attrs.replace({ zeta: 1, alpha: 2 }); assert.deepEqual(map.at([1, 0]).asElement()!.attrs.keys(), ["alpha", "zeta"]); });
+check("must.get returns existing values", () => { const attrs = element(`<main id="root"/>`).at([1, 0]).asElement()!.attrs; assert.equal(attrs.must.get("id"), "root"); assert.equal(attrs.must, attrs.must); assert.equal(Object.isFrozen(attrs.must), true); });
+check("must.get preserves missing-attribute error", () => { assert.throws(() => element(`<main/>`).at([1, 0]).asElement()!.attrs.must.get("id"), LiveMapDocumentAttributeNotFoundError); });
+check("set delegates one canonical set-attr", () => { const map = element(`<main/>`); const commit = map.at([1, 0]).asElement()!.attrs.set("title", "hello"); assert.equal(document_graph_operation(commit).op, "set-attr"); assert.equal(map.at([1, 0]).asElement()!.attrs.get("title"), "hello"); });
+check("setMany delegates canonical replace-attrs", () => { const map = element(`<main id="old"/>`); const commit = map.at([1, 0]).asElement()!.attrs.setMany({ class: "ready", count: 2 }); assert.equal(document_graph_operation(commit).op, "replace-attrs"); assert.deepEqual(map.at([1, 0]).asElement()!.attrs.keys(), ["class", "count", "id"]); });
+check("drop delegates one canonical remove-attr", () => { const map = element(`<main id="root"/>`); assert.equal(document_graph_operation(map.at([1, 0]).asElement()!.attrs.drop("id")).op, "remove-attr"); assert.equal(map.at([1, 0]).asElement()!.attrs.has("id"), false); });
+check("dropMany delegates canonical replace-attrs", () => { const map = element(`<main/>`); map.at([1, 0]).asElement()!.attrs.replace({ a: 1, b: 2, c: 3 }); assert.equal(document_graph_operation(map.at([1, 0]).asElement()!.attrs.dropMany(["a", "c"])).op, "replace-attrs"); assert.deepEqual(map.at([1, 0]).asElement()!.attrs.keys(), ["b"]); });
+check("replace installs one exact public bag", () => { const map = element(`<main id="old"/>`); map.at([1, 0]).asElement()!.attrs.replace({ role: "main", enabled: true }); assert.deepEqual(map.at([1, 0]).asElement()!.attrs.keys(), ["enabled", "role"]); });
+check("clear preserves canonical empty bag behavior", () => { const map = element(`<main id="old"/>`); assert.equal(document_graph_operation(map.at([1, 0]).asElement()!.attrs.clear()).op, "replace-attrs"); assert.deepEqual(map.at([1, 0]).asElement()!.attrs.keys(), []); });
+check("invalid names preserve attrs validation", () => { code(() => element(`<main/>`).at([1, 0]).asElement()!.attrs.set("bad name", "x"), "INVALID_DOCUMENT_ATTRIBUTE_NAME"); code(() => element(`<main/>`).at([1, 0]).asElement()!.attrs.get("hson:quid"), "PROTECTED_DOCUMENT_METADATA"); });
+check("nested element attrs lower through hidden carriers", () => { const map = element(`<main <section <button/>/>/>`); map.at([1, 0, 0, 0]).asElement()!.attrs.set("id", "submit"); assert.equal(map.at([1, 0, 0, 0]).asElement()!.attrs.get("id"), "submit"); });
 check("primitive attrs reject as non-elements", () => { code(() => element(`<main "text"/>`).document.attrs.get(target(0, 0), "id"), "DOCUMENT_TARGET_KIND"); });
 check("missing attrs locations reject strictly", () => { code(() => element(`<main/>`).document.attrs.set(target(0, 0), "id", "x"), "DOCUMENT_PATH_OUT_OF_RANGE"); });
 check("every attrs write exactly equals the document API", () => {
-  equivalent(`<main id="old"/>`, (map) => map.at([]).asElement()!.attrs.set("title", "Hello"), (map) => map.document.attrs.set(target(0), "title", "Hello"));
-  equivalent(`<main id="old"/>`, (map) => map.at([]).asElement()!.attrs.drop("id"), (map) => map.document.attrs.drop(target(0), "id"));
-  equivalent(`<main id="old"/>`, (map) => map.at([]).asElement()!.attrs.setMany({ class: "ready" }), (map) => map.document.attrs.setMany(target(0), { class: "ready" }));
-  equivalent(`<main id="old" title="Hello"/>`, (map) => map.at([]).asElement()!.attrs.dropMany(["id", "missing"]), (map) => map.document.attrs.dropMany(target(0), ["id", "missing"]));
-  equivalent(`<main id="old"/>`, (map) => map.at([]).asElement()!.attrs.replace({ role: "main" }), (map) => map.document.attrs.replace(target(0), { role: "main" }));
-  equivalent(`<main id="old"/>`, (map) => map.at([]).asElement()!.attrs.clear(), (map) => map.document.attrs.clear(target(0)));
+  equivalent(`<main id="old"/>`, (map) => map.at([1, 0]).asElement()!.attrs.set("title", "Hello"), (map) => map.document.attrs.set(target(0), "title", "Hello"));
+  equivalent(`<main id="old"/>`, (map) => map.at([1, 0]).asElement()!.attrs.drop("id"), (map) => map.document.attrs.drop(target(0), "id"));
+  equivalent(`<main id="old"/>`, (map) => map.at([1, 0]).asElement()!.attrs.setMany({ class: "ready" }), (map) => map.document.attrs.setMany(target(0), { class: "ready" }));
+  equivalent(`<main id="old" title="Hello"/>`, (map) => map.at([1, 0]).asElement()!.attrs.dropMany(["id", "missing"]), (map) => map.document.attrs.dropMany(target(0), ["id", "missing"]));
+  equivalent(`<main id="old"/>`, (map) => map.at([1, 0]).asElement()!.attrs.replace({ role: "main" }), (map) => map.document.attrs.replace(target(0), { role: "main" }));
+  equivalent(`<main id="old"/>`, (map) => map.at([1, 0]).asElement()!.attrs.clear(), (map) => map.document.attrs.clear(target(0)));
 });
-check("proxy escape exposes the identical attrs capability", () => { const map = element(`<main <button/>/>`); assert.equal(map.proxy([0]).$_, map.at([0])); map.proxy([0]).$_.asElement()!.attrs.set("id", "submit"); assert.equal(map.at([0]).asElement()!.attrs.get("id"), "submit"); });
-check("attrs commits restore without special cases", () => { const source = registry(`<main/>`); const receiver = registry(`<main/>`); source.doc.must("page").at([]).asElement()!.attrs.replace({ class: "ready", title: "Hello" }); receiver.restore(source.capture()); assert.deepEqual(receiver.doc.must("page").root(), source.doc.must("page").root()); });
-check("Reflection consumes location attrs commits", () => { const map = element(`<main/>`); const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map); map.at([]).asElement()!.attrs.set("title", "Hello"); const main = retained_subject(binding.tree).$_content[0]; assert.equal(typeof main === "object" && main !== null ? main.$_attrs?.title : undefined, "Hello"); binding.dispose(); });
-check("attrs never extend the logical coordinate", () => { const map = element(`<main <button/>/>`); const location = map.at([0]); const before = location.path(); location.asElement()!.attrs.set("id", "submit"); assert.deepEqual(location.path(), before); assert.equal(location, map.at([0])); });
-check("attrs capability acquisition is frozen and non-minting", () => { const map = element(`<main/>`); const attrs = map.at([]).asElement()!.attrs; assert.equal(Object.isFrozen(attrs), true); assert.equal(JSON.stringify(map.root()).includes("quid"), false); assert.equal(map.rev, 0); });
-check("attrs vocabulary has no synonyms or structural traversal", () => { const attrs = element(`<main/>`).at([]).asElement()!.attrs; assert.deepEqual(Object.keys(attrs).sort(), ["clear", "drop", "dropMany", "get", "has", "keys", "must", "replace", "set", "setMany"].sort()); assert.equal("delete" in attrs, false); assert.equal("at" in attrs, false); });
+check("proxy escape exposes the identical attrs capability", () => { const map = element(`<main <button/>/>`); assert.equal(map.proxy([1, 0, 0]).$_, map.at([1, 0, 0])); map.proxy([1, 0, 0]).$_.asElement()!.attrs.set("id", "submit"); assert.equal(map.at([1, 0, 0]).asElement()!.attrs.get("id"), "submit"); });
+check("attrs commits restore without special cases", () => { const source = registry(`<main/>`); const receiver = registry(`<main/>`); source.doc.must("page").at([1, 0]).asElement()!.attrs.replace({ class: "ready", title: "Hello" }); receiver.restore(source.capture()); assert.deepEqual(receiver.doc.must("page").root(), source.doc.must("page").root()); });
+check("Reflection consumes location attrs commits", () => { const map = element(`<main/>`); const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map); map.at([1, 0]).asElement()!.attrs.set("title", "Hello"); const main = body_root(retained_subject(binding.tree)); assert.equal(typeof main === "object" && main !== null ? main.$_attrs?.title : undefined, "Hello"); binding.dispose(); });
+check("attrs never extend the logical coordinate", () => { const map = element(`<main <button/>/>`); const location = map.at([1, 0, 0]); const before = location.path(); location.asElement()!.attrs.set("id", "submit"); assert.deepEqual(location.path(), before); assert.equal(location, map.at([1, 0, 0])); });
+check("attrs capability acquisition is frozen and non-minting", () => { const map = element(`<main/>`); const attrs = map.at([1, 0]).asElement()!.attrs; assert.equal(Object.isFrozen(attrs), true); assert.equal(JSON.stringify(map.root()).includes("quid"), false); assert.equal(map.rev, 0); });
+check("attrs vocabulary has no synonyms or structural traversal", () => { const attrs = element(`<main/>`).at([1, 0]).asElement()!.attrs; assert.deepEqual(Object.keys(attrs).sort(), ["clear", "drop", "dropMany", "get", "has", "keys", "must", "replace", "set", "setMany"].sort()); assert.equal("delete" in attrs, false); assert.equal("at" in attrs, false); });
 
 process.stdout.write(`# ${checks} document location attrs checks passed\n`);
 testEvents.terminal("pass");

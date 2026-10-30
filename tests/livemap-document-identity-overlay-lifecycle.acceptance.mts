@@ -42,7 +42,7 @@ check("attribute mutation reconciles without a full overlay rebuild", () => {
   const after = livemap_document_identity_accounting();
   assert.equal(after.fullBuilds, before.fullBuilds);
   assert.ok(after.reconciliations > before.reconciliations);
-  assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
+  assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
 });
 
 check("byQuid reads preserve the overlay without reconciliation", () => {
@@ -64,7 +64,7 @@ check("removal retires only the removed sparse identity", () => {
   const map = fixture();
   map.document.content.remove(path(0), 0);
   assert.equal(overlay(map).pathForQuid(Q1), undefined);
-  assert.deepEqual(overlay(map).pathForQuid(Q2), [0, 0, 0]);
+  assert.deepEqual(overlay(map).pathForQuid(Q2), [0, 0, 1, 0, 0, 0, 0]);
   assert.equal(overlay(map).size, 1);
 });
 
@@ -92,7 +92,7 @@ check("commit observers see the accepted root and overlay", () => {
     if (event.kind !== "commit") return;
     publications += 1;
     assert.equal(map.document.attrs.get(path(0, 0), "ready"), true);
-    assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
+    assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
   });
   map.document.attrs.set(path(0, 0), "ready", true);
   assert.equal(publications, 1);

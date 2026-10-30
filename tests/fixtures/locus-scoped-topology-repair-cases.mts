@@ -52,7 +52,7 @@ export async function topology_contract_fixture() {
   const owner = {}; a.claimManagement(owner);
   try {
     const p = a.prepareAddLibrariesManaged(owner, [{ name: "empty", family: "document", hsonSchema: Hson.schema`<type "document">`,
-      root: hsonTransform.fromHson('<main/>').toNode(), scopes: { document: [], occurrences: [], subjects: [] },
+      root: hsonTransform.fromHson('<html <head/> <body <main/>/>/>').toNode(), scopes: { document: [], occurrences: [], subjects: [] },
       css: decode_portable_document_stylesheet(opaque_document_stylesheet('')) }]);
     assert.ok(p.transition.commit.hosted);
     const release = a.reserve(p.transition);

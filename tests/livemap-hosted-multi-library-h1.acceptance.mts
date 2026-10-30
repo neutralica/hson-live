@@ -1,3 +1,4 @@
+import { body_root } from "./helpers/document-library.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
@@ -21,7 +22,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <negativeZero "number" ordered <content <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>`;
 const FlagSchema: HsonSchema = Hson.schema`<type "data" content <enabled "boolean">>`;
-const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const Q_RETIRED = "000008001";
 const Q_ACTIVE = "000008002";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -65,7 +66,7 @@ function graphInsert(quid: string, index = 0) {
   return {
     domain: "graph" as const,
     op: "insert-content" as const,
-    target: { kind: "path" as const, path: validate_document_path([0]) },
+    target: { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0]) },
     index,
     content: {
       $_tag: "_hson_elem",
@@ -78,7 +79,7 @@ function graphRemove(index = 0) {
   return {
     domain: "graph" as const,
     op: "remove-content" as const,
-    target: { kind: "path" as const, path: validate_document_path([0]) },
+    target: { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0]) },
     index,
   };
 }
@@ -244,7 +245,7 @@ check("same-runtime exact restore rebuilds local lookup and copied capture rejec
   const target = source;
   const targetAuthority = sourceAuthority;
   targetAuthority.restoreHosted(snapshot);
-  assert.deepEqual(targetAuthority.resolveQuid(Q_ACTIVE), targetAuthority.target(targetAuthority.libraries()[2]!, [0, 0, 0]));
+  assert.deepEqual(targetAuthority.resolveQuid(Q_ACTIVE), targetAuthority.target(targetAuthority.libraries()[2]!, [0, 0, 1, 0, 0, 0, 0]));
 
   const collision = structuredClone(snapshot) as any;
   const modalRoot = { $_tag: "_hson_root", $_content: [{
@@ -256,8 +257,8 @@ check("same-runtime exact restore rebuilds local lookup and copied capture rejec
   const untouchedAuthority = internal_livemap_aggregate_authority(untouched);
   assert.throws(() => untouchedAuthority.restoreHosted(collision), /owner|epoch|provenance/i);
   assert.equal(untouched.rev, 0);
-  const pageRoot = untouched.doc.must("page").root().$_content[0];
-  const modalRootAfter = untouched.doc.must("modal").root().$_content[0];
+  const pageRoot = body_root(untouched.doc.must("page").root());
+  const modalRootAfter = body_root(untouched.doc.must("modal").root());
   assert.equal(is_Node(pageRoot) ? pageRoot.$_content.length : -1, 0);
   assert.equal(is_Node(modalRootAfter) ? modalRootAfter.$_content.length : -1, 0);
 });

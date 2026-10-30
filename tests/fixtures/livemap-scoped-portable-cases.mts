@@ -160,10 +160,10 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
       assert.ok(JSON.stringify(css(c.stylesheet)).includes(c.overlay.quidAtPath(subject.path)!));
       assert.equal(text.includes(subject.name), false);
     }
-    const moved = f.aggregate.prepareScopedDocumentOperations(c, [{ domain: "graph", op: "move-content", target: { kind: "path", path: path([0, 0]) }, from: 0, to: 1 }]);
+    const moved = f.aggregate.prepareScopedDocumentOperations(c, [{ domain: "graph", op: "move-content", target: { kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, from: 0, to: 1 }]);
     assert.deepEqual(moved.scopes.occurrences.map(s => s.lifetime), c.scopes.occurrences.map(s => s.lifetime));
     assert.deepEqual(css(moved.stylesheet), css(c.stylesheet));
-    const removed = f.aggregate.prepareScopedDocumentOperations(c, [{ domain: "graph", op: "remove-content", target: { kind: "path", path: path([0, 0]) }, index: 2 }]);
+    const removed = f.aggregate.prepareScopedDocumentOperations(c, [{ domain: "graph", op: "remove-content", target: { kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, index: 2 }]);
     assert.equal(render(removed.stylesheet).includes("glow"), false); assert.equal(render(removed.stylesheet).includes("--tone"), false);
     assert.ok(render(removed.stylesheet).includes("margin:7px"));
   });
@@ -186,7 +186,7 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
     const styles = copy(a); styles.css.rules[0].declarations[0][1] = "8px";
     assert.equal(equal(a, styles), false);
     const relationship = copy(a), subjects = relationship.scopes.subjects;
-    const labels = subjects.filter((s: { path: number[] }) => s.path.length === 9);
+    const labels = subjects.filter((s: { path: number[] }) => s.path.length === 13);
     assert.equal(labels.length, 2);
     [labels[0].name, labels[1].name] = [labels[1].name, labels[0].name];
     assert.equal(equal(a, relationship), false);
@@ -263,9 +263,9 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
     ["invalid binding role", p => { p.scopes.document[0].kind = "transport"; }],
     ["duplicate local alias", p => { p.scopes.occurrences[0].bindings.push(p.scopes.occurrences[0].bindings[0]); }],
     ["cross-scope alias", p => { p.scopes.occurrences[0].bindings[0].path = p.scopes.occurrences[3].root; }],
-    ["shared graph subject at two occurrence paths", p => { const content = p.root.$_content[0].$_content[0].$_content; content[1] = content[0]; }],
+    ["shared graph subject at two occurrence paths", p => { const content = p.root.$_content[0].$_content[0].$_content[1].$_content[0].$_content[0].$_content[0].$_content; content[1] = content[0]; }],
     ["cyclic graph", p => { p.root.$_content[0] = p.root; }],
-    ["unresolved construction connector", p => { p.root.$_content[0].$_content[0].$_content[3].$_tag = "hson-part"; }],
+    ["unresolved construction connector", p => { p.root.$_content[0].$_content[0].$_content[1].$_content[0].$_content[0].$_content[0].$_content[3].$_tag = "hson-part"; }],
     ["duplicate transport label", p => { p.scopes.subjects[1].name = p.scopes.subjects[0].name; }],
     ["duplicate transport subject", p => { p.scopes.subjects[1].path = p.scopes.subjects[0].path; }],
     ["authored transport disposition", p => { p.scopes.subjects[0].disposition = "authored"; }],

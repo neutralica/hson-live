@@ -62,7 +62,7 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
 }
 
 function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
-  const node = retained_subject(binding.tree).$_content[0];
+  const node = raw_node(retained_subject(binding.tree), []);
   if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
   return _create_livetree_for_runtime_test(runtime, node).adoptRoots(retained_historic_root(binding.tree));
 }

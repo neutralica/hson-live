@@ -1,3 +1,4 @@
+import { assert_complete_document } from "../../internal/complete-document.js";
 import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
@@ -30,6 +31,7 @@ export function prepare_livemap_root(input: HsonNode, family?: "data" | "documen
   }
 
   if (mode === "document") {
+    assert_complete_document(root);
     const pending = [root];
     while (pending.length) {
       const node = pending.pop()!;

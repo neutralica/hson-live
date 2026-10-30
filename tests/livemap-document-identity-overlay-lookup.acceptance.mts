@@ -44,7 +44,7 @@ function check(name: string, run: () => void): void {
 const Q1 = "000000101";
 const Q2 = "000000102";
 const Q3 = "000000103";
-const rootPath = validate_document_path([0]);
+const rootPath = validate_document_path([0, 0, 1, 0, 0]);
 
 function fakeOverlay(
   size: number,
@@ -55,12 +55,12 @@ function fakeOverlay(
 }
 
 check("QUID-to-path lookup resolves the canonical root", () => {
-  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0, 0, 1, 0, 0]);
 });
 
 check("QUID-to-path lookup resolves a nested canonical element", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main <span @${Q1}/>/` + `>`));
-  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
 });
 
 check("path-to-QUID lookup reverses the same root correspondence", () => {
@@ -69,7 +69,7 @@ check("path-to-QUID lookup reverses the same root correspondence", () => {
 
 check("path-to-QUID lookup reverses the same nested correspondence", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main <span @${Q1}/>/` + `>`));
-  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), Q1);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 0])), Q1);
 });
 
 check("missing QUID lookup returns undefined", () => {
@@ -78,7 +78,7 @@ check("missing QUID lookup returns undefined", () => {
 
 check("an unquidded canonical path has no reverse correspondence", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main @${Q1} <span/>/>`));
-  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), undefined);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 0])), undefined);
 });
 
 check("document.byQuid resolves through the current overlay and returns a clone", () => {
@@ -105,10 +105,10 @@ check("selected libraries expose no public replay or QUID-target mutation", () =
 
 check("path requests remain path-authoritative beside sparse identity", () => {
   const map = element(`<main <span @${Q1}/>/` + `>`);
-  const commit = map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "target");
+  const commit = map.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0, 0, 0] }, "id", "target");
   const operation = document_graph_operation(commit);
   assert.equal(operation.op, "set-attr");
-  assert.deepEqual(operation.target, { kind: "path", path: [0, 0, 0] });
+  assert.deepEqual(operation.target, { kind: "path", path: [0, 0, 1, 0, 0, 0, 0] });
 });
 
 check("raw-QUID requests reject without building an overlay", () => {
@@ -119,7 +119,7 @@ check("raw-QUID requests reject without building an overlay", () => {
 });
 
 check("portable registry restore clears source and prior lookup identity", () => {
-  const Schema = Hson.schema`<type "document" tag "main" content "empty">`;
+  const Schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
   const source = hsonLiveMap.fromLibraries({ page: { document: '<main title="new"/>', schema: Schema } });
   const target = hsonLiveMap.fromLibraries({ page: { document: '<main/>', schema: Schema } });
   target.restore(source.capture());
@@ -128,14 +128,14 @@ check("portable registry restore clears source and prior lookup identity", () =>
 });
 
 check("a stale detached old node cannot influence new overlay resolution", () => {
-  const Schema = Hson.schema`<type "document" tag "main" content "empty">`;
+  const Schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
   const target = hsonLiveMap.fromLibraries({ page: { document: '<main/>', schema: Schema } });
   const stale = target.doc.must("page").root();
   const source = hsonLiveMap.fromLibraries({ page: { document: '<main title="next"/>', schema: Schema } });
   target.restore(source.capture());
   if (stale !== undefined) stale.$_tag = "tampered";
   assert.equal(target.doc.must("page").document.byQuid(Q1), undefined);
-  assert.equal(target.doc.must("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "next");
+  assert.equal(target.doc.must("page").document.attrs.get({ kind: "path", path: [0, 0, 1, 0, 0] }, "title"), "next");
 });
 
 check("agreement assertion accepts a freshly constructed overlay", () => {
@@ -154,7 +154,7 @@ check("agreement assertion rejects an omitted graph QUID", () => {
 
 check("agreement assertion rejects a wrong forward path", () => {
   const map = element(`<main @${Q1} <span/>/>`);
-  const wrong = fakeOverlay(1, () => validate_document_path([0, 0]), () => Q1);
+  const wrong = fakeOverlay(1, () => validate_document_path([0, 0, 1, 0, 0, 0]), () => Q1);
   assert.throws(() => assert_livemap_document_identity_overlay(map.root(), map.mode, wrong), LiveMapDocumentIdentityError);
 });
 

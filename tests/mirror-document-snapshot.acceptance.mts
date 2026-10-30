@@ -1,5 +1,6 @@
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { body_root } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { document_from_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
@@ -48,13 +49,13 @@ function element(source: string): LiveMapDocumentLibrary {
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: [0, ...segments] };
+  return { kind: "path" as const, path: [0, 0, 1, 0, 0, ...segments] };
 }
 
 function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
   let current = root;
   if (current.$_tag === "_hson_root") {
-    const only = current.$_content[0];
+    const only = body_root(current);
     if (!is_Node(only)) throw new Error("Expected one document element");
     current = only;
   }
@@ -67,7 +68,7 @@ function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
 }
 
 function mount(root: HsonNode): FakeElement {
-  return project_livetree(root.$_tag === "_hson_root" ? raw_node(root, []) : root) as unknown as FakeElement;
+  return project_livetree(root.$_tag === "_hson_root" ? root.$_content[0] as HsonNode : root) as unknown as FakeElement;
 }
 
 
@@ -76,7 +77,8 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
   const binding = hsonMirror(map);
   const tree = binding.tree;
   const root = raw_node(retained_subject(tree), []);
-  const rootDom = mount(root);
+  mount(retained_subject(tree));
+  const rootDom = get_el_for_node(root);
   const paragraph = raw_node(root, [0, 0]);
   const paragraphDom = get_el_for_node(paragraph);
   const restored = element(`<main @000000601 class="restored" <p @000000602 "next"/> <i/>/>`);

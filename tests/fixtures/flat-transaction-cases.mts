@@ -27,7 +27,7 @@ function data(w: Writer, n: number) {
 function snapshot(map: LiveMap) {
   const a = owner(map);
   return { semantic: a.captureSemanticCheckpoint(), ledger: a.identityEpoch().issued(), position: a.hostedPosition(),
-    refs: a.libraries().map(id => ({ root: a.root(id), scopes: a.documentScopes(id),
+    refs: a.libraries().map((id, index) => ({ part: map.parts(a.hostedRegistry().libraries[index]!.name) !== undefined, root: a.root(id), scopes: a.documentScopes(id),
       ...(a.inspect().libraries.find(l => l.identity === id)!.mode === "document"
         ? { overlay: a.documentOverlay(id), css: a.stylesheet(id) } : {}) })) };
 }
@@ -36,7 +36,9 @@ function unchanged(map: LiveMap, before: ReturnType<typeof snapshot>) {
   assert.deepEqual(after.semantic, before.semantic); assert.deepEqual(after.position, before.position);
   assert.equal(after.ledger, before.ledger);
   after.refs.forEach((r, i) => { const old = before.refs[i]!;
-    assert.equal(r.root, old.root); assert.equal(r.scopes, old.scopes);
+    if (r.part) { assert.deepEqual(r.root, old.root); assert.notEqual(r.root, old.root); }
+    else assert.equal(r.root, old.root);
+    assert.equal(r.scopes, old.scopes);
     assert.equal(r.overlay, old.overlay); assert.equal(r.css, old.css);
   });
 }
@@ -69,11 +71,11 @@ async function durable(f: Awaited<ReturnType<typeof fixture>>) {
   assert.deepEqual(f.adapter.state(f.locus.logicalMapId)!.commits, tail);
 }
 const noops: readonly ((w: Writer) => void)[] = [
-  w => page(w).at([0]).asElement().attrs.set("title", "same"),
-  w => page(w).at([0]).asElement().attrs.drop("missing"),
-  w => page(w).at([0]).asElement().flags.set("disabled"),
-  w => page(w).at([0,0]).replace("Same"),
-  w => page(w).at([]).asElement().move(0, 0),
+  w => page(w).at([1,0,0]).asElement().attrs.set("title", "same"),
+  w => page(w).at([1,0,0]).asElement().attrs.drop("missing"),
+  w => page(w).at([1,0,0]).asElement().flags.set("disabled"),
+  w => page(w).at([1,0,0,0]).replace("Same"),
+  w => page(w).at([1,0]).asElement().move(0, 0),
 ];
 
 export async function flat_transaction_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
@@ -82,17 +84,17 @@ export async function flat_transaction_cases(check: (name: string, run: () => Pr
       const f = await fixture(), a = owner(f.map), base = a.captureSemanticCheckpoint(), receiver = restore(base), r = owner(receiver);
       try {
         const ordered: { library: string; run: (w: Writer) => void }[] = kind === "scoped" ? [
-          { library: kind, run: w => page(w, kind).at([]).asElement().attrs.set("title", "scoped") },
+          { library: kind, run: w => page(w, kind).at([1,0]).asElement().attrs.set("title", "scoped") },
           { library: kind, run: w => page(w, kind).css.sel("i").setProp("padding", "5px") },
         ] : kind === "data" ? [
           { library: kind, run: w => data(w, 1) }, { library: kind, run: w => data(w, 2) },
         ] : [
           { library: kind, run: w => page(w, kind).css.sel("b").setProp("padding", "5px") },
-          { library: kind, run: w => page(w, kind).at([0]).asElement().attrs.set("title", "other") },
+          { library: kind, run: w => page(w, kind).at([1,0,0]).asElement().attrs.set("title", "other") },
         ];
         ordered.splice(position, 0, { library: "page", run: w => page(w).css.stylesheet(f.stylesheet) });
         // More operations in the same flat Library coalesce at its first accepted position.
-        if (graph) ordered.push({ library: "page", run: w => page(w).at([0]).asElement().attrs.set("title", "updated") });
+        if (graph) ordered.push({ library: "page", run: w => page(w).at([1,0,0]).asElement().attrs.set("title", "updated") });
         const commit = await f.locus.stage(w => ordered.forEach(step => step.run(w))); assert.ok(commit);
         const effect = encode_authoritative_scoped_commit(commit), seen = new Set<string>();
         const expectedOrder = ordered.flatMap(step => {
@@ -142,7 +144,7 @@ export async function flat_transaction_cases(check: (name: string, run: () => Pr
         const rev = f.locus.rev;
         const commit = await f.locus.stage(w => {
           if (flatFirst) noops.forEach(noop => noop(w));
-          if (kind === "scoped") page(w, kind).at([]).asElement().attrs.set("title", String(rev)); else data(w, rev + 1);
+          if (kind === "scoped") page(w, kind).at([1,0]).asElement().attrs.set("title", String(rev)); else data(w, rev + 1);
           if (!flatFirst) noops.forEach(noop => noop(w));
         }); assert.ok(commit);
         assert.deepEqual(encode_authoritative_scoped_commit(commit).operations.map(op => op.library), [kind]);
@@ -192,7 +194,7 @@ export async function flat_transaction_cases(check: (name: string, run: () => Pr
         })); });
         await locus.stage(w => {
           noops.forEach(noop => noop(w));
-          if (kind === "scoped") w.doc.must(kind).at([]).asElement().attrs.set("title", "propagated"); else w.data.must(kind).at(["n"]).set(1);
+          if (kind === "scoped") w.doc.must(kind).at([1,0]).asElement().attrs.set("title", "propagated"); else w.data.must(kind).at(["n"]).set(1);
         });
         await applied; assert.equal(echo.sync.appliedRev, rev);
         assert.equal(a.documentOverlay(id), overlay); assert.deepEqual(issued(a.identityEpoch().issued()), issued(ledger));

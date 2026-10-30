@@ -100,7 +100,7 @@ try {
   for (const source of ['<svg><g></svg>', '<svg><g/>', '<svg>&undefined;</svg>', '<svg><?hson-svg-source-end?><g></svg>']) {
     rejects(() => hson.fromTrustedHtml(source), 'failed SVG XML parse', 'TRANSFORM_ERROR', 'source-decoding');
   }
-  // Chromium can retain the root AND completion PI on namespace failure. Its
+  // Chromium namespace failures can retain the authored root. Their
   // XHTML diagnostics have no privileged DOM marker: a lawful authored copy
   // can be identical. Rejection must establish source provenance, not ban names.
   const namespaceFailures = [
@@ -109,6 +109,11 @@ try {
     '<svg xmlns:x=""><x:g/></svg>',
     '<svg xmlns:xmlns="u"/>',
     '<svg xmlns:p="http://www.w3.org/XML/1998/namespace"/>',
+    '<svg><g xmlns:p="http://www.w3.org/XML/1998/namespace"/></svg>',
+    '<svg xmlns:p="http://www.w3.org/XML/1998/namespac&#101;"/>',
+    '<svg xmlns:xml=""/>',
+    '<svg><g xmlns:xmlns="http://www.w3.org/2000/xmlns/"/></svg>',
+    '<svg xmlns:p="http://www.w3.org/2000/xmln&#115;/"/>',
     '<svg><g><x:path/></g></svg>',
     '<svg><?hson-svg-source-end?><?hson-svg-source-end_?><x:g/></svg>',
     '<svg><g x:id="unbound"/></svg>',
@@ -131,6 +136,8 @@ try {
     ...(Object.keys(attrs).length ? { $_attrs: attrs } : {}) });
   const svgGraph = svg => ({ $_tag: '_hson_root', $_content: [{ $_tag: '_hson_elem', $_content: [svg] }] });
   const legalNamespaceSources = [
+    ['<svg xmlns:xml="http://www.w3.org/XML/1998/namespac&#101;" xml:lang="en"/>', branch('svg', { 'xmlns:xml': 'http://www.w3.org/XML/1998/namespace', 'xml:lang': 'en' })],
+    ['<svg xmlns:p="urn:p"><g xmlns:p="urn:other"><p:path/></g></svg>', branch('svg', { 'xmlns:p': 'urn:p' }, [branch('g', { 'xmlns:p': 'urn:other' }, [branch('p:path')])])],
     ['<svg/>', branch('svg')],
     ['<svg viewBox="0 0 10 10"><g id="kept"/></svg>', branch('svg', { viewBox: '0 0 10 10' }, [branch('g', { id: 'kept' })])],
     ['<svg><g><path/></g></svg>', branch('svg', {}, [branch('g', {}, [branch('path')])])],
@@ -141,7 +148,7 @@ try {
     [`<svg xmlns="${SVG_NS}"><g/></svg>`, branch('svg', { xmlns: SVG_NS }, [branch('g')])],
     [`<svg xmlns="${SVG_NS}"><g xmlns=""><path/></g></svg>`, branch('svg', { xmlns: SVG_NS }, [branch('g', { xmlns: '' }, [branch('path')])])],
     ['<svg xml:lang="en"><g xml:space="preserve"/></svg>', branch('svg', { 'xml:lang': 'en' }, [branch('g', { 'xml:space': 'preserve' })])],
-    ['<svg xmlns:xml="http://www.w3.org/XML/1998/namespace" xml:lang="en"/>', branch('svg', { 'xml:lang': 'en' })],
+    ['<svg xmlns:xml="http://www.w3.org/XML/1998/namespace" xml:lang="en"/>', branch('svg', { 'xmlns:xml': 'http://www.w3.org/XML/1998/namespace', 'xml:lang': 'en' })],
     ['<svg xmlns:x="u"><x:g/></svg>', branch('svg', { 'xmlns:x': 'u' }, [branch('x:g')])],
     ['<svg xmlns="u"/>', branch('svg', { xmlns: 'u' })],
     ['<svg><parsererror/></svg>', branch('svg', {}, [branch('parsererror')])],
@@ -161,7 +168,7 @@ try {
   const failedDocument = new DOMParser().parseFromString('<svg><x:g/></svg><?complete?>', 'image/svg+xml');
   const diagnostic = failedDocument.documentElement.firstElementChild;
   if (diagnostic?.localName !== 'parsererror' || diagnostic.namespaceURI !== 'http://www.w3.org/1999/xhtml'
-    || failedDocument.lastChild?.nodeName !== 'complete') throw new Error('Chromium diagnostic characterization changed');
+    || failedDocument.lastChild !== failedDocument.documentElement) throw new Error('Chromium diagnostic characterization changed: ' + JSON.stringify({root:failedDocument.documentElement.outerHTML, last:failedDocument.lastChild?.nodeName, namespace:diagnostic?.namespaceURI}));
   // outerHTML synthesizes a namespace declaration for the generated node.
   // Inherit that same namespace instead, matching its actual attributes too.
   const authoredCopy = `<svg xmlns="http://www.w3.org/1999/xhtml">${diagnostic.outerHTML.replace(' xmlns="http://www.w3.org/1999/xhtml"', '')}</svg>`;

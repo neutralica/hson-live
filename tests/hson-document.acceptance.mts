@@ -1,3 +1,4 @@
+import { read_livemap_document_logical_location } from "../src/api/livemap/livemap.document.location.ts";
 import { document_hson_value } from "./helpers/document-hson-value.mts";
 import assert from "node:assert/strict";
 
@@ -330,22 +331,15 @@ check("every nonempty document root shape closes through generic Hson and exact 
   }
 });
 
-check("generic mixed and text roots retain LiveMap logical document positions", () => {
+check("generic mixed and text sequences retain lower-level representation but reject governed admission", () => {
   for (const document of [Hson.document`"a"<p/>"b"`, Hson.document`"a" "" "b"`]) {
     const semantic = hsonTransform.fromHson(document).toNode();
     const qualified = Hson.document.fromNode(semantic);
-    const page = hsonLiveMap.fromLibraries({ page: { document: qualified, schema: ANY_DOCUMENT } }).doc.must("page");
-    assert.equal(page.at([]).asRoot()?.kind(), "root");
-    assert.equal(page.at([0]).snap(), "a");
-    assert.equal(page.at([0]).asText()?.kind(), "text");
-    assert.equal(page.at([2]).snap(), "b");
-    if (document.includes("<p/>")) {
-      assert.deepEqual(document_hson_value(page.at([1]).hson()), node("p"));
-      assert.equal(page.at([1]).asElement()?.kind(), "element");
-    } else {
-      assert.equal(page.at([1]).snap(), "");
-      assert.equal(page.at([1]).asText()?.kind(), "text");
-    }
+    const read = (index: number) => read_livemap_document_logical_location(Hson.document.toNode(qualified), "document", [index]);
+    assert.equal(read(0), "a"); assert.equal(read(2), "b");
+    if (document.includes("<p/>")) assert.deepEqual(read(1), node("p"));
+    else assert.equal(read(1), "");
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: qualified, schema: ANY_DOCUMENT } }), /exactly one/);
   }
 });
 
@@ -391,18 +385,12 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
 check("external script admits, inline script rejects, and unsafe style closes reject browser realization", () => {
   const script = Hson.document`<script src="/app.js"/>`;
   assert.equal(hsonTransform.fromHson(script).toHtml().serialize(), '<script src="/app.js"></script>');
-  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ScriptSchema } }).doc.must("page").render(), '<script src="/app.js"></script>');
+  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ANY_DOCUMENT } }).doc.must("page").render(), '<!doctype html><html><head></head><body><script src="/app.js"></script></body></html>');
   assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
   assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
 
   const unsafe = Hson.document`<style "${"a{} </style> body{}"}"/>`;
-  const map = hsonLiveMap.fromLibraries({ page: { document: unsafe, schema: StyleSchema } });
-  assert.throws(
-    () => map.doc.must("page").render(),
-    (error: unknown) => error instanceof Error
-      && error.cause instanceof Error
-      && /closing sentinel/.test(error.cause.message),
-  );
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: unsafe } }), /closing sentinel/);
 });
 
 check("single style leaf uses exact RAWTEXT lexical transport", () => {
@@ -435,7 +423,7 @@ check("document style and script semantic admission rejects invalid bodies", () 
     const graph = hsonTransform.fromHson(source).toNode();
     assert.throws(() => Hson.document.fromNode(graph), /Document <(?:style|script)>/);
     assert.throws(() => Hson.document.fromHson(hsonTransform.fromHson(source).toHson().serialize()), /Document <(?:style|script)>/);
-    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source, schema: source.includes("script") ? ScriptSchema : StyleSchema } }), /Document <(?:style|script)>/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source, schema: source.includes("script") ? ScriptSchema : StyleSchema } }), /Document <(?:style|script)>|Browser realization/);
   }
   for (const tag of ["style", "script"]) {
     for (const payload of [

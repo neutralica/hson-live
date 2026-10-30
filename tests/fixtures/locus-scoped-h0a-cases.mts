@@ -10,7 +10,7 @@ import { hsonTransform } from "../../src/index.ts";
 import { opaque_document_stylesheet } from "../../src/internal/css/opaque-stylesheet.ts";
 import type { LiveMapCssOp } from "../../src/types/livemap.types.ts";
 const replacement = () => hsonTransform.fromHson('<article title="H0a" <hson-part lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/> <footer/>/>').toNode();
-const root = { kind: "path" as const, path: path([0]) };
+const root = { kind: "path" as const, path: path([0,0,1,0,0]) };
 
 export async function h0a_tail_fixture() {
   const f = await scoped_tail_fixture();
@@ -96,7 +96,7 @@ export async function h0a_cases(check: (name: string, run: () => Promise<void>) 
       const batch = await f.stage(w => {
         page(w).graph({ domain: "graph", op: "replace-root", mode: "document", root: replacement() });
         page(w).css.stylesheet('article{padding:1px}');
-        page(w).content.insert({ kind: "path", path: path([0, 0]) }, 0, node('<hson-part lib="parts" at="leaf"/>'));
+        page(w).content.insert({ kind: "path", path: path([0,0,1,0,0, 0]) }, 0, node('<hson-part lib="parts" at="leaf"/>'));
       });
       cap.replayScopedHosted(batch);
       assert.ok(equal(f.a.scopedDocumentState(f.pageId), a.scopedDocumentState(id)));

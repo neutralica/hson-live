@@ -24,7 +24,7 @@ import { canonical_graph_equal } from "../../src/api/livemap/livemap.document.in
 
 export const catalog = [{ name: "parts", ownership: "private" }, { name: "page", ownership: "shared" },
   { name: "data", ownership: "shared" }, { name: "zpage", ownership: "shared" }, { name: "hidden", ownership: "private" }] as const;
-const target = { kind: "path" as const, path: path([0, 0]) };
+const target = { kind: "path" as const, path: path([0,0,1,0,0, 0]) };
 const connector = () => node('<hson-part lib="parts" at="panel"/>');
 
 export async function scoped_tail_fixture() {
@@ -46,7 +46,7 @@ export async function scoped_tail_fixture() {
     page(w).content.insert(target, 2, node('<hson-part lib="parts" at="leaf"/>'));
     const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
     parts.at([]).object.setKey("newSecret", { kind: "document", document: '<strong hson:part "UPDATED_PRIVATE_PART"/>' });
-    page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "tail");
+    page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "tail");
   });
   assert.ok(mixed);
   const incomplete = { ...mixed, replay: { operations: mixed.replay.operations.map((entry, index) => {
@@ -90,7 +90,7 @@ export async function verify_scoped_tail_restart(f: Pick<Awaited<ReturnType<type
   const cap = echo(projection, local_initializers({ local: { data: { n: 1 } } }));
   assert.ok(cap.map); assert.throws(() => cap.map!.parts.must("parts"));
   try {
-    const commit = await l.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "after-resume"));
+    const commit = await l.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "after-resume"));
     assert.ok(commit);
     const encoded = encode_authoritative_scoped_commit(commit);
     assert.deepEqual(encoded.operations.map(op => op.library), ["page"]);
@@ -200,7 +200,7 @@ export async function scoped_tail_cases(check: (name: string, run: () => Promise
         f.adapter.load = originalLoad; f.adapter.activateCheckpoint = activate;
         const stored = f.adapter.state(id)!;
         assert.equal(stored.checkpoint.checkpointId === oldId, phase === "before");
-        if (phase === "uncertain") await assert.rejects(() => l.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "fenced")), /disposed|closed|faulted/);
+        if (phase === "uncertain") await assert.rejects(() => l.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "fenced")), /disposed|closed|faulted/);
         l.dispose();
         const restored = await resume(id, { persistence: f.adapter, scopedDocuments: true }); assert.ok(restored);
         assert.ok(checkpoint_libraries_equal(f.expected.libraries, authority(restored.map).captureSemanticCheckpoint().libraries));

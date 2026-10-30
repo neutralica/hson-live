@@ -28,15 +28,22 @@ import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-run
 
 install_fake_document();
 
-const EmptyPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-const ButtonPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-const ParagraphPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
-const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...parts]) });
+const EmptyPageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const ButtonPageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
+const ParagraphPageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
+const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, 0, 1, 0, 0, ...parts]) });
 
 function documentMap(source: string) {
   return admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: ParagraphPageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body ${source}/>/>`, { allowTopLevelDocumentText: true }), schema: ParagraphPageSchema },
   });
+}
+
+function fullPage(main: FakeElement): FakeElement {
+  if (main.parentNode?.parentNode instanceof FakeElement && main.parentNode.parentNode.localName === "html") return main.parentNode.parentNode;
+  const html = new FakeElement("html"), head = new FakeElement("head"), body = new FakeElement("body");
+  body.appendChild(main); html.appendChild(head); html.appendChild(body);
+  return html;
 }
 
 function mainFixture(_quid?: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
@@ -45,7 +52,7 @@ function mainFixture(_quid?: string): Readonly<{ root: FakeElement; child: FakeE
   const text = new FakeText("hello");
   child.appendChild(text);
   root.appendChild(child);
-  return { root, child, text };
+  return { root: fullPage(root), child, text };
 }
 
 function source(quid?: string): string {
@@ -209,7 +216,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   });
   enable_interactions(first);
   const root = new FakeElement("main");
-  const inferred = continue_document({ map: first, root: root as unknown as Element });
+  const inferred = continue_document({ map: first, root: fullPage(root) as unknown as Element });
   assert.equal(inferred.map, first.doc.must("page"));
   inferred.dispose();
 
@@ -222,18 +229,18 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
     /multiple public document libraries/i,
   );
   const modalRoot = new FakeElement("main");
-  const selected = continue_document({ map: many, document: many.doc.must("modal"), root: modalRoot as unknown as Element });
+  const selected = continue_document({ map: many, document: many.doc.must("modal"), root: fullPage(modalRoot) as unknown as Element });
   assert.equal(selected.map, many.doc.must("modal"));
   selected.dispose();
 }
 
 {
   const quid = "000003100";
-  const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<main <button @${quid}/>/>`, { allowTopLevelDocumentText: true }), schema: ButtonPageSchema } });
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${quid}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: ButtonPageSchema } });
   enable_interactions(map);
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "local-click",
-    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
+    subject: Object.freeze({ library: "page", path: [0,0,1,0,0,0,0] }),
     kind: "browser",
     key: "click",
     args: Hson.data.from({ exact: true }),
@@ -249,7 +256,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   let calls = 0;
   const continuation = continue_document({
     map,
-    root: root as unknown as Element,
+    root: fullPage(root) as unknown as Element,
     interactions: { local: { click: () => { calls += 1; } } },
   });
   button.dispatchEvent(new Event("click"));
@@ -271,7 +278,8 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   assert.equal(first.tree.isDisposed, true);
   const replacementChild = new FakeElement("p");
   replacementChild.appendChild(new FakeText("hello"));
-  fixture.root.appendChild(replacementChild);
+  const replacementMain = new FakeElement("main"); replacementMain.appendChild(replacementChild);
+  for (const child of [...fullPage(replacementMain).childNodes]) fixture.root.appendChild(child);
   const freshMap = documentMap(source());
   const profile = begin_livetree_materialization_profile();
   const fresh = continue_document({ map: freshMap, root: fixture.root as unknown as Element });
@@ -309,9 +317,9 @@ for (const restored of [false, true]) {
   root.appendChild(button); root.appendChild(aside); root.appendChild(span);
   const html = page.render();
   assert.doesNotMatch(html, /hson:quid/);
-  const continuation = continue_document({ map, document: page, root: root as unknown as Element });
+  const continuation = continue_document({ map, document: page, root: fullPage(root) as unknown as Element });
   const runtime = runtime_for_tree(continuation.tree);
-  assert.equal(continuation.tree.dom.el(), root as unknown as Element);
+  assert.equal(continuation.tree.dom.el(), fullPage(root) as unknown as Element);
   for (const name of names) {
     const address: DocumentQuadSubject = lookup_document_quad_internal(page, name)!;
     const tree: LiveTree = continuation.tree.find.byQuid(address.quid)!;
@@ -328,15 +336,15 @@ for (const restored of [false, true]) {
   assert.equal(aggregate.identityEpoch().issued(), ledger);
   assert.deepEqual(map.capture(), before);
   const quid = lookup_document_quad_internal(page, "confirm")!.quid;
-  page.at([]).asElement()!.move(0, 1);
+  page.at([1,0]).asElement()!.move(0, 1);
   assert.equal(continuation.mirror.status, "active", continuation.mirror.failure?.message);
   assert.equal(root.childNodes[1], button);
-  assert.deepEqual(lookup_document_quad_internal(page, "confirm")!.path, [0, 0, 1]);
+  assert.deepEqual(lookup_document_quad_internal(page, "confirm")!.path, [0,0,1,0,0,0,1]);
   page.document.attrs.set(path(0, 1), "title", "continued");
   assert.equal(lookup_document_quad_internal(page, "confirm")!.quid, quid);
   assert.equal(continuation.tree.find.byQuid(quid)!.dom.el(), button as unknown as Element);
   continuation.dispose();
-  const rebound = continue_document({ map, document: page, root: root as unknown as Element });
+  const rebound = continue_document({ map, document: page, root: fullPage(root) as unknown as Element });
   assert.equal(rebound.tree, continuation.tree);
   assert.equal(rebound.tree.find.byQuid(quid)!.dom.el(), button as unknown as Element);
   rebound.dispose();
@@ -360,7 +368,7 @@ for (const failure of ["foreign-quid", "matching-quid", "malformed-quid", "wrong
     if (point === "after-tree" && failure === "after-tree-dom") button.setAttribute("title", "changed after matching");
   });
   try {
-    assert.throws(() => continue_document({ map, document: page, root: root as unknown as Element }),
+    assert.throws(() => continue_document({ map, document: page, root: fullPage(root) as unknown as Element }),
       (error) => error instanceof DocumentContinuationError && error.phase === (failure === "after-tree-dom" ? "mirror" : "adopt"));
   } finally { set_document_adoption_fault_hook_for_tests(undefined); }
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
@@ -370,7 +378,7 @@ for (const failure of ["foreign-quid", "matching-quid", "malformed-quid", "wrong
   assert.deepEqual([...runtime.quidToNode], claims);
   assert.deepEqual(map.capture(), before);
   button.removeAttribute("hson:quid"); button.removeAttribute("title");
-  const retry = continue_document({ map, document: page, root: root as unknown as Element });
+  const retry = continue_document({ map, document: page, root: fullPage(root) as unknown as Element });
   assert.equal(retry.tree.find.byQuid(lookup_document_quad_internal(page, "confirm")!.quid)!.dom.el(), button as unknown as Element);
   retry.dispose();
 }

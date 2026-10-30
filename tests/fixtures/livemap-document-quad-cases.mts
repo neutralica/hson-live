@@ -138,12 +138,12 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const main = subject(page, "page"), button = subject(page, "confirm");
     assert.ok(is_persisted_quid(main.quid)); assert.ok(is_persisted_quid(button.quid));
     assert.notEqual(main.quid, button.quid);
-    assert.deepEqual(main.path, [0]); assert.deepEqual(button.path, [0, 0, 0]);
+    assert.deepEqual(main.path, [0,0,1,0,0]); assert.deepEqual(button.path, [0,0,1,0,0, 0, 0]);
     assert.equal(aggregate.documentOverlay(identity).size, 2);
     assert.equal(aggregate.identityEpoch().issued().size, 2);
     assert.equal(aggregate.identityEpoch().current(), 0);
     assert.equal(map.rev, 0); assert.equal(aggregate.telemetry().aggregatePublications, 0);
-    assert.equal(aggregate.documentOverlay(identity).quidAtPath(validate_document_path([0, 0, 1])), undefined);
+    assert.equal(aggregate.documentOverlay(identity).quidAtPath(validate_document_path([0,0,1,0,0, 0, 1])), undefined);
     assert.deepEqual(reverse(page, button.quid), button);
     assert.deepEqual(lookup(page.document, "confirm"), button);
     assert.equal(page.document.byQuid(button.quid)?.$_tag, "button");
@@ -159,9 +159,9 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   check("ROOT elements nested elements and empty elements are addressable ordinary subjects", () => {
     const map = authored({ page: { document: '<main @:root <section @:nested <button @:empty/>/>/>' } });
     const page = doc(map);
-    assert.deepEqual(subject(page, "root").path, [0]);
-    assert.deepEqual(subject(page, "nested").path, [0, 0, 0]);
-    assert.deepEqual(subject(page, "empty").path, [0, 0, 0, 0, 0]);
+    assert.deepEqual(subject(page, "root").path, [0,0,1,0,0]);
+    assert.deepEqual(subject(page, "nested").path, [0,0,1,0,0, 0, 0]);
+    assert.deepEqual(subject(page, "empty").path, [0,0,1,0,0, 0, 0, 0, 0]);
     assert.deepEqual(page.document.byQuid(subject(page, "empty").quid)?.$_content, []);
   });
   check("names are Library-local case-sensitive Map keys", () => {
@@ -199,7 +199,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     for (const source of ['<_hson_root @:root/>', '<_hson_elem @:carrier/>', '<_hson_str @:text "Text"/>', '<_hson_arr @:array/>', '"Text" @:text', '«@:array»', '<value @:member "x">']) {
       assert.throws(() => authored({ page: { document: source } }));
     }
-    const map = authored({ page: { document: '<main "literal @:text"/> "trailing"' } });
+    const map = authored({ page: { document: '<main "literal @:text" "trailing"/>' } });
     assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, 0);
     assert.equal(lookup(doc(map), "text"), undefined);
   });
@@ -223,7 +223,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.equal(Hson.document`<button @:confirm "Confirm"/>`, source);
     assert.throws(() => ANY_DOCUMENT.certify(Hson.document`<button @:confirm "Confirm"/>`));
     assert.throws(() => Hson.canonical`${Hson.document`<button @:confirm/>`}`);
-    const schema = Hson.schema`<type "document" tag "button" content "string">`;
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "string">]>>]>>`;
     const governed = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<button @:confirm "Confirm"/>`, schema } });
     assert.ok(governed.doc.must("page").q("confirm"));
     assert.ok(lookup(doc(hsonLiveMap.fromLibraries({ page: { document: source } })), "confirm"));
@@ -270,10 +270,10 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   check("moves and ordinary attribute or text edits preserve subject correspondence", () => {
     const map = fixture(), page = doc(map), initial = subject(page, "confirm");
     page.document.attrs.set(target(...initial.path), "title", "Ready");
-    page.document.content.replace(target(0, 0, 0, 0), 0, { $_tag: "_hson_str", $_content: ["Proceed"] });
-    page.at([]).asElement()!.move(0, 1);
+    page.document.content.replace(target(0,0,1,0,0, 0, 0, 0), 0, { $_tag: "_hson_str", $_content: ["Proceed"] });
+    page.at([1,0]).asElement()!.move(0, 1);
     const moved = subject(page, "confirm");
-    assert.equal(moved.quid, initial.quid); assert.deepEqual(moved.path, [0, 0, 1]);
+    assert.equal(moved.quid, initial.quid); assert.deepEqual(moved.path, [0,0,1,0,0, 0, 1]);
     assert.equal(page.document.byQuid(moved.quid)?.$_attrs?.title, "Ready");
     assert.deepEqual(reverse(page, moved.quid), moved);
     assert.equal(map.rev, 3);
@@ -284,21 +284,21 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     const copy = parse_authored_document_library('<button "Copy"/>').root.$_content[0];
     if (!is_Node(copy)) throw Error("Expected copy");
     map.commits.observe(() => { assert.equal(lookup(page, "confirm"), undefined); });
-    page.document.content.remove(target(0, 0), 0);
+    page.document.content.remove(target(0,0,1,0,0, 0), 0);
     assert.equal(lookup(page, "confirm"), undefined); assert.equal(reverse(page, initial.quid), undefined);
     assert.equal(page.document.byQuid(initial.quid), undefined);
-    page.at([]).asElement()!.insert(0, copy);
+    page.at([1,0]).asElement()!.insert(0, copy);
     assert.equal(lookup(page, "confirm"), undefined);
-    acquire_document_identity(page.document, target(0, 0, 0));
+    acquire_document_identity(page.document, target(0,0,1,0,0, 0, 0));
     assert.equal(lookup(page, "confirm"), undefined);
     assert.ok(internal_livemap_aggregate_authority(map).identityEpoch().issued().has(initial.quid));
   });
   check("ordinary replacement retires addresses while precise mutations retain them", () => {
     const map = fixture(), page = doc(map), initial = subject(page, "confirm");
-    page.document.attrs.set(target(0, 0, 0), "title", "updated");
+    page.document.attrs.set(target(0,0,1,0,0, 0, 0), "title", "updated");
     assert.equal(subject(page, "confirm").quid, initial.quid);
     assert.equal(page.document.byQuid(initial.quid)?.$_tag, "button");
-    page.document.content.replace(target(0, 0), 0, { $_tag: "button", $_content: [] });
+    page.document.content.replace(target(0,0,1,0,0, 0), 0, { $_tag: "button", $_content: [] });
     assert.equal(lookup(page, "confirm"), undefined); assert.equal(reverse(page, initial.quid), undefined);
     assert.ok(lookup(page, "page"));
   });
@@ -306,7 +306,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   check("stale bindings never fall back to an element occupying the former path", () => {
     const map = fixture(), page = doc(map), initial = subject(page, "confirm");
     const oldBindings = make_document_quad_bindings([{ name: "confirm", quid: initial.quid }]);
-    page.document.content.replace(target(0, 0), 0, { $_tag: "button", $_attrs: { id: "replacement" }, $_content: [] });
+    page.document.content.replace(target(0,0,1,0,0, 0), 0, { $_tag: "button", $_attrs: { id: "replacement" }, $_content: [] });
     const authority = internal_livemap_aggregate_authority(map), id = authority.libraries()[0]!;
     assert.equal(resolve_document_quad(authority.root(id), authority.documentOverlay(id), oldBindings, "confirm", undefined), undefined);
     assert.equal(lookup(page, "confirm"), undefined);
@@ -314,20 +314,20 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.equal(resolve_document_quad(page.root(), blank, oldBindings, undefined, initial.quid), undefined);
   });
   check("failed graph mutations preserve every binding and the issued ledger", () => {
-    const schema = Hson.schema`<type "document" tag "main" content <repeat <tag "button" content "empty">>>`;
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>`;
     const map = authored({ page: { document: '<main @:page <button @:confirm/>/>', schema } }), page = doc(map);
     const before = subject(page, "confirm");
-    unchanged(map, () => page.document.content.replace(target(0, 0), 0, { $_tag: "aside", $_content: [] }), /schema/i);
+    unchanged(map, () => page.document.content.replace(target(0,0,1,0,0, 0), 0, { $_tag: "aside", $_content: [] }), /schema/i);
     assert.deepEqual(subject(page, "confirm"), before);
   });
   check("existing allocator rejects active and retired collisions without inventing QUAD identities", () => {
     const map = fixture(), page = doc(map), initial = subject(page, "confirm");
     set_livemap_document_quid_candidate_source_for_tests(page.document, () => initial.quid);
-    try { unchanged(map, () => acquire_document_identity(page.document, target(0, 0, 1)), /secure attempts/); }
+    try { unchanged(map, () => acquire_document_identity(page.document, target(0,0,1,0,0, 0, 1)), /secure attempts/); }
     finally { set_livemap_document_quid_candidate_source_for_tests(page.document, undefined); }
-    page.document.content.remove(target(0, 0), 0);
+    page.document.content.remove(target(0,0,1,0,0, 0), 0);
     set_livemap_document_quid_candidate_source_for_tests(page.document, () => initial.quid);
-    try { unchanged(map, () => acquire_document_identity(page.document, target(0, 0, 0)), /secure attempts/); }
+    try { unchanged(map, () => acquire_document_identity(page.document, target(0,0,1,0,0, 0, 0)), /secure attempts/); }
     finally { set_livemap_document_quid_candidate_source_for_tests(page.document, undefined); }
   });
   check("raw foreign identity and bindings cannot bypass authority checks", () => {
@@ -335,7 +335,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     unchanged(map, () => aggregate.installInitialDocumentQuads(id, [{ name: "foreign", quid: "000009001" }]));
     unchanged(map, () => map.batch(batch => {
       const page = batch.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
-      page.graph({ domain: "graph", op: "ensure-quid", target: target(0), quid: "000009001" } as never);
+      page.graph({ domain: "graph", op: "ensure-quid", target: target(0,0,1,0,0), quid: "000009001" } as never);
     }), /identity|QUID/i);
     const manager = {}; aggregate.claimManagement(manager); aggregate.releaseManagement(manager);
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
@@ -374,8 +374,8 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.equal(reverse(page, source.quid), undefined);
     assert.deepEqual(map.parts.must("parts").root(), original);
     assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, ledger.length + 5);
-    const first = acquire_document_identity(page.document, target(0, 0, 0, 0, 0));
-    const second = acquire_document_identity(page.document, target(0, 0, 1, 0, 0));
+    const first = acquire_document_identity(page.document, target(0,0,1,0,0, 0, 0, 0, 0));
+    const second = acquire_document_identity(page.document, target(0,0,1,0,0, 0, 1, 0, 0));
     assert.notEqual(first.snap()?.$_meta?.quid, source.quid);
     assert.notEqual(first.snap()?.$_meta?.quid, second.snap()?.$_meta?.quid);
     assert.throws(() => map.cut({ data: [], documents: ["result"], html: "result" }), /Scoped/);
@@ -387,7 +387,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
   });
   check("after all addressed subjects retire QUAD-free capture behaves normally", () => {
     const map = authored({ page: { document: '<main <button @:only/>/> ' } }), page = doc(map);
-    page.document.content.remove(target(0), 0);
+    page.document.content.remove(target(0,0,1,0,0), 0);
     assert.equal(lookup(page, "only"), undefined);
     const captured = map.capture();
     assert.deepEqual(install_libraries_snapshot(captured).map.capture(), captured);

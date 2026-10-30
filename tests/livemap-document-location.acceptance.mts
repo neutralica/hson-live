@@ -33,9 +33,9 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const TreeSchema: HsonSchema = Hson.schema`<type "document" defs <Node <tag "item" content <repeat <ref "Node">>>> tag "main" content <repeat <ref "Node">>>`;
-const TextSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "string">`;
-const MultiSchema: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
+const TreeSchema: HsonSchema = Hson.schema`<type "document" defs <Node <tag "item" content <repeat <ref "Node">>>> tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <ref "Node">>>]>>]>>`;
+const TextSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
+const MultiSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <items <array "string">>>`;
 const item = (): HsonNode => ({ $_tag: "item", $_content: [] });
 const tag = (value: unknown): string | undefined => is_Node(value) ? value.$_tag : undefined;
@@ -73,32 +73,32 @@ check("broad composed documents retain logical, relative, and proxy paths", () =
 check("one-library document locations read root, child, and nested paths", () => {
   const map = tree("<main <item <item/>/>/>");
   const page = map.doc.must("page");
-  assert.equal(tag(document_hson_value(page.at([]).hson())), "main");
-  assert.equal(tag(document_hson_value(page.at([0]).hson())), "item");
-  assert.equal(tag(document_hson_value(page.at([0, 0]).hson())), "item");
-  assert.equal(page.at([0, 1]).snap(), undefined);
-  assert.deepEqual(page.at([0]).at([0]).path(), [0, 0]);
-  assert.equal(page.at([0]).at([0]), page.at([0, 0]));
+  assert.equal(tag(document_hson_value(page.at([1, 0]).hson())), "main");
+  assert.equal(tag(document_hson_value(page.at([1, 0, 0]).hson())), "item");
+  assert.equal(tag(document_hson_value(page.at([1, 0, 0, 0]).hson())), "item");
+  assert.equal(page.at([1, 0, 0, 1]).snap(), undefined);
+  assert.deepEqual(page.at([1, 0, 0]).at([0]).path(), [1, 0, 0, 0]);
+  assert.equal(page.at([1, 0, 0]).at([0]), page.at([1, 0, 0, 0]));
 });
 
-check("multi-node root and text leaves keep their logical coordinates", () => {
-  const multi = hsonLiveMap.fromLibraries({ page: { document: "<item/> <item/>", schema: MultiSchema } }).doc.must("page");
-  assert.equal(tag(document_hson_value(multi.at([]).hson())), "_hson_root");
-  assert.equal(tag(document_hson_value(multi.at([0]).hson())), "item");
-  assert.equal(tag(document_hson_value(multi.at([1]).hson())), "item");
+check("body children and text leaves keep their logical coordinates", () => {
+  const multi = hsonLiveMap.fromLibraries({ page: { document: "<main <item/> <item/>/>", schema: MultiSchema } }).doc.must("page");
+  assert.equal(tag(document_hson_value(multi.at([1, 0]).hson())), "main");
+  assert.equal(tag(document_hson_value(multi.at([1, 0, 0]).hson())), "item");
+  assert.equal(tag(document_hson_value(multi.at([1, 0, 1]).hson())), "item");
   const text = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: TextSchema } }).doc.must("page");
-  assert.equal(text.at([0]).snap(), "hello");
-  assert.equal(text.at([0, 0]).snap(), undefined);
+  assert.equal(text.at([1, 0, 0]).snap(), "hello");
+  assert.equal(text.at([1, 0, 0, 0]).snap(), undefined);
 });
 
 check("reads are detached, do not mint QUIDs, and do not advance revision", () => {
   const map = tree("<main <item/>/>");
   const page = map.doc.must("page");
   const before = map.rev;
-  const read = document_hson_value(page.at([0]).hson());
+  const read = document_hson_value(page.at([1, 0, 0]).hson());
   if (!is_Node(read)) throw new Error("Expected item node.");
   read.$_tag = "changed";
-  assert.equal(tag(document_hson_value(page.at([0]).hson())), "item");
+  assert.equal(tag(document_hson_value(page.at([1, 0, 0]).hson())), "item");
   assert.equal(page.document.byQuid("000000001"), undefined);
   assert.equal(map.rev, before);
 });
@@ -106,32 +106,32 @@ check("reads are detached, do not mint QUIDs, and do not advance revision", () =
 check("fixed coordinates resolve their current occupant after insert, move, and remove", () => {
   const map = tree("<main <item id=\"first\"/> <item id=\"second\"/>/>");
   const page = map.doc.must("page");
-  const atOne = page.at([1]);
+  const atOne = page.at([1, 0, 1]);
   assert.equal((document_hson_value(atOne.hson()) as HsonNode).$_attrs?.id, "second");
-  page.document.content.insert({ kind: "path", path: [0, 0] }, 0, item());
+  page.document.content.insert({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, item());
   assert.equal((document_hson_value(atOne.hson()) as HsonNode).$_attrs?.id, "first");
-  page.document.content.move({ kind: "path", path: [0, 0] }, 0, 2);
+  page.document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, 2);
   assert.equal((document_hson_value(atOne.hson()) as HsonNode).$_attrs?.id, "second");
-  page.at([1]).delete();
+  page.at([1, 0, 1]).delete();
   assert.equal(atOne.snap() === undefined, false);
 });
 
 check("location replacement stays within the selected document Schema", () => {
   const map = tree("<main <item/>/>");
   const page = map.doc.must("page");
-  page.at([0]).replace({ $_tag: "item", $_attrs: { id: "replacement" }, $_content: [] });
-  assert.equal((document_hson_value(page.at([0]).hson()) as HsonNode).$_attrs?.id, "replacement");
+  page.at([1, 0, 0]).replace({ $_tag: "item", $_attrs: { id: "replacement" }, $_content: [] });
+  assert.equal((document_hson_value(page.at([1, 0, 0]).hson()) as HsonNode).$_attrs?.id, "replacement");
   assert.equal(map.rev, 1);
 });
 
 check("map restore refreshes existing document locations and watchers", () => {
   const map = tree("<main <item id=\"before\"/>/>");
   const page = map.doc.must("page");
-  const location = page.at([0]);
+  const location = page.at([1, 0, 0]);
   const snapshot = map.capture();
   const seen: unknown[] = [];
   location.watch((next) => seen.push(next));
-  page.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "after");
+  page.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0, 0, 0] }, "id", "after");
   assert.equal((document_hson_value(location.hson()) as HsonNode).$_attrs?.id, "after");
   map.restore(snapshot);
   assert.equal((document_hson_value(location.hson()) as HsonNode).$_attrs?.id, "before");
@@ -142,8 +142,8 @@ check("local identity acquisition does not publish document watch events", () =>
   const map = tree("<main <item/>/>");
   const page = map.doc.must("page");
   let events = 0;
-  page.at([0]).watch(() => { events += 1; });
-  acquire_document_identity(page.document, { kind: "path", path: [0, 0, 0] });
+  page.at([1, 0, 0]).watch(() => { events += 1; });
+  acquire_document_identity(page.document, { kind: "path", path: [0, 0, 1, 0, 0, 0, 0] });
   assert.equal(events, 0);
 });
 
@@ -151,8 +151,8 @@ check("malformed logical paths reject and coordinate inspection is frozen", () =
   const page = tree("<main <item/>/>").doc.must("page");
   assert.throws(() => page.at([-1]), /not valid/);
   assert.throws(() => page.at([1.5]), /not valid/);
-  const path = page.at([0]).path() as number[];
-  assert.deepEqual(path, [0]);
+  const path = page.at([1, 0, 0]).path() as number[];
+  assert.deepEqual(path, [1, 0, 0]);
   assert.throws(() => path.push(1), TypeError);
   assert.equal("at" in page.document, false);
 });

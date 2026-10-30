@@ -12,7 +12,7 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
 
-const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "string">>>`;
+const Page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "p" content "string">>>]>>]>>`;
 const Private: HsonSchema = Hson.schema`<type "data" content <PRIVATE_SCHEMA_SENTINEL "string">>`;
 const Unselected: HsonSchema = Hson.schema`<type "data" content <UNSELECTED_SCHEMA_SENTINEL "string">>`;
 const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;

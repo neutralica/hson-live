@@ -241,7 +241,7 @@ assert.equal(tightMap.rev, 0);
 assert.equal(tightConnection.received.filter((raw) => ["commit", "progress"].includes(JSON.parse(raw).type)).length, 0);
 tightServer.dispose();
 
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const interactionMap = hsonLiveMap.fromLibraries({
   page: { document: "<main/>", schema: PageSchema },
   hiddenDoc: { document: "<main/>", schema: PageSchema },
@@ -308,7 +308,7 @@ for (const invalid of invalid_tagged_graphs) {
   await server.stage(draft => {
     const page = draft.doc.must("page");
     if (page.mode !== "document") throw new Error("Expected page.");
-    page.content.insert({ kind: "path", path: validate_document_path([]) }, 1, { $_tag: "span", $_content: [] });
+    page.content.insert({ kind: "path", path: validate_document_path([0, 0, 1, 0]) }, 1, { $_tag: "span", $_content: [] });
   });
   assert.deepEqual(owned.capture(), before, invalid.name);
   assert.equal(client.lastAppliedRev, 0, invalid.name);

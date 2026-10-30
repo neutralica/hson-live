@@ -42,6 +42,12 @@ import { authority_projection_as_client_composition_internal } from "../src/api/
 
 install_fake_document();
 
+function native_button_page() {
+  const root = new FakeElement("html"), head = new FakeElement("head"), body = new FakeElement("body"), button = new FakeElement("button");
+  root.appendChild(head); root.appendChild(body); body.appendChild(button);
+  return { root, head, body, button };
+}
+
 // Scoped SSR still requires an exact native realization before attachment.
 {
   const locus = hsonLiveMap.locus.create({ "parts": { parts: { item: { kind: "document", document: '<b hson:part @:root/>' } }, access: "private" }, "page": { document: '<main <hson-part lib="parts" at="item"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -62,7 +68,7 @@ install_fake_document();
 
 // Receiving QUAD identities are issued by the projected LiveMap before grafting.
 for (const addressedRoot of [false, true]) {
-  const map = make_livemap_from_authored_libraries_internal({ page: { document: `<main ${addressedRoot ? '@:root ' : ''}<button @:confirm/>/>` } });
+  const map = make_livemap_from_authored_libraries_internal({ page: { document: `<html ${addressedRoot ? '@:root ' : ''}<head/> <body <button @:confirm/>/>/>` } });
   const locus = create_locus_hosted_aggregate_authority_internal({ map,
     libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, writableDocuments: ["page"] }) });
@@ -75,7 +81,7 @@ for (const addressedRoot of [false, true]) {
   await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("Document");
     page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "recovered"); });
   const pair = socketPair(), detach = bind_locus_websocket(locus, pair.server), transport = test_echo_transport(pair.client);
-  const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
+  const { root, body, button } = native_button_page();
   let obsolete: LiveTree | undefined, obsoleteQuid: string | undefined;
   set_document_adoption_fault_hook_for_tests(point => {
     if (point === "after-tree") {
@@ -105,21 +111,21 @@ for (const addressedRoot of [false, true]) {
     }
     await locus.stage(draft => {
       const page = draft.doc.must("page"); if (page.mode !== "document") throw new Error("Expected document.");
-      page.attrs.set({ kind: "path", path: validate_document_path([0, 0, 0]) }, "title", "hosted");
+      page.attrs.set({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) }, "title", "hosted");
     });
     assert.equal(continuation.mirror.status, "active");
-    const liveButton = root.childNodes[0];
+    const liveButton = body.childNodes[0];
     assert.ok(liveButton instanceof FakeElement);
     assert.equal(liveButton.getAttribute("title"), "hosted");
     continuation.dispose(); continuation.echo.dispose();
   } finally { set_document_adoption_fault_hook_for_tests(undefined); transport.dispose(); detach(); locus.dispose(); }
 }
 
-const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">]>>]>>`;
 
 // Isolate repeated owner-proven recovery and transaction failure from transport.
 for (const failure of ["none", "native", "incompatible"] as const) {
-  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<main @:root <button @:child/>/>' } });
+  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<html @:root <head/> <body <button @:child/>/>/>' } });
   const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
     libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -127,7 +133,7 @@ for (const failure of ["none", "native", "incompatible"] as const) {
   const capture = () => capture_selected_authority_projection_snapshot(source, projection);
   const client = client_projection_map({ authority: capture(), local: {} }), page = client.doc.must("page");
   if (page.mode !== "document") throw Error("Document");
-  const root = new FakeElement("main"), child = new FakeElement("button"); root.appendChild(child);
+  const { root, body, button: child } = native_button_page();
   let grafted = continue_document({ map: client, document: page, root: root as unknown as Element });
   const owner = internal_livemap_aggregate_authority(client), manager = {};
   owner.claimManagement(manager);
@@ -135,10 +141,17 @@ for (const failure of ["none", "native", "incompatible"] as const) {
     for (let round = 0; round < (failure === "none" ? 2 : 1); round++) {
       const oldTree = grafted.tree;
       const oldQuid: string = lookup_document_quad_internal(page, "root")!.quid;
+      if (failure === "incompatible") {
+        const before = capture(), revision = locus.rev;
+        await assert.rejects(locus.stage(draft => draft.doc.must("page").content.replace({ kind: "path", path: validate_document_path([]) }, 0, { $_tag: "aside", $_content: [] })), /complete html/);
+        assert.deepEqual(capture(), before); assert.equal(locus.rev, revision);
+        assert.equal(grafted.mirror.status, "active"); assert.equal(grafted.tree, oldTree);
+        assert.equal(body.childNodes[0], child);
+        continue;
+      }
       await locus.stage(draft => {
         const document = draft.doc.must("page"); if (document.mode !== "document") throw Error("Document");
-        if (failure === "incompatible") document.content.replace({ kind: "path", path: validate_document_path([]) }, 0, { $_tag: "aside", $_content: [] });
-        else document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `round-${round}`);
+        document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `round-${round}`);
       });
       const nativeSet = root.setAttribute;
       if (failure === "native") root.setAttribute = function(name, value) {
@@ -173,7 +186,7 @@ for (const failure of ["none", "native", "incompatible"] as const) {
       } else {
         assert.equal(grafted.mirror.status, "failed");
         assert.equal(root.getAttribute("title"), null); assert.equal(root.getAttribute("hson:quid"), null);
-        assert.equal(root.childNodes[0], child);
+        assert.equal(body.childNodes[0], child);
         assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(oldTree));
         assert.equal(page.document.byQuid(oldQuid), undefined);
         // The accepted authority state is not undone by failed DOM realization.
@@ -186,7 +199,7 @@ for (const failure of ["none", "native", "incompatible"] as const) {
 // Inject invalid private evidence at the existing document-observation boundary.
 // The authoritative snapshot remains accepted; Mirror must reject before native work.
 for (const invalid of ["old", "new", "library", "replay"] as const) {
-  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<main @:root <button/>/>' } });
+  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<html @:root <head/> <body <button/>/>/>' } });
   const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
     libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
     authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -213,7 +226,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
       listener(observation);
     }) },
   };
-  const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
+  const { root, body, button } = native_button_page();
   const adoption = adopt_exact_existing_document(capture_continuation_document_root(page), root as unknown as Element);
   const mirror = reflect_existing_document_in_runtime(watchedPage, adoption.tree, runtime_for_tree(adoption.tree));
   adoption.commit(() => mirror.tree);
@@ -237,7 +250,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
       assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(prior));
       assert.deepEqual(runtime.quidToNode, claims);
       assert.deepEqual(root.getAttributeNames().map(name => [name, root.getAttribute(name)]), priorAttrs);
-      assert.equal(root.childNodes[0], button);
+      assert.equal(body.childNodes[0], button);
       assert.equal(runtime.quidToNode.has(lookup_document_quad_internal(page, "root")!.quid), false);
       assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), `invalid-${invalid}-${round}`);
     }
@@ -246,7 +259,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
 // Local continuation must also fail closed when its authority accepted a snapshot
 // but Mirror retained the former tree after rolling back a native root transfer.
 {
-  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<main @:root <button/>/>' } });
+  const source = make_livemap_from_authored_libraries_internal({ page: { document: '<html @:root <head/> <body <button/>/>/>' } });
   enable_interactions(source);
   add_interaction(source, { id: "failed-root-click", subject: { library: "page", path: [0] }, kind: "browser", key: "run", args: null,
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
@@ -258,7 +271,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
   const capture = () => capture_selected_authority_projection_snapshot(source, projection);
   const client = client_projection_map({ authority: capture(), local: {} }), page = client.doc.must("page");
   if (page.mode !== "document") throw Error("Document");
-  const root = new FakeElement("main"), button = new FakeElement("button"); root.appendChild(button);
+  const { root, body, button } = native_button_page();
   let calls = 0;
   const grafted = continue_document({ map: client, document: page, root: root as unknown as Element,
     interactions: { local: { run: () => { calls++; } } } });
@@ -287,7 +300,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
     assert.equal(runtime.quidToNode.has(newQuid), false); assert.deepEqual(runtime.quidToNode, claims);
     assert.equal(root.getAttribute("hson:quid"), null); assert.equal(root.getAttribute("title"), null);
     assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(prior));
-    assert.equal(root.childNodes[0], button);
+    assert.equal(body.childNodes[0], button);
     root.dispatchEvent(new Event("click")); assert.equal(calls, 1);
     assert.throws(() => prior.attrs.set("stale-authority", "reject"));
     grafted.dispose(); grafted.dispose();
@@ -333,11 +346,11 @@ function socketPair(): Readonly<{
 {
   const makeMap = () => admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <button/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "authoritative-click",
-    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
+    subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0] }),
     kind: "locus",
     key: "save",
     payload: Hson.data.from({ exact: true }),
@@ -368,9 +381,7 @@ function socketPair(): Readonly<{
     return { shared: { credential: session.credential!, transport: test_echo_transport(pair.client) }, detach };
   };
   let wire = fresh();
-  const root = new FakeElement("main");
-  const button = new FakeElement("button");
-  root.appendChild(button);
+  const { root, button } = native_button_page();
   await assert.rejects(continue_hosted_document({ ...wire.shared, now: cut, document: "state", root: root as unknown as Element }),
     /unknown|document/i);
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
@@ -421,12 +432,12 @@ function socketPair(): Readonly<{
 // already-bound Mirror after exact DOM adoption.
 {
   const authority = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <button/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(authority);
   add_interaction(authority, {
     id: "save-click",
-    subject: { library: "page", path: [0, 0, 0] },
+    subject: { library: "page", path: [0, 0, 1, 0, 0] },
     kind: "locus",
     key: "save",
     payload: Hson.data.from({ value: 1 }),
@@ -435,7 +446,7 @@ function socketPair(): Readonly<{
       stopImmediatePropagation: false },
   });
   const empty = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <button/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(empty);
   const emptyLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(empty, test_application_catalog(empty)), authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }) });
@@ -450,9 +461,7 @@ function socketPair(): Readonly<{
   const mixed = { ...cut, libs: { ...cut.libs, system: emptySession.now().libs.system } };
   const pair = socketPair();
   const detach = bind_locus_websocket(locus, pair.server);
-  const root = new FakeElement("main");
-  const button = new FakeElement("button");
-  root.appendChild(button);
+  const { root, button } = native_button_page();
   const continuation = await continue_hosted_document({ now: mixed, credential: session.credential!,
     transport: test_echo_transport(pair.client), root: root as unknown as Element });
   assert.equal(continuation.echo.sync.strategy, "reconcile");
@@ -630,14 +639,14 @@ function socketPair(): Readonly<{
 // Strict inline authoring rejects before hosted dispatch. Accepted batches
 // project through the replica at one authority revision without CSS identity.
 {
-  const authority = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
+  const authority = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <button/>/>/>' } });
   const locus = create_locus_fixture({
     ...authority_definitions_from_map_fixture(authority, test_application_catalog(authority)),
     authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
   });
   const session = await locus.session.create({ libraries: ["page"] });
   const pair = socketPair();const detach = bind_locus_websocket(locus, pair.server);
-  const root = new FakeElement("main"), button = new FakeElement("button");root.appendChild(button);
+  const { root, button } = native_button_page();
   const continuation = await continue_hosted_document({ now: session.now(), credential: session.credential!,
     transport: test_echo_transport(pair.client), root: root as unknown as Element });
   try {

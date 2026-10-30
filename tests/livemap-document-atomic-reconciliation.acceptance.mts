@@ -50,7 +50,7 @@ check("invalid request path cannot route through an existing QUID", () => {
   const before = { root: map.root(), rev: map.rev };
   assert.throws(() => map.document.attrs.set({ kind: "path", path: [99] }, "bad", true));
   assert.deepEqual({ root: map.root(), rev: map.rev }, before);
-  assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
+  assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
 });
 
 check("failed staged operation rolls back earlier graph and overlay effects", () => {
@@ -59,8 +59,8 @@ check("failed staged operation rolls back earlier graph and overlay effects", ()
   const identity = overlay(map);
   const revision = map.rev;
   assert.throws(() => commit_document_operations(map, [
-    { domain: "graph", op: "move-content", target: { kind: "path", path: validate_document_path([0, 0]) }, from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0, 0, 99]) }, name: "bad", value: true },
+    { domain: "graph", op: "move-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }, from: 0, to: 1 },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 99]) }, name: "bad", value: true },
   ]));
   assert.deepEqual(map.root(), before);
   assert.equal(map.rev, revision);

@@ -127,7 +127,7 @@ check("same-position move and failed indexes consume no revision", () => {
 check("sparse document identity moves with a canonical item", () => {
   const map = element('<main <item @000000a01/> <item/>/>');
   map.document.content.move(carrier, 0, 1);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid("000000a01"), [0, 0, 1]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid("000000a01"), [0, 0, 1, 0, 0, 0, 1]);
   assert.equal(map.document.byQuid("000000a01")?.$_tag, "item");
 });
 

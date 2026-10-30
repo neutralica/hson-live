@@ -25,13 +25,13 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const Items = Hson.schema`<type "document" tag "main" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>`;
-const Sections = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>]>>`;
-const MultiItems = Hson.schema`<type "document" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>`;
-const Text = Hson.schema`<type "document" tag "main" content "string">`;
+const Items = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>]>>]>>`;
+const Sections = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "section" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>]>>]>>]>>`;
+const MultiItems = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>]>>]>>`;
+const Text = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
 const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries({ page: { document, schema } });
 const item = (id: string): HsonNode => ({ $_tag: "item", $_attrs: { id }, $_content: [] });
-const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
+const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path: [0, 0, 1, 0, ...path] });
 const ids = (root: ReadonlyHsonNode): string[] => {
   const found: string[] = [];
   const visit = (node: ReadonlyHsonNode): void => {
@@ -46,64 +46,64 @@ const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]
 
 check("element insert owns ordered authored content", () => {
   const map = registry('<main <item id="b"/>/>');
-  map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
-  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["a", "b"]);
+  map.doc.must("page").at([1, 0]).asElement()!.insert(0, item("a"));
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0]).hson()) as HsonNode), ["a", "b"]);
 });
 check("first insert materializes an empty element's content", () => {
   const map = registry("<main/>");
-  const commit = map.doc.must("page").at([]).asElement()!.insert(0, item("a"));
+  const commit = map.doc.must("page").at([1, 0]).asElement()!.insert(0, item("a"));
   assert.equal(document_graph_operation(commit).op, "insert-content");
-  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["a"]);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0]).hson()) as HsonNode), ["a"]);
 });
 check("nested insert owns only selected section content", () => {
   const map = registry('<main <section <item id="b"/>/>/>', Sections);
-  map.doc.must("page").at([0]).asElement()!.insert(0, item("a"));
-  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([0]).hson()) as HsonNode), ["a", "b"]);
+  map.doc.must("page").at([1, 0, 0]).asElement()!.insert(0, item("a"));
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0, 0]).hson()) as HsonNode), ["a", "b"]);
 });
 check("document root insert owns top-level content", () => {
-  const map = registry('<item id="a"/> <item id="c"/>', MultiItems);
-  map.doc.must("page").at([]).asRoot()!.insert(1, item("b"));
-  assert.deepEqual(ids(map.doc.must("page").root()), ["a", "b", "c"]);
+  const map = registry('<main <item id="a"/> <item id="c"/>/>', MultiItems);
+  map.doc.must("page").at([1, 0]).asElement()!.insert(1, item("b"));
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0]).hson()) as HsonNode), ["a", "b", "c"]);
 });
 check("invalid insert index rejects exactly", () => {
-  code(() => registry("<main/>").doc.must("page").at([]).asElement()!.insert(1, item("a")), "INVALID_DOCUMENT_CONTENT_INDEX");
+  code(() => registry("<main/>").doc.must("page").at([1, 0]).asElement()!.insert(1, item("a")), "INVALID_DOCUMENT_CONTENT_INDEX");
 });
 check("primitive endpoint has no element insertion capability", () => {
   const page = registry('<main "text"/>', Text).doc.must("page");
-  assert.equal(page.at([0]).asElement(), undefined);
+  assert.equal(page.at([1, 0, 0]).asElement(), undefined);
 });
 check("move uses final indexes and retains item identity", () => {
   const map = registry('<main <item id="a"/> <item id="b"/> <item id="c"/>/>');
-  map.doc.must("page").at([]).asElement()!.move(0, 2);
-  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([]).hson()) as HsonNode), ["b", "c", "a"]);
+  map.doc.must("page").at([1, 0]).asElement()!.move(0, 2);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0]).hson()) as HsonNode), ["b", "c", "a"]);
 });
 check("nested move leaves other content in place", () => {
   const map = registry('<main <section <item id="a"/> <item id="b"/>/>/>', Sections);
-  map.doc.must("page").at([0]).asElement()!.move(1, 0);
-  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([0]).hson()) as HsonNode), ["b", "a"]);
+  map.doc.must("page").at([1, 0, 0]).asElement()!.move(1, 0);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0, 0]).hson()) as HsonNode), ["b", "a"]);
 });
-check("document root move operates on top-level content", () => {
-  const map = registry('<item id="a"/> <item id="b"/> <item id="c"/>', MultiItems);
-  map.doc.must("page").at([]).asRoot()!.move(2, 0);
-  assert.deepEqual(ids(map.doc.must("page").root()), ["c", "a", "b"]);
+check("body subtree move operates on ordered content", () => {
+  const map = registry('<main <item id="a"/> <item id="b"/> <item id="c"/>/>', MultiItems);
+  map.doc.must("page").at([1, 0]).asElement()!.move(2, 0);
+  assert.deepEqual(ids(document_hson_value(map.doc.must("page").at([1, 0]).hson()) as HsonNode), ["c", "a", "b"]);
 });
 check("child location remains fixed after movement", () => {
   const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
-  const first = page.at([0]);
-  page.at([]).asElement()!.move(0, 1);
-  assert.equal(first, page.at([0]));
+  const first = page.at([1, 0, 0]);
+  page.at([1, 0]).asElement()!.move(0, 1);
+  assert.equal(first, page.at([1, 0, 0]));
   assert.equal((document_hson_value(first.hson()) as HsonNode).$_attrs?.id, "b");
 });
 check("proxy escape uses the selected library content capability", () => {
   const page = registry('<main <item id="a"/> <item id="b"/>/>').doc.must("page");
-  assert.equal(page.proxy().$_, page.at([]));
-  const commit = page.proxy().$_.asElement()!.move(0, 1);
+  assert.equal(page.proxy([1, 0]).$_, page.at([1, 0]));
+  const commit = page.proxy([1, 0]).$_.asElement()!.move(0, 1);
   assert.equal(document_graph_operation(commit).op, "move-content");
 });
 check("location insert matches document API and registry commit", () => {
   const left = registry('<main <item id="a"/>/>');
   const right = registry('<main <item id="a"/>/>');
-  const first = left.doc.must("page").at([]).asElement()!.insert(1, item("b"));
+  const first = left.doc.must("page").at([1, 0]).asElement()!.insert(1, item("b"));
   const second = right.doc.must("page").document.content.insert(target(0, 0), 1, item("b"));
   assert.deepEqual(first, second);
   assert.deepEqual(left.capture(), right.capture());
@@ -111,7 +111,7 @@ check("location insert matches document API and registry commit", () => {
 check("location move restores without special cases", () => {
   const source = registry('<main <item id="a"/> <item id="b"/>/>');
   const receiver = registry('<main <item id="a"/> <item id="b"/>/>');
-  source.doc.must("page").at([]).asElement()!.move(0, 1);
+  source.doc.must("page").at([1, 0]).asElement()!.move(0, 1);
   receiver.restore(source.capture());
   assert.deepEqual(receiver.doc.must("page").root(), source.doc.must("page").root());
 });
@@ -119,13 +119,13 @@ check("Mirror consumes selected document location commits", () => {
   const map = registry('<main <item id="a"/>/>');
   const page = map.doc.must("page");
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), page);
-  page.at([]).asElement()!.insert(1, item("b"));
+  page.at([1, 0]).asElement()!.insert(1, item("b"));
   assert.deepEqual(ids(binding.tree.node), ["a", "b"]);
   binding.dispose();
 });
 check("acquiring content capabilities does not mint QUIDs", () => {
   const map = registry('<main <item id="a"/>/>');
-  const location = map.doc.must("page").at([]).asElement()!;
+  const location = map.doc.must("page").at([1, 0]).asElement()!;
   void location.insert; void location.move;
   assert.equal(JSON.stringify(map.doc.must("page").root()).includes("quid"), false);
   assert.equal(map.rev, 0);

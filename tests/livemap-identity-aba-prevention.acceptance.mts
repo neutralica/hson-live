@@ -31,7 +31,7 @@ const Q2 = "000004b02";
 const DataSchema = Hson.schema`<type "data" content <a <optional "any"> b <optional "any"> items <optional "any">>>`;
 const data = () => hsonLiveMap.fromLibraries({ state: { data: { a: {}, b: {}, items: [{ id: 1 }, { id: 2 }] }, schema: DataSchema } }).data.must("state");
 const document = () => element('<main <item/> <item/>/>');
-const target = (...parts: number[]) => ({ kind: "path" as const, path: [0, ...parts] });
+const target = (...parts: number[]) => ({ kind: "path" as const, path: [0, 0, 1, 0, 0, ...parts] });
 
 check("a retired data handle never reactivates for another path", () => {
   const map = data();
@@ -115,7 +115,7 @@ check("document insertion shifts a handle without issuing another QUID", () => {
   const map = document();
   const handle = acquire_document_identity(map.document, target(0, 1));
   map.document.content.insert(path(0), 0, projected_element('<item/>'));
-  assert.deepEqual(handle.path(), [0, 0, 2]);
+  assert.deepEqual(handle.path(), [0, 0, 1, 0, 0, 0, 2]);
   assert.equal(livemap_identity_epoch_accounting(map.document).issued, 1);
 });
 

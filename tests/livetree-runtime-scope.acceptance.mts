@@ -1,6 +1,6 @@
 import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { document_from_node } from "./helpers/mirror-unit6.mts";
+import { document_from_node, raw_node } from "./helpers/mirror-unit6.mts";
 import { construct_exact_runtime_livetree } from "../src/api/livetree/livetree.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
@@ -723,11 +723,11 @@ check("Mirror document synchronization preserves clean projection markup", () =>
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap("<main <span/>/>");
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  projectInto(runtime, binding.tree, document);
+  projectInto(runtime, binding.tree.find.must.byTag("main"), document);
   const documentRoot = document.body.children[0];
   if (documentRoot === undefined) throw new Error("Expected projected document element");
   map.document.content.insert(
-    Object.freeze({ kind: "path", path: Object.freeze([0, 0]) }),
+    Object.freeze({ kind: "path", path: Object.freeze([0, 0, 1, 0, 0, 0]) }),
     1,
     node("span"),
   );
@@ -747,8 +747,8 @@ check("Mirror projects equal persisted QUIDs in separate runtimes", () => {
   const rightMap = elementMap(`<main @${SAME_QUID}/>`);
   const leftBinding = _reflect_document_for_runtime_test(left, leftMap);
   const rightBinding = _reflect_document_for_runtime_test(right, rightMap);
-  const leftElement = retained_subject(leftBinding.tree).$_content[0];
-  const rightElement = retained_subject(rightBinding.tree).$_content[0];
+  const leftElement = raw_node(retained_subject(leftBinding.tree), []);
+  const rightElement = raw_node(retained_subject(rightBinding.tree), []);
   if (leftElement === undefined || rightElement === undefined) {
     throw new Error("Expected reflected document elements");
   }
@@ -814,7 +814,7 @@ check("borrowed tree destruction stops its bridge and later binding disposal is 
   const binding = _reflect_document_for_runtime_test(runtime, map);
   binding.tree.remove();
   assert.equal(binding.status, "disposed");
-  assert.equal(map.at([]).snap(), "<main><span></span></main>");
+  assert.equal(map.at([]).snap(), "<html><head></head><body><main><span></span></main></body></html>");
   binding.dispose();
   assert.equal(_lookup_livetree_runtime_test_node(runtime, SAME_QUID), undefined);
 });

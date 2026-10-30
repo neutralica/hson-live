@@ -1,5 +1,6 @@
 import { element } from "./helpers/mirror-unit6.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { body_root } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import {
   hson,
@@ -43,10 +44,10 @@ const multiNodeDocument = element;
 
 const path = (...segments: number[]): LiveMapDocumentRequestTarget =>
   Object.freeze({ kind: "path", path: Object.freeze(segments) });
-const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, ...segments);
+const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, 0, 1, 0, 0, ...segments);
 
 function ordinaryRoot(map: LiveMapDocumentLibrary) {
-  const candidate = map.root().$_content[0];
+  const candidate = body_root(map.root());
   if (!is_Node(candidate)) throw new Error("Expected one ordinary document root element");
   return candidate;
 }
@@ -155,7 +156,7 @@ check("must.get shares canonical reads and reports only valid absence as not fou
       && cause.operation === "must-get-attr"
       && cause.attributeName === "missing"
       && cause.target.kind === "path"
-      && cause.target.path.length === 1
+      && cause.target.path.length === 5
       && cause.target.path[0] === 0,
   );
   errorCode(() => map.document.attrs.must.get(target, "bad name"), "INVALID_DOCUMENT_ATTRIBUTE_NAME", "must-get-attr");
@@ -190,9 +191,9 @@ check("multiNodeDocument and element modes support root and nested path targets"
   assert.equal(elementMap.document.attrs.has(elementPath(0, 0), "title"), true);
 
   const multiNodeDocumentMap = multiNodeDocument(`<section id="first" @000000104/> <aside title="second"/>`);
-  assert.equal(multiNodeDocumentMap.document.attrs.get(path(0), "id"), "first");
-  assert.deepEqual(multiNodeDocumentMap.document.attrs.keys(path(1)), ["title"]);
-  assert.equal(multiNodeDocumentMap.document.attrs.must.get(path(0), "id"), "first");
+  assert.equal(multiNodeDocumentMap.document.attrs.get(path(0, 0, 1, 0, 0), "id"), "first");
+  assert.deepEqual(multiNodeDocumentMap.document.attrs.keys(path(0, 0, 1, 0, 1)), ["title"]);
+  assert.equal(multiNodeDocumentMap.document.attrs.must.get(path(0, 0, 1, 0, 0), "id"), "first");
 });
 
 check("reads over absent attrs remain complete no-ops", () => {

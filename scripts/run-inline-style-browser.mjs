@@ -19,7 +19,7 @@ const plugins=baseline ? [{name:'source-oracle',setup(builder){builder.onLoad({f
 const bundle=await build({stdin:{contents:script,resolveDir:join(root,'tests/browser'),sourcefile:'inline-style.acceptance.html'},bundle:true,platform:'browser',format:'esm',target:'es2022',write:false,plugins});
 const map=hsonLiveMap.fromLibraries({page:{document:'<main id="ssr-root" <p id="first-paint" style="color:red!important;color:blue;margin:10px;margin-top:5px" "ready"/>/>'}});
 const cut=map.cut({html:'page'});
-const html=fixture.replace('<!-- SSR fixture is inserted by the source browser runner. -->',cut.html).replace(/<script type="module">[\s\S]*?<\/script>/,'<script type="module" src="/probe.js"></script>');
+const html=fixture.replace('<!-- SSR fixture is inserted by the source browser runner. -->',`<iframe id="ssr-frame" srcdoc="${cut.html.replaceAll('&','&amp;').replaceAll('"','&quot;')}"></iframe>`).replace(/<script type="module">[\s\S]*?<\/script>/,'<script type="module" src="/probe.js"></script>');
 const server=createServer((request,response)=>{if(request.url==='/probe.js'){response.setHeader('content-type','text/javascript');response.end(bundle.outputFiles[0].contents);}else if(request.url==='/__state'){response.setHeader('content-type','application/json');response.end(JSON.stringify(cut));}else{response.setHeader('content-type','text/html; charset=utf-8');response.end(html);}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const address=server.address();assert.ok(address && typeof address==='object');
@@ -43,7 +43,15 @@ try {
   await send('Page.enable');await send('DOM.enable');await send('CSS.enable');
   await send('Emulation.setScriptExecutionDisabled',{value:true});await send('Page.navigate',{url});
   let paragraph,dom;
-  while(Date.now()<deadline){({root:dom}=await send('DOM.getDocument'));({nodeId:paragraph}=await send('DOM.querySelector',{nodeId:dom.nodeId,selector:'#first-paint'}));if(paragraph)break;await pause();}
+  while(Date.now()<deadline){
+    ({root:dom}=await send('DOM.getDocument',{depth:-1,pierce:true}));
+    const pending=[dom];
+    while(pending.length){const node=pending.pop();
+      if(node.attributes?.some((value,index)=>index%2===0&&value==='id'&&node.attributes[index+1]==='first-paint')){paragraph=node.nodeId;break;}
+      pending.push(...(node.children??[]));if(node.contentDocument)pending.push(node.contentDocument);
+    }
+    if(paragraph)break;await pause();
+  }
   assert.ok(paragraph,'SSR native paragraph missing.');
   const {computedStyle}=await send('CSS.getComputedStyleForNode',{nodeId:paragraph});
   assert.equal(computedStyle.find(entry=>entry.name==='color')?.value,'rgb(255, 0, 0)');

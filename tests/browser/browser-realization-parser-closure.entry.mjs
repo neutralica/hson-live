@@ -12,3 +12,5 @@ export { create_livetree_runtime } from "../../dist/api/livetree/runtime/livetre
 
 export { representation_markup_cases } from "../fixtures/representation-markup-cases.mts";
 export { hsonLiveMap } from "../../dist/api/livemap/index.js";
+export { document_markup } from "../../src/internal/document-representation.ts";
+export { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";

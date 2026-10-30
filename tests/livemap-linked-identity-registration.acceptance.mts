@@ -40,7 +40,7 @@ check("linked descendant QUID demand registers one canonical local identity", ()
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const tree = binding.tree.find.byTag("item");
   assert.equal(tree?.quid, Q1);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "item");
   binding.dispose();
 });

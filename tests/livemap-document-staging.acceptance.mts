@@ -23,7 +23,7 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const p = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: validate_document_path(parts) });
+const p = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, ...parts]) });
 const root = p(0, 0);
 const item = (index: number) => p(0, 0, index);
 const fixture = () => element('<main <item id="a"/> <item id="b"/> <item id="c"/>/>');

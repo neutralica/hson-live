@@ -72,7 +72,7 @@ export async function topology_tail_fixture() {
   assert.equal(state(map).scopes.occurrences.length, 5);
   assert.equal(state(map).css.keyframes.length, 0); assert.equal(state(map).css.properties.length, 0);
   assert.match(JSON.stringify(state(map).css.order), /@keyframes/);
-  assert.deepEqual(state(map).scopes.occurrences.map(o => o.parent), [null, [0, 0, 0], null, [0, 0, 1], null]);
+  assert.deepEqual(state(map).scopes.occurrences.map(o => o.parent), [null, [0, 0, 1, 0, 0, 0, 0], null, [0, 0, 1, 0, 0, 0, 1], null]);
   assert.deepEqual(state(map).scopes.document.map(b => [b.name, b.kind]), [["footer", "element"], ["left", "part"], ["root", "element"]]);
   assert.throws(() => make_portable_aggregate_commit(commit), /Echo/);
   assert.throws(() => map.capture(), /Echo/);
@@ -84,9 +84,9 @@ export async function topology_tail_fixture() {
   for (const quid of issued(authority(echo.map).identityEpoch().issued())) assert.ok(!sourceIds.includes(quid));
   const scoped = await l.stage(w => {
     const d = w.doc.must("page"); if (d.mode !== "document") throw Error();
-    d.content.remove({ kind: "path", path: path([0, 0]) }, 1);
-    d.content.remove({ kind: "path", path: path([0, 0]) }, 1);
-    d.attrs.set({ kind: "path", path: path([0]) }, "title", "ordered");
+    d.content.remove({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 1);
+    d.content.remove({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 1);
+    d.attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "ordered");
     const data = w.data.must("data"); if (String(data.mode) === "document") throw Error(); data.at(["n"]).set(4);
   });
   assert.ok(scoped); echo.replayScopedHosted({ ...encode_authoritative_scoped_commit(scoped), registryDigest: projected_registry_digest(effective) });
@@ -111,7 +111,7 @@ export async function verify_topology_restart(f: Awaited<ReturnType<typeof topol
     const echo = receive(snapshot, local_initializers({ local: { data: 1 } })); assert.ok(echo.map);
     try {
       assert.ok(equal(state(l.map), state(echo.map)));
-      const op = await l.stage(w => { const d = w.doc.must("page"); if (d.mode !== "document") throw Error(); d.attrs.set({ kind: "path", path: path([0]) }, "title", "restarted"); });
+      const op = await l.stage(w => { const d = w.doc.must("page"); if (d.mode !== "document") throw Error(); d.attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "restarted"); });
       assert.ok(op); echo.replayScopedHosted({ ...encode_authoritative_scoped_commit(op), registryDigest: projected_registry_digest(effective) });
       assert.ok(equal(state(l.map), state(echo.map)));
       await l.checkpoint(); const again = await resume(l.logicalMapId, { persistence: f.adapter, scopedDocuments: true }); assert.ok(again);
@@ -168,7 +168,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       finally { restarted.dispose(); }
       const session = await locus.session.create({ libraries: ["page", "later", "parts", "hidden"] });
       assert.deepEqual(session.now().libs.libraries.map(e => e.name), ["later", "page"]);
-      assert.throws(() => session.now({ html: "page" }), /browser-parser realization/);
+      assert.match(session.now({ html: "page" }).html, /^<!doctype html><html><head><style/);
     } finally { locus.dispose(); }
   });
   await check("H0b invalid scoped additions preserve authority and session state", async () => {

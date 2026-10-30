@@ -26,7 +26,7 @@ export async function library_capability_cases() {
   assert.equal(admitted.commit.changed, true);
   assert.equal(Object.getPrototypeOf(admitted.libraries), null);
   assert.equal(Object.isFrozen(admitted.libraries), true);
-  assert.equal(admitted.libraries.page.render(), "<main></main>");
+  assert.equal(admitted.libraries.page.render(), "<!doctype html><html><head></head><body><main></main></body></html>");
   assert.equal(admitted.libraries.page, empty.doc.must("page"));
   assert.throws(() => empty.addLibraries({ page: { document: "<aside/>" } }));
   assert.equal(empty.rev, 1);
@@ -36,8 +36,8 @@ export async function library_capability_cases() {
   batch.batch(w => { w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "button"); });
   assert.equal(batch.doc.must("page").render(), direct.doc.must("page").render());
   const simple = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } });
-  simple.batch(w => { w.doc.must("page").at([0]).asElement().attrs.set("title", "button"); });
-  assert.equal(simple.doc.must("page").render(), '<main><button title="button"></button></main>');
+  simple.batch(w => { w.doc.must("page").at([1, 0, 0]).asElement().attrs.set("title", "button"); });
+  assert.equal(simple.doc.must("page").render(), '<!doctype html><html><head></head><body><main><button title="button"></button></main></body></html>');
   batch.batch(w => {
     w.doc.must("page").at([1]).insert(0, element("<i/>"));
     w.doc.must("page").at([1, 1]).asElement().attrs.set("moved", true);
@@ -55,7 +55,7 @@ export async function library_capability_cases() {
   const locus = hsonLiveMap.locus.create({ "page": { document: page, schema: PageSchema, access: "shared" } }, { local: [{ name: "panel", initializer: { document: '<aside/>' } }], authorizeProjection: () => ({ libraries: ["page", "panel"] }) });
   try {
     await locus.admit({ "privatePage": { document: "<aside/>", access: "private" } });
-    assert.equal(locus.doc.must("privatePage").render(), "<aside></aside>");
+    assert.equal(locus.doc.must("privatePage").render(), "<!doctype html><html><head></head><body><aside></aside></body></html>");
     await assert.rejects(locus.admit({ "privatePage": { data: 1, access: "shared" } }));
     await locus.stage(w => { w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "button"); });
     const selected = locus.doc.must("page");
@@ -288,7 +288,7 @@ export async function refinement_repair_cases() {
     assert.equal(receipt.libraries.state.snap(), 1);
     assert.equal("optionalPage" in receipt.libraries, present);
     if (receipt.libraries.optionalPage) {
-      assert.equal(receipt.libraries.optionalPage.render(), "<main></main>");
+      assert.equal(receipt.libraries.optionalPage.render(), "<!doctype html><html><head></head><body><main></main></body></html>");
       assert.equal(receipt.libraries.optionalPage, map.doc.must("optionalPage"));
     }
     else assert.equal(present, false);
@@ -398,7 +398,7 @@ export async function refinement_repair_cases() {
         await blocked;
         assert.deepEqual(locus.data.must("state").at(["required"]).snap(), [1]);
         await locus.admit({ "admitted": { document: "<aside/>", access: "shared" } });
-        assert.equal(locus.doc.must("admitted").render(), "<aside></aside>");
+        assert.equal(locus.doc.must("admitted").render(), "<!doctype html><html><head></head><body><aside></aside></body></html>");
         let failedReceipt: unknown;
         await assert.rejects((async () => { failedReceipt = await locus.admit({ "admitted": { data: 1, access: "shared" } }); })());
         assert.equal(failedReceipt, undefined);

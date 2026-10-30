@@ -1,5 +1,6 @@
+import { document_markup, document_hson } from "../../src/internal/document-representation.js";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap } from "../../src/index.js";
+import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.js";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.js";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.js";
 
@@ -46,7 +47,7 @@ export async function representation_required_cases() {
   map.restore(before);
   assert.equal(partMust.snap().document, "<button hson:part/>");
 
-  const page = map.doc.page, location = page.at([0]), must = location.must;
+  const page = map.doc.page, location = page.at([1, 0, 0]), must = location.must;
   const documentBefore = map.capture(), documentIssued = enumerate_livemap_issued_quids(aggregate.identityEpoch().issued());
   assert.equal(must.snap(), "<b>before</b>");
   assert.equal(must.hson(), Hson.document`<b "before"/>`);
@@ -78,7 +79,7 @@ export async function representation_required_cases() {
   page.css.sel("b").set.color("blue");
   map.restore(map.capture());
   assert.deepEqual(notifications, ["<b>before</b>", "<b>before</b>", "<b>before</b>"]);
-  assert.equal(whole.length, 3); assert.ok(whole.every(value => value === "<main><b>before</b></main>"));
+  assert.equal(whole.length, 3); assert.ok(whole.every(value => value === "<html><head></head><body><main><b>before</b></main></body></html>"));
   stop(); stopWhole();
   const saved = map.capture();
   let reentered = false;
@@ -91,39 +92,40 @@ export async function representation_required_cases() {
   });
   location.delete(); first(); later(); assert.equal(reentered, true);
 
-  const roots = hsonLiveMap.fromLibraries({ page: { document: "<a/> <b/>" } }).doc.page;
-  const rootRefinement = roots.at([]).asRoot()!, rootMust = rootRefinement.must;
-  roots.at([1]).delete();
-  assert.equal(rootRefinement.snap(), undefined); assert.throws(rootMust.snap, /refinement/);
-  assert.equal(roots.snap(), "<a></a>");
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: "<a/> <b/>" } }), /exactly one/);
+  const rootRefinement = page.at([]).asElement()!, rootMust = rootRefinement.must;
+  assert.throws(() => page.at([]).replace("incomplete"), /the document root location is not a content item/);
+  assert.equal(rootRefinement.snap(), "<html><head></head><body><main><b>before</b></main></body></html>");
+  assert.equal(rootMust.snap(), rootRefinement.snap());
 
-  const emptyMap = hsonLiveMap.fromLibraries({ empty: { document: { $_tag: "_hson_root", $_content: [] } } });
-  const empty = emptyMap.doc.empty;
-  assert.equal(empty.snap(), ""); assert.equal(empty.must.snap(), ""); assert.equal(empty.at([]).snap(), "");
-  for (const read of [empty.hson, empty.must.hson, empty.at([]).hson, empty.at([]).must.hson]) {
-    assert.throws(read, error => typeof error === "object" && error !== null && "code" in error && error.code === "HSON_DOCUMENT_EMPTY");
-  }
-  assert.equal(empty.at([0]).snap(), undefined); assert.equal(empty.at([0]).hson(), undefined);
+  const emptyRoot = { $_tag: "_hson_root", $_content: [] };
+  assert.throws(() => hsonLiveMap.fromLibraries({ empty: { document: emptyRoot } }), /exactly one/);
+  assert.equal(document_markup(emptyRoot), "");
+  assert.equal(document_markup(emptyRoot, []), "");
+  assert.equal(document_markup(emptyRoot, [0]), undefined);
+  assert.equal(document_hson(undefined), undefined);
+  assert.throws(() => document_hson(emptyRoot), error => typeof error === "object" && error !== null && "code" in error && error.code === "HSON_DOCUMENT_EMPTY");
   for (const document of ['<textarea "\\nA"/>', '<textarea ""/>']) {
-    const page = hsonLiveMap.fromLibraries({ page: { document } }).doc.page;
-    assert.equal(typeof page.snap(), "string");
-    assert.throws(page.render, /browser-parser realization/);
+    const root = hsonTransform.fromHson(document).toNode();
+    assert.equal(typeof document_markup(root), "string");
+    assert.equal(typeof document_hson(root), "string");
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document } }), /leading LF|explicit empty parser-atomic text leaf/);
   }
 
   const locus = hsonLiveMap.locus.create({
     page: { document: '<main <b "before"/>/>' }, state: { data: { value: [1] } },
   }, { actions: { inspect(context) {
-    assert.equal(context.doc.page.must.snap(), "<main><b>before</b></main>");
-    assert.equal(context.doc.page.at([0]).must.hson(), Hson.document`<b "before"/>`);
+    assert.equal(context.doc.page.must.snap(), "<html><head></head><body><main><b>before</b></main></body></html>");
+    assert.equal(context.doc.page.at([1, 0, 0]).must.hson(), Hson.document`<b "before"/>`);
     assert.deepEqual(context.data.state.at(["value"]).must.snap(), [1]);
     assert.equal("set" in context.data.state.at(["value"]).must, false);
     assert.equal("snap" in context.stage.doc.page.at([]), false);
     assert.equal("must" in context.stage.data.state.at([]), false);
   } } });
   await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" });
-  const localRequired = locus.doc.page.at([0]).must;
-  const localElement = locus.doc.page.at([0]).asElement()!, localElementMust = localElement.must;
-  await locus.doc.page.at([0]).replace("after");
+  const localRequired = locus.doc.page.at([1, 0, 0]).must;
+  const localElement = locus.doc.page.at([1, 0, 0]).asElement()!, localElementMust = localElement.must;
+  await locus.doc.page.at([1, 0, 0]).replace("after");
   assert.equal(localRequired.snap(), "after");
   assert.equal(localElement.snap(), undefined); assert.throws(localElementMust.hson, /refinement/);
   const localChecked = locus.data.state.at(["value"]).asArray()!;

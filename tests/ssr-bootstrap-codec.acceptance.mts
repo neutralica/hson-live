@@ -39,7 +39,7 @@ const expectCode = (value: string, code: SsrBootstrapCodecError["code"]): void =
 };
 
 const DataSchema = Hson.schema`<type "data" content <value "number">>`;
-const PageSchema = Hson.schema`<type "document" tag "main" content "string">`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
 const map = hsonLiveMap.fromLibraries({
   state: { data: { value: -0 }, schema: DataSchema },
   page: { document: `<main "ready"/>`, schema: PageSchema },

@@ -132,7 +132,7 @@ export async function scoped_reconciliation_repair_cases(check: (name: string, r
     let next: ReturnType<typeof replica> | undefined;
     try {
       const feed = await h.begin(), cut = feed.snapshot.snapshot.revision;
-      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "reentrant-next"));
+      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "reentrant-next"));
       let hit = false;
       const positions: number[] = [];
       const off = h.echo.observeAuthorityPosition(revision => {
@@ -147,7 +147,7 @@ export async function scoped_reconciliation_repair_cases(check: (name: string, r
       assert.equal(hit, true); assert.deepEqual(positions, [cut, one.rev]);
       assert_position(h, one.rev, false, "failed");
       assert.equal((await feed.result).ok, false); same(f, next ?? h.echo.replica);
-      const two = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "subsequent-next"));
+      const two = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "subsequent-next"));
       (next ?? h.echo.replica).replayScopedHosted(two);
       assert_position(h, two.rev, false, "failed"); same(f, next ?? h.echo.replica);
       next?.dispose(); next = undefined;
@@ -163,7 +163,7 @@ export async function scoped_reconciliation_repair_cases(check: (name: string, r
     const f = await fixture(), h = receiving(f);
     try {
       const feed = await h.begin();
-      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "ordered"));
+      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "ordered"));
       let hit = false;
       const off = h.echo.observeAuthorityPosition(() => {
         if (hit) return; hit = true;
@@ -218,7 +218,7 @@ export async function scoped_reconciliation_repair_cases(check: (name: string, r
     let next: ReturnType<typeof replica> | undefined;
     try {
       const feed = await h.begin(); feed.send(feed.recoveryPlan); feed.send(feed.snapshot);
-      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "replacement-at-completion"));
+      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "replacement-at-completion"));
       let hit = false;
       feed.send(new Proxy(feed.caught, { get(target, key, receiver) {
         if (key === "throughRev" && !hit) {
@@ -384,7 +384,7 @@ export async function recovery_closure_cases(check: (name: string, run: () => Pr
       const f = await fixture(true), h = receiving(f, scoped);
       try {
         const feed = await finish(h), revision = h.echo.lastAppliedRev!, state = feed.snapshot.snapshot;
-        const one = await f.stage(w => page(w).content.insert({ kind: "path", path: path([0, 0]) }, 0, node('<span "new"/>')));
+        const one = await f.stage(w => page(w).content.insert({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 0, node('<span "new"/>')));
         let hit = false;
         const revoke = () => { if (hit) return; hit = true; h.fence(); };
         const operations = one.operations.filter(operation => operation.domain !== "document");
@@ -922,7 +922,7 @@ export async function retry_progress_publication_cases(check: (name: string, run
         // A legitimate graph replay after progress uses the same authority cursor.
         for (const title of ["hidden-3", "hidden-4"]) await f.stage(w => {
           const d = w.doc.must("hidden"); if (d.mode !== "document") throw Error();
-          d.attrs.set({ kind: "path", path: path([0]) }, "title", title);
+          d.attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", title);
         });
         const commit = await f.stage(w => { const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(3); });
         assert.equal(commit.prevRev, 4);
@@ -968,14 +968,14 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
       add_interaction(b.map, { id: "local-nav", subject: { library: "localPage", path: [0] }, listener, kind: "browser", key: "nav", args: null });
       const localRoot = local.root();
       // The first transition changes only the occurrence lifetime, not graph content.
-      const one = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
+      const one = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
       assert.ok(canonical_hson_graph_equal(f.a.root(f.pageId), originalGraph)); first.replayScopedHosted(one);
       assert.equal(a.scopes()[2]!.lifetime, oldA[2]!.lifetime);
       assert.equal(a.scopes()[3]!.lifetime, oldA[3]!.lifetime);
-      const two = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "cut"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(2); });
+      const two = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "cut"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(2); });
       first.replayScopedHosted(two);
       const beforeThird = a.scopes();
-      const three = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 1, node('<hson-part lib="parts" at="leaf"/>')));
+      const three = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 1, node('<hson-part lib="parts" at="leaf"/>')));
       first.replayScopedHosted(three);
       assert.equal(a.scopes()[0]!.lifetime, beforeThird[0]!.lifetime);
       assert.equal(a.scopes()[1]!.lifetime, beforeThird[1]!.lifetime);
@@ -992,7 +992,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
       assert.match(JSON.stringify(b.a.systemRoot(b.a.systemState("@hson/canonical-interactions")!)), /local-nav/);
       same(f, first); same(f, second);
       const beforeA = a.scopes(), beforeB = b.scopes();
-      const four = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "resumed"));
+      const four = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "resumed"));
       assert.equal(plan(three.rev, f.l.rev, three.rev, [four], entry => entry).outcome, "replay");
       for (const cap of [first, second]) cap.replayScopedHosted(four);
       assert.deepEqual(a.scopes().map(s => s.lifetime), beforeA.map(s => s.lifetime));
@@ -1013,7 +1013,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
   await check("graph-identical reconciliation retires every occurrence and descriptor ownership remains complete", async () => {
     const f = await fixture(), h = receiving(f), r = view(h.echo.replica), old = r.scopes(), graph = r.a.root(r.id);
     try {
-      await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
+      await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
       await finish(h); assert.ok(canonical_hson_graph_equal(r.a.root(r.id), graph));
       for (const scope of r.scopes()) assert.ok(!old.some(previous => previous.lifetime === scope.lifetime));
       same(f, h.echo.replica);
@@ -1043,13 +1043,13 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
   for (const [name, deliver] of failures) await check(`${name} rejects without installation and permits authorized retry`, async () => {
     const f = await fixture(), h = receiving(f);
     try {
-      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next"));
+      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "next"));
       const feed = await h.begin();
       unchanged(h.echo.replica, () => deliver(feed));
       assert.equal((await feed.result).ok, false);
       assert.equal(h.echo.lastAppliedRev, feed.request.cursor!.lastAppliedRev);
       await finish(h); same(f, h.echo.replica);
-      const next = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "retry-replay"));
+      const next = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "retry-replay"));
       h.echo.replica.replayScopedHosted(next); same(f, h.echo.replica);
     } finally { h.dispose(); f.l.dispose(); }
   });
@@ -1073,7 +1073,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
       await check(`${phase} ${action} invalidates the original recovery grant atomically`, async () => {
         const f = await fixture(), h = receiving(f), r = view(h.echo.replica), replacement = {};
         try {
-          await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "new"));
+          await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "new"));
           const feed = await h.begin(); feed.send(feed.recoveryPlan);
           let hit = false, count = 0;
           const intervene = () => {
@@ -1102,7 +1102,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
     const f = await fixture(), h = receiving(f), r = view(h.echo.replica);
     let next: ReturnType<typeof replica> | undefined;
     try {
-      const commit = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "replacement-work"));
+      const commit = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "replacement-work"));
       const feed = await h.begin(); feed.send(feed.recoveryPlan);
       let hit = false;
       let installed: ReturnType<typeof r.scopes> | undefined;
@@ -1127,7 +1127,7 @@ export async function scoped_reconciliation_cases(check: (name: string, run: () 
     const f = await fixture(true), h = receiving(f, false);
     try {
       const local = h.echo.map!.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(91);
-      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "flat-cut"));
+      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "flat-cut"));
       await finish(h);
       assert.equal(h.echo.lastAppliedRev, f.l.rev); assert.equal(local.snap(["n"]), 91);
       const r = view(h.echo.replica); assert.ok(canonical_hson_graph_equal(r.a.root(r.id), f.a.root(f.pageId)));

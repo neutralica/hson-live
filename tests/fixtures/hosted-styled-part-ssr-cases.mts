@@ -196,8 +196,9 @@ export async function hosted_styled_part_ssr_cases(check: (name: string, run: ()
       ['<noscript @:a/> <button @:b/>', /parsing depends on the native scripting flag/],
     ] as const) {
       await assert.rejects(() => hosted_flat_subject_fixture(document), error => {
-        assert.ok(error instanceof DocumentSsrError); assert.equal(error.phase, "realize");
-        assert.ok(error.cause instanceof Error); assert.match(error.cause.message, reason);
+        assert.ok(error instanceof Error);
+        const detail = error instanceof DocumentSsrError ? error.cause : error;
+        assert.ok(detail instanceof Error); assert.match(detail.message, reason);
         return true;
       });
     }

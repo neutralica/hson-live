@@ -7,6 +7,7 @@ import { create_locus_hosted_aggregate_authority_internal } from "../../src/api/
 import { bind_locus_websocket } from "../../src/api/locus/locus.websocket.ts";
 import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
 import type { LocusWebSocketLike } from "../../src/index.ts";
+import { body_root } from "../helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { document_css_subject_cases } from "./livemap-document-css-subject-cases.mts";
 import { Hson, hsonLiveMap } from "../../src/index.ts";
@@ -167,12 +168,12 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     for (const char of PERSISTED_QUID_ALPHABET) {
       const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
       const aggregate = owner(map), id = aggregate.libraries()[0]!, quid = char.repeat(9);
-      aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0]), quid);
+      aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1, 0, 0, 0, 0]), quid);
       const overlay = aggregate.documentOverlay(id), ledger = aggregate.identityEpoch().issued(), root = aggregate.root(id);
       let commits = 0; const stop = map.commits.observe(() => commits++);
       try {
         assert.deepEqual(aggregate.projectDocumentCorrespondence(id, [quid, quid]),
-          [{ name: `_${quid}`, path: [0, 0, 0], disposition: "disposable" }]);
+          [{ name: `_${quid}`, path: [0, 0, 1, 0, 0, 0, 0], disposition: "disposable" }]);
         assert.equal(aggregate.projectDocumentCorrespondence(id, []), undefined);
         map.capture(); map.cut(); doc(map).render(); doc(map).document.byQuid(quid);
         assert.equal(map.capture().libraries[0]?.quads, undefined);
@@ -192,7 +193,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const aggregate = owner(map), id = aggregate.libraries()[0]!, addressed = subject(map, "_123456789");
     const ordinary = map.capture().libraries[0]!.quads;
     assert.deepEqual(aggregate.projectDocumentCorrespondence(id, [addressed.quid]), ordinary);
-    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1]), "123456789");
+    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1, 0, 0, 0, 1]), "123456789");
     atomic(map, () => aggregate.projectDocumentCorrespondence(id, ["123456789"]));
     assert.deepEqual(map.capture().libraries[0]!.quads, ordinary);
     const restored = install_libraries_snapshot(map.capture()).map;
@@ -201,7 +202,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("portable receiving correspondence is fresh operation-local and reprojects current payloads", () => {
     const source = fixture(), sourceOwner = owner(source), sourceId = sourceOwner.libraries()[0]!;
-    sourceOwner.acquireLocalDocumentIdentity(sourceId, validate_document_path([0, 0, 1]), "123456789");
+    sourceOwner.acquireLocalDocumentIdentity(sourceId, validate_document_path([0, 0, 1, 0, 0, 0, 1]), "123456789");
     const projected = sourceOwner.projectDocumentCorrespondence(sourceId, [subject(source).quid, "123456789"])!;
     const snapshot = bindingSnapshot(source.capture(), projected);
     const received = fixture(), aggregate = owner(received);
@@ -215,7 +216,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const anonymous = result.associations.find(entry => entry.disposition === "disposable")!;
     assert.equal(anonymous.libraryName, "page"); assert.equal(anonymous.library, aggregate.libraries()[0]);
     assert.equal(anonymous.name, "_123456789"); assert.equal(anonymous.quid, "aaaaaaaaa");
-    assert.deepEqual(anonymous.path, [0, 0, 1]);
+    assert.deepEqual(anonymous.path, [0, 0, 1, 0, 0, 0, 1]);
     assert.equal(aggregate.documentOverlay(anonymous.library).quidAtPath(anonymous.path), anonymous.quid);
     assert.equal(aggregate.identityEpoch().issued().has("123456789"), false);
     assert.equal(lookup(doc(received), anonymous.name), undefined);
@@ -225,7 +226,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     for (const name of ["root", "confirm"]) assert.notEqual(subject(received, name).quid, subject(source, name).quid);
     const again = aggregate.projectDocumentCorrespondence(anonymous.library, [anonymous.quid])!;
     assert.deepEqual(again.find(entry => entry.disposition === "disposable"),
-      { name: "_aaaaaaaaa", path: [0, 0, 1], disposition: "disposable" });
+      { name: "_aaaaaaaaa", path: [0, 0, 1, 0, 0, 0, 1], disposition: "disposable" });
     assert.equal(again.some(entry => entry.name === "_123456789"), false);
     const finalMap = hsonLiveMap.create(), finalOwner = owner(finalMap);
     const final = finalOwner.restorePortableLibrariesWithCorrespondence(bindingSnapshot(received.capture(), again));
@@ -246,24 +247,24 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   await check("disposable lifecycle follows moves precise mutations and terminal retirement", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } });
     const aggregate = owner(map), id = aggregate.libraries()[0]!;
-    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0]), "9abcdefgh");
+    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1, 0, 0, 0, 0]), "9abcdefgh");
     const snapshot = bindingSnapshot(map.capture(), aggregate.projectDocumentCorrespondence(id, ["9abcdefgh"]));
     const result = aggregate.restorePortableLibrariesWithCorrespondence(snapshot), subject = result.associations[0]!;
     const page = doc(map), project = () => aggregate.projectDocumentCorrespondence(id, [subject.quid]);
-    page.document.content.move(target(0, 0), 0, 1);
+    page.document.content.move(target(0, 0, 1, 0, 0, 0), 0, 1);
     assert.throws(result.assertCurrent, /changed during capture/);
-    assert.deepEqual(project()?.[0]?.path, [0, 0, 1]);
-    page.document.attrs.set(target(0, 0, 1), "title", "continued");
+    assert.deepEqual(project()?.[0]?.path, [0, 0, 1, 0, 0, 0, 1]);
+    page.document.attrs.set(target(0, 0, 1, 0, 0, 0, 1), "title", "continued");
     assert.equal(project()?.[0]?.name, `_${subject.quid}`);
-    page.document.content.remove(target(0, 0), 1);
+    page.document.content.remove(target(0, 0, 1, 0, 0, 0), 1);
     atomic(map, project);
     assert.ok(aggregate.identityEpoch().issued().has(subject.quid));
-    page.document.content.insert(target(0, 0), 1, { $_tag: "button", $_content: [] });
+    page.document.content.insert(target(0, 0, 1, 0, 0, 0), 1, { $_tag: "button", $_content: [] });
     atomic(map, project);
-    const replacement = acquire_document_identity(page.document, target(0, 0, 1));
-    const replacementQuid = aggregate.documentOverlay(id).quidAtPath(validate_document_path([0, 0, 1]))!;
+    const replacement = acquire_document_identity(page.document, target(0, 0, 1, 0, 0, 0, 1));
+    const replacementQuid = aggregate.documentOverlay(id).quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 1]))!;
     assert.notEqual(replacementQuid, subject.quid);
-    page.document.content.replace(target(0, 0), 1, { $_tag: "button", $_content: [] });
+    page.document.content.replace(target(0, 0, 1, 0, 0, 0), 1, { $_tag: "button", $_content: [] });
     assert.equal(replacement.active, false);
     atomic(map, () => aggregate.projectDocumentCorrespondence(id, [replacementQuid]));
     assert.equal(aggregate.projectDocumentCorrespondence(id, []), undefined);
@@ -290,18 +291,18 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("disposable exact admission rejects malformed disposition records paths and one-to-one collisions", () => {
     const map = fixture(), snapshot = map.capture();
-    const good = { name: "_012345678", path: [0, 0, 0], disposition: "disposable" };
+    const good = { name: "_012345678", path: [0, 0, 1, 0, 0, 0, 0], disposition: "disposable" };
     let dispositionReads = 0;
     const getter = Object.defineProperty({ name: good.name, path: good.path }, "disposition", { enumerable: true, get() { dispositionReads++; return "disposable"; } });
-    const sparse = [0, , 0], decorated = Object.assign([0, 0, 0], { extra: true });
+    const sparse = [0, , 0], decorated = Object.assign([0, 0, 1, 0, 0, 0, 0], { extra: true });
     for (const records of [
       [{ ...good, disposition: "authored" }], [{ ...good, disposition: undefined }], [{ ...good, disposition: null }],
       [{ ...good, disposition: false }], [getter], [{ ...good, extra: true }],
       ...["_01234567", "_0123456789", "_01234567i", "_01234567l", "_01234567o", "_01234567u", "_ABCDEFGHJ", "012345678", "__012345678"].map(name => [{ ...good, name }]),
-      ...[[], [0, 0], [99], [0, 0, 0, 0], [-0], [-1], [0.5], [NaN], [Infinity], ["0"], sparse, decorated].map(path => [{ ...good, path }]),
-      [good, { ...good, path: [0, 0, 1] }], [good, { ...good, name: "_123456789" }],
-      [good, { name: good.name, path: [0, 0, 1] }],
-      [{ name: "_012345678", path: [0, 0, 0] }, { ...good, name: "_123456789" }],
+      ...[[], [0, 0, 1, 0, 0, 0], [99], [0, 0, 1, 0, 0, 0, 0, 0], [-0], [-1], [0.5], [NaN], [Infinity], ["0"], sparse, decorated].map(path => [{ ...good, path }]),
+      [good, { ...good, path: [0, 0, 1, 0, 0, 0, 1] }], [good, { ...good, name: "_123456789" }],
+      [good, { name: good.name, path: [0, 0, 1, 0, 0, 0, 1] }],
+      [{ name: "_012345678", path: [0, 0, 1, 0, 0, 0, 0] }, { ...good, name: "_123456789" }],
     ]) {
       atomic(map, () => owner(map).restorePortableLibrariesWithCorrespondence(bindingSnapshot(snapshot, records)));
       assert.throws(() => install_libraries_snapshot(bindingSnapshot(snapshot, records)));
@@ -311,7 +312,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     let reads = 0;
     Object.defineProperty(Object.prototype, "disposition", { configurable: true, get() { reads++; return "disposable"; } });
     try {
-      const plain = decode_document_quads([{ name: "_012345678", path: [0, 0, 0] }], owner(map).root(owner(map).libraries()[0]!), "document")!;
+      const plain = decode_document_quads([{ name: "_012345678", path: [0, 0, 1, 0, 0, 0, 0] }], owner(map).root(owner(map).libraries()[0]!), "document")!;
       assert.equal(Object.hasOwn(plain[0]!, "disposition"), false);
       const received = install_libraries_snapshot(bindingSnapshot(snapshot, plain)).map;
       assert.ok(lookup(doc(received), "_012345678"));
@@ -322,7 +323,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("Library-qualified equal disposable names reconstruct independently without cross-Library authority", () => {
     const source = hsonLiveMap.fromLibraries({ one: { document: '<button/>' }, two: { document: '<button/>' } });
-    const snapshot = source.capture(), records = [{ name: "_012345678", path: validate_document_path([0]), disposition: "disposable" as const }];
+    const snapshot = source.capture(), records = [{ name: "_012345678", path: validate_document_path([0, 0, 1, 0, 0]), disposition: "disposable" as const }];
     const candidate = { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry, quads: records })) };
     const map = hsonLiveMap.create(), aggregate = owner(map), result = aggregate.restorePortableLibrariesWithCorrespondence(candidate);
     result.assertCurrent(); assert.equal(result.associations.length, 2);
@@ -336,15 +337,15 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     let exposed: unknown, changed = false;
     const requested = new Proxy([subject(map).quid], {
       ownKeys(array) {
-        if (!changed) { changed = true; acquire_document_identity(doc(map).document, target(0, 0, 1)); }
+        if (!changed) { changed = true; acquire_document_identity(doc(map).document, target(0, 0, 1, 0, 0, 0, 1)); }
         return Reflect.ownKeys(array);
       },
     });
     const before = map.capture();
     assert.throws(() => { exposed = aggregate.projectDocumentCorrespondence(id, requested); }, /changed during capture/);
     assert.equal(exposed, undefined); assert.deepEqual(map.capture(), before);
-    const snapshot = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1], disposition: "disposable" }]);
-    const stop = aggregate.observeRestore(() => doc(map).document.attrs.set(target(0, 0, 1), "title", "after installation"));
+    const snapshot = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1, 0, 0, 0, 1], disposition: "disposable" }]);
+    const stop = aggregate.observeRestore(() => doc(map).document.attrs.set(target(0, 0, 1, 0, 0, 0, 1), "title", "after installation"));
     try {
       const result = aggregate.restorePortableLibrariesWithCorrespondence(snapshot);
       assert.throws(result.assertCurrent, /changed during capture/);
@@ -355,7 +356,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   });
   await check("disposable reconstruction preserves management exhaustion reentrant and rollback fences", () => {
     const map = fixture(), aggregate = owner(map), id = aggregate.libraries()[0]!;
-    const candidate = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1], disposition: "disposable" }]);
+    const candidate = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1, 0, 0, 0, 1], disposition: "disposable" }]);
     const manager = {}; aggregate.claimManagement(manager);
     try {
       atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(candidate));
@@ -366,8 +367,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     try { atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(candidate)); }
     finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
     const several = bindingSnapshot(map.capture(), [
-      { name: "_123456789", path: [0, 0, 0], disposition: "disposable" },
-      { name: "_23456789a", path: [0, 0, 1], disposition: "disposable" },
+      { name: "_123456789", path: [0, 0, 1, 0, 0, 0, 0], disposition: "disposable" },
+      { name: "_23456789a", path: [0, 0, 1, 0, 0, 0, 1], disposition: "disposable" },
     ]);
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => "aaaaaaaaa");
     try { atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(several)); }
@@ -375,7 +376,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const before = map.capture(), beforeEpoch = aggregate.identityEpoch().current(), beforeSubject = subject(map);
     let first = true, exposed: unknown;
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => {
-      if (first) { first = false; acquire_document_identity(doc(map).document, target(0, 0, 1)); }
+      if (first) { first = false; acquire_document_identity(doc(map).document, target(0, 0, 1, 0, 0, 0, 1)); }
       return mint_hson_node_quid();
     });
     try { assert.throws(() => { exposed = aggregate.restorePortableLibrariesWithCorrespondence(candidate); }, /changed during capture/); }
@@ -383,7 +384,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(exposed, undefined); assert.deepEqual(map.capture(), before); assert.deepEqual(subject(map), beforeSubject);
     assert.equal(aggregate.identityEpoch().current(), beforeEpoch);
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' } }), plainOwner = owner(plain), plainId = plainOwner.libraries()[0]!;
-    atomic(plain, () => plainOwner.acquireLocalDocumentIdentity(plainId, validate_document_path([0, 0, 0]), "abcdefghj", {
+    atomic(plain, () => plainOwner.acquireLocalDocumentIdentity(plainId, validate_document_path([0, 0, 1, 0, 0, 0, 0]), "abcdefghj", {
       preflight() { assert.throws(() => plainOwner.projectDocumentCorrespondence(plainId, ["abcdefghj"]), /incomplete identity transaction/);
         return { apply() {}, rollback() {}, release() {} }; },
       realize() { assert.throws(() => plainOwner.projectDocumentCorrespondence(plainId, ["abcdefghj"]), /incomplete identity transaction/); throw Error("rollback"); },
@@ -406,7 +407,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const payload = JSON.parse(Buffer.from(encode_ssr_bootstrap(plain), "base64url").toString());
     assert.equal(Object.hasOwn(payload.payload.libraries[0], "quads"), false);
     assert.equal(encode_ssr_bootstrap(decode_ssr_bootstrap(encode_ssr_bootstrap(plain)).bootstrap), encode_ssr_bootstrap(plain));
-    for (const quads of [null, [], [{ name: "bad name", path: [0, 0] }], [{ name: "x", path: [99] }], [{ name: "x", path: [0, 0], quid: subject(map).quid }]]) {
+    for (const quads of [null, [], [{ name: "bad name", path: [0, 0, 1, 0, 0, 0] }], [{ name: "x", path: [99] }], [{ name: "x", path: [0, 0, 1, 0, 0, 0], quid: subject(map).quid }]]) {
       assert.throws(() => encode_ssr_bootstrap(bindingSnapshot(snapshot, quads)));
       const raw = JSON.parse(Buffer.from(encoded, "base64url").toString()); raw.payload.libraries[0].quads = quads;
       assert.throws(() => decode_ssr_bootstrap(Buffer.from(JSON.stringify(raw)).toString("base64url")));
@@ -432,8 +433,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const original = Object.getOwnPropertyDescriptor(Object.prototype, "quads");
     let reads = 0;
     try {
-      for (const descriptor of [{ value: [{ name: "inherited", path: [0, 0] }], writable: true },
-        { get: () => { reads++; return [{ name: "inherited", path: [0, 0] }]; } }]) {
+      for (const descriptor of [{ value: [{ name: "inherited", path: [0, 0, 1, 0, 0, 0] }], writable: true },
+        { get: () => { reads++; return [{ name: "inherited", path: [0, 0, 1, 0, 0, 0] }]; } }]) {
         Object.defineProperty(Object.prototype, "quads", { ...descriptor, configurable: true });
         const created = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
         const restored = install_libraries_snapshot(snapshot).map;
@@ -458,7 +459,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   await check("own QUAD accessors fail without execution at public canonical snapshot and replay ingress", () => {
     let reads = 0;
     const accessor = <T extends object>(input: T): T => Object.defineProperty(input, "quads", {
-      enumerable: true, get() { reads++; return [{ name: "injected", path: [0, 0] }]; } });
+      enumerable: true, get() { reads++; return [{ name: "injected", path: [0, 0, 1, 0, 0, 0] }]; } });
     assert.throws(() => hsonLiveMap.fromLibraries({ page: accessor({ document: '<main/>' }) }));
     assert.throws(() => authored({ page: accessor({ document: '<main/>' }) }));
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } }), snapshot = structuredClone(plain.capture());
@@ -488,7 +489,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
         aggregate.discard(prepared.transition);
       }, false);
       const stale = aggregate.prepareAddLibrariesManaged(manager, [definition]);
-      acquire_document_identity(doc(map).document, target(0, 0, 1));
+      acquire_document_identity(doc(map).document, target(0, 0, 1, 0, 0, 0, 1));
       atomic(map, () => aggregate.accept(stale.transition));
     } finally { aggregate.releaseManagement(manager); }
   });
@@ -513,10 +514,10 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
         if (addressed) assert.notEqual(subject(client).quid, subject(map).quid);
         await server.sessions.updateProjection(echo.session.sessionId!, { libraries: ["page"] });
         assert.equal(echo.diagnostics().status, "live"); assert.throws(() => client.data.must("extra"));
-        if (addressed) assert.deepEqual(subject(client).path, [0, 0, 0]);
-        await server.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("Document"); page.attrs.set(target(0), "title", "after"); });
+        if (addressed) assert.deepEqual(subject(client).path, [0, 0, 1, 0, 0, 0, 0]);
+        await server.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("Document"); page.attrs.set(target(0, 0, 1, 0, 0), "title", "after"); });
         assert.equal(echo.diagnostics().status, "live"); assert.equal(echo.lastAppliedRev, server.rev);
-        assert.equal(doc(client).document.attrs.get(target(0), "title"), "after");
+        assert.equal(doc(client).document.attrs.get(target(0, 0, 1, 0, 0), "title"), "after");
         if (addressed) assert.ok(subject(client));
         await server.sessions.updateProjection(echo.session.sessionId!, { libraries: ["hidden"] });
         assert.equal(echo.diagnostics().status, "live");
@@ -545,27 +546,27 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     for (const entry of captured.libraries) assert.equal(JSON.stringify(decode_hosted_root(entry.root)).includes("quad"), false);
   });
   await check("movement and precise mutation before and after portable restoration preserve occurrence correspondence", () => {
-    const map = fixture(); doc(map).at([]).asElement()!.move(0, 1);
-    assert.deepEqual(subject(map).path, [0, 0, 1]);
+    const map = fixture(); doc(map).at([1, 0]).asElement()!.move(0, 1);
+    assert.deepEqual(subject(map).path, [0, 0, 1, 0, 0, 0, 1]);
     const receiving = install_libraries_snapshot(map.capture()).map, quid = subject(receiving).quid;
-    assert.deepEqual(subject(receiving).path, [0, 0, 1]);
-    doc(receiving).document.attrs.set(target(0, 0, 1), "title", "continued");
+    assert.deepEqual(subject(receiving).path, [0, 0, 1, 0, 0, 0, 1]);
+    doc(receiving).document.attrs.set(target(0, 0, 1, 0, 0, 0, 1), "title", "continued");
     assert.equal(subject(receiving).quid, quid);
     const next = install_libraries_snapshot(receiving.capture()).map;
-    assert.deepEqual(subject(next).path, [0, 0, 1]);
-    doc(next).at([]).asElement()!.move(1, 0);
-    assert.deepEqual(subject(next).path, [0, 0, 0]);
-    doc(next).document.content.replace(target(0, 0), 0, { $_tag: "button", $_content: [] });
+    assert.deepEqual(subject(next).path, [0, 0, 1, 0, 0, 0, 1]);
+    doc(next).at([1, 0]).asElement()!.move(1, 0);
+    assert.deepEqual(subject(next).path, [0, 0, 1, 0, 0, 0, 0]);
+    doc(next).document.content.replace(target(0, 0, 1, 0, 0, 0), 0, { $_tag: "button", $_content: [] });
     assert.equal(lookup(doc(next), "confirm"), undefined);
     assert.equal(lookup(doc(install_libraries_snapshot(next.capture()).map), "confirm"), undefined);
   });
   await check("retirement omits associations and portable reinsertion never resurrects an address", () => {
     const map = authored({ page: { document: '<main <button @:only/>/> ' } });
-    doc(map).document.content.remove(target(0), 0);
+    doc(map).document.content.remove(target(0, 0, 1, 0, 0), 0);
     assert.equal(Object.hasOwn(map.capture().libraries[0]!, "quads"), false);
     const received = install_libraries_snapshot(map.capture()).map;
-    doc(received).at([]).asElement()!.insert(0, { $_tag: "button", $_content: [] });
-    acquire_document_identity(doc(received).document, target(0, 0, 0));
+    doc(received).at([1, 0]).asElement()!.insert(0, { $_tag: "button", $_content: [] });
+    acquire_document_identity(doc(received).document, target(0, 0, 1, 0, 0, 0, 0));
     assert.equal(lookup(doc(received), "only"), undefined);
     assert.equal(Object.hasOwn(received.capture().libraries[0]!, "quads"), false);
   });
@@ -580,15 +581,15 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(JSON.stringify(owner(map).captureSemanticCheckpoint()).includes("quads"), false);
   });
   await check("exact binding decoding rejects malformed names shapes paths duplicates and ineligible subjects atomically", () => {
-    const map = fixture(), snapshot = map.capture(), path = [0, 0, 0];
+    const map = fixture(), snapshot = map.capture(), path = [0, 0, 1, 0, 0, 0, 0];
     const malformed: unknown[] = [null, {}, [], undefined, "confirm", [null], [{ name: "", path }],
       ...["2bad", "é", "a-b", "a.b", "a\n", "A".repeat(129)].map(name => [{ name, path }]),
       [{ name: "ok" }], [{ name: "ok", path, quid: "000009001" }], [{ name: "ok", path, epoch: 0 }],
       [{ name: "ok", path, extra: true }], [{ name: "ok", path: "0" }], [{ name: "ok", path: [-1] }],
       [{ name: "ok", path: [-0] }], [{ name: "ok", path: [0.5] }], [{ name: "ok", path: ["0"] }],
-      [{ name: "ok", path: [99] }], [{ name: "ok", path: [] }], [{ name: "ok", path: [0, 0] }],
-      [{ name: "ok", path: [0, 0, 0, 0, 0] }], [{ name: "a", path }, { name: "a", path: [0] }],
-      [{ name: "a", path }, { name: "b", path }], [{ name: "z", path }, { name: "a", path: [0] }],
+      [{ name: "ok", path: [99] }], [{ name: "ok", path: [] }], [{ name: "ok", path: [0, 0, 1, 0, 0, 0] }],
+      [{ name: "ok", path: [0, 0, 1, 0, 0, 0, 0, 0, 0] }], [{ name: "a", path }, { name: "a", path: [0, 0, 1, 0, 0] }],
+      [{ name: "a", path }, { name: "b", path }], [{ name: "z", path }, { name: "a", path: [0, 0, 1, 0, 0] }],
       [{ name: "a", path: Object.assign([...path], { extra: 1 }) }],
       [{ name: "a", path: Array(1) }], Object.assign([{ name: "a", path }], { extra: 1 }),
       [Object.assign({ name: "a", path }, { [Symbol("extra")]: 1 })],
@@ -600,14 +601,14 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.throws(() => install_libraries_snapshot(invalid));
     }
     const state = hsonLiveMap.fromLibraries({ state: { data: { x: 1 } } });
-    atomic(map, () => owner(map).restorePortableLibraries(bindingSnapshot(state.capture(), [{ name: "x", path: [0] }])));
+    atomic(map, () => owner(map).restorePortableLibraries(bindingSnapshot(state.capture(), [{ name: "x", path: [0, 0, 1, 0, 0] }])));
   });
   await check("portable coordinates use own array storage despite hostile inherited iteration", () => {
     const map = fixture(), snapshot = map.capture();
     const coordinates = [99];
-    Object.setPrototypeOf(coordinates, { entries() { return [[0, 0]][Symbol.iterator](); } });
+    Object.setPrototypeOf(coordinates, { entries() { return [[0, 0, 1, 0, 0, 0]][Symbol.iterator](); } });
     const associations = [{ name: "bad", path: coordinates }];
-    Object.setPrototypeOf(associations, { map() { return [{ name: "good", path: [0] }]; } });
+    Object.setPrototypeOf(associations, { map() { return [{ name: "good", path: [0, 0, 1, 0, 0] }]; } });
     atomic(map, () => map.restore(bindingSnapshot(snapshot, associations)));
     assert.throws(() => install_libraries_snapshot(bindingSnapshot(snapshot, associations)));
   });
@@ -620,10 +621,11 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     atomic(map, () => map.restore(invalid)); assert.throws(() => install_libraries_snapshot(invalid));
     const wrongRoot: HsonNode = { $_tag: "_hson_root", $_content: [{ $_tag: "main", $_content: [{ $_tag: "_hson_arr", $_content: [] }] }] };
     atomic(map, () => map.restore({ ...snapshot, libraries: [{ ...entry, root: encode_hosted_root(wrongRoot) }] }));
-    const restricted = authored({ page: { document: '<main @:only/>', schema: Hson.schema`<type "document" tag "main" content "empty">` } });
+    const restricted = authored({ page: { document: '<main @:only/>', schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>` } });
     const checkpoint = owner(restricted).captureSemanticCheckpoint();
+    const incompatible = doc(restricted).root(); body_root(incompatible).$_tag = "aside";
     assert.throws(() => owner(restricted).installSemanticCheckpoint({ ...checkpoint,
-      libraries: [{ ...checkpoint.libraries[0]!, root: { $_tag: "_hson_root", $_content: [{ $_tag: "aside", $_content: [] }] }, quads: [{ name: "only", path: validate_document_path([0]) }] }] }));
+      libraries: [{ ...checkpoint.libraries[0]!, root: incompatible, quads: [{ name: "only", path: validate_document_path([0, 0, 1, 0, 0]) }] }] }));
   });
   await check("allocation exhaustion leaves the complete restored registry overlay epoch and ledger untouched", () => {
     const map = fixture(), aggregate = owner(map), snapshot = map.capture(), epoch = aggregate.identityEpoch().current();
@@ -639,7 +641,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const map = fixture(), aggregate = owner(map), snapshot = map.capture(), before = subject(map), generationLedger = aggregate.identityEpoch().issued().size;
     let first = true;
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => {
-      if (first) { first = false; acquire_document_identity(doc(map).document, target(0, 0, 1)); }
+      if (first) { first = false; acquire_document_identity(doc(map).document, target(0, 0, 1, 0, 0, 0, 1)); }
       return mint_hson_node_quid();
     });
     try { assert.throws(() => map.restore(snapshot), /changed during capture/); }
@@ -651,7 +653,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const map = fixture(), aggregate = owner(map), id = aggregate.libraries()[0]!, before = subject(map), snapshot = map.capture();
     const captures = [() => map.capture(), () => aggregate.captureHosted(), () => aggregate.captureSemanticCheckpoint(),
       () => aggregate.captureSelectedHosted(["page"], false), () => map.cut()];
-    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1]), mint_hson_node_quid(), {
+    aggregate.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1, 0, 0, 0, 1]), mint_hson_node_quid(), {
       preflight() { for (const capture of captures) assert.throws(capture, /incomplete identity transaction/);
         return { apply() {}, rollback() {}, release() {} }; },
       realize() { for (const capture of captures) assert.throws(capture, /incomplete identity transaction/); },
@@ -667,7 +669,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       if (typeof this === "object" && this !== null && Object.hasOwn(this, "format")
         && Reflect.get(this, "format") === "hson-livemap-libraries-snapshot") {
         observations++;
-        if (observations === 3) acquire_document_identity(doc(map).document, target(0, 0, 1));
+        if (observations === 3) acquire_document_identity(doc(map).document, target(0, 0, 1, 0, 0, 0, 1));
       }
       return this;
     } });
@@ -725,7 +727,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       const next = await projection(seed, ["seed", "added"]), snapshot = capture_selected_authority_projection_snapshot(seed, next);
       const portable = authority_projection_as_client_composition_internal(snapshot), topology = prepared.transition.commit.topology!;
       install_client_projected_topology_internal(client, management, topology, portable.registryDigest);
-      assert.deepEqual(subject(client, "confirm", "added").path, [0, 0, 0]);
+      assert.deepEqual(subject(client, "confirm", "added").path, [0, 0, 1, 0, 0, 0, 0]);
       assert.notEqual(subject(client, "confirm", "added").quid, seedOwner.documentQuad(prepared.identities[0]!, "confirm", undefined)?.quid);
       const frame = { format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "projection-change", id: "forward",
         logicalMapId: snapshot.authority.logicalMapId, incarnationId: snapshot.authority.incarnationId,
@@ -787,7 +789,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.equal(beforeRemoval.active, false); assert.throws(() => beforeRemoval.attrs.set("title", "reused"));
     } finally { owner(client).releaseManagement(manager); }
     const changedAddress = { ...projected, libraries: projected.libraries.map(entry => entry.name === "public"
-      ? { ...entry, quads: [{ name: "renamed", path: validate_document_path([0]) }] } : entry) };
+      ? { ...entry, quads: [{ name: "renamed", path: validate_document_path([0, 0, 1, 0, 0]) }] } : entry) };
     assert.notEqual(authority_projection_state_fingerprint_internal(projected), authority_projection_state_fingerprint_internal(changedAddress));
   });
   await check("legacy flat restored Parts compose independently with preserved shell and local Part addresses", () => {
@@ -809,18 +811,18 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       assert.ok(adapter.state("quad-host")?.checkpoint.chunks.some(chunk => chunk.part === "quads"));
       assert.equal(JSON.stringify([...adapter.chunks.values()]).includes(old), false);
       await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("doc");
-        page.graph({ domain: "graph", op: "move-content", target: target(0, 0), from: 0, to: 1 }); });
+        page.graph({ domain: "graph", op: "move-content", target: target(0, 0, 1, 0, 0, 0), from: 0, to: 1 }); });
       const recovered = await load("quad-host", { persistence: adapter }); assert.ok(recovered);
-      try { assert.deepEqual(subject(recovered.map).path, [0, 0, 1]); assert.notEqual(subject(recovered.map).quid, old); }
+      try { assert.deepEqual(subject(recovered.map).path, [0, 0, 1, 0, 0, 0, 1]); assert.notEqual(subject(recovered.map).quid, old); }
       finally { recovered.dispose(); }
       await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("doc");
-        page.attrs.set(target(0, 0, 1), "title", "continued"); });
+        page.attrs.set(target(0, 0, 1, 0, 0, 0, 1), "title", "continued"); });
       await locus.checkpoint();
       const restored = await load("quad-host", { persistence: adapter }); assert.ok(restored);
-      try { assert.deepEqual(subject(restored.map).path, [0, 0, 1]); assert.notEqual(subject(restored.map).quid, old); }
+      try { assert.deepEqual(subject(restored.map).path, [0, 0, 1, 0, 0, 0, 1]); assert.notEqual(subject(restored.map).quid, old); }
       finally { restored.dispose(); }
       await locus.stage(draft => { const page = draft.doc.must("page"); if (page.mode !== "document") throw Error("doc");
-        page.graph({ domain: "graph", op: "remove-content", target: target(0, 0), index: 1 }); });
+        page.graph({ domain: "graph", op: "remove-content", target: target(0, 0, 1, 0, 0, 0), index: 1 }); });
       const retired = await load("quad-host", { persistence: adapter }); assert.ok(retired);
       try { assert.equal(lookup(doc(retired.map), "confirm"), undefined); assert.ok(lookup(doc(retired.map), "root")); }
       finally { retired.dispose(); }
@@ -838,7 +840,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       await adapter.appendCommit(record); aggregate.accept(prepared.transition);
       const received = await load("quad-topology-tail", { persistence: adapter }); assert.ok(received);
       try {
-        const current = subject(received.map); assert.deepEqual(current.path, [0, 0, 0]);
+        const current = subject(received.map); assert.deepEqual(current.path, [0, 0, 1, 0, 0, 0, 0]);
         assert.notEqual(current.quid, aggregate.documentQuad(prepared.identities[0]!, "confirm", undefined)?.quid);
         assert.deepEqual(received.runtimeOwnership, [{ name: "page", ownership: "shared" }]);
         assert.deepEqual(received.map.capture().libraries[0]?.quads, captured.quads);

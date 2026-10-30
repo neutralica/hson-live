@@ -74,7 +74,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     assert.equal(parts.mode, "data-object");
     assertDeck(page);
     assert.deepEqual(parts.snap(), deckParts);
-    assert.throws(() => page.render(), /browser-parser realization/);
+    assert.match(page.render(), /^<!doctype html><html><head>/);
     if (!dynamic) {
       assert.throws(() => map.capture(), /Echo\/checkpoint|scoped/i);
     }
@@ -102,7 +102,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
             if (admission === "initial") assertDeck(selected);
             else assert.match(JSON.stringify(selected.root()), /Dynamic paragraph/);
             if (admission === "initial") {
-              assert.throws(() => selected.render(), /browser-parser realization/);
+              assert.match(selected.render(), /^<!doctype html><html><head>/);
               if (destination === "shared") {
                 const hosted = await locus.session.create({ libraries: ["page"] });
                 const snapshot = hosted.now().libs;
@@ -111,7 +111,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
                 assert.match(JSON.stringify(projected.css), /purple/);
                 assert.doesNotMatch(JSON.stringify(projected.root), /hson-part|%\{/);
                 if (ownership === "private") assert.ok(!snapshot.libraries.some(entry => entry.name === "parts"));
-                assert.throws(() => hosted.now({ html: "page" }), /browser-parser realization/);
+                assert.match(hosted.now({ html: "page" }).html, /^<!doctype html><html><head>/);
               }
             }
             // Project definitions independently; private definitions must remain private.
@@ -517,7 +517,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       assert.equal(snapshot.libraries[0]!.scopes!.occurrences.length, 1);
       assert.match(JSON.stringify(snapshot.libraries[0]!.css), /red/);
       assert.doesNotMatch(JSON.stringify(snapshot), /"name":"parts"|hson-part/);
-      assert.throws(() => session.now({ html: "page" }), /browser-parser realization/);
+      assert.match(session.now({ html: "page" }).html, /^<!doctype html><html><head>/);
     } finally { locus.dispose(); }
   });
 

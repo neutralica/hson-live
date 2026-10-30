@@ -115,7 +115,7 @@ export async function structured_css_cases(check: (name: string, run: () => void
     assert.throws(()=>m.batch(w=>{w.doc.must('page').at([]).asElement().attrs.set('title','unpublished');
       w.parts.must('parts').at(['nav']).replace(part({colour:'red'}) as never);}));
     assert.equal(m.rev,rev);assert.equal(page.css.snapshot(),before);
-    assert.throws(()=>m.addLibraries({bad:{document:'<main <hson-part lib="parts" at="nav"/>/>',schema:Hson.schema`<type "document" tag "main" content "empty">`}} as never));
+    assert.throws(()=>m.addLibraries({bad:{document:'<main <hson-part lib="parts" at="nav"/>/>',schema:Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`}} as never));
     assert.equal(page.css.snapshot(),before);assert.equal(authority(m).identityEpoch().issued(),ledger);
     const deferred=m.parts.must('parts').at(['nav']).write();
     const markup=page.render();

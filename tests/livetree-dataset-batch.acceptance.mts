@@ -1,4 +1,5 @@
 // @hson-live-external-test
+import { body_root } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { Hson, hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -36,7 +37,7 @@ class DatasetElement extends FakeElement {
 }
 
 const source = '<main title="original" data-first="before" data-remove="old"/>';
-const schema = Hson.schema`<type "document" tag "main" content "empty">`;
+const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 function fixture(bound: boolean, document = source) {
   const map = bound ? hson.liveMap.fromLibraries({ page: { document, schema } }) : undefined;
   const doc = map?.doc.must("page");
@@ -111,7 +112,7 @@ for (const bound of [false, true]) {
       assert.equal(f.map?.rev, bound ? 1 : undefined);
       assert.equal(f.publications.length, bound ? 1 : 0);
       if (f.doc !== undefined) {
-        const canonical = f.doc.root().$_content[0];
+        const canonical = body_root(f.doc.root());
         assert.ok(is_Node(canonical));
         assert.deepEqual(canonical.$_attrs, expected);
         assert.deepEqual(f.observed, [f.doc.root()]);
@@ -160,7 +161,7 @@ for (const bound of [false, true]) {
       assert.equal(f.map?.rev, bound ? 1 : undefined);
       assert.equal(f.publications.length, bound ? 1 : 0);
       if (f.doc !== undefined) {
-        const canonical = f.doc.root().$_content[0];
+        const canonical = body_root(f.doc.root());
         assert.ok(is_Node(canonical));
         assert.deepEqual(canonical.$_attrs, expected);
       }
@@ -197,7 +198,7 @@ for (const bound of [false, true]) {
       assert.equal(f.map?.rev, bound ? 1 : undefined);
       assert.equal(f.publications.length, bound ? 1 : 0);
       if (f.doc !== undefined) {
-        const canonical = f.doc.root().$_content[0];
+        const canonical = body_root(f.doc.root());
         assert.ok(is_Node(canonical));
         assert.deepEqual(f.tree.node.$_attrs, canonical.$_attrs);
         assert.deepEqual(f.observed, [f.doc.root()], "observers see only the complete accepted change");

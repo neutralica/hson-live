@@ -6,19 +6,16 @@ import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "../../src/api/ssr/in
 
 await scout_delivery_cases();
 
-const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>` } });
+const map = hsonLiveMap.fromLibraries({ page: { document: `<main <p "worker"/>/>`, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>` } });
 const result = map.cut({ html: "page" });
-const emptyMap = hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: Hson.schema`<type "document" content <sequence []>>` } });
-let emptySsrRejected = false;
+let emptyAdmissionRejected = false;
 try {
-  emptyMap.cut({ html: "page" });
+  hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] } } });
 } catch (cause) {
-  emptySsrRejected = cause instanceof Error
-    && cause.cause instanceof Error
-    && /exactly one ordinary canonical document root/.test(cause.cause.message);
+  emptyAdmissionRejected = cause instanceof Error && /exactly one authored element/.test(cause.message);
 }
 const encoded = encode_ssr_bootstrap(result.libs);
-const largeMap = hsonLiveMap.fromLibraries({ page: { document: `<main "worker-large:${"x".repeat(5 * 1_024 * 1_024)}"/>`, schema: Hson.schema`<type "document" tag "main" content "string">` } });
+const largeMap = hsonLiveMap.fromLibraries({ page: { document: `<main "worker-large:${"x".repeat(5 * 1_024 * 1_024)}"/>`, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>` } });
 const largeLibs = largeMap.cut({ html: "page" }).libs;
 const largeEncoded = encode_ssr_bootstrap(largeLibs);
 parentPort?.postMessage(Object.freeze({
@@ -28,7 +25,6 @@ parentPort?.postMessage(Object.freeze({
   decoded: decode_ssr_bootstrap(encoded),
   largeEncoded,
   largeDecoded: decode_ssr_bootstrap(largeEncoded),
-  emptyRoot: emptyMap.doc.must("page").root(),
-  emptySsrRejected,
+  emptyAdmissionRejected,
   hasDocument: "document" in globalThis,
 }));

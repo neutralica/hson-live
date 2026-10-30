@@ -4,6 +4,30 @@ import type { Element as SourceElement } from "domhandler";
 import { _throw_transform_err } from "../../../../core/errors.js";
 import { is_svg_markup } from "../node-utils/node-from-svg.js";
 
+/** Chromium can accept reserved bindings without adding a diagnostic element.
+ * Enforce Namespaces in XML's reserved bindings and whitespace-free namespace
+ * names on decoded source
+ * attributes, including declarations on descendants and escaped URI values.
+ * Native XML decoding continues to own the remaining well-formedness rules.
+ */
+function svg_reserved_bindings_valid(source: SourceElement): boolean {
+  const xml = "http://www.w3.org/XML/1998/namespace";
+  const xmlns = "http://www.w3.org/2000/xmlns/";
+  const pending = [source];
+  while (pending.length !== 0) {
+    const element = pending.pop();
+    if (!element) break;
+    for (const [name, value] of Object.entries(element.attribs)) {
+      if (name !== "xmlns" && !name.startsWith("xmlns:")) continue;
+      const prefix = name === "xmlns" ? "" : name.slice(6);
+      if (/[\t\n\r ]/.test(value) || prefix === "xmlns" || value === xmlns
+        || (prefix === "xml" ? value !== xml : value === xml)) return false;
+    }
+    pending.push(...element.children.filter(isTag));
+  }
+  return true;
+}
+
 /** Native XML decoding must not add elements absent from the source. In the
  * ordinary SVG routes, element-producing entity expansion is not established
  * by lexical topology. Comparing names, nesting and order catches inserted browser
@@ -49,7 +73,8 @@ export function decode_public_svg_source(raw: string, Parser: new () => DOMParse
   let completion = "hson-svg-source-end";
   while (raw.includes(completion)) completion += "_";
   const parsed = new Parser().parseFromString(`${raw}<?${completion}?>`, "image/svg+xml");
-  if (!source || parsed.lastChild?.nodeType !== 7 || parsed.lastChild.nodeName !== completion
+  if (!source || !svg_reserved_bindings_valid(source)
+    || parsed.lastChild?.nodeType !== 7 || parsed.lastChild.nodeName !== completion
     || parsed.documentElement?.tagName.toLowerCase() !== "svg"
     || !svg_source_elements_match(source, parsed.documentElement)) {
     return _throw_transform_err("SVG XML parsing failed", operation, raw.slice(0, 200), undefined,

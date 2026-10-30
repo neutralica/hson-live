@@ -7,11 +7,11 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
 const map = admit_exact_runtime_livemap_libraries({
   state: { data: { count: 4 }, schema: StateSchema },
   omitted: { data: true },
-  page: { document: parse_hson_exact_runtime('<main <p @000009711 "worker"/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
+  page: { document: parse_hson_exact_runtime('<html <head/> <body <main <p @000009711 "worker"/>/>/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
 });
 const node = map.cut({ data: ["state"], documents: ["page"], html: "page" });
 const installed = install_libraries_snapshot(node.libs).map;
@@ -28,7 +28,7 @@ assert.equal(worker.hasDocument, false);
 assert.deepEqual(worker.strictTagged, strict_tagged_receiver_controls());
 assert.deepEqual(worker.strictTagged, { snapshotRejections: 5, actionRejections: 14, replayRejections: 7 });
 assert.deepEqual(worker.runtimeAdmission, {
-  rev: 1, html: "<main>worker</main>", digest: worker.runtimeAdmission.digest,
+  rev: 1, html: "<!doctype html><html><head></head><body><main>worker</main></body></html>", digest: worker.runtimeAdmission.digest,
   replayDigest: worker.runtimeAdmission.digest,
 });
 assert.equal(worker.html, node.html);

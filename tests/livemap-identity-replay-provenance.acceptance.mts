@@ -27,7 +27,7 @@ function check(name: string, run: () => void): void {
 }
 const Q1 = "000005b01";
 const Q2 = "000005b02";
-const PageSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const target = (index: number) => ({ kind: "path" as const, path: [0, 0, index] });
 
 check("public document admission rejects generated QUID claims", () => {

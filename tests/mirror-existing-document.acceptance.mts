@@ -3,7 +3,7 @@ import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, path, projected_element, raw_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
-import { create_livetree_in_runtime } from "../src/api/livetree/creation/create-livetree.ts";
+import { create_linked_livetree_in_runtime } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import {
@@ -15,7 +15,6 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import {
   DOCUMENT_MIRROR_ALREADY_BOUND_ERROR_CODE,
   DOCUMENT_MIRROR_DOM_MAPPING_MISMATCH_ERROR_CODE,
-  DOCUMENT_MIRROR_NODE_KIND_MISMATCH_ERROR_CODE,
   DOCUMENT_MIRROR_QUID_MISMATCH_ERROR_CODE,
   DOCUMENT_MIRROR_REVISION_GAP_ERROR_CODE,
   DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE,
@@ -62,10 +61,11 @@ function source(rootAttrs = "", sectionAttrs = "", text = "hello"): string {
 
 function admitted(sourceText: string): { map: LiveMapDocumentLibrary; tree: LiveTree; root: FakeElement; section: FakeElement } {
   const map = element(sourceText);
-  const tree = create_livetree_in_runtime(projected_element(sourceText), runtime);
+  const tree = create_linked_livetree_in_runtime(projected_element(`<html <head/> <body ${sourceText}/>/>`), runtime);
   const root = project_livetree(retained_subject(tree), "html", runtime, globalThis.document) as unknown as FakeElement;
-  const section = root.childNodes[0] as FakeElement;
-  return { map, tree, root, section };
+  const main = (root.childNodes[1] as FakeElement).childNodes[0] as FakeElement;
+  const section = main.childNodes[0] as FakeElement;
+  return { map, tree, root: main, section };
 }
 
 function expect_code(code: string, run: () => unknown): void {
@@ -89,13 +89,13 @@ check("exact carrier and QUID state binds without initial DOM or graph writes", 
   assert.deepEqual([...fixture.section.childNodes], sectionChildren);
   assert.deepEqual(fixture.root.attrs, rootAttrs);
   assert.deepEqual(fixture.section.attrs, sectionAttrs);
-  assert.equal(fixture.tree.dom.el(), fixture.root as unknown as Element);
+  assert.equal(fixture.tree.find.must.byTag("main").dom.el(), fixture.root as unknown as Element);
   assert.equal(fixture.root.replaceWrites, 0);
   assert.equal(fixture.section.replaceWrites, 0);
 
   binding.dispose();
   assert.equal(fixture.tree.isDisposed, false);
-  assert.equal(fixture.tree.dom.el(), fixture.root as unknown as Element);
+  assert.equal(fixture.tree.find.must.byTag("main").dom.el(), fixture.root as unknown as Element);
   const rebound = reflect_existing_document_in_runtime(fixture.map, fixture.tree, runtime);
   assert.equal(rebound.status, "active");
   rebound.dispose();
@@ -106,7 +106,7 @@ check("ordinary later commit uses existing Mirror projection and retains Element
   const fixture = admitted(source("", 'data-state="before"'));
   const binding = reflect_existing_document_in_runtime(fixture.map, fixture.tree, runtime);
   const beforeRevision = fixture.map.rev;
-  const sectionNode = raw_node(retained_subject(fixture.tree), [0, 0]);
+  const sectionNode = raw_node({ $_tag: "_hson_root", $_content: [retained_subject(fixture.tree)] }, [0, 0]);
 
   const commit = fixture.map.document.attrs.set(path(0, 0), "data-state", "after");
   assert.equal(commit.rev, beforeRevision + 1);
@@ -126,7 +126,7 @@ check("ordinary later commit uses existing Mirror projection and retains Element
   assert.equal(fixture.section.getAttribute("data-state"), "after");
   assert.equal(fixture.tree.isDisposed, false);
   assert.equal(document_binding_for_node(sectionNode), undefined);
-  fixture.tree.attrs.set("data-standalone", "yes");
+  fixture.tree.find.must.byTag("main").attrs.set("data-standalone", "yes");
   assert.equal(fixture.root.getAttribute("data-standalone"), "yes");
   fixture.tree.remove();
 });
@@ -138,7 +138,7 @@ check("stale DOM provenance rejects without repair or borrowed disposal", () => 
     reflect_existing_document_in_runtime(fixture.map, fixture.tree, runtime));
   assert.equal(fixture.section.getAttribute("data-rogue"), "browser-only");
   assert.equal(fixture.tree.isDisposed, false);
-  assert.equal(fixture.tree.dom.el(), fixture.root as unknown as Element);
+  assert.equal(fixture.tree.find.must.byTag("main").dom.el(), fixture.root as unknown as Element);
   fixture.section.removeAttribute("data-rogue");
   fixture.tree.remove();
 });
@@ -150,7 +150,7 @@ check("canonical content mismatch rejects without disposing the borrowed tree", 
   expect_code(DOCUMENT_MIRROR_UPDATE_FAILED_ERROR_CODE, () =>
     reflect_existing_document_in_runtime(conflicting, fixture.tree, runtime));
   assert.equal(fixture.tree.isDisposed, false);
-  assert.equal(fixture.tree.dom.el(), fixture.root as unknown as Element);
+  assert.equal(fixture.tree.find.must.byTag("main").dom.el(), fixture.root as unknown as Element);
   assert.equal(document_binding_for_node(retained_subject(fixture.tree)), undefined);
   fixture.tree.remove();
 });
@@ -158,7 +158,7 @@ check("canonical content mismatch rejects without disposing the borrowed tree", 
 check("conflicting and absent canonical QUID identity reject strictly", () => {
   const treeSource = source();
   const fixture = admitted(treeSource);
-  const treeRootQuid = fixture.tree.node.$_meta?.quid;
+  const treeRootQuid = raw_node({ $_tag: "_hson_root", $_content: [retained_subject(fixture.tree)] }, []).$_meta?.quid;
   if (treeRootQuid === undefined) throw new Error("Expected supplied root QUID");
   const conflicting = element(treeSource.replace(treeRootQuid, "000009999"));
   expect_code(DOCUMENT_MIRROR_QUID_MISMATCH_ERROR_CODE, () =>
@@ -170,11 +170,11 @@ check("conflicting and absent canonical QUID identity reject strictly", () => {
   fixture.tree.remove();
 });
 
-check("incompatible document root shape rejects and releases map exclusivity", () => {
+check("incompatible completed body shape rejects and releases map exclusivity", () => {
   const sourceText = source();
   const fixture = admitted(sourceText);
   const incompatible = element(`<main @000008730/><aside @000008731/>`);
-  expect_code(DOCUMENT_MIRROR_NODE_KIND_MISMATCH_ERROR_CODE, () =>
+  expect_code(DOCUMENT_MIRROR_UPDATE_FAILED_ERROR_CODE, () =>
     reflect_existing_document_in_runtime(incompatible, fixture.tree, runtime));
   const fresh = reflect_document_in_runtime(incompatible, runtime);
   assert.equal(fresh.status, "active");
@@ -238,7 +238,7 @@ check("borrowed root identity epoch replacement fails closed", () => {
   assert.equal(binding.failure?.code, DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE);
   assert.equal(retained_subject(binding.tree), rootBefore);
   assert.equal(binding.tree.isDisposed, false);
-  assert.equal(binding.tree.dom.el(), elementBefore as unknown as Element);
+  assert.equal(binding.tree.find.must.byTag("main").dom.el(), elementBefore as unknown as Element);
   binding.dispose();
   fixture.tree.remove();
 });

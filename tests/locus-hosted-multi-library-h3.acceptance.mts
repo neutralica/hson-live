@@ -1,3 +1,4 @@
+import { body_root } from "./helpers/document-library.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { client_projection_map } from "./helpers/client-projection.mts";
@@ -32,7 +33,7 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const QUID = "000008203";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -168,7 +169,7 @@ function page_library(map: LiveMap) {
 }
 
 function page_item(map: LiveMap): HsonNode | undefined {
-  const main = page_library(map).root().$_content[0];
+  const main = body_root(page_library(map).root());
   if (typeof main !== "object" || main === null) return undefined;
   const wrapper = main.$_content[0];
   if (typeof wrapper !== "object" || wrapper === null) return undefined;
@@ -182,7 +183,7 @@ function insert_item(quid?: string) {
   return Object.freeze({
     domain: "graph" as const,
     op: "insert-content" as const,
-    target: Object.freeze({ kind: "path" as const, path: validate_document_path([0]) }),
+    target: Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0]) }),
     index: 0,
     content,
   });
@@ -330,7 +331,7 @@ await check("a state-only aggregate snapshot preserves unchanged document identi
   const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
   const stale = projected_client_map(map);
   set_livemap_document_quid_candidate_source_for_tests(page_library(stale).document, () => "000008299");
-  const oldSubject = acquire_document_identity(page_library(stale).document, { kind: "path", path: validate_document_path([0]) });
+  const oldSubject = acquire_document_identity(page_library(stale).document, { kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) });
   const oldEpoch = livemap_identity_epoch_accounting(page_library(stale).document).epoch;
   const reflected = hsonMirror(page_library(stale));
   await server.stage((draft) => data(draft, "state").at(["theme"]).set("dark"));
@@ -353,7 +354,7 @@ await check("socket document action requires a named document library and replay
   const content = encode_locus_portable_graph_content(insert_item().content);
   await attached.client.action("document.content.insert", {
     library: "page",
-    target: { kind: "path", path: [0] },
+    target: { kind: "path", path: [0, 0, 1, 0, 0] },
     index: 0,
     content,
   });
@@ -361,7 +362,7 @@ await check("socket document action requires a named document library and replay
   assert.equal(page_library(attached.client.map!).document.byQuid(QUID), undefined);
   const invalid = await attached.client.action("document.content.insert", {
       library: "state",
-      target: { kind: "path", path: [0] },
+      target: { kind: "path", path: [0, 0, 1, 0, 0] },
       index: 0,
       content,
     });
@@ -379,7 +380,7 @@ await check("aggregate action rejects generated QUID content before authority ad
   const exact = encode_locus_graph_content(insert_item(QUID).content);
   const result = await attached.client.action("document.content.insert", {
     library: "page",
-    target: { kind: "path", path: [0] },
+    target: { kind: "path", path: [0, 0, 1, 0, 0] },
     index: 0,
     content: { format: "hson-graph-portable", payload: exact.payload },
   });
@@ -394,8 +395,8 @@ await check("authority retains local issued-QUID history while client bootstrap 
   const server = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   await server.stage((draft) => document(draft, "page").graph(insert_item()));
   set_livemap_document_quid_candidate_source_for_tests(page_library(map).document, () => QUID);
-  acquire_document_identity(page_library(map).document, { kind: "path", path: validate_document_path([0, 0, 0]) });
-  await server.stage((draft) => document(draft, "page").content.remove({ kind: "path", path: validate_document_path([0]) }, 0));
+  acquire_document_identity(page_library(map).document, { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 0]) });
+  await server.stage((draft) => document(draft, "page").content.remove({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) }, 0));
   const attached = await attach(server);
   const mirror = attached.client.map!;
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(mirror).captureHosted());

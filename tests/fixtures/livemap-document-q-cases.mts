@@ -106,7 +106,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     old.attrs.set("title", "later"); aggregate.restoreHosted(saved);
     assert.equal(old.active, true); assert.equal(old.attrs.get("title"), "revision one");
     assert.deepEqual(lookup(selected, "nextButton"), identity);
-    selected.q("page")!.move(0, 1); assert.deepEqual(old.path(), [1]);
+    selected.q("page")!.move(0, 1); assert.deepEqual(old.path(), [1,0,1]);
     selected.q("nextButton")!.attrs.set("title", "updated");
     assert.equal(old.active, true); old.attrs.set("title", "updated"); assert.equal(old.attrs.get("title"), "updated");
   });
@@ -177,7 +177,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
       fresh.attrs.set("title", "restored"); assert.equal(fresh.at([0]).snap(), "Next");
       assert.equal(independent.attrs.get("title"), "restored"); fresh.at([0]).dispose();
       assert.equal(fresh.active, false); assert.equal(independent.active, true);
-      selected.q("page")!.move(0, 1); assert.deepEqual(independent.path(), [1]);
+      selected.q("page")!.move(0, 1); assert.deepEqual(independent.path(), [1,0,1]);
       selected.q("nextButton")!.attrs.set("title", "updated");
       assert.equal(independent.active, true); independent.attrs.set("title", "updated");
       assert.equal(location.active, false); assert.equal(child.active, false);
@@ -186,9 +186,9 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
   check("public q uses the owner currency fence across attribute and content argument normalization", () => {
     for (const method of ["setMany", "replaceAttrs", "setStyle", "replace", "insert"]) {
       const map = fixture(), aggregate = owner(map), selected = page(map), initial = aggregate.captureHosted();
-      selected.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "title", "A");
+      selected.document.attrs.set({ kind: "path", path: [0,0,1,0,0, 0, 0] }, "title", "A");
       const a = aggregate.captureHosted(); aggregate.restoreHosted(initial);
-      selected.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "title", "B");
+      selected.document.attrs.set({ kind: "path", path: [0,0,1,0,0, 0, 0] }, "title", "B");
       const b = aggregate.captureHosted(); aggregate.restoreHosted(a);
       const location = selected.q("nextButton")!;
       let restores = 0, commits = 0;
@@ -232,9 +232,9 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
   });
   check("public q latches an unseen exact-restoration absence before queued restore publications", () => {
     const map = fixture(), aggregate = owner(map), selected = page(map), initial = aggregate.captureHosted();
-    selected.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "title", "saved");
+    selected.document.attrs.set({ kind: "path", path: [0,0,1,0,0, 0, 0] }, "title", "saved");
     const saved = aggregate.captureHosted(); aggregate.restoreHosted(initial);
-    selected.document.content.remove({ kind: "path", path: [0, 0] }, 0);
+    selected.document.content.remove({ kind: "path", path: [0,0,1,0,0, 0] }, 0);
     const absent = aggregate.captureHosted(); assert.equal(absent.revision, saved.revision);
     aggregate.restoreHosted(saved);
     let armed = true;
@@ -276,18 +276,18 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
   });
   check("public q edits publish through the owner and movement follows the subject while at stays fixed", () => {
     const map = fixture(), selected = page(map), location = selected.q("nextButton")!, root = selected.q("page")!;
-    const fixed = selected.at([0]), text = location.at([0]);
+    const fixed = selected.at([1,0,0]), text = location.at([0]);
     let commits = 0; const off = map.commits.observe(() => commits++);
     try {
-      assert.deepEqual(location.path(), [0]); assert.equal(text.snap(), "Next");
+      assert.deepEqual(location.path(), [1,0,0]); assert.equal(text.snap(), "Next");
       assert.equal(location.attrs.set("title", "Ready").changed, true);
       location.flags.set("disabled"); assert.equal(location.flags.has("disabled"), true); location.flags.clear("disabled");
-      root.move(0, 1); assert.deepEqual(location.path(), [1]); assert.deepEqual(text.path(), [1, 0]);
-      assert.deepEqual(fixed.path(), [0]);
+      root.move(0, 1); assert.deepEqual(location.path(), [1,0,1]); assert.deepEqual(text.path(), [1,0,1, 0]);
+      assert.deepEqual(fixed.path(), [1,0,0]);
       const stationary = document_hson_value(fixed.hson()); assert.ok(stationary && typeof stationary === "object"); assert.equal(stationary.$_tag, "aside");
       assert.equal(fixed.asElement()!.attrs.get("title"), undefined);
       location.attrs.setMany({ title: "Moved", id: "same" }); text.replace("Proceed");
-      assert.equal(selected.at([1]).asElement()!.attrs.get("title"), "Moved"); assert.equal(text.snap(), "Proceed");
+      assert.equal(selected.at([1,0,1]).asElement()!.attrs.get("title"), "Moved"); assert.equal(text.snap(), "Proceed");
       location.insert(1, hsonTransform.fromHson('<b/>').toNode().$_content[0]!);
       location.move(1, 0);
       const newOccupant = document_hson_value(text.hson()); assert.ok(newOccupant && typeof newOccupant === "object"); assert.equal(newOccupant.$_tag, "b");
@@ -298,12 +298,12 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
       assert.equal(commits, map.rev);
     } finally { off(); }
   });
-  check("public q canonical correspondence handles fragment roots and nested carriers", () => {
-    const map = authored({ page: { document: '<aside/> <section @:section <div <button @:button/>/>/>' } });
+  check("public q canonical correspondence handles body siblings and nested carriers", () => {
+    const map = authored({ page: { document: '<body <aside/> <section @:section <div <button @:button/>/>/>/>' } });
     const selected = page(map), location = selected.q("button")!;
-    assert.deepEqual(location.path(), [1, 0, 0]); location.attrs.set("title", "deep");
-    selected.at([]).asRoot()!.move(1, 0);
-    assert.deepEqual(location.path(), [0, 0, 0]); assert.equal(location.attrs.get("title"), "deep");
+    assert.deepEqual(location.path(), [1,1,0,0]); location.attrs.set("title", "deep");
+    selected.at([1]).asElement()!.move(1, 0);
+    assert.deepEqual(location.path(), [1,0,0,0]); assert.equal(location.attrs.get("title"), "deep");
   });
   check("public q retains precise mutations and retires ordinary replacement or removal without retargeting", () => {
     for (const remove of [false, true]) {
@@ -338,7 +338,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     atomic(map, () => one.attrs.set("title", "disposed")); two.attrs.set("title", "live");
   });
   check("public q rejects Schema exactness and managed edits atomically", () => {
-    const schema = Hson.schema`<type "document" tag "main" content <repeat <tag "button" content "empty">>>`;
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>`;
     const map = authored({ page: { document: '<main @:page <button @:nextButton/>/>', schema } });
     const location = page(map).q("nextButton")!, root = page(map).q("page")!;
     atomic(map, () => location.replace(hsonTransform.fromHson('<aside/>').toNode().$_content[0]!));
@@ -364,7 +364,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
       try { assert.throws(() => location.attrs.dropMany(names)); } finally { off(); }
       assert.equal(publications, dispose ? 0 : 1);
       assert.equal(selected.q("nextButton")!.attrs.get("title"), "retained");
-      assert.equal(selected.at([dispose ? 1 : 0]).asElement()!.attrs.get("title"), undefined);
+      assert.equal(selected.at([1,0,dispose ? 1 : 0]).asElement()!.attrs.get("title"), undefined);
       assert.equal(location.active, !dispose);
     }
   });

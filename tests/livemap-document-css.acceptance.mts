@@ -131,15 +131,13 @@ assert.ok(order.snapshot().indexOf(".b{") < order.snapshot().indexOf(".a{"));
 order.clearAll();
 assert.equal(order.snapshot(), "");
 
-const fragment = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
-fragment.doc.must("page").css.sel("main").set.color("red");
-assert.throws(() => document_html(fragment.doc.must("page")), /not compatible with browser-parser realization/);
-assert.throws(() => document_html(fragment.doc.must("page")), (error: unknown) =>
-  error instanceof Error && error.cause instanceof Error && /explicit html\/head/.test(error.cause.message));
+const completed = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+completed.doc.must("page").css.sel("main").set.color("red");
+assert.match(document_html(completed.doc.must("page")), /^<!doctype html><html><head><style/);
 const dangerous = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body/>/>" } });
-dangerous.doc.must("page").css.sel("body").set.content('"</style><script>"');
-assert.throws(() => document_html(dangerous.doc.must("page")), (error: unknown) =>
-  error instanceof Error && error.cause instanceof Error && /closing sentinel/.test(error.cause.message));
+const beforeDangerous = dangerous.capture();
+assert.throws(() => dangerous.doc.must("page").css.sel("body").set.content('"</style><script>"'), /closing sentinel/);
+assert.deepEqual(dangerous.capture(), beforeDangerous);
 
 const addMap = hsonLiveMap.create();
 addMap.addLibraries({ page: { document: "<html <head/> <body/>/>" } });

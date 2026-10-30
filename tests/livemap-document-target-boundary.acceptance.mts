@@ -26,7 +26,7 @@ function check(name: string, run: () => void): void {
 }
 const Q1 = "000000801";
 const fixture = () => element(`<main @${Q1} <section <item/>/>/>`);
-const target = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path(parts) });
+const target = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, ...parts]) });
 
 check("selected library requests publish named map-global operations", () => {
   const library = fixture();
@@ -45,7 +45,7 @@ check("canonical operation targets contain paths rather than QUID addresses", ()
   const operation = document_graph_operation(commit);
   assert.equal(operation.op, "set-attr");
   assert.equal(operation.target.kind, "path");
-  assert.deepEqual(operation.target.path, [0]);
+  assert.deepEqual(operation.target.path, [0, 0, 1, 0, 0]);
   assert.equal(Reflect.get(operation.target, "quid"), undefined);
   assert.equal(Reflect.get(operation.target, "witness"), undefined);
 });
@@ -55,17 +55,17 @@ check("nested path requests preserve their exact canonical coordinate", () => {
   const commit = library.document.attrs.set(target(0, 0, 0, 0, 0), "nested", true);
   const operation = document_graph_operation(commit);
   assert.equal(operation.op, "set-attr");
-  assert.deepEqual(operation.target.path, [0, 0, 0, 0, 0]);
+  assert.deepEqual(operation.target.path, [0, 0, 1, 0, 0, 0, 0, 0, 0]);
 });
 
 check("accepted target paths are frozen and detached from caller arrays", () => {
   const library = fixture();
-  const input = [0];
+  const input = [0, 0, 1, 0, 0];
   const commit = library.document.attrs.set({ kind: "path", path: input }, "x", 1);
   input[0] = 9;
   const operation = document_graph_operation(commit);
   assert.equal(operation.op, "set-attr");
-  assert.deepEqual(operation.target.path, [0]);
+  assert.deepEqual(operation.target.path, [0, 0, 1, 0, 0]);
   assert.equal(Object.isFrozen(operation.target.path), true);
 });
 
@@ -81,7 +81,7 @@ check("invalid paths do not reroute through an existing QUID", () => {
   const before = { root: library.root(), rev: library.rev };
   assert.throws(() => library.document.attrs.set({ kind: "path", path: [99] }, "bad", true));
   assert.deepEqual({ root: library.root(), rev: library.rev }, before);
-  assert.deepEqual(livemap_document_identity_overlay_for(library.document).pathForQuid(Q1), [0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(library.document).pathForQuid(Q1), [0, 0, 1, 0, 0]);
 });
 
 check("path requests do not mint QUID metadata in sparse gaps", () => {

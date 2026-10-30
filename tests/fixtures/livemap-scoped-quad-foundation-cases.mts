@@ -27,8 +27,8 @@ function fixture(prefix = "a") {
   if (page.mode !== "document") throw Error("document fixture");
   const aggregate = internal_livemap_aggregate_authority(map), owner = aggregate.libraries()[0]!;
   const coordinates = {
-    main: [0], left: [0, 0, 0], next: [0, 0, 0, 0, 0], inner: [0, 0, 0, 0, 1], innerNext: [0, 0, 0, 0, 1, 0, 0],
-    right: [0, 0, 1], rightNext: [0, 0, 1, 0, 0], footer: [0, 0, 2],
+    main: [0, 0, 1, 0, 0], left: [0, 0, 1, 0, 0, 0, 0], next: [0, 0, 1, 0, 0, 0, 0, 0, 0], inner: [0, 0, 1, 0, 0, 0, 0, 0, 1], innerNext: [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    right: [0, 0, 1, 0, 0, 0, 1], rightNext: [0, 0, 1, 0, 0, 0, 1, 0, 0], footer: [0, 0, 1, 0, 0, 0, 2],
   };
   let candidates = 0;
   set_livemap_document_quid_candidate_source_for_tests(page.document, () => prefix + String(candidates++).padStart(8, "0"));
@@ -83,7 +83,7 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
   check("repeated local names and nested independently scoped subjects", () => {
     const f = fixture(), record = encode(f.state, f.context(), f.demanded);
     assert.deepEqual(record.occurrences.map(scope => scope.bindings.find(entry => entry.name === "next")?.path),
-      [[0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0]]);
+      [[0, 0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0], [0, 0, 1, 0, 0, 0, 1, 0, 0]]);
     assert.deepEqual(record.occurrences[1]!.parent, record.occurrences[0]!.root);
     assert.equal(record.subjects.length, 8);
     assert.equal(f.page.q("left"), undefined, "private foundation installs no public names");
@@ -170,13 +170,13 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
   check("CSS-only correspondence demands require no authored name or occurrence", () => {
     const f = fixture(), record = encode(make(f.context(), [], []), f.context(), [f.id("footer")]);
     assert.deepEqual(record.document, []); assert.deepEqual(record.occurrences, []);
-    assert.deepEqual(record.subjects, [{ name: `_${f.id("footer")}`, path: [0, 0, 2], disposition: "disposable" }]);
+    assert.deepEqual(record.subjects, [{ name: `_${f.id("footer")}`, path: [0, 0, 1, 0, 0, 0, 2], disposition: "disposable" }]);
   });
   check("occurrence retirement is independent of root QUID continuity and cascades locally", () => {
     const f = fixture(), remaining = retire(f.state, [f.left]);
     assert.deepEqual(remaining.occurrences.map(scope => scope.lifetime), [f.right]);
     assert.equal(remaining.document.some(binding => binding.name === "left"), false);
-    assert.equal(f.context().overlay.quidAtPath(validate_document_path([0, 0, 0])), f.id("left"));
+    assert.equal(f.context().overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 0])), f.id("left"));
     const replacement = occurrence(f.owner);
     const state = make(f.context(), [...remaining.document, f.binding("left", "left", "part")],
       [...remaining.occurrences, { lifetime: replacement, rootQuid: f.id("left"), parent: null, bindings: [f.binding("fresh", "left")] }]);
@@ -200,11 +200,11 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
   });
   check("moves use the existing overlay while retaining occurrence lifetimes and handle-independent state", () => {
     const f = fixture(), leftQuid = f.id("left"), innerQuid = f.id("inner");
-    f.page.document.content.move({ kind: "path", path: [0, 0] }, 0, 1);
+    f.page.document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, 1);
     unchanged(f, () => {
       const moved = encode(f.state, f.context(), f.demanded);
-      assert.deepEqual(moved.document.find(binding => binding.name === "left")!.path, [0, 0, 1]);
-      assert.deepEqual(moved.occurrences[2]!.parent, [0, 0, 1]);
+      assert.deepEqual(moved.document.find(binding => binding.name === "left")!.path, [0, 0, 1, 0, 0, 0, 1]);
+      assert.deepEqual(moved.occurrences[2]!.parent, [0, 0, 1, 0, 0, 0, 1]);
       assert.equal(f.state.occurrences[0]!.lifetime, f.left);
       assert.equal(f.state.occurrences[1]!.rootQuid, innerQuid);
       const handle = acquire_document_identity(f.page.document, { kind: "path", path: f.context().overlay.pathForQuid(leftQuid)! });
@@ -214,7 +214,7 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
   });
   check("retired subjects cannot be serialized until the private candidate removes their bindings", () => {
     const f = fixture(), removed = f.id("next");
-    f.page.document.content.remove({ kind: "path", path: [0, 0, 0, 0] }, 0);
+    f.page.document.content.remove({ kind: "path", path: [0, 0, 1, 0, 0, 0, 0, 0] }, 0);
     assert.equal(f.context().issued.has(removed), true);
     unchanged(f, () => {
       assert.throws(() => encode(f.state, f.context(), []), /active overlay/);
@@ -254,12 +254,12 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
       record => { record.occurrences[0]!.parent = record.occurrences[0]!.root; },
       record => { record.occurrences[0]!.parent = record.occurrences[1]!.root; },
       record => { record.occurrences[1]!.parent = null; },
-      record => { record.occurrences[1]!.parent = [0, 0, 2]; },
+      record => { record.occurrences[1]!.parent = [0, 0, 1, 0, 0, 0, 2]; },
       record => { record.occurrences[1]!.parent = record.occurrences[2]!.root; },
-      record => { record.document[0]!.kind = "element"; record.document[0]!.path = [0, 0, 0, 0, 1]; },
-      record => { record.occurrences[0]!.bindings[0]!.kind = "element"; record.occurrences[0]!.bindings[0]!.path = [0, 0, 0, 0, 1, 0, 0]; },
+      record => { record.document[0]!.kind = "element"; record.document[0]!.path = [0, 0, 1, 0, 0, 0, 0, 0, 1]; },
+      record => { record.occurrences[0]!.bindings[0]!.kind = "element"; record.occurrences[0]!.bindings[0]!.path = [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0]; },
       record => { record.occurrences[0]!.bindings[1]!.kind = "part"; },
-      record => { record.occurrences[0]!.bindings[1]!.path = [0, 0, 1, 0, 0]; },
+      record => { record.occurrences[0]!.bindings[1]!.path = [0, 0, 1, 0, 0, 0, 1, 0, 0]; },
       record => { record.document[0]!.kind = "unknown"; },
       record => { record.document[1]!.name = record.document[0]!.name; },
       record => { record.document[0]!.name = "bad name"; },
@@ -320,8 +320,8 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
       record => { record.subjects[0]!.path = [Number.MAX_SAFE_INTEGER + 1]; },
       record => { record.subjects[0]!.path = [Infinity]; },
       record => { record.subjects[0]!.path = [-1]; },
-      record => { record.subjects[0]!.path = [0, 0]; },
-      record => { record.subjects[0]!.path = [0, 0, 0, 0, 0, 0, 0, 0]; },
+      record => { record.subjects[0]!.path = [0, 0, 1, 0, 0, 0]; },
+      record => { record.subjects[0]!.path = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]; },
       record => { record.subjects[0]!.path = [9]; },
       record => { Object.assign(record.subjects[0]!, { path: "0/0" }); },
     ];
@@ -343,8 +343,8 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
     const f = fixture();
     const bindings = (length: number, path: number[]) => Array.from({ length }, (_, index) => ({ name: `n${String(index).padStart(5, "0")}`, kind: "element", path }));
     const half = limits.bindings / 2;
-    unchanged(f, () => assert.throws(() => decode({ document: bindings(half, [0]), subjects: [],
-      occurrences: [{ root: [0, 0, 0], parent: null, bindings: bindings(half + 1, [0, 0, 0]) }],
+    unchanged(f, () => assert.throws(() => decode({ document: bindings(half, [0, 0, 1, 0, 0]), subjects: [],
+      occurrences: [{ root: [0, 0, 1, 0, 0, 0, 0], parent: null, bindings: bindings(half + 1, [0, 0, 1, 0, 0, 0, 0]) }],
     }, f.context().root), /resource bound/));
     let node: HsonNode = { $_tag: "button", $_content: [] };
     for (let depth = 0; depth < 64; depth++) node = { $_tag: "div", $_content: [{ $_tag: "_hson_elem", $_content: [node] }] };

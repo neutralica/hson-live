@@ -111,10 +111,10 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
         const data = r.map.data.must("data"); if (String(data.mode) === "document") throw Error(); assert.equal(data.snap(["n"]), 0);
       }
       const before = [view(first).scopes(), view(second).scopes()];
-      const one = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "next"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); });
+      const one = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "next"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); });
       for (const [i, cap] of [first, second].entries()) { cap.replayScopedHosted(one); assert.deepEqual(view(cap).scopes().map(s => s.lifetime), before[i]!.map(s => s.lifetime)); }
       const priorGraph = f.a.root(f.pageId);
-      const two = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
+      const two = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0,0,1,0,0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
       assert.deepEqual(f.a.root(f.pageId), priorGraph);
       for (const [i, cap] of [first, second].entries()) {
         const r = view(cap); cap.replayScopedHosted(two); assert.ok(equal(f.a.scopedDocumentState(f.pageId), r.state()));
@@ -133,7 +133,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
       const local = r.map.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(19);
       add_interaction(r.map, { id: "local-nav", subject: { library: "localPage", path: [0] }, listener, kind: "browser", key: "nav", args: null });
       const localId = r.a.libraries()[r.a.hostedRegistry().libraries.filter(e => e.scope === undefined).findIndex(e => e.name === "local")]!, localRoot = r.a.root(localId), old = r.scopes();
-      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "restored"));
+      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "restored"));
       let observed = 0;
       const stop = r.a.observeAuthorityPosition(() => { observed++; assert.equal(r.a.clientProjection()!.revision, f.l.rev); assert.ok(equal(f.a.scopedDocumentState(f.pageId), r.state())); }, "installed");
       cap.restoreScopedProjection(f.state()); stop(); assert.equal(observed, 1);
@@ -213,7 +213,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
         { ...original, libraries: [...original.libraries, { ...original.libraries[0], name: "parts" }] },
       ];
       for (const input of variants) unchanged(cap, () => assert.throws(() => cap.restoreScopedProjection(input as ScopedAuthorityProjectionSnapshot)));
-      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "later"));
+      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "later"));
       cap.restoreScopedProjection(f.state());
       unchanged(cap, () => assert.throws(() => cap.restoreScopedProjection(original), /authority/));
       assert.ok(equal(f.a.scopedDocumentState(f.pageId), view(cap).state()));
@@ -265,7 +265,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
     const map = compose_client_projection_internal(initial, [], true), a = authority(map), lease = acquire_echo_map_management_internal(map), cap = replica(map, lease);
     let next: Receiver | undefined, replacementRoot: unknown, once = false;
     try {
-      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "replacement-owner"));
+      await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "replacement-owner"));
       allocator(a.identityEpoch().owner, () => {
         assert.equal(once, false); once = true;
         allocator(a.identityEpoch().owner, undefined); lease.release(); next = replica(map);
@@ -311,8 +311,8 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
   await check("initial restoration does not weaken stale missing reordered registry or incarnation replay fences", async () => {
     const f = await fixture(), cap = f.fresh();
     try {
-      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "one"));
-      const two = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0]) }, "title", "two"));
+      const one = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "one"));
+      const two = await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "two"));
       for (const bad of [two, { ...one, registryDigest: "0".repeat(64) }, { ...one, authority: { ...one.authority, incarnationId: "wrong" } },
         { ...one, operations: [], operationCount: 0 }]) unchanged(cap, () => assert.throws(() => cap.replayScopedHosted(bad)));
       cap.replayScopedHosted(one); unchanged(cap, () => assert.throws(() => cap.replayScopedHosted(one)));

@@ -3,7 +3,7 @@ import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount, registry_for_document_library } from "./helpers/mirror-unit6.mts";
+import { element, mount, raw_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { Hson, hsonLiveMap } from "../src/index.ts";
@@ -51,12 +51,12 @@ function check(name: string, run: () => void): void {
 }
 
 const documentTarget = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze(path) });
-const target = (...path: number[]) => documentTarget(0, ...path);
+const target = (...path: number[]) => documentTarget(0, 0, 1, 0, 0, ...path);
 function canonical_main_meta(map: ReturnType<typeof element>) {
   const authority = internal_livemap_aggregate_authority(registry_for_document_library(map));
   const library = authority.libraries()[0];
   if (library === undefined) throw new Error("Missing document library");
-  const main = authority.root(library).$_content[0];
+  const main = raw_node(authority.root(library), []);
   if (typeof main !== "object" || main === null) throw new Error("Missing document root element");
   return main.$_meta;
 }
@@ -81,7 +81,7 @@ check("document.byQuid still returns detached diagnostic material", () => {
   const node = map.document.byQuid(Q1);
   if (node === undefined) throw new Error("missing byQuid fixture");
   node.$_tag = "article";
-  assert.equal((map.root().$_content[0] as { $_tag?: string } | undefined)?.$_tag, "main");
+  assert.equal(raw_node(map.root(), []).$_tag, "main");
 });
 
 check("raw-QUID mutation requests are rejected", () => {
@@ -130,15 +130,15 @@ check("existing registration publishes no feed event", () => {
   assert.equal(events, 0);
 });
 
-check("multiNodeDocument ordinary elements support the same sparse API", () => {
+check("completed sibling elements support the same sparse API", () => {
   const map = element(`<a/><b/>`);
   if (map.mode !== "document") throw new Error("expected multiNodeDocument fixture");
-  const handle = acquire_document_identity(map.document, documentTarget(1));
+  const handle = acquire_document_identity(map.document, documentTarget(0, 0, 1, 0, 1));
   assert.equal(handle.snap()?.$_tag, "b");
-  assert.deepEqual(handle.path(), [1]);
+  assert.deepEqual(handle.path(), [0, 0, 1, 0, 1]);
 });
 
-check("multiNodeDocument structural roots remain ineligible", () => {
+check("Document structural carriers remain ineligible", () => {
   const map = element(`<a/><b/>`);
   if (map.mode !== "document") throw new Error("expected multiNodeDocument fixture");
   assert.throws(() => acquire_document_identity(map.document, documentTarget()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
@@ -227,7 +227,7 @@ check("internal acquisition coordinates with an active Reflection participant", 
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const handle = acquire_document_identity(map.document, target());
-  const projected = retained_subject(binding.tree).$_content[0];
+  const projected = raw_node(retained_subject(binding.tree), []);
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(projected.$_meta?.quid, Q1);
@@ -240,11 +240,11 @@ check("reflected acquisition preserves the exact projected node and DOM", () => 
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const projected = retained_subject(binding.tree).$_content[0];
+  const projected = raw_node(retained_subject(binding.tree), []);
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   const dom = mount(projected);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
-  assert.equal(retained_subject(binding.tree).$_content[0], projected);
+  assert.equal(raw_node(retained_subject(binding.tree), []), projected);
   assert.equal(mount(retained_subject(binding.tree)), dom);
   assert.equal(dom.getAttribute("hson:quid"), quid);
   binding.dispose();
@@ -257,7 +257,7 @@ check("reflected acquisition installs one protected runtime claim", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
-  const projected = retained_subject(binding.tree).$_content[0];
+  const projected = raw_node(retained_subject(binding.tree), []);
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, quid!), projected);
@@ -273,7 +273,7 @@ check("existing reflected canonical identity is reused without a commit", () => 
   let events = 0;
   map.commits.observe(() => events += 1);
   const handle = acquire_document_identity(map.document, target());
-  const projected = retained_subject(binding.tree).$_content[0];
+  const projected = raw_node(retained_subject(binding.tree), []);
   if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(projected.$_meta?.quid, Q1);

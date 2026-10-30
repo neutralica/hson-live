@@ -1,0 +1,9 @@
+P3 follow-up: redundant complete-Document validation during scoped commits
+
+Scoped commits validate the final graph and CSS in finish_scoped_preparation
+and again in the final candidate loop, repeating browser-plan construction and
+fingerprinting. Review whether this work can be reused without weakening final
+Document, CSS, identity, or authority validation.
+
+This is a nonblocking engineering observation. No correctness defect or measured
+performance regression has been established; optimization is deferred.

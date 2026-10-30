@@ -27,10 +27,10 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
-const PageSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 function registry(source: string) {
   return admit_exact_runtime_livemap_libraries({ page: {
-    document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: PageSchema,
+    document: parse_hson_exact_runtime(`<html <head/> <body ${source}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
   } });
 }
 const rootTarget = { kind: "path" as const, path: [0] };

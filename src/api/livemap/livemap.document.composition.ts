@@ -1,3 +1,4 @@
+import { complete_document, completed_document_paths, single_document_element } from "../../internal/complete-document.js";
 import { part_coordinates } from "../../internal/part-coordinates.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
@@ -254,6 +255,7 @@ export function expand_document_composition(
   readShell: (name: string) => DocumentCompositionSource,
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
   readPart: (collection: string, member: string) => DocumentCompositionSource,
+  receiver: "document" | "content" = "content",
 ): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[]; scoped: DocumentScopedQuadRecord; identityDemands: readonly (readonly number[])[] }> {
   const sources = new Map<string, Map<string, DocumentCompositionSource>>();
   const part = (collection: string, member: string): DocumentCompositionSource => {
@@ -490,6 +492,7 @@ export function expand_document_composition(
   };
   const shell = readShell(sourceName), initialRoot = shell.root;
   if (initialRoot.$_tag !== ROOT_TAG) throw new TypeError("Composition shell requires an owned document ROOT.");
+  if (receiver === "document") single_document_element(initialRoot);
   const initial = occurrence(shell);
   if (limits.configuration?.use !== undefined) throw new TypeError("Composition configuration use requires a connector.");
   const initialScope = scope(initial, [], limits.configuration);
@@ -762,21 +765,29 @@ export function expand_document_composition(
   if (limits.configuration?.q !== undefined) bind(initial, limits.configuration.q,
     occurrences.some(occurrence => JSON.stringify(occurrence.root) === "[0]") ? "part" : "element", [0]);
   const sortBindings = (bindings: readonly ScopedQuadBindingRecord[]) => [...bindings].sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-  const realizedRoot = clone_hson_graph_without_quids(root);
+  // Keep subject associations across scaffolding; construction paths are not
+  // published until they have been resolved against the completed graph.
+  const completed = receiver === "document" ? complete_document(root) : root;
+  const finalizedPath = completed_document_paths(root, completed);
+  const finalize = (path: readonly number[]) => completed === root ? validate_document_path(path) : scopedPath(finalizedPath(path));
+  const finalBindings = (bindings: readonly ScopedQuadBindingRecord[]) =>
+    sortBindings(bindings).map(binding => Object.freeze({ ...binding, path: finalize(binding.path) }));
+  const realizedRoot = clone_hson_graph_without_quids(completed);
   // These are construction coordinates, not an admitted portable payload.
   // Scoped admission and its resource bounds belong to the private preparer;
   // public composition continues to use its committed receiving associations.
-  const scoped: DocumentScopedQuadRecord = Object.freeze({ document: Object.freeze(sortBindings(initial.evidence.bindings)),
-    occurrences: Object.freeze(occurrences.map(occurrence => Object.freeze({ ...occurrence,
-      bindings: Object.freeze(sortBindings(occurrence.bindings)) }))), subjects: Object.freeze([]) });
+  const scoped: DocumentScopedQuadRecord = Object.freeze({ document: Object.freeze(finalBindings(initial.evidence.bindings)),
+    occurrences: Object.freeze(occurrences.map(occurrence => Object.freeze({ ...occurrence, root: finalize(occurrence.root),
+      parent: occurrence.parent === null ? null : finalize(occurrence.parent), bindings: Object.freeze(finalBindings(occurrence.bindings)) }))), subjects: Object.freeze([]) });
+  const finalStyles = occurrenceStyles.map(style => Object.freeze({ ...style, subjects: Object.freeze(style.subjects.map(subject => Object.freeze({ ...subject, path: finalize(subject.path) }))) }));
   const demands = new Map<string, readonly number[]>();
   for (const path of [...scoped.document.map(binding => binding.path), ...scoped.occurrences.flatMap(occurrence =>
-    [occurrence.root, ...occurrence.bindings.map(binding => binding.path)]), ...occurrenceStyles.flatMap(style => style.subjects.map(subject => subject.path))]) {
+    [occurrence.root, ...occurrence.bindings.map(binding => binding.path)]), ...finalStyles.flatMap(style => style.subjects.map(subject => subject.path))]) {
     demands.set(JSON.stringify(path), path);
   }
   return Object.freeze({ root: realizedRoot, scoped, identityDemands: Object.freeze([...demands.values()]),
-    styles: Object.freeze(occurrenceStyles),
-    ...(associations.length === 0 ? {} : { quads: Object.freeze(associations) }) });
+    styles: Object.freeze(finalStyles),
+    ...(associations.length === 0 ? {} : { quads: Object.freeze(associations.map(association => Object.freeze({ ...association, path: finalize(association.path) }))) }) });
 }
 
 

@@ -9,7 +9,7 @@ import { project_authority_snapshot } from "../src/api/locus/locus.authority-pro
 import { decode_locus_live_projected_envelope_internal, LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_revision_internal } from "../src/api/locus/locus.live-projection.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "string">>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "string">>>]>>]>>`;
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const authority = hsonLiveMap.fromLibraries({
   page: { document: "<main <item \"old\"/>/>", schema: PageSchema },
@@ -18,7 +18,7 @@ const authority = hsonLiveMap.fromLibraries({
 const engine = internal_livemap_aggregate_authority(authority);
 const pageId = engine.libraries()[0]!;
 const quid = "000009c01";
-engine.acquireLocalDocumentIdentity(pageId, validate_document_path([0, 0, 0]), quid);
+engine.acquireLocalDocumentIdentity(pageId, validate_document_path([0, 0, 1, 0, 0, 0, 0]), quid);
 const before = engine.captureHosted();
 const policy = make_locus_hosted_projection_policy(before.registry, before.authority, [
   { name: "page", ownership: "shared" }, { name: "privateData", ownership: "private" },
@@ -29,8 +29,8 @@ const client = client_projection_map({ authority: projected, local: {} });
 const replica = create_echo_aggregate_replica_capability_internal(client);
 const clientEngine = internal_livemap_aggregate_authority(client);
 const clientId = clientEngine.libraries()[0]!, clientQuid = "000009c02";
-clientEngine.acquireLocalDocumentIdentity(clientId, validate_document_path([0, 0, 0]), clientQuid);
-const target = { kind: "path" as const, path: validate_document_path([0, 0]) };
+clientEngine.acquireLocalDocumentIdentity(clientId, validate_document_path([0, 0, 1, 0, 0, 0, 0]), clientQuid);
+const target = { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, 0]) };
 const graph = { domain: "graph" as const, op: "replace-content" as const, target, index: 0,
   replacement: { $_tag: "item", $_content: [{ $_tag: "_hson_elem", $_content: [
     { $_tag: "_hson_str", $_content: ["VISIBLE_LINEAGE_SENTINEL"] },
@@ -71,7 +71,7 @@ for (const lineage of [
 }
 replica.replayHosted(decoded, before.revision);
 assert.equal(client.rev, 1);
-assert.deepEqual(clientEngine.documentOverlay(clientId).pathForQuid(clientQuid), [0, 0, 0]);
+assert.deepEqual(clientEngine.documentOverlay(clientId).pathForQuid(clientQuid), [0, 0, 1, 0, 0, 0, 0]);
 assert.equal(clientEngine.documentOverlay(clientId).pathForQuid(quid), undefined);
 const page = client.doc.must("page");
 if (page.mode !== "document") throw new Error("Expected document.");

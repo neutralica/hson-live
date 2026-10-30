@@ -1,3 +1,4 @@
+import { assert_complete_document } from "../../internal/complete-document.js";
 import type { LiveMapDocumentCapture } from "./livemap.document.capture.js";
 import { collect_hson_node_quid_claims } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
@@ -130,9 +131,10 @@ export function prepare_document_install(
   try {
     root = admit_owned_livemap_root(capture.root, "document", "prepare_document_install");
     qualify_livemap_document(root, "prepare_document_install");
+    assert_complete_document(root);
     observedMode = classify_live_root_mode(root);
   } catch (cause) {
-    throw new LiveMapDocumentInstallError("capture root is malformed", { cause });
+    throw new LiveMapDocumentInstallError("capture requires a complete, browser-compatible html/head/body document; re-admit historical source through authored Document admission", { cause });
   }
 
   if (observedMode !== "document") {

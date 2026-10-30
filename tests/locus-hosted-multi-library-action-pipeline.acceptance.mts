@@ -16,7 +16,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
 const OtherSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.aggregate-action-pipeline",

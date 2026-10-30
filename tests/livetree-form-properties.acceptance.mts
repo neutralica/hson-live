@@ -1,3 +1,4 @@
+import { complete_html } from "./helpers/document-library.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hson } from "../src/index.ts";
@@ -255,7 +256,7 @@ await check("selection revalidates correspondence after capture and planning and
 });
 
 await check("document-bound scalar authoring succeeds without native controls and selected stays unsupported", async () => {
-  const schema = Hson.schema`<type "document" tag "input" content "empty">`;
+  const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "input" content "empty">]>>]>>`;
   const map = hson.liveMap.fromLibraries({ page: { document: '<input value="authored"/>', schema } });
   const binding = hsonMirror(map.doc.must("page")); const tree = binding.tree.find.must.byTag("input");
   let commits = 0; const stop = map.commits.observe(() => commits++);
@@ -281,7 +282,7 @@ await check("standalone async facade retains its authored attribute route withou
 });
 
 await check("accepted bound scalar commits survive native attribute realization failure and Mirror fails explicitly", () => {
-  const schema = Hson.schema`<type "document" tag "input" content "empty">`;
+  const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "input" content "empty">]>>]>>`;
   const map = hson.liveMap.fromLibraries({ page: { document: '<input/>', schema } });
   const binding = hsonMirror(map.doc.must("page")); const tree = binding.tree.find.must.byTag("input");
   const control = new Control("input"); control.attrs.set("hson:quid", tree.quid);
@@ -291,7 +292,7 @@ await check("accepted bound scalar commits survive native attribute realization 
   assert.equal(tree.form.setValue("authority accepted"), tree);
   assert.equal(map.rev, 1); assert.equal(accepted, 1); assert.equal(binding.status, "failed");
   assert.equal(binding.sourceRevision, 0);
-  assert.equal(map.doc.must("page").render(), '<input value="authority accepted">');
+  assert.equal(map.doc.must("page").render(), complete_html('<input value="authority accepted">'));
   stop(); binding.dispose(); binding.tree.remove();
 });
 events.terminal("pass");

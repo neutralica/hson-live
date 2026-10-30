@@ -4,12 +4,14 @@ import { parse_style_string } from "../../src/api/transform/utils/attrs-utils/pa
 import { serialize_style } from "../../src/api/transform/utils/attrs-utils/serialize-style.ts";
 import { InlineCssError } from "../../src/internal/css/inline-css.ts";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
+import { is_Node } from "../../src/core/node-guards.ts";
 import { encode_exact_hson_value, decode_exact_hson_value } from "../../src/api/livemap/livemap.document.view-state-codec.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { runtime_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
 import type { HsonNode } from "../../src/core/types.ts";
 import type { LiveMap, LiveMapDocumentLibrary } from "../../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import { resolve_document_path, validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { make_portable_aggregate_commit, type HostedAggregateCommit } from "../../src/api/livemap/livemap.hosted.ts";
 import { ProjectedValueAdmissionError } from "../../src/core/projected-value-admission.ts";
 import { subject_for_tree } from "../../src/api/livetree/runtime/livetree-runtime.ts";
@@ -364,7 +366,7 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
         assert.ok(canonical_hson_graph_equal(sourceOracle,original));
       } finally {stopAuthority();stop();mirror.dispose();}
       assert.ok(firstEffect);authority.restoreHosted(snapshot);authority.replayHosted(firstEffect);
-      const replayed=aggregate.doc.must('page').root().$_content[0];assert.ok(replayed&&typeof replayed==='object'&&'$_tag' in replayed);
+      const replayed=resolve_document_path(aggregate.doc.must('page').root(),'document',validate_document_path([0,0,1,0,0]));assert.ok(replayed&&typeof replayed==='object'&&'$_tag' in replayed);
       const subject=sourceOracle.$_content[0];assert.ok(subject&&typeof subject==='object'&&'$_tag' in subject&&subject.$_attrs?.style&&typeof subject.$_attrs.style==='object');
       const expected:HsonNode={...subject,$_attrs:{...subject.$_attrs,style:{...subject.$_attrs.style,cssFloat:'right'}}};
       assert.ok(canonical_hson_graph_equal(expected,replayed));
@@ -408,7 +410,10 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     const root: HsonNode = { $_tag: '_hson_root', $_content: original.$_content };
     const map = hsonLiveMap.fromLibraries({ page: { document: root } });
     const restored = install_libraries_snapshot(map.capture()).map;
-    assert.ok(canonical_hson_graph_equal(root, restored.doc.must('page').root()));
+    const authored = root.$_content[0]; assert.ok(is_Node(authored));
+    const restoredAuthored = resolve_document_path(restored.doc.must('page').root(), 'document', validate_document_path([0, 0, 1, 0, 0]));
+    assert.ok(is_Node(restoredAuthored));
+    assert.ok(canonical_hson_graph_equal(authored, restoredAuthored));
     const leaf = (transform.toNode().$_content[0] as HsonNode).$_attrs?.style;
     assert.ok(leaf && typeof leaf === 'object');
     assert.ok(Object.is(leaf.negative, -0));

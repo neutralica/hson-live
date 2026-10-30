@@ -177,7 +177,7 @@ check("path requests remain canonical before reflection", () => {
   const binding = hsonMirror(map);
   const events: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => events.push(event));
-  map.document.attrs.set({ kind: "path", path: [0] }, "a", 1);
+  map.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "a", 1);
   const operation = observed_commit(events).ops[0];
   assert.ok(operation !== undefined && operation.op !== "replace-root");
   assert.equal(operation.target.kind, "path");
@@ -232,7 +232,7 @@ check("repeated path-routed attrs do not rescan correspondence", () => {
 check("path-routed QUID evidence is consumed only as correspondence evidence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const binding = hsonMirror(map);
-  map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "evidence", true);
+  map.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0, 0, 0] }, "evidence", true);
   assert.equal(binding.diagnostics().identityEffectsConsumed, 1);
   assert.equal(raw_node(retained_subject(binding.tree), [0, 0]).$_attrs?.evidence, true);
   binding.dispose();

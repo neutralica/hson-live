@@ -26,14 +26,14 @@ function check(name: string, run: () => void): void {
 }
 const Q1 = "000003a01";
 const fixture = () => element('<main <item/> <item/>/>');
-const target = (index: number) => ({ kind: "path" as const, path: validate_document_path([0, 0, index]) });
+const target = (index: number) => ({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, 0, index]) });
 
 check("new handle resolves one current canonical path", () => {
   const map = fixture();
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const handle = acquire_document_identity(map.document, target(0));
   assert.equal(handle.active, true);
-  assert.deepEqual(handle.path(), [0, 0, 0]);
+  assert.deepEqual(handle.path(), [0, 0, 1, 0, 0, 0, 0]);
   assert.equal(handle.snap()?.$_tag, "item");
 });
 
@@ -60,16 +60,16 @@ check("insertion before an identified node shifts its resolved path", () => {
   const map = fixture();
   const handle = acquire_document_identity(map.document, target(1));
   map.document.content.insert(path(0), 0, projected_element('<item/>'));
-  assert.deepEqual(handle.path(), [0, 0, 2]);
+  assert.deepEqual(handle.path(), [0, 0, 1, 0, 0, 0, 2]);
 });
 
 check("forward and backward movement follow one identified node", () => {
   const map = fixture();
   const handle = acquire_document_identity(map.document, target(0));
   map.document.content.move(path(0), 0, 1);
-  assert.deepEqual(handle.path(), [0, 0, 1]);
+  assert.deepEqual(handle.path(), [0, 0, 1, 0, 0, 0, 1]);
   map.document.content.move(path(0), 1, 0);
-  assert.deepEqual(handle.path(), [0, 0, 0]);
+  assert.deepEqual(handle.path(), [0, 0, 1, 0, 0, 0, 0]);
 });
 
 check("removal retires a document identity handle", () => {

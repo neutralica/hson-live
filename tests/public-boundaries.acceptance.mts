@@ -200,10 +200,10 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
 
 check("LiveMap exposes only detached canonical root copies", () => {
   const node = parse_hson_exact_runtime(
-    `<button id="primary" data-user="kept" @000000001 "hello"/>`,
+    `<html <head/> <body <button id="primary" data-user="kept" @000000001 "hello"/>/>/>`,
     { allowTopLevelDocumentText: true },
   );
-  const map = admit_exact_runtime_livemap_libraries({ page: { document: node, schema: Hson.schema`<type "document" tag "button" attrs <props <id "string" data-user "string">> content "string">` } });
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: node, schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" attrs <props <id "string" data-user "string">> content "string">]>>]>>` } });
   const page = map.doc.must("page");
 
   assert.equal("node" in map, false);
@@ -244,7 +244,7 @@ check("detached public observations cannot mutate canonical ownership", () => {
 });
 
 check("document operations stay on the named library while restore stays on the registry", () => {
-  const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<main @000000003/>`, { allowTopLevelDocumentText: true }), schema: Hson.schema`<type "document" tag "main" content "empty">` } });
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<html <head/> <body <main @000000003/>/>/>`, { allowTopLevelDocumentText: true }), schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>` } });
   const page = map.doc.must("page");
   assert.equal(page.mode, "document");
   assert.equal(typeof map.restore, "function");

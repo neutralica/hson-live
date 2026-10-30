@@ -2,7 +2,7 @@ import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } f
 import { corrupt_tagged_payload } from "./helpers/tagged-codec-fixture.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { document_html } from "./helpers/document-library.mts";
+import { document_html, complete_html } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, add_interaction, enable_interactions, hsonLiveMap } from "../src/index.ts";
 import { install_libraries_snapshot, type LiveMapCommit } from "../src/api/livemap/index.ts";
@@ -98,7 +98,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   explicit.addLibraries({ page: { document: page, schema: ANY_DOCUMENT },
     state: { data: { count: 0 }, schema: ANY_DATA } });
   assert.equal(explicit.capture().registry.digest, map.capture().registry.digest);
-  assert.equal(document_html(map.doc.must("page")), "<main>Hello</main>");
+  assert.equal(document_html(map.doc.must("page")), complete_html("<main>Hello</main>"));
   assert.notEqual(map.capture().registry.digest, before.registry.digest);
   assert.equal(map.capture().revision, 1);
   let emptyObservations = 0;
@@ -151,7 +151,7 @@ check("failed admission leaves revision, registry, observers and identity alone"
   const epoch = livemap_identity_epoch_accounting(old);
   let observations = 0;
   const stop = map.commits.observe(() => { observations += 1; });
-  const narrow = Hson.schema`<type "document" tag "main" content "empty">`;
+  const narrow = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
   const claimed = parse_hson("<main/>", { allowTopLevelDocumentText: true });
   const child = claimed.$_content[0];
   if (!is_Node(child)) throw new Error("Expected document child.");
@@ -184,7 +184,7 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   const installed = install_libraries_snapshot(after).map;
   assert.equal(installed.rev, 1);
   assert.equal(installed.capture().registry.digest, after.registry.digest);
-  assert.equal(document_html(installed.doc.must("page")), "<main>Hello</main>");
+  assert.equal(document_html(installed.doc.must("page")), complete_html("<main>Hello</main>"));
   const replayed = hsonLiveMap.create();
   const replayCommit = replayed.replay(JSON.parse(JSON.stringify(commit)));
   assert.deepEqual(replayCommit.operations, commit.operations);
@@ -207,7 +207,7 @@ check("portable replay and fresh install preserve topology guarantees", () => {
   map.restore(after);
   assert.equal(map.rev, 1);
   assert.equal(map.capture().registry.digest, after.registry.digest);
-  assert.equal(document_html(map.doc.must("page")), "<main>Hello</main>");
+  assert.equal(document_html(map.doc.must("page")), complete_html("<main>Hello</main>"));
   assert.equal(map.doc.must("page"), oldPage);
 });
 
@@ -262,7 +262,7 @@ check("interaction state can target a document admitted after enabling it", () =
   enable_interactions(map);
   map.addLibraries({ page: { document: Hson.document`<main <button/>/>` } });
   const descriptor = Object.freeze({
-    id: "new-page", subject: Object.freeze({ library: "page", path: Object.freeze([0, 0, 0]) }),
+    id: "new-page", subject: Object.freeze({ library: "page", path: Object.freeze([0, 0, 1, 0, 0, 0, 0]) }),
     listener: Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
       passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false,
       stopImmediatePropagation: false }),

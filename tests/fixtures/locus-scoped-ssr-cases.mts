@@ -119,7 +119,7 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
       assert.equal(flat.libs.libraries.find(e => e.name === "flat")!.scopes, undefined);
       assert.equal(flat.html, locus.doc.must("flat").render());
       const bare = session.now({ html: "bare" }); assert_cut(bare, 1);
-      assert.equal(bare.html, '<main><aside>Bare</aside></main>');
+      assert.equal(bare.html, '<!doctype html><html><head></head><body><main><aside>Bare</aside></main></body></html>');
       for (const target of ["secret", "parts", "data", "missing"]) assert.throws(() => session.now({ html: target }), /unavailable/);
       const denied = await locus.session.create({ libraries: ["page", "data"] }, { connection: { principalId: "denied" } });
       assert.throws(() => denied.now({ html: "page" }), /unavailable/);

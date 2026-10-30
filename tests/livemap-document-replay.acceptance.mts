@@ -23,14 +23,14 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const Empty = Hson.schema`<type "document" tag "main" content "empty">`;
-const Paragraph = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
+const Empty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const Paragraph = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
 const Data = Hson.schema`<type "data" content <value "number">>`;
 const ordinary = (source = "<main/>") => hsonLiveMap.fromLibraries({ page: { document: source, schema: Empty } });
 const exact = (source: string, schema = Empty) => admit_exact_runtime_livemap_libraries({
-  page: { document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema },
+  page: { document: parse_hson_exact_runtime(`<html <head/> <body ${source}/>/>`, { allowTopLevelDocumentText: true }), schema },
 });
-const rootTarget = { kind: "path", path: [0] } as const;
+const rootTarget = { kind: "path", path: [0,0,1,0,0] } as const;
 
 check("document mutation publishes one named map commit", () => {
   const map = exact("<main @000000001/>");
@@ -86,19 +86,18 @@ check("document restore installs a coherent later state", () => {
   assert.equal(target.rev, 2);
   assert.equal(target.doc.must("page").document.byQuid("000000003"), undefined);
 });
-check("capture and restore preserve an empty graph owner and later first insertion", () => {
-  const schema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
-  const empty = { $_tag: "_hson_root", $_content: [] };
-  const source = hsonLiveMap.fromLibraries({ page: { document: empty, schema } });
+check("capture and restore preserve an empty body and later first insertion", () => {
+  const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <repeat <tag "item" content "empty">>>]>>`;
+  const source = hsonLiveMap.fromLibraries({ page: { document: '<html/>', schema } });
   const target = hsonLiveMap.fromLibraries({ page: { document: "<item/>", schema } });
   target.restore(source.capture());
-  assert.deepEqual(target.doc.must("page").root(), empty);
+  assert.deepEqual(target.doc.must("page").root(), source.doc.must("page").root());
   assert.deepEqual(target.capture(), source.capture());
-  assert.equal(target.doc.must("page").at([0]).snap(), undefined);
-  source.doc.must("page").at([]).asRoot()!.insert(0, { $_tag: "item", $_content: [] });
+  assert.equal(target.doc.must("page").at([1,0]).snap(), undefined);
+  source.doc.must("page").at([1]).asElement()!.insert(0, { $_tag: "item", $_content: [] });
   target.restore(source.capture());
   assert.deepEqual(target.capture(), source.capture());
-  assert.equal((target.doc.must("page").root().$_content[0] as { $_tag: string }).$_tag, "item");
+  assert.ok(target.doc.must("page").at([1,0]).asElement());
 });
 
 check("replace attrs planning detaches caller input without changing state", () => {

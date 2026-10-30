@@ -61,7 +61,7 @@ async function bounded<T>(promise: Promise<T>, milliseconds: number, message: ()
 }
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 function make_map() {
   return hsonLiveMap.fromLibraries({

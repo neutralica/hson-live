@@ -33,12 +33,14 @@ import { begin_livetree_materialization_profile } from "../src/api/livetree/debu
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
-const MainEmpty = Hson.schema`<type "document" tag "main" content "empty">`;
-const MainParagraph = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "empty">]>>`;
-const MainAside = Hson.schema`<type "document" tag "main" content <sequence [<tag "aside" content "empty">]>>`;
-const SharedEmpty = Hson.schema`<type "document" tag "shared" content "empty">`;
-const SectionEmpty = Hson.schema`<type "document" tag "section" content "empty">`;
-const exactMap = (document: HsonNode, schema = MainEmpty) => admit_exact_runtime_livemap_libraries({ page: { document, schema } });
+const MainEmpty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const MainParagraph = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "empty">]>>]>>]>>`;
+const MainAside = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "aside" content "empty">]>>]>>]>>`;
+const SharedEmpty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "shared" content "empty">]>>]>>`;
+const SectionEmpty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "section" content "empty">]>>]>>`;
+const exactMap = (document: HsonNode, schema = MainEmpty) => admit_exact_runtime_livemap_libraries({ page: { document: { $_tag: "_hson_root", $_content: [{ $_tag: "html", $_content: [{ $_tag: "_hson_elem", $_content: [
+  { $_tag: "head", $_content: [] }, { $_tag: "body", $_content: document.$_content },
+] }] }] }, schema } });
 
 const Q1 = "000000001";
 const Q2 = "000000002";
@@ -861,7 +863,7 @@ check("internal exact LiveMap installation remains cold while public raw admissi
 check("same-topology registry restore transfers state without carrying runtime identity", () => {
   const target = exactMap(document_root(element("main", Q1)));
   const source = exactMap(document_root(element("main", Q2)),
-    Hson.schema`<type "document" tag "main" content "empty">`);
+    Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`);
   source.doc.must("page").at([]).asElement()!.attrs.set("title", "restored");
   const page = target.doc.must("page");
   const portable = source.capture();

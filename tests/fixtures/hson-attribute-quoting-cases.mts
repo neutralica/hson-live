@@ -147,15 +147,15 @@ export function run_attribute_quoting_cases(): number {
       leaf: part(`<p hson:part info:data=${operand('%{info}')} title=${operand('%{title}')} "^{info.label}"/>`),
     } }, page: { document: `<hson-part lib=${operand('components')} at=${operand('outer')} title="Heading"
       data:items=${JSON.stringify('«<label "item">»')} doc:body=${JSON.stringify('<i "body"/>')}/>` } });
-    assert.equal(map.doc.must('page').render(), '<section title="Heading"><b data-index="0">item</b><p title="item">item</p><i>body</i><aside at="anything/a/b" lib="unresolvable/a/b"></aside></section>');
+    assert.equal(map.doc.must('page').render(), '<!doctype html><html><head></head><body><section title="Heading"><b data-index="0">item</b><p title="item">item</p><i>body</i><aside at="anything/a/b" lib="unresolvable/a/b"></aside></section></body></html>');
     const qualified = hsonLiveMap.fromLibraries({ components: { parts: { leaf: part('<p hson:part title=%{bar}/>' ) } },
       page: { document: `<hson-part at=${operand('components/leaf')} bar="whole"/>` } });
-    assert.equal(qualified.doc.must('page').render(), '<p title="whole"></p>');
+    assert.equal(qualified.doc.must('page').render(), '<!doctype html><html><head></head><body><p title="whole"></p></body></html>');
     checks += 2;
   }
   const library = 'part 雪', member = 'na "& 雪';
   const unusual = hsonLiveMap.fromLibraries({ [library]: { parts: { [member]: part('<p hson:part "kept"/>') } },
     page: { document: `<hson-part lib=${JSON.stringify(library)} at=${JSON.stringify(member)}/>` } });
-  assert.equal(unusual.doc.must('page').render(), '<p>kept</p>');
+  assert.equal(unusual.doc.must('page').render(), '<!doctype html><html><head></head><body><p>kept</p></body></html>');
   return checks + 1;
 }

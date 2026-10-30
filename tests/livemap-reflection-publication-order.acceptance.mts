@@ -70,10 +70,10 @@ check("document watch sees canonical revision n+1 before Reflection revision adv
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
   let seen: unknown;
-  map.at([0]).watch(() => {
+  map.at([1, 0, 0]).watch(() => {
     seen = {
       mapRevision: map.rev,
-      canonicalTag: tag(document_hson_value(map.at([0]).hson())),
+      canonicalTag: tag(document_hson_value(map.at([1, 0, 0]).hson())),
       reflectionRevision: binding.sourceRevision,
       projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
@@ -95,7 +95,7 @@ check("mounted DOM remains at n inside the pre-Reflection watch and converges af
   const binding = hsonMirror(map);
   const rootDom = mount(retained_subject(binding.tree));
   let insideTag: string | undefined;
-  map.at([0]).watch(() => {
+  map.at([1, 0, 0]).watch(() => {
     insideTag = (rootDom.childNodes[0] as FakeElement | undefined)?.tagName;
   });
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
@@ -112,7 +112,7 @@ check("local QUID retirement precedes Mirror runtime correspondence cleanup", ()
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const oldProjected = raw_node(retained_subject(binding.tree), [0, 0]);
   let seam: unknown;
-  map.at([0]).watch(() => {
+  map.at([1, 0, 0]).watch(() => {
     seam = {
       canonicalOld: map.document.byQuid(oldQuid)?.$_tag,
       canonicalNext: map.document.byQuid(nextQuid)?.$_tag,
@@ -140,7 +140,7 @@ check("an ordinary observer registered before Reflection sees the same seam", ()
   map.commits.observe(() => {
     seen = {
       mapRevision: map.rev,
-      canonicalTag: tag(document_hson_value(map.at([0]).hson())),
+      canonicalTag: tag(document_hson_value(map.at([1, 0, 0]).hson())),
       reflectionRevision: binding.sourceRevision,
       projectedTag: raw_node(retained_subject(binding.tree), [0, 0]).$_tag,
     };
@@ -202,7 +202,7 @@ check("a linked LiveTree read after registry publication sees the converged hand
   const childNode = raw_node(retained_subject(binding.tree), [0, 0]);
   const linked = create_livetree(childNode).adoptRoots(retained_historic_root(binding.tree));
   let inside: unknown;
-  map.at([0]).watch(() => {
+  map.at([1, 0, 0]).watch(() => {
     inside = { exact: retained_subject(linked) === childNode, title: linked.attrs.get("title") };
   });
   map.document.attrs.set(path(0, 0), "title", "new");
@@ -216,12 +216,12 @@ check("binding disposal from a watch follows the completed Reflection delivery",
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
   const retained = retained_subject(binding.tree);
-  map.at([0]).watch(() => binding.dispose());
+  map.at([1, 0, 0]).watch(() => binding.dispose());
   map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(binding.status, "disposed");
   assert.equal(binding.sourceRevision, 1);
   assert.equal(raw_node(retained, [0, 0]).$_tag, "a");
-  assert.equal(tag(document_hson_value(map.at([0]).hson())), "a");
+  assert.equal(tag(document_hson_value(map.at([1, 0, 0]).hson())), "a");
 });
 
 check("a watch added during watch dispatch starts with the next commit", () => {

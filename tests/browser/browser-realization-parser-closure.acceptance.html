@@ -5,6 +5,8 @@
 <script type="module">
 import {
   representation_markup_cases,
+  document_markup,
+  parse_authored_document_library,
   hsonLiveMap,
   HTML_TAGS,
   SVG_TAGS,
@@ -96,22 +98,22 @@ async function parseNaiveUtf8Attribute(value) {
 
 try {
   targeted += representation_markup_cases();
-  const snapshot = source => hsonLiveMap.fromLibraries({ page: { document: source } }).doc.page.snap();
+  const snapshot = (source, path) => document_markup(parse_authored_document_library(source).root, path);
   const parse = source => { const host = document.createElement("template"); host.innerHTML = snapshot(source); return host.content.firstElementChild; };
   if (parse('<textarea "\\nA&<B"/>').value !== "\nA&<B") throw new Error("Snapshot textarea leading newline changed in Chromium");
-  const textAreaMap = hsonLiveMap.fromLibraries({ page: { document: '<textarea "\\nA&<B"/>' } });
-  const textAreaHost = document.createElement("textarea"); textAreaHost.innerHTML = textAreaMap.doc.page.at([0]).must.snap();
+  const textAreaSource = '<textarea "\\nA&<B"/>';
+  const textAreaHost = document.createElement("textarea"); textAreaHost.innerHTML = snapshot(textAreaSource, [0]);
   if (textAreaHost.value !== "\nA&<B") throw new Error("Selected RCDATA fragment changed in its parent context");
   if (parse('<textarea ""/>').value !== "") throw new Error("Empty textarea snapshot changed");
   if (parse('<pre "\\nA"/>').textContent !== "\nA") throw new Error("Snapshot pre leading newline changed");
-  const styleMap = hsonLiveMap.fromLibraries({ page: { document: `<style "p::before { content: 'a&b'; }"/>` } });
-  const style = document.createElement("style"); style.innerHTML = styleMap.doc.page.at([0]).must.snap();
+  const styleSource = `<style "p::before { content: 'a&b'; }"/>`;
+  const style = document.createElement("style"); style.innerHTML = snapshot(styleSource, [0]);
   if (style.textContent !== "p::before { content: 'a&b'; }") throw new Error("Selected raw text lost parent context");
-  const tableMap = hsonLiveMap.fromLibraries({ page: { document: '<table <tr <td "cell"/>/>/>' } });
-  const tbody = document.createElement("tbody"); tbody.innerHTML = tableMap.doc.page.at([0]).must.snap();
+  const tableSource = '<table <tr <td "cell"/>/>/>';
+  const tbody = document.createElement("tbody"); tbody.innerHTML = snapshot(tableSource, [0]);
   if (tbody.firstElementChild?.localName !== "tr" || tbody.textContent !== "cell") throw new Error("Contextual table fragment changed");
-  const svgMap = hsonLiveMap.fromLibraries({ page: { document: '<svg <linearGradient id="g"/>/>' } });
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.innerHTML = svgMap.doc.page.at([0]).must.snap();
+  const svgSource = '<svg <linearGradient id="g"/>/>';
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.innerHTML = snapshot(svgSource, [0]);
   if (svg.firstElementChild?.localName !== "linearGradient" || svg.firstElementChild.namespaceURI !== svg.namespaceURI) throw new Error("SVG fragment lost namespace context");
   for (const parent of HTML_TAGS) {
     for (const child of HTML_TAGS) {

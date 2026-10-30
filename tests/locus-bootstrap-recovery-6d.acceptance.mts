@@ -373,7 +373,7 @@ function data_library(map: LiveMap | undefined, name: string) {
 }
 
 {
-  const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+  const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
   const map = hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: DocumentSchema },
     PRIVATE_NAME_SENTINEL: { document: "<main/>", schema: DocumentSchema },
@@ -462,7 +462,7 @@ function data_library(map: LiveMap | undefined, name: string) {
 }
 
 {
-  const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+  const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
   const map = hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: PageSchema },
     PRIVATE_NAME_SENTINEL: { document: "<main/>", schema: PageSchema },
@@ -607,8 +607,8 @@ for (const mode of ["reconcile", "replay"] as const) {
 
 {
   install_fake_document();
-  const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-  const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
+  const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+  const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   const server = create_locus_hosted_aggregate_authority_internal({ map,
     libraries: [{ name: "page", ownership: "shared" }],
@@ -626,8 +626,8 @@ for (const mode of ["reconcile", "replay"] as const) {
   const pageMirror = hsonMirror(page);
   const panelMirror = hsonMirror(panel);
   const localTree = retained_subject(panelMirror.tree);
-  const projectedHandle = acquire_livemap_document_identity(page.document, { kind: "path", path: [0] });
-  const localHandle = acquire_livemap_document_identity(panel.document, { kind: "path", path: [0] });
+  const projectedHandle = acquire_livemap_document_identity(page.document, { kind: "path", path: [0,0,1,0,0] });
+  const localHandle = acquire_livemap_document_identity(panel.document, { kind: "path", path: [0,0,1,0,0] });
   const projectedExact = capture_internal_document(sameMap, "page", { identity: "same-epoch" });
   const engine = internal_livemap_aggregate_authority(sameMap);
   const projectedId = engine.libraries()[0]!;
@@ -647,16 +647,16 @@ for (const mode of ["reconcile", "replay"] as const) {
   let completionSettled = false;
   const pendingCompletion = completion.enqueue(() => Object.freeze({
     name: "document.attrs.clear" as const,
-    payload: { target: { kind: "path" as const, path: validate_document_path([0]) } },
+    payload: { target: { kind: "path" as const, path: validate_document_path([0,0,1,0,0]) } },
   }));
   void pendingCompletion.then(() => { completionSettled = true; });
   for (let turn = 0; turn < 8 && completion.pendingRevisionWaits() === 0; turn += 1) await Promise.resolve();
   assert.equal(completion.pendingRevisionWaits(), 1);
-  panel.document.attrs.set({ kind: "path", path: [0] }, "title", "LOCAL_DOCUMENT_DISCONNECTED");
+  panel.document.attrs.set({ kind: "path", path: [0,0,1,0,0] }, "title", "LOCAL_DOCUMENT_DISCONNECTED");
   assert.equal(completionSettled, false);
   await server.stage((draft) => {
     const projected = draft.doc.must("page");
-    if ("graph" in projected) projected.graph({ domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "PROJECTED_DOCUMENT_FALLBACK" });
+    if ("graph" in projected) projected.graph({ domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0,0,1,0,0]) }, name: "title", value: "PROJECTED_DOCUMENT_FALLBACK" });
   });
   const localUpdates = panelMirror.diagnostics().updatesApplied;
   detach = bind_locus_websocket(server, pair.server);
@@ -666,8 +666,8 @@ for (const mode of ["reconcile", "replay"] as const) {
   assert.equal(result.outcome, "reconcile");
   assert.equal(client.map, sameMap);
   assert.equal(client.lastAppliedRev, 1);
-  assert.equal(panel.document.attrs.get({ kind: "path", path: [0] }, "title"), "LOCAL_DOCUMENT_DISCONNECTED");
-  assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), "PROJECTED_DOCUMENT_FALLBACK");
+  assert.equal(panel.document.attrs.get({ kind: "path", path: [0,0,1,0,0] }, "title"), "LOCAL_DOCUMENT_DISCONNECTED");
+  assert.equal(page.document.attrs.get({ kind: "path", path: [0,0,1,0,0] }, "title"), "PROJECTED_DOCUMENT_FALLBACK");
   assert.equal(retained_subject(panelMirror.tree), localTree);
   assert.equal(panelMirror.diagnostics().updatesApplied, localUpdates);
   assert.equal(localHandle.active, true);
@@ -686,8 +686,8 @@ for (const mode of ["reconcile", "replay"] as const) {
 }
 
 {
-  const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-  const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
+  const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+  const PanelSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
   const map = hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: PageSchema },
     PRIVATE_NAME_SENTINEL: { document: "<main/>", schema: PageSchema },
@@ -710,16 +710,16 @@ for (const mode of ["reconcile", "replay"] as const) {
   const localTree = retained_subject(localMirror.tree);
   const localQuid = localMirror.tree.find.must.byTag("aside").quid;
   client.disconnect(); detach();
-  panel.document.attrs.set({ kind: "path", path: [0] }, "title", "LOCAL_DOCUMENT_REPLAY_SURVIVES");
+  panel.document.attrs.set({ kind: "path", path: [0,0,1,0,0] }, "title", "LOCAL_DOCUMENT_REPLAY_SURVIVES");
   await server.stage((draft) => {
     const projected = draft.doc.must("page");
     if ("graph" in projected) projected.graph({ domain: "graph", op: "set-attr",
-      target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "PROJECTED_DOCUMENT_REPLAY" });
+      target: { kind: "path", path: validate_document_path([0,0,1,0,0]) }, name: "title", value: "PROJECTED_DOCUMENT_REPLAY" });
   });
   await server.stage((draft) => {
     const hidden = draft.doc.must("PRIVATE_NAME_SENTINEL");
     if ("graph" in hidden) hidden.graph({ domain: "graph", op: "set-attr",
-      target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "PRIVATE_DOCUMENT_REPLAY" });
+      target: { kind: "path", path: validate_document_path([0,0,1,0,0]) }, name: "title", value: "PRIVATE_DOCUMENT_REPLAY" });
   });
   const localUpdates = localMirror.diagnostics().updatesApplied;
   detach = bind_locus_websocket(server, pair.server);

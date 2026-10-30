@@ -22,104 +22,104 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const Root = Hson.schema`<type "document" tag "main" content "empty">`;
-const Button = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-const Section = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content <sequence [<tag "button" content "empty">]>>]>>`;
-const Items = Hson.schema`<type "document" tag "main" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>`;
-const Multi = Hson.schema`<type "document" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>`;
+const Root = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const Button = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
+const Section = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "section" content <sequence [<tag "button" content "empty">]>>]>>]>>]>>`;
+const Items = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>]>>]>>`;
+const Multi = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" attrs <props <id <optional "string">>> content "empty">>>]>>]>>`;
 const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries({ page: { document, schema } });
 const item = (id?: string): HsonNode => ({ $_tag: "item", ...(id === undefined ? {} : { $_attrs: { id } }), $_content: [] });
-const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
+const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path: [0, 0, 1, 0, ...path] });
 const tag = (value: unknown): string | undefined => typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
 
 check("root document locations discover their own ID", () => {
   const page = registry('<main id="root"/>', Root).doc.must("page");
-  assert.equal(page.at([]).id("root"), page.at([]));
+  assert.equal(page.at([1, 0]).id("root"), page.at([1, 0]));
 });
 check("root locations discover direct children", () => {
   const page = registry('<main <button id="submit"/>/>', Button).doc.must("page");
-  assert.deepEqual(page.at([]).id("submit")?.path(), [0]);
+  assert.deepEqual(page.at([1, 0]).id("submit")?.path(), [1, 0, 0]);
 });
 check("root locations discover nested descendants", () => {
   const page = registry('<main <section <button id="submit"/>/>/>', Section).doc.must("page");
-  assert.deepEqual(page.at([]).id("submit")?.path(), [0, 0]);
+  assert.deepEqual(page.at([1, 0]).id("submit")?.path(), [1, 0, 0, 0]);
 });
-check("multi-root documents search actual top-level content", () => {
-  const page = registry('<item/> <item id="submit"/>', Multi).doc.must("page");
-  assert.deepEqual(page.at([]).id("submit")?.path(), [1]);
+check("Document search visits later body content", () => {
+  const page = registry('<main <item/> <item id="submit"/>/>', Multi).doc.must("page");
+  assert.deepEqual(page.at([1, 0]).id("submit")?.path(), [1, 0, 1]);
 });
 check("missing IDs and non-string arguments reject appropriately", () => {
   const page = registry('<main <button/>/>', Button).doc.must("page");
-  assert.equal(page.at([]).id("missing"), undefined);
-  assert.throws(() => Reflect.apply(page.at([]).id, page.at([]), [7]), /not a string/);
+  assert.equal(page.at([1, 0]).id("missing"), undefined);
+  assert.throws(() => Reflect.apply(page.at([1, 0]).id, page.at([1, 0]), [7]), /not a string/);
 });
 check("duplicate IDs choose the first canonical preorder match", () => {
   const page = registry('<main <item id="x"/> <item id="x"/>/>').doc.must("page");
-  assert.deepEqual(page.at([]).id("x")?.path(), [0]);
+  assert.deepEqual(page.at([1, 0]).id("x")?.path(), [1, 0, 0]);
 });
 check("scoped endpoints include themselves", () => {
   const page = registry('<main <item id="scope"/>/>').doc.must("page");
-  assert.equal(page.at([0]).id("scope"), page.at([0]));
+  assert.equal(page.at([1, 0, 0]).id("scope"), page.at([1, 0, 0]));
 });
 check("scoped endpoints cannot inspect siblings or ancestors", () => {
   const page = registry('<main id="root" <item/> <item id="outside"/>/>').doc.must("page");
-  assert.equal(page.at([0]).id("outside"), undefined);
-  assert.equal(page.at([0]).id("root"), undefined);
+  assert.equal(page.at([1, 0, 0]).id("outside"), undefined);
+  assert.equal(page.at([1, 0, 0]).id("root"), undefined);
 });
 check("ID matching is exact and case-sensitive", () => {
   const page = registry('<main <item id="Submit"/>/>').doc.must("page");
-  assert.equal(page.at([]).id("submit"), undefined);
-  assert.deepEqual(page.at([]).id("Submit")?.path(), [0]);
+  assert.equal(page.at([1, 0]).id("submit"), undefined);
+  assert.deepEqual(page.at([1, 0]).id("Submit")?.path(), [1, 0, 0]);
 });
 check("successful discovery returns the existing interned location", () => {
   const page = registry('<main <item id="x"/>/>').doc.must("page");
-  const found = page.at([]).id("x");
+  const found = page.at([1, 0]).id("x");
   assert.equal(found, page.at(found?.path() ?? []));
   assert.equal(page.proxy().$_.id("x"), found);
 });
 check("insertion shifts fresh discovery without moving an old location", () => {
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
-  const old = page.at([]).id("x");
+  const old = page.at([1, 0]).id("x");
   page.document.content.insert(target(0, 0), 0, item());
   assert.equal((document_hson_value(old?.hson()) as HsonNode)?.$_attrs?.id, undefined);
-  assert.deepEqual(page.at([]).id("x")?.path(), [1]);
+  assert.deepEqual(page.at([1, 0]).id("x")?.path(), [1, 0, 1]);
 });
 check("movement leaves returned locations at their coordinates", () => {
   const page = registry('<main <item id="x"/> <item/>/>').doc.must("page");
-  const old = page.at([]).id("x");
+  const old = page.at([1, 0]).id("x");
   page.document.content.move(target(0, 0), 0, 1);
   assert.equal(tag(document_hson_value(old?.hson())), "item");
   assert.equal((document_hson_value(old?.hson()) as HsonNode)?.$_attrs?.id, undefined);
-  assert.deepEqual(page.at([]).id("x")?.path(), [1]);
+  assert.deepEqual(page.at([1, 0]).id("x")?.path(), [1, 0, 1]);
 });
 check("removal leaves old coordinate passive and fresh discovery missing", () => {
   const page = registry('<main <item/> <item id="x"/>/>').doc.must("page");
-  const old = page.at([]).id("x");
+  const old = page.at([1, 0]).id("x");
   page.document.content.remove(target(0, 0), 1);
   assert.equal(document_hson_value(old?.hson()), undefined);
-  assert.equal(page.at([]).id("x"), undefined);
+  assert.equal(page.at([1, 0]).id("x"), undefined);
 });
 check("replacement is visible to fresh discovery", () => {
   const page = registry('<main <item id="x"/>/>').doc.must("page");
-  const old = page.at([]).id("x");
+  const old = page.at([1, 0]).id("x");
   page.document.content.replace(target(0, 0), 0, item("y"));
-  assert.equal(page.at([]).id("x"), undefined);
-  assert.equal(page.at([]).id("y"), old);
+  assert.equal(page.at([1, 0]).id("x"), undefined);
+  assert.equal(page.at([1, 0]).id("y"), old);
 });
 check("registry restore refreshes canonical discovery", () => {
   const map = registry('<main <item id="x"/> <item/>/>');
   const initial = map.capture();
   const page = map.doc.must("page");
   page.document.content.move(target(0, 0), 0, 1);
-  const moved = page.at([]).id("x");
+  const moved = page.at([1, 0]).id("x");
   map.restore(initial);
   assert.equal((document_hson_value(moved?.hson()) as HsonNode)?.$_attrs?.id, undefined);
-  assert.deepEqual(page.at([]).id("x")?.path(), [0]);
+  assert.deepEqual(page.at([1, 0]).id("x")?.path(), [1, 0, 0]);
 });
 check("discovery neither mints QUIDs nor advances revision", () => {
   const map = registry('<main <item id="x"/>/>');
   const before = map.doc.must("page").root();
-  void map.doc.must("page").at([]).id("x");
+  void map.doc.must("page").at([1, 0]).id("x");
   void map.doc.must("page").proxy().$_.id("x");
   assert.deepEqual(map.doc.must("page").root(), before);
   assert.equal(JSON.stringify(before).includes("quid"), false);

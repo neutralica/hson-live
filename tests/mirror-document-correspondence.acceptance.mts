@@ -277,7 +277,7 @@ check("path input remains canonical before Reflection observes it", () => {
   const { binding } = reflected(map);
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((observation) => observations.push(observation));
-  map.document.attrs.set({ kind: "path", path: [0] }, "path", true);
+  map.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "path", true);
   const observation = observations.at(-1);
   if (observation?.kind !== "commit") throw new Error("Expected commit");
   const operation = observation.commit.ops[0];

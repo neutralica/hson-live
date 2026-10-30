@@ -2,7 +2,7 @@
 <!-- Bundle dist/index.js to .canonical-interactions.library.bundle.js before direct execution. -->
 <html>
 <body>
-  <button id="subject">subject</button>
+  <iframe id="receiver" srcdoc="&lt;!doctype html&gt;&lt;html&gt;&lt;head&gt;&lt;/head&gt;&lt;body&gt;&lt;main&gt;&lt;button id='subject'&gt;subject&lt;/button&gt;&lt;/main&gt;&lt;/body&gt;&lt;/html&gt;"></iframe>
   <output id="result">running</output>
   <script type="module">
     import {
@@ -11,15 +11,15 @@
       add_interaction,
       enable_interactions,
       hsonLiveMap,
-      hsonLiveTree,
+      graft,
       admit_exact_runtime_livemap_libraries,
     } from "./.canonical-interactions.library.bundle.js";
 
     const QUID = "000008398";
-    const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+    const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
     const StateSchema = Hson.schema`<type "data" content <count "number">>`;
     const page = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } }).doc.must("page").root();
-    page.$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
+    page.$_content[0].$_content[0].$_content[1].$_content[0].$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
     const map = admit_exact_runtime_livemap_libraries({
       state: { data: { count: 0 }, schema: StateSchema },
       page: { document: page, schema: PageSchema },
@@ -31,7 +31,7 @@
       ...overrides,
     });
     const local = (id, key, event, target, overrides = {}) => ({
-      id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener: listener(event, target, overrides),
+      id, subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }), listener: listener(event, target, overrides),
       kind: "browser", key, args: Hson.data.from(-0),
     });
     add_interaction(map, local("element", "element", "click", "element", {
@@ -43,7 +43,10 @@
       passive: true, preventDefault: true,
     }));
 
-    const tree = hsonLiveTree.queryBody().graft();
+    const frame = document.querySelector("#receiver");
+    if (frame.contentDocument.readyState !== "complete") await new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+    const subjectDocument = frame.contentDocument, subjectWindow = frame.contentWindow;
+    const tree = graft(subjectDocument.documentElement, { unsafe: false });
     const treeButtonQuid = tree.find.must.byId("subject").quid;
     const calls = { element: 0, document: 0, window: 0, passive: 0 };
     let exactArgs = false;
@@ -62,14 +65,14 @@
       },
     });
 
-    const button = document.querySelector("#subject");
+    const button = subjectDocument.querySelector("#subject");
     let afterImmediateStop = 0;
     button.addEventListener("click", () => { afterImmediateStop += 1; });
     const click = new Event("click", { bubbles: true, cancelable: true });
     button.dispatchEvent(click);
     button.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
-    document.dispatchEvent(new Event("hson-document"));
-    window.dispatchEvent(new Event("hson-window"));
+    subjectDocument.dispatchEvent(new subjectWindow.Event("hson-document"));
+    subjectWindow.dispatchEvent(new subjectWindow.Event("hson-window"));
     const passive = new Event("hson-passive", { cancelable: true });
     button.dispatchEvent(passive);
 
@@ -79,7 +82,7 @@
     const runtimeReplica = hsonLiveMap.create();
     runtimeReplica.replay(runtimeCommit.commit);
     const runtimeAdmissionPassed = runtimeMap.rev === 1
-      && runtimeMap.doc.must("runtimePage").render() === "<main>browser</main>"
+      && runtimeMap.doc.must("runtimePage").render() === "<!doctype html><html><head></head><body><main>browser</main><\/body></html>"
       && runtimeReplica.capture().registry.digest === runtimeMap.capture().registry.digest;
 
     const passed = runtimeAdmissionPassed && calls.element === 1

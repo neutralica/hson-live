@@ -14,7 +14,7 @@ import { read_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 
-const schema = Hson.schema`<type "document" tag "main" content "empty">`;
+const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const authored: HsonNode = { $_tag: "_hson_root", $_content: [{ $_tag: "main", $_content: [] }] };
 const activeRoot: HsonNode = { $_tag: "main", $_content: [] };
 const source = hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [activeRoot] });

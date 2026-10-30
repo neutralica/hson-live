@@ -61,11 +61,11 @@ function correspondence(root: HsonNode): void {
     walk(root);
 }
 function mount(tree: LiveTree): Element { const dom = project_livetree(subject_for_tree(tree)); must(dom.nodeType === 1, 'expected element'); const element = get_el_for_node(subject_for_tree(tree)); must(element, 'missing mapped element'); document.body?.appendChild(element); return element; }
-const path = (...segments: number[]) => ({ kind: 'path' as const, path: validate_document_path([0, ...segments]) });
+const path = (...segments: number[]) => ({ kind: 'path' as const, path: validate_document_path([0, 0, 1, 0, 0, ...segments]) });
 function mirrorFixture() {
-    const schema = Hson.schema.fromHson('<type "document" tag "main" content <repeat <tag "section" content <repeat <tag "p" content "empty">>>>>' as never);
+    const schema = Hson.schema.fromHson('<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "section" content <repeat <tag "p" content "empty">>>>>]>>]>>' as never);
     const registry = hsonLiveMap.fromLibraries({ page: { document: n('_hson_root', n('main', n('_hson_elem', n('section', n('_hson_elem', n('p'), n('p'))), n('section', n('_hson_elem', n('p')))))), schema } });
-    const page = registry.doc.must('page'), binding = hsonMirror(page), root = subject_for_tree(binding.tree), main = at(root, 0);
+    const page = registry.doc.must('page'), binding = hsonMirror(page), root = subject_for_tree(binding.tree), main = at(root, 0, 0, 1, 0, 0);
     const a = binding.tree.findAll.byTag('p').array();
     // Explicit canonical acquisition supplies continuity evidence for only two subjects.
     const qa = a[0]!.quid, qb = a[2]!.quid;
@@ -184,7 +184,7 @@ export function cut5_repair_cases(check: (name: string, run: () => void) => void
             rejects(() => f.a.attrs.set('title', 'illegal local mutation'));
             rejects(() => f.a.quid);
             same(JSON.stringify(f.root), graph, 'failed bound handle mutated locally');
-            same(document_binding_for_node(subject_for_tree(f.a))?.canonicalPath.join('.'), '0.0.0.0.0', 'restored path index lost');
+            same(document_binding_for_node(subject_for_tree(f.a))?.canonicalPath.join('.'), '0.0.1.0.0.0.0.0.0', 'restored path index lost');
         }
         finally {
             f.binding.dispose();

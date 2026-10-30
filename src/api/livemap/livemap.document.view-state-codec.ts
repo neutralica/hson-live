@@ -1,3 +1,4 @@
+import { assert_complete_document } from "../../internal/complete-document.js";
 import type { LiveMapDocumentCapture } from "./livemap.document.capture.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { capture_exact_hson_graph, qualify_exact_hson_graph_content } from "../../internal/exact-node-qualification.js";
@@ -556,6 +557,7 @@ function validate_capture_header(capture: LiveMapDocumentCapture): void {
 function validate_canonical_document(root: HsonNode, expectedMode: LiveMapDocumentMode): void {
   try {
     assert_invariants(root, "view-state snapshot codec");
+    assert_complete_document(root);
     qualify_exact_hson_graph_content(capture_exact_hson_graph(root, "view-state snapshot codec", false), "view-state snapshot codec");
   } catch (cause) {
     throw codec_error(

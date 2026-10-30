@@ -1,3 +1,4 @@
+import { body_root } from "../helpers/document-library.mts";
 import { require_livemap_library_internal } from "../../src/api/livemap/livemap.libraries.js";
 import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
@@ -19,12 +20,13 @@ import { style_branch, style_leaf, assert_style_fidelity } from "./cut8-copy-cas
 const Data = Hson.schema`<type "data">`;
 const Numeric = Hson.schema`<type "data" content <negative "number" ordinary "number">>`;
 const Exact = Hson.schema`<type "data" content <negative <exact -0>>>`;
-const Page = Hson.schema`<type "document" tag "main" content "empty">`;
+const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const data_fixture = (negative = -0) => ({ negative, ordinary: 0, other: 1,
   nested: { pair: [-0, 0], deeper: [{ negative: -0 }] } });
 const document_fixture = (): HsonNode => ({ $_tag: "_hson_root", $_content: [style_branch()] });
 function main(root: HsonNode): HsonNode {
-  const node = root.$_content[0];
+  const first = root.$_content[0];
+  const node = is_Node(first) && first.$_tag === "html" ? body_root(root) : first;
   assert.ok(is_Node(node));
   return node;
 }
@@ -173,7 +175,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     const id = "cut8-replacement", adapter = fresh(id), locus = await resume(adapter, id);
     const initial = semantic(locus), replacement = style_branch();
     replacement.$_attrs!.title = "replacement";
-    await locus.stage(draft => { draft.doc.must("page").content.replace({ kind: "path", path: validate_document_path([]) }, 0, replacement); });
+    await locus.stage(draft => { draft.doc.must("page").content.replace({ kind: "path", path: validate_document_path([0,0,1,0]) }, 0, replacement); });
     assert_checkpoint_roots(adapter, id, initial);
     const expected = semantic(locus); locus.dispose();
     const reopened = await resume(fresh(id), id);

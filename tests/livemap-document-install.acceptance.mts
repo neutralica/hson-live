@@ -28,10 +28,10 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
-const PageSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "string">>>`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "string">>>]>>]>>`;
 function registry(source: string) {
   return admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body ${source}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
 }
 function text(map: ReturnType<typeof registry>): string {
@@ -40,7 +40,7 @@ function text(map: ReturnType<typeof registry>): string {
 
 check("portable registry restore replaces document content and captured revision", () => {
   const source = registry('<main <item "new"/>/>');
-  source.doc.must("page").at([0]).asElement()?.attrs.set("state", "ready");
+  source.doc.must("page").at([1,0,0]).asElement()?.attrs.set("state", "ready");
   const target = registry('<main <item "old"/>/>');
   target.restore(source.capture());
   assert.equal(target.rev, source.rev);
@@ -73,7 +73,7 @@ check("restoration is atomic on malformed snapshot metadata", () => {
 check("foreign registry Schema requires fresh installation", () => {
   const target = registry('<main <item "before"/>/>');
   const other = hsonLiveMap.fromLibraries({
-    page: { document: '<main "other"/>', schema: Hson.schema`<type "document" tag "main" content "string">` },
+    page: { document: '<main "other"/>', schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>` },
   });
   const oldPage = target.doc.must("page");
   const before = target.capture();
@@ -99,7 +99,7 @@ check("restored state is detached from later source changes", () => {
   const source = registry('<main <item "value"/>/>');
   const target = registry('<main <item "before"/>/>');
   target.restore(source.capture());
-  source.doc.must("page").at([0]).asElement()?.attrs.set("later", true);
+  source.doc.must("page").at([1,0,0]).asElement()?.attrs.set("later", true);
   assert.doesNotMatch(text(target), /later/);
 });
 

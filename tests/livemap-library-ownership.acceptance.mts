@@ -6,7 +6,7 @@ import { acquire_projected_identity } from "./helpers/livemap-identity-internal.
 
 const DataSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
 const ItemSchema = Hson.schema`<type "data" content <item <optional "any">>>`;
-const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.library-ownership",

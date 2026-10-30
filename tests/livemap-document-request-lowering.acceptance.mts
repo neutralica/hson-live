@@ -27,7 +27,7 @@ function check(name: string, run: () => void): void {
 }
 const Q1 = "000000701";
 const fixture = () => element(`<main <item @${Q1}/> <item/>/>`);
-const target = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path(parts) });
+const target = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, ...parts]) });
 const op = (map: LiveMapDocumentLibrary, mutate: () => LiveMapCommit) => {
   return document_graph_operation(mutate());
 };
@@ -36,17 +36,17 @@ check("attribute requests lower to canonical path targets", () => {
   const map = fixture();
   const operation = op(map, () => map.document.attrs.set(target(0, 0, 0), "title", "ready"));
   assert.equal(operation.op, "set-attr");
-  assert.deepEqual(operation.target.path, [0, 0, 0]);
+  assert.deepEqual(operation.target.path, [0, 0, 1, 0, 0, 0, 0]);
   assert.equal(operation.target.kind, "path");
 });
 
 check("request path arrays are detached from caller mutation", () => {
   const map = fixture();
-  const input = [0, 0, 0];
+  const input = [0, 0, 1, 0, 0, 0, 0];
   const operation = op(map, () => map.document.attrs.set({ kind: "path", path: input }, "n", 1));
   input[2] = 99;
   if (operation.op === "replace-root") throw new Error("Expected path target");
-  assert.deepEqual(operation.target.path, [0, 0, 0]);
+  assert.deepEqual(operation.target.path, [0, 0, 1, 0, 0, 0, 0]);
   assert.equal(Object.isFrozen(operation.target.path), true);
 });
 
@@ -69,7 +69,7 @@ check("identified nodes still use paths without implicit witnesses", () => {
   const operation = op(map, () => map.document.attrs.set(target(0, 0, 0), "id", "x"));
   if (operation.op === "replace-root") throw new Error("Expected path target");
   assert.equal(Reflect.get(operation.target, "witness"), undefined);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 1, 0, 0, 0, 0]);
 });
 
 check("attribute request family emits path-only operations", () => {

@@ -1,11 +1,11 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, DocumentSsrError, encode_ssr_bootstrap, hsonLiveMap } from "../src/index.ts";
+import { Hson, encode_ssr_bootstrap, hsonLiveMap } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 
-const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" attrs <props <data-cut <optional "string">>> content "string">]>>`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" attrs <props <data-cut <optional "string">>> content "string">]>>]>>]>>`;
 const pageMap = () => hsonLiveMap.fromLibraries({ page: { document: `<main <p "before"/>/>`, schema: PageSchema } });
-const paragraph = { kind: "path" as const, path: [0, 0, 0] };
+const paragraph = { kind: "path" as const, path: [0, 0, 1, 0, 0, 0, 0] };
 
 {
   const map = pageMap();
@@ -71,16 +71,12 @@ const paragraph = { kind: "path" as const, path: [0, 0, 0] };
   const FullSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
   const full = hsonLiveMap.fromLibraries({ page: { document: `<html <head/> <body <main "whole"/>/>/>`, schema: FullSchema } });
   assert.match(full.doc.must("page").render(), /^<!doctype html><html>/);
-  assert.equal(pageMap().doc.must("page").render().startsWith("<!doctype"), false);
+  assert.equal(pageMap().doc.must("page").render().startsWith("<!doctype"), true);
 }
 
 {
   const IncompatibleSchema = Hson.schema`<type "document" tag "p" content <sequence [<tag "div" content "string">]>>`;
-  const map = hsonLiveMap.fromLibraries({ page: { document: `<p <div "direct DOM only"/>/>`, schema: IncompatibleSchema } });
-  const before = map.capture();
-  assert.throws(() => map.doc.must("page").render(), (cause) => cause instanceof DocumentSsrError && cause.phase === "realize");
-  assert.deepEqual(map.capture(), before);
-  assert.equal(map.rev, 0);
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: `<p <div "direct DOM only"/>/>`, schema: IncompatibleSchema } }), /Browser realization/);
 }
 
 process.stdout.write("Document SSR acceptance passed.\n");

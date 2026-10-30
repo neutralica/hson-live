@@ -15,7 +15,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const events = create_test_event_emitter("echo.http-completion");
 events.case_begin("completion", "Admitted document completion waits across lost HTTP stream");
 
-const schema = Hson.schema`<type "document" tag "main" content "empty">`;
+const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema } });
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "page", ownership: "shared" }]), defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });

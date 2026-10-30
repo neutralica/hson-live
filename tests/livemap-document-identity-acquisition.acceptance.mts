@@ -1,5 +1,6 @@
 import { capture_internal_document } from "./helpers/document-capture.mts";
 // @hson-live-external-test
+import { body_root } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, document_from_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
@@ -50,7 +51,7 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
+const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, 0, 1, 0, 0, ...path]) });
 const errorCode = (code: string) => (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && error.code === code;
 
@@ -219,7 +220,7 @@ check("handle snapshots are detached results", () => {
   const snapshot = acquire_document_identity(map.document, target()).snap();
   if (snapshot === undefined) throw new Error("missing identity snapshot");
   snapshot.$_tag = "aside";
-  assert.equal((map.root().$_content[0] as { $_tag?: string } | undefined)?.$_tag, "main");
+  assert.equal((body_root(map.root()) as { $_tag?: string } | undefined)?.$_tag, "main");
 });
 
 check("no public raw-QUID setter is introduced", () => {

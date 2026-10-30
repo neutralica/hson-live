@@ -65,7 +65,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
       assert.throws(() => { root.$_tag = "aside"; }, TypeError);
       assert.throws(() => { root.$_content.length = 0; }, TypeError);
       assert.equal(Object.isFrozen(input.root), false, "caller-owned source remains untouched");
-      const moved = f.next(c, [move([0, 0], 0, 1), move([0, 0], 1, 0)]);
+      const moved = f.next(c, [move([0, 0, 1, 0, 0, 0], 0, 1), move([0, 0, 1, 0, 0, 0], 1, 0)]);
       assert.throws(() => { moved.steps[0]!.context.root.$_content.length = 0; }, TypeError);
       assert.deepEqual(f.next(c, []).root, c.root);
     });
@@ -76,17 +76,17 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     allocator(f.aggregate.identityEpoch().owner, () => { calls++; return "d00000001"; });
     try { unpublished(f, () => {
       assert.throws(() => f.initial(), /reserved/);
-      assert.throws(() => f.next(c, [insert([0, 0], 0, "blank")]), /reserved/);
+      assert.throws(() => f.next(c, [insert([0, 0, 1, 0, 0, 0], 0, "blank")]), /reserved/);
     }); } finally { allocator(f.aggregate.identityEpoch().owner, undefined); release(); f.aggregate.discard(pending); }
     assert.equal(calls, 0); assert.equal(f.next(c, []).changed, false);
   });
   check("independent subject CSS rejects retirement after occurrence-owned CSS is removed", () => {
-    const f = fixture(), c = f.initial(), root = at(c, [0, 0, 0]);
+    const f = fixture(), c = f.initial(), root = at(c, [0, 0, 1, 0, 0, 0, 0]);
     unpublished(f, () => {
       const stylesheet = merge_part_stylesheets([encode_portable_document_stylesheet(c.stylesheet),
         structured_css_fixture(`[hson\\:quid="${root.rootQuid}"]{opacity:.5}`)]);
       const before = { ...c, stylesheet };
-      const candidate = prepare_document_scoped_operations(before, before.scopes, [remove([0, 0], 0)], {
+      const candidate = prepare_document_scoped_operations(before, before.scopes, [remove([0, 0, 1, 0, 0, 0], 0)], {
         identityOwner: f.aggregate.identityEpoch().owner, assertCurrent: c.assertCurrent,
         readPart: () => { throw Error("unused"); },
       });
@@ -119,10 +119,10 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
       assert.throws(() => Reflect.apply(f.aggregate.accept, undefined, [c]), /foreign|another|unknown/i);
       assert.equal(c.owner, f.owner); assert.equal(c.scopes.owner, f.owner);
       assert.equal(c.scopes.occurrences.length, 4);
-      const left = at(c, [0, 0, 0]), right = at(c, [0, 0, 1]);
+      const left = at(c, [0, 0, 1, 0, 0, 0, 0]), right = at(c, [0, 0, 1, 0, 0, 0, 1]);
       assert.notEqual(left.lifetime, right.lifetime); assert.notEqual(left.rootQuid, right.rootQuid);
       assert.deepEqual(left.bindings.map(b => b.name), right.bindings.map(b => b.name));
-      assert.equal(at(c, [0, 0, 0, 0, 0, 0, 0]).parent, left.lifetime);
+      assert.equal(at(c, [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]).parent, left.lifetime);
       assert.equal(c.scopes.document[0]!.quid, left.rootQuid);
       assert.ok(css(c).includes('padding')); assert.ok(css(c).includes('blue')); assert.ok(css(c).includes('red'));
       assert.equal(f.page.q("left"), undefined); assert.equal(f.page.css.snapshot(), 'main{padding:3px}');
@@ -130,31 +130,31 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   });
   check("later insertion and movement use existing occurrence boundaries and keep exact CSS ownership", () => {
     const f = fixture(); unpublished(f, () => {
-      const before = f.initial(), left = at(before, [0, 0, 0]);
-      const moved = f.next(before, [move([0, 0], 0, 1)]);
-      assert.equal(at(moved, [0, 0, 1]).lifetime, left.lifetime); assert.equal(css(moved), css(before));
-      const next = f.next(moved, [insert([0, 0, 1, 0, 0, 0], 1, "blank")]);
-      assert.equal(at(next, [0, 0, 1, 0, 0, 0, 1]).parent, left.lifetime);
-      assert.deepEqual(at(next, [0, 0, 1, 0, 0, 0, 1]).bindings, []);
+      const before = f.initial(), left = at(before, [0, 0, 1, 0, 0, 0, 0]);
+      const moved = f.next(before, [move([0, 0, 1, 0, 0, 0], 0, 1)]);
+      assert.equal(at(moved, [0, 0, 1, 0, 0, 0, 1]).lifetime, left.lifetime); assert.equal(css(moved), css(before));
+      const next = f.next(moved, [insert([0, 0, 1, 0, 0, 0, 1, 0, 0, 0], 1, "blank")]);
+      assert.equal(at(next, [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]).parent, left.lifetime);
+      assert.deepEqual(at(next, [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]).bindings, []);
     });
   });
   check("parent retirement removes nested contributions and preserves sibling and unrelated managed CSS", () => {
     const f = fixture(); unpublished(f, () => {
-      const c = f.initial(), old = c.scopes.occurrences.filter(s => s === at(c, [0, 0, 0]) || s.parent === at(c, [0, 0, 0]).lifetime);
-      const next = f.next(c, [remove([0, 0], 0)]);
+      const c = f.initial(), old = c.scopes.occurrences.filter(s => s === at(c, [0, 0, 1, 0, 0, 0, 0]) || s.parent === at(c, [0, 0, 1, 0, 0, 0, 0]).lifetime);
+      const next = f.next(c, [remove([0, 0, 1, 0, 0, 0], 0)]);
       assert.equal(next.scopes.occurrences.length, 2);
-      assert.equal(at(next, [0, 0, 0]).lifetime, at(c, [0, 0, 1]).lifetime);
+      assert.equal(at(next, [0, 0, 1, 0, 0, 0, 0]).lifetime, at(c, [0, 0, 1, 0, 0, 0, 1]).lifetime);
       for (const s of old) assert.equal(css(next).includes(s.rootQuid), false);
-      assert.ok(css(next).includes(at(c, [0, 0, 1]).rootQuid)); assert.ok(css(next).includes('padding'));
+      assert.ok(css(next).includes(at(c, [0, 0, 1, 0, 0, 0, 1]).rootQuid)); assert.ok(css(next).includes('padding'));
       assert.equal(next.issued.size, c.issued.size);
     });
   });
   check("replacement retires old CSS before installing new and distinguishes graph-equivalent transitions", () => {
     const f = fixture(); unpublished(f, () => {
-      const c = f.initial('<hson-part lib="parts" at="panel"/>'), old = at(c, [0]);
-      const next = f.next(c, [replace([], 0, "green")]);
+      const c = f.initial('<hson-part lib="parts" at="panel"/>'), old = at(c, [0, 0, 1, 0, 0]);
+      const next = f.next(c, [replace([0, 0, 1, 0], 0, "green")]);
       assert.deepEqual(next.root, c.root); assert.equal(next.changed, true);
-      assert.notEqual(at(next, [0]).lifetime, old.lifetime);
+      assert.notEqual(at(next, [0, 0, 1, 0, 0]).lifetime, old.lifetime);
       assert.equal(css(next).includes(old.rootQuid), false); assert.equal(css(next).includes('red'), false);
       assert.ok(css(next).includes('green')); assert.ok(css(next).includes('blue'));
     });
@@ -162,27 +162,27 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   check("one batch inserts, moves, replaces and removes using operation-local CSS coordinates", () => {
     const f = fixture(); unpublished(f, () => {
       const c = f.initial('<main <i/>/>');
-      const next = f.next(c, [insert([0, 0], 0, "panel"), move([0, 0], 0, 1), replace([0, 0], 1, "green"), remove([0, 0], 1)]);
+      const next = f.next(c, [insert([0, 0, 1, 0, 0, 0], 0, "panel"), move([0, 0, 1, 0, 0, 0], 0, 1), replace([0, 0, 1, 0, 0, 0], 1, "green"), remove([0, 0, 1, 0, 0, 0], 1)]);
       assert.deepEqual(next.root, c.root); assert.equal(next.changed, true); assert.equal(next.scopes.occurrences.length, 0);
       assert.equal(css(next), css(c)); assert.ok(next.issued.size > c.issued.size);
     });
   });
   check("ordinary subject removal preserves its containing occurrence", () => {
     const f = fixture(); unpublished(f, () => {
-      const c = f.initial(), next = f.next(c, [{ domain: "graph", op: "insert-content", target: target([0, 0, 0, 0]), index: 1, content: node("<i/>") }, remove([0, 0, 0, 0], 0)]);
-      assert.equal(at(next, [0, 0, 0]).lifetime, at(c, [0, 0, 0]).lifetime);
-      assert.equal(at(next, [0, 0, 0]).bindings.some(b => b.name === "body"), false);
+      const c = f.initial(), next = f.next(c, [{ domain: "graph", op: "insert-content", target: target([0, 0, 1, 0, 0, 0, 0, 0]), index: 1, content: node("<i/>") }, remove([0, 0, 1, 0, 0, 0, 0, 0], 0)]);
+      assert.equal(at(next, [0, 0, 1, 0, 0, 0, 0]).lifetime, at(c, [0, 0, 1, 0, 0, 0, 0]).lifetime);
+      assert.equal(at(next, [0, 0, 1, 0, 0, 0, 0]).bindings.some(b => b.name === "body"), false);
       assert.equal(next.scopes.occurrences.length, 3);
     });
   });
   check("invalid names, CSS, allocation and later operations discard staged identities and styles", () => {
     const f = fixture(); unpublished(f, () => {
       const c = f.initial();
-      assert.throws(() => f.next(c, [insert([0, 0], 0, "panel"), remove([0, 0], 999)]));
+      assert.throws(() => f.next(c, [insert([0, 0, 1, 0, 0, 0], 0, "panel"), remove([0, 0, 1, 0, 0, 0], 999)]));
       const s = source('<b @:root/>');
       assert.throws(() => f.aggregate.prepareScopedDocument(f.owner, { ...s, quads: [...s.quads, ...s.quads] }));
       allocator(f.aggregate.identityEpoch().owner, () => "invalid");
-      try { assert.throws(() => f.next(c, [insert([0, 0], 0, "panel")]), /No available/); }
+      try { assert.throws(() => f.next(c, [insert([0, 0, 1, 0, 0, 0], 0, "panel")]), /No available/); }
       finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
       const styles = [{ ...c.initialStyles[0]!, subjects: [] }];
       assert.throws(() => prepare_document_scoped_library_styles({ ...c, initialStyles: styles }, c.stylesheet), /Unresolved/);
@@ -197,7 +197,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
   });
   check("non-revisioned identity acquisition invalidates an older scoped candidate", () => {
     const f = fixture(), c = f.initial(), rev = f.map.rev;
-    f.aggregate.acquireLocalDocumentIdentity(f.owner, path([0]), "d00000002");
+    f.aggregate.acquireLocalDocumentIdentity(f.owner, path([0, 0, 1, 0, 0]), "d00000002");
     assert.equal(f.map.rev, rev);
     assert.ok(f.aggregate.identityEpoch().issued().has("d00000002"));
     unpublished(f, () => assert.throws(() => f.next(c, []), /changed during capture/));
@@ -209,7 +209,7 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
       return "d00000001";
     });
     const ledger = f.aggregate.identityEpoch().issued(), rev = f.map.rev;
-    try { assert.throws(() => f.next(c, [insert([0, 0], 0, "blank")]), /changed during capture/); }
+    try { assert.throws(() => f.next(c, [insert([0, 0, 1, 0, 0, 0], 0, "blank")]), /changed during capture/); }
     finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(f.map.rev, rev + 1); assert.equal(f.aggregate.identityEpoch().issued().size, ledger.size);
     assert.equal(f.aggregate.identityEpoch().issued().has("d00000001"), false);
@@ -220,8 +220,8 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     allocator(f.aggregate.identityEpoch().owner, () => { calls++; throw Error("observation allocated"); });
     try { unpublished(f, () => {
       encode(c.scopes, c, []); css(c);
-      const next = f.next(c, [move([0, 0], 0, 0)]); assert.equal(next.changed, false);
-      assert.equal(at(next, [0, 0, 0]).lifetime, at(c, [0, 0, 0]).lifetime);
+      const next = f.next(c, [move([0, 0, 1, 0, 0, 0], 0, 0)]); assert.equal(next.changed, false);
+      assert.equal(at(next, [0, 0, 1, 0, 0, 0, 0]).lifetime, at(c, [0, 0, 1, 0, 0, 0, 0]).lifetime);
     }); } finally { allocator(f.aggregate.identityEpoch().owner, undefined); }
     assert.equal(calls, 0);
   });
@@ -231,13 +231,13 @@ export function scoped_library_cases(check: (name: string, run: () => void) => v
     unpublished(f, () => {
       // An operation-local unit seam, not caller-authored replacement lineage.
       const composed = expand_document_composition("shell", () => source('<hson-part lib="parts" at="leaf"/>'),
-        document_composition_options(undefined), () => ({ ...source('<b @:root/>'), css: structured_part_stylesheet({color:'green'}, new Set()) }));
+        document_composition_options(undefined), () => ({ ...source('<b @:root/>'), css: structured_part_stylesheet({color:'green'}, new Set()) }), "document");
       const authority = { identityOwner: f.aggregate.identityEpoch().owner, assertCurrent: old.assertCurrent,
         readPart: () => { throw Error("unused"); } };
       const fresh = prepare_document_scoped_composition({ ...old, root: composed.root }, composed, authority);
       assert.equal(fresh.overlay, old.overlay); assert.equal(fresh.issued.size, old.issued.size);
       assert.notEqual(fresh.scopes.occurrences[0]!.lifetime, old.scopes.occurrences[0]!.lifetime);
-      const next = prepare_document_scoped_library_styles({ ...fresh, initialStyles: [], steps: [{ operation: replace([], 0, "leaf"),
+      const next = prepare_document_scoped_library_styles({ ...fresh, initialStyles: [], steps: [{ operation: replace([0, 0, 1, 0], 0, "leaf"),
         context: fresh, scopes: fresh.scopes, styles: composed.styles }] }, old.stylesheet, old);
       assert.equal(css(next).includes('blue'), false); assert.ok(css(next).includes('green'));
       assert.ok(css(old).includes('oldPulse')); assert.ok(css(old).includes('--old-tone'));

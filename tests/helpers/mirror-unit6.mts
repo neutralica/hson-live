@@ -1,3 +1,5 @@
+import { normalize_document_root } from "../../src/api/livemap/livemap.document.ts";
+import { body_root } from "./document-library.mts";
 import { Hson, hsonTransform } from "../../src/index.ts";
 import type { HsonSchemaData } from "../../src/api/transform/transform.types.ts";
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
@@ -40,7 +42,14 @@ export function element(source: string): LiveMapDocumentLibrary {
   return document_from_node(document);
 }
 
-export function document_from_node(document: HsonNode): LiveMapDocumentLibrary {
+export function document_from_node(input: HsonNode): LiveMapDocumentLibrary {
+  // These fixtures exercise an authored element inside a governed full page.
+  const content = input.$_tag === "_hson_root" || input.$_tag === "_hson_elem" ? semantic_children(input) : [input];
+  const document: HsonNode = content.length === 1 && is_Node(content[0]) && content[0].$_tag === "html"
+    ? { $_tag: "_hson_root", $_content: [content[0]] }
+    : { $_tag: "_hson_root", $_content: [{ $_tag: "html", $_content: [{ $_tag: "_hson_elem", $_content: [
+    { $_tag: "head", $_content: [] }, { $_tag: "body", $_content: content.length ? [{ $_tag: "_hson_elem", $_content: [...content] }] : [] },
+  ] }] }] };
   const schema = Hson.schema.fromHson(hsonTransform.fromHson(schema_for_document(document)).toHson().serialize() as HsonSchemaData);
   const registry = admit_exact_runtime_livemap_libraries({ page: { document, schema } });
   const library = registry.doc.must("page");
@@ -83,7 +92,7 @@ function content_descriptor(children: readonly (HsonNode | string | number | boo
 }
 
 export function path(...segments: number[]): LiveMapDocumentCommitTarget {
-  return Object.freeze({ kind: "path", path: validate_document_path([0, ...segments]) });
+  return Object.freeze({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0, ...segments]) });
 }
 
 export function witnessed_path(
@@ -92,7 +101,7 @@ export function witnessed_path(
 ): LiveMapDocumentCommitTarget {
   return Object.freeze({
     kind: "path",
-    path: validate_document_path([0, ...segments]),
+    path: validate_document_path([0, 0, 1, 0, 0, ...segments]),
     witness: Object.freeze({ quid }),
   });
 }
@@ -100,9 +109,7 @@ export function witnessed_path(
 export function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
   let current = root;
   if (current.$_tag === "_hson_root") {
-    const only = current.$_content[0];
-    if (!is_Node(only)) throw new Error("Expected one projected document element");
-    current = only;
+    current = body_root(current);
   }
   for (const segment of rawPath) {
     const child = current.$_content[segment];
@@ -114,7 +121,10 @@ export function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
 
 export function projected_element(source: string): HsonNode {
   // Exact-runtime fixtures inspect the graph; portable Hson deliberately drops QUIDs.
-  return raw_node(element(source).root(), []);
+  const root = normalize_document_root(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const node = root.$_content[0];
+  if (!is_Node(node)) throw new Error("Expected detached element.");
+  return node;
 }
 
 export function mount(root: HsonNode): FakeElement {

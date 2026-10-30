@@ -321,7 +321,9 @@ try {
   });
   reviewFrame.remove();
   const state=await fetch('/__state').then(response=>response.json());
-  const restored=install_libraries_snapshot(state.libs).map, root=document.querySelector('#ssr-root'), paragraph=root.querySelector('p');
+  const ssrFrame=document.querySelector('#ssr-frame');
+  if(ssrFrame.contentDocument.readyState!=='complete')await new Promise(resolve=>ssrFrame.addEventListener('load',resolve,{once:true}));
+  const restored=install_libraries_snapshot(state.libs).map, root=ssrFrame.contentDocument.documentElement, paragraph=root.querySelector('p');
   check('SSR first render has correct importance and order',getComputedStyle(paragraph).color==='rgb(255, 0, 0)' && getComputedStyle(paragraph).marginTop==='5px');
   const mutations=new MutationObserver(()=>{});mutations.observe(root,{subtree:true,attributes:true,childList:true});
   const continued=continue_document({map:restored,document:restored.doc.must('page'),root});

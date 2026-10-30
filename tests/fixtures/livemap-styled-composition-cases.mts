@@ -103,7 +103,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
       ordinary:styled_part('<b hson:part/>', {color:'blue'}),
       optional:styled_part('<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>', {color:'red'}),
     }},page:{document:'<main <i/>/>'}});
-    const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0])};
+    const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0,1,0,0,0])};
     const connector=(name:string,payload='<>')=>{
       const node=hsonTransform.fromHson(`<hson-part lib="parts" at="${name}" data:payload="${payload}"/>`).toNode().$_content[0];
       if(!is_Node(node))throw Error('connector'); return node;

@@ -1,5 +1,4 @@
 import { document_hson_value } from "./helpers/document-hson-value.mts";
-import { retained_subject, retained_historic_root } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { create_locus_fixture, authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
@@ -9,7 +8,6 @@ import { install_libraries_snapshot, validate_document_path, type LiveMapCommit 
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { decode_hosted_root, encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
-import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
@@ -17,9 +15,8 @@ import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-run
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number" nested <content <value "number">>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <primary "string">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content "empty">`;
-const ItemDocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
-const EmptyDocumentSchema: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <title <optional "string">>> content "empty">]>>]>>`;
+const ItemDocumentSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.public-libraries",
   title: "LiveMap public libraries",
@@ -70,7 +67,7 @@ check("batch groups ordered cross-library writes into one public commit", () => 
     batch.data.must("colors").at(["primary"]).set("red");
     batch.data.must("state").at(["count"]).set(3);
     batch.doc.must("page").graph({ domain: "graph", op: "set-attr",
-      target: { kind: "path", path: validate_document_path([0]) }, name: "title", value: "batched" });
+      target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) }, name: "title", value: "batched" });
     assert.equal(map.rev, 0);
     assert.equal(map.data.must("state").at(["count"]).snap(), 1);
   });
@@ -126,7 +123,7 @@ check("batch rejects async, nested, direct, and escaped writes", () => {
 
 check("batch captures public graph commands and rejects direct identity claims", () => {
   const map = create_map();
-  const target = { kind: "path", path: validate_document_path([0]) } as const;
+  const target = { kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) } as const;
   const command: Record<string, unknown> = { domain: "graph", op: "set-attr", target,
     name: "title", value: "captured" };
   map.batch(batch => {
@@ -156,7 +153,7 @@ check("batch captures public graph commands and rejects direct identity claims",
 
 check("batch detaches nested graph targets and CSS definitions", () => {
   const map = create_map();
-  const path = [0];
+  const path = [0, 0, 1, 0, 0];
   const graph = { domain: "graph", op: "set-attr", target: { kind: "path", path },
     name: "title", value: "original target" };
   const css = { domain: "css", kind: "property", name: "--original",
@@ -168,7 +165,7 @@ check("batch detaches nested graph targets and CSS definitions", () => {
     css.name = "--changed";
     css.definition.name = "--changed";
   });
-  assert.equal(map.doc.must("page").document.attrs.get({ kind: "path", path: validate_document_path([0]) }, "title"), "original target");
+  assert.equal(map.doc.must("page").document.attrs.get({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) }, "title"), "original target");
   assert.match(map.doc.must("page").css.snapshot(), /@property --original/);
   assert.equal(map.doc.must("page").css.snapshot().includes("--changed"), false);
 });
@@ -181,7 +178,7 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal(map.doc.must("page").mode, "document");
   assert.equal(map.doc.must("page").root().$_content.length, 1);
   assert.equal("document" in map.doc.must("page"), true);
-  assert.equal(node(document_hson_value(map.doc.must("page").at([]).hson())).$_tag, "main");
+  assert.equal(node(document_hson_value(map.doc.must("page").at([1, 0]).hson())).$_tag, "main");
   assert.equal(typeof map.addLibraries, "function");
   assert.equal("add" in map.data, false);
   assert.equal("create" in map.data, false);
@@ -209,7 +206,7 @@ check("public aggregate snapshot transfers state and revision without generated 
   const page = sourceAuthority.libraries()[2];
   if (page === undefined) throw new Error("Expected page Library");
   const quid = "00004c001";
-  sourceAuthority.acquireLocalDocumentIdentity(page, validate_document_path([0]), quid);
+  sourceAuthority.acquireLocalDocumentIdentity(page, validate_document_path([0, 0, 1, 0, 0]), quid);
   source.data.must("state").at(["count"]).set(3);
   assert.equal(livemap_identity_epoch_accounting(source.doc.must("page")).issued, 1);
   const snapshot = source.capture();
@@ -279,20 +276,21 @@ check("one named library seeds the ordinary registry authority", () => {
   }
 });
 
-check("document Libraries admit empty graph owners and reject empty source", () => {
+check("document Libraries reject empty sources and admit explicit empty html", () => {
   const map = hsonLiveMap.fromLibraries({
-    empty: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocumentSchema },
+    empty: { document: "<html/>" },
   });
-  assert.throws(() => hsonLiveMap.fromLibraries({ empty: { document: "", schema: EmptyDocumentSchema } }), /has no semantic value/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ empty: { document: "" } }), /has no semantic value/);
   assert.equal(map.doc.must("empty").mode, "document");
-  assert.deepEqual(map.doc.must("empty").root(), { $_tag: "_hson_root", $_content: [] });
+  assert.match(map.doc.must("empty").render(), /^<!doctype html><html><head><\/head><body><\/body><\/html>$/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ empty: { document: { $_tag: "_hson_root", $_content: [] } } }), /exactly one/);
   const received = install_libraries_snapshot(map.capture()).map;
   assert.deepEqual(received.doc.must("empty").root(), map.doc.must("empty").root());
   assert.deepEqual(received.capture(), map.capture());
   const cutReceived = install_libraries_snapshot(map.cut().libs).map;
   assert.deepEqual(cutReceived.doc.must("empty").root(), map.doc.must("empty").root());
   const source = hsonLiveMap.create();
-  const commit = source.addLibraries({ empty: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocumentSchema } }).commit;
+  const commit = source.addLibraries({ empty: { document: "<html/>" } }).commit;
   const replica = hsonLiveMap.create();
   replica.replay(commit);
   assert.deepEqual(replica.doc.must("empty").root(), map.doc.must("empty").root());
@@ -301,27 +299,27 @@ check("document Libraries admit empty graph owners and reject empty source", () 
 check("named document Library mutations retain their selected authority and global commit envelope", () => {
   const map = create_map();
   const page = map.doc.must("page");
-  const commit = page.at([]).asElement()!.attrs.set("title", "selected");
+  const commit = page.at([1, 0]).asElement()!.attrs.set("title", "selected");
   assert.equal(commit.kind, "map");
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(page.at([]).asElement()!.attrs.get("title"), "selected");
+  assert.equal(page.at([1, 0]).asElement()!.attrs.get("title"), "selected");
   assert.equal(map.data.must("state").snap(["count"]), 1);
 });
 
 check("named document locations keep relative content operations in their selected Library", () => {
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <item @000009111/>/>", { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
-    modal: { document: "<main <item/>/>", schema: ItemDocumentSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <item @000009111/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
+    modal: { document: "<html <head/> <body <main <item/>/>/>/>", schema: ItemDocumentSchema },
   });
   const page = map.doc.must("page");
   const modal = map.doc.must("modal");
-  const incoming = document_hson_value(modal.at([0]).hson());
+  const incoming = document_hson_value(modal.at([1, 0, 0]).hson());
   if (!is_Node(incoming)) throw new Error("Expected selected modal item.");
-  const commit = page.at([]).asElement()!.insert(1, incoming);
+  const commit = page.at([1, 0]).asElement()!.insert(1, incoming);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(node(document_hson_value(page.at([]).at([1]).hson())).$_tag, "item");
-  assert.equal(node(document_hson_value(modal.at([0]).hson())).$_tag, "item");
+  assert.equal(node(document_hson_value(page.at([1, 0]).at([1]).hson())).$_tag, "item");
+  assert.equal(node(document_hson_value(modal.at([1, 0, 0]).hson())).$_tag, "item");
   assert.deepEqual([page.rev, page.root().$_tag], [1, "_hson_root"]);
 });
 
@@ -334,10 +332,10 @@ check("Mirror binds one selected document Library and advances through unrelated
   assert.equal(binding.sourceRevision, 1);
   assert.equal(binding.diagnostics().updatesApplied, 0);
   assert.equal(binding.diagnostics().incrementalCorrespondenceUpdates, 0);
-  const commit = page.at([]).asElement()!.attrs.set("title", "reflected");
+  const commit = page.at([1, 0]).asElement()!.attrs.set("title", "reflected");
   assert.equal(commit.rev, 2);
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(node(binding.tree.node.$_content[0]).$_attrs?.title, "reflected");
+  assert.equal(binding.tree.find.must.byTag("main").attrs.get("title"), "reflected");
   assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
@@ -357,7 +355,7 @@ check("one aggregate page plus data commit advances Mirror once and applies only
       operation: {
         domain: "graph",
         op: "set-attr",
-        target: { kind: "path", path: validate_document_path([0]) },
+        target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) },
         name: "title",
         value: "aggregate",
       },
@@ -366,7 +364,7 @@ check("one aggregate page plus data commit advances Mirror once and applies only
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
   assert.deepEqual(commit.operations.map((operation) => operation.target.library), [state, pageLibrary]);
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(node(binding.tree.node.$_content[0]).$_attrs?.title, "aggregate");
+  assert.equal(binding.tree.find.must.byTag("main").attrs.get("title"), "aggregate");
   assert.equal(map.data.must("state").snap(["count"]), 2);
   binding.dispose();
 });
@@ -375,18 +373,16 @@ check("tree-originated selected-document mutation crosses the same Schema bounda
   const map = create_map();
   const page = map.doc.must("page");
   const binding = hsonMirror(page);
-  const projected = retained_subject(binding.tree).$_content[0];
-  if (!is_Node(projected)) throw new Error("Expected projected page root");
-  const tree = create_livetree(projected).adoptRoots(retained_historic_root(binding.tree));
+  const tree = binding.tree.find.must.byTag("main");
   tree.attrs.set("title", "from-tree");
-  assert.equal(page.at([]).asElement()!.attrs.get("title"), "from-tree");
+  assert.equal(page.at([1, 0]).asElement()!.attrs.get("title"), "from-tree");
   assert.equal(binding.sourceRevision, 1);
   const quid = tree.quid;
   assert.equal(page.document.byQuid(quid)?.$_tag, "main");
   assert.equal(binding.sourceRevision, 1);
   const beforeFailure = livemap_identity_epoch_accounting(page);
   const before = page.root();
-  assert.throws(() => page.at([]).asElement()!.insert(0, "forbidden"), /schema/i);
+  assert.throws(() => page.at([1, 0]).asElement()!.insert(0, "forbidden"), /schema/i);
   assert.deepEqual(page.root(), before);
   assert.equal(map.rev, 1);
   assert.equal(binding.sourceRevision, 1);
@@ -398,20 +394,20 @@ check("named document QUID lookup remains library-local while active QUIDs remai
   const Q1 = "000009001";
   const Q2 = "000009002";
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime(`<main @${Q1}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
-    modal: { document: parse_hson_exact_runtime(`<main @${Q2}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main @${Q1}/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    modal: { document: parse_hson_exact_runtime(`<html <head/> <body <main @${Q2}/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
   const page = map.doc.must("page");
   const modal = map.doc.must("modal");
   assert.equal(page.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(modal.document.byQuid(Q1), undefined);
-  const commit = page.document.attrs.set({ kind: "path", path: [0] }, "title", "path-route");
+  const commit = page.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "path-route");
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(page.at([]).asElement()!.attrs.get("title"), "path-route");
-  assert.equal(modal.at([]).asElement()!.attrs.get("title"), undefined);
+  assert.equal(page.at([1, 0]).asElement()!.attrs.get("title"), "path-route");
+  assert.equal(modal.at([1, 0]).asElement()!.attrs.get("title"), undefined);
   assert.throws(() => admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime(`<main @${Q1}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
-    modal: { document: parse_hson_exact_runtime(`<main @${Q1}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main @${Q1}/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    modal: { document: parse_hson_exact_runtime(`<html <head/> <body <main @${Q1}/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   }), /collision/i);
 });
 
@@ -425,9 +421,9 @@ check("one selected document binding is exclusive while separate named documents
   const pageBinding = hsonMirror(page);
   assert.throws(() => hsonMirror(map.doc.must("page")), /already has an active/i);
   const modalBinding = hsonMirror(modal);
-  page.at([]).asElement()!.attrs.set("title", "page-only");
-  assert.equal(node(pageBinding.tree.node.$_content[0]).$_attrs?.title, "page-only");
-  assert.equal(node(modalBinding.tree.node.$_content[0]).$_attrs?.title, undefined);
+  page.at([1, 0]).asElement()!.attrs.set("title", "page-only");
+  assert.equal(pageBinding.tree.find.must.byTag("main").attrs.get("title"), "page-only");
+  assert.equal(modalBinding.tree.find.must.byTag("main").attrs.get("title"), undefined);
   assert.equal(modalBinding.sourceRevision, 1);
   pageBinding.dispose();
   modalBinding.dispose();
@@ -438,8 +434,8 @@ check("aggregate document writes reject accidental cross-library QUID transfer",
   const Q2 = "000009102";
   const Q3 = "000009103";
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime(`<main <item @${Q1}/> <item @${Q2}/>/>`, { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
-    modal: { document: parse_hson_exact_runtime(`<main <item @${Q3}/>/>`, { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
+    page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <item @${Q1}/> <item @${Q2}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
+    modal: { document: parse_hson_exact_runtime(`<html <head/> <body <main <item @${Q3}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [page, modal] = aggregate.libraries();
@@ -453,7 +449,7 @@ check("aggregate document writes reject accidental cross-library QUID transfer",
       operation: {
         domain: "graph",
         op: "remove-content",
-        target: { kind: "path", path: validate_document_path([0, 0]) },
+        target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) },
         index: 0,
       },
     },
@@ -463,7 +459,7 @@ check("aggregate document writes reject accidental cross-library QUID transfer",
       operation: {
         domain: "graph",
         op: "insert-content",
-        target: { kind: "path", path: validate_document_path([0, 0]) },
+        target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) },
         index: 0,
         content: { $_tag: "item", $_meta: { quid: Q1 }, $_content: [] },
       },
@@ -527,7 +523,7 @@ if (false) {
   const map = create_map();
   const page = map.doc.must("page");
   const state = map.data.must("state");
-  page.at([]).asElement()!.attrs.set("title", "typed");
+  page.at([1, 0]).asElement()!.attrs.set("title", "typed");
   page.snap();
   // @ts-expect-error A selected data library has no document authority.
   state.document;

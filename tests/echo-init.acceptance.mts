@@ -270,12 +270,12 @@ for (const [expected, advance, truncateHistory] of [
   assert.equal(echo.sync.appliedRev, locus.rev);
   await projectedPage.css({ domain: "css", kind: "clear-all" });
   assert.equal(projectedPage.css.snapshot(), "");
-  await projectedPage.at([]).asElement()!.attrs.set("title", "governed");
-  assert.equal(projectedPage.at([]).asElement()!.attrs.get("title"), "governed");
-  await projectedPage.at([]).asElement()!.insert(0, { $_tag: "p", $_content: [] });
-  await projectedPage.at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
-  assert.equal(projectedPage.at([0]).asElement()!.attrs.get("title"), "replaced");
-  await projectedPage.at([0]).delete();
+  await projectedPage.at([1, 0]).asElement()!.attrs.set("title", "governed");
+  assert.equal(projectedPage.at([1, 0]).asElement()!.attrs.get("title"), "governed");
+  await projectedPage.at([1, 0]).asElement()!.insert(0, { $_tag: "p", $_content: [] });
+  await projectedPage.at([1, 0, 0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
+  assert.equal(projectedPage.at([1, 0, 0]).asElement()!.attrs.get("title"), "replaced");
+  await projectedPage.at([1, 0, 0]).delete();
   echo.dispose(); detach(); locus.dispose();
 }
 
@@ -290,7 +290,7 @@ for (const [expected, advance, truncateHistory] of [
   const emptySystem = emptySession.now().libs.system;
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "save-click",
-    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
+    subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }),
     kind: "locus",
     key: "save",
     payload: Hson.data.from({ value: 1 }),
@@ -446,7 +446,7 @@ for (const stage of ["message", "close"] as const) {
 {
   const StateSchema = Hson.schema`<type "data" content <value "number">>`;
   const LocalSchema = Hson.schema`<type "data" content <value "number">>`;
-  const PanelSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
+  const PanelSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
   const cssSource = hsonLiveMap.fromLibraries({ panel: { document: "<aside/>", schema: PanelSchema } });
   cssSource.doc.must("panel").css.sel("aside").set.color("red");
   const validCss = cssSource.capture().libraries[0]!.css!;

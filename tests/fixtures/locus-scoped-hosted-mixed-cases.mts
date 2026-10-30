@@ -12,8 +12,8 @@ function classification(all: Receiver, flat: Receiver, occurrences: number) {
   assert.match(document(all.echo, "flat").render(), /<html/);
   assert.match(document(flat.echo, "flat").render(), /<html/);
   assert.deepEqual(document(all.echo, "flat").root(), document(flat.echo, "flat").root());
-  if (document(all.echo).css.snapshot() === "") assert.equal(document(all.echo).render(), all.session.now({ html: "page" }).html);
-  else assert.throws(() => document(all.echo).render(), /browser-parser realization/);
+  assert.match(document(all.echo).render(), /^<!doctype html><html>/);
+  assert.match(all.session.now({ html: "page" }).html, /^<!doctype html><html>/);
   assert.throws(() => all.echo.parts.must("parts"));
   assert.throws(() => flat.echo.doc.must("page"));
   for (const raw of all.frames) {
@@ -44,11 +44,11 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
             const title = `${reverse}-${round}-${mode}`, rev = locus.rev;
             await locus.stage(w => {
               const scopedWrite = () => {
-                if (mode === "attributes") w.doc.must("page").at([]).asElement().attrs.set("title", title);
+                if (mode === "attributes") w.doc.must("page").at([1, 0]).asElement().attrs.set("title", title);
                 else if (mode === "css") w.doc.must("page").css.sel("main").setProp("color", round ? "blue" : "green");
                 else {
-                  w.doc.must("page").at([]).asElement().insert(0, node("<aside/>"));
-                  w.doc.must("page").at([0]).asElement().attrs.set("title", title);
+                  w.doc.must("page").at([1, 0]).asElement().insert(0, node("<aside/>"));
+                  w.doc.must("page").at([1, 0, 0]).asElement().attrs.set("title", title);
                 }
               };
               const flatWrite = () => {
@@ -67,14 +67,14 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
             assert.equal(left.active, true); assert.equal(right.active, true);
             assert.equal(observations, locus.rev);
             if (mode === "graph") {
-              assert.equal(document(all.echo).at([0]).asElement()!.attrs.get("title"), title);
+              assert.equal(document(all.echo).at([1, 0, 0]).asElement()!.attrs.get("title"), title);
               assert.equal(document(flat.echo, "flat").at([1, 0]).asElement()!.attrs.get("title"), title);
             }
           }
           const rev = locus.rev, seen = observations;
           await locus.stage(w => {
             w.doc.must("flat").css.sel("body").setProp("color", round ? "navy" : "teal");
-            w.doc.must("page").at([]).asElement().flags.clear("hidden");
+            w.doc.must("page").at([1, 0]).asElement().flags.clear("hidden");
             w.doc.must("page").css.sel("main").setProp("color", round ? "blue" : "green");
             w.doc.must("flat").at([]).asElement().flags.clear("hidden");
           });
@@ -83,13 +83,13 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
         const before = { state: all.session.now(), flat: flat.session.now(), css: document(all.echo).css.snapshot(), observations };
         await assert.rejects(locus.stage(w => {
           w.doc.must("flat").css.clearAll();
-          w.doc.must("page").at([0]).replace(node('<hson-part lib="parts" at="panel"/>'));
+          w.doc.must("page").at([1, 0, 0]).replace(node('<hson-part lib="parts" at="panel"/>'));
           w.doc.must("page").css.clearAll();
           w.doc.must("flat").at([99]).asElement().attrs.set("bad", true);
         }));
         assert.deepEqual({ state: all.session.now(), flat: flat.session.now(), css: document(all.echo).css.snapshot(), observations }, before);
         assert.equal(left.active, true); assert.equal(right.active, true);
-        await assert.rejects(document(all.echo).at([]).asElement()!.attrs.set("title", "unauthorized"));
+        await assert.rejects(document(all.echo).at([1, 0]).asElement()!.attrs.set("title", "unauthorized"));
         classification(all, flat, 4);
       } finally { stop(); all.dispose(); flat.dispose(); locus.dispose(); }
     });
@@ -101,8 +101,8 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
         const left = document(all.echo).q("left")!, right = document(all.echo).q("right")!;
         const oldCss = document(all.echo).css.snapshot();
         await locus.stage(w => {
-          w.doc.must("page").at([1]).delete();
-          w.doc.must("page").at([0]).delete();
+          w.doc.must("page").at([1, 0, 1]).delete();
+          w.doc.must("page").at([1, 0, 0]).delete();
           w.doc.must("flat").css.sel("body").setProp("color", "red");
         });
         await caught(all.echo, locus); await caught(flat.echo, locus); classification(all, flat, 0);
@@ -111,7 +111,7 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
         assert.notEqual(document(all.echo).css.snapshot(), oldCss);
         await locus.stage(w => {
           w.doc.must("flat").at([]).asElement().attrs.set("title", "still-flat");
-          w.doc.must("page").at([]).asElement().attrs.set("title", "still-scoped-empty");
+          w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "still-scoped-empty");
         });
         await caught(all.echo, locus); await caught(flat.echo, locus); classification(all, flat, 0);
         await locus.admit({ "later": { ...page, access: "shared" }, "promote": { document: '<main @:promote <i @:gone/>/>', access: "shared" } });
@@ -124,10 +124,10 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
           const promote = w.doc.must("promote");
           if (promote.mode !== "document") throw Error("Expected document");
           promote.css.sel("main").setProp("color", "purple");
-          promote.at([0]).delete();
-          promote.at([]).asElement().insert(0, node('<hson-part lib="parts" at="panel"/>'));
-          promote.at([0]).asElement().attrs.set("title", "candidate-relative");
-          w.doc.must("page").at([]).asElement().insert(0, node('<hson-part lib="parts" at="panel"/>'));
+          promote.at([1, 0, 0]).delete();
+          promote.at([1, 0]).asElement().insert(0, node('<hson-part lib="parts" at="panel"/>'));
+          promote.at([1, 0, 0]).asElement().attrs.set("title", "candidate-relative");
+          w.doc.must("page").at([1, 0]).asElement().insert(0, node('<hson-part lib="parts" at="panel"/>'));
           w.doc.must("flat").at([]).asElement().attrs.set("title", "promotion");
           promote.css.sel("main").setProp("color", "purple");
         });
@@ -136,12 +136,12 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
         assert.equal(all.session.now().libs.libraries.find(entry => entry.name === "promote")!.scopes!.occurrences.length, 2);
         assert.match(document(all.echo, "promote").css.snapshot(), /color:purple/);
         assert.match(document(all.echo, "promote").css.snapshot(), /padding:3px/);
-        assert.equal(document(all.echo, "promote").at([0]).asElement()!.attrs.get("title"), "candidate-relative");
+        assert.equal(document(all.echo, "promote").at([1, 0, 0]).asElement()!.attrs.get("title"), "candidate-relative");
         assert.throws(() => flat.echo.parts.must("later")); assert.throws(() => flat.echo.doc.must("promote"));
         all.echo.disconnect(); await new Promise<void>(resolve => setImmediate(resolve));
         await locus.stage(w => {
           w.doc.must("flat").at([]).asElement().attrs.set("title", "missed-mixed");
-          w.doc.must("page").at([0]).replace(node('<hson-part lib="parts" at="panel"/>'));
+          w.doc.must("page").at([1, 0, 0]).replace(node('<hson-part lib="parts" at="panel"/>'));
         });
         all.echo.connect(); await caught(all.echo, locus); await caught(flat.echo, locus);
         assert.equal(all.echo.sync.strategy, "replay"); classification(all, flat, 2);
@@ -160,7 +160,7 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
         const all = await receiver(locus, kind, ["page", "flat"]), flat = await receiver(locus, kind, ["flat"]);
         try {
           if (empty) {
-            await locus.stage(w => { w.doc.must("page").at([1]).delete(); w.doc.must("page").at([0]).delete(); });
+            await locus.stage(w => { w.doc.must("page").at([1, 0, 1]).delete(); w.doc.must("page").at([1, 0, 0]).delete(); });
             await caught(all.echo, locus); await caught(flat.echo, locus);
           }
           const before = { page: document(all.echo).root(), flat: document(all.echo, "flat").root(),
@@ -179,7 +179,7 @@ export async function hosted_mixed_cases(check: (name: string, run: () => Promis
           };
           await locus.stage(w => {
             w.doc.must("flat").at([]).asElement().attrs.set("title", "accepted");
-            w.doc.must("page").at([]).asElement().attrs.set("title", "accepted");
+            w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "accepted");
           });
           await until(() => all.echo.sync.status === "failed");
           assert.deepEqual({ page: document(all.echo).root(), flat: document(all.echo, "flat").root(),

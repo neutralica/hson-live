@@ -205,7 +205,7 @@ check("failure in another library cannot partially issue a QUID claim", () => {
 check("a document-mode internal library can coexist under the same map authority", () => {
   const map = hsonLiveMap.fromLibraries({
     data: { data: { value: 1 }, schema: NumberSchema },
-    document: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <sequence []>>` },
+    document: { document: "<main/>", schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence []>>]>>]>>` },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [data, document] = aggregate.libraries();

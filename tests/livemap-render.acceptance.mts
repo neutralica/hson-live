@@ -1,3 +1,4 @@
+import { complete_html } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -7,8 +8,8 @@ const map = hsonLiveMap.fromLibraries({
   second: { document: "<aside/>" },
   state: { data: { value: 1 } },
 });
-assert.equal(map.doc.must("page").render(), "<main></main>");
-assert.equal(map.doc.must("second").render(), "<aside></aside>");
+assert.equal(map.doc.must("page").render(), complete_html("<main></main>"));
+assert.equal(map.doc.must("second").render(), complete_html("<aside></aside>"));
 assert.equal(map.doc.must("page").render(), map.cut({ html: "page" }).html);
 assert.equal("render" in map.data.must("state"), false);
 assert.equal(map.rev, 0);
@@ -36,7 +37,7 @@ const restore = authority.libraries().slice(3).map(identity => {
 });
 try {
   const page = local.doc.must("page");
-  assert.equal(page.render(), "<main></main>");
+  assert.equal(page.render(), complete_html("<main></main>"));
   assert.equal(local.doc.must("second").render(), page.render());
   assert.equal(local.doc.must("page"), page);
   assert.equal(local.data.must("state").snap(), 1);

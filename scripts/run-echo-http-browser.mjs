@@ -33,9 +33,9 @@ try {
   if (bundle.status !== 0) throw new Error(bundle.stderr || "HTTP Echo browser bundle failed.");
   const html = await readFile(resolve(root, "tests/browser/echo-http.acceptance.html"));
   const javascript = await readFile(bundlePath);
-  const schema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+  const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
   const interaction = {
-    id: "http-click", subject: { library: "page", path: [0, 0, 0] }, kind: "locus", key: "save",
+    id: "http-click", subject: { library: "page", path: [0, 0, 1, 0, 0, 0, 0] }, kind: "locus", key: "save",
     payload: Hson.data.from({ value: 1 }),
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },

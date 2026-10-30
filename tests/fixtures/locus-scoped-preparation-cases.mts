@@ -19,8 +19,8 @@ import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
 const node = (text: string) => { const value = hsonTransform.fromHson(text).toNode().$_content[0]; assert.ok(is_Node(value)); return value; };
 const connector = (member = "panel") => node(`<hson-part lib="parts" at="${member}"/>`);
 const document = (writer: LocusHostedAggregateStageWriter) => { const doc = writer.doc.must("page"); assert.equal(doc.mode, "document"); if (doc.mode !== "document") throw Error(); return doc; };
-const insert = (writer: LocusHostedAggregateStageWriter, index = 0, member = "panel") => document(writer).content.insert({ kind: "path", path: path([0, 0]) }, index, connector(member));
-const replace = (writer: LocusHostedAggregateStageWriter, index = 0, member = "panel") => document(writer).content.replace({ kind: "path", path: path([0, 0]) }, index, connector(member));
+const insert = (writer: LocusHostedAggregateStageWriter, index = 0, member = "panel") => document(writer).content.insert({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, index, connector(member));
+const replace = (writer: LocusHostedAggregateStageWriter, index = 0, member = "panel") => document(writer).content.replace({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, index, connector(member));
 function fixture() {
   const map = hsonLiveMap.fromLibraries({
     parts: { parts: {
@@ -41,8 +41,8 @@ async function projection(f: ReturnType<typeof fixture>) {
     undefined, () => ({ libraries: ["page"] }));
   return normalize_locus_effective_projection(policy, { libraries: ["page", "parts"] });
 }
-const operation = (member = "panel"): Extract<LiveMapGraphOp, { op: "insert-content" }> => ({ domain: "graph", op: "insert-content", target: { kind: "path", path: path([0, 0]) }, index: 0, content: connector(member) });
-const write = (f: ReturnType<typeof fixture>, op = operation()) => ({ target: { domain: "application" as const, library: f.library, path: path([0, 0]) }, kind: "graph" as const, operation: op, publicStaged: true as const });
+const operation = (member = "panel"): Extract<LiveMapGraphOp, { op: "insert-content" }> => ({ domain: "graph", op: "insert-content", target: { kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, index: 0, content: connector(member) });
+const write = (f: ReturnType<typeof fixture>, op = operation()) => ({ target: { domain: "application" as const, library: f.library, path: path([0, 0, 1, 0, 0, 0]) }, kind: "graph" as const, operation: op, publicStaged: true as const });
 
 function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
   const roots = f.a.libraries().map(id => [id, f.a.root(id)] as const), graphs = roots.map(([, root]) => JSON.stringify(root));
@@ -94,9 +94,9 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
         await assert.rejects(locus.stage(w => {
           const page = w.doc.must("page"), flat = w.doc.must("flat");
           if (page.mode !== "document" || flat.mode !== "document") throw Error("Expected documents");
-          flat.css.clearAll(); page.at([0]).replace(node('<hson-part lib="parts" at="x"/>'));
+          flat.css.clearAll(); page.at([1, 0, 0]).replace(node('<hson-part lib="parts" at="x"/>'));
           page.css.clearAll(); flat.at([99]).asElement().attrs.set("invalid", true);
-        }));
+        }), { message: "Document location is not element." }); // Only the final missing location requests element refinement.
         assert.equal(a.identityEpoch().issued(), issued); assert.equal(a.identityEpoch().current(), epoch);
         assert.equal(map.rev, 1); assert.equal(observations, 1); assert.equal(gates, 1);
         ids.forEach((id, index) => {
@@ -126,7 +126,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
       },
       gate(input) {
         assert.equal(input, gate); assert.deepEqual(encode(f.map, input.transition), portable);
-        assert.throws(() => f.a.acquireLocalDocumentIdentity(f.library, path([0]), "ABCDEFGHIJ"), /reserved|pending/);
+        assert.throws(() => f.a.acquireLocalDocumentIdentity(f.library, path([0, 0, 1, 0, 0]), "ABCDEFGHIJ"), /reserved|pending/);
       },
     });
     const accepted = await locus.stage(writer => {
@@ -267,7 +267,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
       // A real unchanged graph operation, as well as empty aggregate input,
       // must retain authority even though neither invokes installation.
       const noop = { ...write(f), operation: { domain: "graph" as const, op: "remove-attr" as const,
-        target: { kind: "path" as const, path: path([0]) }, name: "missing" } };
+        target: { kind: "path" as const, path: path([0, 0, 1, 0, 0]) }, name: "missing" } };
       const pending = f.a.prepareManaged(owner, empty ? [] : [noop], true);
       assert.equal(pending.commit.changed, false);
       const release = reserved ? f.a.reserve(pending) : () => {};
@@ -342,7 +342,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const initial = hsonLiveMap.fromLibraries({ parts: { parts: { leaf: { kind: "document", document: '<b hson:part/>' } } } });
     initial.addLibraries({ page: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } });
     const blocked = create({ map: initial, scopedDocuments: true, gate() { gates++; } });
-    await blocked.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0]) }, "title", "new"));
+    await blocked.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "new"));
     assert.equal(gates, 1); blocked.dispose();
   });
   await check("durable suspension reserves the complete batch and queues the next revision", async () => {
@@ -359,7 +359,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const first = locus.stage(writer => insert(writer, 0, "plain")); await started;
     const second = locus.stage(writer => replace(writer, 0, "plain"));
     await Promise.resolve(); assert.equal(f.map.rev, 0); assert.equal(gates, 1); assert.equal(observations, 0);
-    assert.throws(() => f.a.acquireLocalDocumentIdentity(f.library, path([0]), "ABCDEFGHIJ"), /reserved/);
+    assert.throws(() => f.a.acquireLocalDocumentIdentity(f.library, path([0, 0, 1, 0, 0]), "ABCDEFGHIJ"), /reserved/);
     release(); await first; await second;
     assert.equal(f.map.rev, 2); assert.equal(gates, 2); assert.equal(observations, 2);
     off(); locus.dispose();
@@ -368,7 +368,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const f = fixture(); enable_interactions(f.map);
     const listener = { event: "click", target: "element" as const, capture: false, once: false, passive: false,
       missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false };
-    add_interaction(f.map, { id: "footer", subject: { library: "page", path: [0, 0, 0] }, listener, kind: "browser", key: "footer", args: null });
+    add_interaction(f.map, { id: "footer", subject: { library: "page", path: [0, 0, 1, 0, 0, 0, 0] }, listener, kind: "browser", key: "footer", args: null });
     const initial = f.a.captureHosted();
     const policy = make_locus_hosted_projection_policy(initial.registry, initial.authority,
       [{ name: "parts", ownership: "private" }, { name: "page", ownership: "shared" }, { name: "other", ownership: "shared" }],
@@ -386,11 +386,11 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
   });
   await check("Schema validates the final transaction while effects retain the complete operation prefix", async () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { plain: { kind: "document", document: '<i hson:part/>' } } },
-      page: { document: '<main <footer/>/>', schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "footer" content "empty">]>>` } });
+      page: { document: '<main <footer/>/>', schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "footer" content "empty">]>>]>>]>>` } });
     const a = authority(map), library = a.libraries()[1]!, before = a.scopedDocumentState(library);
     const locus = create({ map, scopedDocuments: true });
     const accepted = await locus.stage(writer => {
-      insert(writer, 0, "plain"); document(writer).content.remove({ kind: "path", path: path([0, 0]) }, 0);
+      insert(writer, 0, "plain"); document(writer).content.remove({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 0);
     });
     assert.equal(accepted!.replay.operations.length, 2); assert.equal(map.rev, 1);
     assert.ok(equal(before, a.scopedDocumentState(library))); locus.dispose();
@@ -423,7 +423,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     await locus.stage(writer => {
       insert(writer, 0, "plain");
       const second = writer.doc.must("second"); if (second.mode !== "document") throw Error();
-      second.content.insert({ kind: "path", path: path([0, 0]) }, 0, connector("plain"));
+      second.content.insert({ kind: "path", path: path([0, 0, 1, 0, 0, 0]) }, 0, connector("plain"));
       insert(writer, 1, "plain");
     });
     assert.equal(a.scopedDocumentState(a.libraries()[1]!).scopes.occurrences.length, 2);
@@ -435,7 +435,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const locus = create({ map: f.map, gate() { gates++; } });
     await assert.rejects(locus.stage(writer => insert(writer, 0, "plain")), /scoped evidence.*Echo/);
     assert.equal(f.map.rev, 0); assert.equal(gates, 0);
-    const accepted = await locus.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0]) }, "title", "ordinary"));
+    const accepted = await locus.stage(writer => document(writer).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "ordinary"));
     assert.ok(make_portable_aggregate_commit(accepted!)); assert.equal(gates, 1);
     locus.dispose();
   });

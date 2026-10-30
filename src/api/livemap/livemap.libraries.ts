@@ -1,3 +1,4 @@
+import { complete_document_source } from "../../internal/complete-document.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { selector_for_quid } from "../livetree/managers/css-render.js";
 import { assert_part_public_path } from "../../core/part-css-access.js";
@@ -202,9 +203,12 @@ function realize_authored_definitions(definitions: readonly CanonicalLibraryDefi
     return part;
   };
   return definitions.map(definition => {
-    if (definition.family !== "document" || !has_part_connector(definition.root)) return definition;
+    if (definition.family !== "document") return definition;
+    if (!has_part_connector(definition.root)) return { ...definition, ...complete_document_source({
+      root: normalize_document_root(definition.root), quads: own_document_quads(definition),
+    }) };
     const candidate = expand_document_composition(definition.name, () => ({ ...definition, root: normalize_document_root(definition.root) }),
-      document_composition_options(undefined), readPart);
+      document_composition_options(undefined), readPart, "document");
     const { quads: sourceQuads, ...ordinary } = definition;
     return { ...ordinary, root: candidate.root, ...(candidate.quads === undefined ? {} : { quads: candidate.quads }), compositionStyles: candidate.styles, compositionScopes: candidate.scoped };
   });
@@ -953,7 +957,7 @@ function make_livemap_library_receiver(
       const root = clone_hson_graph_without_quids(aggregate.root(entry.identity));
       const quads = aggregate.projectDocumentCorrespondence(entry.identity, []);
       return { root, ...(quads === undefined ? {} : { quads }) };
-    }, configuration, readPart);
+    }, configuration, readPart, "document");
     const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, ...candidate }])
       .map(definition => ({ ...definition, ...((sourceScopes ?? candidate.scoped).occurrences.length === 0 ? {}
         : { compositionScopes: sourceScopes ?? candidate.scoped, compositionStyles: candidate.styles }) }));

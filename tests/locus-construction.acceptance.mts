@@ -12,7 +12,7 @@ const Secret = Hson.schema`<type "data" content <token "string">>`;
 const listener = { event: "click", target: "element", capture: false, once: false, passive: false,
   missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } as const;
 const descriptor: InteractionDescriptor = { id: "save", kind: "browser", key: "save", args: null,
-  subject: { library: "page", path: [0] }, listener };
+  subject: { library: "page", path: [0, 0, 1, 0, 0] }, listener };
 const css: string = "main { color: red; }";
 const structuredRecord = structured_css_fixture(".fixture-fidelity{color:teal}");
 const fidelityLocus = create_locus_fixture({ ...authority_definitions_from_catalog_fixture([
@@ -38,8 +38,8 @@ const stopAuthorityCommits = locus.commits.observe((commit) => authorityCommits.
 await locus.data.must("count").at(["value"]).set(2);
 await locus.stage((loc) => { loc.data.must("count").at(["value"]).set(3); });
 const page = locus.doc.must("page");
-await page.at([]).asElement()!.attrs.set("title", "owned");
-assert.equal(page.at([]).asElement()!.attrs.get("title"), "owned");
+await page.at([1, 0]).asElement()!.attrs.set("title", "owned");
+assert.equal(page.at([1, 0]).asElement()!.attrs.get("title"), "owned");
 assert.deepEqual(authorityCommits, [2, 3, 4]);
 stopAuthorityCommits();
 assert.deepEqual(locus.cut().libs.libraries.map((entry) => entry.name),
@@ -52,8 +52,8 @@ await assert.rejects(hsonLiveMap.locus.checkpoint(locus), /no durable backing/i)
 locus.dispose();
 
 const pathAuthority = hsonLiveMap.locus.create({ "page": { document: "<main <p/>/>", access: "shared" } });
-await pathAuthority.doc.must("page").at([0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
-assert.equal(pathAuthority.doc.must("page").at([0]).asElement()!.attrs.get("title"), "replaced");
+await pathAuthority.doc.must("page").at([1, 0, 0]).replace({ $_tag: "p", $_attrs: { title: "replaced" }, $_content: [] });
+assert.equal(pathAuthority.doc.must("page").at([1, 0, 0]).asElement()!.attrs.get("title"), "replaced");
 pathAuthority.dispose();
 
 const styled = hsonLiveMap.locus.create({ "page": { document: "<main/>", stylesheet: css, access: "shared" } }, { logicalMapId: "styled-authority" });

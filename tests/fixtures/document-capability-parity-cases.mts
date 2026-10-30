@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, Hson, type LocusWebSocketLike } from "hson-live";
 import { bind_locus_websocket } from "hson-live/locus";
 import { test_echo_transport } from "../helpers/public-echo-websocket-transport.mts";
-import { PageSchema } from "./hson-schema-document/out/producer.js";
+// This governing schema describes the admitted page; raw element-schema fixtures
+// continue to test the lower-level structural schema language separately.
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" hidden <optional "flag">>> content <sequence [<tag "section" content "string">]>>]>>]>>`;
 import { firstSchema } from "./hson-schema-document/out/deck.js";
 
 const source = '<main id="page" <section id="nested" <button id="button" title="old" disabled="disabled" keep="value"/>/>/>';
@@ -26,7 +28,7 @@ export async function document_capability_parity_cases() {
   const subject = identities.doc.must("page").q("button")!;
   subject.attrs.setMany({ title: "kept" });
   identities.doc.must("page").q("page")!.move(0, 1);
-  assert.deepEqual(subject.path(), [1]);
+  assert.deepEqual(subject.path(), [1, 0, 1]);
   subject.flags.set("checked");
   assert.equal(subject.attrs.must.get("title"), "kept");
   subject.delete(); assert.equal(subject.active, false);
@@ -46,10 +48,10 @@ export async function document_capability_parity_cases() {
     const staged = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
     const invoke = (location: object) => Reflect.apply(Reflect.get(Reflect.get(location, namespace), method), undefined, args);
     try {
-      invoke(local.doc.must("page").at([0]).at([0]).asElement()!);
-      batched.batch(writer => { assert.equal(invoke(writer.doc.must("page").at([0]).at([0])), undefined); });
-      await invoke(direct.doc.must("page").at([0]).at([0]).asElement()!);
-      await staged.stage(writer => { assert.equal(invoke(writer.doc.must("page").at([0]).at([0])), undefined); });
+      invoke(local.doc.must("page").at([1, 0, 0]).at([0]).asElement()!);
+      batched.batch(writer => { assert.equal(invoke(writer.doc.must("page").at([1, 0, 0]).at([0])), undefined); });
+      await invoke(direct.doc.must("page").at([1, 0, 0]).at([0]).asElement()!);
+      await staged.stage(writer => { assert.equal(invoke(writer.doc.must("page").at([1, 0, 0]).at([0])), undefined); });
       for (const selected of [batched, direct, staged]) {
         const page = selected.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
         assert.equal(page.render(), local.doc.must("page").render(), `${namespace}.${method}`);
@@ -65,20 +67,20 @@ export async function document_capability_parity_cases() {
     const stage = async (run: (writer: Writer) => void) => { if (governed) await locus.stage(run); else local.batch(run); };
     const page = governed ? locus.doc.must("page") : local.doc.must("page");
     let watches = 0, commits = 0;
-    const off = page.at([0, 0]).watch(() => watches++), stop = selected.commits.observe(() => commits++);
+    const off = page.at([1, 0, 0, 0]).watch(() => watches++), stop = selected.commits.observe(() => commits++);
     try {
-      const element = page.at([]).id("button")!.asElement()!;
-      assert.deepEqual(element.path(), [0, 0]);
+      const element = page.at([1, 0]).id("button")!.asElement()!;
+      assert.deepEqual(element.path(), [1, 0, 0, 0]);
       assert.equal(element.attrs.get("absent"), undefined);
       assert.throws(() => element.attrs.must.get("absent"));
       assert.equal(element.attrs.must.get("title"), "old");
       assert.equal(element.flags.has("disabled"), true);
       assert.equal(element.flags.has("keep"), false);
-      assert.equal(page.at([99]).present(), undefined);
-      assert.equal(page.at([]).asRoot(), undefined);
+      assert.equal(page.at([1, 0, 99]).present(), undefined);
+      assert.equal(page.at([1, 0]).asRoot(), undefined);
       assert.throws(() => Reflect.apply(page.at, page, [[-1]]));
       await stage(writer => {
-        const section = writer.doc.must("page").at([0]).asElement();
+        const section = writer.doc.must("page").at([1, 0, 0]).asElement();
         section.insert(0, node('<i id="inserted"/>'));
         const moved = section.at([1]).asElement();
         moved.attrs.setMany({ title: "candidate", added: "one" });
@@ -91,7 +93,7 @@ export async function document_capability_parity_cases() {
         writer.doc.must("page").css.rule("button", "button").set.color("red");
         writer.doc.must("page").css.rule("button", "button").set.backgroundColor("blue");
       });
-      const final = page.at([0, 0]).asElement()!;
+      const final = page.at([1, 0, 0, 0]).asElement()!;
       assert.equal(final.attrs.get("another"), "two");
       assert.equal(final.attrs.get("keep"), "value");
       assert.equal(final.attrs.has("added"), false);
@@ -106,20 +108,20 @@ export async function document_capability_parity_cases() {
         assert.deepEqual({ html: page.root(), css: page.css.snapshot(), rev: selected.rev, commits, watches }, before);
       };
       await reject(writer => {
-        writer.doc.must("page").at([0, 0]).asElement().attrs.clear();
+        writer.doc.must("page").at([1, 0, 0, 0]).asElement().attrs.clear();
         writer.doc.must("page").css.clearAll();
-        writer.doc.must("page").at([0, 99]).asElement().flags.set("bad");
+        writer.doc.must("page").at([1, 0, 0, 99]).asElement().flags.set("bad");
       });
-      await reject(writer => { writer.doc.must("page").at([0, 0]).asElement().flags.set("style"); });
-      await reject(writer => { writer.doc.must("page").at([0, 0]).asElement().attrs.setMany({ "$_quid": "forged" }); });
-      await reject(writer => { writer.doc.must("page").at([0, 0]).replace("text"); writer.doc.must("page").at([0, 0]).asElement(); });
-      await reject(writer => { writer.doc.must("page").at([99]).asElement(); });
+      await reject(writer => { writer.doc.must("page").at([1, 0, 0, 0]).asElement().flags.set("style"); });
+      await reject(writer => { writer.doc.must("page").at([1, 0, 0, 0]).asElement().attrs.setMany({ "$_quid": "forged" }); });
+      await reject(writer => { writer.doc.must("page").at([1, 0, 0, 0]).replace("text"); writer.doc.must("page").at([1, 0, 0, 0]).asElement(); });
+      await reject(writer => { writer.doc.must("page").at([1, 0, 99]).asElement(); });
       await reject(writer => { Reflect.apply(writer.doc.must("page").css.rule("bad", "button").setMany,undefined,[{ color: { bad: "value" } }]); });
-      await stage(writer => { writer.doc.must("page").at([0, 0]).asElement(); });
+      await stage(writer => { writer.doc.must("page").at([1, 0, 0, 0]).asElement(); });
       assert.equal(selected.rev, before.rev);
       let expired: (() => void) | undefined, expiredCss: (() => void) | undefined, expiredShape: (() => void) | undefined;
       await stage(writer => {
-        const location = writer.doc.must("page").at([0, 0]).asElement();
+        const location = writer.doc.must("page").at([1, 0, 0, 0]).asElement();
         const rule = writer.doc.must("page").css.sel("button");
         expired = () => location.flags.clear("checked"); expiredCss = () => rule.set.color("green"); expiredShape = () => location.asElement();
         assert.equal("snap" in location, false); assert.equal("get" in location.attrs, false);
@@ -129,8 +131,8 @@ export async function document_capability_parity_cases() {
       if (governed) {
         let forbidden: Promise<void> | undefined;
         await locus.stage(writer => {
-          forbidden = assert.rejects(locus.doc.must("page").at([0, 0]).asElement()!.attrs.clear(), /forbidden/i);
-          writer.doc.must("page").at([0, 0]).asElement().attrs.setMany({ safe: true });
+          forbidden = assert.rejects(locus.doc.must("page").at([1, 0, 0, 0]).asElement()!.attrs.clear(), /forbidden/i);
+          writer.doc.must("page").at([1, 0, 0, 0]).asElement().attrs.setMany({ safe: true });
         });
         await forbidden;
       }
@@ -177,13 +179,13 @@ export async function document_read_authority_cases() {
   let inspected = 0;
   const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } }, { local: [{ name: "panel", initializer: { document: '<aside <button id="localButton"/>/>' } }], authorizeProjection: () => ({ libraries: ["page", "panel"] }), authorizeAction: () => false, actions: { inspect(context) {
       const page = context.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
-      const selected = page.at([]).id("button")!.asElement()!;
+      const selected = page.at([1, 0]).id("button")!.asElement()!;
       assert.equal(selected.attrs.must.get("title"), "old"); assert.equal(selected.flags.has("disabled"), true);
       assert.equal("set" in selected.attrs, false); assert.equal("set" in selected.flags, false);
       assert.equal("replace" in selected, false); assert.equal("set" in page.css.var, false);
       assert.equal("register" in page.css.atProperty, false); assert.equal("set" in page.css.keyframes, false);
       assert.equal("replace" in page.document.content, false);
-      assert.equal(page.document.flags.has({ kind: "path", path: [0, 0, 0, 0, 0] }, "disabled"), true);
+      assert.equal(page.document.flags.has({ kind: "path", path: [0, 0, 1, 0, 0, 0, 0, 0, 0] }, "disabled"), true);
       inspected++;
     } } });
   try {
@@ -201,7 +203,7 @@ export async function document_read_authority_cases() {
     try {
       const projected = echo.doc.must("page"), local = echo.doc.must("panel");
       if (projected.mode !== "document" || projected.source !== "authority-projected" || local.mode !== "document" || local.source !== "client-local") throw Error("Expected documents");
-      const read = projected.at([0]).at([0]).asElement()!;
+      const read = projected.at([1, 0, 0]).at([0]).asElement()!;
       assert.equal(read.flags.has("disabled"), true); assert.equal(read.attrs.must.get("title"), "old");
       assert.equal("clear" in read.flags, false); assert.equal("set" in projected.css.var, false);
       const before = projected.render(), remoteRev = locus.rev;
@@ -209,10 +211,10 @@ export async function document_read_authority_cases() {
       await assert.rejects(read.flags.set("hidden"));
       assert.equal(projected.render(), before); assert.equal(locus.rev, remoteRev);
       assert.equal(local.q("missing"), undefined, "Local initializers do not fabricate QUAD associations");
-      const identity = local.at([]).id("localButton")!.asElement()!;
+      const identity = local.at([1, 0]).id("localButton")!.asElement()!;
       identity.attrs.setMany({ title: "local", checked: "checked" });
       assert.equal(identity.flags.has("checked"), true);
-      local.at([]).asElement()!.move(0, 0);
+      local.at([1, 0]).asElement()!.move(0, 0);
       identity.flags.clear("checked");
       local.css.sel("button").set.color("red");
       assert.match(local.css.snapshot(), /color:red/);
@@ -233,12 +235,12 @@ export async function document_echo_submission_cases() {
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   try {
     const page = echo.doc.must("page"); if (page.mode !== "document" || page.source !== "authority-projected") throw Error("Expected projected document");
-    const selected = page.at([0, 0]).asElement()!;
+    const selected = page.at([1, 0, 0, 0]).asElement()!;
     let observations = 0;
     const off = selected.watch(() => observations++);
     await selected.attrs.setMany({ title: "accepted", extra: "one" });
     assert.equal(selected.attrs.must.get("title"), "accepted");
-    assert.equal(locus.doc.must("page").at([0, 0]).asElement()!.attrs.get("extra"), "one");
+    assert.equal(locus.doc.must("page").at([1, 0, 0, 0]).asElement()!.attrs.get("extra"), "one");
     await selected.attrs.dropMany(["extra", "absent"]);
     assert.equal(selected.attrs.has("extra"), false);
     assert.equal(selected.flags.has("disabled"), true);
@@ -258,7 +260,7 @@ export async function document_echo_submission_cases() {
     assert.equal(page.css.keyframes.has("fade"), true);
     await page.css.keyframes.delete("fade"); await page.css.atProperty.unregister("--tone");
     await page.css.clearAll();
-    const target = { kind: "path" as const, path: [0, 0, 0, 0, 0] };
+    const target = { kind: "path" as const, path: [0, 0, 1, 0, 0, 0, 0, 0, 0] };
     await page.document.attrs.setMany(target, { title: "target", hidden: "hidden" });
     assert.equal(page.document.attrs.must.get(target, "title"), "target");
     assert.equal(page.document.flags.has(target, "hidden"), true);
@@ -269,26 +271,26 @@ export async function document_echo_submission_cases() {
 }
 
 export async function document_shape_cases() {
-  const definition = { document: '<p "one"/> <p "two"/>' };
+  const definition = { document: '<main <p "one"/> <p "two"/>/>' };
   const local = hsonLiveMap.fromLibraries({ page: definition });
   const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
   try {
     for (const page of [local.doc.must("page"), locus.doc.must("page")]) {
-      assert.equal(page.at([]).kind(), "root");
-      assert.ok(page.at([]).asRoot()); assert.equal(page.at([]).asElement(), undefined);
-      assert.equal(page.at([0]).at([0]).asText()!.snap(), "one");
-      await page.at([0]).at([0]).replace("changed");
+      assert.equal(page.at([1, 0]).kind(), "element");
+      assert.ok(page.at([1, 0]).asElement()); assert.equal(page.at([1, 0]).asRoot(), undefined);
+      assert.equal(page.at([1, 0, 0]).at([0]).asText()!.snap(), "one");
+      await page.at([1, 0, 0]).at([0]).replace("changed");
     }
     assert.deepEqual(locus.doc.must("page").root(), local.doc.must("page").root());
     const before = locus.rev;
-    await locus.stage(writer => { writer.doc.must("page").at([]).asRoot(); writer.doc.must("page").at([0, 0]).asText(); });
+    await locus.stage(writer => { writer.doc.must("page").at([1, 0]).asElement(); writer.doc.must("page").at([1, 0, 0, 0]).asText(); });
     assert.equal(locus.rev, before);
-    await assert.rejects(locus.stage(writer => { writer.doc.must("page").at([0, 0]).asElement(); }));
+    await assert.rejects(locus.stage(writer => { writer.doc.must("page").at([1, 0, 0, 0]).asElement(); }));
     await locus.stage(writer => {
-      writer.doc.must("page").at([]).asRoot().insert(0, node('<aside/>'));
-      writer.doc.must("page").at([1]).asElement().attrs.setMany({ shifted: true });
+      writer.doc.must("page").at([1, 0]).asElement().insert(0, node('<aside/>'));
+      writer.doc.must("page").at([1, 0, 1]).asElement().attrs.setMany({ shifted: true });
     });
-    assert.equal(locus.doc.must("page").at([1]).asElement()!.attrs.get("shifted"), true);
+    assert.equal(locus.doc.must("page").at([1, 0, 1]).asElement()!.attrs.get("shifted"), true);
   } finally { locus.dispose(); }
 }
 
@@ -298,29 +300,29 @@ export async function document_schema_atomicity_cases() {
   const local = hsonLiveMap.fromLibraries({ page: definition });
   const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
   try {
-    assert.throws(() => local.doc.must("page").at([]).attrs.clear());
+    assert.throws(() => local.doc.must("page").at([1, 0]).asElement()!.attrs.clear());
     const before = locus.doc.must("page").root(), rev = locus.rev;
     let observed = 0;
     const stop = locus.commits.observe(() => observed++);
-    await assert.rejects(locus.doc.must("page").at([]).attrs.clear());
+    await assert.rejects(locus.doc.must("page").at([1, 0]).asElement()!.attrs.clear());
     await assert.rejects(locus.stage(writer => {
-      writer.doc.must("page").at([]).asElement().flags.set("hidden");
-      writer.doc.must("page").at([]).asElement().attrs.clear();
+      writer.doc.must("page").at([1, 0]).asElement().flags.set("hidden");
+      writer.doc.must("page").at([1, 0]).asElement().attrs.clear();
       writer.doc.must("page").css.var.set("bad", "red");
     }));
     assert.deepEqual(locus.doc.must("page").root(), before); assert.equal(locus.rev, rev); assert.equal(observed, 0);
     await locus.stage(writer => {
       const attrs = { id: "next", hidden: "hidden" };
-      writer.doc.must("page").at([]).asElement().attrs.clear();
-      writer.doc.must("page").at([]).asElement().attrs.setMany({ id: attrs.id });
+      writer.doc.must("page").at([1, 0]).asElement().attrs.clear();
+      writer.doc.must("page").at([1, 0]).asElement().attrs.setMany({ id: attrs.id });
       attrs.id = "mutated after capture";
-      writer.doc.must("page").at([]).asElement().flags.set("hidden");
+      writer.doc.must("page").at([1, 0]).asElement().flags.set("hidden");
       const css = { color: "red" };
       writer.doc.must("page").css.sel("main").setMany(css);
       css.color = "blue";
     });
-    assert.equal(locus.doc.must("page").at([]).attrs.must.get("id"), "next");
-    assert.equal(locus.doc.must("page").at([]).flags.has("hidden"), true);
+    assert.equal(locus.doc.must("page").at([1, 0]).asElement()!.attrs.must.get("id"), "next");
+    assert.equal(locus.doc.must("page").at([1, 0]).asElement()!.flags.has("hidden"), true);
     assert.match(locus.doc.must("page").css.snapshot(), /color:red/);
     assert.equal(observed, 1);
     stop();
@@ -341,7 +343,7 @@ export async function document_identity_authority_cases() {
     assert.equal(page.q("absent"), undefined);
     await selected.attrs.setMany({ title: "moved" });
     await page.q("page")!.move(0, 1);
-    assert.deepEqual(selected.path(), [1]);
+    assert.deepEqual(selected.path(), [1, 0, 1]);
     await selected.flags.set("checked");
     assert.equal(selected.flags.has("checked"), true);
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");

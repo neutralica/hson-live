@@ -36,8 +36,8 @@ function check(name: string, run: () => void): void {
   catch (error) { events.diagnostic(name, "assertion", String(error)); events.case_end(name, "fail"); events.terminal("fail"); throw error; }
 }
 
-const SlideSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content "empty">` as HsonSchema<unknown, "document">;
-const OtherSlideSchema = Hson.schema`<type "document" tag "section" content "empty">` as HsonSchema<unknown, "document">;
+const SlideSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <title <optional "string">>> content "empty">]>>]>>` as HsonSchema<unknown, "document">;
+const OtherSlideSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "section" content "empty">]>>]>>` as HsonSchema<unknown, "document">;
 const StateSchema = Hson.schema`<type "data" content <count "number">>` as HsonSchema<unknown, "data">;
 const OtherStateSchema = Hson.schema`<type "data" content <name "string">>` as HsonSchema<unknown, "data">;
 
@@ -61,7 +61,7 @@ check("document tightening is one portable transition and capture/replay retain 
   assert.deepEqual(map.doc.must("page").root(), beforeRoot);
   assert.equal(map.doc.must("page").css.snapshot(), beforeCss);
   assert.equal(map.doc.must("page").schema.get(), SlideSchema);
-  assert.throws(() => map.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "title", true), /Schema|schema/i);
+  assert.throws(() => map.doc.must("page").document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", true), /Schema|schema/i);
 
   const after = map.capture();
   assert.equal(after.registry.libraries[0]?.schema, SlideSchema.toHson());

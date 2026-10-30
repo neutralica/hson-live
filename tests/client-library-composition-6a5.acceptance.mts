@@ -31,8 +31,8 @@ import { project_authority_snapshot, authority_projection_as_client_composition_
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-const LocalSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+const LocalSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
 
 function authority() {
   return hsonLiveMap.fromLibraries({
@@ -237,7 +237,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   if (serverPage.mode !== "document") throw new Error("Expected projected document.");
   let hostedPage;
   const stopPage = internal_livemap_aggregate_authority(server).observe((commit) => { hostedPage = commit.hosted; });
-  serverPage.document.attrs.set({ kind: "path", path: [0] }, "title", "replayed");
+  serverPage.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "replayed");
   stopPage();
   if (hostedPage === undefined) throw new Error("Missing projected document effect.");
   const pageEffect = make_portable_aggregate_commit(hostedPage);
@@ -263,7 +263,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   ui.at(["value"]).set(3);
   assert.equal(client.rev, 5);
 
-  serverPage.document.attrs.set({ kind: "path", path: [0] }, "title", "authority");
+  serverPage.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "authority");
   const fallbackBase = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
   const fallback = Object.freeze({ ...fallbackBase, revision: 4 });
   const malformed = Object.freeze({ ...fallback, libraries: Object.freeze([
@@ -272,7 +272,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   ]) });
   assert.throws(() => replica.restoreHosted(malformed), /Schema|schema/);
   assert.equal(ui.at(["value"]).snap(), 3);
-  assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), "replayed");
+  assert.equal(page.document.attrs.get({ kind: "path", path: [0, 0, 1, 0, 0] }, "title"), "replayed");
   assert.equal(client.rev, 5);
   replica.restoreHosted(fallback);
   assert.equal(client.rev, 6);

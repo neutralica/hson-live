@@ -179,7 +179,7 @@ export async function attribute_atomicity_browser_cases(check) {
   });
 
   await check("attrs atomicity: accepted LiveMap revision survives Mirror failure and later authority commits", () => {
-    const schema = Hson.schema`<type "document" tag "button" content "empty">`;
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">]>>]>>`;
     const map = hson.liveMap.fromLibraries({ page: { document: '<button a="before" b="before"/>', schema } });
     const binding = hsonMirror(map.doc.must("page")), tree = binding.tree.find.must.byTag("button");
     const el = project_livetree(subject_for_tree(tree), "html", runtime_for_tree(tree), document), native = el.setAttribute;
@@ -190,7 +190,7 @@ export async function attribute_atomicity_browser_cases(check) {
       equal(map.rev, 1); equal(commits, 1); equal(binding.status, "failed"); equal(binding.sourceRevision, 0);
       must(map.doc.must("page").render().includes('b="accepted"'), "authority rolled back");
       rejected(() => tree.attrs.set("later", "rejected")); equal(map.rev, 1);
-      map.doc.must("page").document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "later", "authority");
+      map.doc.must("page").document.attrs.set({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) }, "later", "authority");
       equal(map.rev, 2); equal(commits, 2); equal(binding.status, "failed"); equal(binding.sourceRevision, 0);
       equal(tree.attrs.get("later"), undefined);
       delete el.setAttribute; binding.dispose(); binding.tree.remove();

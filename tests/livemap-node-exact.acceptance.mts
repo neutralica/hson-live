@@ -1,4 +1,5 @@
 // @hson-live-external-test
+import { body_root } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { admit_owned_livemap_root, admit_public_livemap_root } from "../src/api/livemap/livemap.node-admission.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -66,8 +67,8 @@ check("document ownership retains empty ROOT, ordered content and nested relatio
   for (const input of [root(elem()), root(node("p", obj())), root(val(1)), root(root()), root(elem(node("p")), node("q"))]) rejects(input, "document");
 });
 check("qualified carrier projection does not introduce inherited metadata", () => {
-  const input = admit_owned_livemap_root(root(elem(node("p"))), "document");
-  const expected = admit_owned_livemap_root(root(node("p")), "document");
+  const input = admit_owned_livemap_root(root(elem(node("html", elem(node("head"), node("body"))))), "document");
+  const expected = admit_owned_livemap_root(root(node("html", elem(node("head"), node("body")))), "document");
   const prior = Object.getOwnPropertyDescriptor(Object.prototype, "$_meta"); let calls = 0;
   Object.defineProperty(Object.prototype, "$_meta", { configurable: true, get() { calls++; return { quid: "000000001" }; } });
   try {
@@ -169,7 +170,7 @@ check("public initial roots and library additions reject repairs without publica
   const accepted = map.addLibraries({ accepted: { document: canonical } }).commit;
   assert.equal(accepted.rev, before.revision + 1); assert.equal(notifications, 1);
   canonical.$_content.length = 0;
-  same(internal_livemap_aggregate_authority(map).root(internal_livemap_aggregate_authority(map).libraries()[1]), root(node("p", elem(str("x")))));
+  same(internal_livemap_aggregate_authority(map).root(internal_livemap_aggregate_authority(map).libraries()[1]), root(node("html", elem(node("head"), node("body", elem(node("p", elem(str("x")))))))));
 });
 check("public and internal root boundaries never read getter or inherited QUID claims", () => {
   let calls = 0;
@@ -208,21 +209,23 @@ check("owned data engine admits exact data and rejects array sorting or scalar-c
 });
 check("document ROOT semantics, runtime attrs and caller isolation survive ownership", () => {
   const inputs = [root(), root(node("p")), root(str("")), root(node("p"), str("a"), str(""), str("\ud800\u0000"), node("q")), root(elem(str("x")))];
+  // Exact structural ownership supports parser sequences; governed admission
+  // separately requires one displayable element and completes its scaffolding.
   for (const input of inputs) {
-    const expected = input.$_content.length === 1 && child(input).$_tag === "_hson_elem" ? root(...child(input).$_content.filter(is_Node)) : input;
-    const map = hsonLiveMap.fromLibraries({ page: { document: input } }); const page = map.doc.must("page");
-    same(page.root(), expected); const before = state(map);
-    input.$_content.length = 0; page.root().$_content.length = 0; unchanged(map, before);
-    assert.equal(Object.isFrozen(input), false);
+    const owned = admit_public_livemap_root(input, "document", "structural ownership");
+    same(owned, input);
+    const before = JSON.stringify(owned);
+    input.$_content.length = 0;
+    assert.equal(JSON.stringify(owned), before); assert.equal(Object.isFrozen(input), false);
   }
   for (const style of [" color: red ", {}, { width: { value: -0 } }, { width: { value: -0, unit: "" } }]) {
     const input = root(node("p")); Reflect.set(child(input), "$_attrs", { style });
-    same(hsonLiveMap.fromLibraries({ page: { document: input } }).doc.must("page").root(), input);
+    same(body_root(hsonLiveMap.fromLibraries({ page: { document: input } }).doc.must("page").root()), child(input));
   }
   const styled = root({ ...node("p"), $_attrs: { n: -0, yes: true, nil: null, style: { width: { value: -0, unit: undefined } } } });
   const page = hsonLiveMap.fromLibraries({ page: { document: styled } }).doc.must("page");
-  same(page.root(), styled);
-  const style = child(page.root()).$_attrs?.style; assert.ok(style && typeof style === "object");
+  same(body_root(page.root()), child(styled));
+  const style = body_root(page.root()).$_attrs?.style; assert.ok(style && typeof style === "object");
   const width = style.width; assert.ok(width && typeof width === "object");
   assert.equal(Object.hasOwn(width, "unit"), true); assert.equal(Object.is(width.value, -0), true);
   for (const value of [Infinity, -Infinity, NaN, undefined, {}]) {
@@ -232,7 +235,7 @@ check("document ROOT semantics, runtime attrs and caller isolation survive owner
 });
 check("raw insert and replace requests reject nested defects before owner/identity changes", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: root(node("p", elem(node("b")))) } });
-  const page = map.doc.must("page"); const target = { kind: "path" as const, path: [0, 0] };
+  const page = map.doc.must("page"); const target = { kind: "path" as const, path: [0, 0, 1, 0, 0, 0] };
   const identity = acquire_document_identity(page.document, { kind: "path", path: [0] });
   let notifications = 0; map.commits.observe(() => notifications++); const before = state(map);
   let calls = 0;
@@ -248,10 +251,12 @@ check("raw insert and replace requests reject nested defects before owner/identi
     unchanged(map, before); assert.equal(notifications, 0); assert.equal(identity.active, true);
   }
   assert.equal(calls, 0);
-  const input = node("i", elem(str("a"), str(""), str("\ud800"), node("u")));
+  assert.throws(() => page.document.content.insert(target, 1, node("i", elem(str("\ud800")))));
+  unchanged(map, before);
+  const input = node("i", elem(str("a"), str(""), str("π"), node("u")));
   page.document.content.insert(target, 1, input);
   const accepted = state(map); input.$_content.length = 0; unchanged(map, accepted);
-  same(child(child(child(page.root())), 1), node("i", elem(str("a"), str(""), str("\ud800"), node("u"))));
+  same(child(child(body_root(page.root())), 1), node("i", elem(str("a"), str(""), str("π"), node("u"))));
   assert.equal(notifications, 1); assert.equal(identity.active, true);
 });
 check("staged raw content is qualified before envelope cloning and publication", () => {
@@ -263,7 +268,7 @@ check("staged raw content is qualified before envelope cloning and publication",
   for (const input of [getter, symbol, { ...node("i"), $_attrs: {} }, node("i", obj()), elem(), { ...node("i"), $_meta: { quid: "000000001" } }]) {
     assert.throws(() => map.batch(writer => {
       writer.doc.must("page").graph({ domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0]) }, name: "temporary", value: true });
-      writer.doc.must("page").graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0]) }, index: 1, content: input });
+      writer.doc.must("page").graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }, index: 1, content: input });
     }));
     assert.throws(() => map.batch(writer => writer.doc.must("page").at([0, 0, 0]).replace(input)));
     unchanged(map, before); assert.equal(notifications, 0);
@@ -271,11 +276,11 @@ check("staged raw content is qualified before envelope cloning and publication",
   assert.equal(calls, 0);
   const input = { ...node("i"), $_attrs: { style: { width: { value: -0, unit: undefined } } } };
   map.batch(writer => {
-    writer.doc.must("page").graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0]) }, index: 1, content: input });
+    writer.doc.must("page").graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }, index: 1, content: input });
     input.$_content.push(str("caller mutation after staging"));
     input.$_attrs.style.width.value = 2;
   });
-  same(child(child(child(map.doc.must("page").root())), 1), {
+  same(child(child(body_root(map.doc.must("page").root())), 1), {
     ...node("i"), $_attrs: { style: { width: { value: -0, unit: undefined } } },
   });
   assert.equal(notifications, 1);
@@ -337,7 +342,7 @@ check("capture install rejects malformed roots atomically and preserves new-epoc
     unchanged(map, before); assert.equal(installs, 0);
   }
   for (const input of [root(), root(node("p"), str(""), node("q"))]) {
-    same(prepare_document_install({ kind: "hson-document", mode: "document", rev: 0, root: input }, "document").root, input);
+    assert.throws(() => prepare_document_install({ kind: "hson-document", mode: "document", rev: 0, root: input }, "document"), /complete/);
   }
   const portable = capture_internal_document(map, "page");
   restore_livemap_document_capture(controller, portable); assert.equal(installs, 1); unchanged(map, before);
@@ -351,12 +356,12 @@ check("public library source selection evaluates changing configuration getters 
   const expectedForged = admit_owned_livemap_root(forged, "document");
   let reads = 0;
   const map = hsonLiveMap.fromLibraries({ page: { get document() { return ++reads <= 2 ? "<p/>" : forged; } } });
-  assert.equal(reads, 1); same(map.doc.must("page").root(), root(node("p")));
+  assert.equal(reads, 1); same(body_root(map.doc.must("page").root()), node("p"));
   assert.deepEqual(state(map).issued, []); assert.deepEqual(state(map).overlays, [[]]);
   assert.equal(map.doc.must("page").document.byQuid("000000001"), undefined); same(forged, expectedForged);
   let outerReads = 0;
   const selected = hsonLiveMap.fromLibraries({ get page() { return ++outerReads === 1 ? { document: "<p/>" } : { document: forged }; } });
-  assert.equal(outerReads, 1); same(selected.doc.must("page").root(), root(node("p")));
+  assert.equal(outerReads, 1); same(body_root(selected.doc.must("page").root()), node("p"));
   assert.deepEqual(state(selected).issued, []);
 });
 check("selected public raw QUID rejects even when a later configuration read would be text", () => {
@@ -377,18 +382,18 @@ check("selected canonical source is privately admitted and configuration combina
   const definitions = {
     page: { get document() { return ++reads === 1 ? input : root(node("q")); }, get schema() { schemaReads++; return ANY_DOCUMENT; } },
     state: { get data() { dataReads++; return { count: -0, list: [true, null] }; } },
-    empty: { document: root() },
+    empty: { document: root(node("html")) },
   };
   const map = hsonLiveMap.fromLibraries(definitions);
   assert.equal(reads, 1); assert.equal(schemaReads, 1); assert.equal(dataReads, 1);
-  assert.equal(map.doc.must("page").schema.get(), ANY_DOCUMENT); same(map.doc.must("empty").root(), root());
+  assert.equal(map.doc.must("page").schema.get(), ANY_DOCUMENT); same(map.doc.must("empty").root(), root(node("html", elem(node("head"), node("body")))));
   const before = state(map); input.$_content.length = 0; unchanged(map, before);
-  same(map.doc.must("page").root(), root(node("p", elem(str("x")))));
+  same(map.doc.must("page").root(), root(node("html", elem(node("head"), node("body", elem(node("p", elem(str("x")))))))));
   same(map.data.must("state").root(), root(obj(node("count", obj(val(-0))), node("list", arr(val(true), val(null))))));
   let inheritedReads = 0;
   const inheritedSchema: { document: string } = Object.create({ get schema() { inheritedReads++; return ANY_DOCUMENT; } });
   inheritedSchema.document = "<p/>";
-  same(hsonLiveMap.fromLibraries({ page: inheritedSchema }).doc.must("page").root(), root(node("p")));
+  same(body_root(hsonLiveMap.fromLibraries({ page: inheritedSchema }).doc.must("page").root()), node("p"));
   assert.equal(inheritedReads, 1);
   const contradictory = { document: "<p/>" }; Reflect.set(contradictory, "data", {});
   assert.throws(() => hsonLiveMap.fromLibraries({ bad: contradictory }));
@@ -408,14 +413,14 @@ check("library addition shares stable selection and rejects forged additions ato
   let acceptedReads = 0;
   map.addLibraries({ accepted: { get document() { return ++acceptedReads === 1 ? "<q/>" : forged; } } });
   assert.equal(acceptedReads, 1); assert.equal(map.rev, before.revision + 1); assert.equal(notifications, 1);
-  same(map.doc.must("accepted").root(), root(node("q")));
+  same(body_root(map.doc.must("accepted").root()), node("q"));
   assert.deepEqual(state(map).issued, before.issued); assert.deepEqual(state(map).overlays, [...before.overlays, []]);
   const accepted = map.doc.must("accepted"); assert.equal(accepted.mode, "document");
   assert.equal(accepted.document.byQuid("000000001"), undefined);
 });
 
 function insert_instruction(content: HsonNode = node("i")): LiveMapGraphInsertContentOp {
-  return { domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0]) }, index: 1, content };
+  return { domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }, index: 1, content };
 }
 function mutation_fixture() {
   const map = hsonLiveMap.fromLibraries({ page: { document: root(node("p", elem(node("b")))) } });
@@ -450,9 +455,9 @@ check("target, path, index, domain and content envelopes are descriptor-safe", (
   for (const field of ["target", "path", "path-index", "index", "domain", "content", "replacement"]) {
     const { map, verify } = mutation_fixture(); let calls = 0;
     const operation: LiveMapGraphOp = field === "replacement"
-      ? { domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) }, index: 0, replacement: node("i") }
+      ? { domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }, index: 0, replacement: node("i") }
       : insert_instruction();
-    const target = { kind: "path" as const, path: [0, 0] };
+    const target = { kind: "path" as const, path: [0, 0, 1, 0, 0, 0] };
     const envelope = field === "path" ? target : field === "path-index" ? target.path : operation;
     const name = field === "path-index" ? "0" : field;
     if (field === "path" || field === "path-index") Reflect.set(operation, "target", target);
@@ -478,28 +483,28 @@ check("selected raw staged content rejects hidden/accessor storage and public QU
 check("staging retains one private instruction after caller changes every selected field", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: root(node("p", elem(node("b")))) } });
   let notifications = 0; map.commits.observe(() => notifications++);
-  const input = node("i", elem(str("a"), str(""), str("\ud800"))); const operation = insert_instruction(input);
+  const input = node("i", elem(str("a"), str(""), str("π"))); const operation = insert_instruction(input);
   map.batch(writer => {
     writer.doc.must("page").graph(operation);
     Reflect.set(operation, "op", "remove-content"); Reflect.set(operation, "index", 0);
     Reflect.set(operation.target, "path", validate_document_path([])); Reflect.set(operation, "content", node("q"));
     input.$_content.length = 0;
   });
-  same(map.doc.must("page").root(), root(node("p", elem(node("b"), node("i", elem(str("a"), str(""), str("\ud800")))))));
+  same(body_root(map.doc.must("page").root()), node("p", elem(node("b"), node("i", elem(str("a"), str(""), str("π"))))));
   assert.equal(map.rev, 1); assert.equal(notifications, 1);
 });
 check("canonical insert, replace and remove instructions retain batch behavior", () => {
   const map = hsonLiveMap.fromLibraries({ page: { document: root(node("p", elem(node("b"), node("u")))) } });
   const handle = acquire_document_identity(map.doc.must("page").document, { kind: "path", path: [0] });
   let notifications = 0; map.commits.observe(() => notifications++);
-  const target = { kind: "path" as const, path: validate_document_path([0, 0]) };
+  const target = { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, 0]) };
   map.batch(writer => {
     writer.doc.must("page").graph({ domain: "graph", op: "insert-content", target, index: 1, content: node("j") });
     const replacement = { domain: "graph" as const, op: "replace-content" as const, target, index: 0, replacement: node("k") };
     writer.doc.must("page").graph(replacement);
     writer.doc.must("page").graph({ domain: "graph", op: "remove-content", target, index: 1 });
   });
-  same(map.doc.must("page").root(), root(node("p", elem(node("k"), node("u")))));
+  same(body_root(map.doc.must("page").root()), node("p", elem(node("k"), node("u"))));
   assert.equal(map.rev, 1); assert.equal(notifications, 1); assert.equal(handle.active, true);
 });
 
@@ -542,9 +547,10 @@ function redirect_exposed_paths(exposed: Set<object>, callerPath: readonly numbe
 for (const [label, prototype] of [["Object.prototype", Object.prototype], ["Array.prototype", Array.prototype]] as const) {
   for (const index of [0, 1] as const) {
     check(`instruction queue owns index ${index} against ${label} setters`, () => {
-      const map = hsonLiveMap.fromLibraries({ page: { document: root(node("p", elem(node("b"))), node("q", elem(node("u")))) } });
+      const map = hsonLiveMap.fromLibraries({ page: { document: root(node("main", elem(node("p", elem(node("b"))), node("q", elem(node("u")))))) } });
       let notifications = 0; map.commits.observe(() => notifications++);
       const instruction = insert_instruction(node("i"));
+      Reflect.set(instruction.target, "path", validate_document_path([0, 0, 1, 0, 0, 0, 0, 0]));
       let intercepted = -1; let references = -1; let redirected = -1;
       map.batch(writer => {
         const probe = probe_instruction_queue(prototype, index, () => writer.doc.must("page").graph(instruction));
@@ -554,19 +560,19 @@ for (const [label, prototype] of [["Object.prototype", Object.prototype], ["Arra
       });
       assert.equal(intercepted, 0); assert.equal(references, 0); assert.equal(redirected, 0);
       assert.deepEqual(instruction, { domain: "graph", op: "insert-content",
-        target: { kind: "path", path: [0, 0] }, index: 1, content: node("i") });
-      same(map.doc.must("page").root(), root(node("p", elem(node("b"), node("i"))), node("q", elem(node("u")))));
+        target: { kind: "path", path: [0, 0, 1, 0, 0, 0, 0, 0] }, index: 1, content: node("i") });
+      same(body_root(map.doc.must("page").root()), node("main", elem(node("p", elem(node("b"), node("i"))), node("q", elem(node("u"))))));
       assert.equal(map.rev, 1); assert.equal(notifications, 1);
 
-      const nested = hsonLiveMap.fromLibraries({ page: { document: root(
-        node("p", elem(node("section", elem(node("b"))))), node("q", elem(node("section", elem(node("u"))))),
-      ) } });
+      const nested = hsonLiveMap.fromLibraries({ page: { document: root(node("main", elem(
+        node("div", elem(node("section", elem(node("b"))))), node("div", elem(node("section", elem(node("u"))))),
+      ))) } });
       let nestedNotifications = 0; nested.commits.observe(() => nestedNotifications++);
-      const content = node("i", elem(str("a"), str(""), str("\ud800"), node("em", elem(str("x")))));
+      const content = node("i", elem(str("a"), str(""), str("π"), node("em", elem(str("x")))));
       const first: LiveMapGraphInsertContentOp = { domain: "graph", op: "insert-content",
-        target: { kind: "path", path: validate_document_path([0, 0, 0, 0]) }, index: 1, content };
+        target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 0, 0, 0, 0]) }, index: 1, content };
       const second: LiveMapGraphInsertContentOp = { domain: "graph", op: "insert-content",
-        target: { kind: "path", path: validate_document_path([1, 0, 0, 0]) }, index: 1, content: node("j") };
+        target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 1, 0, 0, 0]) }, index: 1, content: node("j") };
       const style = { width: { value: -0, unit: "px" }, color: " red " };
       let nestedInterceptions = -1; let nestedReferences = -1;
       nested.batch(writer => {
@@ -574,18 +580,18 @@ for (const [label, prototype] of [["Object.prototype", Object.prototype], ["Arra
           writer.doc.must("page").graph(first);
           writer.doc.must("page").graph(second);
           writer.doc.must("page").graph({ domain: "graph", op: "set-attr",
-            target: { kind: "path", path: validate_document_path([0]) }, name: "style", value: style });
+            target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0, 0]) }, name: "style", value: style });
         });
         nestedInterceptions = probe.intercepted; nestedReferences = probe.exposed.size;
-        Reflect.set(first.target, "path", validate_document_path([1, 0, 0, 0])); Reflect.set(first, "index", 0);
-        Reflect.set(second.target, "path", validate_document_path([0, 0, 0, 0])); Reflect.set(second, "content", node("wrong"));
+        Reflect.set(first.target, "path", validate_document_path([0, 0, 1, 0, 0, 0, 1, 0, 0, 0])); Reflect.set(first, "index", 0);
+        Reflect.set(second.target, "path", validate_document_path([0, 0, 1, 0, 0, 0, 0, 0, 0, 0])); Reflect.set(second, "content", node("wrong"));
         content.$_content.length = 0; style.width.value = 9; style.color = "blue";
       });
       assert.equal(nestedInterceptions, 0); assert.equal(nestedReferences, 0);
-      const inserted = node("i", elem(str("a"), str(""), str("\ud800"), node("em", elem(str("x")))));
-      const expectedFirst = node("p", elem(node("section", elem(node("b"), inserted))));
+      const inserted = node("i", elem(str("a"), str(""), str("π"), node("em", elem(str("x")))));
+      const expectedFirst = node("div", elem(node("section", elem(node("b"), inserted))));
       expectedFirst.$_attrs = { style: { width: { value: -0, unit: "px" }, color: " red " } };
-      same(nested.doc.must("page").root(), root(expectedFirst, node("q", elem(node("section", elem(node("u"), node("j")))))));
+      same(body_root(nested.doc.must("page").root()), node("main", elem(expectedFirst, node("div", elem(node("section", elem(node("u"), node("j"))))))));
       assert.equal(nested.rev, 1); assert.equal(nestedNotifications, 1);
     });
   }
@@ -611,9 +617,11 @@ check("prototype-sensitive malformed content rejects without exposing jobs or ch
 });
 
 check("canonical receiving definitions preserve ordered document relationships", () => {
-  const original = root(node("10"), str("between"), node("2"), node("main", elem(
-    node("10"), str("nested"), node("2"), node("01"), node("1"),
-  )), node("01"), node("1"));
+  const original = root(node("html", elem(node("head"), node("body", elem(
+    node("x-ten"), str("between"), node("x-two"), node("main", elem(
+      node("x-ten"), str("nested"), node("x-two"), node("x-zero-one"), node("x-one"),
+    )), node("x-zero-one"), node("x-one"),
+  )))));
   const expected = structuredClone(original);
   const map = make_livemap_from_canonical_libraries_internal([
     { name: "page", family: "document", schema: ANY_DOCUMENT, root: original },
@@ -634,8 +642,7 @@ check("canonical receiving definitions reject QUID claims and wrong families and
   assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: claim }]));
   assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "state", family: "data", schema: ANY_DATA, root: root(node("p")) }]));
   assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: expected }]));
-  const empty = make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: root() }]);
-  same(empty.doc.must("page").root(), root());
+  assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "page", family: "document", schema: ANY_DOCUMENT, root: root() }]), /exactly one/);
 });
 
 events.terminal("pass"); console.log(`1..${checks}`);

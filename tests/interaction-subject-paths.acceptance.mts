@@ -18,8 +18,8 @@ import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-run
 
 install_fake_document();
 
-const ButtonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "button" content "empty">>>`;
-const NestedSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "section" content <repeat <tag "button" content "empty">>>>>`;
+const ButtonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>`;
+const NestedSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "section" content <repeat <tag "button" content "empty">>>>>]>>]>>`;
 const listener = Object.freeze({
   event: "click", target: "element" as const, capture: false, once: false, passive: false,
   missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
@@ -54,11 +54,11 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <button @000007101/> <button @000007102/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <button @000007101/> <button @000007102/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(map);
-  add_interaction(map, descriptor("a", [0, 0, 1]));
-  add_interaction(map, descriptor("b", [0, 0, 1]));
+  add_interaction(map, descriptor("a", [0, 0, 1, 0, 0, 0, 1]));
+  add_interaction(map, descriptor("b", [0, 0, 1, 0, 0, 0, 1]));
   const authority = internal_livemap_aggregate_authority(map);
   const library = authority.libraries()[0]!;
   const reflection = hsonMirror(map.doc.must("page"));
@@ -72,26 +72,26 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const revision = map.rev;
   const seen: Record<string, readonly number[]>[] = [];
   const stop = authority.observe(() => seen.push(paths(map)));
-  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 0, button());
+  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, button());
   assert.equal(map.rev, revision + 1);
-  assert.deepEqual(paths(map), { a: [0, 0, 2], b: [0, 0, 2] });
-  assert.deepEqual(seen, [{ a: [0, 0, 2], b: [0, 0, 2] }]);
-  assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 2]);
+  assert.deepEqual(paths(map), { a: [0, 0, 1, 0, 0, 0, 2], b: [0, 0, 1, 0, 0, 0, 2] });
+  assert.deepEqual(seen, [{ a: [0, 0, 1, 0, 0, 0, 2], b: [0, 0, 1, 0, 0, 0, 2] }]);
+  assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 1, 0, 0, 0, 2]);
   assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007102")), localNode);
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.get("click")?.size, 2);
-  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0] }, 2, 0);
-  assert.deepEqual(paths(map), { a: [0, 0, 0], b: [0, 0, 0] });
-  assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 0]);
+  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 2, 0);
+  assert.deepEqual(paths(map), { a: [0, 0, 1, 0, 0, 0, 0], b: [0, 0, 1, 0, 0, 0, 0] });
+  assert.deepEqual(authority.documentOverlay(library).pathForQuid("000007102"), [0, 0, 1, 0, 0, 0, 0]);
   assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007102")), localNode);
   const beforeFailure = JSON.stringify(paths(map));
   const beforeRev = map.rev;
-  assert.throws(() => map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 99, button()));
+  assert.throws(() => map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 99, button()));
   assert.equal(map.rev, beforeRev);
   assert.equal(JSON.stringify(paths(map)), beforeFailure);
-  map.doc.must("page").document.content.remove({ kind: "path", path: [0, 0] }, 0);
+  map.doc.must("page").document.content.remove({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0);
   assert.deepEqual(paths(map), {});
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.has("click"), false);
-  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 0, button());
+  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, button());
   assert.deepEqual(paths(map), {});
   stop();
   dispose(); reflection.dispose();
@@ -99,7 +99,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <button @000007201/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <button @000007201/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(map);
   const authority = internal_livemap_aggregate_authority(map);
@@ -115,33 +115,33 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
     target: authority.systemTarget(system, ["descriptors"]),
     kind: "replace",
     value: [{
-      id: "hybrid", subject: { library: "page", path: [0, 0, 0] },
+      id: "hybrid", subject: { library: "page", path: [0, 0, 1, 0, 0, 0, 0] },
       subjectQuid: "000007201", listener, kind: "browser", key: "run", args: null,
     }],
   }]), /Schema/i);
   assert.equal(map.rev, beforeSchemaFailure);
-  add_interaction(map, descriptor("replace", [0, 0, 0]));
+  add_interaction(map, descriptor("replace", [0, 0, 1, 0, 0, 0, 0]));
   const before = map.rev;
-  map.doc.must("page").document.content.replace({ kind: "path", path: [0, 0] }, 0, button());
+  map.doc.must("page").document.content.replace({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0, button());
   assert.equal(map.rev, before + 1);
   assert.deepEqual(paths(map), {});
 }
 
 {
   const authorityMap = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <button @000007401/> <button @000007402/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <button @000007401/> <button @000007402/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(authorityMap);
-  add_interaction(authorityMap, descriptor("recovered", [0, 0, 1]));
+  add_interaction(authorityMap, descriptor("recovered", [0, 0, 1, 0, 0, 0, 1]));
   const authority = internal_livemap_aggregate_authority(authorityMap);
   const replica = make_livemap_hosted_mirror_from_snapshot_internal(authority.captureHosted());
-  assert.deepEqual(paths(replica), { recovered: [0, 0, 1] });
+  assert.deepEqual(paths(replica), { recovered: [0, 0, 1, 0, 0, 0, 1] });
   const hosted = authority.commit([{
-    target: authority.target(authority.libraries()[0]!, [0, 0]),
+    target: authority.target(authority.libraries()[0]!, [0, 0, 1, 0, 0, 0]),
     kind: "graph",
     operation: Object.freeze({
       domain: "graph", op: "move-content",
-      target: Object.freeze({ kind: "path", path: validate_document_path([0, 0]) }),
+      target: Object.freeze({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }),
       from: 1, to: 0,
     }),
   }]).hosted;
@@ -149,78 +149,78 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const portable = make_portable_aggregate_commit(hosted);
   if (portable === undefined) throw new Error("Expected portable interaction transition.");
   internal_livemap_aggregate_authority(replica).replayClientHosted(portable);
-  assert.deepEqual(paths(replica), { recovered: [0, 0, 0] });
+  assert.deepEqual(paths(replica), { recovered: [0, 0, 1, 0, 0, 0, 0] });
   assert.equal(replica.rev, authorityMap.rev);
 }
 
 {
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <button @000007501/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <button @000007501/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(map);
-  add_interaction(map, descriptor("unresolved", [0, 0, 1]));
-  assert.deepEqual(paths(map), { unresolved: [0, 0, 1] });
-  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0] }, 1, button());
-  assert.deepEqual(paths(map), { unresolved: [0, 0, 1] });
+  add_interaction(map, descriptor("unresolved", [0, 0, 1, 0, 0, 0, 1]));
+  assert.deepEqual(paths(map), { unresolved: [0, 0, 1, 0, 0, 0, 1] });
+  map.doc.must("page").document.content.insert({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 1, button());
+  assert.deepEqual(paths(map), { unresolved: [0, 0, 1, 0, 0, 0, 1] });
   const reflection = hsonMirror(map.doc.must("page"));
   project_livetree(retained_subject(reflection.tree));
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
-  const node = resolve_document_path(retained_subject(reflection.tree), "document", validate_document_path([0, 0, 1]));
+  const node = resolve_document_path(retained_subject(reflection.tree), "document", validate_document_path([0, 0, 1, 0, 0, 0, 1]));
   assert.equal(is_Node(node), true);
   if (!is_Node(node)) throw new Error("Expected realized subject.");
   get_el_for_node(node)?.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);
-  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0] }, 1, 0);
-  assert.deepEqual(paths(map), { unresolved: [0, 0, 0] });
+  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 1, 0);
+  assert.deepEqual(paths(map), { unresolved: [0, 0, 1, 0, 0, 0, 0] });
   get_el_for_node(node)?.dispatchEvent(new Event("click"));
   assert.equal(calls, 2);
-  map.doc.must("page").document.content.remove({ kind: "path", path: [0, 0] }, 0);
+  map.doc.must("page").document.content.remove({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 0);
   assert.deepEqual(paths(map), {});
   dispose(); reflection.dispose();
 }
 
 {
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <section <button @000007301/>/> <section <button @000007302/>/>/>", { allowTopLevelDocumentText: true }), schema: NestedSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <section <button @000007301/>/> <section <button @000007302/>/>/>/>/>", { allowTopLevelDocumentText: true }), schema: NestedSchema },
   });
   enable_interactions(map);
-  add_interaction(map, descriptor("descendant", [0, 0, 1, 0, 0]));
+  add_interaction(map, descriptor("descendant", [0, 0, 1, 0, 0, 0, 1, 0, 0]));
   const authority = internal_livemap_aggregate_authority(map);
   const before = map.rev;
-  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0] }, 1, 0);
+  map.doc.must("page").document.content.move({ kind: "path", path: [0, 0, 1, 0, 0, 0] }, 1, 0);
   assert.equal(map.rev, before + 1);
-  assert.deepEqual(paths(map), { descendant: [0, 0, 0, 0, 0] });
-  assert.deepEqual(authority.documentOverlay(authority.libraries()[0]!).pathForQuid("000007302"), [0, 0, 0, 0, 0]);
+  assert.deepEqual(paths(map), { descendant: [0, 0, 1, 0, 0, 0, 0, 0, 0] });
+  assert.deepEqual(authority.documentOverlay(authority.libraries()[0]!).pathForQuid("000007302"), [0, 0, 1, 0, 0, 0, 0, 0, 0]);
 }
 
 {
   const map = admit_exact_runtime_livemap_libraries({
-    page: { document: parse_hson_exact_runtime("<main <section <button/> <button/>/>/>", { allowTopLevelDocumentText: true }), schema: NestedSchema },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <section <button/> <button/>/>/>/>/>", { allowTopLevelDocumentText: true }), schema: NestedSchema },
   });
   enable_interactions(map);
-  add_interaction(map, descriptor("survivor", [0, 0, 0, 0, 0]));
-  add_interaction(map, descriptor("terminated", [0, 0, 0, 0, 1]));
+  add_interaction(map, descriptor("survivor", [0, 0, 1, 0, 0, 0, 0, 0, 0]));
+  add_interaction(map, descriptor("terminated", [0, 0, 1, 0, 0, 0, 0, 0, 1]));
   const replacementRoot = parse_hson_exact_runtime("<section <button/> <button/> <button/>/>", { allowTopLevelDocumentText: true });
   const replacementBucket = replacementRoot.$_content[0];
   const replacement = typeof replacementBucket === "object" && replacementBucket !== null && "$_content" in replacementBucket ? replacementBucket.$_content[0] : undefined;
   if (!is_Node(replacement)) throw new Error("Expected replacement section.");
   const authority = internal_livemap_aggregate_authority(map), id = authority.libraries()[0]!;
   const quid = "000007303";
-  authority.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 0, 0, 0]), quid);
+  authority.acquireLocalDocumentIdentity(id, validate_document_path([0, 0, 1, 0, 0, 0, 0, 0, 0]), quid);
   const surviving = replacement.$_content[0];
   if (!is_Node(surviving) || !is_Node(surviving.$_content[2])) throw Error("Missing surviving button.");
   assign_hson_node_quid(surviving.$_content[2], quid);
   authority.commit([{
-    target: authority.target(id, [0, 0]),
+    target: authority.target(id, [0, 0, 1, 0, 0, 0]),
     kind: "graph",
     operation: Object.freeze({
       domain: "graph", op: "replace-content",
-      target: Object.freeze({ kind: "path", path: validate_document_path([0, 0]) }),
+      target: Object.freeze({ kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) }),
       index: 0, replacement,
     }),
   }]);
-  assert.deepEqual(paths(map), { survivor: [0, 0, 0, 0, 2] });
+  assert.deepEqual(paths(map), { survivor: [0, 0, 1, 0, 0, 0, 0, 0, 2] });
 }
 
 process.stdout.write("interaction subject path lifecycle passed\n");

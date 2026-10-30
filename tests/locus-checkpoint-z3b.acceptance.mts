@@ -29,8 +29,8 @@ import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts
 import { cut8_checkpoint_cases } from "./fixtures/cut8-checkpoint-cases.mts";
 
 const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
-const Page: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
-const Buttons: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "button" content "empty">>>`;
+const Page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
+const Buttons: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>`;
 
 function socket_pair(): { client: LocusWebSocketLike; server: LocusWebSocketLike; serverSent: string[] } {
   const toServer = new Set<(raw: string) => void>();
@@ -205,7 +205,7 @@ await case_("two data and two document libraries retain system interactions and 
   const listener: InteractionDescriptor["listener"] = Object.freeze({ event: "click", target: "element",
     capture: false, once: false, passive: false, missingTarget: "ignore", preventDefault: false,
     stopPropagation: false, stopImmediatePropagation: false });
-  add_interaction(map, Object.freeze({ id: "z3b-click", subject: { library: "pageA", path: [0, 0, 1] },
+  add_interaction(map, Object.freeze({ id: "z3b-click", subject: { library: "pageA", path: [0, 0, 1, 0, 0, 0, 1] },
     listener, kind: "browser", key: "run", args: null }));
   const locus = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
   await locus.stage((draft) => {
@@ -216,14 +216,14 @@ await case_("two data and two document libraries retain system interactions and 
     }
     const page = draft.doc.must("pageB");
     if (!("graph" in page)) throw new Error("Expected document Library.");
-    page.graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0]) },
+    page.graph({ domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) },
       index: 0, content: { $_tag: "_hson_elem", $_content: [{ $_tag: "item", $_content: [] }] } });
   });
   await locus.checkpoint();
   await locus.stage((draft) => {
     const page = draft.doc.must("pageB");
     if (!("graph" in page)) throw new Error("Expected document Library.");
-    page.graph({ domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0]) },
+    page.graph({ domain: "graph", op: "replace-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0, 0, 0]) },
       index: 0, replacement: { $_tag: "item", $_attrs: { title: "continued" }, $_content: [] } });
   });
   assert.ok(JSON.stringify(adapter.state(id)?.commits).includes("lineage"));
@@ -388,7 +388,7 @@ await case_("durable graph tails reject malformed current tagged content without
   await locus.stage(draft => {
     const page = draft.doc.must("page");
     if (page.mode !== "document") throw new Error("Expected page.");
-    page.content.insert({ kind: "path", path: validate_document_path([]) }, 1, { $_tag: "span", $_content: [] });
+    page.content.insert({ kind: "path", path: validate_document_path([0,0,1,0]) }, 1, { $_tag: "span", $_content: [] });
   });
   const expected = locus.doc.must("page").root();
   const valid = adapter.state(id)!;

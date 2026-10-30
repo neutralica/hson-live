@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
 <body>
-  <main><button></button></main>
+  <iframe id="receiver" srcdoc="<!doctype html><html><head></head><body><main><button></button></main></body></html>"></iframe>
   <output id="result">running</output>
   <script type="module">
     import { continue_hosted_document, hsonLiveMap } from "./.echo-http.bundle.js";
@@ -10,7 +10,9 @@
     let transport;
     try {
       const setup = await (await fetch("/setup", { cache: "no-store" })).json();
-      const root = document.querySelector("main");
+      const frame = document.querySelector("#receiver");
+      if (frame.contentDocument.readyState !== "complete") await new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+      const root = frame.contentDocument.documentElement;
       const button = root.querySelector("button");
       transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
       continuation = await continue_hosted_document({ now: setup.now, credential: setup.credential,
@@ -18,7 +20,7 @@
       if (continuation.echo.sync.status !== "caught_up" || continuation.mirror.status !== "active") {
         throw new Error("HTTP continuation did not converge.");
       }
-      if (root !== document.querySelector("main") || button !== root.querySelector("button")) {
+      if (root !== frame.contentDocument.documentElement || button !== root.querySelector("button")) {
         throw new Error("Existing SSR DOM was replaced.");
       }
       button.dispatchEvent(new MouseEvent("click", { bubbles: true }));

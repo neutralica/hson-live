@@ -29,7 +29,7 @@ const connector = (name = "panel") => node(`<hson-part lib="parts" at="${name}"/
 const page = (w: LocusHostedAggregateStageWriter, name = "page") => { const p = w.doc.must(name); if (p.mode !== "document") throw Error(); return p; };
 const doc = (map: LiveMap) => { const p = map.doc.must("page"); if (p.mode !== "document") throw Error(); return p; };
 const data = (map: LiveMap, name: string) => { const d = map.data.must(name); if (String(d.mode) === "document") throw Error(); return d; };
-const target = { kind: "path" as const, path: path([0, 0]) };
+const target = { kind: "path" as const, path: path([0, 0, 1, 0, 0, 0]) };
 const insert = (w: LocusHostedAggregateStageWriter, index = 0, name = "panel") => page(w).content.insert(target, index, connector(name));
 const replace = (w: LocusHostedAggregateStageWriter, index = 0, name = "panel") => page(w).content.replace(target, index, connector(name));
 const listener = { event: "click", target: "element" as const, capture: false, once: false, passive: false,
@@ -44,10 +44,10 @@ async function fixture() {
     secret: { kind: "document", document: '<strong hson:part "PRIVATE_DEFINITION_SENTINEL"/>' },
   } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });
   const a = authority(map), library = a.libraries()[1]!;
-  const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 0]))!;
+  const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 1, 0, 0, 0, 0]))!;
   enable_interactions(map);
   replace_structured_fixture(map.doc.must("page"), `main{padding:7px} [hson\\:quid="${footer}"]{border:0}`);
-  add_interaction(map, { id: "shared-footer", subject: { library: "page", path: [0, 0, 0] }, listener, kind: "browser", key: "footer", args: null });
+  add_interaction(map, { id: "shared-footer", subject: { library: "page", path: [0, 0, 1, 0, 0, 0, 0] }, listener, kind: "browser", key: "footer", args: null });
   const initial = a.captureHosted();
   const policy = make_locus_hosted_projection_policy(initial.registry, initial.authority,
     [{ name: "parts", ownership: "private" }, { name: "page", ownership: "shared" }, { name: "other", ownership: "shared" }, { name: "hidden", ownership: "shared" }],
@@ -65,7 +65,7 @@ async function fixture() {
       libraries: projected.libraries.map(entry => entry.name !== "page" ? entry
       : { ...entry, root: encode_hosted_root(state.root), quads: state.scopes.document.filter(b => b.kind === "element").map(b => ({ name: b.name, path: b.path })), css: { rules: [], properties: [], keyframes: [], order: [] } }) };
     const r = client_projection_map({ authority: libs, local: { local: { data: { n: 5 } }, localPage: { document: '<nav @:local/>' } } });
-    add_interaction(r, { id: "local-nav", subject: { library: "localPage", path: [0, 0] }, listener, kind: "browser", key: "local", args: null });
+    add_interaction(r, { id: "local-nav", subject: { library: "localPage", path: [0, 0, 1, 0, 0, 0] }, listener, kind: "browser", key: "local", args: null });
     const ra = authority(r);
     // Locate by authorized binding order rather than an effect-controlled name.
     const rootIdentity = ra.libraries().find(id => canonical_graph_equal(ra.root(id), state.root)); assert.ok(rootIdentity);
@@ -134,7 +134,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
         insert(w); const d = w.data.must("other"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); insert(w, 1);
         const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
         parts.at([]).object.setKey("newSecret", { kind: "document", document: '<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>' });
-        page(w, "hidden").attrs.set({ kind: "path", path: path([0]) }, "title", "PRIVATE_HIDDEN_SENTINEL");
+        page(w, "hidden").attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "PRIVATE_HIDDEN_SENTINEL");
       });
       assert.doesNotMatch(JSON.stringify(batch), /PRIVATE_DEFINITION_SENTINEL|UPDATED_PRIVATE_SENTINEL|PRIVATE_HIDDEN_SENTINEL|"library":"parts"|"library":"hidden"/);
       assert.deepEqual(batch.operations.map(op => op.library), ["page", "other", "page", "@hson/canonical-interactions"]);
@@ -296,7 +296,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
         }) },
       }) };
       delivered(f, r, renamed);
-      assert.deepEqual(r.a.documentQuad(r.library, "_abcdefghj", undefined)?.path, [0, 0, 1]);
+      assert.deepEqual(r.a.documentQuad(r.library, "_abcdefghj", undefined)?.path, [0, 0, 1, 0, 0, 0, 1]);
       assert.equal(r.a.documentQuad(r.library, "_kmnpqrstv", undefined), undefined);
       assert.equal(doc(r.map).q("root"), undefined);
     } finally { r.cap.dispose(); f.locus.dispose(); }
@@ -306,7 +306,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
     try {
       const { batch } = await f.stage(w => {
         insert(w);
-        page(w).attrs.set({ kind: "path", path: path([0, 0, 0]) }, "data-hson-quid", "abcdefghj");
+        page(w).attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0, 0, 0]) }, "data-hson-quid", "abcdefghj");
       });
       const forged = copy(batch), first = forged.operations[0]!;
       if (first.domain !== "document" || !("graph" in first.effect)) throw Error();
@@ -315,9 +315,9 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       Object.assign(first.effect, { graph: JSON.stringify({ ...graph, content: encode_exact_hson_value(content) }) });
       unchanged(r, () => assert.throws(() => r.cap.replayScopedHosted(forged), /QUID|identity|claim/));
       delivered(f, r, batch);
-      const quid = r.a.documentOverlay(r.library).quidAtPath(path([0, 0, 0]))!;
+      const quid = r.a.documentOverlay(r.library).quidAtPath(path([0, 0, 1, 0, 0, 0, 0]))!;
       assert.notEqual(quid, "abcdefghj"); assert.ok(r.a.identityEpoch().issued().has(quid));
-      assert.notEqual(quid, f.a.documentOverlay(f.library).quidAtPath(path([0, 0, 0])));
+      assert.notEqual(quid, f.a.documentOverlay(f.library).quidAtPath(path([0, 0, 1, 0, 0, 0, 0])));
     } finally { r.cap.dispose(); f.locus.dispose(); }
   });
   await check("a disposable transport label cannot be imported even when offered to the legitimate receiver issuer", async () => {

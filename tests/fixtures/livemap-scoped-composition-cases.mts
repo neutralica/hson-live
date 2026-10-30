@@ -109,9 +109,8 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
       assert.equal(removed.steps[0]!.operation.op, 'remove-content');
       assert.deepEqual(removed.steps[0]!.styles, []);
       assert.throws(() => f.next(two, [insertOptional({}), insertOptional({ title: {} })]), /primitive/);
-      const empty = f.next(two, [{ domain: 'graph', op: 'replace-root', mode: 'document', root: { $_tag: '_hson_root', $_content: [input({})] } }]);
-      assert.deepEqual(empty.root.$_content, []); assert.equal(empty.scopes.occurrences.length, 0);
-      assert.equal(empty.overlay.pathForQuid(right.rootQuid), undefined);
+      assert.throws(() => f.next(two, [{ domain: 'graph', op: 'replace-root', mode: 'document', root: { $_tag: '_hson_root', $_content: [input({})] } }]), /exactly one/);
+      assert.ok(two.overlay.pathForQuid(right.rootQuid));
       const recovered = f.next(removed, [insertOptional({ title: 'recovered' }, 1)]);
       assert.equal(recovered.scopes.occurrences.length, 2);
     });
