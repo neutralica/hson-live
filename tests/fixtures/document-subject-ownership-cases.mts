@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import { hsonLiveMap } from "../../src/index.ts";
 import type { LiveMap } from "../../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
@@ -6,6 +7,8 @@ import { compose_livemap_document_internal as compose } from "../../src/api/live
 import { validate_document_path as path } from "../../src/api/livemap/livemap.document.path.ts";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
 import type { DocumentQuadOccurrenceScope } from "../../src/api/livemap/livemap.document.scoped-quad.ts";
+import { resolve_value_node } from "../../src/api/livemap/livemap.editor.ts";
+import { is_Node } from "../../src/core/node-guards.ts";
 
 const components = { parts: { button: { kind: "document", document: '<button hson:part @:source/>' } } } as const;
 const layout = { document: '<html <head/> <body <hson-part lib="components" at="button"/> <hson-part lib="components" at="button"/>/>/>' };
@@ -16,7 +19,7 @@ function observe(map: LiveMap) {
   return { graph: a.inspect(), checkpoint: a.captureSemanticCheckpoint(), revision: map.rev,
     registry: a.hostedRegistry(), position: a.hostedPosition(),
     epoch: a.identityEpoch().current(), ledger: a.identityEpoch().issued(),
-    libraries: a.inspect().libraries.map(entry => ({ root: a.root(entry.identity),
+    libraries: a.inspect().libraries.map(entry => ({ identity: entry.identity, root: a.root(entry.identity),
       ...(entry.mode !== "document" ? {} : { overlay: a.documentOverlay(entry.identity),
         scopes: a.documentScopes(entry.identity), css: a.stylesheet(entry.identity) }) })),
   };
@@ -33,12 +36,36 @@ function rejects_unchanged(map: LiveMap, run: () => unknown, message: RegExp) {
   assert.equal(after.registry, before.registry); assert.equal(after.epoch, before.epoch); assert.equal(after.ledger, before.ledger);
   after.libraries.forEach((entry, index) => {
     const previous = before.libraries[index]!;
-    assert.equal(entry.root, previous.root); assert.equal(entry.overlay, previous.overlay);
+    assert.equal(entry.identity, previous.identity);
+    assert_unchanged_library_root(a, entry.identity, previous.root); assert.equal(entry.overlay, previous.overlay);
     assert.equal(entry.scopes, previous.scopes); assert.equal(entry.css, previous.css);
   });
 }
 
 export function document_subject_ownership_cases(check: (name: string, run: () => void) => void) {
+  check("Part root observations detach nested storage while Document roots retain reference identity", () => {
+    const map = hsonLiveMap.fromLibraries({ layout, components }), a = owner(map);
+    const identities = a.libraries(), bindings = a.hostedRegistry().libraries;
+    const parts = identities[bindings.findIndex(entry => entry.name === "components")]!;
+    const document = identities[bindings.findIndex(entry => entry.name === "layout")]!;
+    const before = observe(map), documentRoot = a.root(document);
+    const observed = a.root(parts), other = a.root(parts);
+    assert.deepEqual(observed, other); assert.notEqual(observed, other);
+    assert.notEqual(observed.$_content, other.$_content);
+    const source = resolve_value_node(observed, ["button", "document"]);
+    const otherSource = resolve_value_node(other, ["button", "document"]);
+    assert.ok(source); assert.ok(otherSource); assert.notEqual(source, otherSource);
+    const sourceText = source.$_content[0], otherText = otherSource.$_content[0];
+    assert.ok(is_Node(sourceText)); assert.ok(is_Node(otherText)); assert.notEqual(sourceText, otherText);
+    assert.equal(sourceText.$_content.length, 1);
+    assert.equal(sourceText.$_content[0], components.parts.button.document);
+    sourceText.$_content[0] = '<aside hson:part "Changed observation"/>';
+    assert.deepEqual(otherText.$_content, [components.parts.button.document]);
+    assert_unchanged_library_root(a, parts, other);
+    assert.deepEqual(map.parts.components.button.snap(), components.parts.button);
+    assert.equal(a.root(document), documentRoot);
+    assert.deepEqual(observe(map), before);
+  });
   check("initial dynamic and recomposed Part subjects already have exact local owners", () => {
     for (const admission of ["initial", "dynamic", "composed"] as const) {
       const map = hsonLiveMap.fromLibraries(admission === "dynamic" ? { components } : { layout, components });
@@ -77,7 +104,8 @@ export function document_subject_ownership_cases(check: (name: string, run: () =
       const after = observe(map);
       assert.deepEqual(after.libraries.slice(0, retained.libraries.length), retained.libraries);
       retained.libraries.forEach((entry, index) => {
-        assert.equal(after.libraries[index]!.root, entry.root); assert.equal(after.libraries[index]!.overlay, entry.overlay);
+        assert.equal(after.libraries[index]!.identity, entry.identity);
+        assert_unchanged_library_root(a, entry.identity, entry.root); assert.equal(after.libraries[index]!.overlay, entry.overlay);
         assert.equal(after.libraries[index]!.scopes, entry.scopes); assert.equal(after.libraries[index]!.css, entry.css);
       });
       assert.equal(a.identityEpoch().current(), epoch);

@@ -86,7 +86,9 @@ export async function structured_css_review_cases(check: (name: string, run: () 
   await check('Part CSS is whole-definition authoring across local, staged and Locus paths', async () => {
     const m=define(), p=m.parts.parts.p;
     const next={...part,css:{width:{value:2,unit:undefined},'& a':{color:undefined,display:'block'}}};
-    p.replace(next);assert.deepEqual(p.snap()?.css,next.css && {width:{value:2},'& a':{display:'block'}});
+    assert.throws(()=>p.replace(next), /Immutable Part/);
+    m.parts.parts.at([]).object.setKey('normalized',next);
+    assert.deepEqual(m.parts.parts.at(['normalized']).snap()?.css,{width:{value:2},'& a':{display:'block'}});
     const before=m.capture(), ledger=authority(m).identityEpoch().issued();
     for(const location of [p,p.at([]),p.present()!,p.asObject()!,m.parts.parts.at([]).at(['p'])]) {
       for(const path of [['css'],['css','& a'],['stylesheet']]) assert.throws(()=>location.at(path as never),/field access/);
@@ -102,7 +104,7 @@ export async function structured_css_review_cases(check: (name: string, run: () 
     assert.throws(()=>m.batch(w=>{w.parts.parts.p.set({document:'<a/>'});w.parts.parts.p.at(['css'] as never);}),/field access/);
     assert.throws(()=>m.batch(w=>w.parts.parts.p.asObject().object.setKey('css' as never,{} as never)),/field access/);
     assert.deepEqual(m.capture(),before);assert.equal(authority(m).identityEpoch().issued(),ledger);
-    m.batch(w=>w.parts.parts.p.replace(next));
+    assert.throws(()=>m.batch(w=>w.parts.parts.p.replace(next)), /Immutable Part/);
     const l=hsonLiveMap.locus.create({parts:{parts:{p:part}}});
     try {
       for(const path of [['css'],['stylesheet']]) assert.throws(()=>l.parts.parts.p.at(path as never),/field access/);
@@ -110,7 +112,7 @@ export async function structured_css_review_cases(check: (name: string, run: () 
       await assert.rejects(l.parts.parts.p.asObject()!.object.setMany({css:{}} as never),/field access/);
       await assert.rejects(l.parts.parts.p.set({css:{color:'blue'}} as never),/complete definition/);
       await assert.rejects(l.stage(w=>w.parts.parts.p.at(['css'] as never)),/field access/);
-      await l.parts.parts.p.replace(next);assert.deepEqual(l.parts.parts.p.snap()?.css,p.snap()?.css);
+      await assert.rejects(l.parts.parts.p.replace(next), /Immutable Part/);assert.deepEqual(l.parts.parts.p.snap()?.css,p.snap()?.css);
     } finally {l.dispose();}
     let reads=0;const cycle: Record<string,unknown>={};cycle['& a']=cycle;
     for(const css of [{color:null},{color:true},{colour:undefined},Object.create({color:'red'}),cycle,{get color(){reads++;return 'red';}}]) {

@@ -77,7 +77,10 @@ type ObjectBoundary<O, P extends LivePath, V> = P extends readonly [] ? {
     value: T & LiveMapPartMembersCheck<NoInfer<T>>) => Result<O[K]> : O[K];
 } : MemberObject<O, V>;
 
-/** Parts retain their coordinate evidence through every refinement and empty path. */
+/** Parts retain their coordinate evidence through every refinement and empty path.
+ * Write capabilities are admission proposals: they support absent names and staged
+ * construction only. Runtime authority rejects every rebind of an admitted member,
+ * even when its proposal has the same value. Types cannot establish runtime absence. */
 type GovernedLocation<L, C, P extends LivePath, V, N extends string, R, Read = V> =
   L extends undefined ? L : P extends readonly [] | readonly [string]
     ? { readonly [K in keyof L]: K extends "at" ? DataLocationAt<C, V, Read, N, R, P>

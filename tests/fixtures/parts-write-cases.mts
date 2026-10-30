@@ -19,10 +19,10 @@ export async function parts_write_cases() {
 
   const changed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<p hson:part "%{value}"/>' } } } });
   const scalarCapture = changed.parts.parts.x.write({ value: '<b/>' });
-  changed.parts.parts.x.replace({ kind: "document", document: '<main hson:part c:doc="%{value}" <hson-part ^{c}/>/>' });
-  assert.throws(() => changed.addLibraries({ bad: { document: scalarCapture } }), /receiving interface/);
-  const documentCapture = changed.parts.parts.x.write({ value: '<b/>' });
-  changed.parts.parts.x.replace({ kind: "document", document: '<p hson:part "%{value}"/>' });
+  assert.throws(() => changed.parts.parts.x.replace({ kind: "document", document: '<main hson:part c:doc="%{value}" <hson-part ^{c}/>/>' }), /Immutable Part/);
+  const other = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document", document: '<main hson:part c:doc="%{value}" <hson-part ^{c}/>/>' } } } });
+  assert.throws(() => other.addLibraries({ bad: { document: scalarCapture } }), /receiving interface/);
+  const documentCapture = other.parts.parts.x.write({ value: '<b/>' });
   assert.throws(() => changed.addLibraries({ bad: { document: documentCapture } }), /receiving interface/);
   assert.equal(changed.doc('bad'), undefined);
 
@@ -133,22 +133,22 @@ export async function parts_write_cases() {
   parts.at([]).object.setKey("unknown", blank);
   assert.equal(unknown.write(), parts.at(["unknown"]).write());
   const retained = parts.heading;
-  retained.delete(); assert.throws(() => retained.write(), /Unknown Part member/);
-  parts.at([]).object.setKey("heading", heading);
+  assert.throws(() => retained.delete(), /Immutable Part/);
+  assert.throws(() => parts.at([]).object.setKey("heading", heading), /Immutable Part/);
   assert.equal(retained.write({ content: "again" }), parts.heading.write({ content: "again" }));
 
   for (const trap of ["getPrototypeOf", "ownKeys", "getOwnPropertyDescriptor"] as const) {
     const hostile = new Proxy({ content: "outer" }, { [trap](target: object, key: PropertyKey) {
-      parts.blank.replace({ kind: "document", document: `<hr hson:part title="${trap}"/>` });
+      parts.at([]).object.setKey(trap, { kind: "document", document: `<hr hson:part title="${trap}"/>` });
       return trap === "getPrototypeOf" ? Reflect.getPrototypeOf(target)
         : trap === "ownKeys" ? Reflect.ownKeys(target) : Reflect.getOwnPropertyDescriptor(target, key);
     } });
     assert.throws(() => retained.write(hostile), /changed during capture/);
-    assert.equal(parts.blank.snap()!.document, `<hr hson:part title="${trap}"/>`, "accepted inner work survives");
+    assert.equal(parts.at([trap]).snap()!.document, `<hr hson:part title="${trap}"/>`, "accepted inner work survives");
   }
 
   // Source is detached from both caller arguments and the originating definitions.
-  retained.replace({ kind: "document", document: '<h3 hson:part "%{content}"/>' });
+  assert.throws(() => retained.replace({ kind: "document", document: '<h3 hson:part "%{content}"/>' }), /Immutable Part/);
   const receiving = hsonLiveMap.fromLibraries({ components: { parts: {
     heading: { kind: "document", document: '<h2 hson:part title="%{content}" "%{content}"/>' }, blank,
     scalars: { kind: "document", document: '<p hson:part n="%{count}" enabled="%{enabled}" empty="%{empty}" "%{ExactCase}:%{count}:%{enabled}:%{empty}"/>' },
@@ -191,9 +191,8 @@ export async function parts_write_cases() {
   try {
     assert.equal(locusWrite(), parts.blank.write());
     assert.equal((await locus.dispatchAction({ type: "action", id: "write", name: "inspect" })).type, "ack");
-    await locus.parts.components.blank.delete();
-    assert.throws(locusWrite, /Unknown Part member/); assert.throws(readWrite!, /Unknown Part member/);
-    await locus.parts.components.at([]).object.setKey("blank", blank);
+    await assert.rejects(locus.parts.components.blank.delete(), /Immutable Part/);
+    await assert.rejects(locus.parts.components.at([]).object.setKey("blank", blank), /Immutable Part/);
     assert.equal(locusWrite(), readWrite!());
     await locus.stage(writer => assert.equal("write" in writer.parts.components.blank, false));
     const disposalArgs = new Proxy({}, { ownKeys() { locus.dispose(); return []; } });

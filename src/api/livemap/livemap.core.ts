@@ -10,7 +10,7 @@ import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, document_scoped_quads_semantically_equal, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { encode_document_scoped_quads, make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { local_scoped_css_operation, prepare_document_scoped_css_operation, encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
-import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, type DataLibraryValidation } from "./livemap.parts.js";
+import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, assert_part_members_preserved, immutable_part_error, type DataLibraryValidation } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
@@ -704,6 +704,35 @@ function make_livemap_registry_engine(
     return library.root;
   }
 
+  function part_library_name(library: LiveMapLibraryState): string {
+    return hostedBindingsByIdentity?.get(library.identity)?.name ?? "<unregistered>";
+  }
+
+  function preserve_part_members(library: LiveMapLibraryState, prepared: ReturnType<typeof prepare_livemap_root>, operation: string): void {
+    if (library.validation !== PART_COLLECTION_VALIDATION) return;
+    if (prepared.mode !== "data-object") {
+      assert_part_write(library, [], operation);
+      return;
+    }
+    assert_part_members_preserved(part_library_name(library), library.projectedValue ?? must_projected_root_value(library.root),
+      must_projected_root_value(prepared.root), operation);
+  }
+
+  /** Check intent against the installed baseline, never the progressively built batch. */
+  function assert_part_write(library: LiveMapLibraryState, path: LivePath, operation: string,
+    rename?: Readonly<{ from: string; to: string }>): void {
+    const baseline = library.projectedValue ?? must_projected_root_value(library.root);
+    if (!is_ordered_projected_object(baseline)) throw new Error("Invalid installed Part collection.");
+    const first = baseline.entries[0];
+    const names = path.length > 0 ? [path[0]] : rename === undefined
+      ? first === undefined ? [] : [first[0]] : rename.from === rename.to ? [] : [rename.from, rename.to];
+    for (const name of names) {
+      if (typeof name === "string" && ordered_projected_value_at(baseline, [name]) !== undefined) {
+        throw immutable_part_error(part_library_name(library), name, operation);
+      }
+    }
+  }
+
   function require_projected_library(library: LiveMapLibraryState): LiveMapProjectedIdentityOverlay {
     if (library.mode === "document") {
       throw new Error("Aggregate projected operations require a data library.");
@@ -1051,10 +1080,28 @@ function make_livemap_registry_engine(
     for (const write of writes) {
       if (write.target.domain !== "application") continue;
       const library = require_library(write.target.library);
-      if (library.validation === undefined) continue;
-      if (write.kind === "graph" || write.kind === "css" || write.kind === "ensure-quid" || write.kind === "replay-data") continue;
-      const value = partValues.get(library.identity) ?? must_projected_root_value(library.root);
-      partValues.set(library.identity, plan_write_ops(value, aggregate_write_ops(write, value)).value);
+      if (library.validation !== PART_COLLECTION_VALIDATION) continue;
+      const operation = write.kind === "collection" ? `${write.command.collection}.${write.command.method}`
+        : write.kind === "replay-data" ? `replay ${write.operation.kind}` : write.kind;
+      if (write.kind === "graph" || write.kind === "css" || write.kind === "ensure-quid") {
+        throw immutable_part_error(part_library_name(library), String(write.target.path[0] ?? "*"), operation);
+      }
+      // Scalar equal sets can disappear during normalization. An explicit request
+      // against an admitted member still cannot become replacement authority.
+      if (write.kind === "replace" || write.kind === "delete"
+        || write.kind === "set" && write.target.path.length > 0) {
+        assert_part_write(library, write.target.path, operation);
+      }
+      const value = partValues.get(library.identity) ?? library.projectedValue ?? must_projected_root_value(library.root);
+      const localWrites = write.kind === "replay-data" ? [projected_write_op_from_transport(write.operation)]
+        : aggregate_write_ops(write, value);
+      for (const local of localWrites) {
+        if (local.kind === "constructive-set") {
+          for (const [key] of local.value.entries) assert_part_write(library, [...local.path, key], operation);
+        } else assert_part_write(library, local.path, operation, local.kind === "rename" ? local : undefined);
+      }
+      const next = plan_write_ops(value, localWrites).value;
+      partValues.set(library.identity, next);
     }
     const readPartCandidate = (collection: string, member: string) => {
       const binding = hostedBindingsByName?.get(collection);
@@ -1578,6 +1625,10 @@ function make_livemap_registry_engine(
           must_hson_schema_root(candidate.library.hsonSchema, candidate.root);
         }
       } else {
+        if (candidate.library.validation === PART_COLLECTION_VALIDATION) {
+          assert_part_members_preserved(part_library_name(candidate.library),
+            candidate.library.projectedValue ?? must_projected_root_value(candidate.library.root), candidate.value, "transition");
+        }
         must_hson_schema_projected_candidate(candidate.library.hsonSchema, candidate.value);
         const root = projected_candidate_graph(candidate.detachedRoot, candidate.value, candidate.writes);
         const nextMode = classify_live_root_mode(root, "data");
@@ -1641,10 +1692,11 @@ function make_livemap_registry_engine(
         ...(cssCandidates.has(library.identity) ? { stylesheet: cssCandidates.get(library.identity)!.after } : {}),
       };
     });
-    // Validate every governed collection against the complete final aggregate,
-    // before identity installation, hosted encoding, durable acceptance or publication.
+    // Validate completed, touched collections before installation or publication.
+    // Untouched admitted Parts cannot change through detached root observations;
+    // unrelated Data/Document work need not reparse the Part catalog.
     for (const state of afterStates) {
-      validate_data_library(state.root, state.mode, state.validation);
+      if (candidates.has(state.identity)) validate_data_library(state.root, state.mode, state.validation);
       if (state.mode === "document" && has_part_connector(state.root)) throw new Error("Canonical document state cannot contain construction connectors.");
     }
     for (const state of afterStates) {
@@ -2691,6 +2743,7 @@ function make_livemap_registry_engine(
       if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
       const prepared = prepare_livemap_root(item.root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Checkpoint root mode disagrees with registry.");
+      if (binding.scope !== "hson-internal") preserve_part_members(require_library(binding.identity), prepared, "checkpoint installation");
       must_hson_schema_root(binding.schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, binding.validation);
       if (entry.scope === "hson-internal") {
@@ -2775,6 +2828,12 @@ function make_livemap_registry_engine(
       throw new Error("LiveMap topology snapshot envelope is malformed.");
     }
     const hosted = require_hosted_state();
+    for (const binding of hosted.byName.values()) {
+      if (binding.validation !== PART_COLLECTION_VALIDATION) continue;
+      if (!snapshot.registry.libraries.some(entry => entry.name === binding.name)) {
+        assert_part_write(require_library(binding.identity), [], "topology restoration removing Library");
+      }
+    }
     const candidates: Array<Readonly<{
       state: LiveMapLibraryState;
       prepared: ReturnType<typeof prepare_livemap_root>;
@@ -2804,6 +2863,10 @@ function make_livemap_registry_engine(
       const schema = HsonSchemaHandle.fromHson(entry.schema);
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("LiveMap topology snapshot root mode disagrees with registry.");
+      const prior = hosted.byName.get(entry.name);
+      if (prior?.validation === PART_COLLECTION_VALIDATION) {
+        preserve_part_members(require_library(prior.identity), prepared, "topology restoration");
+      }
       must_hson_schema_family(schema, entry.mode === "document" ? "document" : "data");
       must_hson_schema_root(schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, own_data_library_validation(entry));
@@ -2977,6 +3040,7 @@ function make_livemap_registry_engine(
       if (identity === undefined) admit_portable_hson_node(root, "LiveMap Libraries snapshot");
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
+      if (binding.scope !== "hson-internal") preserve_part_members(require_library(binding.identity), prepared, "snapshot restoration");
       must_hson_schema_root(binding.schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, binding.validation);
       if (entry.scope === "hson-internal") {
@@ -3205,6 +3269,10 @@ function make_livemap_registry_engine(
       admit_portable_hson_node(root, "Client projection snapshot");
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Client projection snapshot root mode is incompatible.");
+      if (oldBinding?.validation === PART_COLLECTION_VALIDATION
+        && snapshot.authority.incarnationId === composition.authority.incarnationId) {
+        preserve_part_members(require_library(oldBinding.identity), prepared, "receiving reconciliation");
+      }
       must_hson_schema_root(schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, own_data_library_validation(entry));
       if (entry.scope === "hson-internal") {
@@ -4039,7 +4107,11 @@ function make_livemap_registry_engine(
       };
     },
     target: aggregate_target,
-    root: (library) => validated_library_root(require_library(library)),
+    root: (identity) => {
+      const library = require_library(identity), root = validated_library_root(library);
+      // Internal observations cannot hand out writable installed Part storage.
+      return library.validation === PART_COLLECTION_VALIDATION ? clone_live_root(root) : root;
+    },
     documentOverlay: (library) => {
       const overlay = require_library(library).documentOverlay;
       if (overlay === undefined) throw new Error("Selected LiveMap library is not a document library.");

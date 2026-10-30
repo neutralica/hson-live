@@ -1,3 +1,4 @@
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import { create_locus_fixture } from "../helpers/locus-definition-fixture.mts";
 import assert from "node:assert/strict";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
@@ -726,7 +727,7 @@ export async function terminal_progress_open_cases(check: (name: string, run: ()
         assert.ok(hit); assert.equal(h.a.clientProjection()!.revision, 4);
         assert_position(h, 4, false, "idle", "idle"); next!.captureManagementFence()();
         assert.equal(h.a.identityEpoch().issued(), ledger); assert.equal(h.echo.map!.rev, mapRevision);
-        assert.deepEqual(h.a.libraries(), ids); ids.forEach((id, index) => assert.equal(h.a.root(id), roots[index]));
+        assert.deepEqual(h.a.libraries(), ids); ids.forEach((id, index) => assert_unchanged_library_root(h.a, id, roots[index]));
         assert.equal(h.echo.map!.doc.must("page").css.snapshot(), css);
         assert.equal(next!.advanceHostedProgress(progress(4)), 5);
       } finally { next?.dispose(); h.dispose(); f.l.dispose(); }
@@ -904,7 +905,7 @@ export async function retry_progress_publication_cases(check: (name: string, run
         assert.equal(h.echo.replica.advanceHostedProgress(progress(2)), 3);
         assert_position(h, 3, true, "live"); grant(); assert.deepEqual(installed, [3]);
         assert.equal(h.echo.map!.rev, revision); assert.equal(h.a.identityEpoch().issued(), ledger);
-        assert.deepEqual(h.a.libraries(), ids); ids.forEach((id, index) => assert.equal(h.a.root(id), roots[index]));
+        assert.deepEqual(h.a.libraries(), ids); ids.forEach((id, index) => assert_unchanged_library_root(h.a, id, roots[index]));
         assert.equal(commits, 0); assert.equal(published, 0);
         for (const invalid of [progress(2), progress(1), progress(4), { ...progress(3), rev: 5 }, { ...progress(3), incarnationId: "wrong" }]) {
           unchanged(h.echo.replica, () => assert.throws(() => h.echo.replica.advanceHostedProgress(invalid)));

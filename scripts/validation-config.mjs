@@ -324,7 +324,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/locus-scoped-topology.worker.mts","worker-launch"],["tests/fixtures/locus-scoped-topology.worker.mts","subprocess-launch"]], sources: [...workerSources] },
   "tests/managed-stylesheet-fidelity.acceptance.mts": { sha256: "918b85917de89d58b113d2393df44ea2118555fdf83a2803c58e177482f95553", route: workerRoute,
     targets: [["tests/fixtures/managed-stylesheet.worker.mts","worker-launch"]], sources: [...workerSources] },
-  "tests/parts-members.acceptance.mts": { sha256: "f7bdbadbffccb40235731843ed8630b3a1e654aa6b08746b488adf76914281fb", route: workerRoute,
+  "tests/parts-members.acceptance.mts": { sha256: "8e75eb58801c549b872e3a24f9bdfecedc71261f77b594cbd7fdc16736629a30", route: workerRoute,
     targets: [["tests/fixtures/parts-members.worker.mts","worker-launch"]], sources: [...workerSources] },
   "tests/portable-document-stylesheet.acceptance.mts": { sha256: "12ea86e13f47a79c432626832de88b2a518e73c3e22088fa31ab04e4d31b32fa", route: workerRoute,
     targets: [["tests/fixtures/portable-document-stylesheet.worker.mts","worker-launch"]], sources: [...workerSources] },

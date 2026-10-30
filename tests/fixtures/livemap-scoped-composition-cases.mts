@@ -204,13 +204,13 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
     assert.equal(JSON.stringify(c.scopes).includes('"collection"'), false);
     const record = encode(c.scopes, c, []); assert.equal(record.subjects.length, 0);
   });
-  check("ordinary ancestry produces peer bindings, and repeated definitions outlive source changes", () => {
+  check("ordinary ancestry produces peer bindings, and repeated definitions outlive collection growth", () => {
     const f = fixture(), c = f.candidate, before = encode(c.scopes, c, []);
     const left = at(c, [0, 0, 0]);
     assert.equal(left.bindings.find(binding => binding.name === "body")!.kind, "element");
     assert.equal(left.bindings.find(binding => binding.name === "next")!.kind, "element");
     assert.equal(c.scopes.occurrences.some(scope => scope.rootQuid === left.bindings.find(binding => binding.name === "body")!.quid), false);
-    f.definitions.at(["leaf", "document"]).set('<strong hson:part @:changed/>');
+    f.definitions.at([]).object.setKey("laterLeaf", part('<strong hson:part @:changed/>'));
     assert.deepEqual(encode(c.scopes, c, []), before);
   });
   check("same-scope duplicate and invalid binding rejection precedes identity allocation", () => {
@@ -320,7 +320,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
       const f = fixture(), before = f.candidate, authority = f.authority();
       let entered = false, accepted = f.map.capture(), acceptedLedger = f.aggregate.identityEpoch().issued();
       const change = () => { if (!entered) { entered = true;
-        if (during === "source") f.definitions.at(["leaf", "document"]).set('<strong hson:part @:changed/>');
+        if (during === "source") f.definitions.at([]).object.setKey("laterLeaf", part('<strong hson:part @:changed/>'));
         else f.data.at(["n"]).set(1);
         accepted = f.map.capture(); acceptedLedger = f.aggregate.identityEpoch().issued(); } };
       if (during === "allocation") allocator(authority.identityOwner, () => { change(); return "d00000000"; });
@@ -330,7 +330,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
         }), /changed during capture/);
       } finally { allocator(authority.identityOwner, undefined); }
       assert.equal(entered, true);
-      if (during === "source") assert.equal(f.definitions.at(["leaf", "document"]).snap(), '<strong hson:part @:changed/>');
+      if (during === "source") assert.equal(f.definitions.at(["laterLeaf", "document"]).snap(), '<strong hson:part @:changed/>');
       else assert.equal(f.data.at(["n"]).snap(), 1);
       assert.equal(f.map.rev, 2); assert.equal(f.aggregate.identityEpoch().issued(), acceptedLedger);
       assert.deepEqual(f.map.capture(), accepted);
@@ -418,7 +418,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
   check("initial composition source fence rejects stale evidence before issuing identity", () => {
     const f = fixture(), authority = f.authority(); let changed = false, allocations = 0;
     const composed = expand_document_composition("shell", () => source(shell), document_composition_options(undefined), (lib, at) => {
-      if (!changed) { changed = true; f.definitions.at(["leaf", "document"]).set('<strong hson:part @:changed/>'); }
+      if (!changed) { changed = true; f.definitions.at([]).object.setKey("laterLeaf", part('<strong hson:part @:changed/>')); }
       return authority.readPart(lib, at);
     });
     const accepted = f.map.capture(), ledger = f.aggregate.identityEpoch().issued();

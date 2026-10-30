@@ -1,3 +1,4 @@
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import type { LiveMap, LiveMapDefinitions, LiveMapLibraryAddOperation } from "../../src/types/livemap.types.ts";
@@ -32,7 +33,7 @@ function unchanged(map: LiveMap) {
   return () => {
     stop(); off(); assert.equal(observations, 0); assert.equal(a.hostedRegistry(), registry);
     assert.deepEqual(a.captureSemanticCheckpoint(), checkpoint); assert.equal(a.identityEpoch().issued(), ledger); assert.equal(a.identityEpoch().current(), epoch);
-    for (const ref of refs) { assert.equal(a.root(ref.id), ref.root); assert.equal(a.documentScopes(ref.id), ref.scopes); }
+    for (const ref of refs) { assert_unchanged_library_root(a, ref.id, ref.root); assert.equal(a.documentScopes(ref.id), ref.scopes); }
   };
 }
 

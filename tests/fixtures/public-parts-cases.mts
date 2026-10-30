@@ -58,8 +58,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         assert.throws(() => Reflect.get(selected.schema, "use")(supplemental), /Part collections do not support supplemental Schema/);
         assert.deepEqual(map.capture(), before); assert.equal(selected.schema.get(), schema); assert.equal(observations, 0);
       }
-      map.parts.must("parts").at(["p"]).replace({ kind: "document", document: "<aside hson:part/>" });
-      assert.equal(map.parts.must("parts").at(["p", "document"]).snap(), "<aside hson:part/>");
+      assert.throws(() => map.parts.must("parts").at(["p"]).replace({ kind: "document", document: "<aside hson:part/>" }), /Immutable Part/);
+      assert.equal(map.parts.must("parts").at(["p", "document"]).snap(), "<p hson:part/>");
       assert.equal(map.data.must("ordinary").snap(), 1);
     } finally { stop(); }
   });
@@ -424,20 +424,18 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       ];
       try {
         await replace({ para: deckParts.para });
-        await replace({}); assert.deepEqual(selected.snap(), {});
-        await replace(deckParts); assert.deepEqual(selected.snap(), deckParts);
+        await unchanged(() => replace({}));
+        await unchanged(() => replace(deckParts));
         for (const value of [null, 1, "text", [], [deckParts.para]]) await unchanged(() => replace(value));
         for (const invalid of invalidMembers) {
           const extraMember = { ...deckParts, extra: invalid };
           await unchanged(() => replace(extraMember));
           for (const method of ["set", "replace"] as const) await unchanged(() => member(method, invalid));
         }
-        await member("replace", { kind: "document", document: '<p hson:part "replaced"/>' });
-        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p hson:part "replaced"/>' });
+        await unchanged(() => member("replace", { kind: "document", document: '<p hson:part "replaced"/>' }));
         await unchanged(() => member("set", { stylesheet: "p{color:blue}" }));
-        await member("set", { kind: "document", document: '<p hson:part "replaced"/>', stylesheet: "p{color:blue}" });
-        assert.deepEqual(selected.at(["para"]).snap(), { kind: "document", document: '<p hson:part "replaced"/>', stylesheet: "p{color:blue}" });
-        await member("set", deckParts.para);
+        await unchanged(() => member("set", { kind: "document", document: '<p hson:part "replaced"/>', stylesheet: "p{color:blue}" }));
+        await unchanged(() => member("set", deckParts.para));
         assert.equal(selected.at(["para", "document"]).snap(), deckParts.para.document);
         assert.ok(changes > 0);
         if (route === "LiveMap staged") await unchanged(async () => {

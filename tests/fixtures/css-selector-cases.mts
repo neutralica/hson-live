@@ -62,10 +62,10 @@ export function css_selector_cases(check: (name: string, run: () => void) => voi
     assert.ok(snapshot.includes('.a,#b { & > .child {opacity:.5} }'));
     assert.doesNotMatch(page.render(), /hson:quid/);
     const runtime = authority(map), ledger = runtime.identityEpoch().issued(), before = map.parts.must('parts').snap(), rev = map.rev;
-    assert.doesNotThrow(() => map.parts.must('parts').at(['child']).replace({ kind: 'document', document: '<button hson:part/>',
-      stylesheet: String.raw`.x:future([hson\:quad="label"]){color:red}` }));
-    assert.notDeepEqual(map.parts.must('parts').snap(), before); assert.equal(page.css.snapshot(), snapshot);
-    assert.equal(map.rev, rev + 1); assert.equal(runtime.identityEpoch().issued().size, ledger.size);
+    assert.throws(() => map.parts.must('parts').at(['child']).replace({ kind: 'document', document: '<button hson:part/>',
+      stylesheet: String.raw`.x:future([hson\:quad="label"]){color:red}` }), /Immutable Part/);
+    assert.deepEqual(map.parts.must('parts').snap(), before); assert.equal(page.css.snapshot(), snapshot);
+    assert.equal(map.rev, rev); assert.equal(runtime.identityEpoch().issued().size, ledger.size);
     const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } }).doc.must('page');
     plain.css.stylesheet('.a,.b{color:green}.x:future(&,:scope){color:red}');
     assert.equal(plain.css.snapshot(), '.a,.b{color:green}.x:future(&,:scope){color:red}');

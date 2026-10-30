@@ -88,8 +88,8 @@ export async function structured_css_cases(check: (name: string, run: () => void
     const expected = { width:{value:2}, $media:{screen:{display:'block'}} };
     const m = admit(css); assert.deepEqual(m.parts.must('parts').at(['nav']).snap()?.css, expected);
     const dynamic = hsonLiveMap.create(); dynamic.addLibraries({parts:{parts:{nav:part(css)}}} as never);
-    const p = dynamic.parts.must('parts'); p.at(['nav']).replace(part(css) as never);
-    dynamic.batch(w=>w.parts.must('parts').at(['nav']).replace(part(css) as never));
+    const p = dynamic.parts.must('parts'); assert.throws(()=>p.at(['nav']).replace(part(css) as never), /Immutable Part/);
+    assert.throws(()=>dynamic.batch(w=>w.parts.must('parts').at(['nav']).replace(part(css) as never)), /Immutable Part/);
     p.at([]).asObject()!.object.setKey('second', part(css) as never);
     p.at([]).object.setMany({many:part(css)} as never);
     dynamic.batch(w=>w.parts.must('parts').at([]).object.setKey('third',part(css) as never));
@@ -100,7 +100,7 @@ export async function structured_css_cases(check: (name: string, run: () => void
     const l = hsonLiveMap.locus.create({parts:{parts:{}}});
     try {
       await l.parts.must('parts').at([]).replace({nav:part(css)} as never);
-      await l.stage(w=>w.parts.must('parts').at(['nav']).replace(part(css) as never));
+      await assert.rejects(l.stage(w=>w.parts.must('parts').at(['nav']).replace(part(css) as never)), /Immutable Part/);
       await l.parts.must('parts').at([]).asObject()!.object.setKey('second',part(css) as never);
       await l.parts.must('parts').at([]).object.setMany({many:part(css)} as never);
       await l.stage(w=>w.parts.must('parts').at([]).object.setMany({stagedMany:part(css)} as never));
@@ -119,11 +119,11 @@ export async function structured_css_cases(check: (name: string, run: () => void
     assert.equal(page.css.snapshot(),before);assert.equal(authority(m).identityEpoch().issued(),ledger);
     const deferred=m.parts.must('parts').at(['nav']).write();
     const markup=page.render();
-    m.parts.must('parts').at(['nav']).replace(part({color:'green'}) as never);
+    assert.throws(()=>m.parts.must('parts').at(['nav']).replace(part({color:'magenta'}) as never), /Immutable Part/);
     assert.equal(page.render(),markup);
     m.addLibraries({later:{document:deferred}});
-    assert.match(m.doc.must('later').css.snapshot(),/color:green/);
-    assert.doesNotMatch(m.doc.must('later').css.snapshot(),/color:red/);
+    assert.match(m.doc.must('later').css.snapshot(),/color:red/);
+    assert.doesNotMatch(m.doc.must('later').css.snapshot(),/color:magenta/);
     assert.equal(page.css.snapshot(),before); // existing occurrences are independent of future source edits
     const connector=m.parts.must('parts').at(['nav']).write({}); assert.match(connector,/hson-part/);
   });

@@ -1,3 +1,4 @@
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import assert from "node:assert/strict";
 import { topology_repair_cases } from "./locus-scoped-topology-repair-cases.mts";
 import { mint_hson_node_quid } from "../../src/core/hson-node-quid.ts";
@@ -50,7 +51,7 @@ function preserved(map: LiveMap) {
   return () => {
     off(); stop(); assert.deepEqual(a.captureSemanticCheckpoint(), checkpoint); assert.equal(a.identityEpoch().issued(), ledger);
     assert.equal(a.identityEpoch().current(), epoch); assert.equal(a.hostedRegistry(), registry); assert.deepEqual(a.hostedPosition(), position); assert.equal(observations, 0);
-    for (const item of refs) { assert.equal(a.root(item.library), item.root); assert.equal(a.documentScopes(item.library), item.scopes);
+    for (const item of refs) { assert_unchanged_library_root(a, item.library, item.root); assert.equal(a.documentScopes(item.library), item.scopes);
       if (item.overlay) { assert.equal(a.documentOverlay(item.library), item.overlay); assert.equal(a.stylesheet(item.library), item.css); } }
   };
 }

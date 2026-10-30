@@ -1,3 +1,4 @@
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import { HsonSchema } from "../../src/api/schema/hson-schema.ts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, Hson, enable_interactions, add_interaction } from "../../src/index.ts";
@@ -56,7 +57,7 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
   assert.equal(f.a.hostedRegistry(), registry); assert.equal(f.a.identityEpoch().issued(), ledger); assert.equal(f.a.identityEpoch().current(), epoch);
   assert.equal(f.a.documentOverlay(f.library), overlay); assert.equal(f.a.documentScopes(f.library), scopes); assert.equal(f.a.stylesheet(f.library), css);
   assert.ok(equal(state, f.a.scopedDocumentState(f.library))); assert.deepEqual([observations, positions, installations], [0, 0, 0]);
-  roots.forEach(([id, root], index) => { assert.equal(f.a.root(id), root); assert.equal(JSON.stringify(root), graphs[index]); });
+  roots.forEach(([id, root], index) => { assert_unchanged_library_root(f.a, id, root); assert.equal(JSON.stringify(root), graphs[index]); });
 }
 
 export async function locus_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
@@ -100,7 +101,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
         assert.equal(map.rev, 1); assert.equal(observations, 1); assert.equal(gates, 1);
         ids.forEach((id, index) => {
           const state = before[index]!;
-          assert.equal(a.root(id), state.root); assert.equal(JSON.stringify(a.root(id)), state.graph);
+          assert_unchanged_library_root(a, id, state.root); assert.equal(JSON.stringify(a.root(id)), state.graph);
           assert.equal(a.documentOverlay(id), state.overlay); assert.equal(a.stylesheet(id), state.css);
           assert.equal(a.documentScopes(id), state.scopes);
         });
@@ -131,7 +132,7 @@ export async function locus_scoped_cases(check: (name: string, run: () => Promis
     const accepted = await locus.stage(writer => {
       insert(writer); insert(writer, 1);
       const parts = writer.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
-      parts.at(["secret", "document"]).set( '<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>');
+      parts.at([]).object.setKey("newSecret", { kind: "document", document: '<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>' });
     });
     assert.equal(accepted, gate.commit); assert.equal(f.map.rev, 1);
     assert.deepEqual(projected.operations.map(entry => entry.library), ["page", "page"]);

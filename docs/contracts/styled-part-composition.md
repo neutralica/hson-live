@@ -2,8 +2,11 @@
 
 A governed Part collection is an inert object data Library. Its keyed members are
 exact `{ kind: "document", document: string, css?: CssMap, stylesheet?: string }` records with exactly
-one ordinary, non-connector element root. Admitting or editing definitions neither
-expands nested connectors nor changes documents previously constructed from them.
+one ordinary, non-connector element root. Admission permanently binds each name to
+its complete definition for the lifetime of its authoritative owner. Collections
+may admit new names; existing definitions cannot be edited, replaced (even with an
+equal value), renamed, deleted, or cleared. Admission neither expands nested
+connectors nor changes documents previously constructed from them.
 
 The internal `hson-part-collection-v1` Library validation contract is independent
 of Schema and validates every member of each complete candidate. It travels with
@@ -32,8 +35,9 @@ The private structural traversal remains the construction mechanism. Native HTML
 `lib` and `at` are separate exact string coordinates, never a slash-delimited
 address. A top-level connector requires a nonempty `lib`; nested connectors may
 omit `lib` to retain their selected collection. An empty member key is supported.
-A missing, ungoverned or unavailable collection/member rejects immediately. There
-is no deferred resolution. Library-add candidates can provide definitions and
+A missing, ungoverned or unavailable collection/member rejects receiving composition
+atomically. A definition may refer to a Part admitted later; definition admission
+and `.write()` do not expand nested references. Library-add candidates can provide definitions and
 consumers in either entry order. Ordinary atomic batches resolve against the
 complete final candidate of each edited Part collection, independently of the
 relative order of consumer and definition edits. Invalid final definitions reject
@@ -51,16 +55,25 @@ QUID without an authored QUAD. Reads, capture and rendering allocate nothing.
 
 ## Whole definitions and deferred invocation
 
-Read a detached whole definition with `parts.at(["heading"]).snap()`. Replace it
-with `.replace({ kind: "document", document, css, stylesheet })`, or admit complete
-members through collection `.object.setKey` / `.object.setMany` operations. Complete
-candidate validation also applies to staged and Locus writes. Changes never rebuild
-previously realized occurrences.
+Read a detached whole definition with `parts.at(["heading"]).snap()`. Admit new,
+distinctly named members through collection `.object.setKey` / `.object.setMany`
+operations. Complete candidate validation also applies to staged and Locus writes.
+New members may be constructed through several operations within one atomic batch;
+every operation against an already admitted member rejects, including batches that
+restore the original final value. Genuinely inert helper operations retain no-op behavior.
+Caller-owned source remains editable before admission; reads return detached values.
+
+Checkpoint and snapshot installation may extend an active owner's baseline but
+cannot change or withdraw existing definitions. Fresh owners may initialize from
+valid persisted definitions. Durable resume rejects conflicting deployment definitions
+before installing recovered topology. Echo permission withdrawal removes only a
+receiving projection; regrant and recovery remain supported. Part definitions never
+acquire runtime subject identity; composed Document occurrences own their identities.
 
 `css` and `stylesheet` are protected authoring fields. Direct path access below
 `[member, "css"]` or `[member, "stylesheet"]`, object helpers targeting those fields,
-and partial member patches containing them reject. Retain/read or replace the whole
-member instead; a complete proposed definition is required to author either field.
+and partial member patches containing them reject. Read the whole definition instead;
+a complete proposed new definition is required to author either field.
 Ordinary lookalike data objects do not gain this protection or undefined omission.
 
 ```ts

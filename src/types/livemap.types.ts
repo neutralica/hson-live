@@ -1158,10 +1158,12 @@ export type LiveMapDocumentLibraryInput<
 /** Established data, document, or intrinsically governed Parts input. */
 export type LiveMapLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput | LiveMapPartsLibraryInput;
 
-/** One governed Part definition. Authored Hson strings, including HsonAuthored, are accepted. */
+/** One governed Part definition. Admission permanently binds its name and complete value
+ * to its authoritative owner. Authored Hson strings, including HsonAuthored, are accepted. */
 export type LiveMapDocumentPart = Readonly<{ kind: "document"; document: string; css?: import("../core/style.types.js").CssMap | undefined; stylesheet?: string; schema?: never }>;
 
-/** Ordinary string-keyed data whose complete value is validated on every governed mutation. */
+/** Append-only governed definitions. Proposals may construct new names atomically;
+ * existing members, including nested CSS and document source, cannot be edited or removed. */
 export type LiveMapPartCollection = Readonly<Record<string, LiveMapDocumentPart>>;
 
 /** Explicit governed Parts admission; retains the ordinary data-object Library mode. */

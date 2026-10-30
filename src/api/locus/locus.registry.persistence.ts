@@ -19,6 +19,8 @@ import {
 } from "./locus.aggregate.persistence.js";
 import { create_registry_locus_internal } from "./locus.registry.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
+import { assert_part_members_preserved, PART_COLLECTION_VALIDATION } from "../livemap/livemap.parts.js";
+import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 
 type DurableRegistryOptions<TMap extends LiveMap, TActions extends LocusActionPayloads> =
   LocusRegistryOptions<TMap, TActions> & Readonly<{ persistence: LocusPersistenceAdapter }>;
@@ -217,6 +219,19 @@ export async function resume_registry_locus<
       `Hosted registry topology requires complete Locus ownership: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   }
   try { assertInitialCurrent(); } catch (cause) { restored.dispose(); throw cause; }
+  // Deployment Parts have already been admitted to this living owner. Resolve
+  // conflicts before installing any recovered topology or changing its fence.
+  try {
+    for (const entry of initialRegistry.libraries) {
+      if (entry.validation !== PART_COLLECTION_VALIDATION) continue;
+      const recovered = restoredCheckpoint.libraries.find(item => item.name === entry.name);
+      if (recovered === undefined) throw new LocusPersistenceError(
+        "LOCUS_PERSISTED_STATE_INVALID", "Durable Part collection is missing from the deployment topology.");
+      assert_part_members_preserved(entry.name, projected_value_from_hson_node(options.map.parts.must(entry.name).root()),
+        projected_value_from_hson_node(recovered.root), "durable resume");
+    }
+    assertInitialCurrent();
+  } catch (cause) { restored.dispose(); throw cause; }
   if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
     const definitions: CanonicalLibraryDefinition[] = [];
     for (const [index, entry] of restoredCheckpoint.registry.libraries.entries()) {
@@ -231,7 +246,7 @@ export async function resume_registry_locus<
     add_livemap_canonical_libraries_internal(options.map, definitions);
   }
   // Rebind the durable authority fence and begin a fresh local identity epoch.
-  internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint);
-  restored.dispose();
+  try { internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint); }
+  finally { restored.dispose(); }
   return persistent_view({ ...options, libraries: combinedCatalog }, false, runtimeOwnership, internal.scopedDocuments);
 }

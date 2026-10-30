@@ -1,3 +1,4 @@
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import { h0a_cases } from "./locus-scoped-h0a-cases.mts";
 import { scoped_tail_cases } from "./locus-scoped-tail-cases.mts";
 import assert from "node:assert/strict";
@@ -42,7 +43,7 @@ function unchanged(a: ReturnType<typeof authority>, run: () => void) {
   try { run(); } finally { stops.forEach(stop => stop()); }
   assert.deepEqual(a.captureSemanticCheckpoint(), before); assert.equal(a.identityEpoch().issued(), ledger);
   assert.equal(a.identityEpoch().current(), epoch); assert.deepEqual(a.hostedPosition(), position); assert.equal(a.hostedRegistry(), registry); assert.equal(events, 0);
-  for (const r of refs) { assert.equal(a.root(r.id), r.root); assert.equal(a.documentScopes(r.id), r.scopes);
+  for (const r of refs) { assert_unchanged_library_root(a, r.id, r.root); assert.equal(a.documentScopes(r.id), r.scopes);
     if (r.css) { assert.equal(a.stylesheet(r.id), r.css); assert.equal(a.documentOverlay(r.id), r.overlay); } }
 }
 function active(adapter: MemoryCheckpointAdapter, checkpoint: LiveMapSemanticCheckpoint) {

@@ -15,7 +15,7 @@ const signature = (document: string) => analyze_part_definition(parse_authored_d
 let groups = 0;
 function check(_name: string, run: () => void) { run(); groups++; }
 
-check("write completeness uses incoming names and the current definition", () => {
+check("write completeness uses incoming names and the immutable admitted definition", () => {
   for (const [body, kind] of [
     ['<p hson:part <b "%{content}"/>/>', 'scalar'],
     ['<p hson:part local:data="%{slide}" "^{local.title}"/>', 'Data'],
@@ -29,12 +29,13 @@ check("write completeness uses incoming names and the current definition", () =>
   const map = fixture('<p hson:part "%{content?}"/>'), retained = map.parts.components.x;
   const write = retained.write;
   assert.doesNotThrow(() => write());
-  retained.replace(part('<p hson:part "%{next}"/>'));
-  assert.throws(() => write(), /missing scalar input next/);
-  assert.throws(() => write({ content: 'stale' }), /unexpected scalar input content/);
-  assert.doesNotThrow(() => write({ next: 'current' }));
-  retained.replace(part('<p hson:part "%{next?}"/>'));
+  assert.throws(() => retained.replace(part('<p hson:part "%{next}"/>')), /Immutable Part/);
   assert.doesNotThrow(() => write());
+  assert.throws(() => write({ next: 'unexpected' }), /unexpected scalar input next/);
+  assert.doesNotThrow(() => write({ content: 'original' }));
+  const required = fixture('<p hson:part "%{next}"/>');
+  assert.throws(() => required.parts.components.x.write(), /missing scalar input next/);
+  assert.doesNotThrow(() => required.parts.components.x.write({ next: 'required' }));
   assert.throws(() => fixture('<p hson:part "%{x?}" <b "%{x}"/>/>').parts.components.x.write(), /missing scalar input x/);
 });
 

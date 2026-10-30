@@ -145,12 +145,12 @@ export async function family_selector_echo_cases() {
     assert.equal("set" in parts.at([]), false);
     assert.equal(parts.at(["button", "document"]).snap(), "<button hson:part/>");
     if (widgets.source === "client-local") {
-      widgets.at(["button", "document"]).set('<button hson:part "local"/>');
-      assert.equal(widgets.at(["button", "document"]).snap(), '<button hson:part "local"/>');
+      assert.throws(() => widgets.at(["button", "document"]).set('<button hson:part "local"/>'), /Immutable Part/);
+      assert.equal(widgets.at(["button", "document"]).snap(), "<button hson:part/>");
       widgets.at([]).asObject()?.object.setKey("extra", { kind: "document", document: "<aside hson:part/>" });
       assert.equal(widgets.at(["extra", "document"]).snap(), "<aside hson:part/>");
-      widgets.at(["extra"]).delete();
-      assert.equal(widgets.at(["extra"]).snap(), undefined);
+      assert.throws(() => widgets.at(["extra"]).delete(), /Immutable Part/);
+      assert.equal(widgets.at(["extra", "document"]).snap(), "<aside hson:part/>");
       const before = widgets.snap();
       // Exercise runtime governance through reflection: declarations intentionally omit use.
       assert.throws(() => Reflect.apply(Reflect.get(widgets.schema, "use"), widgets.schema, [ANY_DATA]), /Part collections do not support supplemental Schema attachment/);

@@ -154,6 +154,14 @@ The `hson-live/livemap` subpath exports independent ESM bindings for `create`, `
 
 ## Authored Part construction
 
+An admitted Part name is permanently bound to its complete definition for the
+lifetime of its authoritative owner. Parts Libraries may admit new, distinct
+names atomically; existing members and their nested values cannot be replaced,
+edited, renamed, deleted, or cleared. Equal replacement and batches that restore
+the original final value also reject. Data and Document Libraries retain their
+ordinary editing behavior. Snapshot/checkpoint restoration preserves the admitted
+baseline, and durable resume rejects conflicting deployment definitions.
+
 Authored document Libraries consume `<hson-part lib="parts" at="member"/>` during
 admission and ordinary connector graph insertion/replacement. Collections remain
 inert data; the Library stores only realized canonical content. Connector QUADs

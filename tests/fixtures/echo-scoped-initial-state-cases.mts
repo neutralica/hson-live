@@ -1,3 +1,4 @@
+import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, enable_interactions, add_interaction } from "../../src/index.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
@@ -79,7 +80,7 @@ function unchanged(cap: Receiver, run: () => void) {
   assert.equal(a.identityEpoch().issued(), ledger); assert.equal(a.identityEpoch().current(), epoch);
   assert.deepEqual(a.libraries(), ids); assert.equal(commits, 0); assert.equal(positions, 0);
   if (systemId !== undefined) assert.equal(a.systemRoot(systemId), system);
-  ids.forEach((id, i) => { const s = states[i]!; assert.equal(a.root(id), s.root); assert.equal(a.documentScopes(id), s.scopes); if (s.css !== undefined) assert.equal(a.stylesheet(id), s.css); if (s.overlay !== undefined) assert.equal(a.documentOverlay(id), s.overlay); });
+  ids.forEach((id, i) => { const s = states[i]!; assert_unchanged_library_root(a, id, s.root); assert.equal(a.documentScopes(id), s.scopes); if (s.css !== undefined) assert.equal(a.stylesheet(id), s.css); if (s.overlay !== undefined) assert.equal(a.documentOverlay(id), s.overlay); });
 }
 
 export async function scoped_initial_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {

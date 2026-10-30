@@ -1,0 +1,10 @@
+P3 follow-up: incremental validation of governed Parts
+
+Adding a new name to an existing Parts collection still validates and reparses
+the complete catalog. Composition reads and .write() also repeat catalog validation.
+This is a nonblocking engineering issue, much of which predates mandatory
+immutability. Examine incremental validation and reuse of established immutable
+definitions separately, preserving atomic admission and authority checks.
+
+The SSR subject assertion repair makes no production, validator, cache, or
+transition-planner changes.

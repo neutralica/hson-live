@@ -9,7 +9,7 @@ import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { merge_part_stylesheets } from "../../internal/css/part-stylesheet.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
@@ -22,6 +22,24 @@ import { decode_document_quads, parse_authored_document_library } from "./livema
 export type DataLibraryValidation = "hson-part-collection-v1";
 /** @internal */
 export const PART_COLLECTION_VALIDATION: DataLibraryValidation = "hson-part-collection-v1";
+
+/** Policy errors contain coordinates and intent only, never definition contents. @internal */
+export function immutable_part_error(library: string, member: string, operation: string): Error {
+  return new Error(`Immutable Part ${JSON.stringify([library, member])} rejects ${operation}; admitted definitions are append-only.`);
+}
+
+/** Installation may extend an existing baseline, but cannot withdraw or rebind it. @internal */
+export function assert_part_members_preserved(library: string, baseline: OrderedProjectedValue,
+  candidate: OrderedProjectedValue, operation: string): void {
+  if (!is_ordered_projected_object(baseline)) throw new Error("Invalid installed Part collection.");
+  const next = new Map(is_ordered_projected_object(candidate) ? candidate.entries : []);
+  for (const [name, definition] of baseline.entries) {
+    const value = next.get(name);
+    if (value === undefined || !ordered_projected_value_equal(definition, value)) {
+      throw immutable_part_error(library, name, operation);
+    }
+  }
+}
 
 /** The only Part value supported by this cut. Absence of CSS differs from empty CSS. @internal */
 export type DocumentPart = import("../../types/livemap.types.js").LiveMapDocumentPart;

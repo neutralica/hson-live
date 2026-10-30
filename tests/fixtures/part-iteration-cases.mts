@@ -375,8 +375,8 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       const definitions = { ...column, heading: { ...column.heading, document: column.heading.document.replace('@:root', '@:row') } };
       const map = hsonLiveMap.fromLibraries({ parts: { parts: definitions }, page: { document: invocation(blocks) } });
       assert.equal(scopes(map).occurrences[1]!.bindings.filter(binding => binding.name === 'row').length, 1);
-      map.parts.parts.heading.replace({ ...column.heading, document: '<h1 hson:part block:data="%{block}" <b @:row "^{block.text}"/>/>' });
-      atomic(map, () => map.addLibraries({ bad: { document: invocation(blocks) } }), /Conflicting structural root QUAD alias/);
+      const conflict = hsonLiveMap.fromLibraries({ parts: { parts: { ...column, heading: { ...column.heading, document: '<h1 hson:part block:data="%{block}" <b @:row "^{block.text}"/>/>' } } } });
+      atomic(conflict, () => conflict.addLibraries({ bad: { document: invocation(blocks) } }), /Conflicting structural root QUAD alias/);
       const optional = { ...column, heading: { ...column.heading, document: '<h1 hson:part part:optional block:data="%{block}" "^{block.missing}"/>' } };
       const omitted = hsonLiveMap.fromLibraries({ parts: { parts: optional }, page: { document: invocation(blocks) } });
       assert.equal(scopes(omitted).occurrences.length, 2); assert.deepEqual(leaves(doc(omitted).root()), ['Paragraph']);
@@ -389,9 +389,9 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
         for (const late of [{ kind: 'absent', text: 'bad' }, { kind: 'text', text: {} }, { kind: 42, text: 'bad' }, { kind: 'a/b', text: 'bad' }]) {
           atomic(map, () => map.addLibraries({ bad: { document: invocation([blocks[0], late]) } }));
         }
-        map.parts.parts.heading.replace({ ...column.heading, document: '<h1 hson:part "%{different}"/>' });
-        atomic(map, () => map.addLibraries({ bad: { document: invocation([blocks[1], blocks[0]]) } }), /received unexpected|receiving interface/);
-        map.parts.parts.heading.replace(column.heading);
+        const different = hsonLiveMap.fromLibraries({ parts: { parts: { ...column, heading: { ...column.heading, document: '<h1 hson:part "%{different}"/>' } } } });
+        atomic(different, () => different.addLibraries({ bad: { document: invocation([blocks[1], blocks[0]]) } }), /received unexpected|receiving interface/);
+        atomic(map, () => map.parts.parts.heading.replace(column.heading), /Immutable Part/);
         const schema = Hson.schema`<type "document" tag "aside" content "empty">`;
         atomic(map, () => map.addLibraries({ bad: { document: invocation(blocks), schema } }));
         assert.equal(allocated, 0, 'all semantic validation precedes QUID issuance');

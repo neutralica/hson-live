@@ -40,9 +40,9 @@ export async function representation_required_cases() {
   assert.equal(partMust.snap().document, "<button hson:part/>");
   assert.deepEqual(Hson.data.materialize(partMust.hson()), { kind: "document", document: "<button hson:part/>" });
   assert.equal("render" in part, false); assert.equal("data" in part, false);
-  part.delete(); assert.equal(part.snap(), undefined); assert.throws(partMust.hson, /absent/);
-  map.parts.parts.at([]).object.setKey("submit", { kind: "document", document: "<input hson:part/>" });
-  assert.equal(partMust.snap().document, "<input hson:part/>");
+  assert.throws(() => part.delete(), /Immutable Part/);
+  assert.equal(part.snap()?.document, "<button hson:part/>");
+  assert.equal(partMust.snap().document, "<button hson:part/>");
   map.restore(before);
   assert.equal(partMust.snap().document, "<button hson:part/>");
 

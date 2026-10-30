@@ -4,6 +4,7 @@ import { internal_livemap_aggregate_authority } from "../../src/api/livemap/live
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.js";
 import { make_livemap_client_composition_from_portable_aggregate_internal } from "../../src/api/livemap/livemap.libraries.js";
 import { make_portable_aggregate_snapshot, make_portable_aggregate_commit } from "../../src/api/livemap/livemap.hosted.js";
+import { admit_projected_value } from "../../src/core/projected-value-admission.js";
 import { PARTS_FACADE_RESERVED } from "../../src/internal/parts-facade.js";
 
 const heading = { kind: "document", document: Hson.document`<h1 hson:part "Initial"/>`, stylesheet: "h1{color:red}" } as const;
@@ -42,19 +43,15 @@ export async function parts_member_cases() {
   const watched: unknown[] = [], fed: unknown[] = [];
   const unwatch = member.watch(value => watched.push(value));
   const unfeed = member.feed(event => fed.push(event.value));
-  member.delete();
-  assert.equal(member.snap(), undefined); assert.equal(member.hson(), undefined);
-  assert.equal(member.at(["document"]).snap(), undefined);
-  assert.throws(() => parts.heading, /Unknown Part member/);
-  parts.at([]).object.setKey("heading", replacement);
-  assert.deepEqual(member.snap(), replacement);
-  parts.heading.replace(heading);
-  assert.deepEqual(member.snap(), heading);
-  assert.deepEqual(watched, [undefined, replacement, heading]);
-  assert.deepEqual(fed, watched);
-  const captured = map.capture();
-  member.delete(); map.restore(captured);
-  assert.deepEqual(member.snap(), heading); assert.deepEqual(watched.at(-1), heading);
+  for (const attempt of [() => member.delete(), () => member.replace(heading),
+    () => parts.at([]).object.setKey("heading", replacement),
+    () => member.at(["document"]).set(replacement.document)]) {
+    assert.throws(attempt, /Immutable Part/);
+    assert.deepEqual(member.snap(), heading);
+    assert.deepEqual(map.capture(), before);
+    assert.deepEqual(enumerate_livemap_issued_quids(aggregate.identityEpoch().issued()), issued);
+  }
+  assert.deepEqual(watched, []); assert.deepEqual(fed, []); assert.equal(commits, 0);
   unwatch(); unfeed(); stopCommits();
 
   const replaySource = hsonLiveMap.fromLibraries(definitions);
@@ -65,10 +62,11 @@ export async function parts_member_cases() {
   const receiver = internal_livemap_aggregate_authority(replay), manager = {};
   receiver.claimManagement(manager);
   try {
-    const record = replayAuthority.commit([{ target: replayAuthority.target(replayAuthority.libraries()[0]!, ["heading", "document"]),
-      kind: "set", value: replacement.document }]);
+    const record = replayAuthority.commit([{ target: replayAuthority.target(replayAuthority.libraries()[0]!, []),
+      kind: "set-key", key: "newName", value: admit_projected_value(replacement) }]);
     receiver.replayClientHostedManaged(manager, make_portable_aggregate_commit(record.hosted!)!, snapshot.revision);
-    assert.equal(retainedReplay.snap().document, replacement.document);
+    assert.deepEqual(retainedReplay.snap(), heading);
+    assert.deepEqual(replay.parts.must("components").at(["newName"]).snap(), replacement);
   } finally { receiver.releaseManagement(manager); }
 
   for (const invalid of [
@@ -96,18 +94,17 @@ export async function parts_member_cases() {
     const library = writer.parts.components, location = library.heading;
     assert.equal("snap" in location, false);
     assert.throws(() => Reflect.get(library, "missing"), /Unknown Part member/);
-    location.set({ ...replacement, stylesheet: "h2{color:green}" });
-    writer.parts.components.submit.set({ document: '<button hson:part "Changed"/>' });
+    library.at([]).object.setKey("stagedNew", replacement);
     expired = [() => library.heading, () => location.delete(), () => location.at(["document"])];
   });
   assert.equal(map.rev, revision + 1);
   for (const operation of expired) assert.throws(operation, /Expired/);
 
-  // No registry of names: path writes immediately affect subsequent named selection.
+  // New names become available immediately after admission.
   parts.at([]).object.setKey("later", heading);
   assert.deepEqual(Reflect.get(parts, "later").snap(), heading);
-  parts.at(["later"]).delete();
-  assert.throws(() => Reflect.get(parts, "later"), /Unknown Part member/);
+  assert.throws(() => parts.at(["later"]).delete(), /Immutable Part/);
+  assert.deepEqual(Reflect.get(parts, "later").snap(), heading);
   const ownKeys = Reflect.ownKeys(parts);
   for (const key of PARTS_FACADE_RESERVED) {
     const capability = key === "css" ? undefined : Reflect.get(parts, key);
@@ -128,12 +125,12 @@ export async function parts_member_cases() {
   const composition = hsonLiveMap.fromLibraries({ ...definitions,
     page: { document: '<main <hson-part lib="components" at="heading"/>/>' } });
   const oldRoot = composition.doc.page.root(), oldCss = composition.doc.page.css.snapshot();
-  composition.parts.components.heading.replace(replacement);
+  assert.throws(() => composition.parts.components.heading.replace(replacement), /Immutable Part/);
   composition.addLibraries({ laterPage: { document: '<main <hson-part lib="components" at="heading"/>/>' } });
   assert.deepEqual(composition.doc.page.root(), oldRoot);
   assert.equal(composition.doc.page.css.snapshot(), oldCss);
-  assert.match(JSON.stringify(composition.doc.must("laterPage").root()), /Replacement/);
-  assert.match(composition.doc.must("laterPage").css.snapshot(), /blue/);
+  assert.match(JSON.stringify(composition.doc.must("laterPage").root()), /Initial/);
+  assert.match(composition.doc.must("laterPage").css.snapshot(), /red/);
 
   let retainedRead: { snap(): unknown } | undefined;
   const locus = hsonLiveMap.locus.create(definitions, { actions: { inspect(context) {
@@ -143,15 +140,14 @@ export async function parts_member_cases() {
     assert.equal("set" in location, false); assert.equal("delete" in location, false);
     assert.equal("setMany" in location.asObject()!.object, false);
     assert.equal("schema" in location, false);
-    context.stage.parts.components.submit.set({ document: '<button hson:part "Action"/>' });
+    context.stage.parts.components.at([]).object.setKey("actionNew", replacement);
   } } });
   try {
     assert.equal((await locus.dispatchAction({ type: "action", id: "inspect", name: "inspect" })).type, "ack");
     const location = locus.parts.components.heading;
-    await location.delete(); assert.equal(location.snap(), undefined); assert.equal(retainedRead!.snap(), undefined);
-    assert.throws(() => locus.parts.components.heading, /Unknown Part member/);
-    await locus.parts.components.at([]).object.setKey("heading", replacement);
-    assert.deepEqual(location.snap(), replacement); assert.deepEqual(retainedRead!.snap(), replacement);
+    await assert.rejects(location.delete(), /Immutable Part/);
+    await assert.rejects(locus.parts.components.at([]).object.setKey("heading", replacement), /Immutable Part/);
+    assert.deepEqual(location.snap(), heading); assert.deepEqual(retainedRead!.snap(), heading);
     const capture = locus.cut().libs;
     await assert.rejects(locus.stage(writer => {
       writer.parts.components.submit.set({ document: "<button hson:part/>" });
@@ -161,7 +157,7 @@ export async function parts_member_cases() {
     await locus.stage(writer => {
       const selected = writer.parts.components.heading;
       expired = [() => selected.delete(), () => writer.parts.components.heading];
-      selected.replace(heading);
+      writer.parts.components.at([]).object.setKey("stageNew", replacement);
     });
     for (const operation of expired) assert.throws(operation, /Expired/);
   } finally { locus.dispose(); }
@@ -219,18 +215,15 @@ export async function parts_member_echo_cases() {
     assert.deepEqual(projectedMust.snap(), heading); assert.deepEqual(localMust.snap(), heading);
     assert.equal(projectedMust.hson(), projected.hson());
     assert.equal("replace" in projectedMust, false);
-    local.replace(replacement); assert.deepEqual(local.snap(), replacement);
+    assert.throws(() => local.replace(replacement), /Immutable Part/); assert.deepEqual(local.snap(), heading);
     assert.throws(() => local.set({ document: "<p/><p/>" }));
     const changes: unknown[] = [], stop = projected.watch((value: unknown) => changes.push(value));
-    await locus.parts.components.heading.delete();
-    await until(() => projected.snap() === undefined);
-    assert.throws(projectedWrite, /Unknown Part member/);
-    assert.throws(projectedMust.snap); assert.throws(projectedMust.hson);
-    assert.throws(() => Reflect.get(parts, "heading"), /Unknown Part member/);
-    await locus.parts.components.at([]).object.setKey("heading", replacement);
-    await until(() => projected.snap()?.document === replacement.document);
-    assert.deepEqual(changes, [undefined, replacement]); stop();
-    assert.deepEqual(projectedMust.snap(), replacement); assert.deepEqual(localMust.snap(), replacement);
+    await assert.rejects(locus.parts.components.heading.delete(), /Immutable Part/);
+    await assert.rejects(locus.parts.components.at([]).object.setKey("heading", replacement), /Immutable Part/);
+    await locus.parts.components.at([]).object.setKey("expanded", replacement);
+    await until(() => parts.at(["expanded"]).snap() !== undefined);
+    assert.deepEqual(changes, []); stop();
+    assert.deepEqual(projectedMust.snap(), heading); assert.deepEqual(localMust.snap(), heading);
     assert.equal(projectedWrite(), Hson.document`<hson-part lib="components" at="heading"/>`);
     await session.update({ libraries: ["widgets"] });
     await until(() => echo.parts("components") === undefined);
@@ -242,10 +235,10 @@ export async function parts_member_echo_cases() {
     assert.notEqual(echo.parts.must("components"), parts);
     assert.throws(projectedWrite);
     assert.equal(Reflect.get(echo.parts.must("components").at(["heading"]), "write")(), Hson.document`<hson-part lib="components" at="heading"/>`);
-    assert.deepEqual(Reflect.get(echo.parts.must("components"), "heading").snap(), replacement);
+    assert.deepEqual(Reflect.get(echo.parts.must("components"), "heading").snap(), heading);
     assert.throws(documentMust.snap); assert.throws(fragmentMust.hson);
     assert.throws(() => projected.snap()); assert.throws(projectedMust.snap); assert.throws(projectedMust.hson); assert.throws(() => Reflect.get(parts, "heading"));
-    assert.equal(echo.parts.must("widgets"), widgets); assert.deepEqual(local.snap(), replacement);
+    assert.equal(echo.parts.must("widgets"), widgets); assert.deepEqual(local.snap(), heading);
     const activeDocument = echo.doc.must("page"), activeFragment = activeDocument.at([0]);
     const activeProjected = Reflect.get(echo.parts.must("components"), "heading").must;
     const activeProjectedWrite = Reflect.get(echo.parts.must("components"), "heading").write;

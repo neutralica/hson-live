@@ -133,7 +133,7 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       const { batch } = await f.stage(w => {
         insert(w); const d = w.data.must("other"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); insert(w, 1);
         const parts = w.parts.must("parts"); if (String(parts.mode) === "document") throw Error();
-        parts.at(["secret", "document"]).set('<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>');
+        parts.at([]).object.setKey("newSecret", { kind: "document", document: '<strong hson:part "UPDATED_PRIVATE_SENTINEL"/>' });
         page(w, "hidden").attrs.set({ kind: "path", path: path([0]) }, "title", "PRIVATE_HIDDEN_SENTINEL");
       });
       assert.doesNotMatch(JSON.stringify(batch), /PRIVATE_DEFINITION_SENTINEL|UPDATED_PRIVATE_SENTINEL|PRIVATE_HIDDEN_SENTINEL|"library":"parts"|"library":"hidden"/);
