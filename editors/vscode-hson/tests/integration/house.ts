@@ -4,6 +4,7 @@ import { join } from "node:path";
 import * as vscode from "vscode";
 import { document_semantic_tokens, hsonSemanticLegend, nativeTokenTypes, nativeTokenModifiers } from "../../src/semantic-tokens.js";
 import { load_hson_grammar } from "../../src/highlighting.js";
+import { hsonTokenScopes } from "../../src/appearance-internals.js";
 import { nativeCompositionSupported } from "./native-composition.js";
 
 import { run_binding_intelligence } from "./bindings.js";
@@ -21,12 +22,117 @@ function decode(document: vscode.TextDocument, tokens: vscode.SemanticTokens, le
   }
   return result;
 }
+let partColorRequest = 0;
+async function verify_part_appearance(workspace: string, extensionPath: string) {
+  const baseBody = [
+    '<hson-part lib="components" at="foo"/>', '<hson-part at="components/foo"/>', '<hson-part at="foo"/>',
+    '<hson-part lib=components at=foo/>', '<hson-part at=components/foo/>', '<hson-part at=foo/>',
+    '<div lib="components" at="foo"/>', '<hson-part at=^{each.kind[0]}/>', '<hson-part at="components/%{member}"/>',
+  ].join('\n');
+  const selectors = ['hsonPartSystemAttribute', 'hsonPartLibrary', 'hsonPartMember', 'hsonPartSeparator'];
+  const customColors = ['#112233', '#223344', '#334455', '#445566'];
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)).join(', ')})`;
+  for (const suffix of ['hson', 'md', 'ts', 'tsx']) {
+    if (!nativeCompositionSupported && /tsx?/.test(suffix)) continue;
+    const body = baseBody + (/tsx?/.test(suffix) ? '\n<hson-part at="${\n  "foo"\n}" lib="components"/>' : '');
+    const prefix = /tsx?/.test(suffix) ? 'import { Hson } from "hson-live/hson";\nconst view = Hson.document`' : suffix === 'md' ? '```hson\n' : '';
+    const text = prefix + body + (/tsx?/.test(suffix) ? '`;' : suffix === 'md' ? '\n```' : '');
+    const uri = vscode.Uri.file(join(workspace, 'part-colors.' + suffix));
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(text));
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document);
+    // Literal examples keep all tokens visible; offsets are found from source,
+    // never manually counted. Dynamic values also assert their reference roles.
+    const targets: { start: number; length: number; type: string }[] = [];
+    const add = (line: number, fragment: string, type: string) => {
+      const source = body.split('\n')[line]!;
+      const lineStart = prefix.length + body.split('\n').slice(0, line).reduce((size, line) => size + line.length + 1, 0);
+      targets.push({ start: lineStart + source.indexOf(fragment), length: fragment.length, type });
+    };
+    for (const line of [0, 1, 2, 3, 4, 5, 7, 8]) add(line, 'at', selectors[0]!);
+    for (const line of [0, 3]) add(line, 'lib', selectors[0]!);
+    for (const line of [0, 1, 3, 4]) add(line, 'components', selectors[1]!);
+    for (const line of [0, 1, 2, 3, 4, 5]) add(line, 'foo', selectors[2]!);
+    for (const line of [1, 4]) add(line, '/', selectors[3]!);
+    add(6, 'lib', 'hsonProperty'); add(6, 'at', 'hsonProperty');
+    add(6, 'components', 'hsonString'); add(6, 'foo', 'hsonString');
+    add(7, '^', 'hsonLocalReferenceSigil'); add(7, 'kind', 'hsonReference.hsonMember');
+    if (/tsx?/.test(suffix)) {
+      add(9, 'at', selectors[0]!);
+      add(11, 'lib', selectors[0]!);
+      add(11, 'components', selectors[1]!);
+    }
+    add(8, '%', 'hsonIncomingReferenceSigil'); add(8, 'member', 'hsonIncomingReference');
+    for (const theme of ['Hson House Light', 'Hson House Dark', 'Default Dark Modern']) {
+      await vscode.workspace.getConfiguration('workbench').update('colorTheme', theme, vscode.ConfigurationTarget.Workspace);
+      const mode = theme === 'Hson House Light' ? 'light' : theme === 'Hson House Dark' ? 'dark' : undefined;
+      const palette = mode ? JSON.parse(await readFile(join(extensionPath, `themes/hson-house-${mode}-color-theme.json`), 'utf8')).semanticTokenColors : undefined;
+      if (/tsx?/.test(suffix)) {
+        let tokens: ReturnType<typeof decode> = [];
+        for (let attempt = 0; attempt < 80; attempt++) {
+          const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>('vscode.provideDocumentSemanticTokensLegend', uri);
+          const data = await vscode.commands.executeCommand<vscode.SemanticTokens>('vscode.provideDocumentSemanticTokens', uri);
+          if (legend && data) tokens = decode(document, data, legend);
+          if (tokens.some(token => token.type === selectors[3])) break;
+          await pause();
+        }
+        for (const target of targets) {
+          const [type, modifier] = target.type.split('.');
+          assert.ok(tokens.some(token => token.start === target.start && token.end === target.start + target.length
+            && token.type === type && (!modifier || token.modifiers.includes(modifier))), `${suffix}/${theme}: ${target.type}`);
+        }
+      }
+      for (const customization of ['none', 'semantic', 'textmate']) {
+        if (customization === 'semantic') await vscode.workspace.getConfiguration('editor').update('semanticTokenColorCustomizations',
+          { rules: Object.fromEntries(selectors.map((selector, index) => [selector, customColors[index]])) }, vscode.ConfigurationTarget.Workspace);
+        if (customization === 'textmate') await vscode.workspace.getConfiguration('editor').update('tokenColorCustomizations', {
+          textMateRules: selectors.map((selector, index) => ({ scope: hsonTokenScopes[selector]![0], settings: { foreground: customColors[index] } })),
+        }, vscode.ConfigurationTarget.Workspace);
+        try {
+          if (process.env.HSON_BINDING_COLORS !== '1') continue;
+          const id = `part-${++partColorRequest}`;
+          const tokens = targets.map(target => {
+            const position = document.positionAt(target.start), index = selectors.indexOf(target.type);
+            // Standalone/Markdown use TextMate for literal syntax; semantic
+            // overrides apply to TS/TSX's transported classifications.
+            const custom = index >= 0 && (customization === 'textmate' && (!palette || !/tsx?/.test(suffix)) || customization === 'semantic' && /tsx?/.test(suffix));
+            const color = custom ? customColors[index] : palette?.[target.type] ?? palette?.[target.type.split('.')[0]!];
+            return { lineText: document.lineAt(position.line).text, character: position.character, length: target.length,
+              ...(color ? { expected: rgb(color) } : {}) };
+          });
+          await writeFile(join(workspace, 'binding-color-request.json'), JSON.stringify({ id, theme, customization, document: uri.toString(), tokens,
+            pairs: selectors.flatMap(type => {
+              const indices = targets.flatMap((target, index) => target.type === type ? [index] : []);
+              return indices.slice(1).map(index => [indices[0], index]);
+            }) }));
+          let responded = false;
+          for (let attempt = 0; attempt < 160; attempt++) {
+            let response;
+            try { response = JSON.parse(await readFile(join(workspace, 'binding-color-response.json'), 'utf8')); } catch {}
+            if (response?.id === id) {
+              assert.equal(response.error, undefined, `${theme}/${suffix}/${customization}: actual rendered Part colors`);
+              responded = true; break;
+            }
+            await pause();
+          }
+          assert.ok(responded, 'Part rendered-color probe responded');
+        } finally {
+          await vscode.workspace.getConfiguration('editor').update('semanticTokenColorCustomizations', undefined, vscode.ConfigurationTarget.Workspace);
+          await vscode.workspace.getConfiguration('editor').update('tokenColorCustomizations', undefined, vscode.ConfigurationTarget.Workspace);
+        }
+      }
+    }
+  }
+  console.log('ok - rendered Part system/Library/member/separator colors in Hson, Markdown, TS and TSX; House, external theme and explicit semantic/TextMate overrides');
+}
+
 export async function run(): Promise<void> {
   const workspace = process.env.HSON_HOUSE_WORKSPACE;
   assert.ok(workspace);
   const extension = vscode.extensions.getExtension('terminal-gothic.hson-language');
   assert.ok(extension); await extension.activate();
   await run_binding_intelligence(workspace, extension.extensionPath);
+  await verify_part_appearance(workspace, extension.extensionPath);
   const manifest = JSON.parse(await readFile(join(extension.extensionPath, 'package.json'), 'utf8'));
   assert.deepEqual(hsonSemanticLegend.tokenTypes, [...nativeTokenTypes,
     ...manifest.contributes.semanticTokenTypes.map((entry: { id: string }) => entry.id)]);

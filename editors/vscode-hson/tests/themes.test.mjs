@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdtemp, mkdir, writeFile, symlink, rm, realpath } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import textmate from "vscode-textmate";
 import oniguruma from "vscode-oniguruma";
 import { appearanceSource, houseTheme, blend, generateThemes, validateGrammarScopes, brandingRuntime } from "../scripts/generate-themes.mjs";
-import { resolveCatalog, validateExamples, exampleRange, catalogEntries } from "../scripts/appearance-catalog.mjs";
+import { resolveCatalog as resolveAppearanceCatalog, validateExamples as validateCatalogExamples, exampleRange, catalogEntries } from "../scripts/appearance-catalog.mjs";
 const { HSON_APPEARANCE: appearance, hsonTokenDefinitions: definitions, hsonTokenScopes: scopes,
-  hsonTokenModifierDefinitions: modifiers, hsonGrammarScopes: grammarScopes, legacyRolePaths, syntaxBindings, syntaxExamplePath } = await appearanceSource();
+  hsonTokenModifierDefinitions: modifiers, hsonGrammarScopes: grammarScopes, legacyRolePaths, syntaxBindings, syntaxExamplePath, generalRules } = await appearanceSource();
+const resolveCatalog = catalog => resolveAppearanceCatalog(catalog, syntaxBindings, generalRules);
+const validateExamples = (catalog, bindings, examplePath) => validateCatalogExamples(catalog, bindings, examplePath, generalRules);
 await generateThemes({ check: true });
 const resolved = resolveCatalog(appearance);
 const syntax = appearance.syntax.hson;
@@ -36,7 +41,7 @@ for (const mode of ['light', 'dark']) {
   for (const foreground of [...Object.values(theme.colors), ...Object.values(theme.semanticTokenColors), ...theme.tokenColors.map(rule => rule.settings.foreground)]) assert.match(foreground, /^#[\da-f]{6}$/i);
   const semantic = theme.semanticTokenColors;
   assert.equal(semantic['*.hsonQualifier'], roleColor("qualifier", mode).toLowerCase());
-  assert.deepEqual(Object.keys(semantic).filter(selector => selector.includes('.')),
+  assert.deepEqual(Object.keys(semantic).filter(selector => selector.includes('hsonQualifier') || selector === 'hsonReceiving.hsonLocalName'),
     ['*.hsonQualifier', 'hsonReceiving.hsonQualifier', 'hsonReceiving.hsonLocalName'],
     'receiving syntax keeps its binding active and mutes its trailing kind');
   assert.equal(semantic['hsonReceiving.hsonQualifier'], semantic.hsonReceiving);
@@ -90,7 +95,8 @@ for (const mode of ['light', 'dark']) {
   }
   assert.equal(foreground(source.indexOf('class=')), semantic.hsonProperty, 'unqualified attributes retain their color');
   // Palette contrast is owner-authored; validate structure without a minimum ratio.
-  assert.notEqual(semantic.hsonLocalReferenceSigil, semantic.hsonIncomingReferenceSigil);
+  assert.equal(semantic.hsonLocalReferenceSigil, blend(syntax.reference.local.marker.house[mode].foreground,
+    appearance.ui.palette.background.house[mode].foreground, syntax.reference.local.marker.house[mode].intensity));
   assert.notEqual(semantic.hsonDirective, semantic.hsonKeyword);
   assert.notEqual(semantic.hsonQuote, semantic.hsonString);
   for (const type of Object.keys(definitions)) {
@@ -130,6 +136,7 @@ badReference.syntax.hson.attribute.qualifier.inherits = 'attribute.missing';
 assert.throws(() => resolveCatalog(badReference), /attribute.qualifier -> syntax.hson.attribute.missing/);
 const cycle = structuredClone(appearance);
 cycle.syntax.hson.attribute.name.inherits = 'attribute.qualifier';
+cycle.syntax.hson.attribute.qualifier.inherits = 'attribute.name';
 assert.throws(() => resolveCatalog(cycle), /inheritance cycle:.*attribute.name.*attribute.qualifier.*attribute.name/);
 const selfCycle = structuredClone(appearance);
 selfCycle.syntax.hson.element.name.inherits = 'element.name';
@@ -238,4 +245,197 @@ const propertyOverride = structuredClone(appearance);
 propertyOverride.syntax.general.punctuation.inherits = 'syntax.hson.punctuation.assignment';
 propertyOverride.syntax.general.punctuation.house = { dark: { foreground: '#123456' } };
 assert.deepEqual(resolveCatalog(propertyOverride).get('syntax.general.punctuation').dark,
-  { foreground: '#123456', intensity: 0.75 }, 'child foreground preserves inherited intensity');
+  { foreground: '#123456', intensity: syntax.punctuation.assignment.house.dark.intensity }, 'child foreground preserves inherited intensity');
+
+async function coloredTokens(theme, source) {
+  const registry = new Registry({
+    theme: { settings: theme.tokenColors },
+    onigLib: Promise.resolve({ createOnigScanner: p => new OnigScanner(p), createOnigString: s => new OnigString(s) }),
+    loadGrammar: async scope => scope === 'source.hson' ? grammar : null,
+  });
+  const hson = await registry.loadGrammar('source.hson');
+  const encoded = hson.tokenizeLine2(source, INITIAL).tokens;
+  const tokens = hson.tokenizeLine(source, INITIAL).tokens.map(token => {
+    let foreground;
+    for (let i = 0; i < encoded.length; i += 2) if (encoded[i] <= token.startIndex && token.startIndex < (encoded[i + 2] ?? source.length))
+      foreground = registry.getColorMap()[(encoded[i + 1] >>> 15) & 511].toLowerCase();
+    return { start: token.startIndex, end: Math.min(source.length, token.endIndex),
+      text: source.slice(token.startIndex, token.endIndex), path: syntaxExamplePath(token.scopes), foreground };
+  });
+  registry.dispose();
+  return tokens;
+}
+const selectorSources = [
+  '<hson-part lib="components" at="foo"/>', '<hson-part at="components/foo"/>', '<hson-part at="foo"/>',
+  '<hson-part lib=components at=foo/>', '<hson-part at=components/foo/>', '<hson-part at=foo/>',
+  '<div lib="components" at="foo"/>', '<hson-part at=^{each.kind[0]}/>', '<hson-part at="components/%{member}"/>',
+];
+const partRoles = ['part.systemAttribute.name', 'part.selector.library', 'part.selector.member', 'part.selector.separator'];
+for (const mode of ['light', 'dark']) {
+  const theme = houseTheme(appearance, definitions, mode);
+  const baselines = await Promise.all(selectorSources.map(source => coloredTokens(theme, source)));
+  for (const tokens of baselines) for (const token of tokens) if (partRoles.includes(token.path)) {
+    assert.equal(token.foreground, theme.semanticTokenColors[syntaxBindings[token.path].selector], `${mode}: actual ${token.text} color`);
+    const style = resolved.get(`syntax.hson.${token.path}`)[mode];
+    assert.equal(token.foreground, blend(style.foreground, appearance.ui.palette.background.house[mode].foreground, style.intensity));
+  }
+  const colorOf = (i, text) => baselines[i].find(token => token.text === text)?.foreground;
+  assert.equal(colorOf(0, 'lib'), colorOf(0, 'at'), `${mode}: both governed names share a color`);
+  assert.equal(colorOf(0, 'components'), colorOf(1, 'components'), `${mode}: lib and qualified at share Library color`);
+  assert.equal(colorOf(0, 'foo'), colorOf(1, 'foo'), `${mode}: lib + unqualified member matches qualified member`);
+  assert.equal(colorOf(1, 'foo'), colorOf(2, 'foo'), `${mode}: standalone unqualified at is a member`);
+  for (const [i, j] of [[0, 3], [1, 4], [2, 5]]) for (const text of ['at', 'components', 'foo'].filter(text => colorOf(i, text)))
+    assert.equal(colorOf(i, text), colorOf(j, text), `${mode}: quoted/bare ${text}`);
+  for (const role of partRoles) {
+    const tuned = structuredClone(appearance);
+    let entry = tuned.syntax.hson;
+    for (const key of role.split('.')) entry = entry[key];
+    entry.house = { ...entry.house, [mode]: { foreground: '#123456', intensity: 1 } };
+    const changedTheme = houseTheme(tuned, definitions, mode);
+    const changed = await Promise.all(selectorSources.map(source => coloredTokens(changedTheme, source)));
+    assert.ok(changed.flat().some(token => token.path === role));
+    for (const [i, tokens] of changed.entries()) for (const [j, token] of tokens.entries()) {
+      assert.equal(token.foreground, token.path === role ? '#123456' : baselines[i][j].foreground,
+        `${mode}/${role}: only intended targets change (${selectorSources[i]} ${token.text})`);
+    }
+    for (const [selector, value] of Object.entries(theme.semanticTokenColors))
+      assert.deepEqual(changedTheme.semanticTokenColors[selector], selector === syntaxBindings[role].selector ? '#123456' : value,
+        `${mode}/${role}: independent semantic customization of ${selector}`);
+  }
+}
+// A theme outside House controls every fallback; explicit TextMate rules can
+// override each new scope. No House palette or extension-applied decoration is involved.
+const external = { tokenColors: [
+  { settings: { foreground: '#010203' } },
+  { scope: ['string'], settings: { foreground: '#345678' } },
+  { scope: ['entity.other.attribute-name'], settings: { foreground: '#456789' } },
+  { scope: ['punctuation.separator'], settings: { foreground: '#56789a' } },
+] };
+for (const source of selectorSources.slice(0, 6)) {
+  const tokens = await coloredTokens(external, source);
+  for (const token of tokens.filter(token => partRoles.includes(token.path))) {
+    assert.equal(token.foreground, token.path === partRoles[0] ? '#456789' : token.path === partRoles[3] ? '#56789a' : '#345678');
+  }
+  const custom = { tokenColors: [...external.tokenColors,
+    ...partRoles.map((role, i) => ({ scope: syntaxBindings[role].scopes, settings: { foreground: ['#112233', '#223344', '#334455', '#445566'][i] } }))] };
+  const customized = await coloredTokens(custom, source);
+  for (const token of customized.filter(token => partRoles.includes(token.path)))
+    assert.equal(token.foreground, ['#112233', '#223344', '#334455', '#445566'][partRoles.indexOf(token.path)]);
+}
+for (const role of partRoles) {
+  const type = syntaxBindings[role].selector;
+  assert.ok(scopes[type].includes(syntaxBindings[role].scopes[0]), `${type}: exact user TextMate customization fallback`);
+  assert.ok(scopes[type].includes(role === partRoles[0] ? grammarScopes.attributeName : grammarScopes.quotedString), `${type}: ordinary external-theme fallback`);
+}
+console.log('ok - resolved House Light/Dark Part colors, four isolated owner edits, external-theme fallbacks and explicit TextMate scope overrides');
+
+// Every owner-facing object is strict, while native workbench IDs stay dynamic.
+const invalidConfigurations = [
+  ['syntax.hson.reference.selectorOpen.house.dark.intensite', 0.75, 'intensity'],
+  ['syntax.hson.part.selector.member.lable', 'Member', 'label'],
+  ['syntax.hson.part.selector.member.hosue', {}, 'house'],
+  ['syntax.hson.part.selector.member.house.drak', {}, 'dark'],
+  ['syntax.hson.part.selector.member.house.dark.foregound', '#123456', 'foreground'],
+  ['syntax.hson.part.selector.member.examples.0.higlight', 'foo', 'highlight'],
+  ['syntax.hson.part.selector.member.examples.0.occurence', 1, 'occurrence'],
+  ['syntax.hson.part.selector.member.examples.0.offset', 8],
+  ['brandng', {}, 'branding'],
+  ['syntax.hson.part.selector.membre', {}, 'member'],
+  ['syntax.hson.prat', {}, 'part'],
+  ['syntax.general.strng', {}, 'string'],
+  ['ui.palete', {}, 'palette'],
+  ['branding.library.opactiy', 0.5, 'opacity'],
+  ['branding.library.separator.colour', '#123456', 'color'],
+  ['branding.library.letters.hh', 'blue', 'h'],
+  ['branding.palette.blu', '#123456', 'blue'],
+  ['syntax.hson.part.selector.member.label', 42],
+  ['syntax.hson.part.selector.member.examples', {}],
+  ['syntax.hson.part.selector.member.examples.0.code', false],
+  ['syntax.hson.part.selector.member.examples.0.highlight', ''],
+  ['syntax.hson.part.selector.member.examples.0.occurrence', '1'],
+  ['syntax.hson.part.selector.member.house.dark.foreground', '#12345'],
+  ['syntax.hson.part.selector.member.house.dark.foreground', 123456],
+  ['syntax.hson.part.selector.member.house.dark.intensity', NaN],
+  ['syntax.hson.part.selector.member.house.dark.intensity', Infinity],
+  ['syntax.hson.part.selector.member.house.dark.intensity', -0.1],
+  ['syntax.hson.part.selector.member.house.dark.intensity', 1.1],
+  ['syntax.hson.part.selector.member.house.dark.intensity', '0.75'],
+  ['syntax.hson.part.selector.member.house.dark.fontStyle', 'oblique'],
+  ['syntax.hson.part.selector.member.house.dark.italic', 'yes'],
+  ['syntax.hson.part.selector.member.house.dark.underlne', true, 'underline'],
+  ['syntax.hson.part.selector.member.house.dark.opacity', 0.5],
+  ['syntax.hson.part.selector.member.inherits', []],
+  ['syntax.hson.part.selector.member.house', []],
+  ['syntax.hson.part.selector.member.house.dark', null],
+  ['branding.library.enabled', 1],
+  ['branding.authoring.opacity', Infinity],
+  ['branding.library.opacity', 1.01],
+  ['branding.library.opacity', -0.01],
+  ['branding.palette.green', 'green'],
+];
+for (const [path, value, replacement] of invalidConfigurations) {
+  const invalid = structuredClone(appearance);
+  const keys = path.split('.');
+  let parent = invalid;
+  for (const key of keys.slice(0, -1)) parent = parent[key] ??= {};
+  parent[keys.at(-1)] = value;
+  assert.throws(() => houseTheme(invalid, definitions, 'dark'), error => {
+    const displayPath = path.replace('.examples.0', '.examples[0]');
+    assert.ok(error.message.startsWith(displayPath + ':') || error.message.startsWith(displayPath.slice(0, displayPath.lastIndexOf('.')) + ':'), error.message);
+    if (replacement) {
+      assert.ok(error.message.includes(`Unknown property "${keys.at(-1)}"`), error.message);
+      assert.ok(error.message.includes(`Did you mean "${replacement}"?`), error.message);
+    }
+    return true;
+  }, path);
+}
+const nativeUi = structuredClone(appearance);
+nativeUi.ui.workbench['terminal.ansiBrightMagenta'] = { inherits: 'ui.palette.accent' };
+nativeUi.ui.editor['editorOverviewRuler.wordHighlightStrongForeground'] = { house: { dark: { foreground: '#123456' }, light: { foreground: '#654321' } } };
+for (const mode of ['dark', 'light']) {
+  const theme = houseTheme(nativeUi, definitions, mode);
+  assert.equal(theme.colors['terminal.ansiBrightMagenta'], appearance.ui.palette.accent.house[mode].foreground);
+  assert.equal(theme.colors['editorOverviewRuler.wordHighlightStrongForeground'], mode === 'dark' ? '#123456' : '#654321');
+}
+const fontStyles = structuredClone(appearance);
+fontStyles.syntax.general.keyword.house = { dark: { fontStyle: 'italic bold underline strikethrough' } };
+fontStyles.syntax.general.function.inherits = 'syntax.general.keyword';
+fontStyles.syntax.general.function.house = { dark: { bold: false, foreground: '#123456' } };
+const styled = houseTheme(fontStyles, definitions, 'dark');
+assert.deepEqual(styled.semanticTokenColors.function,
+  { foreground: '#123456', bold: false, italic: true, underline: true, strikethrough: true });
+assert.equal(styled.tokenColors.find(rule => rule.scope.includes('entity.name.function')).settings.fontStyle, 'italic underline strikethrough');
+const nestedTypo = structuredClone(appearance);
+nestedTypo.syntax.hson.reference.selectorOpen.house = { dark: { foreground: '#8792A0', intensite: 0.75 } };
+assert.throws(() => houseTheme(nestedTypo, definitions, 'dark'), {
+  message: 'syntax.hson.reference.selectorOpen.house.dark.intensite: Unknown property "intensite". Did you mean "intensity"?',
+});
+console.log('ok - strict catalog, metadata, examples, style, general syntax, UI and branding validation with full paths and typo suggestions');
+
+const uiTypo = structuredClone(appearance);
+uiTypo.ui.workbench['terminal.ansiBrightMagenta'] = { house: { dark: { foregound: '#123456' } } };
+assert.throws(() => houseTheme(uiTypo, definitions, 'dark'), {
+  message: 'ui.workbench.terminal.ansiBrightMagenta.house.dark.foregound: Unknown property "foregound". Did you mean "foreground"?',
+});
+const inheritanceTypo = structuredClone(appearance);
+inheritanceTypo.syntax.hson.part.selector.member.inherits = 'part.selector.libary';
+assert.throws(() => resolveCatalog(inheritanceTypo), error =>
+  error.message.startsWith('syntax.hson.part.selector.member.inherits:') && error.message.includes('Did you mean "syntax.hson.part.selector.library"?'));
+
+// Execute the real generator on a disposable owner catalog. esbuild deliberately
+// does no TS type checking: this proves a direct generator invocation is strict.
+const invalidOwner = await realpath(await mkdtemp(join(tmpdir(), 'hson-catalog-validation-')));
+try {
+  for (const directory of ['scripts', 'src']) await mkdir(join(invalidOwner, directory));
+  for (const relative of ['scripts/generate-themes.mjs', 'scripts/appearance-catalog.mjs',
+    'src/appearance.ts', 'src/appearance-internals.ts', 'src/appearance-bindings.ts', 'src/appearance-branding.generated.ts']) {
+    let source = await readFile(new URL('../' + relative, import.meta.url), 'utf8');
+    if (relative === 'src/appearance.ts') source = source.replace('selectorOpen: {', 'selectorOpen: { house: { dark: { foreground: "#8792A0", intensite: 0.75 } },');
+    await writeFile(join(invalidOwner, relative), source);
+  }
+  await symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), join(invalidOwner, 'node_modules'), 'dir');
+  const generated = spawnSync(process.execPath, [join(invalidOwner, 'scripts/generate-themes.mjs'), '--check'], { encoding: 'utf8' });
+  assert.notEqual(generated.status, 0, 'direct generation must reject invalid owner styling');
+  assert.match(generated.stderr, /syntax\.hson\.reference\.selectorOpen\.house\.dark\.intensite: Unknown property "intensite"\. Did you mean "intensity"\?/);
+} finally { await rm(invalidOwner, { recursive: true, force: true }); }
+console.log('ok - native UI typo paths, inheritance suggestions and real generator-time rejection without TypeScript checking');

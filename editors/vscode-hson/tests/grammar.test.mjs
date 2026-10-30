@@ -568,3 +568,49 @@ for (const scope of ['source.hson', 'text.html.markdown']) {
     }
   }
 }
+
+// Governed coordinates are confined to connector headers. Match exactly one
+// decoded slash; arbitrary quoted names are not an identifier sub-language.
+for (const scope of ['source.hson', 'text.html.markdown']) {
+  const wrapped = body => scope === 'source.hson' ? body : '```hson\n' + body + '\n```';
+  for (const body of ['<hson-part lib=components at=foo/>', '<hson-part lib="components" at="foo"/>',
+    '<hson-part at=components/foo/>', '<hson-part at="components/foo"/>', '<hson-part at=foo/>']) {
+    const tokens = await tokenize(scope, wrapped(body));
+    for (const name of ['lib', 'at'].filter(name => body.includes(name + '=')))
+      assert.ok(has(tokens, name, 'entity.other.attribute-name.system.hson'), `${scope}: ${body} ${name}`);
+    if (body.includes('components')) assert.ok(has(tokens, 'components', 'meta.part.selector.library.hson'), body);
+    assert.ok(has(tokens, 'foo', 'meta.part.selector.member.hson'), body);
+    if (body.includes('components/foo')) assert.ok(has(tokens, '/', 'punctuation.separator.part-selector.hson'), body);
+    assert.ok(has(tokens, '=', 'keyword.operator.assignment.hson'));
+    if (body.includes('"')) assert.ok(has(tokens, '"', 'punctuation.definition.string.begin.hson'));
+  }
+  for (const slash of ['/', '\\/', '\\u002f', '\\u002F']) {
+    const tokens = await tokenize(scope, wrapped('<hson-part at="组件 库' + slash + '名. ♥"/>'));
+    assert.ok(has(tokens, '组件 库', 'meta.part.selector.library.hson'), slash);
+    assert.ok(has(tokens, slash, 'punctuation.separator.part-selector.hson'), slash);
+    assert.ok(has(tokens, '名. ♥', 'meta.part.selector.member.hson'), slash);
+  }
+  const escaped = await tokenize(scope, wrapped('<hson-part lib="odd \\"库" at="名\\u002e ♥"/>'));
+  assert.ok(has(escaped, '\\"', 'constant.character.escape.hson'));
+  assert.ok(has(escaped, '\\u002e', 'constant.character.escape.hson'));
+  for (const body of ['<div lib="components" at="foo"/>', '<hson-part-other lib=components at=foo/>',
+    '<hson-part data:lib=components metadata:at=foo/>', '<hson-part at="one/two/three"/>',
+    '<hson-part at="/foo"/>', '<hson-part at="foo/"/>']) {
+    const tokens = await tokenize(scope, wrapped(body));
+    assert.ok(!tokens.some(token => token.scopes.some(scope => scope.startsWith('meta.part.selector.') || scope === 'punctuation.separator.part-selector.hson')), body);
+    if (!body.startsWith('<hson-part at=')) assert.ok(!hasScope(tokens, 'entity.other.attribute-name.system.hson'), body);
+  }
+  for (const value of ['^{each.kind[0]}', '"components/%{member}"', '"components/^{each.kind[0]}"', '"components/${member}"']) {
+    const tokens = await tokenize(scope, wrapped('<hson-part at=' + value + '/>'));
+    assert.ok(has(tokens, 'at', 'entity.other.attribute-name.system.hson'));
+    assert.ok(!tokens.some(token => token.scopes.some(scope => scope.startsWith('meta.part.selector.') || scope === 'punctuation.separator.part-selector.hson')), value);
+    assert.ok(has(tokens, '{', 'punctuation.definition.template-expression.begin.hson'), value);
+    if (value.includes('each.')) {
+      assert.ok(has(tokens, 'kind', 'meta.reference.member.hson'));
+      assert.ok(has(tokens, '[', 'punctuation.section.selector.begin.hson'));
+      assert.ok(has(tokens, ']', 'punctuation.section.selector.end.hson'));
+    }
+    if (value.includes('%{')) assert.ok(has(tokens, 'member', 'variable.parameter.incoming.hson'));
+  }
+}
+console.log('ok - contextual Part system attributes, static coordinates, Unicode/escaping and dynamic reference preservation in Hson and Markdown');

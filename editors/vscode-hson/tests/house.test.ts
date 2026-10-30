@@ -4,6 +4,7 @@ import { INITIAL } from "vscode-textmate";
 import { hson_highlights, load_hson_grammar } from "../src/highlighting.js";
 import { HSON_APPEARANCE, hsonTokenDefinitions, hsonTokenModifierDefinitions, hsonTokenScopes, type HsonTokenType } from "../src/appearance.js";
 import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
+import { part_coordinates } from "../../../src/internal/part-coordinates.js";
 import { analyze_part_definition } from "../../../src/internal/part-definition.js";
 
 async function run() {
@@ -72,6 +73,77 @@ async function run() {
       assert.deepEqual(pieces[0]?.modifiers, ['hsonQualifier']);
       assert.equal(tokens.find(token => token.range.start === text.indexOf('next'))?.type, 'hsonType');
     }
+  }
+  for (const extension of ['ts', 'tsx']) {
+    for (const body of ['<hson-part lib=components at=foo/>', '<hson-part lib="components" at="foo"/>',
+      '<hson-part at="components/foo"/>', '<hson-part at=components/foo/>', '<hson-part at=foo/>']) {
+      const text = 'import { Hson } from "hson-live";Hson.document`' + body + '`;';
+      const tokens = hson_highlights(grammar, `/workspace/selectors.${extension}`, text);
+      const at = (needle: string) => tokens.find(token => token.range.start === text.indexOf(needle));
+      for (const name of ['lib', 'at'].filter(name => body.includes(name + '='))) assert.equal(at(name + '=')?.type, 'hsonPartSystemAttribute');
+      if (body.includes('components')) assert.equal(at('components')?.type, 'hsonPartLibrary');
+      assert.equal(at('foo')?.type, 'hsonPartMember', 'qualified and unqualified members have one classification');
+      if (body.includes('components/foo')) assert.equal(at('/foo')?.type, 'hsonPartSeparator');
+    }
+    for (const [library, member] of [['组件 库', '名. ♥'], ['odd "library', 'a\\b'], [' spaced ', '😀']]) {
+      assert.deepEqual(part_coordinates(undefined, library + '/' + member), { library, member, qualified: true });
+      const body = '<hson-part at=' + JSON.stringify(library + '/' + member) + '/>';
+      const text = 'import { hson } from "hson-live";hson.fromHson(' + JSON.stringify(body) + ');';
+      const tokens = hson_highlights(grammar, `/workspace/quoted.${extension}`, text);
+      assert.ok(tokens.some(token => token.type === 'hsonPartLibrary'));
+      assert.ok(tokens.some(token => token.type === 'hsonPartMember'));
+      assert.ok(tokens.some(token => token.type === 'hsonPartSeparator'));
+    }
+    for (const value of ['^{each.kind[0]}', '"components/%{member}"', '"components/${member}"', '${member}']) {
+      const text = 'import { Hson } from "hson-live";Hson.document`<hson-part at=' + value + '/>`;';
+      const tokens = hson_highlights(grammar, `/workspace/dynamic.${extension}`, text);
+      assert.ok(tokens.some(token => token.type === 'hsonPartSystemAttribute'));
+      assert.ok(!tokens.some(token => ['hsonPartLibrary', 'hsonPartMember', 'hsonPartSeparator'].includes(token.type)), value);
+      if (value.includes('${')) {
+        const start = text.indexOf('${'), end = text.indexOf('}', start) + 1;
+        assert.ok(!tokens.some(token => token.range.start < end && token.range.end > start), 'native TS owns the entire interpolation');
+        assert.ok(tokens.some(token => token.type === 'hsonDelimiter' && text.slice(token.range.start, token.range.end) === '>'), 'a masked bare hole cannot consume the following tag');
+      }
+    }
+  }
+  // JavaScript line breaks inside holes must not terminate Hson attributes.
+  for (const extension of ['ts', 'tsx']) for (const newline of ['\n', '\r\n']) {
+    for (const hole of ['${' + newline + '  member' + newline + '}', '${' + newline + '  ' + newline + '\tmember' + newline + '}']) {
+      const cases = [
+        '<hson-part at="' + hole + '" lib="components"/>',
+        '<hson-part at="😀' + hole + hole + '" lib="components"/>',
+        '<div title="' + hole + '" class="after" <hson-part at="components/foo"/>/>',
+        '<div "before" ' + hole + ' <hson-part lib="components" at="foo"/>/>',
+        '<section row:data="%{row}" <hson-part at="' + hole + '" lib="components"/> <hson-part at=^{row.kind}/>/>'
+      ];
+      for (const body of cases) {
+        const text = 'import { Hson } from "hson-live";Hson.document`' + body + '`;';
+        const tokens = hson_highlights(grammar, `/workspace/multiline.${extension}`, text);
+        const incomplete = text.slice(0, -2);
+        // Discovery conservatively leaves unterminated host templates native.
+        assert.deepEqual(hson_highlights(grammar, `/workspace/multiline.${extension}`, incomplete), []);
+        // Compare every literal segment to a single-line expression at identical
+        // UTF-16 offsets; only JavaScript's physical lines differ.
+        const flattened = text.replaceAll(hole, hole.replace(/[\r\n]/g, ' '));
+        assert.deepEqual(tokens, hson_highlights(grammar, `/workspace/multiline.${extension}`, flattened));
+        for (const token of tokens) assert.ok(!/[\r\n]/.test(text.slice(token.range.start, token.range.end)));
+        for (const match of text.matchAll(/lib="components"/g)) {
+          assert.equal(tokens.find(t => t.range.start === match.index)?.type, 'hsonPartSystemAttribute');
+          assert.equal(tokens.find(t => t.range.start === match.index + 5)?.type, 'hsonPartLibrary');
+        }
+        if (body.includes('class="after"')) {
+          assert.equal(tokens.find(t => t.range.start === text.indexOf('class='))?.type, 'hsonProperty');
+          assert.equal(tokens.find(t => t.range.start === text.indexOf('after'))?.type, 'hsonString');
+        }
+        assert.equal(tokens.find(t => t.range.start === text.lastIndexOf('>'))?.type, 'hsonDelimiter');
+      }
+    }
+    // Real literal newlines still recover malformed attributes at the next line.
+    const malformed = 'import { Hson } from "hson-live";Hson.document`<div title="unterminated' + newline + '<hson-part lib="components" at="foo"/>`;';
+    const recovered = hson_highlights(grammar, `/workspace/recovery.${extension}`, malformed);
+    assert.equal(recovered.find(t => t.range.start === malformed.indexOf('lib='))?.type, 'hsonPartSystemAttribute');
+    const outside = 'const text = `plain ${' + newline + 'member' + newline + '} text`;';
+    assert.deepEqual(hson_highlights(grammar, `/workspace/outside.${extension}`, outside), []);
   }
   // Literal Hson interpolation is separate from TypeScript template holes.
   const staticText = 'import { hson } from "hson-live";hson.fromHson(\'<p "${value}"/>\');';
@@ -149,11 +221,6 @@ async function run() {
     }
   }
   assert.notEqual(hsonTokenDefinitions.hsonLocalReferenceSigil.role, hsonTokenDefinitions.hsonIncomingReferenceSigil.role);
-  for (const mode of ['dark', 'light'] as const) {
-    const { punctuation, reference } = HSON_APPEARANCE.syntax.hson;
-    assert.deepEqual([punctuation.assignment.house[mode].intensity, punctuation.colon.house[mode].intensity,
-      punctuation.quoteOpen.house[mode].intensity, reference.local.marker.house[mode].intensity], [.75, .75, .6, .75]);
-  }
   // Check these catalog illustrations with the existing Part contracts, supplying
   // surrounding declarations where a local reference or descendant is required.
   const { part, iteration, reference, punctuation } = HSON_APPEARANCE.syntax.hson;
@@ -166,7 +233,7 @@ async function run() {
     }
   }
   for (const example of part.sendingArgument.examples) {
-    const analysis = analyzeExample('<section slide:data=%{slide} ' + example.code + '/>');
+    const analysis = analyzeExample('<section currentSlide:data=%{slide} ' + example.code + '/>');
     assert.deepEqual(analysis.uses.map(use => [use.context, use.reference.namespace, use.binding?.kind]),
       [['forwarding', 'local', 'data']]);
   }

@@ -412,6 +412,25 @@
         "description": "Hson attribute"
       },
       {
+        "id": "hsonPartSystemAttribute",
+        "superType": "property",
+        "description": "Hson Part system attribute"
+      },
+      {
+        "id": "hsonPartLibrary",
+        "superType": "string",
+        "description": "Hson Part selector Library"
+      },
+      {
+        "id": "hsonPartMember",
+        "superType": "string",
+        "description": "Hson Part selector member"
+      },
+      {
+        "id": "hsonPartSeparator",
+        "description": "Hson Part selector separator"
+      },
+      {
         "id": "hsonFlag",
         "description": "Hson flag"
       },
@@ -524,6 +543,22 @@
           ],
           "hsonProperty": [
             "entity.other.attribute-name.hson"
+          ],
+          "hsonPartSystemAttribute": [
+            "entity.other.attribute-name.system.hson",
+            "entity.other.attribute-name.hson"
+          ],
+          "hsonPartLibrary": [
+            "meta.part.selector.library.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonPartMember": [
+            "meta.part.selector.member.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonPartSeparator": [
+            "punctuation.separator.part-selector.hson",
+            "string.quoted.double.hson"
           ],
           "hsonFlag": [
             "constant.language.flag.hson"
@@ -735,6 +770,22 @@
           "hsonProperty": [
             "entity.other.attribute-name.hson"
           ],
+          "hsonPartSystemAttribute": [
+            "entity.other.attribute-name.system.hson",
+            "entity.other.attribute-name.hson"
+          ],
+          "hsonPartLibrary": [
+            "meta.part.selector.library.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonPartMember": [
+            "meta.part.selector.member.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonPartSeparator": [
+            "punctuation.separator.part-selector.hson",
+            "string.quoted.double.hson"
+          ],
           "hsonFlag": [
             "constant.language.flag.hson"
           ],
@@ -944,6 +995,22 @@
           ],
           "hsonProperty": [
             "entity.other.attribute-name.hson"
+          ],
+          "hsonPartSystemAttribute": [
+            "entity.other.attribute-name.system.hson",
+            "entity.other.attribute-name.hson"
+          ],
+          "hsonPartLibrary": [
+            "meta.part.selector.library.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonPartMember": [
+            "meta.part.selector.member.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonPartSeparator": [
+            "punctuation.separator.part-selector.hson",
+            "string.quoted.double.hson"
           ],
           "hsonFlag": [
             "constant.language.flag.hson"

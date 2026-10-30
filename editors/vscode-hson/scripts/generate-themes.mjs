@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { build } from "esbuild";
-import { resolveCatalog, validateExamples } from "./appearance-catalog.mjs";
+import { resolveCatalog, validateExamples, validateBranding } from "./appearance-catalog.mjs";
 
 import ts from "typescript";
 
@@ -35,7 +35,7 @@ export function blend(foreground, background, intensity = 1) {
     + parseInt(background.slice(i, i + 2), 16) * (1 - intensity)).toString(16).padStart(2, "0")).join("");
 }
 export function houseTheme(appearance, definitions, mode) {
-  const styles = resolveCatalog(appearance);
+  const styles = resolveCatalog(appearance, syntaxBindings, generalRules);
   const background = styles.get('ui.editor.editor.background')?.[mode].foreground;
   const style = path => {
     const value = styles.get(path)?.[mode];
@@ -46,7 +46,6 @@ export function houseTheme(appearance, definitions, mode) {
     const value = style(path);
     return blend(value.foreground, background, value.intensity);
   };
-  const syntaxColor = path => color(`syntax.hson.${path}`);
   const colors = {};
   // Preserve generated serialization order as well as values.
   const uiEntries = { ...appearance.ui.editor, ...appearance.ui.workbench };
@@ -59,26 +58,39 @@ export function houseTheme(appearance, definitions, mode) {
     const entry = uiEntries[id];
     colors[id] = entry.inherits?.startsWith('syntax.') || value.intensity !== undefined ? color(path) : value.foreground;
   }
-  const rule = (scope, foreground) => ({ scope, settings: { foreground } });
+  const flags = ['bold', 'italic', 'underline', 'strikethrough'];
+  const semanticStyle = path => {
+    const value = style(path), foreground = color(path), font = {};
+    if (value.fontStyle !== undefined) {
+      const enabled = value.fontStyle.trim().split(/\s+/);
+      for (const flag of flags) font[flag] = enabled.includes(flag);
+    }
+    for (const flag of flags) if (value[flag] !== undefined) font[flag] = value[flag];
+    return Object.keys(font).length ? { foreground, ...font } : foreground;
+  };
+  const syntaxStyle = path => semanticStyle(`syntax.hson.${path}`);
+  const rule = (scope, value) => ({ scope, settings: typeof value === 'string' ? { foreground: value } : {
+    foreground: value.foreground, fontStyle: flags.filter(flag => value[flag]).join(' '),
+  } });
   const semanticTokenColors = {
-    ...Object.fromEntries(Object.entries(generalSemanticPaths).map(([type, path]) => [type, color(path)])),
-    ...Object.fromEntries(Object.keys(definitions).map(type => [type, syntaxColor(tokenAppearancePaths[type])])),
-    '*.hsonQualifier': syntaxColor('attribute.qualifier'),
-    'hsonReceiving.hsonQualifier': syntaxColor('part.receivingArgument'),
-    'hsonReceiving.hsonLocalName': syntaxColor('part.receivingKind'),
+    ...Object.fromEntries(Object.entries(generalSemanticPaths).map(([type, path]) => [type, semanticStyle(path)])),
+    ...Object.fromEntries(Object.keys(definitions).map(type => [type, syntaxStyle(tokenAppearancePaths[type])])),
+    '*.hsonQualifier': syntaxStyle('attribute.qualifier'),
+    'hsonReceiving.hsonQualifier': syntaxStyle('part.receivingArgument'),
+    'hsonReceiving.hsonLocalName': syntaxStyle('part.receivingKind'),
   };
   const tokenColors = [
-    ...generalRules.map(({ scopes, path }) => rule(scopes, color(path))),
+    ...generalRules.map(({ scopes, path }) => rule(scopes, semanticStyle(path))),
     ...Object.entries(definitions).map(([type, definition]) => rule(definition.scopes, semanticTokenColors[type])),
-    rule(syntaxBindings['attribute.qualifier'].scopes, syntaxColor('attribute.qualifier')),
-    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['attribute.qualifier'].scopes[0]}`], syntaxColor('part.receivingArgument')),
-    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['part.receivingKind'].scopes[0]}`], syntaxColor('part.receivingKind')),
+    rule(syntaxBindings['attribute.qualifier'].scopes, syntaxStyle('attribute.qualifier')),
+    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['attribute.qualifier'].scopes[0]}`], syntaxStyle('part.receivingArgument')),
+    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['part.receivingKind'].scopes[0]}`], syntaxStyle('part.receivingKind')),
   ];
   for (const [path, binding] of Object.entries(syntaxBindings)) {
-    const foreground = syntaxColor(path), selector = binding.selector;
+    const foreground = syntaxStyle(path), selector = binding.selector;
     if (['attribute.qualifier', 'part.receivingKind'].includes(path)) continue;
     const base = selector.split('.')[0];
-    if (foreground === semanticTokenColors[base]) continue;
+    if (JSON.stringify(foreground) === JSON.stringify(semanticTokenColors[base])) continue;
     // No invented modifiers: these pairs are still inseparable in TS/TSX.
     if (selector === base) throw new Error(`${path} shares ${selector} with ${tokenAppearancePaths[base]}; keep their effective styles equal until classification supports separation`);
     semanticTokenColors[selector] = foreground;
@@ -91,6 +103,7 @@ export function houseTheme(appearance, definitions, mode) {
 }
 
 export function brandingRuntime(branding) {
+  validateBranding(branding);
   const identityMarkers = Object.entries({ library: 'hson', authoring: 'Hson' }).flatMap(([family, publicName]) =>
     Array.from(publicName).map(letter => {
       const colorSetting = branding[family].letters[letter];
@@ -126,7 +139,7 @@ function replaceValue(text, path, value) {
 }
 export async function generateThemes({ check = false } = {}) {
   const { HSON_APPEARANCE: appearance, hsonTokenDefinitions: definitions, hsonTokenScopes: scopes, hsonTokenModifierDefinitions: modifiers } = await appearanceSource();
-  await validateExamples(appearance, syntaxBindings, syntaxExamplePath);
+  await validateExamples(appearance, syntaxBindings, syntaxExamplePath, generalRules);
   validateGrammarScopes({ ...definitions, ...modifiers }, JSON.parse(await readFile(new URL("syntaxes/hson.tmLanguage.json", root), "utf8")));
   const contributions = ["dark", "light"].map(mode => ({
     label: `Hson House ${mode === "dark" ? "Dark" : "Light"}`, uiTheme: mode === "dark" ? "vs-dark" : "vs",

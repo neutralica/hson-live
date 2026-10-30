@@ -146,6 +146,163 @@
         }
       ]
     },
+    "connector-system-attributes": {
+      "comment": "Only connector headers admit governed attributes. Static coordinates follow part_coordinates: exactly one decoded slash qualifies at; an unqualified at is always a member. Dynamic values retain ordinary strings/references.",
+      "patterns": [
+        {
+          "begin": "(?<![A-Za-z0-9:._-])(lib)([ \\t\\r\\n]*)(=)[ \\t\\r\\n]*",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.other.attribute-name.hson entity.other.attribute-name.system.hson"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.hson"
+            }
+          },
+          "end": "(?=[<>]|/>)|(?<=[^ \\t\\r\\n])(?=[ \\t\\r\\n])",
+          "patterns": [
+            {
+              "name": "string.quoted.double.hson",
+              "match": "(\")((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))*)(\")",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.string.begin.hson"
+                },
+                "2": {
+                  "name": "meta.part.selector.library.hson",
+                  "patterns": [
+                    {
+                      "include": "#string-escapes"
+                    }
+                  ]
+                },
+                "3": {
+                  "name": "punctuation.definition.string.end.hson"
+                }
+              }
+            },
+            {
+              "name": "string.unquoted.attribute-value.hson",
+              "match": "((?:[$%^](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%^/])+)(?=[ \\t\\r\\n<>]|/>|$)",
+              "captures": {
+                "1": {
+                  "name": "meta.part.selector.library.hson"
+                }
+              }
+            },
+            {
+              "include": "#attribute-strings"
+            },
+            {
+              "include": "#part-references"
+            },
+            {
+              "name": "string.unquoted.attribute-value.hson",
+              "match": "(?:/(?!>)|[$%^](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%^])+"
+            }
+          ]
+        },
+        {
+          "begin": "(?<![A-Za-z0-9:._-])(at)([ \\t\\r\\n]*)(=)[ \\t\\r\\n]*",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.other.attribute-name.hson entity.other.attribute-name.system.hson"
+            },
+            "3": {
+              "name": "keyword.operator.assignment.hson"
+            }
+          },
+          "end": "(?=[<>]|/>)|(?<=[^ \\t\\r\\n])(?=[ \\t\\r\\n])",
+          "patterns": [
+            {
+              "name": "string.quoted.double.hson",
+              "match": "(\")((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))+)((?:/|\\\\/|\\\\u002[fF]))((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))+)(\")",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.string.begin.hson"
+                },
+                "2": {
+                  "name": "meta.part.selector.library.hson",
+                  "patterns": [
+                    {
+                      "include": "#string-escapes"
+                    }
+                  ]
+                },
+                "3": {
+                  "name": "punctuation.separator.part-selector.hson"
+                },
+                "4": {
+                  "name": "meta.part.selector.member.hson",
+                  "patterns": [
+                    {
+                      "include": "#string-escapes"
+                    }
+                  ]
+                },
+                "5": {
+                  "name": "punctuation.definition.string.end.hson"
+                }
+              }
+            },
+            {
+              "name": "string.unquoted.attribute-value.hson",
+              "match": "((?:[$%^](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%^/])+)(/)((?:[$%^](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%^/])+)(?=[ \\t\\r\\n<>]|/>|$)",
+              "captures": {
+                "1": {
+                  "name": "meta.part.selector.library.hson"
+                },
+                "2": {
+                  "name": "punctuation.separator.part-selector.hson"
+                },
+                "3": {
+                  "name": "meta.part.selector.member.hson"
+                }
+              }
+            },
+            {
+              "name": "string.quoted.double.hson",
+              "match": "(\")((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))*)(\")",
+              "captures": {
+                "1": {
+                  "name": "punctuation.definition.string.begin.hson"
+                },
+                "2": {
+                  "name": "meta.part.selector.member.hson",
+                  "patterns": [
+                    {
+                      "include": "#string-escapes"
+                    }
+                  ]
+                },
+                "3": {
+                  "name": "punctuation.definition.string.end.hson"
+                }
+              }
+            },
+            {
+              "name": "string.unquoted.attribute-value.hson",
+              "match": "((?:[$%^](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%^/])+)(?=[ \\t\\r\\n<>]|/>|$)",
+              "captures": {
+                "1": {
+                  "name": "meta.part.selector.member.hson"
+                }
+              }
+            },
+            {
+              "include": "#attribute-strings"
+            },
+            {
+              "include": "#part-references"
+            },
+            {
+              "name": "string.unquoted.attribute-value.hson",
+              "match": "(?:/(?!>)|[$%^](?!\\{)|[^ \\t\\r\\n<>\\[\\]«»\"'$%^])+"
+            }
+          ]
+        }
+      ]
+    },
     "connector-headers": {
       "comment": "Line-ending keyword names stay provisional so a later = can continue the header.",
       "begin": "(<)[ \\t\\r\\n]*((?i:hson-part))(?![A-Za-z0-9:._-])",
@@ -167,6 +324,7 @@
         }
       },
       "patterns": [
+        { "include": "#connector-system-attributes" },
         {
           "name": "entity.other.attribute-name.sending.hson",
           "match": "(?<![A-Za-z0-9:._-])(?:data|doc):[A-Za-z_][A-Za-z0-9._-]*(?![A-Za-z0-9:._-])",

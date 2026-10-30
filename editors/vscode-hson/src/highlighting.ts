@@ -57,13 +57,19 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     ...interpolated,
     ...calls.interpolated.map(source => ({ source, holes: source.substitutionRanges }))];
   for (const { source, holes } of islands) {
-    // Omit expressions from grammar input and output, retaining offsets and
-    // physical newlines. This is coloring only, never a parse/admission candidate.
+    // Omit expressions from grammar input and output, retaining UTF-16 offsets.
+    // Hole newlines are JavaScript trivia, not Hson string boundaries. Mask them
+    // too so TextMate sees the literal segments in their original Hson context.
+    // This is coloring only, never a parse/admission candidate.
     let body = "", offset = source.bodyRange.start;
     for (const hole of holes) {
       // Discovery owns JavaScript boundaries. Leave both punctuation and
       // expression contents to the TypeScript editor's native highlighting.
-      body += text.slice(offset, hole.start) + text.slice(hole.start, hole.end).replace(/[^\r\n]/g, " ");
+      const masked = text.slice(hole.start, hole.end).replace(/[\s\S]/g, " ");
+      // Retain only an inert interpolation boundary so a selector containing a
+      // native TS hole cannot look like a static Library/member coordinate.
+      // The entire hole, including these sentinels, is omitted from output.
+      body += text.slice(offset, hole.start) + "${" + masked.slice(2, -1) + "}";
       offset = hole.end;
     }
     body += text.slice(offset, source.bodyRange.end);
