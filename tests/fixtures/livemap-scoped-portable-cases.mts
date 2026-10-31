@@ -64,15 +64,15 @@ export function scoped_portable_roundtrip(input: unknown): PortableDocumentScope
 export function scoped_portable_cases(check: (name: string, run: () => void) => void) {
   check("structured Part portable capture restores in a fresh runtime without source or argument environments", () => {
     const map = hsonLiveMap.fromLibraries({ parts: {parts: {
-      panel: {kind:'document', document:'<section hson:part slide:data="%{slide}" @:root <hson-part @:child at="leaf" data:x="^{slide.details}"/>/>'},
-      leaf: {kind:'document', document:'<b hson:part x:data="%{x}" @:root title="^{x.title}" "^{x.no}"/>', stylesheet:':scope{color:red}'},
+      panel: {kind:'document', document:'<section hson:part data:slide="%{slide}" @:root <hson-part @:child at="leaf" x:data="^{slide.details}"/>/>'},
+      leaf: {kind:'document', document:'<b hson:part data:x="%{x}" @:root title="^{x.title}" "^{x.no}"/>', stylesheet:':scope{color:red}'},
     }}, page:{document:'<main/>'} });
     const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
     const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;
-    const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" data:slide="${data}"/> <hson-part lib="parts" at="panel" data:slide="${data}"/>/>`);
+    const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" slide:data="${data}"/> <hson-part lib="parts" at="panel" slide:data="${data}"/>/>`);
     const candidate = a.prepareScopedDocument(owner, {root:parsed.root, quads:parsed.declarations});
     const portable = a.captureScopedDocument(candidate);
-    assert.doesNotMatch(JSON.stringify(portable), /PRIVATE_ARGUMENT|data:slide|hson-part|parameters|bindings.*slide/);
+    assert.doesNotMatch(JSON.stringify(portable), /PRIVATE_ARGUMENT|slide:data|hson-part|parameters|bindings.*slide/);
     assert.ok(JSON.stringify(portable.root).includes('%{literal}'));
     assert.equal(portable.scopes.occurrences.length, 4);
     const receiving = receiver(), next = receiving.restore(copy(portable));

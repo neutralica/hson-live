@@ -11,13 +11,13 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const executable = process.env.HSON_VSCODE_EXECUTABLE ?? "/Applications/Visual Studio Code.app/Contents/MacOS/Code";
 const testRoot = await realpath(await mkdtemp('/tmp/hson-house-'));
 const workspace = join(testRoot, 'workspace');
-const body = `<section @:deck hson:part slide:data="%{slide}"
+const body = `<section @:deck hson:part data:slide="%{slide}"
   class="deck" title="Readable quoted content"
   <h1 part:optional "^{slide.title}"/>
   <p "%{slide.description}"/>
   <div for:row="^{slide.rows}" per:item="%{items}"
     <hson-part lib="parts" at="card"
-      data:slide="%{slide}" doc:body="^{body}"/>
+      slide:data="%{slide}" body:doc="^{body}"/>
   />
   <svg viewBox="0 0 24 24" <path d="M2 10h4"/>/>
   \${deck.render(slide)}

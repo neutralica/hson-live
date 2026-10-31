@@ -52,7 +52,7 @@ export function styled_fixture(count = 3) {
 export function optional_subject_fixture() {
   const gone = '[hson\\:quad="gone"]';
   return legacy_flat_styled_map({ parts: { parts: { optional: styled_part(
-    '<section hson:part d:data="%{payload}" <b @:gone part:optional "^{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
+    '<section hson:part data:d="%{payload}" <b @:gone part:optional "^{d.missing}"/> <p id="optional-not" class="target"/> <p id="optional-is" class="is-target"/> <p id="optional-where" class="where-target"/> <div id="optional-has" class="has-target" <i/>/> <div id="optional-positive" class="positive-target" <i/>/> <p id="optional-list" class="list-target"/> <p id="optional-multi" class="multi-target"/> <p id="optional-nth" class="nth-target"/>/>',
     {
       [`& .target:not(${gone})`]: {color:'red'}, '& .target': {color:'blue'},
       '& .is-target:not(.never)': {color:'blue'}, [`& .is-target:is(${gone},p)`]: {color:'red'},
@@ -65,7 +65,7 @@ export function optional_subject_fixture() {
       [`& .multi-target:not(${gone}${gone})`]: {color:'red'}, '& .multi-target:not(.never)': {color:'blue'},
       '& .nth-target:not(.never):nth-child(n)': {color:'blue'}, [`& .nth-target:nth-child(n of ${gone},p)`]: {color:'red'},
     },
-  ) } }, page: { document: '<html <head/> <body <hson-part lib="parts" at="optional" data:payload="<>"/> <p id="optional-outside" class="target"/>/>/>' } });
+  ) } }, page: { document: '<html <head/> <body <hson-part lib="parts" at="optional" payload:data="<>"/> <p id="optional-outside" class="target"/>/>/>' } });
 }
 /** Browser scoping oracles use structured authoring; raw text has separate isolation oracles. */
 export function selector_fixture() {
@@ -101,11 +101,11 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
   check("styled replacement publishes complete scoped effects for replacement and optional retirement", () => {
     const map = hsonLiveMap.fromLibraries({parts:{parts:{
       ordinary:styled_part('<b hson:part/>', {color:'blue'}),
-      optional:styled_part('<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>', {color:'red'}),
+      optional:styled_part('<p hson:part part:optional data:d="%{payload}" "^{d.title}"/>', {color:'red'}),
     }},page:{document:'<main <i/>/>'}});
     const p=page(map), initial=p.root(), target={kind:'path' as const,path:path([0,0,1,0,0,0])};
     const connector=(name:string,payload='<>')=>{
-      const node=hsonTransform.fromHson(`<hson-part lib="parts" at="${name}" data:payload="${payload}"/>`).toNode().$_content[0];
+      const node=hsonTransform.fromHson(`<hson-part lib="parts" at="${name}" payload:data="${payload}"/>`).toNode().$_content[0];
       if(!is_Node(node))throw Error('connector'); return node;
     };
     p.document.content.insert(target,1,connector('optional','<title 0>'));

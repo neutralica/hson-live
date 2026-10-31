@@ -1,5 +1,9 @@
 # Governed Parts, composition, and occurrence-owned CSS
 
+Structured arguments follow the [directional Part grammar](part-argument-direction.md):
+receiving roots use `data:local` / `doc:local`; invocations use
+`parameter:data` / `parameter:doc`. Scalar arguments retain their existing syntax.
+
 A governed Part collection is an inert object data Library. Its keyed members are
 exact `{ kind: "document", document: string, css?: CssMap, stylesheet?: string }` records with exactly
 one ordinary, non-connector element root. Admission permanently binds each name to

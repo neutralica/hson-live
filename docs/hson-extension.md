@@ -20,6 +20,9 @@ Part authoring uses compiler-owned static source facts from supported official
 `fromLibraries`, Locus `create`/`resume`/`admit`, and local `addLibraries` calls.
 Contextual completion suggests collection/member coordinates, connector argument
 names, and `%{name}` spellings using the production grammar's source ranges.
+Structured receiving declarations use `data:local` / `doc:local`; argument
+completion emits `parameter:data` / `parameter:doc`. Navigation targets the local
+name after the receiving colon, and legacy directionality gets migration diagnostics.
 Suggestions from imported/aliased inventories can be possible rather than certain.
 Static reference diagnostics require a sufficiently complete, eligible receiving
 candidate; unknown or dynamic inventories are not treated as missing definitions.

@@ -61,7 +61,7 @@ export function write_part_invocation(library: string, member: string, input: re
         throw new TypeError("Part.write arguments require finite scalar values.");
       }
       if (kind !== "scalar" && typeof value !== "string") throw new TypeError(`Part.write ${kind} arguments require serialized strings.`);
-      attrs[kind === "scalar" ? name : `${kind}:${name}`] = String(value);
+      attrs[kind === "scalar" ? name : `${name}:${kind}`] = String(value);
       supplied.add(name);
     }
   }

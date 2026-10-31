@@ -52,10 +52,11 @@ export function is_part_parameter_name(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(name);
 }
 
-/** Normalize explicit Data/Document sending prefixes; coordinates are never bindings. */
+/** Normalize explicit Data/Document sending suffixes; coordinates are never bindings. */
 export function part_argument_name(raw: string): Readonly<{ name: string; kind: PartArgumentKind }> | undefined {
-  const kind = raw.startsWith("data:") ? "data" : raw.startsWith("doc:") ? "doc" : "scalar";
-  const name = kind === "scalar" ? raw : raw.slice(kind === "data" ? 5 : 4);
+  if (!is_part_argument_attribute(raw)) return undefined;
+  const kind = raw.endsWith(":data") ? "data" : raw.endsWith(":doc") ? "doc" : "scalar";
+  const name = kind === "scalar" ? raw : raw.slice(0, kind === "data" ? -5 : -4);
   return is_part_parameter_name(name) && is_part_argument_attribute(name) ? { name, kind } : undefined;
 }
 
@@ -143,23 +144,39 @@ export function part_reference_text(reference: PartReference): string {
   return `${reference.namespace === "incoming" ? "%" : "^"}{${reference.reference}}`;
 }
 
-/** Connector sending syntax wins for the deliberately valid data:data spelling. */
+/** Receiving prefixes apply only to definition elements, never connectors. */
 export function is_part_receiving_attribute(tag: string, name: string): boolean {
-  return !is_part_iterator_attribute(name) && (name.endsWith(":data") || name.endsWith(":doc"))
-    && !(tag.toLowerCase() === "hson-part" && (name.startsWith("data:") || name.startsWith("doc:")));
+  return tag.toLowerCase() !== "hson-part" && (name.startsWith("data:") || name.startsWith("doc:"));
+}
+
+/** Call only in governed Part contexts; ordinary HTML attributes keep their meaning.
+ * Overlapping names such as data:data are interpreted by their receiving/sending position. */
+export function part_direction_issue(tag: string, name: string): string | undefined {
+  if (is_part_iterator_attribute(name)) return undefined;
+  const prefix = name.startsWith("data:") ? "data" : name.startsWith("doc:") ? "doc" : undefined;
+  const suffix = name.endsWith(":data") ? "data" : name.endsWith(":doc") ? "doc" : undefined;
+  if (tag.toLowerCase() === "hson-part") {
+    if (prefix !== undefined && suffix === undefined) return `Part sending arguments use parameter:type; replace ${JSON.stringify(name)} with ${JSON.stringify(`${name.slice(prefix.length + 1)}:${prefix}`)}.`;
+  } else if (suffix !== undefined && prefix === undefined) {
+    return `Part receiving declarations use type:local; replace ${JSON.stringify(name)} with ${JSON.stringify(`${suffix}:${name.slice(0, -suffix.length - 1)}`)}.`;
+  }
+  return undefined;
 }
 
 /** A receiving declaration binds one incoming structured root, never a selected subtree. */
 export type PartReceivingDeclaration = Readonly<{ name: string; kind: "data" | "doc"; reference: PartReference }>;
 export function part_receiving_declaration(raw: string, value: unknown): PartReceivingDeclaration {
-  const kind = raw.endsWith(":doc") ? "doc" : "data";
-  const name = raw.slice(0, kind === "data" ? -5 : -4);
+  const kind = raw.startsWith("doc:") ? "doc" : "data";
+  const name = raw.slice(kind === "data" ? 5 : 4);
   const reference = typeof value === "string" ? whole_part_reference(value) : undefined;
-  if (!(raw.endsWith(":data") || raw.endsWith(":doc")) || !is_part_parameter_name(name) || !is_part_argument_attribute(name)) {
+  if (!(raw.startsWith("data:") || raw.startsWith("doc:")) || !is_part_parameter_name(name)) {
     throw new TypeError(`Invalid Part receiving declaration ${JSON.stringify(raw)}.`);
   }
   if (reference === undefined || reference.namespace !== "incoming" || reference.path.length !== 0) {
     throw new TypeError(`Part receiving declaration ${JSON.stringify(raw)} requires one whole incoming argument reference.`);
+  }
+  if (is_part_iterator_attribute(`${reference.name}:`)) {
+    throw new TypeError(`Structured Part input ${JSON.stringify(reference.name)} cannot be sent as ${JSON.stringify(`${reference.name}:${kind}`)}: ${JSON.stringify(`${reference.name}:`)} is reserved for Part iteration. Rename the incoming parameter in %{${reference.name}}; the local binding may keep its name.`);
   }
   return { name, kind, reference };
 }
@@ -184,10 +201,11 @@ export function part_reference_checkpoint(value: string, cursor: number): Readon
 }
 
 /** contentTags are the owners of enclosing content, excluding an attribute's own element. */
-export function part_placeholder_placement_issue(contentTags: readonly string[], attribute?: Readonly<{ name: string; value: unknown }>): string | undefined {
+export function part_placeholder_placement_issue(contentTags: readonly string[], attribute?: Readonly<{ name: string; value: unknown }>, tag?: string): string | undefined {
   if (contentTags.some(tag => ["script", "style"].includes(tag.toLowerCase()))) return "Part placeholders in script/style content are unsupported.";
   if (attribute !== undefined) {
-    if (/^on/i.test(attribute.name) && typeof attribute.value === "string") return "Part placeholders in event-handler attributes are unsupported.";
+    const argument = tag?.toLowerCase() === "hson-part" ? part_argument_name(attribute.name) : undefined;
+    if ((argument === undefined || argument.kind === "scalar") && /^on/i.test(attribute.name) && typeof attribute.value === "string") return "Part placeholders in event-handler attributes are unsupported.";
     if (typeof attribute.value === "object" && attribute.value !== null) return "Part placeholders in structured attributes are unsupported.";
   }
   return undefined;

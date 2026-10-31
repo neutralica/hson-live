@@ -14,7 +14,7 @@ import { qualify_authored_document_source } from "../../api/document/hson-author
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { PART_DECLARATION, part_declaration_issue, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
+import { PART_DECLARATION, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_source } from "./schema-annotation.js";
@@ -279,6 +279,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         },
         elementHeader(tag, range, attrs, complete) {
           const connector = tag.toLowerCase() === "hson-part";
+          if (complete && (connector || attrs.some(attr => attr.name === PART_DECLARATION))) {
+            for (const attr of attrs) {
+              const issue = part_direction_issue(tag, attr.name);
+              const range = attributeRanges.get(attr)?.name;
+              const where = range === undefined ? undefined : map(range);
+              if (issue !== undefined && where !== undefined) referenceIssues.push({ location: where, message: issue });
+            }
+          }
           const rootLocation = tags.length === 0 && complete ? map(range) : undefined;
           if (rootLocation !== undefined) roots.push(rootLocation);
           for (const attr of attrs) {
@@ -338,8 +346,9 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               }
               continue;
             }
-            if (attr.value?.direct !== true && typeof value === "string" && part_placeholder_placement_issue(tags, { name: attr.name, value }) === undefined) {
-              observeUses(value, attributeRanges.get(attr)?.value, "attribute", connector && attr.name.startsWith("data:") ? "data" : connector && attr.name.startsWith("doc:") ? "doc" : undefined);
+            if (attr.value?.direct !== true && typeof value === "string" && part_placeholder_placement_issue(tags, { name: attr.name, value }, tag) === undefined) {
+              const argument = connector ? part_argument_name(attr.name) : undefined;
+              observeUses(value, attributeRanges.get(attr)?.value, "attribute", argument?.kind === "scalar" ? undefined : argument?.kind);
             }
           }
           if (!connector) return;
@@ -350,7 +359,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             if (name === undefined) return [];
             const valueRange = ranges?.value === undefined ? undefined : map(ranges.value);
             const value = attr.name.toLowerCase() === PART_DECLARATION ? undefined : split_attrs_meta([attr]).attrs[attr.name];
-            const directSlots = attr.value?.direct === true && attr.value.text === "" && attr.name.startsWith("data:")
+            const argument = part_argument_name(attr.name);
+            const directSlots = attr.value?.direct === true && attr.value.text === "" && argument?.kind === "data"
               ? slots.filter(slot => attr.start.index <= slot.offset && slot.offset <= attr.end.index) : [];
             const expression = directSlots.length === 1 && typescript.isTaggedTemplateExpression(producer) && typescript.isTemplateExpression(producer.template)
               ? producer.template.templateSpans[directSlots[0]!.substitution]?.expression : undefined;
@@ -359,7 +369,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
               ...(dynamicValue === undefined ? {} : { dynamicValue }),
               ...(schema === undefined ? {} : { dataSchema: schema }),
-              ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && !attr.name.startsWith("data:") && !attr.name.startsWith("doc:") ? {} : { value }) }];
+              ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && (argument === undefined || argument.kind === "scalar") ? {} : { value }) }];
           }) });
         },
       }, { slots, substitutions: slots.map(() => "") });
@@ -415,7 +425,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           issue.declaration = bindingSources?.references.find(use => use.reference === issue.reference)?.declaration?.location;
         }
         const declarationLocation = (binding: PartLocalDeclaration) => nodeLocation(binding.node,
-          binding.receiving === undefined ? analysis.iterators.get(binding.node)?.attribute : `${binding.name}:${binding.kind}`,
+          binding.receiving === undefined ? analysis.iterators.get(binding.node)?.attribute : `${binding.kind}:${binding.name}`,
           binding.receiving === undefined ? "name" : "value");
         const sourceScopes = new Map<ReadonlyMap<string, PartLocalDeclaration>, readonly PartLocalSource[]>();
         const dataOrigin = (binding: PartLocalDeclaration, depth = 0): PartLocalSource["dataOrigin"] => {

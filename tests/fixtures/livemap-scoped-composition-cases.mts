@@ -86,9 +86,9 @@ function unchanged(f: ReturnType<typeof fixture>, run: () => void) {
 export function scoped_composition_cases(check: (name: string, run: () => void) => void) {
   check("optional root scoped no-ops, replacement removal, root replacement and CSS lifetime", () => {
     const f = fixture('<main <i/>/>');
-    f.definitions.at([]).object.setKey('optional', part('<aside hson:part @:root part:optional d:data="%{payload}" "^{d.title}"/>', ':scope{color:orange}'));
+    f.definitions.at([]).object.setKey('optional', part('<aside hson:part @:root part:optional data:d="%{payload}" "^{d.title}"/>', ':scope{color:orange}'));
     const input = (data: object) => {
-      const value = source(Hson.document`<hson-part lib="parts" at="optional" data:payload="${Hson.data.from(data)}"/>`).root.$_content[0];
+      const value = source(Hson.document`<hson-part lib="parts" at="optional" payload:data="${Hson.data.from(data)}"/>`).root.$_content[0];
       assert.ok(is_Node(value)); return value;
     };
     const insertOptional = (data: object, index = 1): LiveMapGraphOp => ({ domain: 'graph', op: 'insert-content', target: target([0, 0]), index, content: input(data) });
@@ -119,10 +119,10 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
 
   check("structured Part scoped insertion, replacement, removal and late rejection retain independent lifetimes", () => {
     const f = fixture('<main <i/>/>');
-    f.definitions.at([]).object.setKey('typed', part('<section hson:part slide:data="%{slide}" @:root title="^{slide.title}" <hson-part @:child at="typedLeaf" data:payload="^{slide}"/>/>', ':scope{color:red}'));
-    f.definitions.at([]).object.setKey('typedLeaf', part('<b hson:part payload:data="%{payload}" @:root "^{payload.title}"/>', ':scope{color:blue}'));
+    f.definitions.at([]).object.setKey('typed', part('<section hson:part data:slide="%{slide}" @:root title="^{slide.title}" <hson-part @:child at="typedLeaf" payload:data="^{slide}"/>/>', ':scope{color:red}'));
+    f.definitions.at([]).object.setKey('typedLeaf', part('<b hson:part data:payload="%{payload}" @:root "^{payload.title}"/>', ':scope{color:blue}'));
     const input = (title: string) => {
-      const root = source(Hson.document`<hson-part lib="parts" at="typed" data:slide="${Hson.data.from({ title })}"/>`).root;
+      const root = source(Hson.document`<hson-part lib="parts" at="typed" slide:data="${Hson.data.from({ title })}"/>`).root;
       const node = root.$_content[0]; assert.ok(is_Node(node)); return node;
     };
     const insertTyped = (title: string, index: number): LiveMapGraphOp => ({ domain: 'graph', op: 'insert-content', target: target([0, 0]), index, content: input(title) });
@@ -138,7 +138,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
       const removed = f.next(replaced, [remove([0, 0], 1)]);
       assert.equal(removed.scopes.occurrences.length, 2);
       assert.equal(at(removed, [0, 0, 1]).lifetime, right.lifetime);
-      const malformed = source('<hson-part lib="parts" at="typed" data:slide="null"/>').root.$_content[0]; assert.ok(is_Node(malformed));
+      const malformed = source('<hson-part lib="parts" at="typed" slide:data="null"/>').root.$_content[0]; assert.ok(is_Node(malformed));
       assert.throws(() => f.next(two, [insertTyped('early', 0), {domain:'graph',op:'insert-content',target:target([0,0]),index:1,content:malformed}]), /path/);
       const rootReplacement = f.next(two, [{domain:'graph',op:'replace-root',mode:'document',root:{$_tag:'_hson_root',$_content:[input('root')]}}]);
       assert.equal(rootReplacement.scopes.occurrences.length, 2);

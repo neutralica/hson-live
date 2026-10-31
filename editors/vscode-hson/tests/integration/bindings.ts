@@ -55,7 +55,7 @@ async function rendered_colors(workspace: string, document: vscode.TextDocument,
 }
 export async function run_binding_intelligence(workspace: string, extensionPath: string): Promise<void> {
   const prefix = 'import {Hson} from "hson-live/hson";\nconst hostValue = "native";\nconst doc = Hson.document`';
-  const nested = '<main hson:part renamed:data=%{input} <i for:renamed=^{renamed} <b per:key:renamed=^{renamed.children} title=^{renamed.kind}/> <p title="^{renamed?}"/>/> <p title=^{renamed}/>/>';
+  const nested = '<main hson:part data:renamed=%{input} <i for:renamed=^{renamed} <b per:key:renamed=^{renamed.children} title=^{renamed.kind}/> <p title="^{renamed?}"/>/> <p title=^{renamed}/>/>';
   const reports: string[] = [];
   for (const [name, text] of [
     ['bindings.hson', canonical], ['bindings.md', '# Markdown\n```hson\n' + canonical + '\n```\nOutside ^{blocks}'],
@@ -67,13 +67,13 @@ export async function run_binding_intelligence(workspace: string, extensionPath:
     const document = await open(workspace, name!, text!);
     await vscode.window.showTextDocument(document);
     const expected = name!.startsWith('nested') ? [
-      { at: text!.indexOf('^{renamed}') + 2, target: text!.indexOf('renamed:data') },
+      { at: text!.indexOf('^{renamed}') + 2, target: text!.indexOf('data:renamed') + 5 },
       { at: text!.indexOf('^{renamed.children}') + 2, target: text!.indexOf('for:renamed') + 4 },
       { at: text!.indexOf('^{renamed.kind}') + 2, target: text!.indexOf('per:key:renamed') + 8 },
       { at: text!.indexOf('^{renamed?}') + 2, target: text!.indexOf('for:renamed') + 4 },
-      { at: text!.lastIndexOf('^{renamed}') + 2, target: text!.indexOf('renamed:data') },
+      { at: text!.lastIndexOf('^{renamed}') + 2, target: text!.indexOf('data:renamed') + 5 },
     ] : [
-      { at: text!.indexOf('^{blocks}') + 2, target: text!.indexOf('blocks:data') },
+      { at: text!.indexOf('^{blocks}') + 2, target: text!.indexOf('data:blocks') + 5 },
       { at: text!.indexOf('^{each.kind}') + 2, target: text!.indexOf('for:each') + 4 },
       { at: text!.indexOf('^{each}') + 2, target: text!.indexOf('for:each') + 4 },
     ];
@@ -106,7 +106,7 @@ export async function run_binding_intelligence(workspace: string, extensionPath:
         if (name!.endsWith('.md')) assert.ok(tokens.every(token => token.start >= text!.indexOf('<div') && token.end <= text!.indexOf('\n```', text!.indexOf('<div'))));
       }
       if (nativeCompositionSupported || !name!.match(/\.tsx?$/)) {
-        await vscode.workspace.getConfiguration('editor').update('semanticTokenColorCustomizations', { rules: { 'hsonReceiving.hsonQualifier': '#123456', 'hsonIteration.hsonLocalName': '#654321' } }, vscode.ConfigurationTarget.Workspace);
+        await vscode.workspace.getConfiguration('editor').update('semanticTokenColorCustomizations', { rules: { 'hsonReceiving.hsonLocalName': '#123456', 'hsonIteration.hsonLocalName': '#654321' } }, vscode.ConfigurationTarget.Workspace);
         try { await rendered_colors(workspace, document, 'Default Dark Modern', extensionPath, expected, true); }
         finally { await vscode.workspace.getConfiguration('editor').update('semanticTokenColorCustomizations', undefined, vscode.ConfigurationTarget.Workspace); }
       }
@@ -125,8 +125,8 @@ export async function run_binding_intelligence(workspace: string, extensionPath:
   const edit = new vscode.WorkspaceEdit(); edit.replace(editable.uri, new vscode.Range(editable.positionAt(0), editable.positionAt(canonical.length)), renamed);
   assert.ok(await vscode.workspace.applyEdit(edit));
   const moved = await definitions(editable, renamed.indexOf('^{renamed}') + 2);
-  assert.equal(editable.offsetAt(moved[0]!.range.start), renamed.indexOf('renamed:data'));
-  const broken = renamed.replace('renamed:data', 'different:data');
+  assert.equal(editable.offsetAt(moved[0]!.range.start), renamed.indexOf('data:renamed') + 5);
+  const broken = renamed.replace('data:renamed', 'data:different');
   const breakEdit = new vscode.WorkspaceEdit(); breakEdit.replace(editable.uri, new vscode.Range(editable.positionAt(0), editable.positionAt(renamed.length)), broken);
   await vscode.workspace.applyEdit(breakEdit);
   assert.deepEqual(await definitions(editable, broken.indexOf('^{renamed}') + 2), []);
@@ -139,7 +139,7 @@ export async function run_binding_intelligence(workspace: string, extensionPath:
   await open(project, 'tsconfig.json', JSON.stringify({ compilerOptions: { strict: true, target: 'ESNext', module: 'NodeNext', moduleResolution: 'NodeNext', skipLibCheck: true, types: [],
     paths: { 'hson-live': [join(root, 'src/index.ts')], 'hson-live/hson': [join(root, 'src/hson-authoring.ts')], 'hson-live/livemap': [join(root, 'src/api/livemap/index.ts')] } }, include: ['*.ts'] }));
   await open(project, 'package.json', '{"type":"module"}');
-  const contractText = 'import {Hson} from "hson-live/hson"; export const contract = Hson.document`<main hson:part model:data=%{payload} <p title=^{model.title}/>/>';
+  const contractText = 'import {Hson} from "hson-live/hson"; export const contract = Hson.document`<main hson:part data:model=%{payload} <p title=^{model.title}/>/>';
   const contract = await open(project, 'contract.ts', contractText + '`;');
   const source = 'import {Hson} from "hson-live/hson"; import {hsonLiveMap} from "hson-live/livemap"; import {contract} from "./contract.js";\n'
     + 'const loc = hsonLiveMap.fromLibraries({page:{document:Hson.document`<hson-part at="components/x"/>`}, components:{parts:{x:{kind:"document",document:contract}}}});\n'

@@ -13,7 +13,7 @@ export const syntaxBindings = {
   "part.declaration": { scopes: [scope.partDeclaration], selector: "hsonDeclaration" },
   "part.directive": { scopes: [scope.directive], selector: "hsonDirective" },
   "part.receivingArgument": { scopes: [scope.receiving], selector: "hsonReceiving" },
-  "part.receivingKind": { context: scope.receiving, scopes: [scope.attributeLocalName], selector: "hsonReceiving.hsonLocalName" },
+  "part.receivingKind": { context: scope.receiving, scopes: [scope.attributeQualifier], selector: "hsonReceiving.hsonQualifier" },
   "part.sendingArgument": { scopes: [scope.sending], selector: "hsonSending" },
   "iteration.name": { scopes: [scope.iteration], selector: "hsonIteration" },
   "reference.incoming.marker": { scopes: [scope.interpolationPercent], selector: "hsonIncomingReferenceSigil" },
@@ -134,9 +134,12 @@ export const uiColorOrder = ["editor.background", "editor.foreground", "foregrou
 
 /** Match documentation targets against existing grammar scopes. This does not
  * parse Hson or alter the runtime adapter. Specific leaf scopes win, just as
- * they do in theme rules; the receiving prefix retains its existing override. */
+ * they do in theme rules; the receiving local retains its existing override. */
 export function syntaxExamplePath(scopes: readonly string[]): string | undefined {
-  if (scopes.includes(scope.receiving) && scopes.at(-1) === scope.attributeQualifier) return "part.receivingArgument";
+  if (scopes.includes(scope.receiving) && scopes.at(-1) === scope.attributeLocalName) return "part.receivingArgument";
+  if (scopes.includes(scope.receiving) && scopes.at(-1) === scope.attributeQualifier) return "part.receivingKind";
+  if (scopes.includes(scope.sending) && scopes.at(-1) === scope.attributeQualifier) return "part.sendingArgument";
+  if (scopes.includes(scope.sending) && scopes.at(-1) === scope.attributeLocalName) return "attribute.qualifier";
   let selected: string | undefined;
   let deepest = -1;
   for (const [path, binding] of Object.entries(syntaxBindings)) {

@@ -235,7 +235,7 @@ export async function run(): Promise<void> {
     assert.ok(decode(document, result, hsonSemanticLegend).some(token => token.type === 'hsonType'));
   }
   fresh.dispose();
-  const taxonomy = 'import { Hson } from "hson-live/hson";\r\nexport const parts = { card: Hson.document`<section hson:part blocks:data="%{blocks}" <hson-part at="^{block.kind[0]}"/> <list [1,2]> />` };';
+  const taxonomy = 'import { Hson } from "hson-live/hson";\r\nexport const parts = { card: Hson.document`<section hson:part data:blocks="%{blocks}" <hson-part at="^{block.kind[0]}"/> <list [1,2]> />` };';
   const taxonomyUri = vscode.Uri.file(join(workspace, 'taxonomy.ts'));
   await vscode.workspace.fs.writeFile(taxonomyUri, Buffer.from(taxonomy));
   const taxonomyDocument = await vscode.workspace.openTextDocument(taxonomyUri);
@@ -249,8 +249,8 @@ export async function run(): Promise<void> {
     assert.ok(result);
     const tokens = decode(taxonomyDocument, result, hsonSemanticLegend);
     for (const [needle, offset, length, type, modifier] of [
-      ['blocks:data', 0, 6, 'hsonReceiving', 'hsonQualifier'],
-      ['blocks:data', 7, 4, 'hsonReceiving', 'hsonLocalName'],
+      ['data:blocks', 0, 4, 'hsonReceiving', 'hsonQualifier'],
+      ['data:blocks', 5, 6, 'hsonReceiving', 'hsonLocalName'],
       ['hson:part', 0, 4, 'hsonDeclaration', 'hsonQualifier'],
       ['hson:part', 5, 4, 'hsonDeclaration', 'hsonLocalName'],
       ['block.kind', 5, 1, 'hsonReference', 'hsonReferenceSeparator'],

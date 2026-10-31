@@ -48,22 +48,23 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     if (checkpoint.parameter?.structural && element.attributes.some(attr => attr.name !== PART_OPTIONAL && !attr.name.startsWith("^{"))) return [];
     const rawAttribute = checkpoint.parameter?.rawAttribute;
     if (checkpoint.parameter === undefined || !checkpoint.parameter.structural && attribute !== rawAttribute?.name) return [];
+    const receiving = attribute !== undefined && is_part_receiving_attribute(element.tag, attribute);
+    const iterationSource = attribute !== undefined && is_part_iterator_attribute(attribute);
+    const argument = attribute !== undefined && element.tag.toLowerCase() === "hson-part" ? part_argument_name(attribute) : undefined;
+    const supply = argument?.kind === "scalar" ? undefined : argument?.kind;
     try {
       const decoded = rawAttribute === undefined ? undefined
         : { name: rawAttribute.name, value: split_attrs_meta([rawAttribute]).attrs[rawAttribute.name] };
       const tags = decoded === undefined ? element.contentTags : element.contentTags.slice(0, -1);
-      if (part_placeholder_placement_issue(tags, decoded) !== undefined) return [];
-      if (element.tag.toLowerCase() === "hson-part" && (decoded?.name.startsWith("data:") || decoded?.name.startsWith("doc:"))
-        && (typeof decoded.value !== "string" || !decoded.value.startsWith("%{") && !decoded.value.startsWith("^{"))) return [];
+      if (part_placeholder_placement_issue(tags, decoded, element.tag) !== undefined) return [];
+      if (supply !== undefined && (typeof decoded?.value !== "string" || !decoded.value.startsWith("%{") && !decoded.value.startsWith("^{"))) return [];
     } catch { return []; }
     // Only actual member-source relationships establish a Part definition.
     if (!memberSource) return [];
-    const receiving = attribute !== undefined && is_part_receiving_attribute(element.tag, attribute);
-    const iterationSource = attribute !== undefined && is_part_iterator_attribute(attribute);
     if (receiving && element.contentTags.length !== 1) return [];
     if (checkpoint.parameter.namespace === "incoming") {
       if (iterationSource) return [];
-      if (!receiving && (attribute?.startsWith("data:") || attribute?.startsWith("doc:"))) return [];
+      if (supply !== undefined) return [];
       const structured = new Set(document.receivingDeclarations.map(declaration => declaration.incoming));
       if (receiving) for (const declaration of document.receivingDeclarations) add(declaration.incoming, 0, false);
       for (const parameter of document.parameters) if (receiving || !structured.has(parameter.name)) add(parameter.name, 0, document.parameterCompleteness === "complete");
@@ -73,9 +74,9 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     } else if (!receiving) {
       for (const declaration of visible) {
         if ((!checkpoint.parameter.structural || declaration.kind === "doc") && (!iterationSource || declaration.kind === "data")
-          && (!attribute?.startsWith("data:") || declaration.kind === "data") && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(declaration.name, 0, document.parameterCompleteness === "complete");
+          && (supply === undefined || declaration.kind === supply)) add(declaration.name, 0, document.parameterCompleteness === "complete");
       }
-      if (!checkpoint.parameter.structural && !attribute?.startsWith("doc:")) for (const batch of facts.batches) for (const library of batch.libraries) for (const member of library.members) {
+      if (!checkpoint.parameter.structural && supply !== "doc") for (const batch of facts.batches) for (const library of batch.libraries) for (const member of library.members) {
         if (!member.documents.includes(document)) continue;
         for (const source of facts.documents) {
           // Literal coordinates establish a possible invocation even when its
@@ -87,7 +88,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
             for (const declaration of visible.filter(declaration => declaration.kind === "data")) {
               const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
               if (origin === undefined) continue;
-              const argument = connector.attributes.find(attr => attr.name === `data:${origin.incoming}`);
+              const argument = connector.attributes.find(attr => attr.name === `${origin.incoming}:data`);
               if (argument?.dataSchema !== undefined) for (const path of schema_paths(argument.dataSchema, origin.path, declaration.name, prefix)) add(path, 0, false);
               if (argument?.value === undefined) continue;
               try { for (const path of data_paths(project_ordered_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
@@ -102,8 +103,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         if (use.namespace === "local" && declaration !== undefined
           && declaration.location.start === usedDeclaration?.location.start
           && (!iterationSource || declaration.kind === "data")
-          && (!attribute?.startsWith("data:") || declaration.kind === "data")
-          && (!attribute?.startsWith("doc:") || declaration.kind === "doc")) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, document.parameterCompleteness === "complete");
+          && (supply === undefined || declaration.kind === supply)) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, document.parameterCompleteness === "complete");
       }
     }
     contextCount = 1;
@@ -173,7 +173,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
           for (const definition of documents) for (const parameter of definition.parameters) {
             if (parameter.name !== "lib" && parameter.name !== "at" && !existing.has(parameter.name)) {
               const structured = definition.receivingDeclarations.find(declaration => declaration.incoming === parameter.name);
-              add(structured ? `${structured.kind}:${parameter.name}` : parameter.name,
+              add(structured ? `${parameter.name}:${structured.kind}` : parameter.name,
                 index, memberCertain && definition.parameterCompleteness === "complete");
             }
           }

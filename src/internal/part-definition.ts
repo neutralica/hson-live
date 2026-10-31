@@ -1,13 +1,17 @@
 import type { HsonNode, Primitive } from "../core/types.js";
 import { ROOT_TAG, STR_TAG } from "../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../core/node-guards.js";
-import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_argument_name, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
-/** Part admission validates flag form even for definitions never invoked. */
+/** Part admission validates flags and receiving contracts even for definitions never invoked. */
 export function validate_part_definition_flags(root: HsonNode): void {
   const element = root.$_content[0];
   if (!is_ordinary_element_node(element) || !Object.hasOwn(element.$_attrs ?? {}, PART_DECLARATION)) {
     throw new TypeError("Part definition root requires the hson:part flag.");
+  }
+  // Validate the receiving contract even when this member is never invoked.
+  for (const [name, value] of Object.entries(element.$_attrs ?? {})) {
+    if (is_part_receiving_attribute(element.$_tag, name)) part_receiving_declaration(name, value);
   }
   const stack = [root];
   while (stack.length) {
@@ -61,6 +65,8 @@ export function transform_part_parameter_strings(root: HsonNode,
     if (node.$_attrs !== undefined) {
       const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
       for (const [name, value] of Object.entries(node.$_attrs)) {
+        const directionIssue = part_direction_issue(node.$_tag, name);
+        if (directionIssue !== undefined) throw new TypeError(directionIssue);
         if (is_part_iterator_attribute(name)) continue;
         if (name === PART_DECLARATION) {
           const issue = part_declaration_issue(value);
@@ -84,12 +90,13 @@ export function transform_part_parameter_strings(root: HsonNode,
           continue;
         }
         if (has_part_reference(name)) throw new TypeError("Part placeholders cannot occur in attribute names.");
-        const issue = part_placeholder_placement_issue([], { name, value });
+        const issue = part_placeholder_placement_issue([], { name, value }, node.$_tag);
         if (issue !== undefined && (typeof value === "string" ? has_part_reference(value) : value !== null && typeof value === "object" && has_part_reference(JSON.stringify(value)))) throw new TypeError(issue);
-        if (node.$_tag.toLowerCase() === "hson-part" && (name.startsWith("data:") || name.startsWith("doc:"))) {
+        const argument = node.$_tag.toLowerCase() === "hson-part" ? part_argument_name(name) : undefined;
+        if (argument !== undefined && argument.kind !== "scalar") {
           if (typeof value === "string" && value.startsWith("#{")) throw new TypeError(PART_LOCAL_REFERENCE_MIGRATION);
           const reference = typeof value === "string" ? whole_part_reference(value) : undefined;
-          if (reference !== undefined) forwarding?.(reference, node, name.startsWith("data:") ? "data" : "doc", name);
+          if (reference !== undefined) forwarding?.(reference, node, argument.kind, name);
           attrs[name] = value;
         } else {
           const replacement = typeof value === "string" ? substitute(value, node, owner, name) : value;
@@ -182,7 +189,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
     const node = root.$_content[0];
     if (!is_Node(node)) return;
     for (const declaration of declarations) {
-      const attribute = `${declaration.name}:${declaration.kind}`;
+      const attribute = `${declaration.kind}:${declaration.name}`;
       if (locals.has(declaration.name)) issue(node, `Conflicting Part local binding ${JSON.stringify(declaration.name)}.`, declaration.reference, attribute);
       const local: PartReceivingLocal = { name: declaration.name, kind: declaration.kind, node, receiving: declaration };
       locals.set(local.name, local); receiving.push(local); add(declaration.reference, declaration.kind, node, attribute);

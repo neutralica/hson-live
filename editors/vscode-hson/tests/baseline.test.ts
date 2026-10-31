@@ -96,7 +96,7 @@ async function run(): Promise<void> {
   });
 
   check("tagged element names, valued keys and flags use distinct existing theme categories", () => {
-    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button data:model="value" model:data="value" part:optional="value" disabled/>\n<main part:optional <hson-part ^{control}/>/>`;';
+    const text = 'import { Hson } from "hson-live/hson"; Hson.document`<button model:data="value" data:model="value" part:optional="value" disabled/>\n<main part:optional <hson-part ^{control}/>/>`;';
     const emitted = tokens(text);
     for (const [slice, type, scope] of [['button', 'hsonType', 'entity.name.type.hson'], ['data', 'hsonSending', 'entity.other.attribute-name.sending.hson'], ['model', 'hsonSending', 'entity.other.attribute-name.sending.hson'], ['disabled', 'hsonFlag', 'constant.language.flag.hson']]) {
       const token = emitted.find(token => text.slice(token.range.start, token.range.end) === slice);

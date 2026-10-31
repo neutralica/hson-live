@@ -93,7 +93,7 @@ function binding_token(binding: PartBindingDeclaration, range: PartSourceLocatio
   // active-theme fallbacks apply identically to its local reference roots.
   const receiving = binding.origin === "receiving";
   return { range, type: receiving ? "hsonReceiving" : "hsonIteration", scopes: [],
-    modifiers: [receiving ? "hsonQualifier" : "hsonLocalName"] };
+    modifiers: ["hsonLocalName"] };
 }
 export function binding_highlights(snapshot: BindingSnapshot): readonly HsonHighlight[] {
   const result: HsonHighlight[] = [];

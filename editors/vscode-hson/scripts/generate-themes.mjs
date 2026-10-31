@@ -76,14 +76,18 @@ export function houseTheme(appearance, definitions, mode) {
     ...Object.fromEntries(Object.entries(generalSemanticPaths).map(([type, path]) => [type, semanticStyle(path)])),
     ...Object.fromEntries(Object.keys(definitions).map(type => [type, syntaxStyle(tokenAppearancePaths[type])])),
     '*.hsonQualifier': syntaxStyle('attribute.qualifier'),
-    'hsonReceiving.hsonQualifier': syntaxStyle('part.receivingArgument'),
-    'hsonReceiving.hsonLocalName': syntaxStyle('part.receivingKind'),
+    'hsonReceiving.hsonLocalName': syntaxStyle('part.receivingArgument'),
+    'hsonReceiving.hsonQualifier': syntaxStyle('part.receivingKind'),
+    'hsonSending.hsonQualifier': syntaxStyle('part.sendingArgument'),
+    'hsonSending.hsonLocalName': syntaxStyle('attribute.qualifier'),
   };
   const tokenColors = [
     ...generalRules.map(({ scopes, path }) => rule(scopes, semanticStyle(path))),
     ...Object.entries(definitions).map(([type, definition]) => rule(definition.scopes, semanticTokenColors[type])),
     rule(syntaxBindings['attribute.qualifier'].scopes, syntaxStyle('attribute.qualifier')),
-    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['attribute.qualifier'].scopes[0]}`], syntaxStyle('part.receivingArgument')),
+    rule([`${syntaxBindings['part.sendingArgument'].scopes[0]} meta.attribute.qualifier.hson`], syntaxStyle('part.sendingArgument')),
+    rule([`${syntaxBindings['part.sendingArgument'].scopes[0]} meta.attribute.local-name.hson`], syntaxStyle('attribute.qualifier')),
+    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} meta.attribute.local-name.hson`], syntaxStyle('part.receivingArgument')),
     rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['part.receivingKind'].scopes[0]}`], syntaxStyle('part.receivingKind')),
   ];
   for (const [path, binding] of Object.entries(syntaxBindings)) {

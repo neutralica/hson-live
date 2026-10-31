@@ -14,7 +14,7 @@ async function run() {
     const wrap = (body: string) => 'import { Hson } from "hson-live";\r\nexport const parts = { card: Hson.document`' + body + '` };';
     for (const [name, type] of [
       ['hson:part', 'hsonDeclaration'], ['part:optional', 'hsonDirective'], ['for:block', 'hsonIteration'],
-      ['block:data', 'hsonReceiving'], ['blocks:data', 'hsonReceiving'], ['data:block', 'hsonSending'],
+      ['data:block', 'hsonReceiving'], ['data:blocks', 'hsonReceiving'], ['block:data', 'hsonSending'],
       ['metadata:row', 'hsonProperty'], ['foo:part:optional', 'hsonProperty'],
     ]) {
       const flag = name === 'hson:part' || name === 'part:optional';
@@ -35,7 +35,7 @@ async function run() {
         assert.ok(hsonTokenScopes[selector], selector);
       }
     }
-    const body = '<section title="😀" blocks:data="%{blocks}" <hson-part at="^{block.kind[0]}"/> <list [1,2]> />';
+    const body = '<section title="😀" data:blocks="%{blocks}" <hson-part at="^{block.kind[0]}"/> <list [1,2]> />';
     const text = wrap(body), tokens = hson_highlights(grammar, `/workspace/delimiters.${extension}`, text);
     const expect = (needle: string, offset: number, value: string, type: string, modifier: string) => {
       const start = text.indexOf(needle) + offset;
@@ -114,7 +114,7 @@ async function run() {
         '<hson-part at="😀' + hole + hole + '" lib="components"/>',
         '<div title="' + hole + '" class="after" <hson-part at="components/foo"/>/>',
         '<div "before" ' + hole + ' <hson-part lib="components" at="foo"/>/>',
-        '<section row:data="%{row}" <hson-part at="' + hole + '" lib="components"/> <hson-part at=^{row.kind}/>/>'
+        '<section data:row="%{row}" <hson-part at="' + hole + '" lib="components"/> <hson-part at=^{row.kind}/>/>'
       ];
       for (const body of cases) {
         const text = 'import { Hson } from "hson-live";Hson.document`' + body + '`;';
@@ -151,7 +151,7 @@ async function run() {
   assert.deepEqual(dollar?.modifiers, ['hsonInterpolationSigil']);
   observedModifiers.add('hsonInterpolationSigil');
   assert.deepEqual([...observedModifiers].sort(), Object.keys(hsonTokenModifierDefinitions).sort(), 'exercise the complete Hson modifier legend');
-  const body = '<section hson:part slide:data="%{slide}" data:data="x" part:optional for:row="^{rows}" per:entry="%{entries}" title="Readable text" @:deck>\n<hson-part data:data="^{local}" doc:body="%{body}"/>\n<value 42 true null>\n// comment\n<\'quoted name\'/>\n</section>';
+  const body = '<section hson:part data:slide="%{slide}" data:data="x" part:optional for:row="^{rows}" per:entry="%{entries}" title="Readable text" @:deck>\n<hson-part data:data="^{local}" body:doc="%{body}"/>\n<value 42 true null>\n// comment\n<\'quoted name\'/>\n</section>';
   for (const extension of ['ts', 'tsx']) {
     const text = 'import { Hson } from "hson-live/hson";\nconst document = Hson.document`' + body + '`;';
     const tokens = hson_highlights(grammar, `/workspace/house.${extension}`, text);
@@ -164,7 +164,7 @@ async function run() {
         assert.equal(at(match.index + 2)?.type, match[0].startsWith('%') ? 'hsonIncomingReference' : 'hsonReference');
       }
     }
-    for (const [needle, type] of [['hson:', 'hsonDeclaration'], ['slide:', 'hsonReceiving'], ['part:', 'hsonDirective'],
+    for (const [needle, type] of [['hson:', 'hsonDeclaration'], ['data:', 'hsonReceiving'], ['part:', 'hsonDirective'],
       ['for:', 'hsonIteration'], ['per:', 'hsonIteration'], ['title=', 'hsonProperty']] as const) {
       const start = text.indexOf(needle);
       assert.equal(at(start)?.type, type);
@@ -202,7 +202,7 @@ async function run() {
       for (const token of tokens) assert.equal(token.type, text.slice(token.range.start, token.range.end) === ':' ? 'hsonColon' : 'hsonProperty', name);
     }
     const names: readonly [string, HsonTokenType][] = [['part:optional', 'hsonDirective'], ['for:block', 'hsonIteration'],
-      ['per:key:value', 'hsonIteration'], ['blocks:data', 'hsonReceiving'], ['data:block', 'hsonSending']];
+      ['per:key:value', 'hsonIteration'], ['data:blocks', 'hsonReceiving'], ['block:data', 'hsonSending']];
     for (const [name, type] of names) {
       const text = 'import { Hson } from "hson-live";Hson.document`<p ' + name + '="x"/>`;';
       const start = text.indexOf(name), end = start + name.length;
@@ -233,12 +233,12 @@ async function run() {
     }
   }
   for (const example of part.sendingArgument.examples) {
-    const analysis = analyzeExample('<section currentSlide:data=%{slide} ' + example.code + '/>');
+    const analysis = analyzeExample('<section data:currentSlide=%{slide} ' + example.code + '/>');
     assert.deepEqual(analysis.uses.map(use => [use.context, use.reference.namespace, use.binding?.kind]),
       [['forwarding', 'local', 'data']]);
   }
   for (const example of iteration.name.examples) {
-    const analysis = analyzeExample('<section rows:data=%{rows} items:data=%{items} ' + example.code + '/>');
+    const analysis = analyzeExample('<section data:rows=%{rows} data:items=%{items} ' + example.code + '/>');
     assert.equal(analysis.iterators.size, 1);
     assert.ok(analysis.uses.every(use => use.context === 'iteration'
       && use.reference.namespace === 'local' && use.binding?.kind === 'data'));
@@ -246,12 +246,23 @@ async function run() {
   for (const entry of [reference.incoming.marker, reference.local.marker, reference.local.content, reference.member,
     reference.separator, reference.selectorOpen, reference.selectorClose, punctuation.referenceOpen, punctuation.referenceClose]) {
     for (const example of entry.examples) {
-      const analysis = analyzeExample('<section slide:data=%{payload} slides:data=%{collection} ' + example.code + '/>');
+      const analysis = analyzeExample('<section data:slide=%{payload} data:slides=%{collection} ' + example.code + '/>');
       assert.ok(analysis.uses.length > 0, entry.label);
       for (const use of analysis.uses) {
         if (use.reference.path.length) assert.equal(use.reference.namespace, 'local', entry.label);
       }
     }
+  }
+  for (const extension of ['ts', 'tsx']) for (const [name, type] of [
+    ['for:data', 'hsonIteration'], ['for:doc', 'hsonIteration'], ['for:item:doc', 'hsonIteration'],
+    ['per:doc', 'hsonIteration'], ['per:key:doc', 'hsonIteration'],
+    ['one:data', 'hsonSending'], ['only:data', 'hsonSending'], ['onload:doc', 'hsonSending'],
+  ]) {
+    const text = 'import {Hson} from "hson-live/hson"; const p=Hson.document`<hson-part at=leaf ' + name + '=^{local}/>`;';
+    const start = text.indexOf(name!), end = start + name!.length;
+    const pieces = hson_highlights(grammar, `/workspace/direction.${extension}`, text).filter(token => start <= token.range.start && token.range.end <= end);
+    assert.ok(pieces.length > 0, name);
+    assert.ok(pieces.every(token => token.type === (text.slice(token.range.start, token.range.end) === ':' ? 'hsonColon' : type)), `${extension}/${name}`);
   }
   console.log('ok - receiving, sending, iteration and reference catalog examples satisfy existing Part contracts');
   console.log('ok - House exact TS/TSX sigil, colon, role, quote and standalone scope/range parity');

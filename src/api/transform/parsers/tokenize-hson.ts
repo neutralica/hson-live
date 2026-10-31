@@ -1,4 +1,4 @@
-import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
@@ -769,9 +769,15 @@ class HsonScanner {
           ?? (depth !== this.initialDepth || tag.toLowerCase() === "hson-part" ? "hson:part is only allowed on the single Part definition root." : undefined);
         if (issue !== undefined) this.fail(issue, attr.start, "HSON_PART_DECLARATION_INVALID");
       }
+      observeHeader(true);
+      if (tag.toLowerCase() === "hson-part" || attrs.some(attr => attr.name === PART_DECLARATION)) {
+        for (const attr of attrs) {
+          const issue = part_direction_issue(tag, attr.name);
+          if (issue !== undefined) this.fail(issue, attr.start, "HSON_PART_DIRECTION_INVALID");
+        }
+      }
       if (attrs.some(attr => attr.name.startsWith("^{"))) part_structural_reference({ $_tag: tag,
         $_attrs: Object.fromEntries(attrs.map(attr => [attr.name, attr.value?.text ?? attr.name])), $_content: [] });
-      observeHeader(true);
       const token = this.emit(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
       if (quad !== undefined) token.quad = quad;
       if (this.collector !== undefined) this.recordToken(token, {

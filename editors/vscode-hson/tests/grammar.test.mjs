@@ -123,9 +123,9 @@ for (const value of ['@01234567', '@0123456789', '@iiiiiiiii']) {
   assert.ok(!hasScope(await tokenize('source.hson', `<p ${value}/>`), 'constant.other.quid.hson'), value);
 }
 
-const header = await tokenize('source.hson', '<button data:model="one" model:data="two" part:optional="true" disabled/>\n<next part:optional/>');
-for (const [name, scope] of [['button', 'entity.name.type.hson'], ['data:model', 'entity.other.attribute-name.sending.hson'],
-  ['model:data', 'entity.other.attribute-name.receiving.hson'], ['part:optional', 'keyword.other.directive.hson'],
+const header = await tokenize('source.hson', '<button model:data="one" data:model="two" part:optional="true" disabled/>\n<next part:optional/>');
+for (const [name, scope] of [['button', 'entity.name.type.hson'], ['model:data', 'entity.other.attribute-name.sending.hson'],
+  ['data:model', 'entity.other.attribute-name.receiving.hson'], ['part:optional', 'keyword.other.directive.hson'],
   ['disabled', 'constant.language.flag.hson']]) assert.ok(has(header, name, scope), name);
 assert.equal(header.filter(token => token.text === ':' && token.scopes.at(-1) === 'punctuation.separator.attribute.hson').length, 4);
 for (const value of ['one', 'two', 'true']) assert.deepEqual(header.find(token => token.text === value)?.scopes, ['source.hson', 'string.quoted.double.hson']);
@@ -143,9 +143,9 @@ for (const source of ['<button disabled\n<next enabled/>', '<button disabled // 
 // Hson name punctuation does not delimit a primitive keyword prefix.
 for (const name of ['true-flag', 'false.key', 'null:flag']) {
   for (const assigned of [false, true]) {
-    const source = `<item ${name}${assigned ? '="value"' : ''} disabled model:data="done"/> <next enabled/>`;
+    const source = `<item ${name}${assigned ? '="value"' : ''} disabled data:model="done"/> <next enabled/>`;
     const actual = await tokenize('source.hson', source);
-    const expected = await tokenize('source.hson', `<item ordinary${assigned ? '="value"' : ''} disabled model:data="done"/> <next enabled/>`);
+    const expected = await tokenize('source.hson', `<item ordinary${assigned ? '="value"' : ''} disabled data:model="done"/> <next enabled/>`);
     const baseScope = assigned ? 'entity.other.attribute-name.hson' : 'constant.language.flag.hson';
     assert.ok(has(actual, name, baseScope));
     const first = actual.findIndex(token => name.startsWith(token.text) && token.scopes.includes(baseScope));
@@ -167,14 +167,14 @@ for (const primitive of ['true', 'false', 'null']) {
 }
 for (const trivia of ['\n', '\r\n  ', '\n\n\t']) {
   for (const value of ['"done"', 'plain', String.raw`"^{d[\"odd}key\"]} after"`]) {
-    const source = `<item true-flag model:data${trivia}=\n  ${value} disabled next="kept"/>\n<next enabled/>`;
+    const source = `<item true-flag data:model${trivia}=\n  ${value} disabled next="kept"/>\n<next enabled/>`;
     const actual = await tokenize('source.hson', source);
     // A prior-line name remains provisionally a flag: TextMate cannot look
     // ahead into another physical line. Assignment and all following tokens
     // must still be identical to the ordinary same-line assignment.
-    assert.ok(has(actual, 'model:data', 'entity.other.attribute-name.receiving.hson'));
-    assert.ok(has(actual, 'model:data', 'constant.language.flag.hson'));
-    const expected = await tokenize('source.hson', `<item true-flag model:data=${value} disabled next="kept"/>\n<next enabled/>`);
+    assert.ok(has(actual, 'data:model', 'entity.other.attribute-name.receiving.hson'));
+    assert.ok(has(actual, 'data:model', 'constant.language.flag.hson'));
+    const expected = await tokenize('source.hson', `<item true-flag data:model=${value} disabled next="kept"/>\n<next enabled/>`);
     const tail = tokens => {
       const start = tokens.findIndex(token => token.text === '='); assert.ok(start >= 0, source);
       return tokens.slice(start).filter(token => token.text.trim()).map(({ text, scopes }) => ({ text, scopes }));
@@ -182,7 +182,7 @@ for (const trivia of ['\n', '\r\n  ', '\n\n\t']) {
     assert.deepEqual(tail(actual), tail(expected), source);
   }
 }
-for (const name of ['true', 'false', 'null', 'true-flag', 'false.key', 'model:data']) {
+for (const name of ['true', 'false', 'null', 'true-flag', 'false.key', 'data:model']) {
   for (const trivia of [' \t', '\n', ' \r\n\t', ' // pending\n\n  ']) {
     const suffix = ' disabled extra:key=plain @:identity/> <next enabled/>\n<value false>';
     const source = `<item ${name}${trivia}= "done"` + suffix;
@@ -194,13 +194,13 @@ for (const name of ['true', 'false', 'null', 'true-flag', 'false.key', 'model:da
     assert.ok(has(actual, name, trivia.includes('\n') ? 'constant.language.flag.hson' : 'entity.other.attribute-name.hson'), source);
   }
 }
-const consecutive = '<item true\n="one" false\n=two null\n="three" data:key="four" true-flag false.key null:flag/> <next enabled/>';
+const consecutive = '<item true\n="one" false\n=two null\n="three" key:data="four" true-flag false.key null:flag/> <next enabled/>';
 const ordinaryConsecutive = await tokenize('source.hson', consecutive.replaceAll('\n', ' '));
 assert.deepEqual((await tokenize('source.hson', consecutive)).filter(token => token.text.trim()).map(({ text, scopes }) => ({ text, scopes })),
   ordinaryConsecutive.filter(token => token.text.trim()).map(({ text, scopes }) => ({ text,
     scopes: ['true', 'false', 'null'].includes(text) && !scopes.includes('meta.attribute.qualifier.hson') ? ['source.hson', 'constant.language.flag.hson'] : scopes })));
 
-for (const source of ['<item true-flag false.key null:flag', '<item true-flag\n<next enabled/>', '<item model:data\n=\n<next enabled/>',
+for (const source of ['<item true-flag false.key null:flag', '<item true-flag\n<next enabled/>', '<item data:model\n=\n<next enabled/>',
   '<item true\n<next enabled/>', '<item false\n=\n<next enabled/>', '<item null // pending\n<next enabled/>']) {
   const actual = await tokenize('source.hson', source);
   if (source.includes('<next')) {
@@ -221,7 +221,7 @@ for (const [sigil, scope] of [['%', 'percent'], ['^', 'caret']]) {
 }
 assert.ok(!hasScope(await tokenize('source.hson', '<p title=@:text value=@012345678/>'), 'constant.other.identity.hson'));
 
-const references = await tokenize("source.hson", '<main d:data="%{payload}" title="^{d.title}" <hson-part ^{control}/>/ >');
+const references = await tokenize("source.hson", '<main data:d="%{payload}" title="^{d.title}" <hson-part ^{control}/>/ >');
 assert.ok(hasScope(references, "meta.part.incoming.hson"));
 assert.ok(hasScope(references, "meta.part.local.hson"));
 const oldReferences = await tokenize('source.hson', '<p title="#{d.title}" "#{d.title}"/>');
@@ -439,7 +439,7 @@ for (const path of ['data', 'slide.href', 'slide2.value']) {
   assert.ok(has(visible, path, 'variable.other.property.hson'), path);
 }
 for (const [text, scope] of [['tag', 'entity.name.type.hson'], ['hson:part', 'keyword.declaration.part.hson'],
-  ['slide:data', 'entity.other.attribute-name.hson'], ['=', 'keyword.operator.assignment.hson'],
+  ['data:slide', 'entity.other.attribute-name.hson'], ['=', 'keyword.operator.assignment.hson'],
   ['enabled', 'constant.language.flag.hson'], ['svg', 'entity.name.type.hson'], ['path', 'entity.name.type.hson'],
   ['M2 10h4', 'string.quoted.double.hson'], ['/', 'punctuation.definition.tag.self-closing.hson']]) {
   assert.ok(has(visible, text, scope), text);
@@ -515,7 +515,7 @@ if (process.env.HSON_VSCODE_THEMES) {
       assert.ok(token?.scopes.includes(scope), `${ordinary.slice(start, end)}: native ${scope} at [${start},${end})`);
       assert.ok(token.scopes.every(scope => !scope.endsWith('.hson')));
     }
-    const line = 'const value = Hson.document`<tag slide2:data="${data2}"/>`;';
+    const line = 'const value = Hson.document`<tag data:slide2="${data2}"/>`;';
     const lexical = host.tokenizeLine(line, INITIAL).tokens;
     const binary = host.tokenizeLine2(line, INITIAL).tokens;
     for (const [offset, scope] of [[line.indexOf('${'), 'punctuation.definition.template-expression.begin.ts'],
@@ -546,9 +546,18 @@ for (const form of ['for:item', 'for:item:i', 'for::i', 'per:key:value', 'per::v
   }
 }
 
+for (const form of ['for:data', 'for:doc', 'for:item:doc', 'per:doc', 'per:key:doc']) {
+  const tokens = await tokenize('source.hson', `<hson-part ${form}=^{rows} at=leaf/>`);
+  assert.ok(has(tokens, form, 'keyword.control.iteration.hson'), form);
+  assert.ok(!has(tokens, form, 'entity.other.attribute-name.sending.hson'), form);
+}
+for (const form of ['one:data', 'only:data', 'onload:doc', 'data:data', 'data:doc', 'doc:data']) {
+  assert.ok(has(await tokenize('source.hson', `<hson-part at=leaf ${form}=^{local}/>`), form, 'entity.other.attribute-name.sending.hson'), form);
+}
+
 const referenceExample = `<div class="column" hson:part part:optional
-  blocks:data=%{someBlocks}
-  <hson-part for:each=^{blocks} at=^{each.kind} data:block=^{each}/>
+  data:blocks=%{someBlocks}
+  <hson-part for:each=^{blocks} at=^{each.kind} block:data=^{each}/>
 />`;
 for (const scope of ['source.hson', 'text.html.markdown']) {
   for (const quoted of [false, true]) {
@@ -594,7 +603,7 @@ for (const scope of ['source.hson', 'text.html.markdown']) {
   assert.ok(has(escaped, '\\"', 'constant.character.escape.hson'));
   assert.ok(has(escaped, '\\u002e', 'constant.character.escape.hson'));
   for (const body of ['<div lib="components" at="foo"/>', '<hson-part-other lib=components at=foo/>',
-    '<hson-part data:lib=components metadata:at=foo/>', '<hson-part at="one/two/three"/>',
+    '<hson-part lib:data=components metadata:at=foo/>', '<hson-part at="one/two/three"/>',
     '<hson-part at="/foo"/>', '<hson-part at="foo/"/>']) {
     const tokens = await tokenize(scope, wrapped(body));
     assert.ok(!tokens.some(token => token.scopes.some(scope => scope.startsWith('meta.part.selector.') || scope === 'punctuation.separator.part-selector.hson')), body);

@@ -287,11 +287,11 @@ parts.heading.write({ slide: Hson.data`<title "Visible">`, index: Hson.data`0` }
 
 // Document edits return the aggregate stream, including CSS installation/retirement.
 const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {
-  optional: { kind: 'document', document: Hson.document`<p hson:part part:optional d:data="%{payload}" "^{d.title}"/>`, stylesheet: 'p{color:red}' },
+  optional: { kind: 'document', document: Hson.document`<p hson:part part:optional data:d="%{payload}" "^{d.title}"/>`, stylesheet: 'p{color:red}' },
   ordinary: { kind: 'document', document: Hson.document`<b hson:part/>`, stylesheet: 'b{color:blue}' },
 } }, page: { document: Hson.document`<main <i/>/>` } });
 const replacementCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
-  { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'optional', 'data:payload': '<>' }, $_content: [] });
+  { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'optional', 'payload:data': '<>' }, $_content: [] });
 const ordinaryCommit = optionalParts.doc.must('page').document.content.replace({ kind: 'path', path: [0, 0] }, 0,
   { $_tag: 'hson-part', $_attrs: { lib: 'parts', at: 'ordinary' }, $_content: [] });
 declare const aggregateCommit: LiveMapCommit<'page'>;
@@ -326,6 +326,6 @@ for (const commit of [ordinaryCommit, replacementCommit]) for (const { operation
 
 // The JavaScript convention is prefix-free; explicit prefixes belong to authored connectors.
 // @ts-expect-error deprecated JavaScript sending prefix
-parts.heading.write({ "data:slide": Hson.data`null` });
+parts.heading.write({ "slide:data": Hson.data`null` });
 // @ts-expect-error Document sending prefix is also authored-only
-parts.heading.write({ "doc:control": Hson.document`<b/>` });
+parts.heading.write({ "control:doc": Hson.document`<b/>` });

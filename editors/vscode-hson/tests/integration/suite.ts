@@ -185,7 +185,7 @@ async function runTypingConveniences(workspace: string): Promise<void> {
     { label: 'bare incoming placeholder', body: 'document`<span title=%|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'bare local placeholder', body: 'document`<span title=^|/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'local placeholder', body: 'document`<span title="^|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
-    { label: 'structural Document reference', body: 'document`<main c:doc="%{control}" <hson-part ^|/>/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
+    { label: 'structural Document reference', body: 'document`<main doc:c="%{control}" <hson-part ^|/>/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'attribute after partial quote', body: 'document`<span title="${first} partial" next|/>`;', typed: '=', inserted: '=""', delta: 2, close: '"' },
     { label: 'partial quoted content', body: 'document`<span "before $|"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
     { label: 'partial quoted attribute', body: 'document`<span title="$|after"/>`;', typed: '{', inserted: '{}', delta: 1, close: '}' },
@@ -402,7 +402,7 @@ async function runTypingConveniences(workspace: string): Promise<void> {
 async function runPartCompletions(workspace: string): Promise<void> {
   const uri = vscode.Uri.file(join(workspace, "declarative-schema", "part-authoring.ts"));
   const producer = vscode.Uri.file(join(workspace, "declarative-schema", "parts.ts"));
-  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` } } as const;';
+  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` }, structured: { kind: "document", document: Hson.document`<p hson:part data:local=%{payload} "^{local}"/>` }, structure: { kind: "document", document: Hson.document`<main hson:part doc:local=%{content} <hson-part ^{local}/>/>` } } as const;';
   await vscode.workspace.fs.writeFile(producer, Buffer.from(parts));
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\nconst loc = hsonLiveMap.locus.create({ components: { parts } });\r\nconst page = Hson.document`';
   const suffix = '`;\r\nconst untouched = "keep";';
@@ -430,6 +430,8 @@ async function runPartCompletions(workspace: string): Promise<void> {
     ['<hson-part lib="co|', 'components', '<hson-part lib="components"'],
     ['<hson-part lib="components" at="\\u0068e|ading"/>', 'heading', '<hson-part lib="components" at="heading"/>'],
     ['<hson-part lib="components" at="heading" Ti|tle-old="x" content="kept"/>', 'Title-Case', '<hson-part lib="components" at="heading" Title-Case="x" content="kept"/>'],
+    ['<hson-part at="components/structured" pay|load-old="1"/>', 'payload:data', '<hson-part at="components/structured" payload:data="1"/>'],
+    ['<hson-part at="components/structure" con|tent-old="<b/>"/>', 'content:doc', '<hson-part at="components/structure" content:doc="<b/>"/>'],
     ['<main ${Hson.document`<hson-part lib="components" at="he|"/>`}/>', 'heading', '<main ${Hson.document`<hson-part lib="components" at="heading"/>`}/>'],
   ]) {
     await replace(document, prefix + body.replace("|", "") + suffix);
@@ -443,8 +445,14 @@ async function runPartCompletions(workspace: string): Promise<void> {
   }
   for (const [body, label, expected] of [
     ['<h1 "%{Title-Case}" "%{Ti|}"/>', 'Title-Case', '<h1 "%{Title-Case}" "%{Title-Case}"/>'],
-    ['<main control:doc="%{control}" <hson-part ^{co|}/>/>' , 'control', '<main control:doc="%{control}" <hson-part ^{control}/>/>' ],
-    ['<main d:data="%{payload}" "^{d.title}" "^{d.ti|}"/>' , 'd.title', '<main d:data="%{payload}" "^{d.title}" "^{d.title}"/>' ],
+    ['<main doc:control="%{control}" <hson-part ^{co|}/>/>' , 'control', '<main doc:control="%{control}" <hson-part ^{control}/>/>' ],
+    ['<main data:d="%{payload}" "^{d.title}" "^{d.ti|}"/>' , 'd.title', '<main data:d="%{payload}" "^{d.title}" "^{d.title}"/>' ],
+    ...['for:item', 'for:data', 'for:doc', 'for:item:doc', 'per:doc', 'per:key:doc'].map(directive => [
+      `<main hson:part data:rows=%{rows} <hson-part ${directive}=^{ro|} at=leaf/>/>`, 'rows',
+      `<main hson:part data:rows=%{rows} <hson-part ${directive}=^{rows} at=leaf/>/>`,
+    ]),
+    ['<main hson:part data:model=%{payload} <hson-part at=leaf one:data=^{mo|}/>/>' , 'model', '<main hson:part data:model=%{payload} <hson-part at=leaf one:data=^{model}/>/>' ],
+    ['<main hson:part doc:nav=%{content} <hson-part at=leaf onload:doc=^{na|}/>/>' , 'nav', '<main hson:part doc:nav=%{content} <hson-part at=leaf onload:doc=^{nav}/>/>' ],
     ['<h1 title="%{content}" id=%{co|}/>', 'content', '<h1 title="%{content}" id=%{content}/>'],
     [String.raw`<h1 title="%{content}" id="%{\u0063o|}"/>`, 'content', '<h1 title="%{content}" id="%{content}"/>'],
     ['<script src="/app.js" title="%{content}" id="%{co|}"/>', 'content', '<script src="/app.js" title="%{content}" id="%{content}"/>'],
@@ -845,7 +853,7 @@ const loc = hsonLiveMap.locus.create({
     await typeArray("unrelated template stays literal", 'const value = `|`;', false);
     await typeArray("lookalike Hson stays literal", 'const Hson=String.raw; const x=Hson.canonical`|`;', false);
     await typeArray("non-array Hson position stays literal", hostPrefix + 'const x=Hson.canonical`<tag |/>`;', false);
-    await typeArray("Part selector bracket stays ASCII", hostPrefix + 'const x=Hson.document`<p d:data="%{payload}" "^{d.items|}"/>`;', false);
+    await typeArray("Part selector bracket stays ASCII", hostPrefix + 'const x=Hson.document`<p data:d="%{payload}" "^{d.items|}"/>`;', false);
     await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson.canonical`<data 1|`;');
     await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
     await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson.canonical`<a "bad\\q"|>`;');

@@ -19,8 +19,8 @@ function check(_name: string, run: () => void) { run(); groups++; }
 check("write completeness uses incoming names and the immutable admitted definition", () => {
   for (const [body, kind] of [
     ['<p hson:part <b "%{content}"/>/>', 'scalar'],
-    ['<p hson:part local:data="%{slide}" "^{local.title}"/>', 'Data'],
-    ['<main hson:part local:doc="%{slide}" <hson-part ^{local}/>/>' , 'Document'],
+    ['<p hson:part data:local="%{slide}" "^{local.title}"/>', 'Data'],
+    ['<main hson:part doc:local="%{slide}" <hson-part ^{local}/>/>' , 'Document'],
   ]) {
     const map = fixture(body!), name = kind === 'scalar' ? 'content' : 'slide';
     assert.throws(() => map.parts.components.x.write(), { name: 'TypeError',
@@ -54,7 +54,7 @@ check("optional scalar attributes and complete content positions omit without co
 });
 
 check("optional local paths preserve missing versus invalid and present primitive values", () => {
-  const map = fixture('<p hson:part model:data="%{payload}" title="^{model.missing.deep?}" "^{model.missing?}" <i "^{model.value?}"/>/>');
+  const map = fixture('<p hson:part data:model="%{payload}" title="^{model.missing.deep?}" "^{model.missing?}" <i "^{model.value?}"/>/>');
   for (const value of [false, 0, '', null]) {
     const key = `v${String(value) || 'empty'}`;
     map.addLibraries({ [key]: { document: map.parts.components.x.write({ payload: Hson.data.from({ value }) }) } });
@@ -64,14 +64,14 @@ check("optional local paths preserve missing versus invalid and present primitiv
   }
   map.addLibraries({ absent: { document: map.parts.components.x.write({ payload: Hson.data.from({}) }) } });
   assert.equal(map.doc.must('absent').render(), complete_html('<p><i></i></p>'));
-  assert.throws(() => fixture('<p hson:part model:data="%{payload}" "^{model.null.x?}"/>').addLibraries({
-    page: { document: '<hson-part at="components/x" data:payload="<null null>"/>' },
+  assert.throws(() => fixture('<p hson:part data:model="%{payload}" "^{model.null.x?}"/>').addLibraries({
+    page: { document: '<hson-part at="components/x" payload:data="<null null>"/>' },
   }), /Invalid Part path/);
   assert.throws(() => fixture('<p hson:part "^{undeclared?}"/>').parts.components.x.write(), /local declaration/);
 });
 
 check("tagged authoring keeps optional markers inside quoted and unquoted references", () => {
-  const document = Hson.document`<p hson:part d:data="%{payload}" title=^{d.missing?} "%{content?}" "^{d[\"question?\"]?}"/>`;
+  const document = Hson.document`<p hson:part data:d="%{payload}" title=^{d.missing?} "%{content?}" "^{d[\"question?\"]?}"/>`;
   const map = hsonLiveMap.fromLibraries({ components: { parts: { x: part(document) } } });
   map.addLibraries({ page: { document: map.parts.components.x.write({ payload: Hson.data.from({ 'question?': false }) }) } });
   assert.equal(map.doc.must('page').render(), complete_html('<p>false</p>'));
@@ -79,20 +79,20 @@ check("tagged authoring keeps optional markers inside quoted and unquoted refere
 });
 
 check("optional Data and Document receiving roots carry absence into local uses", () => {
-  const map = fixture('<main hson:part model:data="%{payload?}" control:doc="%{content?}" title="^{model.title}" "^{model.label}" <hson-part ^{control}/>/>' );
+  const map = fixture('<main hson:part data:model="%{payload?}" doc:control="%{content?}" title="^{model.title}" "^{model.label}" <hson-part ^{control}/>/>' );
   map.addLibraries({ absent: { document: map.parts.components.x.write() } });
   assert.equal(map.doc.must('absent').render(), complete_html('<main></main>'));
   map.addLibraries({ present: { document: map.parts.components.x.write({ payload: Hson.data.from({ title: 'T', label: false }), content: '<b @:inside "Body"/>' }) } });
   assert.equal(map.doc.must('present').render(), complete_html('<main title="T">false<b>Body</b></main>'));
   assert.throws(() => map.addLibraries({ bad: { document: map.parts.components.x.write({ payload: Hson.data.from({}) }) } }), /Missing Part path/);
   // Local optionality does not relax the receiving declaration itself.
-  assert.throws(() => fixture('<main hson:part c:doc="%{content}" <hson-part ^{c?}/>/>' ).parts.components.x.write(), /missing Document input content/);
+  assert.throws(() => fixture('<main hson:part doc:c="%{content}" <hson-part ^{c?}/>/>' ).parts.components.x.write(), /missing Document input content/);
 });
 
 check("required references and unrelated errors stay strict beside optional absence", () => {
   for (const body of [
-    '<p hson:part d:data="%{data}" "%{optional?}:^{d.missing}"/>',
-    '<p hson:part d:data="%{data}" title="%{optional?}:^{d.missing}"/>',
+    '<p hson:part data:d="%{data}" "%{optional?}:^{d.missing}"/>',
+    '<p hson:part data:d="%{data}" title="%{optional?}:^{d.missing}"/>',
   ]) {
     const map = fixture(body);
     assert.throws(() => map.addLibraries({ bad: { document: map.parts.components.x.write({ data: '<>' }) } }), /Missing Part path/);
@@ -104,7 +104,7 @@ check("required references and unrelated errors stay strict beside optional abse
 });
 
 check("conditional Data demand defers empty iterators under optional roots", () => {
-  const body = '<main hson:part part:optional rows:data="%{rows}" model:data="%{payload}" <i for:row="^{rows}" "^{model.title}"/>/>';
+  const body = '<main hson:part part:optional data:rows="%{rows}" data:model="%{payload}" <i for:row="^{rows}" "^{model.title}"/>/>';
   const evidence = signature(body);
   assert.equal(evidence.requiredness.get('rows'), 'required');
   assert.equal(evidence.requiredness.get('payload'), 'conditional');
@@ -117,39 +117,39 @@ check("conditional Data demand defers empty iterators under optional roots", () 
   const requiredRoot = fixture(body.replace(' part:optional', ''));
   assert.throws(() => requiredRoot.parts.components.x.write({ rows: Hson.data.from([]) }), /missing Data input payload/);
   for (const suffix of ['"%{scalar}"', '<hson-part ^{control}/>']) {
-    const declarations = suffix.includes('control') ? ' control:doc="%{doc}"' : '';
-    assert.throws(() => fixture(`<main hson:part part:optional rows:data="%{rows}"${declarations} <i for:item="^{rows}" ${suffix}/>/>`)
+    const declarations = suffix.includes('control') ? ' doc:control="%{doc}"' : '';
+    assert.throws(() => fixture(`<main hson:part part:optional data:rows="%{rows}"${declarations} <i for:item="^{rows}" ${suffix}/>/>`)
       .parts.components.x.write({ rows: Hson.data.from([]) }), /missing (scalar|Document) input/);
   }
 });
 
 check("nested for and per ancestry and shadowed aliases retain lexical demand", () => {
-  const body = '<main hson:part part:optional rows:data="%{rows}" model:data="%{payload}" <section for:model="^{rows}" <b per:key:value="^{model}" "^{value}"/>/> <aside for:item="^{rows}" part:optional "^{model.missing?}"/>/>';
+  const body = '<main hson:part part:optional data:rows="%{rows}" data:model="%{payload}" <section for:model="^{rows}" <b per:key:value="^{model}" "^{value}"/>/> <aside for:item="^{rows}" part:optional "^{model.missing?}"/>/>';
   assert.equal(signature(body).requiredness.get('payload'), 'conditional');
   const map = fixture(body);
   assert.throws(() => map.addLibraries({ empty: { document: map.parts.components.x.write({ rows: Hson.data.from([]) }) } }), /exactly one/);
   // The root model declaration is shadowed; the inner value is the row's value.
   map.addLibraries({ live: { document: map.parts.components.x.write({ rows: Hson.data.from([{ a: false }]), payload: '<unused 0>' }) } });
   assert.equal(map.doc.must('live').render(), complete_html('<main><section><b>false</b></section></main>'));
-  const nested = '<main hson:part part:optional rows:data="%{rows}" model:data="%{payload}" <section for:row="^{rows}" <b per:key:value="^{model}" "^{value}"/>/>/>';
+  const nested = '<main hson:part part:optional data:rows="%{rows}" data:model="%{payload}" <section for:row="^{rows}" <b per:key:value="^{model}" "^{value}"/>/>/>';
   const other = fixture(nested);
   assert.throws(() => other.addLibraries({ empty: { document: other.parts.components.x.write({ rows: Hson.data.from([]) }) } }), /exactly one/);
   assert.throws(() => other.addLibraries({ bad: { document: other.parts.components.x.write({ rows: Hson.data.from([1]) }) } }), /missing Data input payload/);
-  const optionalIterator = fixture('<main hson:part rows:data="%{rows?}" <b for:row="^{rows}" "^{row}"/>/>');
+  const optionalIterator = fixture('<main hson:part data:rows="%{rows?}" <b for:row="^{rows}" "^{row}"/>/>');
   optionalIterator.addLibraries({ page: { document: optionalIterator.parts.components.x.write() } });
   assert.equal(optionalIterator.doc.must('page').render(), complete_html('<main></main>'));
 });
 
 check("omitted arguments still prove names and representations", () => {
-  for (const argument of ['extra="%{value?}"', 'data:block="^{d.missing?}"', 'doc:content="^{d?}"']) {
+  for (const argument of ['extra="%{value?}"', 'block:data="^{d.missing?}"', 'content:doc="^{d?}"']) {
     const map = hsonLiveMap.fromLibraries({ components: { parts: {
-      x: part(`<main hson:part d:data="%{payload?}" <hson-part at="heading" ${argument}/>/>`),
+      x: part(`<main hson:part data:d="%{payload?}" <hson-part at="heading" ${argument}/>/>`),
       heading: part('<h1 hson:part "%{content?}"/>'),
     } } });
     assert.throws(() => map.addLibraries({ bad: { document: map.parts.components.x.write() } }));
     assert.equal(map.doc('bad'), undefined);
   }
-  const map = fixture('<main hson:part d:data="%{payload?}" c:doc="%{content?}" "^{d?}" <hson-part ^{c?}/>/>' );
+  const map = fixture('<main hson:part data:d="%{payload?}" doc:c="%{content?}" "^{d?}" <hson-part ^{c?}/>/>' );
   const malformed: readonly Readonly<Record<string, string>>[] = [{ payload: '<broken' }, { content: '<broken' }, { content: '' }];
   for (const input of malformed) {
     const authored = map.parts.components.x.write(input);
@@ -160,13 +160,13 @@ check("omitted arguments still prove names and representations", () => {
   assert.equal(reads, 0);
   assert.throws(() => map.parts.components.x.write(Object.defineProperty({}, 'payload', { value: '<>' })));
   assert.throws(() => map.parts.components.x.write({ payload: false }));
-  assert.throws(() => Reflect.apply(map.parts.components.x.write, undefined, [{ 'data:payload': '<>' }]));
+  assert.throws(() => Reflect.apply(map.parts.components.x.write, undefined, [{ 'payload:data': '<>' }]));
 });
 
 check("optional structured forwarding omits inputs and preserves independent Document occurrences", () => {
   const map = hsonLiveMap.fromLibraries({ components: { parts: {
-    host: part('<main hson:part d:data="%{payload?}" c:doc="%{content?}" <hson-part at="leaf" data:model="^{d?}" doc:body="^{c?}"/> <hson-part at="leaf" data:model="^{d?}" doc:body="^{c?}"/>/>'),
-    leaf: part('<article hson:part d:data="%{model?}" c:doc="%{body?}" "^{d?}" <hson-part ^{c?}/>/>' ),
+    host: part('<main hson:part data:d="%{payload?}" doc:c="%{content?}" <hson-part at="leaf" model:data="^{d?}" body:doc="^{c?}"/> <hson-part at="leaf" model:data="^{d?}" body:doc="^{c?}"/>/>'),
+    leaf: part('<article hson:part data:d="%{model?}" doc:c="%{body?}" "^{d?}" <hson-part ^{c?}/>/>' ),
   } } });
   map.addLibraries({ absent: { document: map.parts.components.host.write() } });
   assert.equal(map.doc.must('absent').render(), complete_html('<main><article></article><article></article></main>'));
@@ -181,7 +181,7 @@ check("optional structured forwarding omits inputs and preserves independent Doc
 
 check("absent structural Document positions retire their local CSS subjects", () => {
   const map = hsonLiveMap.fromLibraries({ components: { parts: {
-    x: { ...part('<main hson:part @:root c:doc="%{content?}" <h1 "Keep"/> <hson-part @:slot ^{c?}/>/>' ),
+    x: { ...part('<main hson:part @:root doc:c="%{content?}" <h1 "Keep"/> <hson-part @:slot ^{c?}/>/>' ),
       css: { color: 'red', '@:slot': { color: 'blue' } } },
   } } });
   map.addLibraries({ absent: { document: map.parts.components.x.write() } });
@@ -197,7 +197,7 @@ check("absent structural Document positions retire their local CSS subjects", ()
 
 check("optional omission preserves atomicity, CSS ownership and identity lifecycle", () => {
   const map = hsonLiveMap.fromLibraries({ components: { parts: {
-    x: part('<main hson:part @:root part:optional c:doc="%{content?}" <hson-part ^{c?}/>/>' , ':scope{color:red}'),
+    x: part('<main hson:part @:root part:optional doc:c="%{content?}" <hson-part ^{c?}/>/>' , ':scope{color:red}'),
   } } });
   const owner = internal_livemap_aggregate_authority(map), before = owner.captureSemanticCheckpoint();
   const issued = enumerate_livemap_issued_quids(owner.identityEpoch().issued());

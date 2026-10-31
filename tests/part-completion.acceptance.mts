@@ -81,8 +81,8 @@ check("qualified selectors complete Libraries, members and arguments with existi
 
 check("Library completion preserves scanner-proven member suffixes without resolving dynamic targets", () => {
   const suffix = '\nconst loc=maps.fromLibraries({components:{parts:{...parts,list:{kind:"document",document:page}}}});';
-  const body = (attribute: string) => '<main hson:part blocks:data="%{blocks}" <hson-part for:block="^{blocks}" '
-    + attribute + ' data:block="^{block}"/>/>';
+  const body = (attribute: string) => '<main hson:part data:blocks="%{blocks}" <hson-part for:block="^{blocks}" '
+    + attribute + ' block:data="^{block}"/>/>';
   for (const [marked, expected] of [
     ['at="co|mponents/^{block.kind}"', 'at="components/^{block.kind}"'],
     ['at="co|mponents/title"', 'at="components/title"'],
@@ -321,21 +321,21 @@ check("Program revisions, upstream-only edits, forget and clear invalidate facts
   edit("parts.ts", parts);
 });
 check("structured arguments complete normalized names and proven selectors without inventing shape", () => {
-  const definition = '{ x: {kind:"document", document:Hson.document`<p hson:part slide:data="%{payload}" title="^{slide.title}" "^{slide.items[0].label}"/>`} }';
+  const definition = '{ x: {kind:"document", document:Hson.document`<p hson:part data:slide="%{payload}" title="^{slide.title}" "^{slide.items[0].label}"/>`} }';
   const app = (body: string) => imports + 'const loc = maps.fromLibraries({ components:{parts:' + definition + '}, page:{document:Hson.document`' + body + '`} });';
-  assert.ok(complete(app('<hson-part lib="components" at="x" |/>')).labels.includes('data:payload'));
+  assert.ok(complete(app('<hson-part lib="components" at="x" |/>')).labels.includes('payload:data'));
   assert.deepEqual(complete(app('<hson-part lib="components" at="x" payload="old" |/>')).labels, []);
-  assert.deepEqual(complete(app('<hson-part lib="components" at="x" data:payload="null" |/>')).labels, []);
+  assert.deepEqual(complete(app('<hson-part lib="components" at="x" payload:data="null" |/>')).labels, []);
   const prefix = imports + 'const loc = maps.fromLibraries({components:{parts:{ x:{kind:"document", document:Hson.document`';
   const suffix = '`} }}});';
-  const result = complete(prefix + '<p slide:data="%{payload}" title="^{slide.items[0].label}" "^{slide.it|}"/>' + suffix);
+  const result = complete(prefix + '<p data:slide="%{payload}" title="^{slide.items[0].label}" "^{slide.it|}"/>' + suffix);
   assert.deepEqual(result.labels, ['slide.it', 'slide.items[0].label']);
   assert.ok(applied(result, 'slide.items[0].label').includes('"^{slide.items[0].label}"/>'));
-  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" title="^{slide.title}" "^{slide.unknown|}"/>' + suffix).labels, ['slide.unknown']);
-  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" title="^{slide.title}" <hson-part at="x" data:x="<text \\\"%{sl|}\\\" >"/>/>' + suffix).labels, []);
-  const forwarded = complete(prefix + '<p slide:data="%{payload}" title="^{slide.items[0].label}" <hson-part at="child" data:payload="^{slide.it|}"/>/>' + suffix);
+  assert.deepEqual(complete(prefix + '<p data:slide="%{payload}" title="^{slide.title}" "^{slide.unknown|}"/>' + suffix).labels, ['slide.unknown']);
+  assert.deepEqual(complete(prefix + '<p data:slide="%{payload}" title="^{slide.title}" <hson-part at="x" x:data="<text \\\"%{sl|}\\\" >"/>/>' + suffix).labels, []);
+  const forwarded = complete(prefix + '<p data:slide="%{payload}" title="^{slide.items[0].label}" <hson-part at="child" payload:data="^{slide.it|}"/>/>' + suffix);
   assert.ok(forwarded.labels.includes('slide.items[0].label'));
-  const bracket = complete(prefix + '<p slide:data="%{payload}" title=' + JSON.stringify('^{slide["odd}key"]}') + ' "^{slide[|}"/>' + suffix);
+  const bracket = complete(prefix + '<p data:slide="%{payload}" title=' + JSON.stringify('^{slide["odd}key"]}') + ' "^{slide[|}"/>' + suffix);
   assert.ok(bracket.labels.includes('slide["odd}key"]'));
   const repaired = applied(bracket, 'slide["odd}key"]');
   const markup = repaired.slice(repaired.indexOf('<p'), repaired.lastIndexOf('/>') + 2);
@@ -350,19 +350,19 @@ check("structured arguments complete normalized names and proven selectors witho
 check("structured receiving declarations keep incoming and local completion namespaces separate", () => {
   const prefix = imports + 'const loc = maps.fromLibraries({components:{parts:{ x:{kind:"document", document:Hson.document`';
   const suffix = '`} }}});';
-  const body = complete(prefix + '<p slide:data="%{payload}" title="^{slide.title}" "^{|}"/>' + suffix);
+  const body = complete(prefix + '<p data:slide="%{payload}" title="^{slide.title}" "^{|}"/>' + suffix);
   assert.ok(body.labels.includes('slide'));
   assert.ok(body.labels.includes('slide.title'));
   assert.ok(!body.labels.includes('payload'));
-  const declaration = complete(prefix + '<p slide:data="%{payload}" another:data="%{pay|}" "^{slide.title}"/>' + suffix);
+  const declaration = complete(prefix + '<p data:slide="%{payload}" data:another="%{pay|}" "^{slide.title}"/>' + suffix);
   assert.ok(declaration.labels.includes('payload'));
   assert.ok(!declaration.labels.some(label => label.startsWith('slide')));
-  assert.deepEqual(complete(prefix + '<p slide:data="%{payload}" <b nested:data="%{pay|}"/>/>' + suffix).labels, []);
-  const forwarded = complete(prefix + '<p slide:data="%{payload}" <hson-part at="child" data:data="^{sl|}"/>/>' + suffix);
+  assert.deepEqual(complete(prefix + '<p data:slide="%{payload}" <b data:nested="%{pay|}"/>/>' + suffix).labels, []);
+  const forwarded = complete(prefix + '<p data:slide="%{payload}" <hson-part at="child" data:data="^{sl|}"/>/>' + suffix);
   assert.ok(forwarded.labels.includes('slide'));
-  const whole = '{ x: {kind:"document", document:Hson.document`<p hson:part local:data="%{incoming}" "^{local}"/>`} }';
+  const whole = '{ x: {kind:"document", document:Hson.document`<p hson:part data:local="%{incoming}" "^{local}"/>`} }';
   const app = imports + 'const loc = maps.fromLibraries({components:{parts:' + whole + '},page:{document:Hson.document`<hson-part lib="components" at="x" |/>`}});';
-  assert.deepEqual(complete(app).labels, ['data:incoming']);
+  assert.deepEqual(complete(app).labels, ['incoming:data']);
 });
 check("Part declaration completes only at a known definition root", () => {
   const result = complete(authored('<button hson:pa|/>', memberApplication));
@@ -389,34 +389,34 @@ check("optional flags complete only in governed Part headers and preserve argume
 check("local Document references complete in structural frames and prefix-free write records", () => {
   const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`';
   const suffix = '`}}}});';
-  const structural = complete(prefix + '<main c:doc="%{control}" d:data="%{payload}" <hson-part ^{|}/>/>' + suffix);
+  const structural = complete(prefix + '<main doc:c="%{control}" data:d="%{payload}" <hson-part ^{|}/>/>' + suffix);
   assert.deepEqual(structural.labels, ['c']);
   assert.ok(applied(structural, 'c').includes('<hson-part ^{c}/>'));
-  const unfinished = complete(prefix + '<main c:doc="%{control}" <hson-part ^{c|' + suffix);
+  const unfinished = complete(prefix + '<main doc:c="%{control}" <hson-part ^{c|' + suffix);
   assert.deepEqual(unfinished.labels, ['c']);
   assert.ok(applied(unfinished, 'c').includes('^{c}'));
-  const locals = complete(prefix + '<main c:doc="%{control}" title="^{|}" <hson-part ^{c}/>/>' + suffix);
+  const locals = complete(prefix + '<main doc:c="%{control}" title="^{|}" <hson-part ^{c}/>/>' + suffix);
   assert.ok(locals.labels.includes('c')); assert.ok(!locals.labels.includes('control'));
-  const incoming = complete(prefix + '<main c:doc="%{control}" class="%{title}" title="%{|}" <hson-part ^{c}/>/>' + suffix);
+  const incoming = complete(prefix + '<main doc:c="%{control}" class="%{title}" title="%{|}" <hson-part ^{c}/>/>' + suffix);
   assert.ok(incoming.labels.includes('title')); assert.ok(!incoming.labels.includes('c')); assert.ok(!incoming.labels.includes('control'));
-  assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part lib="components" at="x" ^{c|}/>/>' + suffix).labels, []);
-  assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part^{c|}/>/>' + suffix).labels, []);
-  assert.deepEqual(complete(prefix + '<main c:doc="%{control}" <hson-part at="y" data:value="^{c|}"/>/>' + suffix).labels, []);
-  assert.deepEqual(complete(prefix + '<main d:data="%{payload}" <hson-part at="y" doc:value="^{d|}"/>/>' + suffix).labels, []);
-  const app = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p hson:part d:data="%{payload}" c:doc="%{control}" title="%{title}" "^{d.label}" <hson-part ^{c}/>/ >`}}}});';
+  assert.deepEqual(complete(prefix + '<main doc:c="%{control}" <hson-part lib="components" at="x" ^{c|}/>/>' + suffix).labels, []);
+  assert.deepEqual(complete(prefix + '<main doc:c="%{control}" <hson-part^{c|}/>/>' + suffix).labels, []);
+  assert.deepEqual(complete(prefix + '<main doc:c="%{control}" <hson-part at="y" value:data="^{c|}"/>/>' + suffix).labels, []);
+  assert.deepEqual(complete(prefix + '<main data:d="%{payload}" <hson-part at="y" value:doc="^{d|}"/>/>' + suffix).labels, []);
+  const app = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p hson:part data:d="%{payload}" doc:c="%{control}" title="%{title}" "^{d.label}" <hson-part ^{c}/>/ >`}}}});';
   const record = complete(app.replace('/ >', '/>') + 'const components=loc.parts.components;components.x.write({ tit| });');
   assert.deepEqual(record.labels, ['title']);
   assert.equal(record.entries[0]!.candidate.certainty, 'possible');
 });
 check("Data paths use observed authored input shapes and withhold unknown properties", () => {
   const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`';
-  const suffix = '`}}},page:{document:Hson.document`<hson-part lib="components" at="x" data:payload="<title 0 items «<label false>» odd true>"/>`}});';
-  const shape = complete(prefix + '<p d:data="%{payload}" "^{d.|}"/>' + suffix);
+  const suffix = '`}}},page:{document:Hson.document`<hson-part lib="components" at="x" payload:data="<title 0 items «<label false>» odd true>"/>`}});';
+  const shape = complete(prefix + '<p data:d="%{payload}" "^{d.|}"/>' + suffix);
   assert.ok(shape.labels.includes('d.title'));
   assert.ok(shape.labels.includes('d.items[0].label'));
-  const dynamic = complete(prefix + '<p d:data="%{payload}" "^{d.|}"/>' + suffix.replace('<title 0 items «<label false>» odd true>', '${dynamic}'));
+  const dynamic = complete(prefix + '<p data:d="%{payload}" "^{d.|}"/>' + suffix.replace('<title 0 items «<label false>» odd true>', '${dynamic}'));
   assert.deepEqual(dynamic.labels, []);
-  const bare = complete(prefix + '<main c:doc="%{control}" <hson-part |/>/>' + '`}}}});');
+  const bare = complete(prefix + '<main doc:c="%{control}" <hson-part |/>/>' + '`}}}});');
   assert.ok(bare.labels.includes('^{c}'));
 });
 check("write key edits preserve JavaScript names, values, quotes, ranges and cursors", () => {
@@ -556,19 +556,19 @@ check("TypeScript write completion applies quoted assignments with and without s
   } finally { integrated.dispose(); }
 });
 check("iterator bindings complete at their lexical scope, with source-before-shadow and recovery", () => {
-  const prefix = '<ul hson:part items:data="%{items}" <li for:item:i="^{items}" ';
+  const prefix = '<ul hson:part data:items="%{items}" <li for:item:i="^{items}" ';
   assert.deepEqual(complete(authored(prefix + '"^{|}"/>/>', memberApplication)).labels, ['i', 'item', 'items']);
   assert.deepEqual(complete(authored(prefix + '/> <b "^{|}"/>/>', memberApplication)).labels, ['items']);
   assert.deepEqual(complete(authored(prefix + '<b for:item:j="^{it|}" "^{item}"/>/>/>', memberApplication)).labels, ['item', 'items']);
   assert.deepEqual(complete(authored(prefix + '<b for:item:j="^{item.children}" "^{|}"/>/>/>', memberApplication)).labels, ['i', 'item', 'items', 'j']);
-  assert.deepEqual(complete(authored('<ul hson:part items:data="%{items}" <li for::items="^{it|}" "^{items}"/>/>', memberApplication)).labels, ['items']);
-  assert.deepEqual(complete(authored('<ul hson:part items:data="%{items}" <li for::items="^{items}" <b for:next="^{it|}"/>/>/>', memberApplication)).labels, []);
+  assert.deepEqual(complete(authored('<ul hson:part data:items="%{items}" <li for::items="^{it|}" "^{items}"/>/>', memberApplication)).labels, ['items']);
+  assert.deepEqual(complete(authored('<ul hson:part data:items="%{items}" <li for::items="^{items}" <b for:next="^{it|}"/>/>/>', memberApplication)).labels, []);
   assert.deepEqual(complete(authored(prefix + '<b "^{item.title}"/> "^{item.|}"/>/>', memberApplication)).labels, ['item.title']);
   assert.deepEqual(complete(authored(prefix + '<b for:item="^{item.children}" "^{item.|}"/> "^{item.title}"/>/>', memberApplication)).labels, []);
-  assert.deepEqual(complete(authored('<ul hson:part items:data="%{items}" <li for:data:doc="^{items}" "^{|}"/>/>', memberApplication)).labels, ['data', 'doc', 'items']);
+  assert.deepEqual(complete(authored('<ul hson:part data:items="%{items}" <li for:data:doc="^{items}" "^{|}"/>/>', memberApplication)).labels, ['data', 'doc', 'items']);
   // An unfinished edit must not cache the old binding, and the repaired source recovers.
-  assert.deepEqual(complete(authored('<ul hson:part items:data="%{items}" <li for:new="^{items}" "^{|', memberApplication)).labels, ['items', 'new']);
-  const repaired = complete(authored('<ul hson:part items:data="%{items}" <li for:new="^{items}" "^{|}"/>/>', memberApplication));
+  assert.deepEqual(complete(authored('<ul hson:part data:items="%{items}" <li for:new="^{items}" "^{|', memberApplication)).labels, ['items', 'new']);
+  const repaired = complete(authored('<ul hson:part data:items="%{items}" <li for:new="^{items}" "^{|}"/>/>', memberApplication));
   assert.deepEqual(repaired.labels, ['items', 'new']);
   const fact = collect_part_source_facts(ts, repaired.program).documents.find(doc => doc.iteratorDeclarations.length)!;
   assert.equal(fact.iteratorDeclarations[0]!.declaration!.value, 'new');
@@ -577,18 +577,18 @@ check("iterator bindings complete at their lexical scope, with source-before-sha
 });
 check("iterator element suggestions reuse literal Data and Schema provenance without inventing a Part contract", () => {
   const definition = (body: string) => 'components:{parts:{list:{kind:"document",document:Hson.document`' + body + '`}}}';
-  const body = '<ul hson:part items:data="%{items}" <li for:item="^{items}" "^{item.|}"/>/>';
+  const body = '<ul hson:part data:items="%{items}" <li for:item="^{items}" "^{item.|}"/>/>';
   const literal = complete(imports + 'const loc=maps.fromLibraries({' + definition(body)
-    + ',page:{document:Hson.document`<hson-part lib="components" at="list" data:items="«<title \\\"first\\\">»"/>`}});');
+    + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="«<title \\\"first\\\">»"/>`}});');
   assert.ok(literal.labels.includes('item.title'));
   const schema = 'import type { HsonData } from "hson-live";\nconst Blocks = Hson.schema`<type "data" defs <Rows <array <content <title "string" children <array <content <caption "string">>>>>>> content <ref "Rows">>`;\n'
     + 'const blocks: HsonData<typeof Blocks> = Hson.data`«»`;\n';
   const application = (body: string, input = '${blocks}') => imports + schema + 'const loc=maps.fromLibraries({' + definition(body)
-    + ',page:{document:Hson.document`<hson-part lib="components" at="list" data:items="' + input + '"/>`}});';
+    + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + input + '"/>`}});';
   const result = complete(application(body));
   assert.deepEqual(result.labels, ['item.children', 'item.title']);
   assert.ok(result.entries.every(entry => entry.candidate.certainty === 'possible'));
-  const nested = '<ul hson:part items:data="%{items}" <li for:item="^{items}" <b for:item="^{item.children}" "^{item.|}"/>/>/>';
+  const nested = '<ul hson:part data:items="%{items}" <li for:item="^{items}" <b for:item="^{item.children}" "^{item.|}"/>/>/>';
   assert.deepEqual(complete(application(nested)).labels, ['item.caption']);
   assert.deepEqual(complete(application(body, '${dynamic}')).labels, []);
   assert.deepEqual(complete(application(body, 'prefix ${blocks}')).labels, []);
@@ -597,7 +597,7 @@ check("iterator element suggestions reuse literal Data and Schema provenance wit
   assert.deepEqual(repaired.labels, ['item.children', 'item.name']);
 });
 check('quoted interpolation preserves lexical iteration evidence without proving dynamic values', () => {
-  const prefix = '<ul hson:part class="${dynamic}" items:data="%{items}" <li for:item:i="^{items}" ';
+  const prefix = '<ul hson:part class="${dynamic}" data:items="%{items}" <li for:item:i="^{items}" ';
   assert.deepEqual(complete(authored(prefix + '"^{|}"/>/>', memberApplication)).labels, ['i', 'item', 'items']);
   assert.deepEqual(complete(authored(prefix + '<b for:item:j="^{item.children}" "^{|}"/>/>/>', memberApplication)).labels, ['i', 'item', 'items', 'j']);
   assert.deepEqual(complete(authored(prefix + '<b for:item:j="^{it|}"/>/>/>', memberApplication)).labels, ['item', 'items']);
@@ -609,8 +609,8 @@ check('quoted interpolation preserves lexical iteration evidence without proving
   const facts = collect_part_source_facts(ts, repaired.program).documents.find(document => document.iteratorDeclarations.length)!;
   assert.equal(facts.parameterCompleteness, 'unknown');
   assert.equal(facts.admission, 'unknown');
-  for (const dynamic of ['${dynamic}', 'class="x" ${dynamic}', 'items:data="${dynamic}"', 'for:item="${dynamic}"']) {
-    const body = dynamic.startsWith('for:') ? `<ul hson:part items:data="%{items}" <li ${dynamic} "^{|}"/>/>`
+  for (const dynamic of ['${dynamic}', 'class="x" ${dynamic}', 'data:items="${dynamic}"', 'for:item="${dynamic}"']) {
+    const body = dynamic.startsWith('for:') ? `<ul hson:part data:items="%{items}" <li ${dynamic} "^{|}"/>/>`
       : `<ul hson:part ${dynamic} <li for:item="^{items}" "^{|}"/>/>`;
     assert.ok(!complete(authored(body, memberApplication)).labels.includes('item'), body);
   }
@@ -620,8 +620,8 @@ check('interpolated Part completion refreshes imported Schema evidence with unch
   edit('iterator-schema.ts', schema('title'));
   const source = imports + 'import type { HsonData } from "hson-live"; import { Rows } from "./iterator-schema.js";'
     + 'const rows: HsonData<typeof Rows> = Hson.data`«»`; const map = maps.fromLibraries({ components: { parts: { list: { kind: "document", document: Hson.document`'
-    + '<ul hson:part class="${dynamic}" items:data="%{items}" <li for:item="^{items}" "^{item.|}"/>/>`'
-    + '} } }, page: { document: Hson.document`<hson-part lib="components" at="list" data:items="${rows}"/>` } });';
+    + '<ul hson:part class="${dynamic}" data:items="%{items}" <li for:item="^{items}" "^{item.|}"/>/>`'
+    + '} } }, page: { document: Hson.document`<hson-part lib="components" at="list" items:data="${rows}"/>` } });';
   const original = complete(source);
   assert.deepEqual(original.labels, ['item.title']);
   edit('iterator-schema.ts', schema('name'));
@@ -632,7 +632,7 @@ check('interpolated Part completion refreshes imported Schema evidence with unch
   assert.ok(entries.every(entry => entry.candidate.certainty === 'possible'));
 });
 check("object iterator bindings share scope, source-before-shadow and edit recovery", () => {
-  const prefix = '<ul hson:part items:data="%{items}" <li per:key:value="^{items}" ';
+  const prefix = '<ul hson:part data:items="%{items}" <li per:key:value="^{items}" ';
   for (const decoration of ['', 'class="${dynamic}" ']) {
     const body = prefix.replace('<ul hson:part ', '<ul hson:part ' + decoration);
     assert.deepEqual(complete(authored(body + '"^{|}"/>/>', memberApplication)).labels, ['items', 'key', 'value']);
@@ -654,14 +654,14 @@ check("object iterator bindings share scope, source-before-shadow and edit recov
 });
 check("object iterator property evidence preserves keys and conservative heterogeneous alternatives", () => {
   const definition = (body: string) => 'components:{parts:{list:{kind:"document",document:Hson.document`' + body + '`}}}';
-  const body = '<ul hson:part items:data="%{items}" <li per:name:record="^{items}" "^{record.|}"/>/>';
+  const body = '<ul hson:part data:items="%{items}" <li per:name:record="^{items}" "^{record.|}"/>/>';
   const literal = complete(imports + 'const loc=maps.fromLibraries({' + definition(body)
-    + ',page:{document:Hson.document`<hson-part lib="components" at="list" data:items="<first <title \\\"a\\\" key \\\"real\\\">>"/>`}});');
+    + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="<first <title \\\"a\\\" key \\\"real\\\">>"/>`}});');
   assert.deepEqual(literal.labels, ['record.key', 'record.title']);
   const application = (body: string, shape: string, input = '${records}') => imports
     + 'import type { HsonData } from "hson-live"; const Records=Hson.schema`<type "data" content ' + shape + '>`;'
     + 'const records: HsonData<typeof Records> = Hson.data`<>`; const loc=maps.fromLibraries({' + definition(body)
-    + ',page:{document:Hson.document`<hson-part lib="components" at="list" data:items="' + input + '"/>`}});';
+    + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + input + '"/>`}});';
   const shape = '<first <content <title "string" count "number" children <array <content <caption "string">>>>> second <content <title "string" active "boolean" children <array <content <caption "string">>>>>>';
   const result = complete(application(body, shape));
   assert.deepEqual(result.labels, ['record.children', 'record.title']);
@@ -669,7 +669,7 @@ check("object iterator property evidence preserves keys and conservative heterog
   assert.deepEqual(complete(application(body.replace('^{record.|}', '^{items.|}'), shape)).labels,
     ['items.first', 'items.first.children', 'items.first.count', 'items.first.title', 'items.second', 'items.second.active', 'items.second.children', 'items.second.title']);
   assert.deepEqual(complete(application(body.replace('^{record.|}', '^{record.children[0].|}'), shape)).labels, ['record.children[0].caption']);
-  const nested = '<ul hson:part items:data="%{items}" <li per:name:record="^{items}" <b for:record="^{record.children}" "^{record.|}"/>/>/>';
+  const nested = '<ul hson:part data:items="%{items}" <li per:name:record="^{items}" <b for:record="^{record.children}" "^{record.|}"/>/>/>';
   assert.deepEqual(complete(application(nested, shape)).labels, ['record.caption']);
   assert.deepEqual(complete(application(body, '<first <content <title "string">> second "number">')).labels, []);
   assert.deepEqual(complete(application(body, shape, '${dynamic}')).labels, []);
@@ -678,20 +678,20 @@ check("object iterator property evidence preserves keys and conservative heterog
 check("qualified selection retains for/per reference scopes and literal input provenance", () => {
   const suffix = '\nconst loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:page}}}});';
   for (const iterator of ['for:block', 'per:key:block']) {
-    const body = `<main hson:part blocks:data="%{blocks}" <hson-part ${iterator}="^{blocks}" at="components/^{bl|}" data:block="^{block}"/>/>`;
+    const body = `<main hson:part data:blocks="%{blocks}" <hson-part ${iterator}="^{blocks}" at="components/^{bl|}" block:data="^{block}"/>/>`;
     const result = complete(authored(body, suffix));
     assert.deepEqual(result.labels, ['block', 'blocks']);
     assert.ok(applied(result, 'block').includes('at="components/^{block}"'));
   }
   const prefix = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`';
-  const invocation = '`}}},page:{document:Hson.document`<hson-part at="components/x" data:payload="<title 0>"/>`}});';
-  assert.deepEqual(complete(prefix + '<p hson:part d:data="%{payload}" "^{d.|}"/>' + invocation).labels, ['d.title']);
+  const invocation = '`}}},page:{document:Hson.document`<hson-part at="components/x" payload:data="<title 0>"/>`}});';
+  assert.deepEqual(complete(prefix + '<p hson:part data:d="%{payload}" "^{d.|}"/>' + invocation).labels, ['d.title']);
 });
 check("old hash spelling never gains local-reference completion or recovery", () => {
   const suffix = '\nconst loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:page}}}});';
   const prefix = imports + 'const page=Hson.document`';
-  for (const body of ['<p hson:part d:data="%{payload}" "#{d.|}"/>',
-    '<main hson:part c:doc="%{control}" <hson-part #{c|}/>/>' ]) {
+  for (const body of ['<p hson:part data:d="%{payload}" "#{d.|}"/>',
+    '<main hson:part doc:c="%{control}" <hson-part #{c|}/>/>' ]) {
     assert.deepEqual(complete(prefix + body + '`;' + suffix).labels, []);
   }
 });
@@ -701,9 +701,9 @@ check("optional references preserve markers through complete and incomplete edit
     ['<p hson:part "%{content?}" "%{co|?}"/>', '<p hson:part "%{content?}" "%{content?}"/>'],
     ['<p hson:part "%{content?}" "%{co?|}"/>', '<p hson:part "%{content?}" "%{content?}"/>'],
     ['<p hson:part "%{content?}" "%{co|?"/>', '<p hson:part "%{content?}" "%{content?}"/>'],
-    ['<p hson:part d:data="%{payload?}" "^{d.title?}" "^{d.ti|?}"/>', '<p hson:part d:data="%{payload?}" "^{d.title?}" "^{d.title?}"/>'],
-    ['<main hson:part control:doc="%{content?}" <hson-part ^{con|?}/>/>' , '<main hson:part control:doc="%{content?}" <hson-part ^{control?}/>/>' ],
-    ['<main hson:part control:doc="%{content?}" <hson-part ^{con|?', '<main hson:part control:doc="%{content?}" <hson-part ^{control?}'],
+    ['<p hson:part data:d="%{payload?}" "^{d.title?}" "^{d.ti|?}"/>', '<p hson:part data:d="%{payload?}" "^{d.title?}" "^{d.title?}"/>'],
+    ['<main hson:part doc:control="%{content?}" <hson-part ^{con|?}/>/>' , '<main hson:part doc:control="%{content?}" <hson-part ^{control?}/>/>' ],
+    ['<main hson:part doc:control="%{content?}" <hson-part ^{con|?', '<main hson:part doc:control="%{content?}" <hson-part ^{control?}'],
   ]) {
     const label = body!.includes('^{d.ti|') ? 'd.title' : body!.includes('^{con|') ? 'control' : 'content';
     const result = complete(authored(body!, suffix));
@@ -711,6 +711,31 @@ check("optional references preserve markers through complete and incomplete edit
     assert.ok(result.labels.every(name => !name.endsWith('?')), 'optionality is syntax, not part of a parameter name');
     assert.equal(applied(result, label), authored(expected!, suffix));
   }
+});
+check("iterator aliases that match structured suffixes retain Data source completion", () => {
+  const suffix = '\nconst loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:page}}}});';
+  for (const tag of ['i', 'hson-part']) for (const directive of ['for:item', 'for:data', 'for:doc', 'for:item:doc', 'per:doc', 'per:key:doc']) {
+    const body = `<main hson:part data:rows=%{rows} doc:nav=%{nav} <${tag} ${directive}=^{ro|ws}${tag === 'hson-part' ? ' at=leaf' : ''}/>/ >`.replace('/ >', '/>');
+    const result = complete(authored(body, suffix));
+    assert.ok(result.labels.includes('rows'), `${tag}/${directive}: ${result.labels}`);
+    assert.ok(!result.labels.includes('nav'), 'iterator sources remain Data');
+    assert.ok(applied(result, 'rows').includes(`${directive}=^{rows}`));
+  }
+});
+check("structured outgoing on-names complete their declared kinds before handler restrictions", () => {
+  const suffix = '\nconst loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:page}}}});';
+  for (const name of ['one', 'only', 'onload']) for (const kind of ['data', 'doc']) {
+    const body = `<main hson:part data:model=%{payload} doc:nav=%{content} <hson-part at=leaf ${name}:${kind}=^{|}/>/ >`.replace('/ >', '/>');
+    const result = complete(authored(body, suffix));
+    assert.ok(result.labels.includes(kind === 'data' ? 'model' : 'nav'));
+    assert.ok(!result.labels.includes(kind === 'data' ? 'nav' : 'model'));
+  }
+  for (const child of ['<button onclick=^{|}/>', '<hson-part at=leaf one=^{|}/>']) {
+    assert.deepEqual(complete(authored(`<main hson:part data:model=%{payload} ${child}/>`, suffix)).labels, []);
+  }
+  const definition = '{x:{kind:"document",document:Hson.document`<p hson:part "%{for}:%{per}"/>`}}';
+  const bare = complete(imports + 'const loc=maps.fromLibraries({components:{parts:' + definition + '},page:{document:Hson.document`<hson-part at=components/x |/>`}});');
+  assert.deepEqual(bare.labels, ['for', 'per']);
 });
 service.dispose();
 events.terminal("pass");

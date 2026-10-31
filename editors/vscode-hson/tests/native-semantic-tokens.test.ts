@@ -73,7 +73,7 @@ async function run() {
 async function serverProbe() {
   const directory = await mkdtemp(join(tmpdir(), 'hson-native-semantic-'));
   const file = join(directory, 'native.ts');
-  const text = 'import { Hson, type Part } from "hson-live";\r\nclass Deck { readonly title = "😀"; render(){ return this.title; } }\r\nconst deck = new Deck();\r\nexport const parts = { card: Hson.document`<p hson:part blocks:data="%{blocks}" <hson-part at="^{block.kind}"/>/>`, renderCard() { let value = deck.title; return value; } };\r\nconst part: Part = { name: "card" };\r\nconst view = Hson.document`<p "^{local}">${deck.render()}/>`;';
+  const text = 'import { Hson, type Part } from "hson-live";\r\nclass Deck { readonly title = "😀"; render(){ return this.title; } }\r\nconst deck = new Deck();\r\nexport const parts = { card: Hson.document`<p hson:part data:blocks="%{blocks}" <hson-part at="^{block.kind}"/>/>`, renderCard() { let value = deck.title; return value; } };\r\nconst part: Part = { name: "card" };\r\nconst view = Hson.document`<p "^{local}">${deck.render()}/>`;';
   await writeFile(file, text);
   await writeFile(join(directory, 'hson.d.ts'), 'declare module "hson-live" { export interface Part { name: string; } export const Hson: { document(strings: TemplateStringsArray, ...values: unknown[]): string; }; }');
   await writeFile(join(directory, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', strict: true }, include: ['*.ts'] }));

@@ -8,3 +8,10 @@ definitions separately, preserving atomic admission and authority checks.
 
 The SSR subject assertion repair makes no production, validator, cache, or
 transition-planner changes.
+
+P3 follow-up: deduplicate obsolete Part argument migration diagnostics
+
+Some obsolete Part argument spellings can produce duplicate migration
+diagnostics. Consolidate reporting so each source spelling receives one
+actionable diagnostic while preserving its source location and rejection
+behavior. This remains separate from directional argument parsing.

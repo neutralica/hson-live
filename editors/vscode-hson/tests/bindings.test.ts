@@ -32,7 +32,7 @@ for (const language of ["hson", "markdown", "typescript", "typescriptreact"]) {
       if (ref.reference.namespace === "incoming") { assert.equal(definition, undefined); continue; }
       assert.equal(definition?.uri, 'untitled:binding-fixture');
       assert.equal(text.slice(definition!.target.start, definition!.target.end), ref.reference.name);
-      assert.equal(definition!.target.start, text.indexOf(ref.reference.name === "blocks" ? 'blocks:data' : 'each=') );
+      assert.equal(definition!.target.start, (ref.reference.name === "blocks" ? text.indexOf('data:blocks') + 5 : text.indexOf('each=')) );
       assert.ok(ref.scope && ref.scope.start <= ref.root.start && ref.root.end <= ref.scope.end);
     }
     const member = references.find(r => r.reference.path.length)!;
@@ -54,7 +54,7 @@ for (const language of ["hson", "markdown", "typescript", "typescriptreact"]) {
       assert.equal(tokens.find(t => t.range.start === text.indexOf('someBlocks'))?.type, 'hsonIncomingReference');
       assert.equal(tokens.find(t => t.range.start === text.indexOf('kind'))?.type, 'hsonReference');
       assert.deepEqual(tokens.find(t => t.range.start === text.indexOf('kind'))?.modifiers, ['hsonMember']);
-      assert.equal(tokens.find(t => t.range.start === text.indexOf('data:block') + 5)?.type, 'hsonSending');
+      assert.equal(tokens.find(t => t.range.start === text.indexOf('block:data'))?.type, 'hsonSending');
       assert.ok(tokens.some(t => t.type === 'hsonLocalReferenceSigil'));
       assert.ok(tokens.some(t => t.type === 'hsonIncomingReferenceSigil'));
       assert.ok(tokens.every((t, i) => !i || tokens[i - 1]!.range.end <= t.range.start));
@@ -63,7 +63,7 @@ for (const language of ["hson", "markdown", "typescript", "typescriptreact"]) {
 }
 check('shadowing follows identities, including source reads before the iterator aliases', () => {
   for (const name of ['row', 'renamed']) {
-    const text = `<main hson:part ${name}:data=%{input} <section for:${name}:index=^{${name}} <i per:key:${name}=^{${name}.children} title=^{${name}.kind} data-i=^{index} data-k=^{key}/> <b title=^{${name}}/>/> <p title=^{${name}}/>/>`;
+    const text = `<main hson:part data:${name}=%{input} <section for:${name}:index=^{${name}} <i per:key:${name}=^{${name}.children} title=^{${name}.kind} data-i=^{index} data-k=^{key}/> <b title=^{${name}}/>/> <p title=^{${name}}/>/>`;
     const result = snapshot(text), refs = result.sources[0]!.references.filter(r => r.reference.namespace === 'local');
     const declarations = result.sources[0]!.declarations;
     const receiving = declarations.find(d => d.origin === 'receiving')!;
@@ -81,10 +81,10 @@ check('shadowing follows identities, including source reads before the iterator 
 });
 check('bare/quoted operands, optional references, escaped roots, quoted keys and CRLF offsets', () => {
   for (const value of ['^{item.kind?}', '"^{item.kind?}"', '^{item["odd}key"][0]?}', String.raw`"^{item[\"odd}key\"][0]?}"`, String.raw`"^{\u0069tem.kind}"`]) {
-    const text = '<main hson:part item:data="%{input}"\r\n <p title=' + value + '/>/>';
+    const text = '<main hson:part data:item="%{input}"\r\n <p title=' + value + '/>/>';
     const result = snapshot(text), use = result.sources[0]!.references.find(r => r.reference.namespace === 'local')!;
     assert.ok(use, value); assert.equal(use.resolution, 'resolved');
-    assert.equal(binding_definition_at(result, use.root.start)?.target.start, text.indexOf('item:data'));
+    assert.equal(binding_definition_at(result, use.root.start)?.target.start, text.indexOf('data:item') + 5);
     assert.ok(use.location.start > text.indexOf('\r\n'));
   }
 });
@@ -95,13 +95,13 @@ check('separate Part authoring regions and invalid nested declarations cannot le
     assert.equal(binding_definition_at(result, text.lastIndexOf('each')), undefined);
     assert.equal(result.sources.at(-1)?.references[0]?.resolution, 'unresolved');
   }
-  assert.equal(snapshot('<main hson:part d:data=%{x} <p hson:part title=^{d}/>/>' ).sources[0]?.references.length, 0, 'nested Part definitions are rejected by the authoritative rules');
+  assert.equal(snapshot('<main hson:part data:d=%{x} <p hson:part title=^{d}/>/>' ).sources[0]?.references.length, 0, 'nested Part definitions are rejected by the authoritative rules');
 });
 check('version/text/language changes invalidate snapshots; unresolved names remain lexical', () => {
   const first = snapshot(canonical);
   assert.equal(snapshot(canonical), first);
   assert.notEqual(snapshot(canonical, 'hson', 2), first);
-  const changed = snapshot(canonical.replace('blocks:data', 'renamed:data'));
+  const changed = snapshot(canonical.replace('data:blocks', 'data:renamed'));
   assert.notEqual(changed, first);
   assert.equal(changed.sources[0]!.references.find(r => r.reference.name === 'blocks')?.resolution, 'unresolved');
   assert.equal(binding_definition_at(changed, changed.document.text.indexOf('^{blocks}') + 2), undefined);
@@ -119,20 +119,20 @@ check('TypeScript substitutions and ordinary host identifiers stay outside bindi
   assert.equal(binding_highlights(unavailable).length, 0);
 });
 check('text, structural Document references and nested templates retain their own provenance', () => {
-  const body = '<main hson:part model:data=%{payload} control:doc=%{content} "^{model.title}" <hson-part ^{control}/>/>';
+  const body = '<main hson:part data:model=%{payload} doc:control=%{content} "^{model.title}" <hson-part ^{control}/>/>';
   for (const language of ['hson', 'markdown', 'typescript', 'typescriptreact']) {
     const text = language === 'hson' ? body : language === 'markdown' ? '```hson\n' + body + '\n```' : wrap(body);
     const result = snapshot(text, language);
     for (const name of ['model', 'control']) {
       const use = result.sources[0]!.references.find(ref => ref.reference.namespace === 'local' && ref.reference.name === name)!;
       assert.equal(use.resolution, 'resolved');
-      assert.equal(binding_definition_at(result, use.root.start)?.target.start, text.indexOf(name + ':'));
+      assert.equal(binding_definition_at(result, use.root.start)?.target.start, text.indexOf(':' + name + '=') + 1);
     }
   }
-  const inner = '<p hson:part inner:data=%{payload} title=^{inner.title}/>';
-  const nested = wrap('<main hson:part outer:data=%{payload} ${Hson.document`' + inner + '`} title=^{outer.title}/>');
+  const inner = '<p hson:part data:inner=%{payload} title=^{inner.title}/>';
+  const nested = wrap('<main hson:part data:outer=%{payload} ${Hson.document`' + inner + '`} title=^{outer.title}/>');
   const result = snapshot(nested, 'typescript');
-  assert.equal(binding_definition_at(result, nested.indexOf('^{inner.title}') + 2)?.target.start, nested.indexOf('inner:data'));
+  assert.equal(binding_definition_at(result, nested.indexOf('^{inner.title}') + 2)?.target.start, nested.indexOf('data:inner') + 5);
   assert.equal(binding_definition_at(result, nested.indexOf('^{outer.title}') + 2), undefined, 'opaque structural substitution withholds outer proof');
 });
 check('static fromHson strings compose both JavaScript and Hson source correspondence', () => {
@@ -142,6 +142,22 @@ check('static fromHson strings compose both JavaScript and Hson source correspon
   assert.equal(each.resolution, 'resolved');
   assert.equal(text.slice(each.root.start, each.root.end), 'each');
   assert.equal(text.slice(each.declaration!.location.start, each.declaration!.location.end), 'each');
+});
+check('iterator suffix names preserve receiving navigation and iteration semantic identities', () => {
+  for (const form of ['for:data', 'for:doc', 'per:doc']) for (const language of ['hson', 'typescript']) {
+    const alias = form.slice(4);
+    const body = `<main hson:part data:rows=%{payload} <hson-part ${form}=^{rows} at=leaf value=^{${alias}}/>/>`;
+    const text = language === 'hson' ? body : wrap(body), result = snapshot(text, language);
+    const receiving = result.sources[0]!.declarations.find(declaration => declaration.origin === 'receiving')!;
+    const iterator = result.sources[0]!.declarations.find(declaration => declaration.name === alias)!;
+    assert.equal(receiving.location.start, text.indexOf('data:rows') + 5);
+    assert.equal(iterator.location.start, text.indexOf(form) + 4);
+    assert.equal(binding_definition_at(result, text.indexOf('^{rows}') + 2)?.target.start, receiving.location.start);
+    assert.equal(binding_definition_at(result, text.indexOf(`^{${alias}}`) + 2)?.target.start, iterator.location.start);
+    const highlights = overlay_binding_highlights(hson_highlights(grammar, result.document.fileName, text, result), binding_highlights(result));
+    assert.equal(highlights.find(token => token.range.start === receiving.location.start)?.type, 'hsonReceiving');
+    assert.equal(highlights.find(token => token.range.start === iterator.location.start)?.type, 'hsonIteration');
+  }
 });
 check('active themes receive standard categories without a House palette override', () => {
   assert.equal(hsonTokenDefinitions.hsonReceiving.superType, 'parameter');

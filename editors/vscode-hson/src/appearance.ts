@@ -53,7 +53,7 @@ export const HSON_APPEARANCE = {
           label: "Attribute qualifier",
           examples: [
             { code: "<button hson:part/>", highlight: "hson" },
-            { code: "<section data:blocks=^{blocks}/>", highlight: "data" }
+            { code: "<section meta:blocks=^{blocks}/>", highlight: "meta" }
           ],
           // inherits: "attribute.name",
           house: _faded,
@@ -141,21 +141,21 @@ export const HSON_APPEARANCE = {
         receivingArgument: {
           label: "Receiving argument",
           examples: [
-            { code: "<section slide:data=%{currentSlide}/>", highlight: "slide", occurrence: 1 }
+            { code: "<section data:slide=%{currentSlide}/>", highlight: "slide", occurrence: 1 }
           ],
           house:_local
         },
         receivingKind: {
           label: "Receiving argument kind",
           examples: [
-            { code: "<section slide:data=%{currentSlide}/>", highlight: "data" }
+            { code: "<section data:slide=%{currentSlide}/>", highlight: "data" }
           ],
           inherits: "attribute.qualifier"
         },
         sendingArgument: {
           label: "Sending argument",
           examples: [
-            { code: "<hson-part data:slide=^{currentSlide}/>", highlight: "slide", occurrence: 1 }
+            { code: "<hson-part slide:data=^{currentSlide}/>", highlight: "slide", occurrence: 1 }
           ],
           house: {
             dark: { foreground: _outgoing.dark },
@@ -335,7 +335,7 @@ export const HSON_APPEARANCE = {
         colon: {
           label: "Attribute colon",
           examples: [
-            { code: "<section slide:data=%{slide}/>", highlight: ":" }
+            { code: "<section data:slide=%{slide}/>", highlight: ":" }
           ],
           house: {
             dark: { foreground: "#74a5bd", intensity: 0.85 },

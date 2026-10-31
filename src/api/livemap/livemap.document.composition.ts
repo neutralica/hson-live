@@ -4,7 +4,7 @@ import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
 import { part_contract_error } from "../../internal/part-contract.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
-import { PART_DECLARATION, PART_OPTIONAL, is_part_iterator_attribute, part_reference_text, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, part_argument_name, part_placeholder_matches, whole_part_reference, type PartReference } from "../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, is_part_iterator_attribute, part_reference_text, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, part_argument_name, part_direction_issue, part_placeholder_matches, whole_part_reference, type PartReference } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -292,7 +292,7 @@ export function expand_document_composition(
     const parameters = analysis(definition).parameters;
     for (const raw of supplied) {
       const argument = part_argument_name(raw);
-      if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}.`);
+      if (argument === undefined) throw new TypeError(part_direction_issue("hson-part", raw) ?? `Invalid hson-part parameter ${JSON.stringify(raw)}.`);
       const { name, kind } = argument;
       if (!parameters.has(name)) throw part_contract_error(selected, parameters, "unexpected", name, kind);
       if (parameters.get(name) !== kind) throw part_contract_error(selected, parameters, "representation", name, kind);
@@ -306,7 +306,7 @@ export function expand_document_composition(
     for (const [raw, value] of Object.entries(attrs)) {
       if (!is_part_argument_attribute(raw)) continue;
       const argument = part_argument_name(raw);
-      if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}.`);
+      if (argument === undefined) throw new TypeError(part_direction_issue("hson-part", raw) ?? `Invalid hson-part parameter ${JSON.stringify(raw)}.`);
       if (supplied.has(argument.name)) throw new TypeError(`Conflicting Part parameter ${JSON.stringify(argument.name)}.`);
       supplied.set(argument.name, argument.kind);
       if (argument.kind !== "scalar") {
@@ -632,7 +632,7 @@ export function expand_document_composition(
       for (const raw of parameterNames) {
         const argument = part_argument_name(raw);
         const value: unknown = Object.getOwnPropertyDescriptor(attrs, raw)?.value;
-        if (argument === undefined) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)} in ${context}.`);
+        if (argument === undefined) throw new TypeError(part_direction_issue("hson-part", raw) ?? `Invalid hson-part parameter ${JSON.stringify(raw)} in ${context}.`);
         if (parameters.has(argument.name)) throw new TypeError(`Conflicting Part parameter ${JSON.stringify(argument.name)} in ${context}.`);
         if (argument.kind === "scalar") {
           if (!parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}: expected a scalar.`);

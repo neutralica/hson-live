@@ -100,13 +100,13 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     const existing = declarations.get(binding);
     if (existing !== undefined) return existing;
     const iterator = analysis.iterators.get(binding.node);
-    const attribute = binding.receiving === undefined ? iterator?.attribute : `${binding.name}:${binding.kind}`;
+    const attribute = binding.receiving === undefined ? iterator?.attribute : `${binding.kind}:${binding.name}`;
     if (attribute === undefined) return undefined;
     const where = range(binding.node, attribute, "name");
     if (where === undefined || source.slice(where.start, where.end) !== attribute) return undefined;
     // The analyzer selected the alias. Split only its already-validated attribute.
     const fields = attribute.split(":");
-    const index = binding.receiving !== undefined ? 0 : fields.indexOf(binding.name, 1);
+    const index = binding.receiving !== undefined ? 1 : fields.indexOf(binding.name, 1);
     if (index < 0) return undefined;
     const start = where.start + fields.slice(0, index).reduce((size, field) => size + field.length + 1, 0);
     const location = mapped({ start, end: start + binding.name.length });
@@ -151,7 +151,7 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
   for (const scope of analysis.scopes.values()) for (const binding of scope.values()) declaration(binding);
   for (const use of analysis.uses) reference(use);
   const incoming = analysis.receiving.flatMap(binding => {
-    const ref = projectReference(binding.receiving.reference, binding.node, `${binding.name}:${binding.kind}`, "receiving");
+    const ref = projectReference(binding.receiving.reference, binding.node, `${binding.kind}:${binding.name}`, "receiving");
     return ref === undefined ? [] : [ref];
   });
   return { declarations: [...declarations.values()], references: [...references.values(), ...incoming].sort((a, b) => a.root.start - b.root.start) };

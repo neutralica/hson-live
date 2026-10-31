@@ -1,6 +1,6 @@
 <tag hson:part
-  slide:data="%{data}"
-  slide2:data="${data2}"
+  data:slide="%{data}"
+  data:slide2="${data2}"
   href="^{slide.href}"
   "^{slide2.value}"
 />

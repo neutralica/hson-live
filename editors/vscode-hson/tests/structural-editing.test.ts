@@ -319,7 +319,7 @@ check("bare Part reference witnesses preserve source and validate the whole docu
     }
     for (const body of ['<script src=' + sigil + '|/>', '<style media=' + sigil + '|/>',
       '<main ${before} <span title=' + sigil + '|/> ${after}/>',
-      '<main d:data="%{payload}" <span title=' + sigil + '|/>/>',
+      '<main data:d="%{payload}" <span title=' + sigil + '|/>/>',
       '<hson-part lib="parts" at="card" title=' + sigil + '|/>',
       '<main @:card <span title=' + sigil + '|/>/>',
       '<main "😀"\r\n <span title=' + sigil + '|/> <i/>/>']) {
@@ -907,7 +907,7 @@ check("bare member/value opener adjacency normalizes to one space through all fo
 });
 
 check("local Part references pair through the production checkpoint and preserve structural formatting", () => {
-  for (const body of ['<span "^|"/>', '<span title="^|"/>', '<hson-part ^|/>', '<main c:doc="%{control}" <hson-part ^|/>' , '<main <hson-part ^|']) {
+  for (const body of ['<span "^|"/>', '<span title="^|"/>', '<hson-part ^|/>', '<main doc:c="%{control}" <hson-part ^|/>' , '<main <hson-part ^|']) {
     assertTypingResult(authored(body), '{', '{$0}');
   }
   assertTypingResult(authored('<hson-part ^|control}/>'), '{', '{$0');
@@ -918,7 +918,7 @@ check("local Part references pair through the production checkpoint and preserve
   for (const sigil of ['%', '^']) for (const reference of ['model.items[0].label', 'model["odd}key"]']) {
     assertTypingResult(authored('<p ' + JSON.stringify(sigil + '|' + reference + '}') + '/>'), '{', '{$0');
   }
-  const body = '<main c:doc="%{control}" d:data="%{payload}"\n<hson-part ^{c}/>\n<p ' + JSON.stringify('^{d["odd}key"][0].label}') + '/>\n/>';
+  const body = '<main doc:c="%{control}" data:d="%{payload}"\n<hson-part ^{c}/>\n<p ' + JSON.stringify('^{d["odd}key"][0].label}') + '/>\n/>';
   const source = authored(body), formatted = format(source);
   assert.ok(formatted.includes('<hson-part ^{c}/>'));
   assert.ok(formatted.includes(JSON.stringify('^{d["odd}key"][0].label}')));

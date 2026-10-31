@@ -7,7 +7,7 @@ the definition root or in a canonical Document. Each Part invocation still
 produces one rooted result, or zero through `part:optional`.
 
 ```hson
-<ul hson:part items:data="%{items}"
+<ul hson:part data:items="%{items}"
   <li for:item:i="^{items}" title="^{item}"
     "^{i}: ^{item}"
   />
@@ -47,7 +47,7 @@ directive-bearing element's attributes, text and descendants. Inner iterators
 may shadow either an outer alias or a receiving declaration. Leaving the body
 restores the outer bindings; aliases never leak to siblings. Local scalar
 indices render as strings in ordinary attributes and text. Connector scalar
-arguments retain the scalar representation; `data:i` cannot forward an index
+arguments retain the scalar representation; `i:data` cannot forward an index
 declared as a scalar.
 
 Object iteration reads the admitted ordered Data carrier directly. Numeric-looking
@@ -59,7 +59,7 @@ its real Data members. A structured value remains Data and cannot render as
 scalar text or become Document markup implicitly.
 
 ```hson
-<dl hson:part properties:data="%{properties}"
+<dl hson:part data:properties="%{properties}"
   <div per:key:value="^{properties}"
     <dt "^{key}"/>
     <dd "^{value}"/>
@@ -69,7 +69,7 @@ scalar text or become Document markup implicitly.
 
 The iterators may nest in either order and shadow outer aliases. `per:name:block`
 can directly decorate an ordinary connector with `at="^{block.kind}"` and
-`data:block="^{block}"`; it creates the same selected Part occurrence as `for:`.
+`block:data="^{block}"`; it creates the same selected Part occurrence as `for:`.
 
 ## Direct Part selection
 
@@ -78,27 +78,27 @@ const map = hsonLiveMap.fromLibraries({
   components: { parts: {
     Column: {
       kind: "document",
-      document: Hson.document`<section hson:part blocks:data="%{blocks}"
+      document: Hson.document`<section hson:part data:blocks="%{blocks}"
         <hson-part for:block:i="^{blocks}"
-          lib="components" at="^{block.kind}" data:block="^{block}"/>
+          lib="components" at="^{block.kind}" block:data="^{block}"/>
       />`,
       css: { "& .content": { fontWeight: "bold" } },
     },
     Heading: {
       kind: "document",
-      document: Hson.document`<h1 hson:part block:data="%{block}"
+      document: Hson.document`<h1 hson:part data:block="%{block}"
         class="content" "^{block.text}"/>`,
       css: { color: "blue" },
     },
     Paragraph: {
       kind: "document",
-      document: Hson.document`<p hson:part block:data="%{block}"
+      document: Hson.document`<p hson:part data:block="%{block}"
         class="content" "^{block.text}"/>`,
       css: { color: "red" },
     },
   } },
   page: { document: Hson.document`<html <head/> <body
-    <hson-part lib="components" at="Column" data:blocks="${Hson.data.from([
+    <hson-part lib="components" at="Column" blocks:data="${Hson.data.from([
       { kind: "Heading", text: "Title" },
       { kind: "Paragraph", text: "Body" },
     ])}"/>

@@ -581,7 +581,7 @@ check("awaited resume aliases retain context while unsupported receiving transfo
   }
 });
 check("structured arguments expose root names, selector spellings and whole forwarding without scanning data", () => {
-  const template = '<section hson:part slide:data="%{payload}" title="^{slide.title}" <hson-part at="child" data:payload="^{slide.details}" data:literal="\\\"%{phantom}\\\""/> <b ' + JSON.stringify('^{slide["odd}key"]}') + '/>/>';
+  const template = '<section hson:part data:slide="%{payload}" title="^{slide.title}" <hson-part at="child" payload:data="^{slide.details}" literal:data="\\\"%{phantom}\\\""/> <b ' + JSON.stringify('^{slide["odd}key"]}') + '/>/>';
   const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
     + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition} } } });';
   const test = evidenceProject("structured-arguments", { "index.ts": text });
@@ -598,7 +598,7 @@ check("structured arguments expose root names, selector spellings and whole forw
   assert.equal(definition.parameterSpellings.some(parameter => parameter.name === "phantom"), false);
 });
 check("old hash spellings are invalid source facts rather than local uses", () => {
-  const template = '<p hson:part d:data="%{payload}" "#{d.title}"/>';
+  const template = '<p hson:part data:d="%{payload}" "#{d.title}"/>';
   const text = imports + 'const definition=Text.document`' + template + '`;'
     + 'const map=maps.fromLibraries({components:{parts:{x:{kind:"document",document:definition}}}});';
   const test = evidenceProject('old-local-reference', { 'index.ts': text });
@@ -609,7 +609,7 @@ check("old hash spellings are invalid source facts rather than local uses", () =
   assert.ok(definition.referenceIssues.some(issue => test.slice(issue.location).includes('#{d.title}')));
 });
 check("optional source facts count authored values, excluding declarations and serialized data", () => {
-  const template = '<section hson:part part:optional d:data="%{payload}" <p part:optional "^{d.title}"/> <aside part:optional "Static"/> <hson-part part:optional at="leaf" data:payload="^{d.child}"/> <hson-part part:optional at="leaf" data:payload="\\\"%{literal}\\\""/>/>';
+  const template = '<section hson:part part:optional data:d="%{payload}" <p part:optional "^{d.title}"/> <aside part:optional "Static"/> <hson-part part:optional at="leaf" payload:data="^{d.child}"/> <hson-part part:optional at="leaf" payload:data="\\\"%{literal}\\\""/>/>';
   const text = 'import { Hson, hsonLiveMap as maps } from "hson-live";\nconst definition = ' + JSON.stringify(template)
     + ';\nconst map = maps.fromLibraries({ components: { parts: { x: {kind:"document", document:definition}, leaf:{kind:"document",document:"<p hson:part/>"} } } });';
   const test = evidenceProject("optional-facts", { "index.ts": text });

@@ -41,11 +41,11 @@ for (const mode of ['light', 'dark']) {
   for (const foreground of [...Object.values(theme.colors), ...Object.values(theme.semanticTokenColors), ...theme.tokenColors.map(rule => rule.settings.foreground)]) assert.match(foreground, /^#[\da-f]{6}$/i);
   const semantic = theme.semanticTokenColors;
   assert.equal(semantic['*.hsonQualifier'], roleColor("qualifier", mode).toLowerCase());
-  assert.deepEqual(Object.keys(semantic).filter(selector => selector.includes('hsonQualifier') || selector === 'hsonReceiving.hsonLocalName'),
-    ['*.hsonQualifier', 'hsonReceiving.hsonQualifier', 'hsonReceiving.hsonLocalName'],
-    'receiving syntax keeps its binding active and mutes its trailing kind');
-  assert.equal(semantic['hsonReceiving.hsonQualifier'], semantic.hsonReceiving);
-  assert.equal(semantic['hsonReceiving.hsonLocalName'], semantic['*.hsonQualifier']);
+  assert.deepEqual(Object.keys(semantic).filter(selector => selector.includes('hsonQualifier') || selector.endsWith('hsonLocalName')),
+    ['*.hsonQualifier', 'hsonReceiving.hsonLocalName', 'hsonReceiving.hsonQualifier', 'hsonSending.hsonQualifier', 'hsonSending.hsonLocalName'],
+    'directional syntax keeps local and parameter names active and mutes their kinds');
+  assert.equal(semantic['hsonReceiving.hsonLocalName'], semantic.hsonReceiving);
+  assert.equal(semantic['hsonReceiving.hsonQualifier'], semantic['*.hsonQualifier']);
   const qualifierRule = theme.tokenColors.findLast(rule => rule.scope.includes(grammarScopes.attributeQualifier));
   assert.equal(qualifierRule.settings.foreground, semantic['*.hsonQualifier']);
   for (const [type, role] of [['hsonReceiving', 'receiving'], ['hsonSending', 'sending'],
@@ -57,8 +57,8 @@ for (const mode of ['light', 'dark']) {
     assert.ok(Object.keys(semantic).indexOf('*.hsonQualifier') > Object.keys(semantic).indexOf(type),
       `${type}.hsonQualifier wins the equal-specificity match by appearing after the base rule`);
     assert.equal(semantic[type], roleColor(role, mode).toLowerCase(), `${type} keeps its parent color`);
-    assert.equal(semantic[`${type}.hsonLocalName`], type === 'hsonReceiving' ? semantic['*.hsonQualifier'] : undefined,
-      `${type}.hsonLocalName only overrides the receiving kind segment`);
+    assert.equal(semantic[`${type}.hsonLocalName`], type === 'hsonReceiving' ? semantic.hsonReceiving : type === 'hsonSending' ? semantic['*.hsonQualifier'] : undefined,
+      `${type}.hsonLocalName follows the directional segment role`);
   }
   assert.equal(semantic.hsonColon, blend(syntax.punctuation.colon.house[mode].foreground, appearance.ui.palette.background.house[mode].foreground,
     syntax.punctuation.colon.house[mode].intensity));
@@ -66,8 +66,8 @@ for (const mode of ['light', 'dark']) {
   customQualifier.syntax.hson.attribute.qualifier.house[mode].foreground = '#123456';
   const customTheme = houseTheme(customQualifier, definitions, mode);
   assert.equal(customTheme.semanticTokenColors['*.hsonQualifier'], '#123456');
-  assert.equal(customTheme.semanticTokenColors['hsonReceiving.hsonLocalName'], '#123456');
-  for (const selector of Object.keys(semantic).filter(selector => !['*.hsonQualifier', 'hsonReceiving.hsonLocalName'].includes(selector))) {
+  assert.equal(customTheme.semanticTokenColors['hsonReceiving.hsonQualifier'], '#123456');
+  for (const selector of Object.keys(semantic).filter(selector => !['*.hsonQualifier', 'hsonReceiving.hsonQualifier', 'hsonSending.hsonLocalName'].includes(selector))) {
     assert.equal(customTheme.semanticTokenColors[selector], semantic[selector], `${selector} is independent of qualifier tuning`);
   }
   const registry = new Registry({
@@ -76,7 +76,7 @@ for (const mode of ['light', 'dark']) {
     loadGrammar: async scope => scope === 'source.hson' ? grammar : null,
   });
   const hson = await registry.loadGrammar('source.hson');
-  const source = '<section blocks:data="x" data:block="x" for:item="x" part:optional class="x"/>';
+  const source = '<section data:blocks="x" block:data="x" for:item="x" part:optional class="x"/>';
   const encoded = hson.tokenizeLine2(source, INITIAL).tokens;
   const foreground = offset => {
     for (let i = 0; i < encoded.length; i += 2) {
@@ -84,8 +84,8 @@ for (const mode of ['light', 'dark']) {
         return registry.getColorMap()[(encoded[i + 1] >>> 15) & 511].toLowerCase();
     }
   };
-  for (const [name, qualifier, local] of [['blocks:data', semantic.hsonReceiving, semantic['*.hsonQualifier']],
-    ['data:block', semantic['*.hsonQualifier'], semantic.hsonSending],
+  for (const [name, qualifier, local] of [['data:blocks', semantic['*.hsonQualifier'], semantic.hsonReceiving],
+    ['block:data', semantic.hsonSending, semantic['*.hsonQualifier']],
     ['for:item', semantic['*.hsonQualifier'], semantic.hsonIteration],
     ['part:optional', semantic['*.hsonQualifier'], semantic.hsonDirective]]) {
     const start = source.indexOf(name), colon = start + name.indexOf(':');

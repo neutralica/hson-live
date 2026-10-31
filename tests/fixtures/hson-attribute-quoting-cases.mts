@@ -46,7 +46,7 @@ export function run_attribute_quoting_cases(): number {
   }
   reject('<hson-part Lib=components/>', "HSON_ATTRIBUTE_QUOTES_REQUIRED", "components");
   for (const value of ["pre%{bar}", "%{bar}post", "%{bar}%{other}", "components/^{item.kind}"]) {
-    for (const [tag, name] of [["p", "title"], ["hson-part", "at"], ["hson-part", "data:payload"]]) {
+    for (const [tag, name] of [["p", "title"], ["hson-part", "at"], ["hson-part", "payload:data"]]) {
       reject(`<${tag} ${name}=${value} next="kept"/>`, "HSON_ATTRIBUTE_QUOTES_REQUIRED", value);
       assert.doesNotThrow(() => parse_hson(`<${tag} ${name}=${JSON.stringify(value)}/>`));
       checks++;
@@ -138,15 +138,15 @@ export function run_attribute_quoting_cases(): number {
   for (const quoted of [false, true]) {
     const operand = (value: string) => quoted ? JSON.stringify(value) : value;
     const map = hsonLiveMap.fromLibraries({ components: { parts: {
-      outer: part(`<section hson:part rows:data=${operand('%{items}')} content:doc=${operand('%{body}')} title=${operand('%{title}')}
+      outer: part(`<section hson:part data:rows=${operand('%{items}')} doc:content=${operand('%{body}')} title=${operand('%{title}')}
         <b for:item:index=${operand('^{rows}')} data-index=${operand('^{index}')} "^{item.label}"/>
-        <hson-part at=${operand('leaf')} title=${operand('^{rows[0].label}')} data:info=${operand('^{rows[0]}')}/>
+        <hson-part at=${operand('leaf')} title=${operand('^{rows[0].label}')} info:data=${operand('^{rows[0]}')}/>
         <hson-part ^{content}/>
         <i part:optional title=${operand('%{absent?}')}/>
         <aside lib="unresolvable/a/b" at="anything/a/b"/>/>`),
-      leaf: part(`<p hson:part info:data=${operand('%{info}')} title=${operand('%{title}')} "^{info.label}"/>`),
+      leaf: part(`<p hson:part data:info=${operand('%{info}')} title=${operand('%{title}')} "^{info.label}"/>`),
     } }, page: { document: `<hson-part lib=${operand('components')} at=${operand('outer')} title="Heading"
-      data:items=${JSON.stringify('«<label "item">»')} doc:body=${JSON.stringify('<i "body"/>')}/>` } });
+      items:data=${JSON.stringify('«<label "item">»')} body:doc=${JSON.stringify('<i "body"/>')}/>` } });
     assert.equal(map.doc.must('page').render(), '<!doctype html><html><head></head><body><section title="Heading"><b data-index="0">item</b><p title="item">item</p><i>body</i><aside at="anything/a/b" lib="unresolvable/a/b"></aside></section></body></html>');
     const qualified = hsonLiveMap.fromLibraries({ components: { parts: { leaf: part('<p hson:part title=%{bar}/>' ) } },
       page: { document: `<hson-part at=${operand('components/leaf')} bar="whole"/>` } });

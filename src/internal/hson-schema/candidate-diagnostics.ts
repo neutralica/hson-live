@@ -12,7 +12,7 @@ import { static_source_candidates } from "./source-candidates.js";
 import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { is_part_argument_attribute, part_argument_name, whole_part_reference } from "../part-placeholder.js";
+import { is_part_argument_attribute, part_argument_name, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
@@ -92,7 +92,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
             const source = ancestor === undefined ? undefined : part_iterator_source_origin(definition, ancestor);
             const declaration = ancestor?.declaration;
             if (source === undefined || declaration === undefined || ancestor?.issue !== undefined) return false;
-            const input = literalInput(`data:${source.incoming}`);
+            const input = literalInput(`${source.incoming}:data`);
             if (input === undefined) return false;
             const values = project_ordered_data(input, source.path, true);
             // Schema member multiplicity, unknown inputs and empty collections
@@ -103,7 +103,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
               ? Array.isArray(value) && value.length > 0
               : is_ordered_projected_object(value) && value.entries.length > 0);
           })) continue;
-          const argument = connector.attributes.find(attribute => attribute.name === `data:${origin.incoming}`);
+          const argument = connector.attributes.find(attribute => attribute.name === `${origin.incoming}:data`);
           if (argument === undefined) continue;
           let invalid = false;
           const input = literalInput(argument.name);
@@ -124,6 +124,10 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
     }
     for (const connector of document.connectors) {
       if (!connector.headerComplete) continue;
+      for (const attribute of connector.attributes) {
+        const issue = part_direction_issue("hson-part", attribute.name);
+        if (issue !== undefined) report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", issue);
+      }
       const coordinates = part_source_coordinates(connector);
       if (coordinates?.issue !== undefined) {
         // Missing inherited context is invalid only at a proven ordinary receiver;
@@ -138,7 +142,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       for (const attribute of connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name))) {
         const argument = part_argument_name(attribute.name);
         if (argument === undefined) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Invalid Part argument ${JSON.stringify(attribute.name)}.`);
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", part_direction_issue("hson-part", attribute.name) ?? `Invalid Part argument ${JSON.stringify(attribute.name)}.`);
           continue;
         }
         if (supplied.has(argument.name)) report(attribute.nameLocation, "HSON_PART_ARGUMENT_CONFLICT", `Conflicting Part argument ${JSON.stringify(argument.name)}.`);
