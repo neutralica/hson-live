@@ -4,7 +4,7 @@ import { hsonLiveMap, hsonTransform, enable_interactions, add_interaction } from
 import { is_Node } from "../../src/core/node-guards.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
 import { make_livemap_libraries } from "../../src/api/livemap/livemap.libraries.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
+const collection = <const T extends Record<string, unknown>>(parts: T) => ({ parts });
 import { create_locus_hosted_aggregate_internal as locus, type LocusHostedAggregateStageWriter } from "../../src/api/locus/locus.aggregate.ts";
 import { prepare_locus_scoped_commit_internal } from "../../src/api/locus/locus.scoped-preparation.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../../src/api/locus/locus.projection.ts";

@@ -22,60 +22,96 @@ export interface DataLocationObservations {
 const ARRAY_READS = ["toArray", "slice", "take", "drop", "takeLast", "dropLast", "map", "length", "isEmpty", "at", "first", "last", "includes", "indexOf"] as const satisfies readonly (keyof LibraryArrayRead<JsonValue>)[];
 const OBJECT_READS = ["toObject", "pick", "omit", "hasKey", "getKey", "keys", "isEmpty", "size", "values", "entries"] as const satisfies readonly (keyof LibraryObjectRead<JsonValue>)[];
 
-function observations<T extends object, TName extends keyof T>(api: T, names: readonly TName[]): Readonly<Pick<T, TName>> {
+/** Live reads recheck lifetime after caller callbacks/conversion; returned data stays detached. */
+export function live_observation(assertReadable: () => void) {
+  return <TArgs extends unknown[], TResult>(read: (...args: TArgs) => TResult) => (...args: TArgs): TResult => {
+    assertReadable();
+    const result = read(...args);
+    assertReadable();
+    return result;
+  };
+}
+
+/** Suppress revoked deliveries, but leave listener errors and cleanup to the publisher. */
+export function live_subscription<TArgs extends unknown[]>(
+  subscribe: (listener: (...args: TArgs) => void) => () => void,
+  assertCurrent: () => void,
+): (listener: (...args: TArgs) => void) => () => void {
+  return listener => {
+    assertCurrent();
+    if (typeof listener !== "function") return subscribe(listener);
+    return subscribe((...args) => {
+      try { assertCurrent(); } catch { return; }
+      listener(...args);
+    });
+  };
+}
+
+function observations<T extends object, TName extends keyof T>(api: T, names: readonly TName[], assertReadable: () => void): Readonly<Pick<T, TName>> {
   // Only explicitly admitted observations cross the read-only authority boundary.
-  return Object.freeze(Object.fromEntries(names.map(name => [name, api[name]]))) as Readonly<Pick<T, TName>>;
+  const observe = live_observation(assertReadable);
+  return Object.freeze(Object.fromEntries(names.map(name => {
+    const method = api[name];
+    if (typeof method !== "function") throw new TypeError("Library observation must be callable.");
+    return [name, observe((...args: unknown[]) => Reflect.apply(method, api, args))];
+  }))) as Readonly<Pick<T, TName>>;
 }
 /** Share the existing canonical read implementations, never their mutation methods. */
-export function collection_observations(raw: DataLocationObservations): Readonly<{
+export function collection_observations(raw: DataLocationObservations, assertReadable: () => void = () => {}): Readonly<{
   array?: LibraryArrayRead<JsonValue>; object?: LibraryObjectRead<JsonValue>;
 }> {
+  assertReadable();
   const array = raw.asArray()?.array, object = raw.asObject()?.object;
+  const assertCurrent = () => { assertReadable(); void raw.rev; };
   return Object.freeze({
-    ...(array === undefined ? {} : { array: observations(array, ARRAY_READS) }),
-    ...(object === undefined ? {} : { object: observations(object, OBJECT_READS) }),
+    ...(array === undefined ? {} : { array: observations(array, ARRAY_READS, assertCurrent) }),
+    ...(object === undefined ? {} : { object: observations(object, OBJECT_READS, assertCurrent) }),
   });
 }
 
 export function read_data_location(raw: DataLocationObservations, assertReadable: () => void = () => {}): ReadDataLocation {
-  const snap = () => { assertReadable(); return raw.snap(); };
-  const hson = () => { assertReadable(); return raw.hson(); };
+  assertReadable();
+  const observe = live_observation(assertReadable);
+  const snap = observe(() => raw.snap());
+  const hson = observe(() => raw.hson());
   const facade = {
-    get rev() { return raw.rev; }, path: () => raw.path(), snap, hson, must: required_reads(snap, hson),
-    watch: raw.watch.bind(raw), kind: () => raw.kind(),
-    at: (path: Parameters<typeof raw.at>[0]) => read_data_location(raw.at(path), assertReadable),
-    present: () => { const checked = raw.present(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
-    asArray: () => { const checked = raw.asArray(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
-    asObject: () => { const checked = raw.asObject(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
-    asScalar: () => { const checked = raw.asScalar(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); },
-    ...collection_observations(raw),
+    get rev() { assertReadable(); return raw.rev; }, path: observe(() => raw.path()), snap, hson, must: required_reads(snap, hson),
+    watch: live_subscription(raw.watch.bind(raw), () => { assertReadable(); void raw.rev; }), kind: observe(() => raw.kind()),
+    at: observe((path: Parameters<typeof raw.at>[0]) => read_data_location(raw.at(path), assertReadable)),
+    present: observe(() => { const checked = raw.present(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); }),
+    asArray: observe(() => { const checked = raw.asArray(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); }),
+    asObject: observe(() => { const checked = raw.asObject(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); }),
+    asScalar: observe(() => { const checked = raw.asScalar(); return checked === undefined ? undefined : read_data_location(checked, assertReadable); }),
+    ...collection_observations(raw, assertReadable),
   };
   return Object.freeze(forward_part_write(facade, raw, assertReadable)) as unknown as ReadDataLocation;
 }
 
 export function read_document_location(raw: ReturnType<LiveMapDocumentLibrary["at"]>, assertReadable: () => void = () => {}): NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>> {
+  assertReadable();
+  const observe = live_observation(assertReadable);
   const element = () => {
     const value = raw.asElement();
     if (value === undefined) throw new Error("Document location is not an element.");
     return value;
   };
-  const snap = () => { assertReadable(); return raw.snap(); };
-  const hson = () => { assertReadable(); return raw.hson(); };
+  const snap = observe(() => raw.snap());
+  const hson = observe(() => raw.hson());
   return Object.freeze({
-    get rev() { return raw.rev; }, path: () => raw.path(), snap, hson, must: required_reads(snap, hson),
-    watch: raw.watch.bind(raw), kind: () => raw.kind(),
-    at: (path: readonly number[]) => read_document_location(raw.at(path), assertReadable),
-    id: (id: string) => { const found = raw.id(id); return found === undefined ? undefined : read_document_location(found, assertReadable); },
-    present: () => { const checked = raw.present(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
-    asElement: () => { const checked = raw.asElement(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
-    asRoot: () => { const checked = raw.asRoot(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
-    asText: () => { const checked = raw.asText(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); },
+    get rev() { assertReadable(); return raw.rev; }, path: observe(() => raw.path()), snap, hson, must: required_reads(snap, hson),
+    watch: live_subscription(raw.watch.bind(raw), () => { assertReadable(); void raw.rev; }), kind: observe(() => raw.kind()),
+    at: observe((path: readonly number[]) => read_document_location(raw.at(path), assertReadable)),
+    id: observe((id: string) => { const found = raw.id(id); return found === undefined ? undefined : read_document_location(found, assertReadable); }),
+    present: observe(() => { const checked = raw.present(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); }),
+    asElement: observe(() => { const checked = raw.asElement(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); }),
+    asRoot: observe(() => { const checked = raw.asRoot(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); }),
+    asText: observe(() => { const checked = raw.asText(); return checked === undefined ? undefined : read_document_location(checked, assertReadable); }),
     attrs: Object.freeze({
-      get: (name: string) => element().attrs.get(name),
-      has: (name: string) => element().attrs.has(name),
-      keys: () => element().attrs.keys(),
-      must: Object.freeze({ get: (name: string) => element().attrs.must.get(name) }),
+      get: observe((name: string) => element().attrs.get(name)),
+      has: observe((name: string) => element().attrs.has(name)),
+      keys: observe(() => element().attrs.keys()),
+      must: Object.freeze({ get: observe((name: string) => element().attrs.must.get(name)) }),
     }),
-    flags: Object.freeze({ has: (name: string) => element().flags.has(name) }),
+    flags: Object.freeze({ has: observe((name: string) => element().flags.has(name)) }),
   }) as unknown as NonNullable<ReturnType<AuthorityDocumentLocation<unknown, never>["asElement"]>>;
 }

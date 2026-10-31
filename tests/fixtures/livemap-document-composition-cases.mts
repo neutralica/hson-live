@@ -8,7 +8,7 @@ import { Hson, hsonLiveMap, hsonTransform } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { read_livemap_part_internal as readPart, compose_livemap_document_internal as compose,
   prepare_hosted_livemap_library_add_internal as hostedAdd } from "../../src/api/livemap/livemap.libraries.ts";
-import { part_collection_definition_internal as collection } from "../../src/api/livemap/livemap.parts.ts";
+const collection = <const T extends Record<string, unknown>>(parts: T) => ({ parts });
 import { internal_livemap_aggregate_authority as owner } from "../../src/api/livemap/livemap.internal.ts";
 import { lookup_document_quad_internal as lookup, parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { expand_document_composition, document_composition_options, type DocumentCompositionOptions } from "../../src/api/livemap/livemap.document.composition.ts";
@@ -922,7 +922,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     for (const source of ['<hson-part lib="parts" at="x"/>', '<hson-part lib="parts" at="x" required="ok" extra="x"/>',
       '<hson-part lib="parts" at="malformed"/>',
       '<hson-part lib="parts" at="x" required="ok" "content"/>', '<hson-part lib="parts" at="script" code="bad"/>', '<hson-part lib="parts" at="handler" code="bad"/>']) atomic(map, () => map.addLibraries({ bad: { document: source } }).commit);
-    assert.throws(() => collection({ style: part('<p hson:part style="color:%{color}"/>') }));
+    assert.throws(() => hsonLiveMap.fromLibraries({ parts: collection({ style: part('<p hson:part style="color:%{color}"/>') }) }));
     const opaque: HsonNode = { $_tag: "hson-part", $_attrs: { lib: "parts", at: "x", style: { color: "red" } }, $_content: [] };
     atomic(map, () => map.addLibraries({ bad: { document: { $_tag: ROOT_TAG, $_content: [opaque] } } }).commit, /parameter/);
   });
@@ -965,7 +965,7 @@ export function document_composition_cases(check: (name: string, run: () => void
   check("cycles, malformed Part roots, schemas and bounded traversal fail atomically", () => {
     const map = hsonLiveMap.fromLibraries({ parts: { parts: { x: part('<p hson:part <hson-part at="y"/>/>'), y: part('<i hson:part <hson-part at="x"/>/>') } } });
     atomic(map, () => map.addLibraries({ bad: { document: '<hson-part lib="parts" at="x"/>' } }).commit, /cycle/);
-    assert.throws(() => collection({ bad: part('<p hson:part/> <q/>') }), /one ordinary/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ parts: collection({ bad: part('<p hson:part/> <q/>') }) }), /one ordinary/);
     const shell = parse_authored_document_library('<main <hson-part lib="parts" at="x"/>/>');
     assert.throws(() => expand_document_composition("shell", () => ({ root: shell.root }), document_composition_options({ maxDepth: 2 }),
       () => ({ root: parse_authored_document_library('<section <b/>/>').root })), /depth/);

@@ -1,3 +1,4 @@
+import { live_observation } from "./library-observation.js";
 import { required_reads } from "./required-reads.js";
 import type { LiveMapDocumentLibrary, LiveMapDocumentContent, LiveMapDocumentRequestTarget,
   LiveMapDocumentCommitTarget } from "../types/livemap.types.js";
@@ -80,14 +81,16 @@ export function read_document_quad(
   raw: import("../types/livemap.types.js").LiveMapDocumentQuadLocation,
   assertReadable: () => void = () => {},
 ): import("../types/livemap.types.js").AuthorityDocumentQuadLocation<never> {
-  const snap = () => { assertReadable(); return raw.snap(); };
-  const hson = () => { assertReadable(); return raw.hson(); };
+  const observe = live_observation(assertReadable);
+  const snap = observe(() => raw.snap());
+  const hson = observe(() => raw.hson());
   return Object.freeze({
-    get active() { return raw.active; }, get rev() { return raw.rev; },
-    path: () => raw.path(), snap, hson, must: required_reads(snap, hson), dispose: () => raw.dispose(),
-    at: (path: readonly number[]) => read_document_quad(raw.at(path), assertReadable),
-    attrs: Object.freeze({ get: raw.attrs.get, has: raw.attrs.has, keys: raw.attrs.keys, must: raw.attrs.must }),
-    flags: Object.freeze({ has: raw.flags.has }),
+    get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
+    path: observe(() => raw.path()), snap, hson, must: required_reads(snap, hson), dispose: () => raw.dispose(),
+    at: observe((path: readonly number[]) => read_document_quad(raw.at(path), assertReadable)),
+    attrs: Object.freeze({ get: observe(raw.attrs.get), has: observe(raw.attrs.has), keys: observe(raw.attrs.keys),
+      must: Object.freeze({ get: observe(raw.attrs.must.get) }) }),
+    flags: Object.freeze({ has: observe(raw.flags.has) }),
   });
 }
 
@@ -99,9 +102,10 @@ export function write_document_quad(
   assertReadable: () => void = () => {},
 ): import("../types/livemap.types.js").AuthorityDocumentQuadLocation {
   const read = read_document_quad(raw, assertReadable);
+  const observe = live_observation(assertReadable);
   return Object.freeze({
-    ...read, get active() { return raw.active; }, get rev() { return raw.rev; },
-    at: (path: readonly number[]) => write_document_quad(raw.at(path), edit, assertReadable),
+    ...read, get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
+    at: observe((path: readonly number[]) => write_document_quad(raw.at(path), edit, assertReadable)),
     replace: value => edit(raw, location => location.replace(value)),
     delete: () => edit(raw, location => location.delete()),
     insert: (index, value) => edit(raw, location => location.insert(index, value)),

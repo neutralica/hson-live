@@ -15,7 +15,7 @@ import {
   type HostedAggregateCommit,
 } from "../livemap/livemap.hosted.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
-import { prepare_hosted_livemap_library_add_internal } from "../livemap/livemap.libraries.js";
+import { type OwnedLibraryDefinition, prepare_hosted_admitted_libraries_internal, prepare_hosted_livemap_library_add_internal } from "../livemap/livemap.libraries.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "../livemap/livemap.staged.js";
 
 export { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "./locus.aggregate.protocol.js";
@@ -89,6 +89,10 @@ export type LocusHostedAggregate = Readonly<{
   stage: LiveMapSynchronousAuthoring<LocusHostedAggregateStageWriter, Promise<HostedAggregateCommit | undefined>>;
   /** @internal Stage one ordinary LiveMap library-add batch through this authority's gate. */
   add_libraries_internal: (definitions: LiveMapDefinitions, afterInstall?: () => void,
+    ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
+    css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
+  /** Continue sources already owned by the public admission capture. @internal */
+  add_owned_libraries_internal: (definitions: readonly OwnedLibraryDefinition[], afterInstall?: () => void,
     ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
   dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
@@ -231,6 +235,18 @@ export function create_locus_hosted_aggregate_internal(
     return next;
   };
 
+  function enqueue_libraries(prepare: () => ReturnType<typeof prepare_hosted_livemap_library_add_internal>,
+    afterInstall?: () => void, ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[]) {
+    const run = async (): Promise<HostedAggregateCommit> => {
+      if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
+      const prepared = prepare();
+      return accept_prepared(prepared.transition, () => { prepared.afterInstall(); afterInstall?.(); }, ownership);
+    };
+    const next = tail.then(run, run);
+    tail = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
   return Object.freeze({
     map: options.map,
     logicalMapId: snapshot.authority.logicalMapId,
@@ -240,19 +256,10 @@ export function create_locus_hosted_aggregate_internal(
     async stage(callback) {
       return (await enqueue(callback, true)).commit;
     },
-    add_libraries_internal(definitions, afterInstall, ownership, css) {
-      const run = async (): Promise<HostedAggregateCommit> => {
-        if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
-        const prepared = prepare_hosted_livemap_library_add_internal(options.map, owner, definitions, css);
-        return accept_prepared(prepared.transition, () => {
-          prepared.afterInstall();
-          afterInstall?.();
-        }, ownership);
-      };
-      const next = tail.then(run, run);
-      tail = next.then(() => undefined, () => undefined);
-      return next;
-    },
+    add_libraries_internal: (definitions, afterInstall, ownership, css) => enqueue_libraries(
+      () => prepare_hosted_livemap_library_add_internal(options.map, owner, definitions, css), afterInstall, ownership),
+    add_owned_libraries_internal: (definitions, afterInstall, ownership, css) => enqueue_libraries(
+      () => prepare_hosted_admitted_libraries_internal(options.map, owner, definitions, css), afterInstall, ownership),
     async dispatch_action(name, payload, message, origin = directOrigin) {
       const action = options.actions?.[name];
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);

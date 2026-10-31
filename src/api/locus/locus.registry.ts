@@ -5,7 +5,7 @@ import { make_family_selectors } from "../../internal/library-selectors.js";
 import { resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { read_document_quad } from "../../internal/governed-document.js";
 import { document_css_reads } from "../../internal/document-css-commands.js";
-import { read_data_location, read_document_location } from "../../internal/library-observation.js";
+import { live_observation, live_subscription, read_data_location, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
 import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
 import type {
@@ -110,6 +110,7 @@ export function create_registry_locus_internal<
   let actionSequence = 0;
   let disposed = false;
   const assertReadable = () => { if (disposed) throw new Error("Disposed Locus authority."); };
+  const observe = live_observation(assertReadable);
   const actions: Record<string, (
     context: unknown,
     payload: ExactDataCarrier | undefined,
@@ -119,28 +120,28 @@ export function create_registry_locus_internal<
   const readLib = (selected: import("../../types/livemap.types.js").LiveMapDataLibrary | import("../../types/livemap.types.js").LiveMapDocumentLibrary, parts: boolean) => {
     if (selected.mode !== "document") {
       const handle = Object.freeze({
-        mode: selected.mode, get rev() { return selected.rev; }, root: () => selected.root(),
-        snap: (path?: import("../../types/livemap.types.js").LivePath) => { assertReadable(); return path === undefined ? selected.snap() : selected.snap(path); },
-        hson: () => { assertReadable(); return selected.hson(); },
-        must: required_reads(() => { assertReadable(); return selected.snap(); }, () => { assertReadable(); return selected.hson(); }), schema: Object.freeze({ get: () => selected.schema.get() }),
-        at: (path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path), assertReadable),
+        mode: selected.mode, get rev() { assertReadable(); return selected.rev; }, root: observe(() => selected.root()),
+        snap: observe((path?: import("../../types/livemap.types.js").LivePath) => path === undefined ? selected.snap() : selected.snap(path)),
+        hson: observe(() => selected.hson()),
+        must: required_reads(observe(() => selected.snap()), observe(() => selected.hson())), schema: Object.freeze({ get: observe(() => selected.schema.get()) }),
+        at: observe((path: import("../../types/livemap.types.js").LivePath) => read_data_location(selected.at(path), assertReadable)),
       });
-      return parts ? make_parts_facade(handle, key => selected.snap([key]) !== undefined) : handle;
+      return parts ? make_parts_facade(handle, observe((key: string) => selected.snap([key]) !== undefined)) : handle;
     }
     return Object.freeze({
-      mode: "document" as const, get rev() { return selected.rev; }, root: () => selected.root(),
-      snap: () => { assertReadable(); return selected.snap(); }, hson: () => { assertReadable(); return selected.hson(); },
-      must: required_reads(() => { assertReadable(); return selected.snap(); }, () => { assertReadable(); return selected.hson(); }), watch: selected.watch.bind(selected),
-      render: mark_browser_html_producer(() => selected.render()), commits: selected.commits,
-      schema: Object.freeze({ get: () => selected.schema.get() }),
-      css: document_css_reads(selected.css),
-      document: Object.freeze({ root: () => selected.root(), content: () => selected.document.content(),
-        attrs: Object.freeze({ get: selected.document.attrs.get, has: selected.document.attrs.has,
-          keys: selected.document.attrs.keys, must: selected.document.attrs.must }),
-        flags: Object.freeze({ has: selected.document.flags.has }),
+      mode: "document" as const, get rev() { assertReadable(); return selected.rev; }, root: observe(() => selected.root()),
+      snap: observe(() => selected.snap()), hson: observe(() => selected.hson()),
+      must: required_reads(observe(() => selected.snap()), observe(() => selected.hson())), watch: live_subscription(selected.watch.bind(selected), () => { assertReadable(); void selected.rev; }),
+      render: mark_browser_html_producer(observe(() => selected.render())), commits: Object.freeze({ observe: live_subscription(selected.commits.observe, () => { assertReadable(); void selected.rev; }) }),
+      schema: Object.freeze({ get: observe(() => selected.schema.get()) }),
+      css: document_css_reads(selected.css, assertReadable),
+      document: Object.freeze({ root: observe(() => selected.root()), content: observe(() => selected.document.content()),
+        attrs: Object.freeze({ get: observe(selected.document.attrs.get), has: observe(selected.document.attrs.has),
+          keys: observe(selected.document.attrs.keys), must: Object.freeze({ get: observe(selected.document.attrs.must.get) }) }),
+        flags: Object.freeze({ has: observe(selected.document.flags.has) }),
       }),
-      at: (path: readonly number[]) => read_document_location(selected.at(path), assertReadable),
-      q: (name: string) => { const subject = selected.q(name); return subject === undefined ? undefined : read_document_quad(subject, assertReadable); },
+      at: observe((path: readonly number[]) => read_document_location(selected.at(path), assertReadable)),
+      q: observe((name: string) => { const subject = selected.q(name); return subject === undefined ? undefined : read_document_quad(subject, assertReadable); }),
     });
   };
   const readNamespaces = make_family_selectors(name => {
@@ -243,7 +244,7 @@ export function create_registry_locus_internal<
     }
   };
   const governed = make_locus_stage(options.map, submitStage,
-    (definitions, ownership, css) => authority.add_libraries(definitions, ownership, css), assertStageSubmissionAllowed, assertReadable);
+    (definitions, ownership, css) => authority.add_owned_libraries(definitions, ownership, css), assertStageSubmissionAllowed, assertReadable);
 
   const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");
@@ -351,7 +352,7 @@ export function create_registry_locus_internal<
   const locus = Object.freeze({
     doc: governed.doc, data: governed.data, parts: governed.parts,
     cut: options.map.cut.bind(options.map),
-    commits: options.map.commits,
+    commits: Object.freeze({ observe: live_subscription(options.map.commits.observe, assertReadable) }),
     admit: governed.admit,
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,

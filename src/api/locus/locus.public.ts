@@ -5,7 +5,7 @@ import type {
 } from "../../types/locus.core.types.js";
 import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
 import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.types.js";
-import { admit_public_livemap_definitions, make_livemap_libraries } from "../livemap/livemap.libraries.js";
+import { admit_public_livemap_definitions, make_livemap_from_admitted_libraries_internal } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { enable_interactions, add_interaction } from "../interactions/interactions.js";
 import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
@@ -33,11 +33,11 @@ function construct_locus_definition<D extends LocusDefinitions, A extends LocusA
   definitions: D, options: LocusDefinitionOptions<D, A>,
 ): LocusRegistryOptions<LiveMap<LiveMapKnownDefinitions<D>>, A> {
   const captured = admit_public_livemap_definitions(definitions, true);
-  const catalog: LocusLibraryCatalogEntry[] = Object.entries(captured.definitions).map(([name, definition]) => ({
-    name, definition, ownership: captured.ownership[name]!,
+  const catalog: LocusLibraryCatalogEntry[] = captured.definitions.map(({name}) => ({
+    name, ownership: captured.ownership[name]!,
     ...(captured.css[name] === undefined ? {} : { css: captured.css[name] }),
   }));
-  const names = new Set(Object.keys(captured.definitions));
+  const names = new Set(captured.definitions.map(definition => definition.name));
   if (options.local !== undefined) {
     if (!Array.isArray(options.local)) throw new TypeError("Locus local initializers must be an array.");
     for (const entry of options.local) {
@@ -50,7 +50,7 @@ function construct_locus_definition<D extends LocusDefinitions, A extends LocusA
         ...(entry.stylesheet === undefined ? {} : { css: opaque_document_stylesheet(entry.stylesheet) }) });
     }
   }
-  const map = make_livemap_libraries(captured.definitions, [], undefined, captured.css);
+  const map = make_livemap_from_admitted_libraries_internal(captured.definitions, [], undefined, captured.css);
   if (options.logicalMapId !== undefined || options.incarnationId !== undefined) {
     const aggregate = internal_livemap_aggregate_authority(map);
     const original = aggregate.hostedPosition().authority;

@@ -692,6 +692,12 @@ function persistent_view(
         for (const entry of ownership ?? []) ownershipByName.set(entry.name, entry.ownership);
       }, ownership, css);
     },
+    add_owned_libraries_internal(definitions, afterInstall, ownership, css) {
+      return locus.add_owned_libraries_internal(definitions, () => {
+        afterInstall?.();
+        for (const entry of ownership ?? []) ownershipByName.set(entry.name, entry.ownership);
+      }, ownership, css);
+    },
     dispatch_action: locus.dispatch_action,
     on_commit: locus.on_commit,
     checkpoint,

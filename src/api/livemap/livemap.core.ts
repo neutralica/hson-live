@@ -11,7 +11,7 @@ import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, document_scoped_quads_semantically_equal, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { encode_document_scoped_quads, make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { local_scoped_css_operation, prepare_document_scoped_css_operation, encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
-import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, assert_part_members_preserved, immutable_part_error, type DataLibraryValidation } from "./livemap.parts.js";
+import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, read_admitted_part, validate_part_additions, assert_part_members_preserved, immutable_part_error, type DataLibraryValidation, type PartLibraryCandidate } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
@@ -255,16 +255,29 @@ export function make_livemap_registry_authority(
   aggregate: InternalLiveMapAggregateAuthority;
   identities: readonly LiveMapLibraryIdentity[];
 }> {
-  const prepared = roots.map((definition) => {
+  return build_registry_authority(roots, systems);
+}
+
+/** Same-admission continuation. Candidates originate in admit_part_library, never caller fields. @internal */
+export function make_livemap_owned_registry_authority(
+  roots: readonly (RegistryRoot & Readonly<{ part?: PartLibraryCandidate }>)[], systems: readonly InitialSystemState[] = [],
+) {
+  return build_registry_authority(roots, systems, roots.map(definition => definition.part));
+}
+
+function build_registry_authority(roots: readonly RegistryRoot[], systems: readonly InitialSystemState[],
+  parts: readonly (PartLibraryCandidate | undefined)[] = []) {
+  const prepared = roots.map((definition, index) => {
     const { root, hsonSchema, family, css } = definition;
     const quads = own_document_quads(definition);
     const validation = own_data_library_validation(definition);
-    const graph = prepare_livemap_root(root, family);
+    const part = parts[index];
+    const graph = part?.graph ?? prepare_livemap_root(root, family);
     if (hsonSchema !== undefined) {
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
     }
-    validate_data_library(graph.root, graph.mode, validation);
+    if (part === undefined) validate_data_library(graph.root, graph.mode, validation);
     if (css !== undefined && family !== "document") throw new TypeError("Initial CSS requires a document Library.");
     const scopeInput = own_document_scopes(definition);
     if (scopeInput !== undefined && (definition.compositionScopes !== undefined || definition.compositionStyles !== undefined)) {
@@ -274,7 +287,7 @@ export function make_livemap_registry_authority(
       root: graph.root, scopes: scopeInput, css: css === undefined ? undefined : encode_portable_document_stylesheet(css),
     }).scopes;
     const compositionScopes = definition.compositionScopes === undefined ? undefined : decode_document_scoped_quads(definition.compositionScopes, graph.root);
-    return { graph, hsonSchema, css, validation, scopes, compositionScopes, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
+    return { graph, projectedValue: part?.value, hsonSchema, css, validation, scopes, compositionScopes, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
   return Object.freeze({ aggregate, identities: aggregate.libraries() });
@@ -286,6 +299,7 @@ export function make_livemap_registry_authority(
 function make_livemap_registry_engine(
   registry: readonly Readonly<{
     graph: ReturnType<typeof prepare_livemap_root>;
+    projectedValue?: OrderedProjectedValue;
     hsonSchema?: HsonSchema;
     validation?: DataLibraryValidation;
     quads?: PortableDocumentQuads;
@@ -296,15 +310,13 @@ function make_livemap_registry_engine(
   }>[],
   systems: readonly InitialSystemState[] = [],
 ): InternalLiveMapAggregateAuthority {
-  const states = registry.map(({ graph, hsonSchema, css, validation }) => {
+  const states = registry.map(({ graph, projectedValue, hsonSchema, css, validation }) => {
     const state = make_livemap_library(graph, hsonSchema, validation);
+    if (graph.mode !== "document") state.projectedValue = projectedValue ?? must_projected_root_value(graph.root);
     if (css !== undefined) state.stylesheet = css;
     return state;
   });
   const libraryRegistry = make_livemap_library_registry(states);
-  for (const library of states) {
-    if (library.mode !== "document") library.projectedValue = must_projected_root_value(library.root);
-  }
   // Revision, transition, publication, and QUID identity authority stay on the
   // enclosing LiveMap. A Library owns only graph-local state.
   let mapRevision = 0;
@@ -634,7 +646,7 @@ function make_livemap_registry_engine(
           throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
         }
         const library = require_library(binding.identity);
-        const part = validate_data_library(library.root, library.mode, library.validation)?.find(part => part.key === member);
+        const part = read_admitted_part(installed_projected_value(library.identity), member);
         if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
         return part;
       },
@@ -664,7 +676,7 @@ function make_livemap_registry_engine(
   }
 
   function reconstruct_scoped_library(library: LiveMapLibraryState, input: unknown,
-    authority: import("./livemap.document.scoped-composition.js").DocumentScopedCompositionAuthority,
+    authority: import("./livemap.document.scoped-composition.js").DocumentScopedIdentityAuthority,
     issued = mapIdentityEpoch.issued(), foreignPayloads: ReadonlySet<string> = new Set()): PreparedDocumentScopedLibrary {
     if (library.mode !== "document") throw new Error("Scoped restoration requires a document Library.");
     const portable = decode_document_scoped_library(input);
@@ -701,12 +713,14 @@ function make_livemap_registry_engine(
     };
   }
 
-  function validated_library_root(library: LiveMapLibraryState): HsonNode {
-    if (library.validation === undefined) return library.root;
-    const checkCapture = capture_fence();
-    validate_data_library(library.root, library.mode, library.validation);
-    checkCapture();
-    return library.root;
+  function installed_projected_value(identity: LiveMapLibraryIdentity): OrderedProjectedValue {
+    const library = require_library(identity);
+    // Part observations retain the incomplete-transaction and authority fence,
+    // without re-admitting immutable source. Every installation owns admission.
+    if (library.validation !== undefined) capture_fence()();
+    require_projected_library(library);
+    if (library.projectedValue === undefined) throw new Error("Data library has no projected value.");
+    return library.projectedValue;
   }
 
   function part_library_name(library: LiveMapLibraryState): string {
@@ -771,9 +785,7 @@ function make_livemap_registry_engine(
     libraryIdentity: LiveMapLibraryIdentity,
     path: LivePath = [],
   ): JsonValue | undefined {
-    const library = require_library(libraryIdentity);
-    require_projected_library(library);
-    const value = project_live_path(validated_library_root(library), must_live_path(path));
+    const value = ordered_projected_value_at(installed_projected_value(libraryIdentity), must_live_path(path));
     return value === undefined ? undefined : materialize_projected_value(value);
   }
 
@@ -1081,8 +1093,16 @@ function make_livemap_registry_engine(
       const before = portable_quads(state);
       if (flat_document_fingerprint(state.root, before.css!, before.quads) !== effect.before) throw new Error("Stale flat document correspondence.");
     }
-    const partValues = new Map<LiveMapLibraryIdentity, OrderedProjectedValue>();
-    for (const write of writes) {
+    // Plan Parts once against the installed baseline, so earlier Document
+    // operations can consume the completed batch. Retain per-step replay evidence
+    // for its original position in the operation stream (and diagnostic order).
+    const partCandidates = new Map<LiveMapLibraryIdentity, AggregateDataCandidate>();
+    const pendingPartAdmissions = new Set<LiveMapLibraryIdentity>();
+    const partPlans = new Map<number, Readonly<{
+      candidate: AggregateDataCandidate; ops: LiveMapPlannedOps["ops"]; transportOps: LiveMapPlannedOps["transportOps"];
+      replay?: Readonly<{ before: OrderedProjectedValue; after: OrderedProjectedValue }>;
+    }>>();
+    for (const [index, write] of writes.entries()) {
       if (write.target.domain !== "application") continue;
       const library = require_library(write.target.library);
       if (library.validation !== PART_COLLECTION_VALIDATION) continue;
@@ -1097,17 +1117,34 @@ function make_livemap_registry_engine(
         || write.kind === "set" && write.target.path.length > 0) {
         assert_part_write(library, write.target.path, operation);
       }
-      const value = partValues.get(library.identity) ?? library.projectedValue ?? must_projected_root_value(library.root);
+      let candidate = partCandidates.get(library.identity);
+      if (candidate === undefined) {
+        candidate = make_aggregate_data_candidate(library);
+        partCandidates.set(library.identity, candidate);
+        pendingPartAdmissions.add(library.identity);
+      }
+      const before = candidate.value;
       const localWrites = write.kind === "replay-data" ? [projected_write_op_from_transport(write.operation)]
-        : aggregate_write_ops(write, value);
+        : aggregate_write_ops(write, before);
       for (const local of localWrites) {
         if (local.kind === "constructive-set") {
           for (const [key] of local.value.entries) assert_part_write(library, [...local.path, key], operation);
         } else assert_part_write(library, local.path, operation, local.kind === "rename" ? local : undefined);
       }
-      const next = plan_write_ops(value, localWrites).value;
-      partValues.set(library.identity, next);
+      // Governed Parts cannot own runtime identities, so the ordinary value
+      // planner is also the exact installation/transport planner here.
+      const planned = plan_write_ops(before, localWrites);
+      candidate.value = planned.value;
+      candidate.writes.push(...localWrites);
+      partPlans.set(index, { candidate, ops: planned.ops, transportOps: planned.transportOps,
+        ...(write.kind === "replay-data" ? { replay: { before, after: planned.value } } : {}) });
     }
+    const admitPendingParts = (identity: LiveMapLibraryIdentity) => {
+      if (!pendingPartAdmissions.has(identity)) return;
+      const candidate = partCandidates.get(identity)!;
+      validate_part_additions(candidate.library.projectedValue!, candidate.value);
+      pendingPartAdmissions.delete(identity);
+    };
     const readPartCandidate = (collection: string, member: string) => {
       const binding = hostedBindingsByName?.get(collection);
       if (binding === undefined) throw new Error(`Unknown Part collection ${JSON.stringify(collection)}.`);
@@ -1115,9 +1152,8 @@ function make_livemap_registry_engine(
         throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
       }
       const library = require_library(binding.identity);
-      const value = partValues.get(library.identity);
-      const root = value === undefined ? library.root : projected_value_to_hson_root(value);
-      const selected = validate_data_library(root, library.mode, library.validation)?.find(part => part.key === member);
+      admitPendingParts(library.identity);
+      const selected = read_admitted_part(partCandidates.get(library.identity)?.value ?? installed_projected_value(library.identity), member);
       if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return selected;
     };
@@ -1248,7 +1284,8 @@ function make_livemap_registry_engine(
       candidates.set(library.identity, candidate);
     }
 
-    for (let write of writes) {
+    for (const [writeIndex, submittedWrite] of writes.entries()) {
+      let write = submittedWrite;
       if (write.target.domain === "system") {
         const system = require_system(write.target.system);
         systemCandidate ??= {
@@ -1299,6 +1336,23 @@ function make_livemap_registry_engine(
         continue;
       }
       const library = require_library(write.target.library);
+      const partPlan = partPlans.get(writeIndex);
+      if (partPlan !== undefined) {
+        const { candidate, ops, transportOps, replay } = partPlan;
+        candidates.set(library.identity, candidate);
+        if (write.kind === "replay-data") {
+          if (replay === undefined) throw new Error("Part replay evidence is incomplete.");
+          must_replay_value(write.operation.path, write.operation.prev, ordered_projected_value_at(replay.before, write.operation.path));
+          must_replay_value(write.operation.path, write.operation.next, ordered_projected_value_at(replay.after, write.operation.path));
+          if (transportOps.length !== 1) throw new Error("Hosted replay operation did not produce one exact authority operation.");
+          operations.push(Object.freeze({ target: aggregate_target(library.identity, write.target.path),
+            operation: materialize_livemap_projected_op(write.operation), projected: write.operation }));
+        } else for (let index = 0; index < ops.length; index++) {
+          const operation = ops[index]!, projected = transportOps[index]!;
+          operations.push(Object.freeze({ target: aggregate_target(library.identity, operation.path), operation, projected }));
+        }
+        continue;
+      }
       if (write.kind === "graph" && write.assertDocumentShape !== undefined) {
         const candidate = candidate_for(library.identity);
         if (!is_aggregate_document_candidate(candidate) || write.logicalLocation === undefined) throw new Error("Document refinement requires logical coordinates.");
@@ -1698,11 +1752,10 @@ function make_livemap_registry_engine(
         ...(cssCandidates.has(library.identity) ? { stylesheet: cssCandidates.get(library.identity)!.after } : {}),
       };
     });
-    // Validate completed, touched collections before installation or publication.
-    // Untouched admitted Parts cannot change through detached root observations;
-    // unrelated Data/Document work need not reparse the Part catalog.
+    // Admit unused additions at the existing final validation boundary. A
+    // composition read has already admitted its complete pending collection.
     for (const state of afterStates) {
-      if (candidates.has(state.identity)) validate_data_library(state.root, state.mode, state.validation);
+      admitPendingParts(state.identity);
       if (state.mode === "document" && has_part_connector(state.root)) throw new Error("Canonical document state cannot contain construction connectors.");
     }
     for (const state of afterStates) {
@@ -1909,18 +1962,21 @@ function make_livemap_registry_engine(
             aggregateAcceptedTransitions += 1;
             aggregatePublications += 1;
             deliver_livemap_observers(aggregateWatches, watch => {
-              if (require_library(watch.library).mode === "document") return;
               if (!acceptedCommit.operations.some((operation) => (
                 operation.target.library === watch.library && paths_overlap(watch.path, operation.target.path)
               ))) return;
+              // An earlier listener may retire this identity during publication.
+              const library = libraryRegistry.get(watch.library);
+              if (library === undefined || library.mode === "document") return;
               watch.listener(aggregate_snap(watch.library, watch.path));
             }, "watch");
             deliver_livemap_observers(aggregateFeeds, feed => {
-              if (require_library(feed.library).mode === "document") return;
               const operations = acceptedCommit.operations.filter((operation) => (
                 operation.target.library === feed.library && paths_overlap(feed.path, operation.target.path)
               ));
               if (operations.length === 0) return;
+              const library = libraryRegistry.get(feed.library);
+              if (library === undefined || library.mode === "document") return;
               feed.listener(Object.freeze({
                 commit: acceptedCommit,
                 path: feed.path,
@@ -2241,7 +2297,8 @@ function make_livemap_registry_engine(
     scopes?: DocumentScopedQuadRecord;
   }>;
 
-  function prepare_add_libraries(definitions: readonly LibraryAddition[], clientLocal = false, entryManagementFence?: () => void): Readonly<{
+  function prepare_add_libraries(definitions: readonly LibraryAddition[], clientLocal = false, entryManagementFence?: () => void,
+    parts: readonly (PartLibraryCandidate | undefined)[] = []): Readonly<{
     transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
   }> {
@@ -2260,9 +2317,9 @@ function make_livemap_registry_engine(
     // The managed source-definition entry marks authored ingress. Canonical
     // topology replay/projection never carries that private marker.
     const assertSourcesCurrent = capture_fence();
-    const defined = new Map(definitions.map(definition => [definition.name, definition]));
+    const defined = new Map(definitions.map((definition, index) => [definition.name, { definition, part: parts[index] }]));
     const readPart = (collection: string, member: string) => {
-      const definition = defined.get(collection);
+      const pending = defined.get(collection), definition = pending?.definition;
       const binding = hosted.byName.get(collection);
       const source = definition === undefined ? binding === undefined ? undefined : require_library(binding.identity) : definition;
       const mode = definition === undefined ? binding?.mode : classify_live_root_mode(definition.root, definition.family);
@@ -2270,7 +2327,9 @@ function make_livemap_registry_engine(
       if (mode !== "data-object" || source.validation === undefined) {
         throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
       }
-      const part = validate_data_library(source.root, mode, source.validation)?.find(part => part.key === member);
+      const part = pending?.part !== undefined ? read_admitted_part(pending.part.value, member)
+        : definition === undefined && binding !== undefined ? read_admitted_part(installed_projected_value(binding.identity), member)
+        : validate_data_library(source.root, mode, source.validation)?.find(part => part.key === member);
       if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return part;
     };
@@ -2290,18 +2349,18 @@ function make_livemap_registry_engine(
       assertManagementCurrent?.();
       assertSourcesCurrent();
       if (transitionController.generation !== managementGeneration) throw new Error("Library admission management changed.");
-    }, readPart: () => { throw new Error("Realized Library admission cannot reread Part collections."); } };
-    const prepared = definitions.map((definition) => {
+    } };
+    const prepared = definitions.map((definition, index) => {
       const { name, root, hsonSchema, family, compositionStyles, compositionScopes } = definition;
+      const part = parts[index];
       const scopes = own_document_scopes(definition);
       let css = definition.css;
       const quads = own_document_quads(definition);
       const validation = own_data_library_validation(definition);
-      const admitted = admit_public_livemap_root(root, family, `LiveMap Library ${JSON.stringify(name)}`);
-      const graph = prepare_livemap_root(admitted, family);
+      const graph = part?.graph ?? prepare_livemap_root(admit_public_livemap_root(root, family, `LiveMap Library ${JSON.stringify(name)}`), family);
       must_hson_schema_family(hsonSchema, family);
       must_hson_schema_root(hsonSchema, graph.root);
-      validate_data_library(graph.root, graph.mode, validation);
+      if (part === undefined) validate_data_library(graph.root, graph.mode, validation);
       if (has_part_connector(graph.root)) throw new Error("Canonical Library admission cannot contain construction connectors.");
       if (compositionStyles !== undefined && family !== "document") throw new Error("Part styles require a document candidate.");
       if (compositionStyles !== undefined) {
@@ -2337,7 +2396,7 @@ function make_livemap_registry_engine(
       }
       if (state.mode === "document") assert_complete_document(state.root, render_portable_document_stylesheet_carriers(state.stylesheet!));
       candidateAuthority.assertCurrent();
-      if (state.mode !== "document") state.projectedValue = must_projected_root_value(state.root);
+      if (state.mode !== "document") state.projectedValue = part?.value ?? must_projected_root_value(state.root);
       return Object.freeze({ name, state, hsonSchema, css });
     });
     const existingBindings = libraryRegistry.all().map((state) => {
@@ -2375,7 +2434,7 @@ function make_livemap_registry_engine(
           mode: state.mode,
           schema: hsonSchema.toHson(),
           ...(state.validation === undefined ? {} : { validation: state.validation }),
-          root: encode_hosted_root(clone_hson_graph_without_quids(validated_library_root(state))),
+          root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
           ...(state.documentScopes === undefined ? (() => {
             const captured = portable_quads(state, nextLedger, css !== undefined);
             if (captured.css === undefined) return captured;
@@ -2424,12 +2483,12 @@ function make_livemap_registry_engine(
   }
 
   function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
-    beforeInstall?: () => void): LiveMapAggregateCommit {
+    beforeInstall?: () => void, parts: readonly (PartLibraryCandidate | undefined)[] = []): LiveMapAggregateCommit {
     transitionController.assertPublicMutationAllowed();
     if (definitions.length === 0) return Object.freeze({
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
-    const prepared = prepare_add_libraries(definitions);
+    const prepared = prepare_add_libraries(definitions, false, undefined, parts);
     // A source-derived candidate retains its original capture fence through all admission validation.
     beforeInstall?.();
     // Serialization may acquire exclusive management after the initial admission permission check.
@@ -2490,7 +2549,6 @@ function make_livemap_registry_engine(
     if (currentDigest !== familyTop) {
       throw new Error("LiveMap Library governing Schema is already fixed to a different specific contract.");
     }
-    validated_library_root(state);
     must_hson_schema_root(schema, state.root);
 
     const nextBindings = hosted.registry.libraries.map((entry): HostedRegistryBinding => {
@@ -2596,7 +2654,7 @@ function make_livemap_registry_engine(
         mode: entry.mode,
         schema: entry.schema,
         schemaDigest: entry.schemaDigest,
-        root: encode_hosted_root(clone_hson_graph_without_quids("mode" in state ? validated_library_root(state) : state.root)),
+        root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
         ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))),
       });
     });
@@ -2631,7 +2689,7 @@ function make_livemap_registry_engine(
         return Object.freeze({ name, root: encode_hosted_root(captured.root, HOSTED_MAX_SNAPSHOT_BYTES), scopes: captured.scopes, css: captured.css });
       }
       return Object.freeze({ name, root: encode_hosted_root(
-        clone_hson_graph_without_quids(validated_library_root(state)), HOSTED_MAX_SNAPSHOT_BYTES),
+        clone_hson_graph_without_quids(state.root), HOSTED_MAX_SNAPSHOT_BYTES),
         ...portable_quads(state) });
     });
     const system = includeSystem ? (() => {
@@ -2714,7 +2772,7 @@ function make_livemap_registry_engine(
           return Object.freeze({ name: entry.name, ...captured });
         }
       }
-      return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids("mode" in state ? validated_library_root(state) : state.root),
+      return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids(state.root),
         ...(binding.scope === "hson-internal" ? {} : portable_quads(require_library(binding.identity as LiveMapLibraryIdentity))) });
     });
     if (mapRevision !== revision || hostedFence !== authority) {
@@ -2750,8 +2808,7 @@ function make_livemap_registry_engine(
     const reserved = new Set<string>();
     const foreignPayloads = new Set([...disposable_document_quad_payloads(checkpoint.libraries.map(item => own_document_quads(item))),
       ...checkpoint.libraries.flatMap(item => item.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
-    const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore,
-      readPart: () => { throw new Error("Checkpoint restoration cannot read Part definitions."); } };
+    const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore, };
     const candidates = checkpoint.libraries.map((item, index) => {
       const entry = hosted.registry.libraries[index];
       if (entry === undefined || item.name !== entry.name) throw new Error("Checkpoint Library order is invalid.");
@@ -3260,8 +3317,7 @@ function make_livemap_registry_engine(
     const reserved = new Set<string>();
     const foreignPayloads = new Set([...disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry))),
       ...snapshot.libraries.flatMap(entry => entry.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
-    const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore,
-      readPart: () => { throw new Error("Receiving restoration cannot read Part definitions."); } };
+    const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore, };
     let stagedIssued = mapIdentityEpoch.issued();
     let nextSystem: LiveMapSystemState | undefined;
     let systemBinding: HostedRegistryBinding | undefined;
@@ -3653,8 +3709,7 @@ function make_livemap_registry_engine(
     if (state === undefined) throw new Error("Incomplete initial Library registry.");
     if (entry.compositionStyles !== undefined) merge_part_stylesheets([...(entry.css === undefined ? [] : [encode_portable_document_stylesheet(entry.css)]), ...entry.compositionStyles.map(item => item.css)]);
     if (entry.scopes === undefined) Object.assign(state, reconstruct_document(entry.graph, entry.quads, entry.css === undefined ? undefined : encode_portable_document_stylesheet(entry.css), initialReserved, undefined, [], initialPayloads));
-    const initialAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: capture_fence(),
-      readPart: () => { throw new Error("Initial restoration cannot read Part collections."); } };
+    const initialAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: capture_fence(), };
     if (entry.scopes !== undefined) {
       const candidate = reconstruct_scoped_library(state, { root: state.root, scopes: entry.scopes,
         css: encode_portable_document_stylesheet(entry.css!) }, initialAuthority,
@@ -3734,6 +3789,8 @@ function make_livemap_registry_engine(
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     addLibraries: add_libraries,
+    addOwnedLibraries: (definitions, afterInstall, beforeInstall) =>
+      add_libraries(definitions, afterInstall, beforeInstall, definitions.map(definition => definition.part)),
     addClientLocalLibraries: add_client_local_libraries,
     assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
     captureFence: capture_fence,
@@ -3786,7 +3843,7 @@ function make_livemap_registry_engine(
         assertManagementCurrent();
         assertCurrent(); transitionController.assertLocalIdentityAllowed();
         if (generation !== transitionController.generation || composition !== clientComposition) throw new Error("Scoped initialization authority changed.");
-      }, readPart: () => { throw new Error("Receiving scoped restoration cannot read Part collections."); } };
+      } };
       const seen = new Set<string>();
       // Initial private restoration only enriches an already authorized graph.
       // It cannot replace a graph, an installed scoped predecessor, or a cursor.
@@ -3840,7 +3897,7 @@ function make_livemap_registry_engine(
         if (quid === undefined || !mapIdentityEpoch.issued().has(quid)) throw new Error("SSR subject requires active owner issuance.");
         return Object.freeze({ name: entry.name, path: entry.path, quid, disposition: document_quad_disposition(entry) });
       });
-      const root = clone_hson_graph_without_quids(validated_library_root(state));
+      const root = clone_hson_graph_without_quids(state.root);
       const authoredCss = encode_portable_document_stylesheet(stylesheet(identity));
       const css = document_css_mentions_subject_identity(authoredCss)
         ? translate_document_css_identities(authoredCss, "outbound", { associations: correspondence, assertCurrent })
@@ -3861,6 +3918,13 @@ function make_livemap_registry_engine(
         state.documentQuads, mapIdentityEpoch.issued(), quids);
       check();
       return result;
+    },
+    prepareAddOwnedLibrariesManaged: (owner, definitions, assertEntryCurrent) => {
+      const assertManagedEntryCurrent = capture_managed_restoration_fence(owner);
+      const assertCurrent = () => { assertEntryCurrent?.(); assertManagedEntryCurrent(); };
+      assertCurrent();
+      return transitionController.runManaged(owner, () => prepare_add_libraries(definitions, false, assertCurrent,
+        definitions.map(definition => definition.part)));
     },
     prepareAddLibrariesManaged: (owner, definitions, assertEntryCurrent) => {
       const assertManagedEntryCurrent = capture_managed_restoration_fence(owner);
@@ -4125,10 +4189,15 @@ function make_livemap_registry_engine(
     },
     target: aggregate_target,
     root: (identity) => {
-      const library = require_library(identity), root = validated_library_root(library);
+      const library = require_library(identity);
+      if (library.validation !== PART_COLLECTION_VALIDATION) return library.root;
+      const assertCurrent = capture_fence();
       // Internal observations cannot hand out writable installed Part storage.
-      return library.validation === PART_COLLECTION_VALIDATION ? clone_live_root(root) : root;
+      const root = clone_live_root(library.root);
+      assertCurrent();
+      return root;
     },
+    projectedValue: installed_projected_value,
     documentOverlay: (library) => {
       const overlay = require_library(library).documentOverlay;
       if (overlay === undefined) throw new Error("Selected LiveMap library is not a document library.");
@@ -4229,7 +4298,7 @@ function make_livemap_registry_engine(
       libraries: Object.freeze(libraryRegistry.all().map((library) => Object.freeze({
         identity: library.identity,
         mode: library.mode,
-        root: clone_live_root(validated_library_root(library)),
+        root: clone_live_root(library.root),
         hsonSchemaAttached: library.hsonSchema !== undefined,
       }))),
     }),

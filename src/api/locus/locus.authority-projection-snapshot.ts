@@ -134,6 +134,13 @@ function root(value: unknown, schema: HsonSchema, mode: import("../../types/live
   return Object.freeze({ format: "hson-exact-value", payload: raw.payload });
 }
 
+/** Only traverse decoder-owned portable CSS, never caller storage. */
+function freeze_owned_css(value: unknown): void {
+  if (typeof value !== "object" || value === null) return;
+  for (const child of Object.values(value)) freeze_owned_css(child);
+  Object.freeze(value);
+}
+
 /** Decode and validate the entire candidate before any client runtime is constructed. */
 export function admit_authority_projection_snapshot(input: unknown): AuthorityProjectionSnapshot;
 /** Private scoped admission does not widen the public flat contract. @internal */
@@ -142,11 +149,9 @@ export function admit_authority_projection_snapshot(input: unknown, scoped = fal
   const cache = scoped ? admittedScopedSnapshots : admittedSnapshots;
   if (typeof input === "object" && input !== null) {
     const admitted = cache.get(input);
-    if (admitted !== undefined) {
-      for (const entry of admitted.libraries) if (entry.validation !== undefined) validate_data_library(
-        decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), entry.mode, entry.validation);
-      return admitted;
-    }
+    // Only this decoder's fully owned frozen outputs are keys. A caller's
+    // original object (including a lookalike copy) always takes admission below.
+    if (admitted !== undefined) return admitted;
   }
   try {
     const value = record(input, ["format", "authority", "revision", "projectionDigest", "libraries", "systemFeatures", "writableDocuments", "system"]);
@@ -184,12 +189,14 @@ export function admit_authority_projection_snapshot(input: unknown, scoped = fal
       if (scopedState === undefined && mode === "document") assert_portable_document_css_correspondence(
         decode_hosted_root(qualifiedRoot, HOSTED_MAX_SNAPSHOT_BYTES), mode, quads,
         encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)));
+      const css = mode === "document" ? encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) : undefined;
+      freeze_owned_css(css);
       return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hson_schema_digest(schema), rootCodec: "hson-exact-value",
         root: qualifiedRoot,
         ...(validation === undefined ? {} : { validation }),
         ...(quads === undefined ? {} : { quads }),
         ...(scopedState === undefined ? {} : { scopes: scopedState.scopes }),
-        ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
+        ...(css === undefined ? {} : { css }) });
     });
     if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) return fail();
     const systemFeatures: LocusProjectionSystemFeature[] = [];

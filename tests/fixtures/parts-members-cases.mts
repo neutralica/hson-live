@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { locus_observation_lifetime_cases, projection_snapshot_integrity_cases } from "./authority-observation-integrity-cases.mts";
 import { Hson, hsonLiveMap, bind_locus_http } from "../../src/index.js";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.js";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.js";
@@ -12,6 +13,8 @@ const replacement = { kind: "document", document: '<h2 hson:part "Replacement"/>
 const definitions = { components: { parts: { heading, submit: { kind: "document" as const, document: "<button hson:part/>" } } } };
 
 export async function parts_member_cases() {
+  await locus_observation_lifetime_cases();
+  await projection_snapshot_integrity_cases();
   const map = hsonLiveMap.fromLibraries(definitions), parts = map.parts.components;
   const aggregate = internal_livemap_aggregate_authority(map);
   const before = map.capture(), issued = enumerate_livemap_issued_quids(aggregate.identityEpoch().issued());
@@ -201,6 +204,8 @@ export async function parts_member_echo_cases() {
       assert.throws(() => member.asObject()!.object.getKey("stylesheet" as never), /field access/);
     }
     const projectedWrite = projected.write, localWrite = local.write;
+    const projectedObject = projected.asObject().object;
+    assert.equal(projectedObject.getKey("document"), heading.document);
     const revision = parts.rev;
     assert.equal(projectedWrite(), Reflect.get(parts.at(["heading"]), "write")());
     assert.equal(localWrite(), Reflect.get(widgets.at(["heading"]), "write")());
@@ -228,12 +233,16 @@ export async function parts_member_echo_cases() {
     await session.update({ libraries: ["widgets"] });
     await until(() => echo.parts("components") === undefined);
     assert.throws(projectedWrite);
+    assert.throws(() => projectedObject.getKey("document"), /another map authority/);
+    assert.throws(() => projectedObject.toObject(), /another map authority/);
     assert.throws(documentMust.snap); assert.throws(fragmentMust.hson);
     assert.throws(() => projected.snap()); assert.throws(projectedMust.snap); assert.throws(projectedMust.hson); assert.throws(() => Reflect.get(parts, "heading"));
     await session.update({ libraries: ["components", "widgets", "page", "localPage"] });
     await until(() => echo.parts("components") !== undefined);
     assert.notEqual(echo.parts.must("components"), parts);
     assert.throws(projectedWrite);
+    assert.throws(() => projectedObject.toObject(), /another map authority/);
+    assert.equal(echo.parts.must("components").at(["heading"]).asObject()!.object.getKey("document"), heading.document);
     assert.equal(Reflect.get(echo.parts.must("components").at(["heading"]), "write")(), Hson.document`<hson-part lib="components" at="heading"/>`);
     assert.deepEqual(Reflect.get(echo.parts.must("components"), "heading").snap(), heading);
     assert.throws(documentMust.snap); assert.throws(fragmentMust.hson);
@@ -242,6 +251,7 @@ export async function parts_member_echo_cases() {
     const activeDocument = echo.doc.must("page"), activeFragment = activeDocument.at([1, 0, 0]);
     const activeProjected = Reflect.get(echo.parts.must("components"), "heading").must;
     const activeProjectedWrite = Reflect.get(echo.parts.must("components"), "heading").write;
+    const activeProjectedObject = echo.parts.must("components").at(["heading"]).asObject()!.object;
     const activeLocalDocument = echo.doc.must("localPage"), activeLocalFragment = activeLocalDocument.at([1, 0, 0]);
     assert.equal(session.revoke(), true);
     echo.disconnect(); await until(() => echo.session.status !== "attached");
@@ -250,6 +260,7 @@ export async function parts_member_echo_cases() {
     echo.dispose();
     assert.throws(localWrite, /disposed/i);
     assert.throws(activeProjectedWrite, /disposed/i);
+    assert.throws(() => activeProjectedObject.getKey("document"), /disposed/i);
     assert.throws(retained.snap, /disposed/i);
     assert.throws(retained.hson, /disposed/i);
     for (const read of [activeDocument.snap, activeDocument.must.hson, activeFragment.must.snap,

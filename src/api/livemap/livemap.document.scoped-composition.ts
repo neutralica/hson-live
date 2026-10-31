@@ -20,9 +20,9 @@ import { canonical_graph_equal, prepare_document_install } from "./livemap.docum
 
 type Composition = ReturnType<typeof expand_document_composition>;
 /** Borrowed transaction authority. The fence covers source reads and allocation callbacks. @internal */
-export type DocumentScopedCompositionAuthority = Readonly<{
-  identityOwner: object;
-  assertCurrent: () => void;
+export type DocumentScopedIdentityAuthority = Readonly<{ identityOwner: object; assertCurrent: () => void }>;
+/** Source interpretation is needed only while expanding authored operations. @internal */
+export type DocumentScopedCompositionAuthority = DocumentScopedIdentityAuthority & Readonly<{
   readPart: (collection: string, member: string) => DocumentCompositionSource;
 }>;
 /**
@@ -52,7 +52,7 @@ function sorted(bindings: readonly ScopedQuadBindingRecord[]) {
 /** Validate the complete associations before demanding any additional identity. */
 function merge(context: DocumentScopedQuadContext, state: DocumentScopedQuads,
   incoming: DocumentScopedQuadRecord, demands: readonly (readonly number[])[],
-  parent: DocumentQuadOccurrenceLifetime | null, authority: DocumentScopedCompositionAuthority,
+  parent: DocumentQuadOccurrenceLifetime | null, authority: DocumentScopedIdentityAuthority,
   foreignPayloads: ReadonlySet<string> = new Set()) {
   const existing = encode_document_scoped_quads(state, context, []);
   const parentScope = parent === null ? undefined : state.occurrences.find(scope => scope.lifetime === parent);
@@ -73,7 +73,7 @@ function merge(context: DocumentScopedQuadContext, state: DocumentScopedQuads,
  * Callers must retire replaced lifetimes before entering this function. @internal */
 export function materialize_document_scoped_record(context: DocumentScopedQuadContext, state: DocumentScopedQuads,
   record: DocumentScopedQuadRecord, demands: readonly (readonly number[])[],
-  authority: DocumentScopedCompositionAuthority, foreignPayloads: ReadonlySet<string> = new Set()) {
+  authority: DocumentScopedIdentityAuthority, foreignPayloads: ReadonlySet<string> = new Set()) {
   decode_document_scoped_quads(record, context.root);
   const requested = new Map<string, LiveMapDocumentPath>();
   for (const path of [...record.document.map(binding => binding.path), ...record.occurrences.flatMap(scope =>
@@ -122,7 +122,7 @@ export function materialize_document_scoped_record(context: DocumentScopedQuadCo
  * @internal
  */
 export function prepare_document_scoped_composition(context: DocumentScopedQuadContext, composition: Composition,
-  authority: DocumentScopedCompositionAuthority): PreparedDocumentScopedComposition {
+  authority: DocumentScopedIdentityAuthority): PreparedDocumentScopedComposition {
   authority.assertCurrent();
   if (context.root !== composition.root) throw new Error("Composition candidate requires its realized graph.");
   return prepare_initial(context, composition.scoped, composition.identityDemands, composition.styles, authority);
@@ -132,7 +132,7 @@ export function prepare_document_scoped_composition(context: DocumentScopedQuadC
  * Transport labels exclude sender payloads from allocation but never become bindings. @internal
  */
 export function prepare_document_scoped_reconstruction(context: DocumentScopedQuadContext,
-  input: DocumentScopedQuadRecord, authority: DocumentScopedCompositionAuthority, foreignPayloads: ReadonlySet<string> = new Set()): PreparedDocumentScopedComposition {
+  input: DocumentScopedQuadRecord, authority: DocumentScopedIdentityAuthority, foreignPayloads: ReadonlySet<string> = new Set()): PreparedDocumentScopedComposition {
   authority.assertCurrent();
   const record = decode_document_scoped_quads(input, context.root);
   return prepare_initial(context, record, record.subjects.map(subject => subject.path), [], authority,
@@ -141,7 +141,7 @@ export function prepare_document_scoped_reconstruction(context: DocumentScopedQu
 
 function prepare_initial(context: DocumentScopedQuadContext, record: DocumentScopedQuadRecord,
   demands: readonly (readonly number[])[], styles: readonly DocumentCompositionStyle[],
-  authority: DocumentScopedCompositionAuthority, foreignPayloads?: ReadonlySet<string>): PreparedDocumentScopedComposition {
+  authority: DocumentScopedIdentityAuthority, foreignPayloads?: ReadonlySet<string>): PreparedDocumentScopedComposition {
   const empty = make_document_scoped_quads(context, [], []);
   const result = merge(context, empty, record, demands, null, authority, foreignPayloads);
   return Object.freeze({ owner: result.owner, root: result.root, overlay: result.overlay, issued: result.issued,

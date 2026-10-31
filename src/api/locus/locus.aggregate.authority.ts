@@ -1,3 +1,4 @@
+import type { OwnedLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { resolve_document_css_action_subjects } from "../../internal/css/document-css-action-subjects.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
@@ -287,6 +288,9 @@ export type LocusHostedAggregateSocketServer<
   stage: LocusHostedAggregate["stage"];
   add_libraries: (definitions: LiveMapDefinitions, ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>,
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>;
+  /** @internal Continue sources already owned by public admission. */
+  add_owned_libraries: (definitions: readonly OwnedLibraryDefinition[], ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>,
+    css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
   create_session: (request: LocusRequestedProjection, options?: import("../../types/locus.types.js").LocusSessionCreateOptions) => Promise<LocusSessionId>;
@@ -467,25 +471,33 @@ export function create_locus_hosted_aggregate_authority_internal<
     }
   });
 
-  async function add_libraries(
-    definitions: LiveMapDefinitions,
+  async function add_libraries(definitions: LiveMapDefinitions,
     ownership?: Readonly<Record<string, "private" | "shared">>,
-    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
-  ): Promise<void> {
+    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {}): Promise<void> {
     if (disposed) throw new Error("Hosted Locus authority is disposed.");
-    if (typeof definitions !== "object" || definitions === null || Array.isArray(definitions)) {
-      throw new Error("Hosted Library definitions are malformed.");
-    }
-    // Capture the batch before it enters the asynchronous authority queue. The
-    // policy names and semantic names must come from the same caller snapshot.
-    const capturedDefinitions: LiveMapDefinitions = Object.freeze(Object.fromEntries(Object.entries(definitions)));
-    const entries = runtime_locus_ownership_entries(Object.keys(capturedDefinitions), ownership);
+    if (typeof definitions !== "object" || definitions === null || Array.isArray(definitions)) throw new Error("Hosted Library definitions are malformed.");
+    const captured = Object.freeze(Object.fromEntries(Object.entries(definitions)));
+    return install_library_ownership(Object.keys(captured), ownership,
+      (installed, entries) => locus.add_libraries_internal(captured, installed, entries, css));
+  }
+
+  async function add_owned_libraries(definitions: readonly OwnedLibraryDefinition[],
+    ownership?: Readonly<Record<string, "private" | "shared">>,
+    css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {}): Promise<void> {
+    if (disposed) throw new Error("Hosted Locus authority is disposed.");
+    return install_library_ownership(definitions.map(definition => definition.name), ownership,
+      (installed, entries) => locus.add_owned_libraries_internal(definitions, installed, entries, css));
+  }
+
+  async function install_library_ownership(names: readonly string[], ownership: Readonly<Record<string, "private" | "shared">> | undefined,
+    submit: (installed: () => void, entries: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[]) => Promise<unknown>): Promise<void> {
+    const entries = runtime_locus_ownership_entries(names, ownership);
     for (const entry of entries) {
       if (projectionPolicy.local.has(entry.name)) {
         throw new Error(`Authority Library ${JSON.stringify(entry.name)} collides with a local initializer.`);
       }
     }
-    await locus.add_libraries_internal(capturedDefinitions, () => {
+    await submit(() => {
       const nextRegistry = aggregate.hostedRegistry();
       projectionPolicy.installRuntimeOwnership(entries, nextRegistry);
       for (const entry of entries) options.runtimeOwnership?.set(entry.name, entry.ownership);
@@ -495,7 +507,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         const identity = bindings[index];
         if (identity !== undefined) identitiesByName.set(entry.name, identity);
       }
-    }, entries, css);
+    }, entries);
   }
 
   // Server-created sessions have an attachment fence, but require no transport.
@@ -1711,6 +1723,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     attach,
     stage: locus.stage,
     add_libraries,
+    add_owned_libraries,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
     create_session,

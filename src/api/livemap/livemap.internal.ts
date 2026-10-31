@@ -155,6 +155,10 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     compositionStyles?: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[];
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
     beforeInstall?: () => void) => LiveMapAggregateCommit;
+  /** Same-admission storage from the private source owner; raw inputs use addLibraries. */
+  addOwnedLibraries: (definitions: readonly (Parameters<InternalLiveMapAggregateAuthority["addLibraries"]>[0][number]
+    & Readonly<{ part?: import("./livemap.parts.js").PartLibraryCandidate }>)[],
+    afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, beforeInstall?: () => void) => LiveMapAggregateCommit;
   /** Admit authorized client-local initializers through the private composition path. @internal */
   addClientLocalLibraries: (definitions: readonly Readonly<{
     name: string;
@@ -223,6 +227,12 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   }>[], assertEntryCurrent?: () => void) => Readonly<{
     transition: PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
+  }>;
+  /** Continue owned source admission under the same exact management grant. */
+  prepareAddOwnedLibrariesManaged: (owner: object, definitions: readonly (
+    Parameters<InternalLiveMapAggregateAuthority["prepareAddLibrariesManaged"]>[1][number]
+    & Readonly<{ part?: import("./livemap.parts.js").PartLibraryCandidate }>)[], assertEntryCurrent?: () => void) => Readonly<{
+    transition: PreparedLiveMapAuthorityTransition; identities: readonly LiveMapLibraryIdentity[];
   }>;
   /** Tighten one unmanaged local Library from its family-top Schema. @internal */
   useLibrarySchema: (
@@ -309,6 +319,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     phase?: "published" | "installed") => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
+  /** Active Library ownership plus its immutable data value; never a public mutable observation. */
+  projectedValue: (library: LiveMapLibraryIdentity) => import("../../core/ordered-projected-value.js").OrderedProjectedValue;
   /** Immutable installed private scope/lifetime evidence; not a public lookup API. */
   documentScopes: (library: LiveMapLibraryIdentity) => import("./livemap.document.scoped-quad.js").DocumentScopedQuads | undefined;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;

@@ -1,5 +1,5 @@
 import type { LiveMap, LiveMapDefinitions, LiveMapKnownDefinitions, LiveMapDefinitionsCheck } from "../../types/livemap.types.js";
-import { admit_public_livemap_definitions, make_livemap_libraries } from "./livemap.libraries.js";
+import { admit_public_livemap_definitions, make_livemap_libraries, make_livemap_from_admitted_libraries_internal } from "./livemap.libraries.js";
 
 export interface HsonLiveMapFacade {
   readonly create: typeof create;
@@ -14,7 +14,7 @@ export function create(): LiveMap<{}> {
 /** Establish one named local Library registry. */
 export function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries & LiveMapDefinitionsCheck<NoInfer<TLibraries>>): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
   const captured = admit_public_livemap_definitions(libraries);
-  return make_livemap_libraries(captured.definitions, [], undefined, captured.css) as LiveMap<LiveMapKnownDefinitions<TLibraries>>;
+  return make_livemap_from_admitted_libraries_internal(captured.definitions, [], undefined, captured.css) as LiveMap<LiveMapKnownDefinitions<TLibraries>>;
 }
 
 export const hsonLiveMap: HsonLiveMapFacade = /* @__PURE__ */ Object.freeze({

@@ -8,7 +8,7 @@ import type { InteractionDescriptor } from "../../src/types/interaction.types.ts
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { node_to_json_value } from "../../src/api/livemap/livemap.editor.ts";
 import { HsonSchema } from "../../src/api/schema/hson-schema.ts";
-import { admit_public_livemap_definitions, make_livemap_libraries } from "../../src/api/livemap/livemap.libraries.ts";
+import { admit_public_livemap_definitions, make_livemap_from_admitted_libraries_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { create_registry_locus } from "../../src/api/locus/locus.registry.ts";
 import { resume_registry_locus } from "../../src/api/locus/locus.registry.persistence.ts";
 import { add_interaction, enable_interactions } from "../../src/api/interactions/interactions.ts";
@@ -30,7 +30,7 @@ function registry_options<TMap extends LiveMap, A extends LocusActionPayloads>(o
   const { [fixtureCss]: _fixtureCss, definitions, local = [], interactions, ...configuration } = options;
   const admitted = admit_public_livemap_definitions(definitions, true);
   const css = Object.freeze({ ...admitted.css, ...options[fixtureCss] });
-  const map = make_livemap_libraries(admitted.definitions, [], undefined, css);
+  const map = make_livemap_from_admitted_libraries_internal(admitted.definitions, [], undefined, css);
   if (configuration.logicalMapId !== undefined || configuration.incarnationId !== undefined) {
     const aggregate = internal_livemap_aggregate_authority(map);
     const original = aggregate.hostedPosition().authority;
@@ -41,10 +41,10 @@ function registry_options<TMap extends LiveMap, A extends LocusActionPayloads>(o
   }
   if (interactions !== undefined) enable_interactions(map);
   for (const descriptor of interactions ?? []) add_interaction(map, descriptor);
-  const libraries: LocusLibraryCatalogEntry[] = Object.entries(admitted.definitions).map(([name, definition]) => ({
-    name, definition, ownership: admitted.ownership[name]!, ...(css[name] === undefined ? {} : { css: css[name] }),
+  const libraries: LocusLibraryCatalogEntry[] = admitted.definitions.map(({ name }) => ({
+    name, ownership: admitted.ownership[name]!, ...(css[name] === undefined ? {} : { css: css[name] }),
   }));
-  const names = new Set(Object.keys(admitted.definitions));
+  const names = new Set(admitted.definitions.map(definition => definition.name));
   for (const entry of local) {
     if (entry === undefined || !entry.name || names.has(entry.name)) throw new Error("Invalid or duplicated fixture local initializer.");
     names.add(entry.name);

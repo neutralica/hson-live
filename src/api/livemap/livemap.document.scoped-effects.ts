@@ -7,7 +7,7 @@ import { merge_part_stylesheets, retire_part_styles_by_owner } from "../../inter
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, type PortableDocumentStylesheetRecord } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCssOp, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { DocumentCompositionStyle } from "./livemap.document.composition.js";
-import { document_scoped_quads_equal, materialize_document_scoped_record, prepare_scoped_graph_operation, retain_document_scoped_operation, type DocumentScopedCompositionAuthority } from "./livemap.document.scoped-composition.js";
+import { document_scoped_quads_equal, materialize_document_scoped_record, prepare_scoped_graph_operation, retain_document_scoped_operation, type DocumentScopedIdentityAuthority } from "./livemap.document.scoped-composition.js";
 import type { PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
 import { capture_document_scoped_library, decode_document_scoped_library, restore_document_scoped_library_styles, type PortableDocumentScopedLibrary } from "./livemap.document.scoped-portable.js";
 import { decode_document_scoped_quads, DOCUMENT_SCOPED_QUAD_LIMITS, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord, type ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
@@ -257,7 +257,7 @@ function applyPortable(before: PortableDocumentScopedLibrary, effect: DocumentSc
  * returned/published on failure. This is an unpublished candidate computation,
  * not a transport receipt or cross-message replay/durability authority. @internal */
 export function replay_document_scoped_effects(before: PreparedDocumentScopedLibrary, input: unknown,
-  authority: DocumentScopedCompositionAuthority, validateRoot: (root: PreparedDocumentScopedLibrary["root"]) => void, startOrdinal = 0): PreparedDocumentScopedLibrary {
+  authority: DocumentScopedIdentityAuthority, validateRoot: (root: PreparedDocumentScopedLibrary["root"]) => void, startOrdinal = 0): PreparedDocumentScopedLibrary {
   authority.assertCurrent();
   const effects = validate_document_scoped_effects(input, startOrdinal), states: PortableDocumentScopedLibrary[] = [];
   let portable = capture_document_scoped_library(before);

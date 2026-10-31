@@ -10,6 +10,9 @@ import { validate_document_path } from "../../src/api/livemap/livemap.document.p
 import { resume_registry_locus } from "../../src/api/locus/locus.registry.persistence.js";
 import { locus_map_internal } from "../../src/internal/governor-maps.js";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
+import { admit_part_library, PART_COLLECTION_VALIDATION } from "../../src/api/livemap/livemap.parts.js";
+import { make_livemap_registry_authority } from "../../src/api/livemap/livemap.core.js";
+import type { LiveMapAggregateWrite } from "../../src/api/livemap/livemap.library.js";
 
 const part = { kind: "document", document: '<p hson:part @:label "%{text}"/>',
   css: { "@:label": { color: "red" } }, stylesheet: "p{display:block}" } as const;
@@ -21,7 +24,8 @@ const fixture = () => hsonLiveMap.fromLibraries({ parts: { parts: { p: part } },
   page: { document: '<html <head/> <body <main <hson-part lib="parts" at="p" text="Existing"/>/>/>/>' } });
 
 /** Include identity, history, occurrence and notification effects in every rejection probe. */
-function rejection(map: ReturnType<typeof fixture> | ReturnType<typeof snapshotFixture>, run: () => unknown, pattern = /Immutable Part.*parts.*p/) {
+function rejection(map: ReturnType<typeof fixture> | ReturnType<typeof snapshotFixture>, run: () => unknown,
+  pattern: RegExp | ((error: unknown) => boolean) = /Immutable Part.*parts.*p/) {
   const authority = owner(map), before = authority.captureSemanticCheckpoint(), ledger = authority.identityEpoch().issued();
   const epoch = authority.identityEpoch().current(), stats = authority.telemetry();
   const occurrence = map.doc.page.root(), css = map.doc.page.css.snapshot();
@@ -40,6 +44,109 @@ function rejection(map: ReturnType<typeof fixture> | ReturnType<typeof snapshotF
 }
 
 export async function immutable_part_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
+  await check("Part admission keeps lexical and receiving analysis at use time", () => {
+    for (const [document, message] of [
+      ['<p hson:part "^{missing}"/>', 'Missing Part local declaration "missing".'],
+      ['<p hson:part data:d="%{payload}" "%{payload}"/>', 'Conflicting Part input "payload".'],
+    ]) {
+      const definition = { kind: "document" as const, document };
+      const map = hsonLiveMap.fromLibraries({ parts: { parts: { deferred: definition } } });
+      assert.deepEqual(map.parts.parts.deferred.snap(), definition);
+      assert.throws(() => map.parts.parts.deferred.write(), { name: "TypeError", message });
+      const installed = snapshotFixture();
+      installed.parts.parts.at([]).object.setKey("deferred", definition);
+      rejection(installed, () => installed.addLibraries({ consumer: { document: '<hson-part lib="parts" at="deferred"/>' } }), new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+  });
+
+  await check("completed new Parts may be temporarily malformed, while unused final additions retain source diagnostics", () => {
+    const map = snapshotFixture();
+    map.batch(writer => {
+      writer.parts.parts.at([]).object.setKey("constructed", { kind: "document", document: "<broken" });
+      writer.parts.parts.at(["constructed", "document"]).set(other.document);
+      writer.parts.parts.at([]).object.setKey("discarded", { kind: "document", document: "<broken" });
+      writer.parts.parts.at(["discarded"]).delete();
+    });
+    assert.deepEqual(map.parts.parts.at(["constructed"]).snap(), other);
+    assert.equal(map.parts.parts.at(["discarded"]).snap(), undefined);
+    const duplicate = { kind: "document" as const, document: '<p hson:part\n <b @:same/>\n <i @:same/>/>' };
+    const diagnostics = (run: () => unknown) => {
+      try { run(); } catch (error) {
+        assert.ok(error instanceof Error);
+        return { name: error.name, message: error.message, cause: error.cause, ...JSON.parse(JSON.stringify(error)) };
+      }
+      assert.fail("Expected source rejection");
+    };
+    const expected = diagnostics(() => hsonLiveMap.fromLibraries({ parts: { parts: { first: duplicate } } }));
+    assert.deepEqual(diagnostics(() => hsonLiveMap.fromLibraries({ brokenDocument: { document: "<broken" },
+      parts: { parts: { first: duplicate } } })), expected);
+    assert.equal(expected.code, "HSON_LIBRARY_QUAD_DUPLICATE");
+    assert.deepEqual(expected.source, { index: 30, line: 3, column: 5 });
+    assert.deepEqual(expected.related, [{ role: "first-declaration", source: { index: 17, line: 2, column: 5 } }]);
+    for (const consume of [false, true]) rejection(map, () => {
+      const actual = diagnostics(() => map.batch(writer => {
+        // A missing receiving argument must not hide an invalid unused addition
+        // in the same completed collection, even when the consumer comes first.
+        if (consume) writer.doc.page.graph({ domain: "graph", op: "insert-content",
+          target: { kind: "path", path: validate_document_path([0, 0, 1, 0]) }, index: 1,
+          content: { $_tag: "hson-part", $_attrs: { lib: "parts", at: "p" }, $_content: [] } });
+        writer.parts.parts.at([]).object.setKey("first", duplicate);
+        writer.parts.parts.at([]).object.setKey("second", { kind: "document", document: "<broken" });
+      }));
+      assert.deepEqual(actual, expected);
+      throw new Error("verified source diagnostic");
+    }, /verified source diagnostic/);
+  });
+
+  await check("Part, Document and replay diagnostics retain operation precedence and atomicity", () => {
+    for (const competing of ["document", "replay", "consumer-before-replay"]) {
+      const map = snapshotFixture(), authority = owner(map), [parts, data, page] = authority.libraries();
+      const addition: LiveMapAggregateWrite = { target: authority.target(parts!, []), kind: "set-key", key: "invalid",
+        value: admit_projected_value({ kind: "document", document: '<p hson:part\n <b @:same/>\n <i @:same/>/>' }) };
+      const replay: LiveMapAggregateWrite = { target: authority.target(data!, ["count"]), kind: "replay-data",
+        operation: { kind: "set", path: ["count"], prev: 999, next: 2 } };
+      const consumer: LiveMapAggregateWrite = { target: authority.target(page!, []), kind: "graph", operation: {
+        domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0, 1, 0]) }, index: 1,
+        content: { $_tag: "hson-part", $_attrs: { lib: "parts", at: "p" }, $_content: [] } } };
+      const broken: LiveMapAggregateWrite = { target: authority.target(page!, []), kind: "graph", operation: {
+        domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([999]) }, index: 0, content: "x" } };
+      rejection(map, () => authority.commit(competing === "document" ? [broken, addition]
+        : competing === "replay" ? [replay, addition] : [consumer, replay, addition]), error => {
+        assert.ok(error instanceof Error && "code" in error);
+        assert.equal(error.code, competing === "document" ? "DOCUMENT_PATH_OUT_OF_RANGE"
+          : competing === "replay" ? "REPLAY_CONFLICT" : "HSON_LIBRARY_QUAD_DUPLICATE");
+        if (competing === "document") {
+          assert.equal(error.name, "LiveMapDocumentMutationError");
+          assert.ok(error.cause instanceof Error && "code" in error.cause);
+          assert.equal(error.cause.code, "DOCUMENT_PATH_OUT_OF_RANGE");
+        } else if (competing === "replay") assert.equal(error.name, "LiveMapReplayError");
+        return true;
+      });
+    }
+  });
+
+  await check("queued Part admission owns source and structured CSS before returning to caller aliases", async () => {
+    const loc = hsonLiveMap.locus.create({ state: { data: { count: 0 } } });
+    try {
+      const source = { kind: "document" as const, document: '<p hson:part @:root "Captured"/>', css: { "@:root": { color: "red" } } };
+      const admitted = structuredClone(source);
+      const pending = loc.admit({ parts: { parts: { p: source } } });
+      source.document = "<broken"; source.css["@:root"].color = "blue";
+      await pending;
+      assert.deepEqual(loc.parts.must("parts").at(["p"]).snap(), admitted);
+      assert.match(loc.parts.must("parts").at(["p"]).write(), /hson-part/);
+    } finally { loc.dispose(); }
+  });
+
+  await check("independent raw admission cannot borrow an owned Part candidate from an extra input field", () => {
+    const borrowed = admit_part_library({ valid: other });
+    const raw = { root: graph({ invalid: { kind: "document", document: "<broken" } }), family: "data" as const,
+      validation: PART_COLLECTION_VALIDATION, part: borrowed };
+    assert.throws(() => make_livemap_registry_authority([raw]));
+    const map = snapshotFixture(), authority = owner(map);
+    rejection(map, () => authority.addLibraries([{ ...raw, name: "external", hsonSchema: map.parts.parts.schema.get() }]), /./);
+  });
+
   await check("immutable Parts reject whole, descendant, helper, equal-value and retained-handle writes without effects", () => {
     const map = fixture(), library = map.parts.parts, member = library.p;
     const generic = require_livemap_library_internal(map, "parts");

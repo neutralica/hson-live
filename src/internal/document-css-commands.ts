@@ -1,4 +1,5 @@
 import { canonical_css_selector } from "./css/relative-selector.js";
+import { live_observation } from "./library-observation.js";
 import { managed_css_rule_key, trim_managed_css } from "./css/managed-css-lexical.js";
 import type { DocumentCssCommands, DocumentCssRuleCommands, DocumentCssRead, DocumentCssHandle, DocumentCssValue } from "../types/document-css.types.js";
 import type { LiveMapCssOp } from "../types/livemap.types.js";
@@ -81,10 +82,11 @@ export function document_css_commands<TResult>(send: (command: DocumentCssComman
   });
 }
 
-export function document_css_reads(css: DocumentCssHandle): DocumentCssRead {
-  return Object.freeze({ snapshot: () => css.snapshot(), has: key => css.has(key), list: () => css.list(), get: key => css.get(key),
-    var: Object.freeze<DocumentCssRead["var"]>({ name: css.var.name, key: css.var.key, value: name => css.var.value(name), list: () => css.var.list() }),
-    atProperty: Object.freeze<DocumentCssRead["atProperty"]>({ has: name => css.atProperty.has(name), get: name => css.atProperty.get(name) }),
-    keyframes: Object.freeze<DocumentCssRead["keyframes"]>({ has: name => css.keyframes.has(name), get: name => css.keyframes.get(name) }),
+export function document_css_reads(css: DocumentCssHandle, assertReadable: () => void = () => {}): DocumentCssRead {
+  const observe = live_observation(assertReadable);
+  return Object.freeze({ snapshot: observe(() => css.snapshot()), has: observe((key: string) => css.has(key)), list: observe(() => css.list()), get: observe((key: string) => css.get(key)),
+    var: Object.freeze<DocumentCssRead["var"]>({ name: css.var.name, key: css.var.key, value: observe((name: string) => css.var.value(name)), list: observe(() => css.var.list()) }),
+    atProperty: Object.freeze<DocumentCssRead["atProperty"]>({ has: observe((name: `--${string}`) => css.atProperty.has(name)), get: observe((name: `--${string}`) => css.atProperty.get(name)) }),
+    keyframes: Object.freeze<DocumentCssRead["keyframes"]>({ has: observe((name: string) => css.keyframes.has(name)), get: observe((name: string) => css.keyframes.get(name)) }),
   });
 }
