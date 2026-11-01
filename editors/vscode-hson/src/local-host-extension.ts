@@ -2,9 +2,10 @@ import * as vscode from "vscode";
 import { spawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, relative, resolve } from "node:path";
 
-import { LocalHostController, type LocalHostSnapshot, type LocalHostState } from "./local-host-controller.js";
+import { LocalHostController, LocalHostFailure, type LocalHostSnapshot, type LocalHostState } from "./local-host-controller.js";
 import { local_app_quick_pick_actions, local_host_command_availability, type LocalAppAction, type LocalHostProjectPresentation } from "./local-host-presentation.js";
 import { local_host_start_blocker, resolve_local_host_project, type LocalHostProjectSettings } from "./local-host-project.js";
+import { capture_local_host_error, local_host_error_details, local_host_error_summary } from "./local-host-protocol.js";
 import { ManualSaveTracker } from "./manual-save.js";
 
 type ManagedProject = Readonly<{
@@ -222,7 +223,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
         if (work.child === child) work.child = undefined;
         if (error === undefined) resolveBuild(); else rejectBuild(error);
       };
-      child.once("error", error => finish(new Error(`Local App build failed to start: ${error.message}`)));
+      child.once("error", error => finish(new Error(`Local App build failed to start: ${error.message}`, { cause: error })));
       child.once("close", code => finish(code === 0 ? undefined : new Error(`Local App build failed (exit ${code ?? "unknown"}). See Hson Local App Output.`)));
     });
   }
@@ -306,6 +307,13 @@ export class LocalHostExtensionManager implements vscode.Disposable {
         this.#output.append(`[${folder.name} — ${folder.uri.fsPath}:${prefix}] ${text}`);
       },
       onState: () => this.#updatePresentation(),
+      onFailure: (failure, startup, primary) => {
+        this.#output.appendLine(`[${folder.name} — ${folder.uri.fsPath}:failure:${failure.phase}] ${local_host_error_details(failure.evidence)}`);
+        // Startup is presented by the shared flush after its revision check.
+        // Runtime events have no pending startup rejection to report them.
+        const work = this.#builds.get(key);
+        if (!startup && primary && work?.enabled && !this.#disposed) this.#reportError(failure, folder);
+      },
     });
     const managed = Object.freeze({ folder, controller });
     this.#projects.set(key, managed);
@@ -435,13 +443,14 @@ export class LocalHostExtensionManager implements vscode.Disposable {
   }
 
   #reportError(error: unknown, folder: vscode.WorkspaceFolder): void {
-    const message = error instanceof Error ? error.message : String(error);
-    this.#output.appendLine(`[host] ${error instanceof Error ? error.stack ?? message : message}`);
+    if (this.#disposed) return;
+    const evidence = error instanceof LocalHostFailure ? error.evidence : capture_local_host_error(error);
+    if (!(error instanceof LocalHostFailure)) this.#output.appendLine(`[${folder.name} — ${folder.uri.fsPath}:failure] ${local_host_error_details(evidence)}`);
     this.#work(folder).failed = true;
     this.#updatePresentation();
-    const summary = message.split(/\r?\n/, 1)[0].slice(0, 240);
-    void vscode.window.showErrorMessage(`Hson Local App: ${summary} See Local App Output for details.`, "Show Hson Local App Output").then(action => {
-      if (action === "Show Hson Local App Output") this.#output.show(true);
+    const summary = local_host_error_summary(evidence);
+    void vscode.window.showErrorMessage(`Hson Local App (${folder.name}): ${summary} See Local App Output for details.`, "Show Hson Local App Output").then(action => {
+      if (!this.#disposed && action === "Show Hson Local App Output") this.#output.show(true);
     });
   }
 }

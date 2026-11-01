@@ -1,9 +1,9 @@
-export type DevelopmentService = Readonly<{ name: string; start(): Promise<boolean> }>;
+export type DevelopmentService = Readonly<{ name: string; reportsFailure?: boolean; start(): Promise<boolean> }>;
 
 export async function run_development_services(services: readonly DevelopmentService[]): Promise<readonly string[]> {
   const failures: string[] = [];
   for (const service of services) {
-    try { if (!await service.start()) failures.push(service.name); }
+    try { if (!await service.start() && !service.reportsFailure) failures.push(service.name); }
     catch { failures.push(service.name); }
   }
   return Object.freeze(failures);

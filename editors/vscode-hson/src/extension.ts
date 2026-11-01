@@ -781,7 +781,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const name = (service: string): string => folders.length === 1 ? service : `${folder.name}: ${service}`;
       try { discover_schema_project(folder.uri.fsPath); services.push({ name: name("Schema Watch"), start: () => startSchemaWatch(folder.uri) }); }
       catch { /* No Schema project is configured in this folder. */ }
-      if (localHostManager?.hasConfiguredApp(folder)) services.push({ name: name("Local App"), start: () => localHostManager?.start(folder.uri) ?? Promise.resolve(false) });
+      if (localHostManager?.hasConfiguredApp(folder)) services.push({ name: name("Local App"), reportsFailure: true, start: () => localHostManager?.start(folder.uri) ?? Promise.resolve(false) });
     }
     const failures = await run_development_services(services);
     if (services.length === 0) void vscode.window.showWarningMessage("No Hson development services are configured in this workspace.");

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
-import { local_host_stop_request, parse_local_host_child_message, type LocalHostChildMessage } from "./local-host-protocol.js";
+import { capture_local_host_error, local_host_stop_request, parse_local_host_child_message, type LocalHostChildMessage, type LocalHostErrorEvidence } from "./local-host-protocol.js";
 import type { ResolvedLocalHostProject } from "./local-host-project.js";
 
 export type LocalHostState = "stopped" | "starting" | "running" | "stopping" | "failed";
@@ -13,8 +13,19 @@ export type LocalHostSnapshot = Readonly<{
   nodeVersion?: string;
   hsonLiveVersion?: string;
   applicationNames?: readonly string[];
-  failure?: string;
+  failure?: LocalHostFailure;
 }>;
+
+// An Error for promise rejection that carries the original IPC record. Never
+// synthesize a controller stack from a child's stack text.
+export class LocalHostFailure extends Error {
+  readonly additional: LocalHostFailure[] = [];
+  constructor(readonly evidence: LocalHostErrorEvidence, readonly phase: string) {
+    super(evidence.message, { cause: evidence.cause });
+    this.name = evidence.name ?? "Error";
+    this.stack = evidence.stack;
+  }
+}
 
 type Timer = ReturnType<typeof setTimeout>;
 type LocalHostHandshakePhase = "launched" | "starting" | "hello" | "ready";
@@ -29,11 +40,12 @@ export type LocalHostControllerOptions = Readonly<{
   clearTimer?: (timer: Timer) => void;
   output?: (channel: "lifecycle" | "stdout" | "stderr", text: string) => void;
   onState?: (snapshot: LocalHostSnapshot) => void;
+  onFailure?: (failure: LocalHostFailure, startup: boolean, primary: boolean) => void;
 }>;
 
 export class LocalHostController {
   readonly projectId: string;
-  #options: Required<Pick<LocalHostControllerOptions, "startupTimeoutMs" | "shutdownTimeoutMs" | "forceExitTimeoutMs" | "launch" | "setTimer" | "clearTimer" | "output" | "onState">> & Pick<LocalHostControllerOptions, "runnerPath">;
+  #options: Required<Pick<LocalHostControllerOptions, "startupTimeoutMs" | "shutdownTimeoutMs" | "forceExitTimeoutMs" | "launch" | "setTimer" | "clearTimer" | "output" | "onState" | "onFailure">> & Pick<LocalHostControllerOptions, "runnerPath">;
   #snapshot: LocalHostSnapshot;
   #child: ChildProcess | undefined;
   #generation = 0;
@@ -53,6 +65,7 @@ export class LocalHostController {
       clearTimer: options.clearTimer ?? clearTimeout,
       output: options.output ?? (() => undefined),
       onState: options.onState ?? (() => undefined),
+      onFailure: options.onFailure ?? (() => undefined),
     };
     this.#snapshot = Object.freeze({ state: "stopped", projectId });
   }
@@ -79,27 +92,23 @@ export class LocalHostController {
     try {
       child = this.#options.launch(project, this.#options.runnerPath);
     } catch (error) {
-      const message = error_message(error);
-      this.#setSnapshot({ state: "failed", projectId: this.projectId, failure: message });
-      return Promise.reject(new Error(message));
+      return Promise.reject(this.#recordFailure(capture_local_host_error(error), "launch"));
     }
     this.#child = child;
     this.#routeOutput(child);
 
     this.#startPromise = new Promise<LocalHostSnapshot>((resolveStart, rejectStart) => {
       let settled = false;
-      const settleFailure = (message: string): void => {
+      const settleFailure = (failure: Error): void => {
         if (settled) return;
         settled = true;
         this.#options.clearTimer(startupTimer);
-        rejectStart(new Error(message));
+        rejectStart(failure);
       };
       const startupTimer = this.#options.setTimer(() => {
         if (!this.#isCurrent(child, generation) || this.#snapshot.state !== "starting") return;
         const message = `Local host startup exceeded ${this.#options.startupTimeoutMs}ms.`;
-        this.#options.output("lifecycle", `${message}\n`);
-        this.#setSnapshot({ state: "failed", projectId: this.projectId, failure: message });
-        settleFailure(message);
+        settleFailure(this.#recordFailure(capture_local_host_error(new Error(message)), "startup"));
         void this.#terminateCurrent(child, generation);
       }, this.#options.startupTimeoutMs);
 
@@ -122,23 +131,18 @@ export class LocalHostController {
             resolveStart(this.#snapshot);
           }
         } else if (accepted === "failure" && message.type === "failure") {
-          settleFailure(message.message);
+          settleFailure(this.#snapshot.failure ?? new Error("Local host startup was stopped before readiness."));
         }
       });
       child.once("error", error => {
         if (!this.#isCurrent(child, generation)) return;
-        const message = `Local host process failed: ${error.message}`;
-        this.#options.output("lifecycle", `${message}\n`);
-        this.#setSnapshot({ state: "failed", projectId: this.projectId, failure: message });
-        settleFailure(message);
+        settleFailure(this.#recordFailure(capture_local_host_error(error), "process"));
       });
       child.once("disconnect", () => {
         if (!this.#isCurrent(child, generation)) return;
         if (this.#snapshot.state === "stopping" || this.#snapshot.state === "stopped" || this.#snapshot.state === "failed") return;
         const message = "Local host IPC disconnected unexpectedly.";
-        this.#options.output("lifecycle", `${message}\n`);
-        this.#setSnapshot({ ...this.#snapshot, state: "failed", failure: message });
-        settleFailure(message);
+        settleFailure(this.#recordFailure(capture_local_host_error(new Error(message)), "process"));
       });
       child.once("close", (code, signal) => {
         if (!this.#isCurrent(child, generation)) return;
@@ -146,12 +150,10 @@ export class LocalHostController {
         const wasStopping = this.#snapshot.state === "stopping";
         if (wasStopping) {
           this.#setSnapshot({ state: "stopped", projectId: this.projectId });
-          settleFailure("Local host startup was stopped before readiness.");
+          settleFailure(new Error("Local host startup was stopped before readiness."));
         } else if (this.#snapshot.state !== "failed") {
           const message = `Local host exited unexpectedly (${signal === null ? `code ${code ?? "unknown"}` : `signal ${signal}`}).`;
-          this.#setSnapshot({ ...this.#snapshot, state: "failed", failure: message });
-          this.#options.output("lifecycle", `${message}\n`);
-          settleFailure(message);
+          settleFailure(this.#recordFailure(capture_local_host_error(new Error(message)), "process"));
         }
       });
     }).finally(() => {
@@ -209,18 +211,26 @@ export class LocalHostController {
       this.#options.output("lifecycle", `Ready at ${message.httpUrl}.\n`);
       return "ready";
     } else if (message.type === "failure") {
-      if (this.#snapshot.state === "stopping" || this.#snapshot.state === "stopped") {
-        this.#options.output("lifecycle", `Failure during ${message.phase} while stopping: ${message.message}\n`);
-        return "failure";
-      }
-      if (this.#snapshot.state === "failed") return this.#rejectSequence(message.type);
-      this.#setSnapshot({ ...this.#snapshot, state: "failed", failure: `${message.phase}: ${message.message}` });
-      this.#options.output("lifecycle", `Failure during ${message.phase}: ${message.message}\n`);
+      this.#recordFailure(message.error, message.phase);
       return "failure";
     } else {
       this.#options.output("lifecycle", `Child reported stopped for ${this.projectId}.\n`);
     }
     return "accepted";
+  }
+
+  #recordFailure(evidence: LocalHostErrorEvidence, phase: string): LocalHostFailure {
+    const primary = this.#snapshot.failure;
+    if (primary !== undefined) {
+      const same = (failure: LocalHostFailure): boolean => JSON.stringify(failure.evidence) === JSON.stringify(evidence);
+      if (same(primary) || primary.additional.some(same) || primary.additional.length >= 16) return primary;
+    }
+    const failure = new LocalHostFailure(evidence, phase);
+    if (primary !== undefined) primary.additional.push(failure);
+    const stopping = this.#snapshot.state === "stopping" || this.#snapshot.state === "stopped";
+    this.#setSnapshot({ ...this.#snapshot, state: stopping ? this.#snapshot.state : "failed", failure: primary ?? failure });
+    this.#options.onFailure(failure, this.#handshakePhase !== "ready", primary === undefined && !stopping);
+    return primary ?? failure;
   }
 
   #rejectSequence(type: LocalHostChildMessage["type"]): "rejected" {
@@ -249,10 +259,10 @@ export class LocalHostController {
       child.once("close", finish);
       try {
         child.send?.(local_host_stop_request(), error => {
-          if (error !== null) this.#options.output("lifecycle", `Could not send graceful stop: ${error.message}\n`);
+          if (error !== null && this.#isCurrent(child, generation)) this.#recordFailure(capture_local_host_error(error), "shutdown");
         });
       } catch (error) {
-        this.#options.output("lifecycle", `Could not send graceful stop: ${error_message(error)}\n`);
+        this.#recordFailure(capture_local_host_error(error), "shutdown");
       }
       forceTimer = this.#options.setTimer(() => {
         if (child.exitCode !== null || child.signalCode !== null) return finish();
@@ -288,8 +298,4 @@ export function launch_local_host_child(project: ResolvedLocalHostProject, runne
     stdio: ["ignore", "pipe", "pipe", "ipc"],
     windowsHide: true,
   });
-}
-
-function error_message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

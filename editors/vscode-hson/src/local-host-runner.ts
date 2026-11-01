@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import { parse_local_host_stop_request, type LocalHostChildMessage } from "./local-host-protocol.js";
+import { capture_local_host_error, parse_local_host_stop_request, type LocalHostChildMessage } from "./local-host-protocol.js";
 
 type RunnerConfig = Readonly<{
   projectId: string;
@@ -29,6 +29,7 @@ let finished = false;
 let startupSettled: Promise<void>;
 let settleStartup: () => void;
 let shutdownPromise: Promise<void> | undefined;
+let pendingSend: Promise<void> = Promise.resolve();
 
 {
   let settle: (() => void) | undefined;
@@ -37,13 +38,21 @@ let shutdownPromise: Promise<void> | undefined;
 }
 
 function send(message: LocalHostChildMessage): void {
-  if (typeof process.send === "function" && process.connected) process.send(message);
+  // Calls enqueue immediately in Node's ordered IPC channel. The callback means
+  // the write completed, not that the parent handled the message. No application
+  // acknowledgment is needed before disconnecting this side of the channel.
+  const delivery = new Promise<void>(resolve => {
+    if (typeof process.send !== "function" || !process.connected) return resolve();
+    const finish = (): void => { process.off("disconnect", finish); resolve(); };
+    process.once("disconnect", finish);
+    try { process.send(message, finish); } catch { finish(); }
+  });
+  pendingSend = Promise.all([pendingSend, delivery]).then(() => undefined);
 }
 
 function fail(phase: Extract<LocalHostChildMessage, { type: "failure" }>["phase"], error: unknown): void {
   if (finished) return;
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
-  send({ type: "failure", projectId: config?.projectId ?? "unknown", phase, message });
+  send({ type: "failure", projectId: config?.projectId ?? "unknown", phase, error: capture_local_host_error(error) });
   process.exitCode = 1;
 }
 
@@ -70,6 +79,11 @@ function shutdown(): Promise<void> {
     } finally {
       finished = true;
       if (config !== undefined) send({ type: "stopped", projectId: config.projectId });
+      // A connected parent that stops reading must not hold this runner forever.
+      // Match the controller's existing five-second graceful shutdown window.
+      const deadline = setTimeout(() => process.exit(process.exitCode ?? 0), 5_000);
+      await pendingSend;
+      clearTimeout(deadline);
       if (process.connected) process.disconnect?.();
       setImmediate(() => process.exit(process.exitCode ?? 0));
     }
@@ -130,7 +144,7 @@ async function main(): Promise<void> {
   } catch (error) {
     applicationOwnership = "none";
     fail("hosting", is_record(error) && error.code === "EADDRINUSE"
-      ? new Error(`Local App port ${config.port} is already in use. Change hson.localHost.port or stop the other process.`)
+      ? Object.assign(new Error(`Local App port ${config.port} is already in use. Change hson.localHost.port or stop the other process.`, { cause: error }), { code: "EADDRINUSE" })
       : error);
     request_stop();
   }

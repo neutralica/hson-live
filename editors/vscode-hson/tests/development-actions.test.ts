@@ -13,6 +13,11 @@ async function main(): Promise<void> {
     { name: "Local App", start: async () => { throw new Error("bind failed"); } },
   ]), ["Schema Watch", "Local App"]);
 
+  assert.deepEqual(await run_development_services([
+    { name: "Local App", reportsFailure: true, start: async () => false },
+    { name: "Schema Watch", start: async () => false },
+  ]), ["Schema Watch"], "Run All must not repeat the Local App manager's failure presentation");
+
   const order: string[] = [];
   let ready: (value: boolean) => void = () => undefined;
   const started = new Promise<boolean>(resolve => { ready = resolve; });

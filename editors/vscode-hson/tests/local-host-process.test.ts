@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import type { ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 
 import { LocalHostController, launch_local_host_child } from "../src/local-host-controller.js";
+import { parse_local_host_child_message, type LocalHostChildMessage } from "../src/local-host-protocol.js";
 import { resolve_local_host_project, type ResolvedLocalHostProject } from "../src/local-host-project.js";
 
 const extensionRoot = resolve(__dirname, "..");
@@ -75,8 +76,8 @@ async function resolved(root: string): Promise<ResolvedLocalHostProject> {
   return resolve_local_host_project(root, root, { entry: "dist/app.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: 0 });
 }
 
-async function waitFor(condition: () => boolean, message: string): Promise<void> {
-  const deadline = Date.now() + 5_000;
+async function waitFor(condition: () => boolean, message: string, timeout = 5_000): Promise<void> {
+  const deadline = Date.now() + timeout;
   while (!condition()) {
     if (Date.now() >= deadline) throw new Error(message);
     await new Promise(resolveWait => setTimeout(resolveWait, 20));
@@ -125,6 +126,9 @@ try {
   const conflictingProject = await resolve_local_host_project(conflictingRoot, conflictingRoot, { entry: "dist/app.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: stablePort });
   const conflicting = new LocalHostController(conflictingRoot, { runnerPath });
   await assert.rejects(conflicting.start(conflictingProject), new RegExp(`port ${stablePort} is already in use`));
+  assert.equal(conflicting.snapshot.failure?.evidence.code, "EADDRINUSE");
+  assert.equal(conflicting.snapshot.failure?.evidence.cause?.code, "EADDRINUSE");
+  assert.match(conflicting.snapshot.failure?.evidence.cause?.stack ?? "", /listen/);
   await conflicting.dispose();
   const stableSecond = await stable.restart(stableProject);
   assert.equal(stableSecond.httpUrl, stableFirst.httpUrl);
@@ -249,9 +253,108 @@ export const application = { name: "host-gate", dispose() { appendFileSync(log, 
   let errorChild: ChildProcess | undefined;
   const errorController = new LocalHostController(errorRoot, { runnerPath, launch(project, runner) { errorChild = launch_local_host_child(project, runner); return errorChild; } });
   await assert.rejects(errorController.start(await resolved(errorRoot)), /application-load-probe/);
+  assert.match(errorController.snapshot.failure?.stack ?? "", /app\.mjs:1/);
+  assert.doesNotMatch(errorController.snapshot.failure?.stack ?? "", /settleFailure|local-host-controller/);
+  assert.equal(errorController.snapshot.failure?.evidence.details, undefined);
   const errorPid = errorChild?.pid; assert.ok(errorPid);
   await waitFor(() => !alive(errorPid), "application-load failure left its runner alive");
   assert.equal(errorController.snapshot.state, "failed");
+
+  const cleanupRoot = workspace("runtime-cleanup", 'throw new Error("distinct-cleanup-probe");');
+  writeFileSync(join(cleanupRoot, "dist", "app.mjs"), readFileSync(join(cleanupRoot, "dist", "app.mjs"), "utf8") + `
+process.on("message", message => { if (message === "trigger-failure") throw new Error("primary-runtime-probe", { cause: new TypeError("underlying-runtime-probe") }); });`);
+  let cleanupChild: ChildProcess | undefined;
+  const failures: string[] = [];
+  const cleanupController = new LocalHostController(cleanupRoot, { runnerPath,
+    launch(project, runner) { cleanupChild = launch_local_host_child(project, runner); return cleanupChild; },
+    onFailure: failure => failures.push(failure.message) });
+  await cleanupController.start(await resolved(cleanupRoot));
+  cleanupChild?.send("trigger-failure");
+  await waitFor(() => failures.length === 2 && cleanupChild?.exitCode !== null, "Runtime or distinct cleanup evidence was lost");
+  assert.equal(cleanupController.snapshot.failure?.message, "primary-runtime-probe");
+  assert.equal(cleanupController.snapshot.failure?.evidence.cause?.message, "underlying-runtime-probe");
+  assert.match(JSON.stringify(cleanupController.snapshot.failure?.additional[0]?.evidence), /distinct-cleanup-probe/);
+  assert.equal(failures.length, 2, "One runtime primary and one distinct shutdown record");
+  await cleanupController.dispose();
+
+  const parsingRoot = workspace("parsing-error");
+  writeFileSync(join(parsingRoot, "dist", "app.mjs"), 'import { Hson } from "hson-live"; Hson.document`<main`;');
+  const parsing = new LocalHostController(parsingRoot, { runnerPath });
+  await assert.rejects(parsing.start(await resolved(parsingRoot)), /unterminated angle construct/);
+  assert.equal(parsing.snapshot.failure?.evidence.code, "HSON_CONTAINER_UNTERMINATED");
+  assert.deepEqual(JSON.parse(JSON.stringify(parsing.snapshot.failure?.evidence.details)), { source: { index: 0, line: 1, column: 1 }, operation: "tokenize-hson", stage: "tokenization" });
+  await parsing.dispose();
+
+  // These exercise the real IPC socket, including backpressure, not a send stub.
+  for (const [name, source] of [
+    ["small", 'throw new Error("small-original");'],
+    ["unicode", 'throw Object.assign(new Error("unicode-original"), { stack: "original-stack", issues: Array.from({ length: 4 }, () => ({ message: "漢".repeat(16000) })) });'],
+    ["near-limit", 'throw Object.assign(new Error("near-limit-original"), { stack: "original-stack", issues: Array.from({ length: 8 }, () => ({ message: "漢".repeat(16000) })) });'],
+    ["pending-cleanup", 'export async function application() { queueMicrotask(() => { throw Object.assign(new Error("pending-primary"), { issues: Array.from({ length: 4 }, () => ({ message: "漢".repeat(16000) })) }); }); await new Promise(resolve => setImmediate(resolve)); return { name: "cleanup", dispose() { throw new Error("pending-secondary"); } }; }'],
+  ]) {
+    const root = workspace("ipc-" + name); writeFileSync(join(root, "dist/app.mjs"), source!);
+    const messages: LocalHostChildMessage[] = [], failures: unknown[] = [];
+    let child: ChildProcess | undefined;
+    const controller = new LocalHostController(root, { runnerPath, launch(project, runner) {
+      child = launch_local_host_child(project, runner);
+      child.on("message", value => { const message = parse_local_host_child_message(value); assert.ok(message, "Every received record must pass admission"); messages.push(message); });
+      return child;
+    }, onFailure: failure => failures.push(failure) });
+    await assert.rejects(controller.start(await resolved(root)), error => error === controller.snapshot.failure);
+    await waitFor(() => child?.exitCode !== null, "IPC runner did not exit");
+    assert.equal(child?.exitCode, 1); assert.equal(child?.signalCode, null);
+    assert.deepEqual(messages.map(message => message.type), name === "pending-cleanup" ? ["starting", "failure", "failure", "stopped"] : ["starting", "failure", "stopped"]);
+    const primary = messages.find(message => message.type === "failure"); assert.ok(primary?.type === "failure");
+    assert.equal(controller.snapshot.failure?.evidence, primary.error);
+    assert.doesNotMatch(primary.error.message, /disconnect/);
+    if (name === "unicode") {
+      assert.ok(Buffer.byteLength(JSON.stringify(primary)) > 190_000);
+      assert.equal(Array.isArray(primary.error.issues) && primary.error.issues.length, 4);
+      assert.equal(JSON.stringify(primary.error.issues), JSON.stringify(Array.from({ length: 4 }, () => ({ message: "漢".repeat(16000) }))));
+    }
+    if (name === "pending-cleanup") {
+      assert.equal(failures.length, 2);
+      assert.match(JSON.stringify(controller.snapshot.failure?.additional), /pending-secondary/);
+    }
+    await controller.dispose();
+  }
+  for (const mode of ["disconnect", "send-failure", "stop-pending", "unavailable"]) {
+    const root = workspace("delivery-" + mode), exitFile = join(root, "exit.txt");
+    writeFileSync(join(root, "dist/app.mjs"), `import { writeFileSync } from "node:fs";
+      process.on("exit", () => writeFileSync(${JSON.stringify(exitFile)}, String(Date.now())));
+      ${mode === "send-failure" ? `const send = process.send; process.send = (message, callback) => send.call(process, message.type === "failure" ? { ...message, invalid: 1n } : message, callback);` : ''}
+      throw Object.assign(new Error("delivery-primary"), { stack: "original-stack", issues: Array.from({ length: 8 }, () => ({ message: "漢".repeat(16000) })) });`);
+    const child = launch_local_host_child(await resolved(root), runnerPath);
+    let stderr = ""; child.stderr?.on("data", chunk => { stderr += chunk; });
+    const began = Date.now();
+    child.on("message", value => {
+      const message = parse_local_host_child_message(value);
+      if (message?.type !== "starting") return;
+      if (mode === "disconnect" || mode === "stop-pending") {
+        const symbol = Object.getOwnPropertySymbols(child).find(key => key.description === "kChannelHandle"); assert.ok(symbol);
+        const handle: { readStop(): void; readStart(): void } = Reflect.get(child, symbol);
+        handle.readStop();
+        setTimeout(() => {
+          if (mode === "disconnect") child.disconnect();
+          else { child.send({ type: "stop" }, () => undefined); setTimeout(() => handle.readStart(), 100); }
+        }, 100);
+      }
+    });
+    if (mode === "unavailable") {
+      // Keep the parent alive but prevent its IPC socket from reading. Node's
+      // channel handle is used only here to impose deterministic backpressure.
+      const symbol = Object.getOwnPropertySymbols(child).find(key => key.description === "kChannelHandle");
+      assert.ok(symbol);
+      const handle: { readStop(): void } = Reflect.get(child, symbol);
+      handle.readStop();
+    }
+    await waitFor(() => { try { return Number(readFileSync(exitFile, "utf8")) > 0; } catch { return false; } }, "Unavailable receiver held runner beyond drain deadline", 7_000);
+    const elapsed = Number(readFileSync(exitFile, "utf8")) - began;
+    assert.ok(elapsed < 6_500);
+    if (mode === "unavailable") { assert.ok(elapsed >= 4_500, "Expected drain deadline, not dropped queued evidence"); child.disconnect(); }
+    await waitFor(() => child.exitCode !== null, "Delivery runner remained alive", 7_000);
+    assert.doesNotMatch(stderr, /unhandled|ERR_IPC|MaxListeners/);
+  }
 
   process.stdout.write("ok - real child startup, ESM/CJS loading, startup-stop disposal gates, canonical Node ownership, parent loss, restart, crash, forced stop, and two-project isolation passed\n");
 } finally {

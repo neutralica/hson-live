@@ -678,6 +678,51 @@ async function runLocalHostLifecycle(workspace: string, folder: vscode.Workspace
       }
       await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
     }
+    await localHostConfiguration.update("restartOnSave", false, vscode.ConfigurationTarget.WorkspaceFolder);
+    await localHostConfiguration.update("buildCommand", "", vscode.ConfigurationTarget.WorkspaceFolder);
+    const appUri = vscode.Uri.file(join(workspace, "dist", "local-app.mjs"));
+    const writeApp = async (source: string): Promise<void> => vscode.workspace.fs.writeFile(appUri, Buffer.from(source));
+    await writeApp('import { Hson } from "hson-live"; Hson.document`<main`;');
+    let beforeErrors = errors.length;
+    assert.deepEqual(await Promise.all([
+      vscode.commands.executeCommand("hson.startLocalHost", folder.uri),
+      vscode.commands.executeCommand("hson.startLocalHost", folder.uri),
+      vscode.commands.executeCommand("hson.runAndOpenLocalApp", folder.uri),
+    ]), [false, false, false]);
+    assert.equal(errors.length, beforeErrors + 1, "Concurrent native Start commands present one failure");
+    assert.match(errors.at(-1) ?? "", /unterminated angle construct/);
+    assert.doesNotMatch(errors.at(-1) ?? "", /\n|\[ERR:/);
+    await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
+    beforeErrors = errors.length;
+    await vscode.commands.executeCommand("hson.runAll");
+    assert.equal(errors.length, beforeErrors + 1, "Run All cannot add a generic Local App failure notification");
+    assert.match(errors.at(-1) ?? "", /unterminated angle construct/);
+    await vscode.commands.executeCommand("hson.stopAll");
+
+    await writeApp(`export async function application() {
+      queueMicrotask(() => { throw new Error("native-primary", { cause: new Error("native-actionable-cause") }); });
+      await new Promise(resolve => setImmediate(resolve));
+      return { name: "native-cleanup", dispose() { throw new Error("native-cleanup-failure"); } };
+    }`);
+    beforeErrors = errors.length;
+    assert.equal(await vscode.commands.executeCommand("hson.startLocalHost", folder.uri), false);
+    await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
+    assert.equal(errors.length, beforeErrors + 1, "Distinct startup cleanup evidence does not repeat the primary notification");
+    assert.match(errors.at(-1) ?? "", /native-actionable-cause/);
+
+    await writeApp(`export const application = { name: "native-recovery", requests: [{ method: "GET", path: "/fail", handle() {
+      setImmediate(() => { throw new Error("native-runtime-failure"); }); return new Response("triggered");
+    } }], dispose() { throw new Error("native-runtime-cleanup"); } };`);
+    assert.equal(await vscode.commands.executeCommand("hson.startLocalHost", folder.uri), true, "Source correction recovers");
+    await vscode.commands.executeCommand("hson.copyLocalAppUrl", folder.uri);
+    const runtimeUrl = await vscode.env.clipboard.readText();
+    beforeErrors = errors.length;
+    await fetch(new URL("/fail", runtimeUrl));
+    await waitFor(() => errors.length === beforeErrors + 1, "Post-readiness failure did not notify");
+    await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
+    assert.equal(errors.length, beforeErrors + 1, "Runtime and cleanup events share one primary presentation");
+    assert.match(errors.at(-1) ?? "", /native-runtime-failure/);
+    process.stdout.write("ok - native structured failures notify once for concurrent Start, Run All, startup cleanup, runtime cleanup, and parsing; corrected source recovers\n");
     process.stdout.write("ok - native Run & Open follows gated saves, opens the final served revision once per caller, and respects Stop and failure\n");
   } finally {
     vscode.env.openExternal = originalOpen;

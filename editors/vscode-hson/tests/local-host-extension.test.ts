@@ -140,6 +140,8 @@ appendFileSync("builds.txt", "finish " + revision + "\\n");`);
     assert.ok(hson_status_presentation("watching", states.at(-1)!).error);
     assert.match(output.join("\n"), /HsonSchemaError[\s\S]*at HsonSchema\.certify/);
     assert.ok(notifications.every(message => !message.includes("\n") && !message.includes("at HsonSchema") && message.length < 340));
+    assert.match(output.join("\n"), /"issues": \[/);
+    assert.equal(output.filter(text => text.includes(":failure:")).length, 1);
     assert.equal(outputOpened, 0, "Transient failure must not open Output");
     const failedPosition = states.length;
     writeFileSync(app, valid);
@@ -164,7 +166,8 @@ appendFileSync("builds.txt", "finish " + revision + "\\n");`);
     const runtimeStates = states.length; save(1);
     await waitFor(() => states.slice(runtimeStates).includes("running") && states.at(-1) === "failed");
     assert.match(output.join("\n"), /runtime-transient[\s\S]*at Timeout/);
-    assert.equal(notifications.length, 2, "Superseded build failures do not notify");
+    assert.equal(notifications.length, 3, "One post-readiness failure must notify; superseded builds remain silent");
+    assert.match(notifications.at(-1) ?? "", /runtime-transient/);
     writeFileSync(app, valid); const runtimeFailedPosition = states.length; save(1);
     await waitFor(() => states.slice(runtimeFailedPosition).includes("starting") && states.at(-1) === "running");
     await manager.stop(folder.uri);
@@ -367,6 +370,69 @@ appendFileSync("builds.txt", "finish " + revision + "\\n");`);
     }
     buildCommand = undefined;
 
+    // Concurrent callers share one failure presentation; cleanup is evidence,
+    // not another primary notification or a protocol sequence violation.
+    const failureStart = notifications.length, failureOutput = output.length;
+    buildCommand = "";
+    writeFileSync(app, `export async function application() {
+      queueMicrotask(() => { throw new Error("primary-startup-probe", { cause: new TypeError("actionable-startup-cause") }); });
+      await new Promise(resolve => setImmediate(resolve));
+      return { name: "cleanup", dispose() { throw new Error("secondary-cleanup-probe"); } };
+    }`);
+    assert.deepEqual(await Promise.all([manager.start(folder.uri), manager.start(folder.uri), manager.runAndOpen(folder.uri)]), [false, false, false]);
+    await waitFor(() => output.slice(failureOutput).join("\n").includes("secondary-cleanup-probe"));
+    assert.equal(notifications.length, failureStart + 1);
+    assert.match(notifications.at(-1) ?? "", /actionable-startup-cause/);
+    const detail = output.slice(failureOutput).join("\n");
+    assert.equal((detail.match(/Error: primary-startup-probe\n/g) ?? []).length, 1, "Original stack printed once");
+    assert.equal((detail.match(/TypeError: actionable-startup-cause\n/g) ?? []).length, 1, "Nested cause printed once");
+    assert.equal((detail.match(/Error: secondary-cleanup-probe\n/g) ?? []).length, 1, "Distinct cleanup stack printed once");
+    assert.equal(output.slice(failureOutput).filter(text => text.includes(":failure:")).length, 2);
+    assert.doesNotMatch(detail, /out-of-order|at settleFailure/);
+    await manager.stop(folder.uri);
+
+    const parseBefore = notifications.length, parseOutput = output.length;
+    writeFileSync(app, 'import { Hson } from "hson-live"; Hson.document`<main`;');
+    assert.equal(await manager.start(folder.uri), false);
+    assert.equal(notifications.length, parseBefore + 1);
+    assert.match(notifications.at(-1) ?? "", /unterminated angle construct/);
+    assert.doesNotMatch(notifications.at(-1) ?? "", /\[ERR:/);
+    assert.match(output.slice(parseOutput).join("\n"), /HSON_CONTAINER_UNTERMINATED/);
+    await manager.stop(folder.uri);
+
+    // A source revision invalidates a pending runner failure, not just builds.
+    const gate = join(root, "runner-gate"), entered = join(root, "runner-entered");
+    writeFileSync(app, `import { existsSync, writeFileSync } from "node:fs";
+      export async function application() {
+        writeFileSync(${JSON.stringify(entered)}, "entered");
+        while (!existsSync(${JSON.stringify(gate)})) await new Promise(resolve => setTimeout(resolve, 10));
+        throw new Error("obsolete-runner-failure");
+      }`);
+    buildCommand = `"${process.execPath}" -e "process.exit(0)"`;
+    const staleBefore = notifications.length;
+    const stale = manager.start(folder.uri);
+    await waitFor(() => { try { return readFileSync(entered, "utf8") === "entered"; } catch { return false; } });
+    writeFileSync(app, valid); save(1);
+    writeFileSync(gate, "release");
+    assert.equal(await stale, false);
+    await waitFor(() => states.at(-1) === "running");
+    assert.equal(notifications.length, staleBefore, "Superseded runner rejection cannot notify");
+    await manager.stop(folder.uri);
+
+    const runtimeBefore = notifications.length, runtimeOutput = output.length;
+    writeFileSync(app, `export const application = { name: "runtime-cleanup", requests: [{ method: "GET", path: "/fail", handle() {
+      setImmediate(() => { throw new Error("runtime-primary-probe"); }); return new Response("triggered");
+    } }], dispose() { throw new Error("runtime-cleanup-probe"); } };`);
+    assert.equal(await manager.start(folder.uri), true);
+    await fetch(new URL("/fail", manager.currentUrl));
+    await waitFor(() => output.slice(runtimeOutput).join("\n").includes("runtime-cleanup-probe"));
+    assert.equal(notifications.length, runtimeBefore + 1, "Runtime episode notifies once despite distinct cleanup");
+    assert.match(notifications.at(-1) ?? "", /runtime-primary-probe/);
+    assert.equal(output.slice(runtimeOutput).filter(text => text.includes(":failure:")).length, 2);
+    assert.equal((output.slice(runtimeOutput).join("\n").match(/Error: runtime-primary-probe\n/g) ?? []).length, 1);
+    await manager.stop(folder.uri);
+    buildCommand = undefined;
+
     // A runner failure is stoppable, and cannot later retry after Stop.
     writeFileSync(app, 'throw new Error("startup-stop-probe");');
     assert.equal(await manager.start(), false);
@@ -426,6 +492,21 @@ appendFileSync("builds.txt", "finish " + revision + "\\n");`);
     await manager.stop(second.uri);
     await waitFor(() => !alive(secondPid));
 
+    // Failure identity and presentation stay local even for equal wrapper messages.
+    const isolatedErrors = notifications.length, isolatedOutput = output.length;
+    writeFileSync(app, 'throw new Error("project-failure", { cause: new Error("first-project-only") });');
+    writeFileSync(join(secondRoot, "dist/app.mjs"), 'throw new Error("project-failure", { cause: new Error("second-project-only") });');
+    assert.deepEqual(await Promise.all([manager.start(folder.uri), manager.start(second.uri)]), [false, false]);
+    assert.equal(notifications.length, isolatedErrors + 2);
+    assert.ok(notifications.slice(isolatedErrors).some(text => text.includes("(recovery)") && text.includes("first-project-only")));
+    assert.ok(notifications.slice(isolatedErrors).some(text => text.includes("(second)") && text.includes("second-project-only")));
+    assert.equal(output.slice(isolatedOutput).filter(text => text.includes(":failure:")).length, 2);
+    writeFileSync(app, serving("first-recovered"));
+    writeFileSync(join(secondRoot, "dist/app.mjs"), serving("second-recovered"));
+    assert.deepEqual(await Promise.all([manager.start(folder.uri), manager.start(second.uri)]), [true, true]);
+    assert.equal(notifications.length, isolatedErrors + 2);
+    await Promise.all([manager.stop(folder.uri), manager.stop(second.uri)]);
+
     // Both commands follow saves in their own project; Stop cancels only one.
     buildCommand = `"${process.execPath}" "${builder}"`;
     configurations.set(second.uri.toString(), { ...settings, buildCommand });
@@ -473,6 +554,27 @@ appendFileSync("builds.txt", "finish " + revision + "\\n");`);
     assert.equal(await manager.runAndOpen(folder.uri), false);
     assert.deepEqual([builds(), launches(), notifications.length, opened.length, information.length, warnings.length],
       [beforeDisposal[0]! + 2, ...beforeDisposal.slice(1)]);
+    // Disposal also fences a runner's primary and cleanup events, not only builds.
+    const finalManager = new LocalHostExtensionManager(context, state => states.push(state));
+    buildCommand = "";
+    const disposalEntered = join(root, "disposal-entered");
+    writeFileSync(app, `import { writeFileSync } from "node:fs";
+      export async function application() {
+        writeFileSync(${JSON.stringify(disposalEntered)}, String(process.pid));
+        await new Promise(resolve => process.on("message", message => { if (message?.type === "stop") {
+          queueMicrotask(() => { throw new Error("disposed-primary-probe"); }); resolve();
+        } }));
+        return { name: "dispose", dispose() { throw new Error("disposed-cleanup-probe"); } };
+      }`);
+    const disposalErrors = notifications.length, disposalOutput = output.length;
+    const finalStart = finalManager.start(folder.uri);
+    await waitFor(() => { try { return Number(readFileSync(disposalEntered, "utf8")) > 0; } catch { return false; } });
+    const finalPid = Number(readFileSync(disposalEntered, "utf8"));
+    await finalManager.disposeAsync();
+    assert.equal(await finalStart, false);
+    assert.equal(notifications.length, disposalErrors, "Disposed runner events cannot produce stale notifications");
+    assert.match(output.slice(disposalOutput).join("\n"), /disposed-primary-probe[\s\S]*disposed-cleanup-probe/);
+    assert.equal(alive(finalPid), false);
     process.stdout.write("ok - manual saves recover real runners; auto-save stays passive; full stacks stay in Output\n");
   } finally {
     await manager.disposeAsync();
