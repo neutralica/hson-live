@@ -12,14 +12,14 @@ The registry may contain zero libraries. `hsonLiveMap.create()` and `hsonLiveMap
 ```ts
 import { Hson, hsonLiveMap } from "hson-live";
 
-const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const map = hsonLiveMap.fromLibraries({
-  page: { document: "<main/>", schema: PageSchema },
+  page: { document: "<main/>" },
 });
 
 const html = map.doc.must("page").render();
 ```
 
+The authored `<main/>` is completed to `html/head/body/main` at admission.
 The one-library example is an ordinary registry. `map.doc.must("page")` selects its document library for canonical reads and writes. The map retains the global revision, commit stream, capture, restore, and selective cut operations.
 
 ## Ownership
@@ -47,30 +47,23 @@ Paths are portable coordinates: data paths contain object keys and array indexes
 
 Data roots may be objects, arrays, strings, numbers, booleans, or null. For a string root, pass JSON source text such as `data: '"hello"'`. `ANY_DATA` and `ANY_DOCUMENT` are reusable broad Schemas for the complete valid data and document families.
 
-On an unmanaged local map, a library admitted with an implicit or explicit
-family-top Schema can later be tightened once:
-
-```ts
-map.doc.must("page").schema.use(PageSchema);
-```
-
-The current complete root validates before the contract changes. A successful
-attachment is one map revision and portable commit; canonical equality is an
-unchanged no-op. The installed specific Schema is fixed thereafter. Managed
-Locus authorities and projected Echo maps reject this direct operation in the
-current local-only phase.
+An unmanaged local Library admitted with a family-top Schema can later acquire
+one same-family specific Schema through `.schema.use(...)`. See [Schema attachment](schema.md)
+for validation, revision, and authority constraints. A Document Schema must describe
+the [completed page](api-livemap.md#complete-governed-documents), not only its authored
+body content; the API reference includes a complete-page Schema example.
 
 ```ts
 const StateSchema = Hson.schema`<type "data" content <count "number">>`;
-const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 
 const map = hsonLiveMap.fromLibraries({
   state: { data: { count: 0 }, schema: StateSchema },
-  page: { document: "<main/>", schema: PageSchema },
+  page: { document: "<main/>" },
 });
 
 map.data.must("state").at(["count"]).set(1);
-map.doc.must("page").document.attrs.set({ kind: "path", path: [0] }, "title", "Ready");
+const main = map.doc.must("page").at([1, 0]).asElement();
+if (main) main.attrs.set("title", "Ready");
 ```
 
 The data boundary accepts finite numbers, strings, booleans, null, ordinary objects, and dense arrays. It rejects unsupported prototypes, accessors, symbol or nonenumerable properties, holes, explicit undefined, and cycles. Canonical state preserves object-entry order and SameValue number distinctions, including `-0`. Public composite reads are detached.
@@ -89,7 +82,7 @@ Document libraries expose `document.content`, `document.attrs`, `document.flags`
 
 `map.capture()` returns a detached complete `LiveMapSnapshot` of the registry, Schemas, and encoded roots at one revision for supported flat state. Scoped Part documents currently reject public local capture/cut; their authorized hosted transfer uses `session.now()`. `map.restore(snapshot)` validates a compatible full registry before replacement. `install_libraries_snapshot(snapshot)` creates a fresh local runtime from a portable capture. The snapshot is QUID-free; a new runtime establishes its own identity epoch and issued ledger.
 
-`map.doc.must("page").render()` returns browser-compatible HTML for that document and its managed CSS. It preserves authored structure and fragments without synthesizing a shell, and reads no unrelated libraries.
+`map.doc.must("page").render()` returns browser-compatible HTML for that document and its managed CSS. It renders the complete page established at admission and reads no unrelated libraries.
 
 `map.cut({ data?, documents?, html? })` transfers coherent selected state in `libs`. Omitted families select all application libraries; `[]` selects none. No HTML selection returns `{ libs }`; naming a selected document returns `{ libs, html, document }` from the same detached state. The subset registry includes its Schemas, digests, roots, CSS and source revision. Internal interactions follow selected documents automatically. Local continuation reconstructs the subset with `install_libraries_snapshot(libs)`. Hosted projection belongs to Locus: `session.now({ html: document })` returns authorized projected state and HTML, and hosted continuation uses Echo's governed replica.
 

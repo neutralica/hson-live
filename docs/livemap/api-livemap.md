@@ -7,7 +7,7 @@ import { Hson } from "hson-live/hson";
 import * as hsonLiveMap from "hson-live/livemap";
 
 const StateSchema = Hson.schema`<type "data" content <count "number">>`;
-const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 const map = hsonLiveMap.fromLibraries({
   state: { data: { count: 0 }, schema: StateSchema },
@@ -21,7 +21,7 @@ Library configuration source and Schema values are selected once at public admis
 
 Raw document nodes are observed through their own data-property descriptors before copying, owner projection, or identity preparation. Missing relationships, empty `$_attrs` or `$_meta` bags, present-undefined optional bags, sparse or decorated content arrays, inherited/accessor semantic fields, cycles, and invalid child roles reject; admission does not repair them. Raw data graphs used by internal library construction likewise require complete data values and physical II order matching their index metadata. JSON and Hson text inputs retain their representation-specific construction paths.
 
-Document ownership accepts an empty ROOT and multiple ordered text/element items. A qualified source ELEM carrier is projected into the retained document ROOT using the existing owner convention. This does not make caller ROOT or bare branches portable Transform values. Runtime ordinary attributes retain string, finite number, boolean, and null values; raw nonfinite numbers, undefined, and object values reject. Existing raw and structured style storage remains distinct, including lawful empty style maps and typed leaf field presence.
+Runtime ordinary attributes retain string, finite number, boolean, and null values; raw nonfinite numbers, undefined, and object values reject. Existing raw and structured style storage remains distinct, including lawful empty style maps and typed leaf field presence.
 
 Public raw document graphs and staged graph content cannot introduce generated QUID claims. Structural qualification does not confer identity authority: existing private owner, capture, epoch, overlay, and replay proofs remain required. Insert/replace requests qualify raw content in the resolved receiving role before candidate editing. Rejected requests and library additions leave retained state, revision, identity accounting, and observers unchanged. Accepted raw input is privately copied without freezing or mutating its caller.
 
@@ -31,18 +31,31 @@ Public staged graph instructions require own enumerable data fields, including t
 
 `ANY_DATA` and `ANY_DOCUMENT` are ordinary Hson Schemas for the full data and document families. They are exported from `hson-live` and `hson-live/hson`. The equivalent authored forms are `<type "data">` and `<type "document">`.
 
-An empty document Library uses the existing graph-native initializer:
+## Complete governed Documents
 
-```ts
-const map = hsonLiveMap.fromLibraries({
-  page: {
-    document: { $_tag: "_hson_root", $_content: [] },
-    schema: Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`,
-  },
-});
-```
+Every admitted Document Library retains one complete `html` page with one `head`
+and one `body`. Authored admission expands Parts, requires one resulting ordinary
+element, and conservatively completes the page before governing Schema validation.
+For example, `<main/>` becomes `<html <head/> <body <main/>/>/>`; a `head` or `body`
+root is retained in its corresponding position. An authored `html` root receives
+missing structure only when placement is unambiguous. Empty, text-only, multiple-root,
+duplicate-structure, ambiguous, and browser-incompatible candidates reject before
+publication. `ANY_DOCUMENT` does not bypass these Library requirements.
 
-The root stays addressable, item `[0]` is absent, and insertion can add the first item when its Schema permits it. Capture, restore, and replay carry this state structurally. `document: ""` rejects as invalid authored source. Empty runtime roots cannot produce a public `HsonDocument` or `HsonCanonical` string; selected empty-page rendering also rejects. An empty-capable document Schema governs runtime graph state independently of textual certification.
+Logical document paths start at the completed `html`: `[]` selects `html`, `[0]`
+selects `head`, `[1]` selects `body`, and `[1, 0]` selects `main` in the example.
+Low-level `document.*` path targets traverse physical graph carriers instead:
+that same `main` is at `[0, 0, 1, 0, 0]`.
+
+Final mutation candidates must remain complete and browser-compatible. Authored
+whole-root replacement uses completion; exact snapshot installation, restore,
+and replay validate canonical state without completing historical fragment roots.
+An empty registry remains valid; an empty Document Library does not.
+
+Detached canonical Documents may contain text or multiple roots. Part definitions
+and structural Document arguments also remain detached until composed into their
+receiving context. Their admission or Schema certification does not establish a
+complete governed page. See [detached Document representations](../transform/api-transform.md#authored-source-and-canonical-document).
 
 ## Local runtime admission
 
@@ -62,7 +75,7 @@ const commit = admission.commit;
 
 A hosted Locus exposes `locus.admit(definitions)`, which returns `Promise<void>` and resolves without a receipt after governed admission. Locus requires a nonempty batch and has no `addLibraries` method. Select newly admitted hosted libraries through `locus.data`, `locus.doc`, or `locus.parts`, using callable lookup or `.must(...)` for runtime-added names.
 
-Individual Library names and governed Part member names cannot contain `/`. Ordinary Data keys, document content, and path values may contain `/`. Connectors continue to use separate `lib` and `at` attributes.
+Individual Library names and governed Part member names cannot contain `/`. Ordinary Data keys, document content, and path values may contain `/`. Part selectors accept separate `lib="components" at="panel"` or qualified `at="components/panel"`; see [Part coordinates](../contracts/styled-part-composition.md).
 
 Construction-time names keep their family evidence. Use `.data`, `.doc`, or `.parts` for both known and runtime-added names. Callable lookup returns `undefined` for absence, a wrong family, or a mismatched optional Schema argument. `.must(name, schema?)` requires a match; known safe names also support property access. Selectors and retained Library references stay valid across unrelated admissions. Function/Object property names use callable lookup; selectors are not enumerable Library inventories.
 
@@ -88,7 +101,7 @@ Document libraries expose `document.content`, `document.attrs`, `document.flags`
 
 `page.q(name)` returns an identity-following `LiveMapDocumentQuadLocation`, or `undefined` for an unknown or retired authored QUAD. Lookup issues no identity and publishes nothing. Movement and valid replacement lineage retain the target; retirement, disposal, epoch replacement and changes to its owning hosted authority identity terminate the handle. Portable restoration requires fresh handles. Data Libraries have no `.q`; see the [document QUAD location contract](../contracts/document-q-location.md) for the exact lifetime and relative-path rules.
 
-Every document library also owns a managed stylesheet. The root library handle exposes `page.css`; data libraries and `page.at(path)` locations do not. `page.css` is already document-wide, so it has no `.global`. It follows the global rule vocabulary: `sel`, `rule`, `scope`, `media`, `supports`, `layer`, `var`, `drop`, `clearAll`, `has`, `list`, `get`, `atProperty`, and `keyframes`. `stylesheet(cssText): void` parses a complete CSS stylesheet and replaces the managed stylesheet in one transition. Rule handles support `set`, `setProp`, `setMany`, `remove`, `clear`, and `drop`. `snapshot()` returns deterministic CSS text for inspection; cosmetic source formatting is not archived. Significant escape whitespace and component-value comments that protect token boundaries survive.
+Every document library also owns a managed stylesheet. The root library handle exposes `page.css`; data libraries and `page.at(path)` locations do not. `page.css` is already document-wide, so it has no `.global`. It follows the global rule vocabulary: `sel`, `rule`, `scope`, `media`, `supports`, `layer`, `var`, `drop`, `clearAll`, `has`, `list`, `get`, `atProperty`, and `keyframes`. `stylesheet(cssText): void` replaces the managed stylesheet with one opaque text contribution. Rule handles support `set`, `setProp`, `setMany`, `remove`, `clear`, and `drop`. `snapshot()` returns retained CSS text for inspection. Raw stylesheet text preserves its source formatting; structured declarations use deterministic CSS projection.
 
 ```ts
 const page = map.doc.must("page");
@@ -97,20 +110,40 @@ page.css.sel("#home-screen").set.display("grid");
 const html = map.doc.must("page").render();
 ```
 
-Each accepted CSS call is a map-wide semantic transition. No-op calls leave `map.rev` unchanged. Multi-declaration, registry batches, and stylesheet text ingress validate and commit atomically. `stylesheet()` returns `void`; empty or comment-only text clears the managed stylesheet if it is nonempty. Parsed rules receive stable `stylesheet:1`, `stylesheet:2`, and subsequent keys within each replacement, visible through `list()` and addressable through `get()` and `drop()`. This prefix is reserved from `rule(key, selector)` so author-named rules cannot collide. Duplicate selectors within one stylesheet remain separate ordered rules, and parsed declarations retain authored order, including shorthand/longhand order. `clearAll()` clears all managed CSS, including parsed rules, properties, and keyframes. Unsupported constructs such as `@import`, unknown at-rules, layer statements, duplicate declarations, CSS nesting, and CSS that cannot safely enter a managed HTML `<style>` produce a `DocumentStylesheetError` without a map transition. Raw stylesheet declarations use native CSS property identifiers: ASCII case and CSS escapes normalize without JavaScript camelCase conversion. For example, `CoLoR` and `c\6f lor` become `color`, while native `marginTop` stays the unknown native property `margintop`; it does not activate `margin-top`. Custom-property names remain case-sensitive. Structured setter keys retain their existing camelCase and alias convenience.
+Changed CSS transitions advance the map revision once; no-ops leave it unchanged.
+Raw `stylesheet()` text is not parsed, normalized, or split into addressable rules.
+Empty and comment-only strings remain text contributions; `clearAll()` removes all
+managed contributions. Raw CSS has no extracted rule keys, declarations, keyframes,
+or interpreted subject identities. CSS syntax, imports, nesting, and duplicate
+declarations remain browser concerns. The complete page still rejects text that
+cannot survive HTML style transport, including parser-significant `</style` RAWTEXT.
 
-Keyframe steps sort by numeric position with stable ties: `from` equals `0%`, `to` equals `100%`, and equivalent percentage spellings retain authored precedence. Raw repeated exact selectors, comma-separated offsets and duplicate keyframe names still reject. Structured tuple authoring retains its last-write behavior for an exact repeated selector.
+Structured rules, groups, properties, and keyframes retain their own validation,
+addressing, ordering, and portable subject-correspondence contracts. Capture,
+replay, checkpoints, and SSR retain both structured records and exact raw text.
+See [the CSS reference](../livetree/api-css-manager.md#managed-stylesheet-ownership)
+and [CSS subject correspondence](../contracts/css-identity-translation.md).
 
-Parsed wrapper occurrences are nested entries in the portable stylesheet's `order`: `{ kind: "group", header, entries }`. Rules retain their full textual scope path for addressing, while the order tree determines occurrence membership. Equal anonymous headers never identify or merge occurrences. A rule update retains membership; dropping a member leaves the wrapper, including an empty layer, at its original position. Recreating a dropped rule appends its new scope occurrence. Clear and stylesheet replacement remove prior groups. Empty layer blocks are supported because they can establish layer order. Structured per-rule scope APIs keep their existing behavior; they do not create a shared group transaction.
+Direct local `page.css` writes currently reject on scoped Part Documents. Use the
+staged writer for those local changes:
 
-Capture, replay, accepted hosted operations, checkpoints and SSR carry the complete order tree, declaration pairs and stable keyframe steps. Decoding validates membership and rejects malformed, cyclic or unsupported group records. Physical child CSS text is never line-indented inside wrappers; escaped-newline strings remain intact. Selector-generated keys use the preserved CSS selector spelling, including significant terminal escapes, throughout lookup and deletion. Portable arrays require dense undecorated own data elements, with no getters or source method overrides. Rendering follows structural occurrences directly; it does not infer grouping by joining equal scope strings. This is semantic stylesheet state, not original-source archival or legacy snapshot repair. Runtime subject selectors use local QUIDs; full captures translate them through portable correspondence and restoration rebinds them. Authenticated flat and scoped hosted effects carry subject correspondence through Echo replay and durable tails; raw portable subject CSS is not independent identity authority. See [CSS subject correspondence](../contracts/css-identity-translation.md) and [continuation](../document-continuation.md). Document definitions accept initial textual `stylesheet` in local and flat Locus admission. Structured `css` belongs only to whole Part members, alongside their separate textual `stylesheet`.
+```ts
+map.batch(writer => {
+  writer.doc.must("page").css.stylesheet("body { margin: 0; }");
+});
+```
+
+Hosted changes use the Locus document authority or `tree.async.css.global`.
+Document definitions accept initial textual `stylesheet`; structured `css` is an
+authoring field of whole Part members. See [Part CSS](../contracts/styled-part-composition.md#occurrence-css)
+for the distinction between selector scoping and contribution ownership.
 
 ```ts
 state.at(["count"]).set(1);
-page.document.attrs.set({ kind: "path", path: [0] }, "title", "Ready");
+page.document.attrs.set({ kind: "path", path: [0, 0, 1, 0, 0] }, "title", "Ready"); // main
 ```
 
-Accepted mutations advance `map.rev` once and publish one map-wide commit with named library operations. Failed mutations leave canonical state and revision unchanged. `map.commits.observe(listener)` observes accepted registry commits. Selected document libraries also expose document commit observations for Mirror and local document consumers.
+Changed accepted mutations advance `map.rev` once and publish one map-wide commit with named library operations. Failed mutations leave canonical state and revision unchanged. `map.commits.observe(listener)` observes accepted registry commits. Selected document libraries also expose document commit observations for Mirror and local document consumers.
 
 ## Capture and restore
 
@@ -134,9 +167,17 @@ const { html: ssrHtml, libs, document } = map.cut({ documents: ["page"], html: "
 const hosted = session.now({ html: "page" });
 ```
 
-`map.doc.must("page").render()` returns `BrowserRealizationHtml` directly from that document root and stylesheet at one coherent position. It reads no unrelated library and reconstructs no map. Data libraries have no rendering capability. Browser realization preserves authored fragments and full document structure; a canonical document can still fail parser compatibility checks.
+`map.doc.must("page").render()` returns `BrowserRealizationHtml` directly from that document root and stylesheet at one coherent position. It reads no unrelated library and reconstructs no map. Data libraries have no rendering capability. It renders the complete page already validated at admission and at each accepted transition; it does not complete a fragment at render time.
 
-For an explicit `<html><head>...<body>...` document, nonempty `page.css` is realized as one marked `<style data-hson-managed-document-css="managed">` after authored head children. Authored `<style>` nodes remain document graph content and retain their source order. Empty managed CSS emits no derived style. Nonempty managed CSS on a fragment root is rejected, as is CSS containing parser-significant `</style` RAWTEXT or other nontransportable text. The managed style works on first contact without client JavaScript. Local and hosted cuts capture HTML and CSS from one semantic position. Continuation verifies and adopts the exact style element; Echo commits and recovery converge that same realization. The document Library remains the semantic CSS owner; `tree.css.global` reads its state. Hosted synchronous writes are fenced; hosted authoring uses `tree.async.css.global` or Locus document actions. Rules authored through `tree.css` remain runtime-local in a later separate style host. Projection expansion, contraction, replay, fallback, and durable restart carry or remove CSS with the owning document Library.
+Managed CSS renders as ordered `<style data-hson-managed-document-css="managed">`
+carriers after authored head children. There may be multiple carriers; an empty raw
+text contribution produces an empty carrier, while no contributions produce none.
+Authored `<style>` nodes remain graph content. Cuts capture HTML and CSS at one
+semantic position. [Continuation](../document-continuation.md) verifies the exact
+carrier sequence and text, and adopts the existing page. The document Library
+remains the semantic CSS owner; `tree.css.global` reads that state. Hosted synchronous
+writes are fenced. Rules authored through `tree.css` remain runtime-local in a
+separate style host.
 
 `map.cut({ data?, documents?, html? })` transfers selected application state for supported flat documents. The `data` selection includes governed Parts collections because they retain data-object storage; the local SSR text encoder currently rejects transfers selecting them. Scoped documents reject this public local cut, even though their document `render()` supports first paint. Omitted `data` or `documents` selects all application libraries of that family; `[]` selects none. Omitted `html` returns exactly `{ libs }`. Requested HTML returns exactly `{ libs, html, document }`, with the HTML derived from the transferred document root and CSS. The HTML document must already be selected under `documents`; it is never silently added. Unknown names, duplicates, wrong families, internal names, and invalid HTML membership are rejected.
 
@@ -166,7 +207,8 @@ Authored document Libraries consume `<hson-part lib="parts" at="member"/>` durin
 admission and ordinary connector graph insertion/replacement. Collections remain
 inert data; the Library stores only realized canonical content. Connector QUADs
 transfer to replacement roots, inline scalar inputs substitute `%{name}` values,
-and each Part's CSS is scoped to and owned by its occurrence root. Removal retires
-that owned CSS atomically. Capture, restore, rendering and graft consume realized
+and each Part's CSS contribution is owned by its occurrence root. Structured CSS is
+selector-scoped; raw stylesheet text is opaque and unscoped. Removal retires owned
+contributions atomically. Capture, restore, rendering and graft consume realized
 state without source collections. The exact parameter, CSS, source-retention and
 hosted boundaries are in [the Part contract](../contracts/styled-part-composition.md).

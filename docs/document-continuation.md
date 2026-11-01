@@ -6,22 +6,21 @@ document at revision N and the server-rendered DOM supplied by the caller must
 already describe exactly the same document. Construction does not rebuild,
 normalize, repair, or replace that DOM.
 
-For a full HTML document with portable `page.css`, exact adoption verifies the
-single marked managed style in the head and its CSS text against the selected
-document Library. Identity-free exact adoption retains the parsed style element
-without an initial write. Subject-correspondence continuation can write
-receiving QUID attributes, replace the managed style element's text with the
-receiving stylesheet, and remove portable HTML identity carriers. It retains the
-same managed style Element across that handoff; the text is unchanged only when
-the portable and receiving stylesheets already match. Not every continuation
-path performs this rewrite.
+For a complete governed page with portable `page.css`, exact adoption verifies the
+ordered marked managed-style carriers in the head, including their count and text,
+against the selected Document Library. Identity-free adoption retains those Elements
+without an initial write. Subject-correspondence continuation can write receiving
+QUID attributes, update the corresponding managed-style text, and remove portable
+HTML identity carriers while retaining compatible Elements. Text is unchanged when
+the portable and receiving stylesheets match. Not every continuation path rewrites it.
 Authored `<style>` nodes remain ordinary document nodes. Local `page.css` and
-the continued `tree.css.global` read and write one semantic stylesheet; later
+the continued `tree.css.global` share one semantic stylesheet; local scoped CSS
+writes use the [staged Library writer](livemap/api-livemap.md#selection-and-reads). Later
 commits update the same browser realization. QUID CSS remains runtime-local in
 a separate later style host. Disposal stops the stylesheet observer and leaves
 the document Library and caller-owned DOM in place. Hosted cuts project CSS
 with the selected document, and Echo applies live, replayed, and fallback CSS
-through LiveMap before the adopted style is updated. Synchronous hosted global
+through LiveMap before the adopted styles are updated. Synchronous hosted global
 writes are rejected; `tree.async.css.global` uses the document authority path.
 
 The required DOM is defined by hson-live's browser-realization contract, not by
@@ -44,8 +43,8 @@ import { continue_document, continue_hosted_document } from "hson-live";
 ```
 
 Both require an explicit `Element`. Pass the element that realizes the one
-ordinary root in the selected document map, such as an application `<main>` or,
-when it is the canonical root, `document.documentElement`. Selectors, selector
+`html` root of the selected complete page, normally `document.documentElement`.
+An application `<main>` descendant cannot realize that root. Selectors, selector
 strings, implicit global-document lookup, and `TreeSelector` are intentionally
 not part of this API.
 
@@ -54,7 +53,7 @@ not part of this API.
 ```ts
 const continuation = continue_document({
   map,
-  root: document.querySelector("main")!,
+  root: document.documentElement,
 });
 
 continuation.tree.attrs.set("data-ready", "yes");
@@ -113,7 +112,7 @@ const continuation = await continue_hosted_document({
   credential,
   transport,
   document: selectedDocumentName,
-  root: document.querySelector("main")!,
+  root: document.documentElement,
 });
 
 await continuation.tree.async.attrs.set("data-state", "accepted");
@@ -342,7 +341,8 @@ An optional opaque payload uses the same placement:
 </body><hson-scout hidden>Az09_-</hson-scout></html>
 ```
 
-For fragment SSR, the application first constructs the HTML/body envelope.
+Governed rendering already supplies the complete HTML/body envelope; do not wrap
+its output in another page shell.
 Neither the canonical document nor `cut()`, `session.now()`, or generic Hson
 serialization contains Scout. The HTML parser places the after-body element
 as the final body child. With JavaScript disabled, it remains hidden and inert,

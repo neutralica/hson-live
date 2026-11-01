@@ -26,12 +26,16 @@ atomically. Capture and local replay retain the tightened contract, and a
 pre-tightening capture cannot restore over it. Locus-managed authorities and
 projected Echo clients reject direct attachment in this phase.
 
-Mismatches throw the internal `HsonSchemaError` with structured issues; incomplete or
-unrecognized Schemas fail with `INVALID_SCHEMA`, incompatible roots with
-`TYPE_MISMATCH`. Malformed untyped strings preserve Transform errors and
-non-string misuse throws `TypeError`. Approved declarative refinements are
-evaluated by the canonical graph authority; executable callback constraints are
-not a Schema feature.
+Schema construction eagerly compiles the definition: an invalid definition rejects
+with `TypeError`, while malformed notation can fail earlier with a Transform error.
+Canonical candidate mismatches produce structured issues through the internal
+`HsonSchemaError`; that internal error taxonomy is not the complete public construction
+contract. Non-string misuse throws `TypeError`. Declarative refinements use the
+canonical graph validator; executable callback constraints are not a Schema feature.
+
+Document certification accepts authored input, performs canonical admission, and then
+validates the detached Document. It does not compose a Library or complete a page.
+Governing Document Schemas instead validate the [completed page](api-livemap.md#complete-governed-documents).
 
 ## Any canonical data value
 
@@ -201,11 +205,13 @@ view has JavaScript's integer-key enumeration limits; the static analyzer does
 not execute materialization calls to prove their contents. Dynamic candidate
 validation remains owned by runtime admission.
 
-Static authored source uses `HsonFromSchema<typeof Schema>` annotations
-(or the lower-level `HsonData<S>` / `HsonDocument<S>`) and the headless Schema analyzer;
-it does not call `schema.certify`. Dynamic ingress uses
-`schema.certify`. Map-owned state is validated during library admission, before
-post-hoc attachment, and before mutation commits.
+Supported static Data analysis uses `HsonFromSchema<typeof DataSchema>` or
+`HsonData<S>` annotations and the headless Schema analyzer without calling
+`schema.certify`. Direct `Hson.document` authoring returns `HsonAuthored`;
+editor analysis does not establish `HsonDocument<S>` proof for that source.
+Use `schema.certify(candidate)` for canonical Document admission and Schema
+proof. Dynamic ingress uses `schema.certify`. Map-owned state is validated during
+library admission, before post-hoc attachment, and before mutation commits.
 
 ## Runtime Schema identity
 

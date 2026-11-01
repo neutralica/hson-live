@@ -30,7 +30,7 @@ The callable facade accepts a selected document library.
 ## Document reflection
 
 ```ts
-const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
 const map = hson.liveMap.fromLibraries({ page: { document: `<main <p "hello"/>/>`, schema: PageSchema } });
 {
   const reflected = hson.mirror(map.doc.must("page"));

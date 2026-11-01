@@ -3,8 +3,10 @@
 ## Local rendering
 
 A document handle renders its own state with `map.doc.must("page").render()` and
-returns `BrowserRealizationHtml`. It reads only that document and its CSS, preserves
-fragments and authored document shells, and performs browser-parser checks.
+returns `BrowserRealizationHtml` for the complete page established at admission.
+It reads only that document and its CSS. [Governed admission](livemap/api-livemap.md#complete-governed-documents)
+performs authored completion and browser-compatibility validation before publication;
+rendering does not supply a missing page shell.
 
 Direct rendering supports scoped Part documents too. Public local `capture()`/`cut()`
 and full-authority `locus.cut()` currently reject scoped documents; their supported
@@ -57,4 +59,4 @@ Hosted `libs` is an admitted `hson-authority-projection-snapshot`; `local` is a 
 
 The browser passes structured `now`, a separate credential, transport, and existing root to `continue_hosted_document`. The helper prepares Echo, initializes missing local libraries, adopts the explicit shared document, binds Mirror, and completes sync. The transfer codec remains optional when a carrier needs text.
 
-The application owns its shell, routing, asset tags, headers, CSP, and carrier placement. Encode this `now` composition beside its HTML. Framework privacy filtering protects library scope; the application still controls the contents it authors into permitted libraries and arbitrary responses.
+The application authors page content and owns routing, asset tags, headers, CSP, and carrier placement. Rendered governed HTML already contains its page shell. Encode this `now` composition beside its HTML. Framework privacy filtering protects library scope; the application still controls the contents it authors into permitted libraries and arbitrary responses.

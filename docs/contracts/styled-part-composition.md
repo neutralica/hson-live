@@ -25,7 +25,11 @@ Every definition's single authored root requires the valueless `hson:part` flag.
 Missing, valued, nested, and connector declarations reject complete-candidate admission,
 including uninvoked and optional definitions. The declaration stays in stored source;
 governed realization strips it before canonical publication, HTML, DOM, or transport.
-It supplies no name, authority, Library selection, or identity. `.write()` remains deferred.
+It supplies no name, authority, Library selection, or identity. Definition admission
+validates record shape, authored structure, declaration placement, structured CSS,
+and stylesheet field types. Selected-source
+lexical/receiving analysis occurs at `.write()` or receiving composition; admitting an
+inert definition does not prove that all local or nested references will resolve.
 
 Select the Library through `map.parts.must("components")`, not `.data` or `.doc`.
 
@@ -36,16 +40,19 @@ custom element, subscription, instance object, `.template()` or `.compose()` API
 The private structural traversal remains the construction mechanism. Native HTML
 `<template>` keeps its existing semantics.
 
-`lib` and `at` are separate exact string coordinates, never a slash-delimited
-address. A top-level connector requires a nonempty `lib`; nested connectors may
-omit `lib` to retain their selected collection. An empty member key is supported.
-A missing, ungoverned or unavailable collection/member rejects receiving composition
-atomically. A definition may refer to a Part admitted later; definition admission
-and `.write()` do not expand nested references. Library-add candidates can provide definitions and
-consumers in either entry order. Ordinary atomic batches resolve against the
-complete final candidate of each edited Part collection, independently of the
-relative order of consumer and definition edits. Invalid final definitions reject
-the entire candidate.
+Select a Part with separate `lib="components" at="panel"` coordinates or qualified
+`at="components/panel"`. Qualified `at` requires exactly one slash and nonempty halves;
+it cannot be combined with `lib`. Nested unqualified connectors may omit `lib` to
+retain their enclosing collection. Separate coordinates support an empty member key.
+Static selectors may be unquoted; mixed literal/reference selectors such as
+`at="components/^{item.kind}"` require quotes. Dynamic selection resolves during
+composition, under the same receiving authority.
+
+Missing, ungoverned, or unavailable collections/members reject composition atomically.
+Definitions may refer to Parts admitted later; neither definition admission nor
+`.write()` expands nested invocations. Library-add candidates and atomic batches
+resolve consumers against the complete candidate, including newly admitted definitions,
+regardless of entry or operation order. Established definitions remain immutable.
 
 The optional connector `@:name` becomes a receiving-document QUAD on the realized
 root. Authored Library source and `Hson.document` use the authored QUAD scanner and name
@@ -54,7 +61,8 @@ rules. `Hson.document` returns `HsonAuthored`; ordinary Transform and canonical
 form one flat document namespace. Each realized Part occurrence retains a separate
 flat local namespace, including repeated and nested occurrences. Local names never
 become implicit shell names. Public `page.q(name)` selects shell bindings; chained
-scoped `.q()` navigation and structural slots are not implemented. CSS can demand a root
+scoped `.q()` navigation is not implemented. Structural Document locals can be inserted
+with `<hson-part ^{local}/>` as described below. CSS can demand a root
 QUID without an authored QUAD. Reads, capture and rendering allocate nothing.
 
 ## Whole definitions and deferred invocation
@@ -92,17 +100,24 @@ const invocation = map.parts.must("components").heading.write({ content: "Hello"
 map.addLibraries({ page: { document: Hson.document`<main ${invocation}/>` } });
 ```
 
-`write()` and `write(args)` return detached `HsonAuthored` connector source. They
-capture Library/member coordinates and scalar argument spellings; arguments become
-ordinary string attributes through `String(value)` (including `-0` becoming `"0"`).
-They allocate no subject
-identity, compile no occurrence CSS, and change no revision. Argument fields must
-be own enumerable data properties with finite scalar values. Reserved names such
-as `lib`, `at`, `style`, and `__proto__` reject. Missing/unused parameter validation
-is deferred until receiving admission. That receiver resolves its then-current
-matching definition, which may differ from the writer's original definition.
-The invocation is not a definition snapshot or a live binding. Staged writers have
-no `.write()`; ordinary, authoritative, and read-only whole-member handles do.
+`write()` and `write(args)` return detached `HsonAuthored` connector source. The
+optional argument is a plain record of own enumerable data fields using incoming
+parameter names, without type suffixes. Scalar values are strings, finite numbers,
+booleans, or null and become attributes through `String(value)` (`-0` becomes `"0"`).
+Data and Document arguments require serialized strings; the writer derives outgoing
+`:data` / `:doc` suffixes from the selected immutable definition. Arrays, objects,
+undefined, accessors, and symbols are not argument values or fields. `lib` and `at`
+are reserved; `style` and `__proto__` cannot be scalar parameters but may name
+structured inputs.
+
+Selected-source analysis, unexpected-input checks, transport-kind checks, and
+statically required missing-input checks run during `.write()`. Structured payload
+parsing, conditional requirements, and nested selection remain receiving-composition
+checks. The writer issues no subject identity, compiles no occurrence CSS, and changes
+no revision. Receiving composition resolves the immutable definition in its own owner;
+another owner may bind the coordinates differently. The invocation carries neither a
+definition snapshot nor a live binding. Staged writers have no `.write()`; ordinary,
+authoritative, and read-only whole-member handles do.
 
 ## Structured declarations and textual stylesheets
 
@@ -117,7 +132,7 @@ import type { CssMap } from "hson-live/livemap";
 const css: CssMap = {
   color: "navy",                         // occurrence root
   borderRadius: { value: 50, unit: "%" },
-  "& a, & button": { _hover: { opacity: 0.8 } },
+  "& :is(a, button)": { _hover: { opacity: 0.8 } },
   "@:current": { fontWeight: "bold" },  // this Part's own authored QUAD
   $media: {
     "(max-width: 480px)": { gap: "0.5rem", "@:current": { fontSize: ".85rem" } },
@@ -125,10 +140,12 @@ const css: CssMap = {
 };
 ```
 
-Every selector-list arm starts with `&`; bare nested selector keys and `@media`
-keys reject. Supported pseudos are `_hover`, `_active`, `_focus`, `_focusWithin`,
+A structured relative key contains one selector with one leading `&`; use `:is(...)`
+for alternatives. Selector-list keys, bare nested selectors, and `@media` keys reject.
+Supported pseudos are `_hover`, `_active`, `_focus`, `_focusWithin`,
 `_focusVisible`, `_visited`, `_checked`, `_disabled`, `__before`, and `__after`.
-Before/after shorthand adds `content: ""` if absent. `"@:name"` resolves only an
+Before/after shorthand does not supply `content`; author `content: '""'` when needed.
+`"@:name"` resolves only an
 existing name declared in this Part, never a nested Part's namespace. It is allowed
 at the root and inside a root `$media` group's body, not beneath a selector, pseudo,
 or another local target. `$media` itself is root-only.
@@ -145,10 +162,10 @@ inspection rejects accessors, symbols, cycles, and unsupported prototypes.
 Grammar, selector/media syntax, local targets, and complete stylesheet compilation
 validate atomically with the whole candidate, before runtime identity issuance or
 publication. Structured source is then governed by the same occurrence CSS and
-retirement machinery as textual `stylesheet`. LiveTree `setMany()` supports a
-narrower relative declaration grammar: it has no `$media` groups or local QUAD
-resolution. Use its `.media(...)` facade for media rules. Imperative property
-removal and inline style storage have separate contracts in the
+retirement machinery as textual `stylesheet`. LiveTree stylesheet `setMany()` handles
+accept the shared structured grammar, including `$media`. Local `"@:name"` targets
+require a receiving namespace resolver; standalone handles cannot resolve them.
+Imperative property removal and inline style storage have separate contracts in the
 [LiveTree CSS reference](../livetree/api-css-manager.md).
 
 ## Parameters
@@ -157,28 +174,71 @@ Descendant elements and ordinary Part connectors also support
 [structural collection iteration](part-array-iteration.md). Its `for:`/`per:` declaration
 is consumed before connector argument classification or canonical publication.
 
-Connectors must be empty. Coordinates and construction directives are reserved;
-the remaining attributes supply named initial parameters. Names match
-`[A-Za-z_][A-Za-z0-9_-]*`. Scalar values are supported
-canonical scalars: string, finite number, boolean or null. Structural values,
-arrays, opaque objects and undefined are rejected, including structured `style`
-inputs. Missing parameters, unused/unknown inputs and malformed `%{name}` tokens
-reject with the parameter name or placement in the error. There are no defaults,
-expressions, recursive configuration objects or ongoing bindings.
+Ordinary invocations must be empty. Coordinates and construction directives are
+reserved; remaining attributes supply initial parameters. The implemented argument
+kinds are `scalar`, `data`, and `doc`; there are no `str` or `num` declarations.
+Incoming `%{name}` references name parameters without paths. Locally declared
+`^{name}` references may select properties, numeric indexes, and quoted keys.
+Receiving roots bind `data:local=%{incoming}` or `doc:local=%{incoming}`; outgoing
+invocations send `incoming:data` or `incoming:doc`. See the [directional grammar](part-argument-direction.md)
+for reserved names and forwarding rules.
 
-Placeholders occur only in decoded document text and ordinary attribute values,
-including values forwarded to nested connectors. An attribute consisting entirely
-of `%{name}` preserves the admitted connector scalar type. Authored string
-connectors and `write()` supply string-valued attributes; programmatic receiving
-graph content can retain supported typed primitive attributes. Partial attributes and all document text
-become strings using the scalar's ordinary string spelling (`null`, `true`, etc.).
-Canonical document text is STR-only; it cannot contain a typed VAL leaf. A
-replacement value is never scanned again for placeholders and is never parsed as
-Hson or HTML. Quotes, `<`, `&`, Unicode and empty strings pass through normal
-Hson/HTML serialization and escaping. No raw markup is inserted.
+```ts
+const map = hsonLiveMap.fromLibraries({
+  components: { parts: {
+    panel: { kind: "document", document: Hson.document`
+      <section hson:part data:model=%{payload} doc:extra=%{content}
+        <h2 "%{title}"/>
+        <p "^{model.count}"/>
+        <aside <hson-part ^{extra}/> />
+      />
+    ` },
+  } },
+});
+const invocation = map.parts.must("components").panel.write({
+  title: "Hello",
+  payload: Hson.data.from({ count: 2 }),
+  content: Hson.document`<em "More"/>`,
+});
+map.addLibraries({ page: { document: Hson.document`<main ${invocation}/>` } });
+```
+
+A structural `<hson-part ^{extra}/>` inserts a Document local without `lib`, `at`,
+or argument attributes. Structural arguments remain detached fragments; completion
+applies to the final [governed page](../livemap/api-livemap.md#complete-governed-documents).
+Array/object iteration and dynamic Part selection construct independent occurrences;
+changing source Data does not update an existing page. The [iteration reference](part-array-iteration.md)
+defines aliases, scope, and execution order.
+
+Scalar substitution operates in decoded text and ordinary attribute values, including
+forwarding attributes. A whole scalar attribute reference retains a supported typed
+primitive from programmatic connector input; authored source and `.write()` supply
+string-valued attributes. Mixed attributes and document text use scalar string spelling.
+Scalar replacement is neither rescanned for placeholders nor parsed as Hson/HTML.
+Document transport, by contrast, supplies structure through its explicit `doc` channel.
+
+### Required and optional arguments
+
+A strict scalar use requires its incoming argument. A trailing `?` makes a reference
+optional, as in `%{title?}`, `^{model.title?}`, or `doc:extra=%{content?}`. Missing optional
+substitution omits the complete containing attribute or text position, including literal
+prefixes and suffixes. `false`, `0`, `""`, and `null` remain present values. Missing
+optional Document content inserts nothing. Optional receiving declarations propagate
+absence into local uses; optional local uses do not relax a required declaration.
+Undeclared bindings, invalid traversal through a present value, malformed input, and
+unrelated required references still reject.
+
+`part:optional` controls structural presence, separately from reference optionality.
+Data demand beneath an optional definition root can be conditional on execution,
+including whether an iterator has members. `.write()` defers those conditional
+requirements to composition; statically required inputs still reject immediately.
+If omission removes the final page's only root, complete-page admission rejects.
+There are no defaults, general expressions, or ongoing bindings.
 
 Tags, attribute names, identity metadata, structured style maps, script/style
-content and placeholders in attributes beginning with `on` (case-insensitive) are unsupported. Existing CSS
+content and scalar placeholders in ordinary HTML handler attributes beginning with
+`on` (case-insensitive) are unsupported. Recognized structured arguments such as
+`onload:doc` follow the directional Part grammar instead. Existing CSS
 and Hson admission may reject invalid placements before construction. CSS is not
 interpolated. Literal `%{` in Part text must not be used: there is no separate
 escape/interpolation language. A string passed to an existing runtime text
@@ -187,82 +247,44 @@ existing grammar.
 
 ## Occurrence CSS
 
-A balanced-token pass splits recovered style blocks into declarations and nested
-rules, each parsed with CSSTree before lowering and ordinary managed stylesheet
-admission. Bare type and class nesting (`.a { button { ... } }` and
-`.a { .b { ... } }`), nested selector lists, either mixed explicit/implicit list
-order, and supported nested conditions follow the same lowering path. Declaration
-runs retain their position before, between and after nested rules. Implicit
-nested selectors use `:is(parent)` and a descendant combinator, retaining CSS
-nesting's maximum parent-list specificity; explicit `&` is replaced structurally.
+Structured `css: CssMap` is compiled and scoped to the occurrence root. Its rules
+receive an explicit `@scope` that includes the root and its descendants; `&` is
+anchored at the occurrence root. Local `"@:name"` targets resolve within that Part's
+namespace. Parent rules can reach
+nested Part descendants through the ordinary cascade. This is not Shadow DOM isolation.
 
-Colon-bearing implicit selectors such as `button:is(.b)`, `button:not(.x)`,
-`button:first-child` and `button::before` use the same path, including either
-mixed-list order with explicit `&`. CSSTree may initially recover these as a
-declaration with a raw value; the complete non-custom declaration is re-split at
-balanced token boundaries to identify the qualified nested rule. Actual property
-values containing colons, strings, URLs and functions remain declarations. Custom
-properties own their raw values, including colon-bearing text and balanced blocks;
-they are never reinterpreted as nested selectors. Malformed values/selectors and
-unsupported opaque constructs still reject through the strict managed codec.
-Recovery uses original source spans, preserving the descendant whitespace in
-`button :is(...)` instead of regenerating it as `button:is(...)`.
+Raw `stylesheet` text is retained exactly, without CSS parsing, nested-selector
+lowering, selector rewriting, or automatic scoping. Its selectors can affect siblings
+and elements outside the occurrence. Imports, global definitions, duplicate declarations,
+and CSS syntax are left to the browser. Raw identity-looking selectors are not interpreted
+as subject references. The governed page still validates HTML style transport, including
+RAWTEXT restrictions, before publication.
 
-Each occurrence's ordinary rules are placed in an explicit
-`@scope ([hson\:quid="receiving-id"])` anchored to its single root. Each ordinary
-selector's first compound receives the structural zero-specificity constraint
-`:where(:scope,:scope *)`, before any pseudo-element. This makes that compound
-match the root or a descendant and avoids native scope's implicit descendant-only
-anchoring: both `button` on a button root and `section button` through a section
-root work. Selector lists retain their individual matching specificity. Explicit
-scope-containing selectors retain their authored relationship; top-level `&`
-becomes `:scope`. Structured functional selectors, pseudo-elements and supported
-inner scopes keep their CSS meaning. Identity remains solely in the scope/owner
-references, using the actual receiving root, with no authored root QUAD required.
-
-Scope includes the root and its descendants. Parent rules can style nested Part
-descendants through the ordinary cascade; this is not Shadow DOM isolation.
-An unrelated sibling occurrence and outside elements are outside that scope.
-Specificity, layer order, inheritance and native scope proximity still apply. In
-particular, scope proximity can resolve equal-specificity declarations; an
-explicit higher-specificity or important override follows the normal cascade.
-See the [CSS scope specification](https://www.w3.org/TR/css-cascade-6/#scoped-styles).
-
-Supported conditions/groups retain their order and repeated occurrences:
-`@media`, `@supports`, `@layer`, `@container`, `@scope`, and `@starting-style`.
-Nested conditions inside style rules are lowered with those rules. A nested
-`@scope` inside a style rule is explicitly unsupported. Opaque selector arguments
-that CSSTree cannot structurally inspect reject. Imports, namespace declarations,
-font-face, layer-order statements, unsupported global forms and malformed CSS
-reject rather than escaping the occurrence's scope. Existing managed-codec
-limits, including duplicate declarations that cannot be represented, remain.
-
-Top-level supported `@keyframes` and `@property` definitions retain their global
-CSS names and semantics. Duplicate definitions across occurrences reject, even
-when identical. Names and animation declarations are not automatically renamed.
-Exact Part-local `[hson\:quad="name"]` subject references continue to resolve
-through local QUAD paths and receive identities within the occurrence scope.
-Unresolved, generated, mixed, opaque or non-exact identity claims reject through
-the existing CSS identity translator. Ordinary selectors need only root identity.
+Both forms carry occurrence ownership for retirement. Ownership controls contribution
+lifetime; only structured CSS receives automatic selector scoping. Textual contributions
+precede structured contributions when both fields are present. See [managed stylesheet
+operations](../livemap/api-livemap.md#selection-and-reads) for raw replacement, clearing,
+and ordered style carriers.
 
 ## Ownership and atomicity
 
 The managed stylesheet's existing ordered entries carry an optional `owner`:
 one exact subject selector, translated with all other CSS identity references.
 This is CSS/document state, not an independent registry, graph or runtime ledger.
-Each generated top-level group or global definition carries its occurrence root
-owner. Rendering ignores this metadata; portable capture retains and translates
+Each contributed raw text entry or generated top-level group carries its occurrence
+root owner. Rendering ignores this metadata; portable capture retains and translates
 it using the existing authored/disposable correspondence envelope.
 
 Moving a root keeps its contribution. Retiring a root removes only entries with
-that explicit owner, including global definitions, in the same accepted graph/CSS
-candidate. Retiring an enclosing root also retires nested roots still inside it.
-Replacement retires old contributions before checking new global conflicts.
+that explicit owner in the same accepted graph/CSS candidate. Retiring an enclosing root also retires nested roots still inside it.
+Replacement retires old contributions before admitting the new contributions.
 Independently authored rules are not inferred to be owned from their selectors:
 remaining references to retired subjects still reject the complete mutation.
 Explicit granular replacement of an owned contribution rejects; complete
-stylesheet replacement can explicitly take over stylesheet ownership. Explicit
-rule/scopes conflicts remain errors.
+stylesheet replacement can explicitly take over stylesheet ownership. Direct local
+CSS writes currently reject on scoped Documents; use the
+[staged Library writer](../livemap/api-livemap.md#selection-and-reads) for local replacement.
+Hosted writes use the existing document authority path.
 
 One existing LiveMap authority installs graph, overlay, issued ledger, authored
 bindings and CSS together. Construction, Schema, resource, cycle, allocation,
@@ -289,7 +311,8 @@ This cut stores only the realized canonical Library graph. The consumed connecto
 is not available for in-Library source editing, and there is no `source` property.
 Applications may retain authored input externally and submit fresh content through
 ordinary replacement/admission, with ordinary replacement identity consequences.
-Definition changes never retroactively rebuild accepted occurrences.
+Admitting new definitions never rebuilds accepted occurrences; established definitions
+cannot change.
 
 Explicit replacement lineage is interpreted against the old graph and the
 authored incoming fragment. Construction records transient authored-to-final
@@ -317,8 +340,8 @@ occurrence topology, flat local namespaces, owned CSS, and portable subject
 correspondence. Receivers issue fresh runtime identities; source collections are
 not needed to render or continue the final document.
 
-Document `render()` supports scoped first paint. Nonempty managed CSS retains the
-explicit `html`/`head` requirement. Authorized `session.now({ html: "page" })`, SSR
+Document `render()` supports scoped first paint. Governed admission has already
+established the complete `html/head/body` page, including managed-style transport checks. Authorized `session.now({ html: "page" })`, SSR
 bootstrap encoding, Echo initial admission/replay/reconcile, durable checkpoints
 and tails, and hosted continuation support scoped Part documents. Continuation
 validates original carriers, establishes receiver-owned correspondence, switches

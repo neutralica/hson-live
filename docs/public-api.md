@@ -117,7 +117,7 @@ import { reflect_document } from "hson-live/mirror";
 import { hsonTransform } from "hson-live/transform";
 import { Hson } from "hson-live/hson";
 
-const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const map = hsonLiveMap.fromLibraries({
   page: { document: hsonTransform.fromTrustedHtml("<main/>").toNode(), schema: PageSchema },
 });
@@ -125,6 +125,8 @@ const binding = reflect_document(map.doc.must("page"));
 binding.dispose();
 ```
 
+The authored root is completed to an `html/head/body` page before admission.
+For a governing Schema, describe that [complete page](livemap/api-livemap.md#complete-governed-documents).
 Mirror does not dispose `map`. Its health/status concerns projection; it is
 not the same promise as Echo revision convergence.
 
@@ -132,11 +134,9 @@ not the same promise as Echo revision convergence.
 
 ```ts
 import { hsonLiveMap } from "hson-live/livemap";
-import { Hson } from "hson-live";
 
-const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const authority = hsonLiveMap.locus.create({
-  page: { document: "<main/>", schema: PageSchema, access: "shared" },
+  page: { document: "<main/>", access: "shared" },
 }, {
   authorizeProjection: () => ({ libraries: ["page"] }),
 });
@@ -159,8 +159,9 @@ LiveMap owns local state, Locus owns authority state, and Echo owns composed rep
 Admit `{ components: { parts: { heading: { kind: "document", document: '<h2 hson:part "%{content}"/>' } } } }`
 and select the member through `map.parts.must("components").at(["heading"])`.
 Its `.write({ content: "Hello" })` returns detached `HsonAuthored` connector source.
-Receiving document admission resolves the then-current definition and realizes an independent
-occurrence. See the [Part contract](contracts/styled-part-composition.md) for structured
+Receiving admission resolves the immutable definition in the receiving owner and
+realizes an independent occurrence; another owner can bind the coordinates differently.
+See the [Part contract](contracts/styled-part-composition.md) for structured
 `css: CssMap`, textual `stylesheet`, namespaces, protected fields, and lifetime rules.
 
 ### 7. Local rendering, selective transfer, and continuation
@@ -187,9 +188,10 @@ storage filtered by selected documents. Data-only, document-only, mixed, and emp
 state selections are valid.
 
 Use `install_libraries_snapshot(decoded.bootstrap)` to reconstruct the selected
-local topology, then `continue_document` with an explicit existing root Element.
-Put an application-root carrier outside that continued root with no surrounding
-whitespace in its encoded text; full-document state delivery is out-of-band.
+local topology, then `continue_document` with the selected complete page's existing
+`html` Element, normally `document.documentElement`. Deliver state out-of-band or
+use the documented [Scout handoff](document-continuation.md); the DOM and managed
+style carriers must exactly match the selected page.
 Return a standard Web `Response`; storage, routes, cache policy, and security
 remain application-owned. Hosted cuts retain their existing session contract.
 

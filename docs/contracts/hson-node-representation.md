@@ -295,8 +295,10 @@ success or hidden by normalizing an admitted graph:
 ### Internal root boundary
 
 Every document-mode LiveMap and Locus graph is owned by an internal
-`_hson_root`. Its ordered content may be empty or contain one or many document
-nodes. The root is authority structure rather than authored Hson:
+`_hson_root` containing one complete `html/head/body` page. See
+[governed Document admission](../livemap/api-livemap.md#complete-governed-documents)
+for authored completion and non-repairing canonical restoration.
+The root is authority structure rather than authored Hson:
 `serialize_hson()` rejects every `_hson_root` and does not substitute, melt, or
 silently unwrap it. Hson-source public terminals detach validated semantic
 content before target projection, while canonical equality remains
@@ -307,9 +309,9 @@ node normalization, rebuild indexes, sort content, detach roots, remove
 metadata, repair wrappers, or coerce attribute values. Admission and projection
 boundaries must establish their own canonical inputs before invoking equality.
 
-The runtime root does not require authored syntax. Empty document content is a
-runtime content shape, and public Hson boundaries continue to expose only
-detached authored content.
+Internal graph utilities and Schema evaluation can represent empty document
+content; this does not make it an admissible Document Library. Detached nonempty
+Documents retain their separate text and multi-root representation contracts.
 
 ## Measurements
 

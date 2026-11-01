@@ -155,13 +155,13 @@ Attributes and flags appear only after an element name:
 <article id="post-042" class="entry featured"/>
 ```
 
-Ordinary Hson attributes use HTML-compatible string semantics. The parser accepts double-quoted and unquoted spellings, but both produce string-valued ordinary attributes. Quoted values use Hson/JSON string escapes; no HTML entity decoding occurs on this parser edge. `style` is parsed separately into the graph's structured style map.
+Ordinary Hson attributes use HTML-compatible string semantics. Ordinary literal values require double quotes and produce string-valued ordinary attributes. Complete `%{...}` / `^{...}` reference operands and recognized static `hson-part` selectors may be unquoted; mixed literal/reference values require quotes. These are governed authoring forms, not permission for unquoted ordinary literals. Quoted values use Hson/JSON string escapes; no HTML entity decoding occurs on this parser edge. `style` is parsed separately into the graph's structured style map.
 
 Attribute declaration names are case-sensitive and duplicates reject before canonical attribute storage. Thus `a` and `A` are distinct, while repeated valued, flag, `style`, or colonized names reject even when comments or layout separate the declarations. This is an authored-Hson rule. Raw HTML retains its separate case-insensitive duplicate policy.
 
 Quoted attribute values accept exactly the same JSON escape set as quoted content: `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX`. Unknown, incomplete, malformed, and unterminated escapes reject; `\/` decodes to `/`.
 
-For example, external input `<tag count=2/>` parses as `{ count: "2" }` and reserialization produces `<tag count="2"/>`. Hson quotes ordinary valued attributes. Direct node ingress rejects programmatic number, boolean, and null ordinary attribute values instead of converting them. Primitive content retains its primitive type, and runtime attribute APIs retain their separate typed domain.
+For example, `<tag count="2"/>` parses as `{ count: "2" }`; `<tag count=2/>` rejects. [HTML ingestion](hson-html.md) retains its separate permissive grammar. Direct node ingress rejects programmatic number, boolean, and null ordinary attribute values instead of converting them. Primitive content retains its primitive type, and runtime attribute APIs retain their separate typed domain.
 
 A bare attribute is a presence flag:
 

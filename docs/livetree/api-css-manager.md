@@ -208,10 +208,9 @@ missing the property, or selected QUIDs disagree, the read returns `undefined`.
 `getMany()` returns only properties that exist and agree across all selected
 QUIDs.
 
-QUID writes are checked with `CSS.supports()` when that browser API exists;
-unsupported declarations are warned and skipped. Inline-style and global-rule
-backends do not apply the same preflight filter, so this is not a uniform
-validation contract across all style surfaces.
+Structured CSS admission does not consult browser `CSS.supports()`. Syntax-contained
+unsupported values can remain in managed state; browser support determines their
+visual effect. Structured declaration validation still applies.
 
 ---
 
@@ -287,9 +286,10 @@ tree.css.setMany({
 
 ## At-Rule Facades
 
-`setMany()` supports relative selectors and pseudos, but not structured `$media`
-groups or `"@:name"` resolution. Those root authoring forms belong to Part
-definitions. Use the explicit media facade below for LiveTree rules.
+Stylesheet `setMany()` handles support the shared `CssMap` grammar, including relative
+selectors, pseudos, and root `$media` groups. `"@:name"` targets require a receiving
+namespace resolver; standalone handles cannot resolve them. Explicit media facades
+remain available.
 
 QUID-scoped CSS handles support scoped facades:
 
@@ -422,6 +422,8 @@ removes that key across all scopes, and `css.list()` reports it once.
 Global and QUID rules preserve first-write cascade order; updates keep their place.
 On a continued LiveMap document, the bound `stylesheet(cssText)` facade
 delegates to `page.css` and replaces the complete managed document stylesheet.
+Direct local writes on scoped Part Documents currently reject; use the
+[staged Library writer](../livemap/api-livemap.md#selection-and-reads).
 Document stylesheet text is retained as an opaque contribution without CSS
 syntax parsing, preserving every authored character, including empty and
 comment-only text. Opaque text has no structured rule keys or extracted
@@ -433,9 +435,9 @@ separately from raw stylesheet text.
 `tree.css` itself has no `stylesheet()`.
 Structured setters use native CSS property names, including case folding and CSS escapes, while retaining their JS camelCase convenience. Significant escape whitespace and token boundaries are preserved. Structured keyframe offsets sort numerically with stable authored order at equivalent positions (`from`/`0%`, `to`/`100%`).
 
-Wrapper rendering leaves child token contents unchanged, including escaped-newline strings. Selector-generated keys preserve significant CSS characters through creation, lookup and deletion. Each structured wrapper occurrence has ordered structural membership. One anonymous layer containing several structured rules renders once; distinct anonymous occurrences remain separate, including nested media/supports wrappers. Dropping a member keeps its wrapper occurrence, even when empty, until clear or replacement. No QUID identifies these groups. Raw stylesheet calls retain separate ordered text contributions in standalone runtimes and replace the document owner's stylesheet on a continued document. These are semantic records and native CSS projections, not archives of source formatting or exact typed inline graph storage.
+Wrapper rendering leaves child token contents unchanged, including escaped-newline strings. Selector-generated keys preserve significant CSS characters through creation, lookup and deletion. Each structured wrapper occurrence has ordered structural membership. One anonymous layer containing several structured rules renders once; distinct anonymous occurrences remain separate, including nested media/supports wrappers. Dropping a member keeps its wrapper occurrence, even when empty, until clear or replacement. No QUID identifies these groups. Raw stylesheet calls retain separate ordered text contributions in standalone runtimes and replace the document owner's stylesheet on a continued document. Structured records project semantic CSS rather than archive its source formatting; opaque text contributions preserve every authored character. Neither is an exact typed inline graph encoding.
 
-The existing LiveTree `clearAll()` clears global selector rules; use
+Standalone `tree.css.global.clearAll()` clears global selector rules and opaque text; use
 `atProperty.unregister()` and `keyframes.delete()` for those registries.
 
 ### Global Variables
