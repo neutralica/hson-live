@@ -214,7 +214,7 @@ export const declaredExecution = Object.freeze({
     targets: [["editors/vscode-hson/tests/integration/house.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-legibility.mjs": { sha256: "8b1e8b8492d0c996e932e31955ec7afd3606b4c186c69bb486607a0318b8c568", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/legibility.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "8d922495a1e06cfe48e4deb3af82f6fc508d7987e85628be44d3e9320db2b1b4", route: editorRoute,
+  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "aaeb3465c949754bbfad61248d6f0d2880bcdef844b7d5dfd1a7252b13fd7161", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },
   "scripts/run-browser-realization-parser-closure.mjs": { sha256: "12ffbeca67bde08203a878a926165099761c75b48a139e2d50b2a4b674e3c041", route: browserRoute,
     targets: [["tests/browser/browser-realization-parser-closure.acceptance.html","browser-runner"],["tests/browser/browser-realization-parser-closure.entry.mjs","browser-runner"]], sources: [["tests/browser/browser-realization-parser-closure.acceptance.html","7b132a9dcba2ad80e3e5daad48a44b01d20afcc1e9f456df1bf2cc19c8a56472"]] },

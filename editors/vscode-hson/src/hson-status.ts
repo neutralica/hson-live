@@ -24,11 +24,13 @@ export function hson_status_tooltip(schema: SchemaToolState, localHost: LocalHos
       ? `Local App — ${localHost}\n\n${link("Stop", "hson.stopLocalHost")}`
       : localHost === "running"
         ? `Local App — on\n\n${actions(link("Restart", "hson.restartLocalHost"), link("Stop", "hson.stopLocalHost"))}`
-        : `Local App — ${localHost === "stopped" ? "off" : localHost}\n\n${actions(link("Run", "hson.startLocalHost"), link("Run + Open", "hson.runAndOpenLocalApp"))}`;
+        : localHost === "failed"
+          ? `Local App — failed\n\n${actions(link("Run", "hson.startLocalHost"), link("Run + Open", "hson.runAndOpenLocalApp"), link("Restart", "hson.restartLocalHost"), link("Stop", "hson.stopLocalHost"))}`
+          : `Local App — ${localHost === "stopped" ? "off" : localHost}\n\n${actions(link("Run", "hson.startLocalHost"), link("Run + Open", "hson.runAndOpenLocalApp"))}`;
   const schemaAction = schema === "watching" || schema === "starting" || schema === "stale"
     ? link("Stop", "hson.stopSchemaWatch") : link("Watch", "hson.startSchemaWatch");
   const schemaLabel = schema === "stopped" ? "off" : schema === "watching" ? "on" : schema;
-  const stopAll = localHost === "running" || localHost === "starting" || schema === "watching" || schema === "starting" || schema === "stale"
+  const stopAll = localHost === "running" || localHost === "starting" || localHost === "failed" || schema === "watching" || schema === "starting" || schema === "stale"
     ? `\n\n---\n\n${link("Stop All", "hson.stopAll")}` : "";
   return `${app}\n\n---\n\nSchema — ${schemaLabel}\n\n${actions(schemaAction, link("Check", "hson.checkSchemas"))}${stopAll}`;
 }

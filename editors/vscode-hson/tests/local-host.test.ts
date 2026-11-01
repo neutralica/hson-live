@@ -277,7 +277,7 @@ await check("local-app Quick Pick exposes only actions applicable to each lifecy
   assert.deepEqual(labels("starting"), ["Stop Local App", "Show Local App Output"]);
   assert.deepEqual(labels("running"), ["Open Local App", "Copy Local App URL", "Restart Local App", "Stop Local App", "Show Local App Output"]);
   assert.deepEqual(labels("stopping"), ["Show Local App Output"]);
-  assert.deepEqual(labels("failed"), ["Run & Open Local App", "Run Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("failed"), ["Run & Open Local App", "Run Local App", "Restart Local App", "Stop Local App", "Show Local App Output"]);
 });
 
 await check("local-app Quick Pick actions route through the existing command IDs", () => {

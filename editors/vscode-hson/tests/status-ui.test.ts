@@ -79,7 +79,11 @@ check("transitional tooltip states retain Check and state-appropriate actions", 
   const schemaOnly = hson_status_tooltip("watching", "stopped");
   assert.match(schemaOnly, /Schema — on/);
   assert.ok(schemaOnly.endsWith("[[Stop All]](command:hson.stopAll)"));
-  assert.doesNotMatch(hson_status_tooltip("error", "failed"), /command:hson\.stopAll/);
+  const failed = hson_status_tooltip("error", "failed");
+  assert.match(failed, /Local App — failed/);
+  assert.match(failed, /command:hson\.stopLocalHost/);
+  assert.match(failed, /command:hson\.restartLocalHost/);
+  assert.match(failed, /command:hson\.stopAll/);
   assert.deepEqual([...HSON_TOOLTIP_COMMANDS].sort(), [...new Set(HSON_TOOLTIP_COMMANDS)].sort());
   assert.ok(HSON_TOOLTIP_COMMANDS.includes("hson.checkSchemas"));
   assert.ok(HSON_TOOLTIP_COMMANDS.every(command => command.startsWith("hson.")));
@@ -122,7 +126,7 @@ check("production creates exactly one status item with one unified click command
   assert.match(extensionSource, /displayedTooltip !== undefined && displayedTooltip !== tooltipContent\) hsonStatus\.hide\(\)/);
   assert.match(extensionSource, /displayedTooltip = tooltipContent;[\s\S]*hsonStatus\.tooltip = tooltip;[\s\S]*hsonStatus\.show\(\)/);
   assert.match(localHostSource, /clipboard\.writeText\(new URL\(url\)\.href\)/);
-  assert.match(localHostSource, /run_and_open\(\(\) => this\.start\(folder\.uri\), \(\) => this\.open\(folder\.uri\)\)/);
+  assert.match(localHostSource, /registerCommand\("hson\.runAndOpenLocalApp", \(uri\?: vscode\.Uri\) => this\.runAndOpen\(uri\)\)/);
   assert.match(extensionSource, /registerCommand\("hson\.stopAll", stopAll\)/);
   assert.doesNotMatch(source, /hsonStatus\.color\s*=/);
   assert.match(source, /statusBarItem\.errorBackground/);

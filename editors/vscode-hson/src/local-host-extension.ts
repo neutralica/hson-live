@@ -3,7 +3,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, relative, resolve } from "node:path";
 
 import { LocalHostController, type LocalHostSnapshot, type LocalHostState } from "./local-host-controller.js";
-import { build_then_restart, run_and_open } from "./development-actions.js";
 import { local_app_quick_pick_actions, local_host_command_availability, type LocalAppAction, type LocalHostProjectPresentation } from "./local-host-presentation.js";
 import { local_host_start_blocker, resolve_local_host_project, type LocalHostProjectSettings } from "./local-host-project.js";
 import { ManualSaveTracker } from "./manual-save.js";
@@ -13,7 +12,7 @@ type ManagedProject = Readonly<{
   controller: LocalHostController;
 }>;
 
-type BuildWork = { revision: number; processed: number; cancelled: boolean; enabled: boolean; failed: boolean; timer?: ReturnType<typeof setTimeout>; child?: ChildProcess; active?: Promise<void>; build?: Promise<void>; buildRevision?: number };
+type BuildWork = { revision: number; processed: number; cancelledRevision: number; enabled: boolean; failed: boolean; timer?: ReturnType<typeof setTimeout>; child?: ChildProcess; active?: Promise<void> };
 
 export class LocalHostExtensionManager implements vscode.Disposable {
   readonly #context: vscode.ExtensionContext;
@@ -58,65 +57,42 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     if (this.#disposed) return false;
     const folder = await this.#prepareFolder(requested, "start");
     if (folder === undefined) return false;
-    try {
-      const managed = this.#managed(folder);
-      this.#work(folder).enabled = true;
-      if (managed.controller.snapshot.state === "running") return true;
-      if (managed.controller.snapshot.state === "starting") {
-        const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
-        await managed.controller.start(project);
-        return true;
-      }
-      this.#work(folder).cancelled = false;
-      const revision = this.#work(folder).revision;
-      await this.#build(folder, revision);
-      if (this.#work(folder).revision !== revision) return false;
-      const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
-      if (this.#work(folder).revision !== revision) return false;
-      await managed.controller.start(project);
-      this.#work(folder).failed = false;
-      this.#updatePresentation();
-      void vscode.window.showInformationMessage(`Hson local app is running at ${managed.controller.snapshot.httpUrl}.`);
-      return true;
-    } catch (error) {
-      this.#reportError(error, folder);
-      return false;
-    }
+    const completed = await this.#run(folder, false);
+    if (completed) void vscode.window.showInformationMessage(`Hson local app is running at ${this.#projects.get(folder.uri.toString())?.controller.snapshot.httpUrl}.`);
+    return completed;
   }
 
   async stop(requested?: vscode.Uri): Promise<void> {
     const folder = await this.#selectFolder(requested, "stop");
-    if (folder === undefined) return;
-    this.#cancelBuild(folder);
-    const managed = this.#projects.get(folder.uri.toString());
-    if (managed === undefined || managed.controller.snapshot.state === "stopped") {
-      void vscode.window.showInformationMessage(`No extension-managed Hson local app is running for ${folder.name}.`);
-      return;
-    }
-    await managed.controller.stop();
+    if (folder !== undefined) await this.stopRunning(folder);
   }
 
   async restart(requested?: vscode.Uri): Promise<void> {
     if (this.#disposed) return;
     const folder = await this.#prepareFolder(requested, "restart");
-    if (folder === undefined) return;
-    try {
-      this.#work(folder).cancelled = false;
-      this.#work(folder).enabled = true;
-      const revision = this.#work(folder).revision;
-      await this.#build(folder, revision);
-      if (this.#work(folder).revision !== revision) return;
-      const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
-      if (this.#work(folder).revision !== revision) return;
-      const controller = this.#managed(folder).controller;
-      await controller.stop();
-      if (this.#work(folder).revision !== revision) return;
-      await controller.start(project);
-      this.#work(folder).failed = false;
-      this.#updatePresentation();
-    } catch (error) {
-      this.#reportError(error, folder);
+    if (folder !== undefined) await this.#run(folder, true);
+  }
+
+  async #run(folder: vscode.WorkspaceFolder, replace: boolean, followSaves = false): Promise<boolean> {
+    if (this.#disposed) return false;
+    const controller = this.#managed(folder).controller;
+    const work = this.#work(folder);
+    const pending = work.enabled
+      && (work.active !== undefined || work.timer !== undefined || work.revision !== work.processed);
+    if (!pending) {
+      work.enabled = true;
+      if (!replace && !work.failed && controller.snapshot.state === "running") return true;
+      work.failed = false;
+      work.revision++;
     }
+    const revision = work.revision;
+    if (work.timer !== undefined) clearTimeout(work.timer);
+    work.timer = undefined;
+    this.#startFlush(folder, work);
+    do { await work.active; }
+    while (followSaves && work.active !== undefined && this.#current(work, work.revision) && work.cancelledRevision < revision);
+    return work.cancelledRevision < revision && this.#current(work, followSaves ? work.revision : revision)
+      && !work.failed && work.processed === work.revision && controller.snapshot.state === "running";
   }
 
   async open(requested?: vscode.Uri): Promise<void> {
@@ -131,10 +107,17 @@ export class LocalHostExtensionManager implements vscode.Disposable {
   }
 
   async runAndOpen(requested?: vscode.Uri): Promise<boolean> {
+    if (this.#disposed) return false;
     const folder = await this.#prepareFolder(requested, "start");
     if (folder === undefined) return false;
-    if (!await this.#drainSaves(folder)) return false;
-    return run_and_open(() => this.start(folder.uri), () => this.open(folder.uri));
+    const work = this.#work(folder);
+    const cancelledRevision = work.cancelledRevision;
+    if (!await this.#run(folder, false, true) || work.cancelledRevision !== cancelledRevision || !this.#current(work, work.processed)) return false;
+    const snapshot = this.#projects.get(folder.uri.toString())?.controller.snapshot;
+    if (snapshot?.state !== "running" || snapshot.httpUrl === undefined) return false;
+    void vscode.window.showInformationMessage(`Hson local app is running at ${snapshot.httpUrl}.`);
+    await vscode.env.openExternal(vscode.Uri.parse(snapshot.httpUrl, true));
+    return true;
   }
 
   async copyUrl(requested?: vscode.Uri): Promise<void> {
@@ -154,6 +137,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
   async stopRunning(folder: vscode.WorkspaceFolder): Promise<void> {
     this.#cancelBuild(folder);
     await this.#projects.get(folder.uri.toString())?.controller.stop();
+    this.#updatePresentation();
   }
 
   #onSave(document: vscode.TextDocument): void {
@@ -172,7 +156,6 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       return;
     }
     const work = this.#work(folder);
-    work.cancelled = false;
     work.failed = false;
     work.revision++;
     if (work.timer !== undefined) clearTimeout(work.timer);
@@ -180,77 +163,54 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       work.timer = undefined;
       this.#startFlush(folder, work);
     }, 250);
+    this.#updatePresentation();
   }
 
   #startFlush(folder: vscode.WorkspaceFolder, work: BuildWork): void {
-    if (work.active !== undefined || work.cancelled || work.revision === work.processed) return;
+    if (work.active !== undefined || !work.enabled || work.revision === work.processed) return;
     work.active = this.#flushSaves(folder, work).finally(() => {
       work.active = undefined;
-      if (!work.cancelled && !work.failed && work.timer === undefined && work.revision !== work.processed) this.#startFlush(folder, work);
+      this.#updatePresentation();
+      if (work.enabled && work.revision !== work.processed) this.#startFlush(folder, work);
     });
+    this.#updatePresentation();
   }
 
-  async #drainSaves(folder: vscode.WorkspaceFolder): Promise<boolean> {
-    const work = this.#builds.get(folder.uri.toString());
-    if (work === undefined) return true;
-    if (work.timer === undefined && work.active === undefined) return true;
-    if (work.timer !== undefined) {
-      clearTimeout(work.timer);
-      work.timer = undefined;
-      this.#startFlush(folder, work);
-    }
-    await work.active;
-    return !work.failed && !work.cancelled;
+  #current(work: BuildWork, revision: number): boolean {
+    return !this.#disposed && work.enabled && work.revision === revision;
   }
 
   async #flushSaves(folder: vscode.WorkspaceFolder, work: BuildWork): Promise<void> {
-    for (;;) {
+    while (!this.#disposed && work.enabled) {
       const revision = work.revision;
-      if (work.cancelled || !work.enabled) return;
+      if (work.timer !== undefined) clearTimeout(work.timer);
+      work.timer = undefined;
       try {
-        const completed = await build_then_restart(
-          () => this.#build(folder, revision),
-          () => !work.cancelled && work.revision === revision,
-          async () => {
-            const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
-            if (work.cancelled || work.revision !== revision) return;
-            const controller = this.#projects.get(folder.uri.toString())?.controller;
-            if (controller === undefined) return;
-            await controller.stop();
-            if (work.cancelled || work.revision !== revision) return;
-            await controller.start(project);
-          },
-        );
-        if (!completed || work.cancelled) continue;
-        work.processed = revision;
+        await this.#build(folder, work);
+        if (!this.#current(work, revision)) continue;
+        const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
+        if (!this.#current(work, revision)) continue;
+        const controller = this.#managed(folder).controller;
+        await controller.stop();
+        if (!this.#current(work, revision)) continue;
+        await controller.start(project);
+        if (!this.#current(work, revision)) continue;
         work.failed = false;
-        this.#updatePresentation();
-        if (work.revision === revision) return;
       } catch (error) {
-        if (work.cancelled) return;
-        work.processed = revision;
+        // Stop and newer revisions invalidate both results and failure presentation.
+        if (!this.#current(work, revision)) continue;
         this.#reportError(error, folder);
-        if (work.revision === revision) return;
-        // A newer deliberate save remains pending even if the older generation failed.
-        work.failed = false;
       }
+      work.processed = revision;
+      return;
     }
   }
 
-  async #build(folder: vscode.WorkspaceFolder, revision: number): Promise<void> {
+  async #build(folder: vscode.WorkspaceFolder, work: BuildWork): Promise<void> {
     const command = vscode.workspace.getConfiguration("hson.localHost", folder.uri).get<string>("buildCommand", "").trim();
     if (command === "") return;
-    const work = this.#work(folder);
-    while (work.build !== undefined) {
-      if (work.buildRevision === revision) return work.build;
-      // An older build is never evidence for this save. Serialize, then build
-      // again unless a still newer save or Stop has superseded this request.
-      try { await work.build; } catch { /* The old request owns its failure. */ }
-      if (work.cancelled || work.revision !== revision) return;
-    }
-    if (work.cancelled || work.revision !== revision) return;
     this.#output.appendLine(`[${folder.name}:build] ${command}`);
-    const build = new Promise<void>((resolveBuild, rejectBuild) => {
+    await new Promise<void>((resolveBuild, rejectBuild) => {
       const child = spawn(command, { cwd: folder.uri.fsPath, shell: true, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
       work.child = child;
       child.stdout?.on("data", chunk => this.#output.append(String(chunk)));
@@ -265,15 +225,12 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       child.once("error", error => finish(new Error(`Local App build failed to start: ${error.message}`)));
       child.once("close", code => finish(code === 0 ? undefined : new Error(`Local App build failed (exit ${code ?? "unknown"}). See Hson Local App Output.`)));
     });
-    work.build = build;
-    work.buildRevision = revision;
-    try { await build; } finally { if (work.build === build) work.build = undefined; }
   }
 
   #work(folder: vscode.WorkspaceFolder): BuildWork {
     const key = folder.uri.toString();
     let work = this.#builds.get(key);
-    if (work === undefined) { work = { revision: 0, processed: 0, cancelled: false, enabled: false, failed: false }; this.#builds.set(key, work); }
+    if (work === undefined) { work = { revision: 0, processed: 0, cancelledRevision: 0, enabled: false, failed: false }; this.#builds.set(key, work); }
     return work;
   }
 
@@ -281,11 +238,13 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     const work = this.#builds.get(folder.uri.toString());
     if (work === undefined) return;
     work.revision++;
-    work.cancelled = true;
+    // Keep the cancellation boundary when a later command reenables development.
+    work.cancelledRevision = work.revision;
     work.enabled = false;
     work.failed = false;
     if (work.timer !== undefined) clearTimeout(work.timer);
     work.timer = undefined;
+    this.#updatePresentation();
     const child = work.child;
     if (child?.pid !== undefined) {
       if (process.platform === "win32") {
@@ -305,9 +264,14 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     }
   }
 
-  #statusState(): LocalHostState {
-    const snapshot = this.#currentSnapshot();
-    return snapshot !== undefined && this.#builds.get(snapshot.projectId)?.failed ? "failed" : snapshot?.state ?? "stopped";
+  #snapshot(folder: vscode.WorkspaceFolder, presentation = false): LocalHostSnapshot {
+    const projectId = folder.uri.toString();
+    const snapshot = this.#projects.get(projectId)?.controller.snapshot ?? Object.freeze({ state: "stopped", projectId });
+    const work = this.#builds.get(projectId);
+    if (!presentation || !work?.enabled) return snapshot;
+    if (work.failed) return Object.freeze({ ...snapshot, state: "failed" });
+    if (work.active !== undefined || work.timer !== undefined || work.revision !== work.processed) return Object.freeze({ ...snapshot, state: "starting" });
+    return snapshot;
   }
 
   quickPickActions(): readonly LocalAppAction[] {
@@ -322,7 +286,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     if (this.#disposePromise === undefined) {
       this.#disposed = true;
       for (const project of this.#projects.values()) this.#cancelBuild(project.folder);
-      const pending = [...this.#builds.values()].flatMap(work => [work.active, work.build].filter((task): task is Promise<void> => task !== undefined));
+      const pending = [...this.#builds.values()].flatMap(work => [work.active].filter((task): task is Promise<void> => task !== undefined));
       this.#disposePromise = Promise.allSettled([...this.#projects.values()].map(project => project.controller.dispose()).concat(pending)).then(() => {
         this.#projects.clear();
         this.#builds.clear();
@@ -398,7 +362,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
   }
 
   #eligible(folder: vscode.WorkspaceFolder, operation: "start" | "stop" | "restart" | "open"): boolean {
-    const snapshot = this.#projects.get(folder.uri.toString())?.controller.snapshot;
+    const snapshot = this.#snapshot(folder, operation !== "open");
     if (operation === "start") return this.#isConfigured(folder);
     if (operation === "open") return snapshot?.state === "running" && snapshot.httpUrl !== undefined;
     if (operation === "stop") return snapshot !== undefined && snapshot.state !== "stopped" && snapshot.state !== "stopping";
@@ -419,7 +383,8 @@ export class LocalHostExtensionManager implements vscode.Disposable {
         name: folder.name,
         detail: folder.uri.fsPath,
         configured,
-        snapshot: managed?.controller.snapshot ?? Object.freeze({ state: "stopped", projectId }),
+        snapshot: this.#snapshot(folder, true),
+        canOpen: managed?.controller.snapshot.state === "running",
       }));
     }
     for (const managed of this.#projects.values()) {
@@ -430,21 +395,21 @@ export class LocalHostExtensionManager implements vscode.Disposable {
         name: managed.folder.name,
         detail: managed.folder.uri.fsPath,
         configured: false,
-        snapshot: managed.controller.snapshot,
+        snapshot: this.#snapshot(managed.folder, true),
+        canOpen: managed.controller.snapshot.state === "running",
       }));
     }
     return Object.freeze([...presentations.values()]);
   }
 
-  #currentSnapshot(): LocalHostSnapshot | undefined {
+  #currentSnapshot(presentation = false): LocalHostSnapshot | undefined {
     const activeUri = vscode.window.activeTextEditor?.document.uri;
     const activeFolder = activeUri === undefined ? undefined : vscode.workspace.getWorkspaceFolder(activeUri);
     if (activeFolder !== undefined) {
-      const active = this.#projects.get(activeFolder.uri.toString())?.controller.snapshot
-        ?? (this.#isConfigured(activeFolder) ? Object.freeze({ state: "stopped", projectId: activeFolder.uri.toString() }) : undefined);
-      if (active !== undefined && (active.state !== "stopped" || ![...this.#projects.values()].some(project => project.controller.snapshot.state !== "stopped"))) return active;
+      const active = this.#isKnown(activeFolder) ? this.#snapshot(activeFolder, presentation) : undefined;
+      if (active !== undefined && (active.state !== "stopped" || ![...this.#projects.values()].some(project => this.#snapshot(project.folder, presentation).state !== "stopped"))) return active;
     }
-    const snapshots = [...this.#projects.values()].map(project => project.controller.snapshot);
+    const snapshots = [...this.#projects.values()].map(project => this.#snapshot(project.folder, presentation));
     return snapshots.find(snapshot => snapshot.state === "failed")
       ?? snapshots.find(snapshot => snapshot.state === "running")
       ?? snapshots.find(snapshot => snapshot.state === "starting" || snapshot.state === "stopping")
@@ -457,7 +422,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     void vscode.commands.executeCommand("setContext", "hson.localHost.canStop", availability.canStop);
     void vscode.commands.executeCommand("setContext", "hson.localHost.canRestart", availability.canRestart);
     void vscode.commands.executeCommand("setContext", "hson.localHost.canOpen", availability.canOpen);
-    this.#onState(this.#statusState());
+    this.#onState(this.#currentSnapshot(true)?.state ?? "stopped");
   }
 
   async #removeFolder(folder: vscode.WorkspaceFolder): Promise<void> {

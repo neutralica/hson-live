@@ -36,16 +36,18 @@ export function application() {
 await mkdir(join(workspaceDir, "app-src"));
 await writeFile(join(workspaceDir, "app-src", "value.txt"), "zero\n");
 await writeFile(join(workspaceDir, "build-local-app.mjs"), `
-import { appendFile, readFile, writeFile } from "node:fs/promises";
+import { appendFile, readFile, writeFile, access } from "node:fs/promises";
 const root = ${JSON.stringify(workspaceDir)};
 const log = ${JSON.stringify(join(workspaceDir, "local-app-build.txt"))};
 const value = (await readFile(root + "/app-src/value.txt", "utf8")).trim();
 await appendFile(log, "build-start:" + value + "\\n");
-await new Promise(resolve => setTimeout(resolve, 200));
-if (value === "FAIL") { await appendFile(log, "build-fail\\n"); process.exit(1); }
+if (value.startsWith("gate-")) {
+  while (!await access(root + "/release-" + value).then(() => true, () => false)) await new Promise(resolve => setTimeout(resolve, 10));
+} else await new Promise(resolve => setTimeout(resolve, 200));
+if (value.includes("FAIL")) { await appendFile(log, "build-fail\\n"); process.exit(1); }
 const app = "import { appendFileSync } from 'node:fs';\\n"
   + "const log = " + JSON.stringify(${JSON.stringify(localHostLifecycle)}) + ";\\n"
-  + "export function application() { appendFileSync(log, " + JSON.stringify("start:" + value + "\\n") + "); return { name: " + JSON.stringify(value) + ", dispose() { appendFileSync(log, 'stop\\\\n'); } }; }\\n";
+  + "export function application() { appendFileSync(log, " + JSON.stringify("start:" + value + "\\n") + "); return { name: " + JSON.stringify(value) + ", requests: [{ method: 'GET', path: '/revision', handle() { return new Response(" + JSON.stringify(value) + "); } }], dispose() { appendFileSync(log, 'stop\\\\n'); } }; }\\n";
 await writeFile(root + "/dist/local-app.mjs", app);
 await appendFile(log, "build-end:" + value + "\\n");
 `);
@@ -101,7 +103,7 @@ try {
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
-    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0", HSON_PART_COMPLETION_TEST_ONLY: process.env.HSON_PART_COMPLETION_TEST_ONLY ?? "0" },
+    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_LOCAL_HOST_TEST_ONLY: process.env.HSON_LOCAL_HOST_TEST_ONLY ?? "0", HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0", HSON_PART_COMPLETION_TEST_ONLY: process.env.HSON_PART_COMPLETION_TEST_ONLY ?? "0" },
   });
   if (process.env.HSON_TYPING_TEST_ONLY !== "1" && process.env.HSON_PART_COMPLETION_TEST_ONLY !== "1") {
     const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);

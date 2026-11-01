@@ -5,6 +5,8 @@ export type LocalHostProjectPresentation = Readonly<{
   name: string;
   detail: string;
   configured: boolean;
+  /** Derived from the controller when a rebuild is pending or has failed. */
+  canOpen?: boolean;
   snapshot: LocalHostSnapshot;
 }>;
 
@@ -36,7 +38,7 @@ export function local_host_command_availability(
     canStart: projects.some(project => project.configured && (project.snapshot.state === "stopped" || project.snapshot.state === "failed")),
     canStop: states(["starting", "running", "failed"]),
     canRestart: states(["starting", "running", "failed"]),
-    canOpen: projects.some(project => project.snapshot.state === "running" && project.snapshot.httpUrl !== undefined),
+    canOpen: projects.some(project => (project.canOpen ?? project.snapshot.state === "running") && project.snapshot.httpUrl !== undefined),
   });
 }
 
@@ -45,9 +47,9 @@ export function local_app_quick_pick_actions(
 ): readonly LocalAppAction[] {
   const actions: LocalAppAction[] = [];
   if (projects.some(project => project.configured && (project.snapshot.state === "stopped" || project.snapshot.state === "failed"))) actions.push(RUN_OPEN_ACTION, RUN_ACTION);
-  if (projects.some(project => project.snapshot.state === "running" && project.snapshot.httpUrl !== undefined)) actions.push(OPEN_ACTION, COPY_ACTION);
-  if (projects.some(project => project.snapshot.state === "running")) actions.push(RESTART_ACTION);
-  if (projects.some(project => project.snapshot.state === "starting" || project.snapshot.state === "running")) actions.push(STOP_ACTION);
+  if (projects.some(project => (project.canOpen ?? project.snapshot.state === "running") && project.snapshot.httpUrl !== undefined)) actions.push(OPEN_ACTION, COPY_ACTION);
+  if (projects.some(project => project.snapshot.state === "running" || project.snapshot.state === "failed")) actions.push(RESTART_ACTION);
+  if (projects.some(project => project.snapshot.state === "starting" || project.snapshot.state === "running" || project.snapshot.state === "failed")) actions.push(STOP_ACTION);
   actions.push(OUTPUT_ACTION);
   return Object.freeze(actions);
 }
