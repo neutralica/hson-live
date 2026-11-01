@@ -4,6 +4,8 @@ import { hsonTransform } from "../src/api/transform/transform.facade.ts";
 import { UNSAFE_TRANSFORM_SOURCE, SAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";
 import { parse_html_string } from "../src/api/transform/parsers/parse-html-string.ts";
+import { normalize_html_source_attributes } from "../src/api/transform/utils/html-preflights/ordinary-attribute-transit.ts";
+import { expand_entities } from "../src/api/transform/utils/html-preflights/expand-entities.ts";
 import { node_from_svg, is_svg_markup, SVG_NS } from "../src/api/transform/utils/node-utils/node-from-svg.ts";
 import { hsonLiveTree } from "../src/api/livetree/livetree.facade.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -14,7 +16,7 @@ import type { TransformOutput } from "../src/api/transform/transform.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { with_browser_parser } from "./circuit-test-helpers.mts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
-import { scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures, root, obj, arr, elem, str, val, named } from "./fixtures/html-source-producer-fixtures.mts";
+import { htmlQuotingFixtures, invalidHtmlQuotingFixtures, scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures, root, obj, arr, elem, str, val, named } from "./fixtures/html-source-producer-fixtures.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "transform.html-source-producer",
@@ -47,6 +49,61 @@ function sources(source: string): TransformOutput[] {
     UNSAFE_TRANSFORM_SOURCE.fromHtml(source), UNSAFE_TRANSFORM_SOURCE.fromHtml(element(source)),
   ])];
 }
+
+await check("HTML entity expansion uses only defined own entries and preserves encoded references", () => {
+  const literal = '&constructor; &toString; &hasOwnProperty; &valueOf; &__proto__; &unknownEntity;';
+  assert.equal(expand_entities(literal), literal);
+  const encoded = '&amp;constructor; &amp;amp;constructor; &amp;copy; &amp; &amp;amp; &#169; &#x96EA;';
+  assert.equal(expand_entities(encoded), encoded);
+  assert.equal(expand_entities('&copy; &nbsp; &eacute;'), '&#169; &#160; &#233;');
+});
+
+await check("quoted and unquoted HTML agree in decoded graphs and canonical terminals", () => {
+  for (const fixture of htmlQuotingFixtures) {
+    const expected = hsonTransform.fromNode(complete(fixture.graph));
+    for (const input of [fixture.source, fixture.quoted]) {
+      assert.deepEqual(parse_html_string(input, false), fixture.graph, fixture.id);
+      with_browser_parser(() => assert.deepEqual(parse_html(input), fixture.graph, fixture.id));
+      const outputs = [hsonTransform.fromTrustedHtml(input),
+        with_browser_parser(() => UNSAFE_TRANSFORM_SOURCE.fromHtml(input))];
+      if (fixture.untrusted) outputs.push(hsonTransform.fromUntrustedHtml(input));
+      for (const output of outputs) {
+        same(output.toNode(), fixture.graph);
+        assert.equal(output.toHson().noBreak().serialize(), expected.toHson().noBreak().serialize(), fixture.id);
+        assert.equal(output.toHtml().serialize(), expected.toHtml().serialize(), fixture.id);
+        assert.deepEqual(output.toBinary().serialize(), expected.toBinary().serialize(), fixture.id);
+      }
+    }
+  }
+  assert.equal(hsonTransform.fromTrustedHtml('<div class=column></div>').toHson().serialize(), '<div class="column"/>');
+  with_browser_parser(() => {
+    const tree = hsonLiveTree.fromTrustedHtml('<div class=column></div>');
+    assert.equal(tree.node.$_attrs?.class, 'column');
+  });
+});
+await check("HTML normalization preserves comments, text, quoted values and raw-text source", () => {
+  for (const body of [
+    '<!-- > <div class=bad> -->', '1 < 2 &amp; text',
+    '<script>const s = "<div class=column>"; // </script-other></script>',
+    '<style>.x::before { content: "<div class=column>"; }</style>',
+    '<textarea><div class=column>&amp;</textarea>', '<title><div class=column>&amp;</title>',
+  ]) assert.equal(normalize_html_source_attributes(body), body);
+  const raw = '<script>const s = "<div class=column>";</script>';
+  same(hsonTransform.fromTrustedHtml(raw).toNode(), root(elem(named('script', elem(str('const s = "<div class=column>";'))))));
+  const duplicate = '<div class=first CLASS="second first" title=old TITLE="new"></div>';
+  const output = hsonTransform.fromTrustedHtml(duplicate);
+  same(output.toNode(), root(elem({ ...named('div'), $_attrs: { class: 'first second', title: 'new' } })));
+  with_browser_parser(() => same(UNSAFE_TRANSFORM_SOURCE.fromHtml(duplicate).toNode(), output.toNode()));
+});
+await check("dangling HTML values and unsupported carriers still reject; Hson literals stay quoted", () => {
+  for (const input of invalidHtmlQuotingFixtures) {
+    assert.throws(() => hsonTransform.fromTrustedHtml(input), TransformError, input);
+    with_browser_parser(() => assert.throws(() => UNSAFE_TRANSFORM_SOURCE.fromHtml(input), TransformError, input));
+  }
+  assert.throws(() => hsonTransform.fromHson('<div class=column/>').toNode(), error =>
+    error instanceof TransformError && error.code === 'HSON_ATTRIBUTE_QUOTES_REQUIRED');
+  assert.equal(hsonTransform.fromHson('<div class="column"/>').toHson().serialize(), '<div class="column"/>');
+});
 
 await check("both HTML producers construct exact object relationships before terminals", () => {
   for (const fixture of [...memberHtmlFixtures, ...arrayHtmlFixtures]) {

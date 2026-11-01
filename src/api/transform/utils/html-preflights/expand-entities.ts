@@ -41,7 +41,7 @@ export function expand_entities(input: string): string {
         if (['amp', 'lt', 'gt', 'quot', 'apos'].includes(entity)) {
             return full;
         }
-        if (entity in htmlNamedToNumeric) {
+        if (Object.hasOwn(htmlNamedToNumeric, entity)) {
             return htmlNamedToNumeric[entity];
         }
         return full; /* unknown entity — leave unchanged (parser will error if needed) */

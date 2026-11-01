@@ -1,4 +1,4 @@
-import type { HsonNode, Primitive } from "../../src/core/types.ts";
+import type { HsonAttrs, HsonNode, Primitive } from "../../src/core/types.ts";
 
 export const str = (value: string): HsonNode => ({ $_tag: "_hson_str", $_content: [value] });
 export const val = (value: Exclude<Primitive, string>): HsonNode => ({ $_tag: "_hson_val", $_content: [value] });
@@ -12,6 +12,84 @@ export const arr = (...content: HsonNode[]): HsonNode => ({
 });
 
 type SourceFixture = Readonly<{ id: string; source: string; graph: HsonNode }>;
+
+type HtmlQuotingFixture = SourceFixture & Readonly<{ quoted: string; untrusted: boolean }>;
+const attributed = (tag: string, attrs: HsonAttrs, ...content: HsonNode[]): HsonNode => ({
+  ...named(tag, ...content), $_attrs: attrs,
+});
+
+// The graph oracle is independent of either lexical spelling or runtime parser.
+export const htmlQuotingFixtures: readonly HtmlQuotingFixture[] = [
+  { id: "ordinary unquoted class", source: '<div class=column></div>', quoted: '<div class="column"></div>',
+    graph: root(elem(attributed('div', { class: 'column' }))), untrusted: true },
+  { id: "mixed quotes and embedded delimiters", source: `<div title="a > b < c / >" class=column data-note='two words' id=kept></div>`,
+    quoted: `<div title="a > b < c / >" class="column" data-note='two words' id="kept"></div>`,
+    graph: root(elem(attributed('div', { title: 'a > b < c / >', class: 'column', 'data-note': 'two words', id: 'kept' }))), untrusted: true },
+  { id: "Unicode and HTML whitespace boundaries", source: '<div title=雪🙂 data-value=a\u00a0b\tclass=column\n id=kept></div>',
+    quoted: '<div title="雪🙂" data-value="a\u00a0b"\tclass="column"\n id="kept"></div>',
+    graph: root(elem(attributed('div', { title: '雪🙂', 'data-value': 'a\u00a0b', class: 'column', id: 'kept' }))), untrusted: true },
+  { id: "punctuation is ordinary HTML data", source: String.raw`<div data-value=./a:b?c#d@!$%()*+,-_~[]{}|\ lib=not/a/selector at=plain/path></div>`,
+    quoted: String.raw`<div data-value="./a:b?c#d@!$%()*+,-_~[]{}|\" lib="not/a/selector" at="plain/path"></div>`,
+    graph: root(elem(attributed('div', { 'data-value': './a:b?c#d@!$%()*+,-_~[]{}|\\', lib: 'not/a/selector', at: 'plain/path' }))), untrusted: false },
+  { id: "HTML values do not acquire Hson operand ownership", source: '<hson-part lib=not/a/selector at=too/many/segments data-param=%{name} data-path=^{item.label}></hson-part>',
+    quoted: '<hson-part lib="not/a/selector" at="too/many/segments" data-param="%{name}" data-path="^{item.label}"></hson-part>',
+    graph: root(elem(attributed('hson-part', { lib: 'not/a/selector', at: 'too/many/segments', 'data-param': '%{name}', 'data-path': '^{item.label}' }))), untrusted: false },
+  { id: "character references decode once", source: '<a href=https://example.test/a?x&#61;1&amp;y&#61;2 data-value=&amp;lt;&#x1F642;&#34;&#39;&#60;&#62; title=caf&eacute;></a>',
+    quoted: '<a href="https://example.test/a?x&#61;1&amp;y&#61;2" data-value="&amp;lt;&#x1F642;&#34;&#39;&#60;&#62;" title="caf&eacute;"></a>',
+    graph: root(elem(attributed('a', { href: 'https://example.test/a?x=1&y=2', 'data-value': '&lt;🙂"\'<>', title: 'café' }))), untrusted: true },
+  { id: "class normalization preserves character references", source: '<div class=caf&eacute;-&copy;-&#x96EA;-&amp;lt;></div>',
+    quoted: '<div class="caf&eacute;-&copy;-&#x96EA;-&amp;lt;"></div>',
+    graph: root(elem(attributed('div', { class: 'café-©-雪-&lt;' }))), untrusted: true },
+  { id: "bare ampersands and literal escape characters", source: String.raw`<div title=a&b data-value=literal\n></div>`,
+    quoted: String.raw`<div title="a&b" data-value="literal\n"></div>`,
+    graph: root(elem(attributed('div', { title: 'a&b', 'data-value': String.raw`literal\n` }))), untrusted: true },
+  { id: "valueless, empty and absent attributes keep the existing contract", source: `<div data-flag data-empty="" data-single='' data-value=ready></div>`,
+    quoted: `<div data-flag data-empty="" data-single='' data-value="ready"></div>`,
+    graph: root(elem(attributed('div', { 'data-flag': 'data-flag', 'data-empty': 'data-empty', 'data-single': 'data-single', 'data-value': 'ready' }))), untrusted: true },
+  { id: "quoted whitespace keeps trusted ingress semantics", source: '<div data-space=" " data-value=ready></div>',
+    quoted: '<div data-space=" " data-value="ready"></div>',
+    graph: root(elem(attributed('div', { 'data-space': '', 'data-value': 'ready' }))), untrusted: false },
+  { id: "boolean attributes and a separated self-closing delimiter", source: '<input disabled data-value=ready />', quoted: '<input disabled data-value="ready" />',
+    graph: root(elem(attributed('input', { disabled: 'disabled', 'data-value': 'ready' }))), untrusted: false },
+  { id: "void elements and adjacent value slash", source: '<img alt=雪 src=pic.svg/><br class=break>', quoted: '<img alt="雪" src="pic.svg/"/><br class="break">',
+    graph: root(elem(attributed('img', { alt: '雪', src: 'pic.svg/' }), attributed('br', { class: 'break' }))), untrusted: false },
+  { id: "comments and text are not attributes", source: '<!-- > <span bad= > --><p class=column>before 1 &lt; 2 &amp; after</p>',
+    quoted: '<!-- > <span bad= > --><p class="column">before 1 &lt; 2 &amp; after</p>',
+    graph: root(elem(attributed('p', { class: 'column' }, elem(str('before 1 < 2 & after'))))), untrusted: true },
+  { id: "supported script and style text", source: '<script type=text/javascript>const n = 1 < 2 && 3 > 2;</script><style media=screen>p { color: red; }</style>',
+    quoted: '<script type="text/javascript">const n = 1 < 2 && 3 > 2;</script><style media="screen">p { color: red; }</style>',
+    graph: root(elem(attributed('script', { type: 'text/javascript' }, elem(str('const n = 1 < 2 && 3 > 2;'))),
+      attributed('style', { media: 'screen' }, elem(str('p { color: red; }'))))), untrusted: false },
+  ...[
+    ['&constructor;', '&constructor;'],
+    ['&toString;', '&toString;'],
+    ['&hasOwnProperty;', '&hasOwnProperty;'],
+    ['&valueOf;', '&valueOf;'],
+    ['&__proto__;', '&__proto__;'],
+    ['&unknownEntity;', '&unknownEntity;'],
+    ['&copy;', '©'],
+    ['a&nbsp;b', 'a\u00a0b'],
+    ['caf&eacute;', 'café'],
+    ['&#169;-&#x96EA;-&#34;', '©-雪-"'],
+    ['&amp;', '&'],
+    ['&amp;amp;', '&amp;'],
+    ['&amp;constructor;', '&constructor;'],
+    ['&amp;amp;constructor;', '&amp;constructor;'],
+    ['&amp;copy;', '&copy;'],
+  ].map(([source, value]) => ({
+    id: `HTML class entity ${source}`,
+    source: `<div class=${source}></div>`,
+    quoted: `<div class="${source}"></div>`,
+    graph: root(elem(attributed('div', { class: value }))),
+    untrusted: true,
+  })),
+];
+
+export const invalidHtmlQuotingFixtures = [
+  '<div class=></div>', '<input data-value= />', '<div data-value= ></div>',
+  '<div @bad=value></div>', '<div _hson_attr_transit_61=value></div>', '<div hson:quid=000000001></div>',
+  '<_hson_ii hson:index=0></_hson_ii>', '<_hson_elem><p class=column></p></_hson_elem>',
+];
 
 export const scalarHtmlFixtures: readonly SourceFixture[] = [
   ...["", "x"].map(text => ({ id: `STR(${JSON.stringify(text)})`, source: `<_hson_obj>${text === "" ? '""' : text}</_hson_obj>`, graph: root(str(text)) })),

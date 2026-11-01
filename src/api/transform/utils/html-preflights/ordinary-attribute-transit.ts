@@ -5,6 +5,7 @@ import {
 } from "../../../../core/constants.js";
 import { is_valid_hson_attribute_name } from "../../../../core/hson-name.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
+import { expand_entities } from "./expand-entities.js";
 
 const XML_NAME =
   /^[A-Za-z_:\u00C0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD][\w.\-:\u00B7\u0300-\u036F\u203F-\u2040]*$/u;
@@ -104,14 +105,14 @@ function read_attributes(tag: string): {
   attributes: AttributeToken[];
 } | undefined {
   let index = 1;
-  while (/\s/.test(tag[index] ?? "")) index += 1;
-  while (index < tag.length && !/[\s/>]/.test(tag[index] ?? "")) index += 1;
+  while (/[\t\n\f\r ]/.test(tag[index] ?? "")) index += 1;
+  while (index < tag.length && !/[\t\n\f\r />]/.test(tag[index] ?? "")) index += 1;
   if (index <= 1) return undefined;
   const head = tag.slice(0, index);
   const attributes: AttributeToken[] = [];
 
   while (index < tag.length) {
-    while (/\s/.test(tag[index] ?? "")) index += 1;
+    while (/[\t\n\f\r ]/.test(tag[index] ?? "")) index += 1;
     if (tag[index] === ">" || (tag[index] === "/" && tag[index + 1] === ">")) {
       return {
         head,
@@ -121,25 +122,34 @@ function read_attributes(tag: string): {
     }
 
     const nameStart = index;
-    while (index < tag.length && !/[\s=/>]/.test(tag[index] ?? "")) index += 1;
+    while (index < tag.length && !/[\t\n\f\r =/>]/.test(tag[index] ?? "")) index += 1;
     const name = tag.slice(nameStart, index);
     if (name.length === 0) {
       _throw_transform_err("malformed opening-tag attribute token", "ordinary-attribute-transit");
     }
 
-    while (/\s/.test(tag[index] ?? "")) index += 1;
+    while (/[\t\n\f\r ]/.test(tag[index] ?? "")) index += 1;
     if (tag[index] !== "=") {
       attributes.push({ name, value: name, valueSource: `"${name}"` });
       continue;
     }
     index += 1;
-    while (/\s/.test(tag[index] ?? "")) index += 1;
+    while (/[\t\n\f\r ]/.test(tag[index] ?? "")) index += 1;
     const quote = tag[index];
     if (quote !== "'" && quote !== '"') {
-      _throw_transform_err(
-        `attribute "${name}" must have a quoted value before transport`,
-        "ordinary-attribute-transit",
-      );
+      const valueStart = index;
+      // HTML's unquoted-value delimiters are ASCII whitespace and `>`.
+      // In particular, a trailing slash belongs to the value in `src=x/>`.
+      while (index < tag.length && !/[\t\n\f\r >]/.test(tag[index])) index += 1;
+      const value = tag.slice(valueStart, index);
+      if (value.length === 0 || (value === "/" && tag[index] === ">")) {
+        _throw_transform_err(
+          `attribute "${name}" has no value`,
+          "ordinary-attribute-transit",
+        );
+      }
+      attributes.push({ name, value, valueSource: `"${value}"` });
+      continue;
     }
     index += 1;
     const valueStart = index;
@@ -162,7 +172,7 @@ function read_attributes(tag: string): {
 }
 
 function escape_quoted(value: string): string {
-  return value
+  return expand_entities(value)
     .replace(/&(?!(?:#\d+|#x[0-9a-fA-F]+|amp|lt|gt|quot|apos);)/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/"/g, "&quot;");
@@ -249,9 +259,9 @@ function rewrite_start_tag(tag: string, encodeTransit: boolean): string {
 }
 
 /**
- * Apply the established raw-HTML duplicate policy while original semantic
- * names are still visible, then optionally encode XML-hostile ordinary names
- * with a self-decoding private spelling.
+ * Quote HTML values and apply the established duplicate policy while original
+ * semantic names are still visible, then optionally encode XML-hostile names.
+ * Preserve value source spelling so the receiving parser decodes entities once.
  */
 export function normalize_html_source_attributes(
   source: string,
@@ -263,13 +273,37 @@ export function normalize_html_source_attributes(
     const lt = source.indexOf("<", cursor);
     if (lt < 0) return output + source.slice(cursor);
     output += source.slice(cursor, lt);
+    if (source.startsWith("<!--", lt)) {
+      const end = source.indexOf("-->", lt + 4);
+      if (end < 0) return output + source.slice(lt);
+      output += source.slice(lt, end + 3);
+      cursor = end + 3;
+      continue;
+    }
+    // A text comparison such as `1 < 2` does not begin a tag header.
+    if (!/[A-Za-z_:/!?]/.test(source[lt + 1] ?? "")) {
+      output += "<";
+      cursor = lt + 1;
+      continue;
+    }
     const end = find_tag_end(source, lt);
     if (end < 0) return output + source.slice(lt);
     const tag = source.slice(lt, end + 1);
-    output += is_start_tag(tag)
+    const rewritten = is_start_tag(tag)
       ? rewrite_start_tag(tag, options.encodeTransit === true)
       : tag;
+    output += rewritten;
     cursor = end + 1;
+    const rawTag = /^<(script|style|title|textarea)(?=[\t\n\f\r />])/i.exec(tag)?.[1];
+    if (rawTag !== undefined && !rewritten.endsWith("/>")) {
+      // RAWTEXT/RCDATA bodies are source content, even when they look like tags.
+      const close = new RegExp(`</${rawTag}(?=[\\t\\n\\f\\r />])`, "gi");
+      close.lastIndex = cursor;
+      const match = close.exec(source);
+      if (match === null) return output + source.slice(cursor);
+      output += source.slice(cursor, match.index);
+      cursor = match.index;
+    }
   }
   return output;
 }

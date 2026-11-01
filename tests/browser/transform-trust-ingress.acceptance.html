@@ -4,7 +4,7 @@
 <body>
 <script type="module">
 import { cut5_graft_reentrancy_browser_cases, cut5_repair_cases, cut5_nonfatal_reporting_cases, cut5_observable_identity_browser_cases, owned_mutation_browser_cases, hsonLiveTree, LiveTree, default_livetree_runtime, runtime_for_tree, runtime_for_node, subject_for_tree, historic_root_for_tree, hson, hsonTransform, node_from_svg, SVG_NS, canonical_hson_graph_equal, detach_hson_root_value,
-  scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures } from "./bundle.js";
+  htmlQuotingFixtures, invalidHtmlQuotingFixtures, scalarHtmlFixtures, memberHtmlFixtures, arrayHtmlFixtures, mixedSvgFixtures, invalidHtmlFixtures, invalidSvgFixtures, svgSourceFixtures } from "./bundle.js";
 
 function same(actual, expected, label) {
   if (!canonical_hson_graph_equal(actual, expected)) throw new Error(`raw graph mismatch: ${label}`);
@@ -26,6 +26,32 @@ function sourceElement(source, svg = false) {
 }
 
 try {
+  for (const fixture of htmlQuotingFixtures) {
+    const expected = hsonTransform.fromNode(detach_hson_root_value(fixture.graph));
+    for (const input of [fixture.source, fixture.quoted]) {
+      const outputs = [hsonTransform.fromTrustedHtml(input), hson.fromTrustedHtml(input)];
+      if (fixture.untrusted) outputs.push(hsonTransform.fromUntrustedHtml(input), hson.fromUntrustedHtml(input));
+      for (const output of outputs) {
+        same(output.toNode(), fixture.graph, fixture.id);
+        if (output.toHson().noBreak().serialize() !== expected.toHson().noBreak().serialize()) throw new Error(`HTML quoting canonical mismatch: ${fixture.id}`);
+        if (output.toHtml().serialize() !== expected.toHtml().serialize()) throw new Error(`HTML quoting serialization mismatch: ${fixture.id}`);
+      }
+    }
+    // Native HTML parsing supplies a third, already-decoded attribute oracle.
+    const template = document.createElement('template');
+    template.innerHTML = fixture.source;
+    if (template.content.children.length === 1) same(hson.fromTrustedHtml(template.content.firstElementChild).toNode(), fixture.graph, `native ${fixture.id}`);
+  }
+  for (const input of invalidHtmlQuotingFixtures) {
+    rejects(() => hson.fromTrustedHtml(input), `invalid HTML value: ${input}`);
+    rejects(() => hsonTransform.fromTrustedHtml(input), `invalid universal HTML value: ${input}`);
+  }
+  rejects(() => hsonTransform.fromHson('<div class=column/>').toNode(), 'unquoted authored Hson', 'HSON_ATTRIBUTE_QUOTES_REQUIRED');
+  if (hsonTransform.fromHson('<div class="column"/>').toHson().serialize() !== '<div class="column"/>') throw new Error('quoted authored Hson changed');
+  for (const input of ['<div class=column></div>', '<div class="column"></div>']) {
+    if (hsonLiveTree.fromTrustedHtml(input).node.$_attrs?.class !== 'column') throw new Error('LiveTree HTML quoting mismatch');
+  }
+
   const source = `<section id="kept" aria-label="safe" onclick="run()" style="color:red">`
     + `<script>alert(1)</scr` + `ipt><a href="javascript:bad()" title="kept">ready</a></section>`;
   const trusted = hson.fromTrustedHtml(source);

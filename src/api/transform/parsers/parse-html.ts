@@ -82,7 +82,7 @@ function snip_context(s: string, at: number, radius = 80): string {
  * 2. Expand boolean/flag attributes (`expand_flags`).
  * 3. Escape text + expand entities (`escape_text`, `expand_entities`).
  * 4. Add required SVG namespace handling (`namespace_svg`).
- * 5. Normalize unquoted attribute values (`quote_unquoted_attrs`).
+ * 5. Normalize unquoted HTML attribute values.
  * 6. Apply duplicate policy and encode XML-hostile ordinary names.
  * 7. Encode syntactic `hson:*` names with the dedicated private transit codec.
  * 8. Attempt XML parse via `DOMParser("application/xml")`.
@@ -150,9 +150,8 @@ function parse_html_internal(
         // - mangle illegal XML attribute names after values are quoted
         // - expand void HTML tags: <input ...> → <input ... />
         const svgSafe = namespace_svg(ents);
-        const quoted = quote_unquoted_attrs(svgSafe);
         const ordinaryTransitSafe = normalize_html_source_attributes(
-            quoted,
+            svgSafe,
             { encodeTransit: true },
         );
         const hsonTransitSafe = encode_hson_metadata_transit(ordinaryTransitSafe);
