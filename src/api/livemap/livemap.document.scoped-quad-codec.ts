@@ -1,6 +1,6 @@
 import type { HsonNode } from "../../core/types.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
-import { is_persisted_quid } from "../../core/hson-node-quid.js";
+import { is_persisted_quid, PERSISTED_QUID_ALPHABET, PERSISTED_QUID_LENGTH } from "../../core/hson-node-quid.js";
 import { is_document_quad_name } from "../../internal/document-quad-name.js";
 import type { LiveMapDocumentPath } from "../../types/livemap.types.js";
 import { compare_document_paths, document_path_is_prefix, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
@@ -33,6 +33,19 @@ export const DOCUMENT_SCOPED_QUAD_LIMITS = Object.freeze({
   pathDepth: 256,
   pathSegments: 1_048_576,
 });
+
+/** Encode a bounded scoped subject ordinal, never a runtime identity. @internal */
+export function scoped_disposable_subject_label(ordinal: number): string {
+  if (typeof ordinal !== "number" || !Number.isInteger(ordinal) || ordinal < 0 || ordinal >= DOCUMENT_SCOPED_QUAD_LIMITS.subjects) {
+    fail("subject ordinal must be an integer from 0 through 65535");
+  }
+  let payload = "";
+  do {
+    payload = PERSISTED_QUID_ALPHABET[ordinal % PERSISTED_QUID_ALPHABET.length] + payload;
+    ordinal = Math.floor(ordinal / PERSISTED_QUID_ALPHABET.length);
+  } while (ordinal > 0);
+  return `_${payload.padStart(PERSISTED_QUID_LENGTH, "0")}`;
+}
 
 function fail(reason: string): never { throw new TypeError(`Invalid scoped QUAD record: ${reason}.`); }
 

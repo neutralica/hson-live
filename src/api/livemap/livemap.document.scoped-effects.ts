@@ -10,7 +10,7 @@ import type { DocumentCompositionStyle } from "./livemap.document.composition.js
 import { document_scoped_quads_equal, materialize_document_scoped_record, prepare_scoped_graph_operation, retain_document_scoped_operation, type DocumentScopedIdentityAuthority } from "./livemap.document.scoped-composition.js";
 import type { PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
 import { capture_document_scoped_library, decode_document_scoped_library, restore_document_scoped_library_styles, type PortableDocumentScopedLibrary } from "./livemap.document.scoped-portable.js";
-import { decode_document_scoped_quads, DOCUMENT_SCOPED_QUAD_LIMITS, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord, type ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
+import { decode_document_scoped_quads, DOCUMENT_SCOPED_QUAD_LIMITS, scoped_disposable_subject_label, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord, type ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
 import { compare_document_paths, document_path_effect_for_graph_operation, document_path_is_prefix, transform_document_path, validate_document_path } from "./livemap.document.path.js";
 import type { DocumentGraphOp } from "./livemap.document.lineage.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
@@ -48,6 +48,7 @@ const sortScopes = (items: readonly ScopedQuadOccurrenceRecord[]) => [...items].
 
 /** Alpha-normalize only disposable CSS labels. Authored namespace names are untouched. */
 function fingerprint(value: PortableDocumentScopedLibrary): string {
+  // Digest-only tokens never enter a transport record. Preserve existing replay hashes.
   const names = new Map(value.scopes.subjects.map((subject, index) => [subject.name, `_${index.toString(36).padStart(9, "0")}`]));
   return sha256_sync(key({ graph: encode_exact_hson_value(value.root), document: value.scopes.document,
     occurrences: value.scopes.occurrences, subjects: value.scopes.subjects.map(s => s.path),
@@ -246,7 +247,7 @@ function applyPortable(before: PortableDocumentScopedLibrary, effect: DocumentSc
     checkOwners(style.css.order); contributions.push(style);
   }
   const paths = new Map(contributions.flatMap(style => style.subjects.map(subject => [key(subject.path), subject.path] as const)));
-  const subjects = [...paths.values()].sort(compare_document_paths).map((path, index) => ({ path, name: `_${index.toString(36).padStart(9, "0")}`, disposition: "disposable" as const }));
+  const subjects = [...paths.values()].sort(compare_document_paths).map((path, index) => ({ path, name: scoped_disposable_subject_label(index), disposition: "disposable" as const }));
   const labels = new Map(subjects.map(subject => [key(subject.path), subject.name]));
   const merged = merge_part_stylesheets(contributions.map(style => remap_portable_document_css_identities(style.css,
     new Map(style.subjects.map(subject => [subject.name, labels.get(key(subject.path))!])))));
@@ -359,7 +360,7 @@ function applyPortableCss(before: PortableDocumentScopedLibrary, effect: Documen
   const paths = new Map([...before.scopes.subjects, ...effect.styles.flatMap(style => style.subjects)]
     .map(subject => [key(subject.path), subject.path]));
   const subjects = [...paths.values()].sort(compare_document_paths).map((path, index) =>
-    ({ path, name: `_${index.toString(36).padStart(9, "0")}`, disposition: "disposable" as const }));
+    ({ path, name: scoped_disposable_subject_label(index), disposition: "disposable" as const }));
   const labels = new Map(subjects.map(subject => [key(subject.path), subject.name]));
   const remap = (css: PortableDocumentStylesheetRecord, table: DocumentScopedQuadRecord["subjects"]) =>
     remap_portable_document_css_identities(css, new Map(table.map(subject => [subject.name, labels.get(key(subject.path))!])));
@@ -404,7 +405,7 @@ export function scoped_effect_matches_operation(effect: DocumentScopedEffect, op
 /** Alpha-renaming must cover both the CSS payload and its correspondence carriers. */
 export function portable_document_scoped_effect(effect: DocumentScopedEffect): DocumentScopedEffect {
   const styles = effect.styles.map(style => {
-    const names = new Map(style.subjects.map((subject, ordinal) => [subject.name, `_${ordinal.toString(36).padStart(9, "0")}`]));
+    const names = new Map(style.subjects.map((subject, ordinal) => [subject.name, scoped_disposable_subject_label(ordinal)]));
     return { css: remap_portable_document_css_identities(style.css, names),
       subjects: style.subjects.map(subject => ({ ...subject, name: names.get(subject.name)! })) };
   });

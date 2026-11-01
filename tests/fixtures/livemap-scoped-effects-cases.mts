@@ -16,6 +16,7 @@ import { remap_portable_document_css_identities } from "../../src/internal/css/c
 import { render_portable_document_stylesheet as render } from "../../src/internal/css/portable-document-stylesheet.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import type { LiveMapGraphOp } from "../../src/types/livemap.types.ts";
+import { scoped_label_cases } from "./livemap-scoped-label-cases.mts";
 
 const source = (text: string) => { const p = parse_authored_document_library(text); return { root: p.root, quads: p.declarations }; };
 const node = (text: string) => { const value = hsonTransform.fromHson(text).toNode().$_content[0]; assert.ok(is_Node(value)); return value; };
@@ -79,6 +80,7 @@ export function scoped_effect_receive(input: ReturnType<typeof scoped_effect_fix
 }
 
 export function scoped_effect_cases(check: (name: string, run: () => void) => void) {
+  scoped_label_cases(check);
   check("incremental repeated nested named and unnamed Parts agree across independent runtimes", () => {
     const f = sender(), r = replay(f, [insert([0, 0, 1, 0, 0, 0], 1, "panel"), insert([0, 0, 1, 0, 0, 0], 3, "plain")]);
     assert.equal(r.result.scopes.occurrences.length, 7);

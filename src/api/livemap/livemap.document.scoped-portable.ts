@@ -6,7 +6,7 @@ import { decode_portable_document_stylesheet, encode_portable_document_styleshee
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
 import { admit_public_livemap_root } from "./livemap.node-admission.js";
-import { decode_document_scoped_quads, document_scoped_quads_semantically_equal,
+import { decode_document_scoped_quads, document_scoped_quads_semantically_equal, scoped_disposable_subject_label,
   type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { encode_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import type { PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
@@ -61,7 +61,7 @@ export function decode_document_scoped_library(input: unknown): PortableDocument
 /** Stable path-ordered CSS labels for durable topology, independent of runtime issuance. @internal */
 export function normalize_document_scoped_library_subjects(input: PortableDocumentScopedLibrary): PortableDocumentScopedLibrary {
   const value = decode_document_scoped_library(input);
-  const names = new Map(value.scopes.subjects.map((subject, index) => [subject.name, `_${index.toString(36).padStart(9, "0")}`]));
+  const names = new Map(value.scopes.subjects.map((subject, index) => [subject.name, scoped_disposable_subject_label(index)]));
   return decode_document_scoped_library({ root: value.root,
     scopes: { ...value.scopes, subjects: value.scopes.subjects.map(subject => ({ ...subject, name: names.get(subject.name)! })) },
     css: remap_portable_document_css_identities(value.css, names) });

@@ -11,16 +11,19 @@ import assert from "node:assert/strict";
 
 const directory = await mkdtemp(join(tmpdir(), "hson-part-measure-"));
 const baseline = process.argv.includes('--baseline');
+const scopedOnly = process.argv.includes('--scoped-only');
 const revision = execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const changed = new Set(execFileSync('git',['diff','--name-only','--','src'],{encoding:'utf8'}).trim().split('\n'));
 const entry = `
 import { hsonLiveMap } from './src/api/livemap/index.ts';
+import { hsonTransform } from './src/api/transform/index.ts';
 import { internal_livemap_aggregate_authority as owner } from './src/api/livemap/livemap.internal.ts';
 import { performance } from 'node:perf_hooks';
+import assert from 'node:assert/strict';
 globalThis.partCounts = { catalogs: 0, members: 0 };
-export async function run(runtime) {
+export async function run(runtime, scopedOnly = false) {
   const results = [];
-  for (const size of [10, 100]) for (const css of [false, true]) {
+  for (const size of scopedOnly ? [] : [10, 100]) for (const css of [false, true]) {
     const paragraph = '<p title="%{title}" "A fixed paragraph with a receiving title and repeated immutable body text."/>';
     const parts = Object.fromEntries(Array.from({length: size}, (_, i) => ['p' + i, {
       kind: 'document', document: '<article hson:part @:root ' + paragraph.repeat(40)
@@ -56,8 +59,46 @@ export async function run(runtime) {
         loc?.dispose();
       }
       timings.sort((a,b)=>a-b);
-      results.push({runtime,size,css,operation,medianMs:+timings[1].toFixed(3),minMs:+timings[0].toFixed(3),maxMs:+timings[2].toFixed(3),counts});
+      results.push({runtime,size,css,operation,paragraphsPerDefinition:40,medianMs:+timings[1].toFixed(3),minMs:+timings[0].toFixed(3),maxMs:+timings[2].toFixed(3),counts});
     }
+  }
+  // Independent axes: ordinary content at twelve occurrences, then the scoped
+  // population itself. Each invocation expands four nested, styled Parts.
+  const populations = [
+    ...[40, 400, 1200].map(ordinaryParagraphs => ({dimension:'document-content', ordinaryParagraphs, invocations:3})),
+    ...[3, 5, 16, 32].map(invocations => ({dimension:'scoped-occurrences', ordinaryParagraphs:40, invocations})),
+  ];
+  const parts = Object.fromEntries(Array.from({length:4}, (_, i) => ['p'+i, {kind:'document',
+    document:'<section hson:part @:root <p "Fixed Part body"/>'
+      + (i < 3 ? '<hson-part at="p'+(i+1)+'"/>' : '') + '/>',
+    css:{'@:root':{color:'red'}}, stylesheet:':scope{display:block}',
+  }]));
+  for (const population of populations) {
+    const timings = [], counts = [];
+    for (let sample = -1; sample < 3; sample++) {
+      const map = hsonLiveMap.fromLibraries({parts:{parts},page:{document:'<main/>'}});
+      const authority = owner(map), page = authority.libraries()[1], target = authority.target(page,[]);
+      const root = hsonTransform.fromHson('<main ' + '<p "Ordinary Document content"/>'.repeat(population.ordinaryParagraphs)
+        + '<hson-part lib="parts" at="p0"/>'.repeat(population.invocations) + '/>').toNode();
+      globalThis.partCounts = {catalogs:0, members:0};
+      const start = performance.now();
+      authority.commit([
+        {target,kind:'graph',operation:{domain:'graph',op:'replace-root',mode:'document',root}},
+        {target,kind:'css',operation:{domain:'css',kind:'rule',ruleKey:'ordinary',scopes:[],
+          rule:{ruleKey:'ordinary',selector:'main',scopes:[],declarations:[['padding','7px']]}}},
+      ]);
+      const elapsed = performance.now() - start;
+      const measuredCounts = {...globalThis.partCounts};
+      const state = authority.scopedDocumentState(page);
+      assert.equal(state.scopes.occurrences.length,population.invocations*4);
+      assert.equal(state.scopes.subjects.length,population.invocations*4);
+      assert.equal(map.rev,1);
+      if (sample >= 0) { timings.push(elapsed); counts.push(measuredCounts); }
+    }
+    timings.sort((a,b)=>a-b);
+    results.push({runtime,size:4,css:true,operation:'scoped-composition',paragraphsPerDefinition:1,...population,
+      scopedOccurrences:population.invocations*4,scopedSubjects:population.invocations*4,
+      medianMs:+timings[1].toFixed(3),minMs:+timings[0].toFixed(3),maxMs:+timings[2].toFixed(3),counts});
   }
   return results;
 }`;
@@ -83,9 +124,9 @@ try {
   // External dependencies resolve from the repository, including in a real Worker.
   const { symlink } = await import('node:fs/promises');
   await symlink(resolve('node_modules'), join(directory,'node_modules'),'dir');
-  const nodeResults = await (await import(pathToFileURL(bundle).href)).run('node');
+  const nodeResults = await (await import(pathToFileURL(bundle).href)).run('node',scopedOnly);
   const workerEntry = join(directory,'worker.mjs');
-  await writeFile(workerEntry, `import {parentPort} from 'node:worker_threads'; import {run} from './measure.mjs'; parentPort.postMessage(await run('worker'));`);
+  await writeFile(workerEntry, `import {parentPort} from 'node:worker_threads'; import {run} from './measure.mjs'; parentPort.postMessage(await run('worker',${scopedOnly}));`);
   const worker = new Worker(pathToFileURL(workerEntry));
   const workerResults = await new Promise((resolve,reject) => {
     worker.once('message',resolve); worker.once('error',reject);
@@ -97,7 +138,8 @@ try {
     for (const count of result.counts) {
       assert.equal(count.catalogs,result.operation==='admission'?1:0,JSON.stringify(result));
       if (result.operation==='addition' || result.operation==='locus-setter') assert.equal(count.members,1,JSON.stringify(result));
+      if (result.operation==='scoped-composition') assert.equal(count.members,0,JSON.stringify(result));
     }
   }
-  console.log(JSON.stringify({node:process.version,revision,baseline,samples:3,paragraphsPerDefinition:40,results},null,2));
+  console.log(JSON.stringify({node:process.version,revision,baseline,scopedOnly,samples:3,results},null,2));
 } finally { await rm(directory,{recursive:true,force:true}); }
