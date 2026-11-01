@@ -58,6 +58,7 @@ export function start_workspace_diagnostics(
   const fingerprints = new Map<string, string>();
   const timers = new Map<string, unknown>();
   let discoveryTimer: unknown | undefined;
+  let discoveryGeneration = 0;
   let disposed = false;
 
   const open = (uri: string): DiagnosticDocument | undefined => host.openDocuments().find(document => document.uri === uri);
@@ -83,6 +84,7 @@ export function start_workspace_diagnostics(
       fingerprints.set(document.uri, `${document.languageId}\0${document.text}`);
       publisher.set(document, specs);
     } catch (error) {
+      if (disposed) return;
       if (generations.get(document.uri) === generation) publisher.delete(document.uri);
       host.reportUnexpected(error, sources.get(document.uri));
     }
@@ -104,7 +106,7 @@ export function start_workspace_diagnostics(
     timers.set(document.uri, timer);
   };
   const analyzeDisk = async (source: WorkspaceDiagnosticSource, force = false): Promise<void> => {
-    if (disposed || open(source.uri) !== undefined) return;
+    if (disposed || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
     const generation = advance(source.uri);
     try {
       const text = await host.readSource(source);
@@ -113,7 +115,8 @@ export function start_workspace_diagnostics(
       if (!force && fingerprints.get(source.uri) === fingerprint) return;
       publish(Object.freeze({ ...source, version: -generation, text }), generation);
     } catch (error) {
-      if (generations.get(source.uri) === generation && open(source.uri) === undefined) publisher.delete(source.uri);
+      if (disposed || generations.get(source.uri) !== generation || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
+      publisher.delete(source.uri);
       host.reportUnexpected(error, source);
     }
   };
@@ -132,27 +135,32 @@ export function start_workspace_diagnostics(
   };
   const refresh = async (): Promise<void> => {
     if (disposed) return;
+    const generation = ++discoveryGeneration;
     try {
       const discovered = await host.discoverSources();
-      if (disposed) return;
+      if (disposed || discoveryGeneration !== generation) return;
       const next = new Map(discovered.map(source => [source.uri, source]));
       for (const uri of sources.keys()) {
         if (next.has(uri)) continue;
-        sources.delete(uri); fingerprints.delete(uri); cancel(uri); advance(uri);
-        if (open(uri) === undefined) publisher.delete(uri);
+        sources.delete(uri); fingerprints.delete(uri);
+        if (open(uri) === undefined) { cancel(uri); advance(uri); publisher.delete(uri); }
       }
       const added: WorkspaceDiagnosticSource[] = [];
       for (const source of discovered) {
         const prior = sources.get(source.uri);
+        if (prior?.fileName === source.fileName && prior.languageId === source.languageId) continue;
         sources.set(source.uri, source);
-        if (prior === undefined) added.push(source);
+        fingerprints.delete(source.uri);
+        added.push(source);
       }
       await analyzeBatch(added);
     } catch (error) {
-      host.reportUnexpected(error);
+      if (!disposed && discoveryGeneration === generation) host.reportUnexpected(error);
     }
   };
   const scheduleRefresh = (): void => {
+    // Invalidate pending discovery immediately, including during the debounce window.
+    discoveryGeneration += 1;
     if (discoveryTimer !== undefined) host.clearTimer(discoveryTimer);
     discoveryTimer = host.setTimer(() => { discoveryTimer = undefined; void refresh(); }, discoveryDebounce);
   };
@@ -169,10 +177,9 @@ export function start_workspace_diagnostics(
     host.onDidChangeSources(changes => {
       for (const change of changes) {
         if (change.kind === "delete") {
-          const wasKnown = sources.delete(change.uri);
-          fingerprints.delete(change.uri); cancel(change.uri); advance(change.uri);
-          if (open(change.uri) === undefined) publisher.delete(change.uri);
-          if (wasKnown) scheduleRefresh();
+          sources.delete(change.uri); fingerprints.delete(change.uri);
+          if (open(change.uri) === undefined) { cancel(change.uri); advance(change.uri); publisher.delete(change.uri); }
+          scheduleRefresh();
           continue;
         }
         const source = sources.get(change.uri);

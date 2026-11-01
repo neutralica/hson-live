@@ -39,6 +39,13 @@ class Publisher implements DiagnosticPublisher {
 }
 
 type DocumentListener = (document: DiagnosticDocument) => void;
+function gate<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
 class Host implements WorkspaceDiagnosticHost {
   documents: DiagnosticDocument[] = [];
   discovered: WorkspaceDiagnosticSource[] = [];
@@ -50,11 +57,16 @@ class Host implements WorkspaceDiagnosticHost {
   readonly projectChanges = new Set<() => void>();
   readonly timers = new Map<number, () => void>();
   readonly readGates = new Map<string, Promise<string>>();
+  readonly reads: WorkspaceDiagnosticSource[] = [];
+  readonly discoveryGates: Promise<readonly WorkspaceDiagnosticSource[]>[] = [];
   readonly unexpected: unknown[] = [];
   private timerId = 0;
   openDocuments(): readonly DiagnosticDocument[] { return this.documents; }
-  async discoverSources(): Promise<readonly WorkspaceDiagnosticSource[]> { return this.discovered; }
-  async readSource(source: WorkspaceDiagnosticSource): Promise<string> { return this.readGates.get(source.uri) ?? this.contents.get(source.uri) ?? ""; }
+  async discoverSources(): Promise<readonly WorkspaceDiagnosticSource[]> { return this.discoveryGates.shift() ?? this.discovered; }
+  async readSource(source: WorkspaceDiagnosticSource): Promise<string> {
+    this.reads.push(source);
+    return this.readGates.get(source.uri) ?? this.contents.get(source.uri) ?? "";
+  }
   onDidOpen(listener: DocumentListener): Disposable { return this.add(this.opens, listener); }
   onDidChange(listener: DocumentListener): Disposable { return this.add(this.changes, listener); }
   onDidClose(listener: DocumentListener): Disposable { return this.add(this.closes, listener); }
@@ -86,8 +98,8 @@ const produce = (input: { text: string }): readonly DocumentDiagnosticSpec[] => 
 }];
 
 async function settle(): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, 0));
-  await new Promise(resolve => setTimeout(resolve, 0));
+  // Drain promise continuations; all race ordering is controlled by explicit gates.
+  await new Promise<void>(resolve => setImmediate(resolve));
 }
 
 async function main(): Promise<void> {
@@ -284,6 +296,219 @@ async function main(): Promise<void> {
     resolveOld("Hson stale"); await settle();
     assert.equal(publisher.values.get(value.uri)?.[0]?.message, "Hson editor");
     controller.dispose();
+  });
+
+  await check("unchanged rediscovery preserves a pending source read and corrected text clears its diagnostic", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/pending.ts");
+    const pending = gate<string>();
+    host.discovered = [value]; host.readGates.set(value.uri, pending.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce }); await settle();
+    host.discovered = [{ ...value }]; host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    pending.resolve("Hson pending"); await settle();
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson pending" }));
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson pending`]);
+    host.readGates.delete(value.uri); host.contents.set(value.uri, "valid");
+    host.fire(host.sourceChanges, [{ uri: value.uri, kind: "change" }]); await settle();
+    // The read requested by a membership-dependent change uses the original source identity.
+    assert.equal(host.reads.length, 2); assert.equal(host.reads[0], value); assert.equal(host.reads[1], value);
+    assert.deepEqual(publisher.values.get(value.uri), []);
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson pending`, `${value.uri}:clear`]);
+    controller.dispose();
+  });
+
+  await check("actual modification supersedes a pending read across equivalent rediscovery", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/modified.ts");
+    const old = gate<string>(); const changed = gate<string>();
+    host.discovered = [value]; host.readGates.set(value.uri, old.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce }); await settle();
+    host.readGates.set(value.uri, changed.promise);
+    host.fire(host.sourceChanges, [{ uri: value.uri, kind: "change" }]);
+    host.discovered = [{ ...value }]; host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    changed.resolve("valid"); await settle();
+    old.resolve("Hson obsolete"); await settle();
+    assert.deepEqual(publisher.values.get(value.uri), []);
+    assert.deepEqual(publisher.writes, [`${value.uri}:clear`]);
+    assert.equal(host.reads.length, 2); assert.ok(host.reads.every(read => read === value));
+    controller.dispose();
+  });
+
+  await check("changed source metadata schedules a replacement read and fences the prior identity", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/metadata.ts");
+    const replacement = { ...value, fileName: "/workspace/replacement.ts" };
+    const old = gate<string>(); const fresh = gate<string>();
+    host.discovered = [value]; host.readGates.set(value.uri, old.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce }); await settle();
+    host.readGates.set(value.uri, fresh.promise); host.discovered = [replacement];
+    host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    old.resolve("Hson obsolete"); await settle(); assert.deepEqual(publisher.writes, []);
+    fresh.resolve("Hson replacement"); await settle();
+    assert.equal(host.reads[0], value); assert.equal(host.reads[1], replacement);
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson replacement" }));
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson replacement`]);
+    controller.dispose();
+  });
+
+  await check("obsolete discovery cannot restore a removed project; unrelated diagnostics survive and re-addition works", async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const removed = source("/removed/project.ts"); const kept = source("/kept/project.ts");
+    host.discovered = [removed, kept]; host.contents.set(removed.uri, "Hson removed"); host.contents.set(kept.uri, "Hson kept");
+    const controller = start_workspace_diagnostics(host, publisher, { produce, readConcurrency: 1 }); await settle();
+    const keptDiagnostics = publisher.values.get(kept.uri);
+    const old = gate<readonly WorkspaceDiagnosticSource[]>(); host.discoveryGates.push(old.promise);
+    host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    host.discovered = [{ ...kept }]; host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    old.resolve([{ ...removed }, { ...kept }]); await settle();
+    assert.deepEqual([...publisher.values.keys()], [kept.uri]);
+    assert.equal(publisher.values.get(kept.uri), keptDiagnostics);
+    const reads = host.reads.length;
+    host.fire(host.sourceChanges, [{ uri: removed.uri, kind: "change" }]); await settle();
+    assert.equal(host.reads.length, reads, "removed URI must be absent from current membership");
+    assert.deepEqual(publisher.writes, [`${removed.uri}:Hson removed`, `${kept.uri}:Hson kept`, `${removed.uri}:delete`]);
+    const readded = { ...removed };
+    host.discovered = [readded, { ...kept }];
+    host.fire(host.sourceChanges, [{ uri: removed.uri, kind: "create" }]); host.runTimers(); await settle();
+    assert.equal(host.reads.at(-1), readded);
+    assert.deepEqual(publisher.values.get(removed.uri), produce({ text: "Hson removed" }));
+    assert.equal(publisher.values.get(kept.uri), keptDiagnostics);
+    assert.deepEqual(publisher.writes, [`${removed.uri}:Hson removed`, `${kept.uri}:Hson kept`, `${removed.uri}:delete`, `${removed.uri}:Hson removed`]);
+    controller.dispose();
+  });
+
+  await check("three concurrent refreshes completing in reverse order admit only the newest membership", async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const values = [source("/old/a.ts"), source("/middle/b.ts"), source("/new/c.ts")];
+    const gates = values.map(() => gate<readonly WorkspaceDiagnosticSource[]>());
+    host.discoveryGates.push(...gates.map(value => value.promise));
+    for (const value of values) host.contents.set(value.uri, "Hson current");
+    const controller = start_workspace_diagnostics(host, publisher, { produce });
+    host.fire(host.projectChanges, undefined); host.runTimers();
+    host.fire(host.projectChanges, undefined); host.runTimers();
+    for (const index of [2, 1, 0]) { gates[index]!.resolve([values[index]!]); await settle(); }
+    const newest = values[2]!;
+    assert.deepEqual([...publisher.values.keys()], [newest.uri]);
+    assert.deepEqual(publisher.values.get(newest.uri), produce({ text: "Hson current" }));
+    host.fire(host.sourceChanges, values.slice(0, 2).map(value => ({ uri: value.uri, kind: "change" })));
+    await settle();
+    assert.deepEqual(host.reads, [newest]);
+    assert.deepEqual(publisher.writes, [`${newest.uri}:Hson current`]);
+    controller.dispose();
+  });
+
+  await check("a project notification fences discovery before the debounce timer runs", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/debounce.ts");
+    const old = gate<readonly WorkspaceDiagnosticSource[]>(); host.discoveryGates.push(old.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce });
+    host.fire(host.projectChanges, undefined);
+    old.resolve([value]); await settle();
+    assert.deepEqual(host.reads, []); assert.deepEqual(publisher.writes, []);
+    host.discovered = [value]; host.contents.set(value.uri, "Hson current"); host.runTimers(); await settle();
+    assert.deepEqual(host.reads, [value]);
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson current" }));
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson current`]);
+    controller.dispose();
+  });
+
+  await check("deleting a not-yet-admitted source invalidates pending discovery and permits later creation", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/deleted.ts");
+    const old = gate<readonly WorkspaceDiagnosticSource[]>(); host.discoveryGates.push(old.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce });
+    host.fire(host.sourceChanges, [{ uri: value.uri, kind: "delete" }]);
+    old.resolve([value]); await settle(); host.runTimers(); await settle();
+    assert.deepEqual(host.reads, []); assert.equal(publisher.values.has(value.uri), false);
+    assert.deepEqual(publisher.writes, [`${value.uri}:delete`]);
+    host.discovered = [value]; host.contents.set(value.uri, "Hson recreated");
+    host.fire(host.sourceChanges, [{ uri: value.uri, kind: "create" }]); host.runTimers(); await settle();
+    assert.deepEqual(host.reads, [value]);
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson recreated" }));
+    assert.deepEqual(publisher.writes, [`${value.uri}:delete`, `${value.uri}:Hson recreated`]);
+    controller.dispose();
+  });
+
+  await check("a removed queued batch entry cannot supersede a re-added source's pending read", async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const blocking = source("/workspace/blocking.ts"); const value = source("/workspace/queued.ts");
+    const blocker = gate<string>(); const fresh = gate<string>();
+    host.discovered = [blocking, value]; host.readGates.set(blocking.uri, blocker.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce, readConcurrency: 1 }); await settle();
+    host.discovered = []; host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    const readded = { ...value }; host.discovered = [readded]; host.readGates.set(value.uri, fresh.promise);
+    host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    blocker.resolve("Hson obsolete"); await settle();
+    fresh.resolve("Hson restored"); await settle();
+    assert.equal(host.reads.length, 2); assert.equal(host.reads[1], readded);
+    assert.deepEqual([...publisher.values.keys()], [value.uri]);
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson restored" }));
+    assert.deepEqual(publisher.writes, [`${blocking.uri}:delete`, `${value.uri}:delete`, `${value.uri}:Hson restored`]);
+    controller.dispose();
+  });
+
+  await check("unsaved buffers supersede pending disk work through rediscovery, removal, re-addition and close", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/unsaved.ts");
+    const old = gate<string>(); host.discovered = [value]; host.readGates.set(value.uri, old.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce }); await settle();
+    const opened = document(value, "Hson unsaved", 1); host.documents = [opened]; host.fire(host.opens, opened);
+    const dirty = document(value, "valid", 2); host.documents = [dirty]; host.fire(host.changes, dirty); host.runTimers();
+    host.discovered = [{ ...value }]; host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    old.resolve("Hson stale disk"); await settle();
+    host.discovered = []; host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    assert.deepEqual(publisher.values.get(value.uri), []);
+    const readded = { ...value }; host.discovered = [readded];
+    host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    host.fire(host.sourceChanges, [{ uri: value.uri, kind: "change" }]);
+    assert.deepEqual(host.reads, [value], "open buffers prevent disk reads across membership changes");
+    host.readGates.delete(value.uri); host.contents.set(value.uri, "Hson saved disk");
+    host.documents = []; host.fire(host.closes, dirty); await settle();
+    assert.equal(host.reads.at(-1), readded);
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson saved disk" }));
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson unsaved`, `${value.uri}:clear`, `${value.uri}:Hson saved disk`]);
+    controller.dispose();
+  });
+
+  for (const removal of ["project", "file"] as const) await check(`${removal} removal preserves a pending unsaved edit and close clears the removed source`, async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/open-removed.ts");
+    const opened = document(value, "Hson open", 1); host.documents = [opened]; host.discovered = [value];
+    const controller = start_workspace_diagnostics(host, publisher, { produce }); await settle();
+    const dirty = document(value, "valid", 2); host.documents = [dirty]; host.fire(host.changes, dirty);
+    host.discovered = [];
+    if (removal === "project") {
+      host.fire(host.projectChanges, undefined);
+      // Run discovery first while deliberately retaining the pending document timer.
+      const refresh = [...host.timers.entries()].at(-1)!; host.timers.delete(refresh[0]); refresh[1]();
+      await settle();
+    } else host.fire(host.sourceChanges, [{ uri: value.uri, kind: "delete" }]);
+    host.runTimers(); await settle();
+    assert.deepEqual(publisher.values.get(value.uri), []);
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson open`, `${value.uri}:clear`]);
+    host.documents = []; host.fire(host.closes, dirty); await settle();
+    assert.deepEqual(host.reads, []); assert.equal(publisher.values.has(value.uri), false);
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson open`, `${value.uri}:clear`, `${value.uri}:delete`]);
+    controller.dispose();
+  });
+
+  for (const completion of ["resolve", "reject"] as const) await check(`disposed pending reads cannot ${completion} into a late publication`, async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/disposed.ts");
+    const pending = gate<string>(); host.discovered = [value]; host.readGates.set(value.uri, pending.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce }); await settle();
+    const opened = document(value, "Hson open", 1); host.documents = [opened]; host.fire(host.opens, opened);
+    const dirty = document(value, "valid", 2); host.documents = [dirty]; host.fire(host.changes, dirty);
+    host.documents = []; host.fire(host.closes, dirty);
+    // Both startup and close reads share the pending gate; disposal must fence both.
+    controller.dispose();
+    if (completion === "resolve") pending.resolve("Hson late"); else pending.reject(new Error("late read failure"));
+    host.runTimers(); await settle();
+    assert.deepEqual(publisher.values.get(value.uri), produce({ text: "Hson open" }));
+    assert.deepEqual(publisher.writes, [`${value.uri}:Hson open`]);
+    assert.deepEqual(host.unexpected, []);
+  });
+
+  await check("disposal fences pending discovery and detaches refresh notifications", async () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/disposed-discovery.ts");
+    const pending = gate<readonly WorkspaceDiagnosticSource[]>(); host.discoveryGates.push(pending.promise);
+    const controller = start_workspace_diagnostics(host, publisher, { produce });
+    host.fire(host.projectChanges, undefined); controller.dispose();
+    pending.resolve([value]); host.runTimers(); await settle();
+    assert.deepEqual(host.reads, []); assert.deepEqual([...publisher.values], []); assert.deepEqual(publisher.writes, []);
+    assert.equal(host.timers.size, 0); assert.equal(host.projectChanges.size, 0); assert.equal(host.sourceChanges.size, 0);
   });
 
   process.stdout.write(`ok - ${checks} workspace diagnostics checks passed\n`);
