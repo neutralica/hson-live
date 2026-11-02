@@ -97,6 +97,7 @@ export type {
   LiveMapLibraryScalarPathHandle,
   LiveMapDataLibrary,
   LiveMapDocumentLibrary,
+  LiveMapDocumentBindingSource,
   LiveMapDocumentLocation,
   AuthorityDocumentQuadLocation,
   LiveMapDocumentQuadLocation,

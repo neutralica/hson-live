@@ -28,6 +28,7 @@ import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import type {
   LiveMapDataLibrary,
   LiveMapDocumentLibrary,
+  LiveMapDocumentBindingSource,
   LiveMap,
   HostedLiveMapSnapshot,
   LiveMapSnapshot,
@@ -291,7 +292,7 @@ export function cut_document_ssr_internal(map: object, options: LiveMapCutOption
 }
 
 /** @internal Current semantic stylesheet for a selected document Library. */
-export function document_css_state_internal(document: LiveMapDocumentLibrary): import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet {
+export function document_css_state_internal(document: LiveMapDocumentBindingSource): import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet {
   const read = DOCUMENT_CSS_STATE.get(document);
   if (read === undefined) throw new Error("Document CSS state is unavailable.");
   return read();

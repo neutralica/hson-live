@@ -10,6 +10,7 @@ import type {
 } from "../../types/interaction.types.js";
 import type {
   LiveMapDocumentLibrary,
+  LiveMapDocumentBindingSource,
   LiveMap,
 } from "../../types/livemap.types.js";
 import { activate_document_interactions_internal } from "../interactions/interactions.js";
@@ -37,7 +38,7 @@ type LocalInteractions = Readonly<{
   onFailure?: (failure: InteractionFailure) => void;
 }>;
 
-export function continue_document<TDocument extends LiveMapDocumentLibrary>(options: Readonly<{
+export function continue_document<TDocument extends LiveMapDocumentBindingSource>(options: Readonly<{
   map: LiveMap;
   root: Element;
   document: TDocument;
@@ -52,16 +53,16 @@ export function continue_document(options: Readonly<{
 export function continue_document(options: Readonly<{
   map: LiveMap;
   root: Element;
-  document?: LiveMapDocumentLibrary;
+  document?: LiveMapDocumentBindingSource;
   interactions?: LocalInteractions;
-}>): DocumentContinuation {
+}>): DocumentContinuation<LiveMapDocumentBindingSource> {
   return continue_document_impl(options);
 }
 
 /** Bounded local portable SSR handoff. No package export or public option. @internal */
 export function continue_portable_document_internal(options: Readonly<{
-  map: LiveMap; root: Element; document: LiveMapDocumentLibrary; interactions?: LocalInteractions;
-}>, handoff: PortableDocumentHandoff): DocumentContinuation {
+  map: LiveMap; root: Element; document: LiveMapDocumentBindingSource; interactions?: LocalInteractions;
+}>, handoff: PortableDocumentHandoff): DocumentContinuation<LiveMapDocumentBindingSource> {
   const owner = internal_livemap_aggregate_authority(options.map);
   owner.assertPortableDocumentHandoff(handoff);
   if (options.map.doc.must(handoff.libraryName) !== options.document) throw new Error("Portable handoff selects a different Library.");
@@ -69,8 +70,8 @@ export function continue_portable_document_internal(options: Readonly<{
 }
 
 function continue_document_impl(options: Readonly<{
-  map: LiveMap; root: Element; document?: LiveMapDocumentLibrary; interactions?: LocalInteractions;
-}>, handoff?: PortableDocumentHandoff): DocumentContinuation {
+  map: LiveMap; root: Element; document?: LiveMapDocumentBindingSource; interactions?: LocalInteractions;
+}>, handoff?: PortableDocumentHandoff): DocumentContinuation<LiveMapDocumentBindingSource> {
   if (typeof options !== "object" || options === null) {
     throw new TypeError("Document continuation options must be an object.");
   }
@@ -147,7 +148,7 @@ function continue_document_impl(options: Readonly<{
     retainedCss?.commit();
     nativeHandoff?.finish();
     let disposed = false;
-    const result: DocumentContinuation = Object.freeze({
+    const result: DocumentContinuation<LiveMapDocumentBindingSource> = Object.freeze({
       map: resolved.selected,
       get tree() { return reflect!.tree; },
       mirror: reflect,

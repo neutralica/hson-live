@@ -40,7 +40,7 @@ import {
 import { plan_browser_realization } from "../../internal/browser-realization/browser-realization-plan.js";
 import { plan_managed_document_css, MANAGED_DOCUMENT_CSS_MARKER } from "../../internal/browser-realization/managed-document-css.js";
 import { plan_portable_document_subjects } from "../../internal/browser-realization/portable-document-subjects.js";
-import type { PortableDocumentQuads, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
+import type { PortableDocumentQuads, LiveMapDocumentBindingSource } from "../../types/livemap.types.js";
 import { capture_document_css_reuse, type DocumentCssReuse, type DocumentCssReusePreparation } from "../livetree/managers/bound-document-css.js";
 
 export type ExactDocumentAdoption = Readonly<{
@@ -129,7 +129,7 @@ function commit_adopted_root(target: Element, currentTree: () => LiveTree): void
 /** Re-realize only a live cache owner's released CSS before exact admission.
  * Initial SSR adoption remains no-write and still rejects missing carriers. @internal */
 export function prepare_retained_document_css(
-  canonicalRoot: HsonNode, target: Element, document: LiveMapDocumentLibrary, css: readonly string[],
+  canonicalRoot: HsonNode, target: Element, document: LiveMapDocumentBindingSource, css: readonly string[],
 ): DocumentCssReusePreparation | undefined {
   const entry = ADOPTED_ROOTS.get(target);
   if (!css.length || entry?.prepareCssReuse === undefined) return undefined;

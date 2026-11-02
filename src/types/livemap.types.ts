@@ -1629,6 +1629,11 @@ type LiveMapCurrentDocumentSchema<TSchema extends HsonSchema> =
 type LiveMapDocumentSchemaUse<TSchema extends HsonSchema> =
   HsonNode extends DocumentSchemaGraph<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
 
+/** Document binding capabilities independent of Schema-specific location writes.
+ * A specialized Library need not accept the default Library's replacement inputs. */
+export type LiveMapDocumentBindingSource = Pick<LiveMapDocumentLibrary,
+  "mode" | "rev" | "root" | "document" | "commits" | "css">;
+
 type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
   LibraryDefinitionEvidence<TInput> extends infer E
     ? E extends { family: infer F; value: infer V; schema: infer S extends HsonSchema }

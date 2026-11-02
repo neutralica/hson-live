@@ -5,7 +5,7 @@ import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/pu
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type {
-  LiveMapDocumentLibrary,
+  LiveMapDocumentBindingSource,
   LiveMapCommitObservation,
   LiveMapDisposer,
   LiveMapDocumentCommitTarget,
@@ -151,7 +151,7 @@ type ProjectedRegistration = Omit<DocumentBindingNodeRegistration, "canonicalTar
   node: HsonNode;
 }>;
 
-type ReflectableDocumentMap = LiveMapDocumentLibrary;
+type ReflectableDocumentMap = LiveMapDocumentBindingSource;
 
 const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<object>();
 

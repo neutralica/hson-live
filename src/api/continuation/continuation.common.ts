@@ -4,7 +4,7 @@ import { inspect_echo_map_capability_internal } from "../../internal/echo-map-ca
 import type { HsonNode } from "../../core/types.js";
 import { clone_livemap_document_exact_view, livemap_document_identity_overlay_for } from "../livemap/livemap.document.identity.js";
 import type {
-  LiveMapDocumentLibrary,
+  LiveMapDocumentBindingSource,
   LiveMap,
 } from "../../types/livemap.types.js";
 
@@ -32,13 +32,13 @@ export class ContinuationRootReservedError extends Error {
 }
 
 export type ResolvedContinuationDocument = Readonly<{
-  selected: LiveMapDocumentLibrary;
+  selected: LiveMapDocumentBindingSource;
   aggregate: LiveMap;
 }>;
 
 /** Capture the receiving Library's sparse local identities for exact grafting.
  * The SSR realization plan still omits QUID markup when matching the DOM. */
-export function capture_continuation_document_root(document: LiveMapDocumentLibrary): HsonNode {
+export function capture_continuation_document_root(document: LiveMapDocumentBindingSource): HsonNode {
   return clone_livemap_document_exact_view(document.root(), "document",
     livemap_document_identity_overlay_for(document.document));
 }
@@ -46,7 +46,7 @@ export function capture_continuation_document_root(document: LiveMapDocumentLibr
 /** Select the public registry name of the exact continuation document. */
 export function continuation_document_library_name(
   map: LiveMap,
-  selected: LiveMapDocumentLibrary,
+  selected: LiveMapDocumentBindingSource,
 ): string {
   for (const entry of internal_livemap_aggregate_authority(map).hostedRegistry().libraries) {
     if (entry.scope === undefined && entry.mode === "document" && map.doc.must(entry.name) === selected) return entry.name;
@@ -90,9 +90,9 @@ export function activate_continuation_root(root: Element): void {
   continuation_roots().set(root, "active");
 }
 
-function is_document_library(value: unknown): value is LiveMapDocumentLibrary {
+function is_document_library(value: unknown): value is LiveMapDocumentBindingSource {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<LiveMapDocumentLibrary>;
+  const candidate = value as Partial<LiveMapDocumentBindingSource>;
   return candidate.mode === "document"
     && typeof candidate.root === "function"
     && typeof candidate.rev === "number"
@@ -107,7 +107,7 @@ function is_libraries_map(value: unknown): value is LiveMap {
 /** Resolve only public document facades registered by the supplied canonical map. */
 export function resolve_continuation_document(
   map: LiveMap,
-  explicit: LiveMapDocumentLibrary | undefined,
+  explicit: LiveMapDocumentBindingSource | undefined,
 ): ResolvedContinuationDocument {
   if (!is_libraries_map(map)) {
     throw new Error("Document continuation requires a LiveMap registry.");

@@ -1,4 +1,4 @@
-import type { LiveMapDocumentLibrary } from "../../../types/livemap.types.js";
+import type { LiveMapDocumentBindingSource } from "../../../types/livemap.types.js";
 import type { CssGlobalHandle, CssGlobalRuleHandle, CssRuleFacade, CssMap } from "../../../types/css.types.js";
 import type { DocumentCssRuleFacade, DocumentCssRuleHandle, DocumentCssValue } from "../../../types/document-css.types.js";
 import { make_style_setter } from "./style-setter.js";
@@ -17,10 +17,10 @@ import { document_css_subject_identities } from "../../../internal/css/css-ident
 import { encode_portable_document_stylesheet, render_portable_document_stylesheet_carriers } from "../../../internal/css/portable-document-stylesheet.js";
 
 export type DocumentCssReusePreparation = Readonly<{ commit: () => void; rollback: () => void }>;
-export type DocumentCssReuse = (document: LiveMapDocumentLibrary, root: Element, assertCurrent: () => void) => DocumentCssReusePreparation | undefined;
+export type DocumentCssReuse = (document: LiveMapDocumentBindingSource, root: Element, assertCurrent: () => void) => DocumentCssReusePreparation | undefined;
 
 type Binding = {
-  document: LiveMapDocumentLibrary;
+  document: LiveMapDocumentBindingSource;
   hosted: boolean;
   active: boolean;
   prepareReuse?: DocumentCssReuse;
@@ -45,7 +45,7 @@ export function capture_document_css_reuse(tree: LiveTree): DocumentCssReuse | u
 /** The selected Library is the sole semantic owner; carriers are only its realization. */
 export function bind_document_css_tree(
   tree: LiveTree,
-  document: LiveMapDocumentLibrary,
+  document: LiveMapDocumentBindingSource,
   initialStyles: readonly HTMLStyleElement[],
   hosted: boolean,
   currentTree: () => LiveTree = () => tree,
