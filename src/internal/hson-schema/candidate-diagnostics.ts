@@ -17,6 +17,7 @@ import { qualify_hson_document_root } from "../../api/document/hson-document.js"
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
+import { part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
@@ -26,6 +27,7 @@ type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; comp
 export function static_part_reference_diagnostics(facts: PartSourceFacts): readonly StaticSchemaDiagnostic[] {
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
+  const memberInvocations = new Set<object>();
   const report = (where: PartSourceLocation | undefined, code: string, message: string, declaration?: PartSourceLocation): void => {
     if (where?.precision !== "exact") return;
     const key = JSON.stringify([where.file, where.start, where.end, code, message]);
@@ -61,6 +63,31 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         iterator.issue ?? "Part iteration is only allowed within a governed Part definition.");
     }
     if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message, issue.declaration);
+    if (isDefinition) for (const use of document.bindingSources?.references ?? []) {
+      const binding = use.declaration;
+      // Initial proof boundary: exact, unconditional ordinary reads of a directly
+      // received Data alias. Iteration/forwarding/conditional structure supplies
+      // no guaranteed execution, and optional ancestors supply no presence proof.
+      if (use.context !== "value" || use.iterators.length !== 0 || use.resolution !== "resolved"
+        || binding?.origin !== "receiving" || binding.kind !== "data" || binding.incoming === undefined
+        || use.reference.path.length === 0) continue;
+      for (const context of part_data_contexts(facts, document, binding.incoming)) {
+        if (context.receiving !== binding || !context.executionCertain || context.evidence?.strength !== "validated"
+          || context.argument === undefined || memberInvocations.has(context.connector)) continue;
+        const alternatives = part_data_projection(context.evidence, use.reference.path).alternatives;
+        const invalid = alternatives.length > 0 && alternatives.every(alternative => alternative.presence === "required"
+          && (alternative.kind === "invalid-traversal" || !use.reference.optional && alternative.kind === "absent"));
+        if (!invalid) continue;
+        const selector = context.connector.attributes.find(attribute => attribute.name === "at")?.valueLocation;
+        const where = selector?.precision === "exact" ? selector : context.argument.nameLocation;
+        if (where.precision !== "exact" || use.location.precision !== "exact" || binding.location.precision !== "exact") continue;
+        memberInvocations.add(context.connector);
+        output.push({ ...where, code: "HSON_PART_DATA_MEMBER_INVALID",
+          message: `Part reference ^{${use.reference.reference}} cannot succeed for this invocation's validated Data Schema.`,
+          related: [{ ...use.location, message: "Authored Part reference." }, { ...binding.location, message: `Receiving local ${binding.name} from incoming ${binding.incoming}.` },
+            { ...context.evidence.schemaLocation, message: "Validated input Schema." }] });
+      }
+    }
     // A known invocation can disprove its own collection input. It never supplies
     // a universal Schema for the reusable definition. Nested value checks also
     // require evidence that every enclosing iterator reaches the checked source.

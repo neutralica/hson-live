@@ -9,6 +9,13 @@ import { discover_hson_schema_declarations, type DiscoveredHsonSchemaDeclaration
 export function annotated_data_schema_source(typescript: typeof ts, program: ts.Program, checker: ts.TypeChecker,
   type: ts.TypeNode, eligible = hson_source_syntactic_eligibility(typescript, program),
   declarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>()): string | undefined {
+  return annotated_data_schema_provenance(typescript, program, checker, type, eligible, declarations)?.source;
+}
+
+/** The immutable authored Schema declaration, alongside its source. */
+export function annotated_data_schema_provenance(typescript: typeof ts, program: ts.Program, checker: ts.TypeChecker,
+  type: ts.TypeNode, eligible = hson_source_syntactic_eligibility(typescript, program),
+  declarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>()) {
   const annotation = resolve_hson_schema_annotation(typescript, checker, type, eligible);
   if (annotation?.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return undefined;
   return resolve_immutable_schema(typescript, checker, annotation.schema, producer => {
@@ -20,7 +27,8 @@ export function annotated_data_schema_source(typescript: typeof ts, program: ts.
       entries = discover_hson_schema_declarations(typescript, file, checker, eligible);
       declarations.set(file, entries);
     }
-    return entries.find(found => found.declaration === producer && found.eligible)?.source;
+    const found = entries.find(found => found.declaration === producer && found.eligible);
+    return found?.source === undefined ? undefined : { source: found.source, declaration: found.declaration };
   }, new Set(), eligible, "type-query");
 }
 

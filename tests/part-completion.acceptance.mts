@@ -7,6 +7,7 @@ import { HsonEditorCompletionCache, type HostCompletion } from "../editors/vscod
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
 import { hson_grammar_checkpoint } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { part_data_hover } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-completion", title: "Contextual authored Part completion", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "editor", "provenance"]) });
@@ -736,6 +737,159 @@ check("structured outgoing on-names complete their declared kinds before handler
   const definition = '{x:{kind:"document",document:Hson.document`<p hson:part "%{for}:%{per}"/>`}}';
   const bare = complete(imports + 'const loc=maps.fromLibraries({components:{parts:' + definition + '},page:{document:Hson.document`<hson-part at=components/x |/>`}});');
   assert.deepEqual(bare.labels, ['for', 'per']);
+});
+const typedShape = '<title "string" note <optional "number"> kind <exact "card"> state <union [<exact "ready">,<exact "done">]> nested <content <caption "string">>>';
+const typedValue = '<title "hello" kind "card" state "ready" nested <caption "nested">>';
+function typedPart(body: string, shape = typedShape, value = typedValue): string {
+  return imports + 'import type {HsonData} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
+    + 'const input:HsonData<typeof S>=Hson.data`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
+    + body + '`}}},page:{document:Hson.document`<hson-part at="components/card" incoming:data="${input}"/>`}});';
+}
+const hoverText = (program: ts.Program, text: string, spelling: string) => part_data_hover(collect_part_source_facts(ts, program), file('app.ts'), text.indexOf(spelling) + 3)?.text;
+check('direct receiving aliases expose typed optional literal union and nested member completion', () => {
+  const result = complete(typedPart('<p hson:part data:record="%{incoming}" "^{record.|}"/>'));
+  assert.deepEqual(result.labels, ['record.kind', 'record.nested', 'record.nested.caption', 'record.note', 'record.state', 'record.title']);
+  for (const [label, detail] of [['record.title', 'string (required)'], ['record.note', 'number (optional)'],
+    ['record.kind', '"card" (required)'], ['record.state', '"ready" | "done" (required)'], ['record.nested.caption', 'string (required)']]) {
+    const candidate = result.entries.find(entry => entry.candidate.label === label)!.candidate;
+    assert.ok(candidate.detail.includes(detail!), candidate.detail); assert.match(candidate.detail, /validated/);
+    assert.equal(candidate.certainty, 'possible', 'a caller does not impose a universal Part type');
+  }
+  const nested = complete(typedPart('<p hson:part data:record="%{incoming}" "^{record.nested.|}"/>'));
+  assert.deepEqual(nested.labels, ['record.nested.caption']);
+  const advisory = complete(typedPart('<p hson:part data:record="%{incoming}" "^{record.|}"/>', typedShape, '<>'));
+  assert.match(advisory.entries.find(entry => entry.candidate.label === 'record.title')!.candidate.detail, /advisory/);
+});
+check('local Data hover reaches the language service with exact authored ranges and navigation', () => {
+  const marked = typedPart('<p hson:part data:record="%{incoming}" "^{record.note|}"/>');
+  const result = complete(marked);
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(host), host, join(directory, 'tsconfig.json'));
+  try {
+    const hover = integrated.getQuickInfoAtPosition(file('app.ts'), result.offset - 1)!;
+    assert.equal(result.text.slice(hover.textSpan.start, hover.textSpan.start + hover.textSpan.length), '^{record.note}');
+    const text = hover.displayParts!.map(part => part.text).join('');
+    assert.match(text, /record ← incoming incoming/); assert.match(text, /number \(optional\); validated/);
+    const origin = result.text.indexOf('^{record.note}') + 3;
+    const definition = integrated.getDefinitionAtPosition(file('app.ts'), origin)![0]!;
+    assert.equal(result.text.slice(definition.textSpan.start, definition.textSpan.start + definition.textSpan.length), 'record');
+    const detail = integrated.getCompletionEntryDetails(file('app.ts'), result.offset - 4, 'record.note', undefined, undefined, undefined, undefined);
+    assert.ok(detail?.displayParts?.some(part => part.text.includes('number (optional)')));
+  } finally { integrated.dispose(); }
+});
+check('multiple callers keep separate hover alternatives and advisory shapes', () => {
+  const source = typedPart('<p hson:part data:record="%{incoming}" "^{record.title|}"/>')
+    .replace('const map=', 'const Other=Hson.schema`<type "data" content <title "number">>`; const other:HsonData<typeof Other>=Hson.data`<title 3>`; const map=')
+    .replace('<hson-part at="components/card" incoming:data="${input}"/>', '<main <hson-part at="components/card" incoming:data="${input}"/> <hson-part at="components/card" incoming:data="${other}"/>/>');
+  const result = complete(source), text = hoverText(result.program, result.text, '^{record.title}')!;
+  assert.match(text, /2 direct invocations/); assert.match(text, /string \(required\); validated/); assert.match(text, /number \(required\); validated/);
+  assert.equal(text.split('\n').filter(line => /app.ts:/.test(line)).length, 2);
+  const unproven = complete(typedPart('<p hson:part data:record="%{incoming}" "^{record.title|}"/>', typedShape, '<>'));
+  assert.match(hoverText(unproven.program, unproven.text, '^{record.title}')!, /advisory/);
+});
+function integratedTypedDetails(marked: string) {
+  const result = complete(marked);
+  const isolatedHost = { ...host };
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(isolatedHost), isolatedHost, join(directory, 'tsconfig.json'));
+  try {
+    const entries = integrated.getCompletionsAtPosition(file('app.ts'), result.offset, {})?.entries ?? [];
+    const detail = integrated.getCompletionEntryDetails(file('app.ts'), result.offset, 'record.title', undefined, undefined, undefined, undefined);
+    const hover = integrated.getQuickInfoAtPosition(file('app.ts'), result.offset - 1);
+    return { result, entries, detail: detail?.displayParts?.map(part => part.text).join(''),
+      hover: hover?.displayParts?.map(part => part.text).join(''),
+      errors: integrated.getSemanticDiagnostics(file('app.ts')).filter(diagnostic => String(diagnostic.messageText).includes('cannot succeed for this invocation')) };
+  } finally { integrated.dispose(); }
+}
+function secondTypedCaller(source: string, declaration: string): string {
+  return source.replace('const map=', declaration + ' const map=')
+    .replace('<hson-part at="components/card" incoming:data="${input}"/>',
+      '<main <hson-part at="components/card" incoming:data="${input}"/> <hson-part at="components/card" incoming:data="${other}"/>/>');
+}
+check('integrated mixed-caller completion retains support absence and invocation ownership', () => {
+  const source = secondTypedCaller(typedPart('<p hson:part data:record="%{incoming}" "^{record.ti|tle}"/>', '<title "string">', '<title "hello">'),
+    'const Other=Hson.schema`<type "data" content <count "number">>`; const other:HsonData<typeof Other>=Hson.data`<count 3>`;');
+  const actual = integratedTypedDetails(source);
+  assert.ok(actual.entries.some(entry => entry.name === 'record.title'));
+  assert.equal(actual.result.entries.find(entry => entry.candidate.label === 'record.title')!.candidate.certainty, 'possible');
+  assert.match(actual.detail!, /possible source context; recognized callers only/);
+  assert.match(actual.detail!, /Partial or unknown support across recognized callers/);
+  const callers = actual.detail!.split('\n').filter(line => line.startsWith('app.ts:'));
+  assert.equal(callers.length, 2);
+  assert.match(callers[0]!, /string \(required\); validated/);
+  assert.match(callers[1]!, /absent in this Schema; validated/);
+  assert.ok(!callers[1]!.includes('string'));
+  assert.match(actual.hover!, /2 direct invocations/);
+  assert.match(actual.hover!, /string \(required\); validated/);
+  assert.match(actual.hover!, /absent in this Schema; validated/);
+  assert.equal(actual.errors.length, 1);
+  assert.equal(actual.errors[0]!.start, actual.result.text.lastIndexOf('"components/card"'));
+});
+check('integrated completion keeps single shared advisory and unknown caller evidence scoped', () => {
+  const source = typedPart('<p hson:part data:record="%{incoming}" "^{record.ti|tle}"/>', '<title "string">', '<title "hello">');
+  const single = integratedTypedDetails(source);
+  assert.match(single.detail!, /string \(required\); validated/);
+  assert.match(single.detail!, /possible source context/);
+  assert.match(single.detail!, /Member described in every recognized caller Schema/);
+  assert.equal(single.errors.length, 0);
+  for (const [declaration, expected] of [
+    ['const Other=Hson.schema`<type "data" content <title <optional "number">>>`; const other:HsonData<typeof Other>=Hson.data`<title 3>`;', /number \(optional\); validated/],
+    ['const Other=Hson.schema`<type "data" content <title "number">>`; const other:HsonData<typeof Other>=Hson.data`<>`;', /number \(required\); advisory/],
+    ['const other=dynamic;', /unknown Schema evidence/],
+    ['const Other=Hson.schema`<type "data" content <title`; declare const other:HsonData<typeof Other>;', /unknown Schema evidence/],
+  ] as const) {
+    const actual = integratedTypedDetails(secondTypedCaller(source, declaration));
+    const callers = actual.detail!.split('\n').filter(line => line.startsWith('app.ts:'));
+    assert.equal(callers.length, 2); assert.match(callers[0]!, /string \(required\); validated/);
+    assert.match(callers[1]!, expected); assert.equal(actual.errors.length, 0);
+    if (/advisory|unknown/.test(expected.source)) assert.ok(!callers[1]!.includes('validated'));
+  }
+  const absent = integratedTypedDetails(secondTypedCaller(
+    typedPart('<p hson:part data:record="%{incoming}" "^{record.ti|}"/>', '<count "number">', '<count 1>'),
+    'const Other=Hson.schema`<type "data" content <count "number">>`; const other:HsonData<typeof Other>=Hson.data`<count 3>`;'));
+  assert.ok(!absent.entries.some(entry => entry.name === 'record.title'));
+  assert.equal(absent.detail, undefined);
+});
+check('typed iterator hover follows lexical identity and receiving origin through shadowing', () => {
+  const shape = '<title "string" children <array <content <title "number">>>>';
+  const value = '<title "outer" children «<title 3>»>';
+  const result = complete(typedPart('<main hson:part data:record="%{incoming}" <b for:record="^{record.children}" "^{record.title|}"/> <i "^{record.title}"/>/>', shape, value));
+  const inner = hoverText(result.program, result.text, '^{record.title}')!;
+  assert.match(inner, /number \(required\)/);
+  const outside = part_data_hover(collect_part_source_facts(ts, result.program), file('app.ts'), result.text.lastIndexOf('^{record.title}') + 4)!;
+  assert.match(outside.text, /string \(required\)/);
+  const completion = complete(typedPart('<main hson:part data:record="%{incoming}" <b for:record="^{record.children}" "^{record.|}"/>/>', shape, value));
+  assert.deepEqual(completion.labels, ['record.title']); assert.match(completion.entries[0]!.candidate.detail, /number/);
+});
+check('union-dependent suggestions retain alternatives and TSX hover uses authored coordinates', () => {
+  const shape = '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> count "number">>]>>';
+  const source = typedPart('<p hson:part data:record="%{incoming}" "^{record.choice.|}"/>', shape, '<choice <kind "a" title "ok">>');
+  const result = complete(source);
+  assert.deepEqual(result.labels, ['record.choice.count', 'record.choice.kind', 'record.choice.title']);
+  assert.match(result.entries.find(entry => entry.candidate.label === 'record.choice.title')!.candidate.detail, /string \(variant-dependent\); validated/);
+  const text = source.replace('^{record.choice.|}', String.raw`^{record.choice[\"title\"]}`);
+  edit('typed-member.tsx', text);
+  const program = service.getProgram()!, offset = text.indexOf('title\\') + 2;
+  const hover = part_data_hover(collect_part_source_facts(ts, program), file('typed-member.tsx'), offset)!;
+  assert.equal(text.slice(hover.location.start, hover.location.end), String.raw`^{record.choice[\"title\"]}`);
+  assert.match(hover.text, /string \(variant-dependent\); validated/);
+  edit('typed-member.tsx', 'export {};');
+});
+check('typed hover and completion withdraw and refresh upstream-only unsaved Schema edits', () => {
+  const schema = (name: string) => 'import {Hson} from "hson-live"; export const S=Hson.schema`<type "data" content <' + name + ' "string">>`;';
+  edit('typed-schema.ts', schema('title'));
+  const source = typedPart('<p hson:part data:record="%{incoming}" "^{record.title|}"/>', '<title "string">', '<title "hello">')
+    .replace('const S=Hson.schema`<type "data" content <title "string">>`;', 'import {S} from "./typed-schema.js";');
+  const result = complete(source), originalText = result.text;
+  assert.match(hoverText(result.program, originalText, '^{record.title}')!, /validated/);
+  edit('typed-schema.ts', 'export const S =');
+  const broken = service.getProgram()!;
+  assert.equal(hoverText(broken, originalText, '^{record.title}'), undefined);
+  assert.ok(!cache.complete(file('app.ts'), originalText, 0, result.offset - 4, broken).some(entry => entry.candidate.label === 'record.title' && entry.candidate.detail.includes('Schema')));
+  edit('typed-schema.ts', schema('name'));
+  const changed = service.getProgram()!;
+  assert.ok(cache.complete(file('app.ts'), originalText, 0, result.offset - 5, changed).some(entry => entry.candidate.label === 'record.name' && entry.candidate.detail.includes('advisory')));
+  edit('typed-schema.ts', schema('title'));
+  assert.match(hoverText(service.getProgram()!, originalText, '^{record.title}')!, /validated/);
+  assert.equal(files.get(file('app.ts')), originalText);
 });
 service.dispose();
 events.terminal("pass");

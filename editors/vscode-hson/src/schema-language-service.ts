@@ -4,6 +4,7 @@ import { filter_verified_schema_assignment_diagnostics, verified_schema_assignme
 import { HsonEditorCompletionCache } from "./editor-completion.js";
 import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
 import { part_definition_target } from "../../../src/internal/editor-introspection/part-definition-target.js";
+import { part_data_hover } from "../../../src/internal/editor-introspection/part-data-evidence.js";
 
 /** Only this boundary translates positions. Neither service ever writes authored source. */
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string, registerEvidence?: (file: string, text: string | undefined) => void): ts.LanguageService {
@@ -91,6 +92,10 @@ export function create_schema_language_service(typescript: typeof ts, service: t
   proxy.getSuggestionDiagnostics = file => { view.refresh(); return diagnostics(service.getSuggestionDiagnostics(file)); };
   proxy.getCompilerOptionsDiagnostics = () => { view.refresh(); return diagnostics(service.getCompilerOptionsDiagnostics()); };
   proxy.getQuickInfoAtPosition = (file, offset, maximumLength) => {
+    const program = view.authoredService.getProgram();
+    const hover = program === undefined ? undefined : part_data_hover(collect_part_source_facts(typescript, program), file, offset);
+    if (hover !== undefined) return { kind: typescript.ScriptElementKind.variableElement, kindModifiers: "",
+      textSpan: { start: hover.location.start, length: hover.location.end - hover.location.start }, displayParts: [{ text: hover.text, kind: "text" }] };
     const result = service.getQuickInfoAtPosition(file, position(file, offset), maximumLength);
     const textSpan = result === undefined ? undefined : span(file, result.textSpan);
     return result === undefined || textSpan === undefined ? undefined : { ...result, textSpan,

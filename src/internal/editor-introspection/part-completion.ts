@@ -5,9 +5,10 @@ import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
 import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_matches, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
-import { part_source_coordinates, part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
-import { project_ordered_data, project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
-import type { CompiledHsonSchema } from "../hson-schema/compiler.js";
+import { part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
+import { OBJECT_VALUE, project_ordered_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
+import type { PartDataSchemaEvidence } from "../hson-schema/part-source.js";
+import { part_data_contexts, part_data_projection, part_data_context_description } from "./part-data-evidence.js";
 import type { HsonEditorCandidate } from "./query.js";
 
 /** Advisory projections of compiler evidence; never infer an owner from a name. */
@@ -35,6 +36,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
       detail: "Include this structure when any authored value placeholder is present", certainty: "certain", sortText: "0000" });
   }
   const suggestions = new Map<string, { contexts: Set<number>; certain: boolean }>();
+  const schemaDetails = new Map<string, string>();
   const add = (name: string, context: number, certain: boolean): void => {
     const previous = suggestions.get(name);
     if (previous === undefined) suggestions.set(name, { contexts: new Set([context]), certain });
@@ -76,25 +78,26 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         if ((!checkpoint.parameter.structural || declaration.kind === "doc") && (!iterationSource || declaration.kind === "data")
           && (supply === undefined || declaration.kind === supply)) add(declaration.name, 0, document.parameterCompleteness === "complete");
       }
-      if (!checkpoint.parameter.structural && supply !== "doc") for (const batch of facts.batches) for (const library of batch.libraries) for (const member of library.members) {
-        if (!member.documents.includes(document)) continue;
-        for (const source of facts.documents) {
-          // Literal coordinates establish a possible invocation even when its
-          // Data slot is dynamic. Suggestions never upgrade receiver certainty.
-          if (!source.receivers.some(receiver => receiver.batch === batch.call && receiver.library?.family === "document")) continue;
-          for (const connector of source.connectors) {
-            const coordinates = part_source_coordinates(connector);
-            if (coordinates?.library !== library.name || coordinates?.member !== member.name) continue;
-            for (const declaration of visible.filter(declaration => declaration.kind === "data")) {
-              const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
-              if (origin === undefined) continue;
-              const argument = connector.attributes.find(attr => attr.name === `${origin.incoming}:data`);
-              if (argument?.dataSchema !== undefined) for (const path of schema_paths(argument.dataSchema, origin.path, declaration.name, prefix)) add(path, 0, false);
-              if (argument?.value === undefined) continue;
-              try { for (const path of data_paths(project_ordered_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
-              catch { /* Invalid or dynamic inputs provide no shape evidence. */ }
+      if (!checkpoint.parameter.structural && supply !== "doc") for (const declaration of visible.filter(declaration => declaration.kind === "data")) {
+        const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
+        if (origin === undefined) continue;
+        const contexts = part_data_contexts(facts, document, origin.incoming);
+        for (const context of contexts) {
+          const argument = context.argument;
+          if (context.evidence !== undefined) for (const { path, selectors } of schema_paths(context.evidence, origin.path, declaration.name, prefix)) {
+            add(path, 0, false);
+            if (!schemaDetails.has(path)) {
+              const shared = contexts.every(caller => {
+                const alternatives = caller.evidence === undefined ? [] : part_data_projection(caller.evidence, selectors).alternatives;
+                return alternatives.length > 0 && alternatives.every(alternative => alternative.kind === "supported");
+              });
+              schemaDetails.set(path, (shared ? "Member described in every recognized caller Schema" : "Partial or unknown support across recognized callers")
+                + ":\n" + [...new Set(contexts.map(caller => part_data_context_description(caller, selectors)))].join("\n"));
             }
           }
+          if (argument?.value === undefined) continue;
+          try { for (const path of data_paths(project_ordered_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
+          catch { /* Invalid or dynamic inputs provide no shape evidence. */ }
         }
       }
       if (!checkpoint.parameter.structural) for (const parameter of document.parameterSpellings) for (const use of parameter.uses) {
@@ -197,7 +200,8 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         if (!checkpoint.parameter?.complete) insertText += "}";
       }
       return { label, kind: checkpoint.kind === "header" ? "member" : "reference", insertText,
-        detail: `${detail}${certainty === "possible" ? " (possible source context)" : ""}`, certainty, sortText: String(index).padStart(4, "0") };
+        detail: schemaDetails.has(label) ? `Contextual Schema (possible source context; recognized callers only):\n${schemaDetails.get(label)}`
+          : `${detail}${certainty === "possible" ? " (possible source context)" : ""}`, certainty, sortText: String(index).padStart(4, "0") };
     })];
 }
 
@@ -221,21 +225,26 @@ function data_paths(values: readonly OrderedProjectedValue[], root: string): rea
 
 const member_path = (root: string, key: string | number) => root + (typeof key === "number" ? `[${key}]` : is_part_parameter_name(key) ? `.${key}` : `[${JSON.stringify(key)}]`);
 
-/** Advisory common members only; an invocation annotation is not a universal Part contract. */
-function schema_paths(schema: CompiledHsonSchema, origin: SchemaDataPath, root: string, prefix: string): readonly string[] {
+/** Suggestions retain union and presence information for each caller. */
+function schema_paths(evidence: PartDataSchemaEvidence, origin: SchemaDataPath, root: string, prefix: string): readonly { path: string; selectors: SchemaDataPath }[] {
   const reference = scan_part_reference(`^{${prefix}`, 0, true);
   const selected = reference?.name === root ? reference.path.slice(0, /[.\]]$/.test(prefix) ? undefined : -1) : [];
   const spelling = selected.reduce<string>(member_path, root);
-  const result: string[] = [], pending: { path: SchemaDataPath; spelling: string; depth: number }[] = [{ path: [...origin, ...selected], spelling, depth: 0 }];
+  const result: { path: string; selectors: SchemaDataPath }[] = [], pending: { path: SchemaDataPath; spelling: string; depth: number }[] = [{ path: [...origin, ...selected], spelling, depth: 0 }];
   while (pending.length && result.length < 512) {
     const current = pending.pop()!;
     if (current.depth >= 16) continue;
-    const nodes = project_schema_data(schema, current.path), first = nodes[0];
-    if (first?.kind !== "object" || nodes.some(node => node.kind !== "object")) continue;
-    for (const member of first.members) {
-      if (nodes.some(node => node.kind !== "object" || !node.members.some(other => other.name === member.name))) continue;
-      const spelling = member_path(current.spelling, member.name);
-      result.push(spelling); pending.push({ path: [...current.path, member.name], spelling, depth: current.depth + 1 });
+    const projection = part_data_projection(evidence, current.path);
+    if (projection.alternatives.some(alternative => alternative.kind === "budget-exhausted")) continue;
+    const names = new Set(projection.alternatives.flatMap(alternative => alternative.kind === "supported" && alternative.node.kind === "object" ? alternative.node.members.map(member => member.name) : []));
+    for (const name of names) {
+      // Preserve existing iterator suggestions: heterogeneous element/value
+      // origins offer common members, while retaining their richer type detail.
+      if (origin.some(selector => selector === null || selector === OBJECT_VALUE)
+        && projection.alternatives.some(alternative => alternative.kind !== "supported" || alternative.node.kind !== "object" || !alternative.node.members.some(member => member.name === name))) continue;
+      const spelling = member_path(current.spelling, name), path = [...current.path, name];
+      result.push({ path: spelling, selectors: path });
+      pending.push({ path, spelling, depth: current.depth + 1 });
       if (result.length === 512) break;
     }
   }

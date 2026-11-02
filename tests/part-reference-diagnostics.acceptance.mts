@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import ts from "typescript";
 import { static_part_reference_diagnostics, static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
+import { inspect_schema_data } from "../src/internal/hson-schema/data-projection.ts";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.ts";
 import { Hson } from "../src/hson-authoring.ts";
@@ -777,6 +778,124 @@ check("on-prefixed structured forwarding retains typed source facts and represen
     assert.ok(inspect(application(`<hson-part at=components/x payload:${kind}=${JSON.stringify(value)}/>`, wrong)).diagnostics
       .some(issue => issue.message.includes('same declared representation')));
   }
+});
+function schemaApplication(reference: string, shape = '<title "string">', value = '<title "ok">', receiving = '%{incoming}', supplied = true, body?: string): string {
+  return imports + 'import type {HsonData} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
+    + 'const input:HsonData<typeof S>=Hson.data`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
+    + (body ?? '<p hson:part data:record="' + receiving + '" "' + reference + '"/>')
+    + '`}}},page:{document:Hson.document`<hson-part at="components/card"' + (supplied ? ' incoming:data="${input}"' : '') + '/>`}});';
+}
+const memberErrors = (result: ReturnType<typeof inspect>) => result.diagnostics.filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID');
+check('validated direct input proves one invocation member error with exact reference and binding provenance', () => {
+  const result = inspect(schemaApplication('^{record.typo}'));
+  const errors = memberErrors(result);
+  assert.equal(errors.length, 1, JSON.stringify(result.diagnostics));
+  const error = errors[0]!;
+  assert.equal(result.text.slice(error.start, error.end), '"components/card"');
+  assert.ok(result.text.indexOf('^{record.typo}') < error.start, 'the error belongs to the caller, not the reusable definition');
+  assert.deepEqual(error.related!.slice(0, 2).map(related => result.program.getSourceFile(related.file)!.text.slice(related.start, related.end)), ['^{record.typo}', 'record']);
+  assert.match(error.message, /validated/);
+  const isolatedHost = { ...host };
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(isolatedHost), isolatedHost, join(directory, 'tsconfig.json'));
+  try {
+    const diagnostics = integrated.getSemanticDiagnostics(file('app.ts')).filter(diagnostic => String(diagnostic.messageText).includes('cannot succeed for this invocation'));
+    assert.equal(diagnostics.length, 1); assert.equal(diagnostics[0]!.category, ts.DiagnosticCategory.Error);
+    assert.equal(diagnostics[0]!.relatedInformation!.length, 3);
+    assert.equal(diagnostics[0]!.start, error.start);
+  } finally { integrated.dispose(); }
+});
+check('optional references permit missing members but never necessarily present scalar or null traversal', () => {
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.typo?}'))).length, 0);
+  for (const [shape, value, reference] of [
+    ['<title "string">', '<title "ok">', '^{record.title.child}'],
+    ['<title "string">', '<title "ok">', '^{record.title.child?}'],
+    ['<title "null">', '<title null>', '^{record.title.child?}'],
+    ['<title "string">', '<title "ok">', '^{record.title[0]?}'],
+  ]) assert.equal(memberErrors(inspect(schemaApplication(reference!, shape!, value!))).length, 1, reference);
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.title.child?}', '<title <optional "string">>', '<>'))).length, 0, 'optional ancestors do not prove a necessarily present scalar');
+});
+check('optional incoming absence propagates while explicitly supplied values retain strict member checks', () => {
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.typo}', '<title "string">', '<title "ok">', '%{incoming?}', false))).length, 0);
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.typo}', '<title "string">', '<title "ok">', '%{incoming?}', true))).length, 1);
+});
+check('two distinct caller Schemas produce an error only for the proven failing invocation', () => {
+  const source = schemaApplication('^{record.typo}')
+    .replace('const map=', 'const Other=Hson.schema`<type "data" content <typo "string">>`; const other:HsonData<typeof Other>=Hson.data`<typo "valid">`; const map=')
+    .replace('<hson-part at="components/card" incoming:data="${input}"/>', '<main <hson-part at="components/card" incoming:data="${input}"/> <hson-part at="components/card" incoming:data="${other}"/>/>');
+  const result = inspect(source), errors = memberErrors(result);
+  assert.equal(errors.length, 1); assert.equal(errors[0]!.start, result.text.indexOf('"components/card"'));
+  assert.equal(result.text.slice(errors[0]!.start, errors[0]!.end), '"components/card"');
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.typo} ^{record.otherTypo}'))).length, 1, 'one member error per failing invocation');
+});
+check('unknown inputs advisory annotations and variant-dependent members remain member-diagnostic silent', () => {
+  for (const source of [
+    schemaApplication('^{record.typo}', '<title "string">', '<>'),
+    schemaApplication('^{record.typo}').replace('const input:HsonData<typeof S>=Hson.data`<title "ok">`', 'declare const input:HsonData<typeof S>'),
+    schemaApplication('^{record.typo}').replace('HsonData<typeof S>', 'HsonData'),
+    schemaApplication('^{record.typo}').replace('Hson.data`<title "ok">`', 'Hson.data.from(dynamic)'),
+    schemaApplication('^{record.choice.title}', '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'),
+    schemaApplication('^{record.title.typo}', '<title <optional <content <caption "string">>>>', '<>'),
+  ]) assert.equal(memberErrors(inspect(source)).length, 0, source);
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.choice.typo}', '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'))).length, 1);
+});
+check('potentially empty iteration conditional structures and nested forwarding do not manufacture execution', () => {
+  const shape = '<title "string" rows <array "number">>', value = '<title "ok" rows «»>';
+  for (const body of [
+    '<ul hson:part data:record="%{incoming}" <li for:item="^{record.rows}" "^{record.typo} ^{item}"/>/>',
+    '<p hson:part part:optional data:record="%{incoming}" "^{record.typo}"/>',
+    '<main hson:part data:record="%{incoming}" <hson-part at="other" payload:data="^{record.typo}"/>/>',
+  ]) assert.equal(memberErrors(inspect(schemaApplication('', shape, value, '%{incoming}', true, body))).length, 0, body);
+});
+check('TS and TSX escaped authored references retain exact diagnostic correspondence', () => {
+  for (const extension of ['ts', 'tsx']) {
+    const text = schemaApplication(String.raw`^{record[\"typo\"]}`);
+    edit('app.ts', extension === 'ts' ? text : 'export {};');
+    if (extension === 'tsx') edit('member-app.tsx', text);
+    const program = service.getProgram()!, diagnostics = static_part_reference_diagnostics(collect_part_source_facts(ts, program))
+      .filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID');
+    assert.equal(diagnostics.length, 1, extension);
+    const error = diagnostics[0]!;
+    assert.equal(program.getSourceFile(error.file)!.text.slice(error.start, error.end), '"components/card"');
+    const reference = error.related![0]!;
+    assert.equal(program.getSourceFile(reference.file)!.text.slice(reference.start, reference.end), String.raw`^{record[\"typo\"]}`);
+    edit('member-app.tsx', 'export {};');
+  }
+  const source = schemaApplication('^{record.typo}');
+  const literal = JSON.stringify('<p hson:part data:record="%{incoming}" "^{record.typo}"/>');
+  const escaped = inspect(source.replace('Hson.document`<p hson:part data:record="%{incoming}" "^{record.typo}"/>`', literal));
+  assert.equal(memberErrors(escaped).length, 1);
+  const reference = memberErrors(escaped)[0]!.related![0]!;
+  assert.equal(escaped.text.slice(reference.start, reference.end), '^{record.typo}');
+  assert.equal(memberErrors(inspect(source.replace('^{record.typo}', '^{record.typo'))).length, 0);
+});
+check('upstream-only edits withdraw and restore validated diagnostic evidence without changing consumer text', () => {
+  const schema = (body: string) => 'import {Hson} from "hson-live";export const S=Hson.schema`<type "data" content ' + body + '>`;';
+  edit('member-schema.ts', schema('<title "string">'));
+  const source = schemaApplication('^{record.typo}').replace('const S=Hson.schema`<type "data" content <title "string">>`;', 'import {S} from "./member-schema.js";');
+  assert.equal(memberErrors(inspect(source)).length, 1);
+  const count = () => static_part_reference_diagnostics(collect_part_source_facts(ts, service.getProgram()!)).filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID').length;
+  edit('member-schema.ts', 'export const S='); assert.equal(count(), 0);
+  edit('member-schema.ts', schema('<title "string">')); assert.equal(count(), 1);
+  edit('member-schema.ts', schema('<title "string" typo <optional "string">>')); assert.equal(count(), 0);
+  edit('member-schema.ts', schema('<title "string">')); assert.equal(count(), 1);
+  assert.equal(files.get(file('app.ts')), source);
+  edit('member-schema.ts', 'export {};');
+});
+check('incomplete cross-file inputs and exhausted projection budgets cannot produce new member errors', () => {
+  const unknown = schemaApplication('^{record.typo}').replace('const input:HsonData<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./missing-input.js";');
+  assert.equal(memberErrors(inspect(unknown)).length, 0);
+  edit('member-input.ts', 'import {Hson,type HsonData} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonData<typeof S>=Hson.data`<title "ok">`;');
+  const imported = schemaApplication('^{record.typo}').replace('const input:HsonData<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./member-input.js";');
+  assert.equal(memberErrors(inspect(imported)).length, 1);
+  assert.equal(memberErrors(inspect(imported.replace('import {input}', 'import type {input}'))).length, 0, 'a type-only value alias supplies no runtime evidence');
+  let shape = '<title "string">', value = '<title "ok">';
+  for (let depth = 0; depth < 70; depth++) { shape = '<next <content ' + shape + '>>'; value = '<next ' + value + '>'; }
+  const path = [...Array<string>(70).fill('next'), 'typo'];
+  const result = inspect(schemaApplication('^{record.' + path.join('.') + '}', shape, value));
+  const evidence = result.facts.documents.flatMap(document => document.connectors.flatMap(connector => connector.attributes.flatMap(attribute => attribute.dataEvidence ?? [])))[0]!;
+  assert.equal(evidence.strength, 'validated');
+  assert.ok(inspect_schema_data(evidence.schema, path).alternatives.some(alternative => alternative.kind === 'budget-exhausted'));
+  assert.equal(memberErrors(result).length, 0);
 });
 service.dispose();
 events.terminal("pass");

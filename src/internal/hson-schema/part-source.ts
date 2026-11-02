@@ -17,7 +17,9 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { PART_DECLARATION, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
-import { annotated_data_schema_source } from "./schema-annotation.js";
+import { annotated_data_schema_provenance } from "./schema-annotation.js";
+import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
+import { immutable_source_declaration } from "./schema-identity.js";
 import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { OBJECT_VALUE, type SchemaDataPath } from "./data-projection.js";
@@ -29,6 +31,13 @@ export type PartParameterSource = Readonly<{ name: string; uses: readonly Readon
 export type PartLocalSource = Readonly<{ name: string; kind: "scalar" | "data" | "doc"; location: PartSourceLocation; incoming?: string;
   dataOrigin?: Readonly<{ incoming: string; path: SchemaDataPath }> }>;
 export type PartLexicalScopeSource = Readonly<{ location: PartSourceLocation; bindings: readonly PartLocalSource[] }>;
+export type PartDataSchemaEvidence = Readonly<{
+  schema: CompiledHsonSchema;
+  strength: "validated" | "advisory";
+  schemaLocation: PartSourceLocation;
+  annotationLocation: PartSourceLocation;
+  valueLocation: PartSourceLocation;
+}>;
 
 /** Source projection of the shared analyzer's lexical identities. */
 export function part_source_bindings_at(scopes: readonly PartLexicalScopeSource[], position: number): readonly PartLocalSource[] | undefined {
@@ -52,7 +61,8 @@ export type PartConnectorSource = Readonly<{
   headerComplete: boolean;
   attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation;
     dynamicValue?: true;
-    dataSchema?: CompiledHsonSchema }>[];
+    dataSchema?: CompiledHsonSchema;
+    dataEvidence?: PartDataSchemaEvidence }>[];
 }>;
 /** Static projection only: opaque coordinate values never establish selection. */
 export function part_source_coordinates(connector: PartConnectorSource): ReturnType<typeof part_coordinates> | undefined {
@@ -171,17 +181,33 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program);
   const schemas = new Map<string, CompiledHsonSchema | undefined>();
   const schemaDeclarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>();
-  const dataSchema = (input: ts.Expression | undefined): CompiledHsonSchema | undefined => {
+  const evidence = new Map<ts.Declaration, PartDataSchemaEvidence | undefined>();
+  const dataSchema = (input: ts.Expression | undefined): PartDataSchemaEvidence | undefined => {
     if (input === undefined || !typescript.isIdentifier(input) || !sources.eligible(input)) return undefined;
-    const declaration = sources.declaration(input);
-    if (declaration?.type === undefined) return undefined;
-    const source = annotated_data_schema_source(typescript, program, checker, declaration.type, sources.eligible, schemaDeclarations);
-    if (source === undefined) return undefined;
+    const binding = immutable_source_declaration(typescript, checker, input, sources.eligible);
+    const declaration = binding?.declaration;
+    if (!binding?.eligible || declaration?.type === undefined) return undefined;
+    if (evidence.has(declaration)) return evidence.get(declaration);
+    evidence.set(declaration, undefined);
+    const provenance = annotated_data_schema_provenance(typescript, program, checker, declaration.type, sources.eligible, schemaDeclarations);
+    if (provenance === undefined) return undefined;
+    const { source } = provenance;
     if (!schemas.has(source)) {
       const compiled = compile_hson_schema(source);
       schemas.set(source, compiled.ok ? compiled.value : undefined);
     }
-    return schemas.get(source);
+    const schema = schemas.get(source);
+    if (schema === undefined) return undefined;
+    // A type annotation supplies context only. Validation uses the existing
+    // bounded static Hson candidate admission and production Schema evaluator.
+    const candidates = declaration.initializer === undefined ? undefined : sources.candidates(declaration.initializer, "certify");
+    const validated = candidates !== undefined && candidates.length > 0 && candidates.every(candidate => "source" in candidate
+      && candidate.family === "data" && evaluate_static_schema_candidate(schema, candidate).kind === "valid");
+    const result: PartDataSchemaEvidence = { schema, strength: validated ? "validated" : "advisory",
+      schemaLocation: location(provenance.declaration), annotationLocation: location(declaration.type),
+      valueLocation: location(declaration.initializer ?? declaration) };
+    evidence.set(declaration, result);
+    return result;
   };
   const documents = new Map<ts.Expression, PartDocumentSource>();
   const relationships = new Map<PartDocumentSource, PartDocumentSource["receivers"][number][]>();
@@ -368,7 +394,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const dynamicValue: true | undefined = attr.value?.direct === true || typeof value === "string" && has_part_reference(value) ? true : undefined;
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
               ...(dynamicValue === undefined ? {} : { dynamicValue }),
-              ...(schema === undefined ? {} : { dataSchema: schema }),
+              ...(schema === undefined ? {} : { dataSchema: schema.schema, dataEvidence: schema }),
               ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && (argument === undefined || argument.kind === "scalar") ? {} : { value }) }];
           }) });
         },

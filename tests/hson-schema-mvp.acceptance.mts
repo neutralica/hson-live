@@ -3,6 +3,7 @@ import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.
 import { make_hosted_registry } from "../src/api/livemap/livemap.hosted.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
+import { inspect_schema_data, project_schema_data, schema_projection_description } from "../src/internal/hson-schema/data-projection.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -36,6 +37,23 @@ check("valid primitive and closed structure lower deterministically", () => {
   const right = compile('name "string" active "boolean" nothing "null" score "number"');
   assert.equal(left.ok, true); assert.equal(right.ok, true);
   if (left.ok && right.ok) { assert.deepEqual(left.value.graph, right.value.graph); assert.deepEqual(left.value.graph.nodes.map((node) => node.kind), ["projected-object", "projected-string", "projected-boolean", "projected-null", "projected-number"]); }
+});
+
+check('rich Data projection preserves presence alternatives invalid traversal and bounded unknown states', () => {
+  const compiled = compile('record <union [<content <title "string" note <optional "number"> tag <exact "one">>>,<content <name "string" tag <exact "two">>>]>');
+  assert.equal(compiled.ok, true); if (!compiled.ok) return;
+  const schema = compiled.value;
+  assert.deepEqual(inspect_schema_data(schema, ['record', 'title']).alternatives.map(alternative => alternative.kind), ['supported', 'absent']);
+  assert.match(schema_projection_description(inspect_schema_data(schema, ['record', 'title'])), /string \(variant-dependent\)/);
+  assert.deepEqual(project_schema_data(schema, ['record', 'title']), [], 'legacy completion projection retains its conservative behavior');
+  assert.deepEqual(inspect_schema_data(schema, ['record', 'typo']).alternatives.map(alternative => alternative.kind), ['absent', 'absent']);
+  assert.deepEqual(inspect_schema_data(schema, ['record', 'tag', 'child']).alternatives.map(alternative => alternative.kind), ['invalid-traversal', 'invalid-traversal']);
+  assert.match(schema_projection_description(inspect_schema_data(schema, ['record', 'tag'])), /"one" \| "two" \(required\)/);
+  assert.equal(inspect_schema_data(schema, ['record', 'note']).alternatives[0]!.presence, 'optional');
+  assert.ok(inspect_schema_data(schema, ['record', 'title'], 1).alternatives.some(alternative => alternative.kind === 'budget-exhausted'));
+  const unknown = compile('value "any" nothing "null"'); assert.equal(unknown.ok, true); if (!unknown.ok) return;
+  assert.equal(inspect_schema_data(unknown.value, ['value', 'child']).alternatives[0]!.kind, 'unavailable');
+  assert.equal(inspect_schema_data(unknown.value, ['nothing', 'child']).alternatives[0]!.kind, 'invalid-traversal');
 });
 check("authored any is the sole broad data atom and lowers directly", () => {
   const result = compile('value "any"');

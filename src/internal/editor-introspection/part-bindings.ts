@@ -34,6 +34,7 @@ export type PartBindingDeclaration = Readonly<{
   scope?: PartSourceLocation;
   incoming?: string;
   elementOf?: PartBindingReference;
+  elementKind?: "array" | "object";
 }>;
 export type PartBindingReference = Readonly<{
   reference: PartReference;
@@ -116,7 +117,7 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     const elementOf = binding.elementOf === undefined ? undefined : reference(binding.elementOf);
     const result: PartBindingDeclaration = { name: binding.name, kind: binding.kind, origin, location,
       scope: scopeLocation(binding.node), ...(binding.receiving === undefined ? {} : { incoming: binding.receiving.reference.name }),
-      ...(elementOf === undefined ? {} : { elementOf }) };
+      ...(elementOf === undefined ? {} : { elementOf, elementKind: iterator?.kind }) };
     declarations.set(binding, result);
     return result;
   };
