@@ -1,6 +1,21 @@
 import { part_source_coordinates, type PartSourceFacts, type PartSourceLocation } from "../hson-schema/part-source.js";
+import { part_selector_resolution } from "./part-selector-resolution.js";
 
 export type PartDefinitionTarget = Readonly<{ name: string; origin: PartSourceLocation; target: PartSourceLocation }>;
+/** Preserve lexical-root/static precedence and deduplicate only the response,
+ * leaving distinct caller associations in the shared selector result. */
+export function part_definition_targets(facts: PartSourceFacts, file: string, offset: number): readonly PartDefinitionTarget[] {
+  const existing = part_definition_target(facts, file, offset);
+  if (existing !== undefined) return [existing];
+  const result = part_selector_resolution(facts, file, offset);
+  if (result === undefined) return [];
+  const targets = new Map<string, PartDefinitionTarget>();
+  for (const context of result.contexts) for (const candidate of context.candidates) for (const member of candidate.definitions) {
+    const target = member.declaration;
+    targets.set(JSON.stringify([target.file, target.start, target.end]), { name: member.name, origin: result.location, target });
+  }
+  return [...targets.values()];
+}
 /** Source navigation only, using the same lexical identities and governed
  * receiving-inventory evidence used by completion and contract diagnostics. */
 export function part_definition_target(facts: PartSourceFacts, file: string, offset: number): PartDefinitionTarget | undefined {

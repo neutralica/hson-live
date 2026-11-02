@@ -1,4 +1,4 @@
-import { part_source_coordinates, type PartSourceFacts, type PartDocumentSource, type PartConnectorSource, type PartDataSchemaEvidence } from "../hson-schema/part-source.js";
+import { part_source_coordinates, type PartSourceFacts, type PartDocumentSource, type PartConnectorSource, type PartDataSchemaEvidence, type PartSourceBatch, type PartLibrarySource } from "../hson-schema/part-source.js";
 import { inspect_schema_data, schema_projection_description, OBJECT_VALUE, type SchemaDataPath, type SchemaDataProjection } from "../hson-schema/data-projection.js";
 import { part_argument_name } from "../part-placeholder.js";
 import type { PartBindingDeclaration } from "./part-bindings.js";
@@ -7,6 +7,8 @@ export type PartDataContext = Readonly<{
   source: PartDocumentSource;
   connector: PartConnectorSource;
   definition: PartDocumentSource;
+  batch: PartSourceBatch;
+  library: PartLibrarySource;
   incoming: string;
   /** The existing exact lexical identity, when source correspondence permits it. */
   receiving?: PartBindingDeclaration;
@@ -26,11 +28,11 @@ function context_index(facts: PartSourceFacts): ContextIndex {
   const definitions = new Set(facts.batches.flatMap(batch => batch.libraries.flatMap(library => library.family === "parts" ? library.members.flatMap(member => member.documents) : [])));
   for (const batch of facts.batches) {
     if (!batch.eligible) continue;
-    const selected = new Map<string, { definition: PartDocumentSource; certain: boolean }[]>();
+    const selected = new Map<string, { definition: PartDocumentSource; library: PartLibrarySource; certain: boolean }[]>();
     for (const library of batch.libraries) if (library.family === "parts") for (const member of library.members) {
       const key = JSON.stringify([library.name, member.name]);
       const entries = selected.get(key) ?? [];
-      for (const definition of member.documents) entries.push({ definition, certain: library.certainty === "certain"
+      for (const definition of member.documents) entries.push({ definition, library, certain: library.certainty === "certain"
         && library.memberCompleteness === "complete" && member.certainty === "certain" && member.admission === "qualified"
         && member.documents.length === 1 && definition.parameterCompleteness === "complete" });
       selected.set(key, entries);
@@ -48,7 +50,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
         const coordinates = part_source_coordinates(connector);
         if (coordinates === undefined || coordinates.issue !== undefined) continue;
         const entries = selected.get(JSON.stringify([coordinates.library, coordinates.member])) ?? [];
-        for (const { definition, certain } of entries) {
+        for (const { definition, library, certain } of entries) {
           const arguments_ = connector.attributes.flatMap(attribute => {
             const argument = part_argument_name(attribute.name);
             return argument === undefined ? [] : [{ attribute, argument }];
@@ -60,7 +62,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
             && [...contract.requiredness].every(([name, requiredness]) => requiredness !== "required" || arguments_.some(({ argument }) => argument.name === name));
           for (const declaration of definition.receivingDeclarations.filter(declaration => declaration.kind === "data")) {
             const argument = connector.attributes.find(attribute => attribute.name === `${declaration.incoming}:data`);
-            const context: PartDataContext = { source, connector, definition, incoming: declaration.incoming,
+            const context: PartDataContext = { source, connector, definition, batch, library, incoming: declaration.incoming,
               receiving: definition.bindingSources?.declarations.find(binding => binding.origin === "receiving" && binding.name === declaration.name && binding.incoming === declaration.incoming),
               argument, evidence: argument?.dataEvidence,
               executionCertain: reached && certain && entries.length === 1 && interfaceValid && connector.headerComplete

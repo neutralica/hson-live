@@ -8,6 +8,10 @@ import { collect_part_source_facts } from "../src/internal/hson-schema/part-sour
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
 import { hson_grammar_checkpoint } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { part_data_hover } from "../src/internal/editor-introspection/part-data-evidence.ts";
+import { part_source_coordinates } from "../src/internal/hson-schema/part-source.ts";
+import { part_definition_targets } from "../src/internal/editor-introspection/part-definition-target.ts";
+import { PART_SELECTOR_CANDIDATE_CAP, part_selector_resolution, part_selector_hover } from "../src/internal/editor-introspection/part-selector-resolution.ts";
+import { static_part_reference_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-completion", title: "Contextual authored Part completion", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "editor", "provenance"]) });
@@ -891,5 +895,220 @@ check('typed hover and completion withdraw and refresh upstream-only unsaved Sch
   assert.match(hoverText(service.getProgram()!, originalText, '^{record.title}')!, /validated/);
   assert.equal(files.get(file('app.ts')), originalText);
 });
+// Pass B: a small current-syntax dispatcher; no runtime composition or Deck dependency.
+const selectorImports = 'import {Hson,hsonLiveMap as maps,type HsonData} from "hson-live";\n';
+const leaf = '{kind:"document",document:Hson.document`<p hson:part/>`}';
+const destinations = ['heading', 'quote', 'image', 'code'].map(name => name + ':' + leaf).join(',');
+const invocation = '<hson-part at="components/dispatch" incoming:data="${input}"/>';
+function selectorFixture(node = '<exact "heading">', value = '<kind "heading">', attributes = 'at="^{block.kind}"', shape = '<kind ' + node + '>'): string {
+  return selectorImports + 'const S=Hson.schema`<type "data" content ' + shape + '>`;\n'
+    + 'const input:HsonData<typeof S>=Hson.data`' + value + '`;\n'
+    + 'const dispatch=Hson.document`<section hson:part data:block="%{incoming}" <hson-part ' + attributes + ' block:data="^{block}"/>/>`;\n'
+    + 'const map=maps.fromLibraries({components:{parts:{dispatch:{kind:"document",document:dispatch},' + destinations + '}},page:{document:Hson.document`' + invocation + '`}});';
+}
+const selectorHost = { ...host };
+const selectorService = create_schema_language_service(ts, ts.createLanguageService(selectorHost), selectorHost, join(directory, 'tsconfig.json'));
+function select(source: string, spelling = 'block.kind', name = 'app.ts') {
+  if (files.get(file(name)) !== source) edit(name, source);
+  const offset = source.indexOf(spelling, source.indexOf('const dispatch=')) + spelling.length - 1;
+  assert.ok(offset >= spelling.length, spelling);
+  const program = service.getProgram()!, facts = collect_part_source_facts(ts, program);
+  const result = part_selector_resolution(facts, file(name), offset);
+  const definitions = selectorService.getDefinitionAtPosition(file(name), offset) ?? [];
+  const bound = selectorService.getDefinitionAndBoundSpan(file(name), offset);
+  assert.deepEqual(bound?.definitions ?? [], definitions);
+  const hover = selectorService.getQuickInfoAtPosition(file(name), offset);
+  const text = ts.displayPartsToString(hover?.displayParts);
+  if (result !== undefined) {
+    assert.equal(text, part_selector_hover(result));
+    assert.equal(part_selector_resolution(facts, file(name), offset), result, 'hover/navigation reuse the Program-owned result');
+    assert.equal(source.slice(hover!.textSpan.start, hover!.textSpan.start + hover!.textSpan.length), source.slice(result.location.start, result.location.end));
+  }
+  for (const definition of definitions) {
+    const target = files.get(definition.fileName)!;
+    assert.ok(target.slice(definition.textSpan.start, definition.textSpan.start + definition.textSpan.length).startsWith(definition.name + ':'), definition.name);
+  }
+  return { source, offset, program, facts, result, definitions, bound, text, names: definitions.map(definition => definition.name) };
+}
+check('finite selectors navigate exact singleton and four-way union definitions with lexical/static precedence', () => {
+  for (const node of ['<exact "heading">', '<union [<exact "heading">,<exact "quote">,<exact "image">,<exact "code">]>']) {
+    const test = select(selectorFixture(node));
+    assert.deepEqual(test.names, node.startsWith('<exact') ? ['heading'] : ['heading', 'quote', 'image', 'code']);
+    assert.match(test.text, /validated/); assert.match(test.text, /no guaranteed runtime destination/);
+    assert.match(test.text, /known Schema candidate.*in this context/);
+    const connector = test.facts.documents.find(document => document.receivingDeclarations.length)!.connectors[0]!;
+    assert.equal(part_source_coordinates(connector), undefined, 'a dynamic selector never becomes a static coordinate');
+    const rootOffset = test.source.indexOf('block.kind');
+    const root = selectorService.getDefinitionAtPosition(file('app.ts'), rootOffset)![0]!;
+    assert.equal(test.source.slice(root.textSpan.start, root.textSpan.start + root.textSpan.length), 'block');
+    assert.deepEqual(static_part_reference_diagnostics(test.facts), [], 'dynamic candidates introduce no argument checking or diagnostics');
+  }
+  const staticSource = selectorFixture().replace('${input}', '<kind \\"heading\\">');
+  edit('app.ts', staticSource);
+  assert.equal(selectorService.getDefinitionAtPosition(file('app.ts'), staticSource.indexOf('components/dispatch') + 14)![0]!.name, 'dispatch');
+});
+check('runtime coordinate forms qualify inherited, explicit, prefix and whole-qualified candidates', () => {
+  for (const [attributes, value] of [
+    ['at="^{block.kind}"', 'heading'], ['lib="components" at="^{block.kind}"', 'heading'],
+    ['at="components/^{block.kind}"', 'heading'], ['at="^{block.kind}"', 'components/heading'],
+  ]) assert.deepEqual(select(selectorFixture('<exact ' + JSON.stringify(value) + '>', '<kind ' + JSON.stringify(value) + '>', attributes)).names, ['heading']);
+  const rejected: readonly [string, string, RegExp][] = [
+    ['lib="components" at="^{block.kind}"', 'components/heading', /cannot combine lib/],
+    ['at="components/^{block.kind}"', 'other/heading', /exactly one/],
+  ];
+  for (const [attributes, value, issue] of rejected) {
+    const test = select(selectorFixture('<exact ' + JSON.stringify(value) + '>', '<kind ' + JSON.stringify(value) + '>', attributes));
+    assert.deepEqual(test.names, []); assert.match(test.text, issue);
+  }
+  const test = select(selectorFixture());
+  const caller = test.result!.contexts[0]!.caller;
+  const noEnclosing = { ...caller, library: { ...caller.library, name: undefined } };
+  // Missing enclosing selection is represented in source facts, never inferred from a global union.
+  const facts = { ...test.facts, batches: test.facts.batches.map(batch => ({ ...batch, libraries: batch.libraries.map(library => library === caller.library ? noEnclosing.library : library) })) };
+  assert.deepEqual(part_definition_targets(facts, file('app.ts'), test.offset), []);
+});
+check('disjoint caller values remain separate groups, while identical definition locations deduplicate', () => {
+  const source = selectorFixture().replace('const map=', 'const T=Hson.schema`<type "data" content <kind <exact "quote">>>`; const other:HsonData<typeof T>=Hson.data`<kind "quote">`; const map=')
+    .replace(invocation, '<main ' + invocation + ' ' + invocation.replace('${input}', '${other}') + ' ' + invocation + '/>');
+  const test = select(source);
+  assert.deepEqual(test.names, ['heading', 'quote']);
+  assert.deepEqual(test.result!.contexts.map(context => context.candidates.map(candidate => candidate.value)), [['heading'], ['quote'], ['heading']]);
+  assert.match(test.text, /3 recognized direct caller contexts/);
+  assert.equal(test.text.split('\n').filter(line => line.startsWith('Caller ')).length, 3);
+});
+check('same source and connector admitted twice retain distinct batch and enclosing Library identities', () => {
+  const common = selectorFixture().split('const map=')[0] + 'const page=Hson.document`' + invocation + '`;\n';
+  const batch = (library: string, name: string, destination: string) => 'const ' + name + '=maps.fromLibraries({' + library + ':{parts:{dispatch:{kind:"document",document:dispatch},' + destination + ':' + leaf + '}},page:{document:page}});\n';
+  for (const secondLibrary of ['components', 'other']) {
+    const source = common + batch('components', 'first', 'heading')
+      + (secondLibrary === 'other' ? 'const otherPage=Hson.document`' + invocation.replace('components/', 'other/') + '`;\n' : '')
+      + batch(secondLibrary, 'second', 'quote').replace(secondLibrary === 'other' ? 'document:page' : 'UNUSED', 'document:otherPage');
+    const test = select(source), contexts = test.result!.contexts;
+    assert.equal(contexts.length, 2); assert.notEqual(contexts[0]!.caller.batch, contexts[1]!.caller.batch);
+    assert.equal(contexts[0]!.caller.definition, contexts[1]!.caller.definition);
+    assert.equal(contexts[0]!.caller.library.name, 'components'); assert.equal(contexts[1]!.caller.library.name, secondLibrary);
+    assert.deepEqual(contexts.map(context => context.candidates.map(candidate => [candidate.coordinates.library, candidate.source])), [[['components', 'qualified']], [[secondLibrary, 'missing']]]);
+    assert.deepEqual(test.names, ['heading'], 'a Library in another batch cannot supply the missing definition');
+  }
+});
+check('Schema strength and unknown/open/optional/variant alternatives remain informational', () => {
+  const advisory = select(selectorFixture(undefined, '<>'));
+  assert.deepEqual(advisory.names, ['heading']); assert.match(advisory.text, /advisory/); assert.match(advisory.text, /runtime value is not validated/);
+  const unknown = select(selectorFixture().replace('incoming:data="${input}"', 'incoming:data="${dynamic}"').replace('const S=', 'declare const dynamic:any; const S='));
+  assert.deepEqual(unknown.names, []); assert.match(unknown.text, /unknown.*Schema evidence/);
+  const alternatives: readonly [string, RegExp, readonly string[]][] = [
+    ['"string"', /open string alternatives/, []],
+    ['<optional <exact "heading">>', /optional path/, ['heading']],
+  ];
+  for (const [node, match, names] of alternatives) {
+    const test = select(selectorFixture(node)); assert.deepEqual(test.names, names); assert.match(test.text, match); assert.match(test.text, /incomplete.*not exhaustive/);
+  }
+  const mixed = select(selectorFixture(undefined, '<choice <type "finite" kind "heading">>', 'at="^{block.choice.kind}"',
+    '<choice <union [<content <type <exact "finite"> kind <exact "heading">>>,<content <type <exact "open"> kind "string">>]>>'), 'block.choice.kind');
+  assert.deepEqual(mixed.names, ['heading']); assert.match(mixed.text, /open string alternatives/); assert.match(mixed.text, /not exhaustive/);
+  const variant = select(selectorFixture(undefined, undefined, 'at="^{block.choice.kind}"', '<choice <union [<content <type <exact "finite"> kind <exact "heading">>>,<content <type <exact "missing"> other "string">>]>>'), 'block.choice.kind');
+  assert.deepEqual(variant.names, ['heading']); assert.match(variant.text, /variant-dependent or absent/);
+});
+check('partial/open source inventories preserve qualified targets and withhold absence claims', () => {
+  const source = selectorFixture('<union [<exact "heading">,<exact "missing">]>', '<kind "heading">');
+  const complete = select(source); assert.deepEqual(complete.names, ['heading']); assert.match(complete.text, /no definition in this complete source inventory/);
+  const partial = select(source.replace('const map=', 'declare const unknownParts:any; const map=').replace('parts:{dispatch:', 'parts:{...unknownParts,dispatch:'));
+  assert.deepEqual(partial.names, ['heading']); assert.match(partial.text, /runtime existence is unknown/); assert.doesNotMatch(partial.text, /no definition in this complete/);
+  const open = select(source.replace('maps.fromLibraries(', 'maps.locus.create({}).admit('));
+  assert.deepEqual(open.names, ['heading']); assert.match(open.text, /runtime existence is unknown/);
+  const unavailable = select(source.replace('heading:' + leaf, 'heading:{kind:"document",document:unavailable}').replace('const map=', 'import {unavailable} from "./not-present.js"; const map='));
+  assert.deepEqual(unavailable.names, []); assert.match(unavailable.text, /source definition missing or unavailable/);
+});
+check('candidate cap retains sound targets and explicitly marks omitted alternatives', () => {
+  const values = ['heading', ...Array.from({length: PART_SELECTOR_CANDIDATE_CAP + 3}, (_, index) => 'candidate' + index)];
+  const test = select(selectorFixture('<union [' + values.map(value => '<exact ' + JSON.stringify(value) + '>').join(',') + ']>'));
+  assert.deepEqual(test.names, ['heading']); assert.equal(test.result!.contexts[0]!.candidates.length, PART_SELECTOR_CANDIDATE_CAP);
+  assert.match(test.text, /candidate cap \(16\) exceeded/); assert.match(test.text, /incomplete.*not exhaustive/);
+});
+check('unsupported expansions and later-only inventories remain unresolved without new diagnostics', () => {
+  for (const attributes of ['at="^{block.kind}^{block.kind}"', 'lib="^{block.kind}" at="heading"', 'at="%{incoming.kind}"']) {
+    const source = selectorFixture(undefined, undefined, attributes);
+    edit('app.ts', source);
+    const facts = collect_part_source_facts(ts, service.getProgram()!);
+    assert.deepEqual(part_definition_targets(facts, file('app.ts'), source.indexOf(attributes) + attributes.length - 3), []);
+  }
+  const later = select(selectorFixture().replace('const map=maps.fromLibraries(', 'const owner=maps.locus.create({}); const map=owner.admit(')
+    .replace(',' + destinations, '') + '\nowner.admit({components:{parts:{' + destinations + '}}});');
+  assert.deepEqual(later.names, []); assert.match(later.text, /runtime existence is unknown/);
+  const optional = select(selectorFixture().replace('block.kind}', 'block.kind?}'));
+  assert.deepEqual(optional.names, ['heading']); assert.match(optional.text, /optional reference/);
+  const invalid = select(selectorFixture('<union [<exact "heading">,<exact "bad/coordinate/extra">]>'));
+  assert.deepEqual(invalid.names, ['heading']); assert.match(invalid.text, /unresolved coordinate/);
+  assert.deepEqual(static_part_reference_diagnostics(invalid.facts), []);
+});
+check('quoted slash members, escaped source roots and TSX strings retain exact source correspondence', () => {
+  const body = '<section hson:part data:block="%{incoming}" <hson-part at=' + JSON.stringify('^{block["kind/odd"]}') + '/>/>';
+  let source = selectorFixture(undefined, "<'kind/odd' \"heading\">", undefined, "<'kind/odd' <exact \"heading\">>")
+    .replace(/Hson\.document`<section[^`]*`/, JSON.stringify(body));
+  source = source.replace('^{block', String.raw`^{\u0062lock`);
+  const test = select(source, 'kind/odd', 'selector.tsx');
+  assert.deepEqual(test.names, ['heading']);
+  const use = test.facts.documents.find(document => document.receivingDeclarations.length && document.location.file === file('selector.tsx'))!.bindingSources!.references.find(use => use.reference.namespace === 'local')!;
+  assert.ok(source.slice(use.root.start, use.root.end).includes('u0062lock'));
+  const root = selectorService.getDefinitionAtPosition(file('selector.tsx'), use.root.start)![0]!;
+  assert.equal(source.slice(root.textSpan.start, root.textSpan.start + root.textSpan.length), 'block');
+  edit('selector.tsx', 'export {};');
+});
+check('iterator-origin identity projects array members before finite selection', () => {
+  const source = selectorFixture(undefined, '<rows [<kind "heading">]>', undefined, '<rows <array <content <kind <exact "heading">>>>>')
+    .replace('data:block=', 'data:blocks=').replace('<hson-part at="^{block.kind}"', '<hson-part for:block="^{blocks.rows}" at="^{block.kind}"');
+  const test = select(source); assert.deepEqual(test.names, ['heading']);
+  const root = selectorService.getDefinitionAtPosition(file('app.ts'), source.indexOf('block.kind'))![0]!;
+  assert.equal(root.textSpan.start, source.indexOf('for:block') + 4);
+});
+check('unsaved upstream Schema and Part edits withdraw and restore exact destinations without consumer edits', () => {
+  const schema = (value: string) => selectorImports + 'export const S=Hson.schema`<type "data" content <kind <exact "' + value + '">>>`;';
+  const parts = (name: string) => selectorImports + 'export const parts={' + name + ':' + leaf + '} as const;';
+  edit('selector-schema.ts', schema('heading')); edit('selector-parts.ts', parts('heading'));
+  const source = selectorFixture().replace('const S=Hson.schema`<type "data" content <kind <exact "heading">>>`;', 'import {S} from "./selector-schema.js"; import {parts as upstream} from "./selector-parts.js";')
+    .replace('components:{parts:{dispatch:{kind:"document",document:dispatch},' + destinations + '}}', 'dispatchers:{parts:{dispatch:{kind:"document",document:dispatch}}},components:{parts:upstream}')
+    .replace('at="components/dispatch"', 'at="dispatchers/dispatch"').replace('at="^{block.kind}"', 'lib="components" at="^{block.kind}"');
+  const first = select(source); assert.deepEqual(first.names, ['heading']);
+  const consumerVersion = versions.get(file('app.ts'));
+  assert.equal(first.definitions[0]!.fileName, file('selector-parts.ts'));
+  edit('selector-schema.ts', 'export const S='); assert.deepEqual(select(source).names, []);
+  edit('selector-schema.ts', schema('quote')); assert.deepEqual(select(source).names, []);
+  edit('selector-parts.ts', parts('quote')); const changed = select(source); assert.deepEqual(changed.names, ['quote']); assert.match(changed.text, /advisory/);
+  edit('selector-parts.ts', 'export const parts='); assert.deepEqual(select(source).names, []);
+  edit('selector-parts.ts', '\n\n' + parts('heading')); edit('selector-schema.ts', schema('heading'));
+  const restored = select(source); assert.deepEqual(restored.names, ['heading']); assert.match(restored.text, /validated/);
+  assert.ok(restored.definitions[0]!.textSpan.start > first.definitions[0]!.textSpan.start);
+  assert.equal(files.get(file('app.ts')), source);
+  assert.equal(versions.get(file('app.ts')), consumerVersion, 'upstream-only invalidation keeps the consumer version unchanged');
+  assert.notEqual(restored.program, first.program);
+});
+check('representative cold and warm navigation measures single/multiple callers and upstream invalidation', () => {
+  const measurements = [];
+  for (const callers of [1, 2]) {
+    const node = '<union [<exact "heading">,<exact "quote">,<exact "image">,<exact "code">]>';
+    const schema = selectorImports + 'export const S=Hson.schema`<type "data" content <kind ' + node + '>>`;';
+    edit('selector-perf-schema.ts', schema);
+    const source = selectorFixture(node).replace(/const S=Hson\.schema`[^`]*`;/, 'import {S} from "./selector-perf-schema.js";')
+      .replace(invocation, callers === 1 ? invocation : '<main ' + invocation + ' ' + invocation + '/>');
+    edit('app.ts', source);
+    const benchHost = { ...host, getScriptFileNames: () => [file('app.ts'), file('selector-perf-schema.ts')] };
+    const bench = create_schema_language_service(ts, ts.createLanguageService(benchHost), benchHost, join(directory, 'tsconfig.json'));
+    const offset = source.indexOf('block.kind') + 7;
+    try {
+      const begin = performance.now(); assert.equal(bench.getDefinitionAtPosition(file('app.ts'), offset)?.length, 4);
+      const coldMs = performance.now() - begin, warm: number[] = [];
+      for (let index = 0; index < 100; index++) {
+        const start = performance.now(); assert.equal(bench.getDefinitionAtPosition(file('app.ts'), offset)?.length, 4); warm.push(performance.now() - start);
+      }
+      edit('selector-perf-schema.ts', schema.replace(node, '<exact "quote">'));
+      const start = performance.now(); assert.deepEqual(bench.getDefinitionAtPosition(file('app.ts'), offset)?.map(definition => definition.name), ['quote']);
+      const invalidationMs = performance.now() - start;
+      warm.sort((left, right) => left - right);
+      measurements.push({ callers, candidatesPerCaller: 4, coldMs, warmMedianMs: warm[50], warmP95Ms: warm[95], upstreamSchemaInvalidationMs: invalidationMs });
+    } finally { bench.dispose(); }
+  }
+  console.log(JSON.stringify({ finiteSelectorNavigation: measurements, warmSamples: 100, scope: 'small in-memory fixture; cold includes language-service Program creation' }));
+});
+selectorService.dispose();
 service.dispose();
 events.terminal("pass");

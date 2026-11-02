@@ -3,8 +3,9 @@ import { install_live_schema_view } from "./schema-editor-view.js";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges } from "./schema-editor-proof.js";
 import { HsonEditorCompletionCache } from "./editor-completion.js";
 import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
-import { part_definition_target } from "../../../src/internal/editor-introspection/part-definition-target.js";
+import { part_definition_targets } from "../../../src/internal/editor-introspection/part-definition-target.js";
 import { part_data_hover } from "../../../src/internal/editor-introspection/part-data-evidence.js";
+import { part_selector_resolution, part_selector_hover } from "../../../src/internal/editor-introspection/part-selector-resolution.js";
 
 /** Only this boundary translates positions. Neither service ever writes authored source. */
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string, registerEvidence?: (file: string, text: string | undefined) => void): ts.LanguageService {
@@ -12,11 +13,12 @@ export function create_schema_language_service(typescript: typeof ts, service: t
   const completion = new HsonEditorCompletionCache(typescript);
   const hsonDefinition = (file: string, offset: number): ts.DefinitionInfoAndBoundSpan | undefined => {
     const program = view.authoredService.getProgram();
-    const target = program === undefined ? undefined : part_definition_target(collect_part_source_facts(typescript, program), file, offset);
-    return target === undefined ? undefined : { textSpan: { start: target.origin.start, length: target.origin.end - target.origin.start }, definitions: [{
+    const targets = program === undefined ? [] : part_definition_targets(collect_part_source_facts(typescript, program), file, offset);
+    const origin = targets[0]?.origin;
+    return origin === undefined ? undefined : { textSpan: { start: origin.start, length: origin.end - origin.start }, definitions: targets.map(target => ({
       fileName: target.target.file, textSpan: { start: target.target.start, length: target.target.end - target.target.start },
       kind: typescript.ScriptElementKind.variableElement, name: target.name, containerKind: typescript.ScriptElementKind.unknown, containerName: "",
-    }] };
+    })) };
   };
   const hsonCompletions = (file: string, offset: number) => {
     const program = view.authoredService.getProgram();
@@ -93,7 +95,10 @@ export function create_schema_language_service(typescript: typeof ts, service: t
   proxy.getCompilerOptionsDiagnostics = () => { view.refresh(); return diagnostics(service.getCompilerOptionsDiagnostics()); };
   proxy.getQuickInfoAtPosition = (file, offset, maximumLength) => {
     const program = view.authoredService.getProgram();
-    const hover = program === undefined ? undefined : part_data_hover(collect_part_source_facts(typescript, program), file, offset);
+    const facts = program === undefined ? undefined : collect_part_source_facts(typescript, program);
+    const selector = facts === undefined ? undefined : part_selector_resolution(facts, file, offset);
+    const hover = selector === undefined ? facts === undefined ? undefined : part_data_hover(facts, file, offset)
+      : { location: selector.location, text: part_selector_hover(selector) };
     if (hover !== undefined) return { kind: typescript.ScriptElementKind.variableElement, kindModifiers: "",
       textSpan: { start: hover.location.start, length: hover.location.end - hover.location.start }, displayParts: [{ text: hover.text, kind: "text" }] };
     const result = service.getQuickInfoAtPosition(file, position(file, offset), maximumLength);

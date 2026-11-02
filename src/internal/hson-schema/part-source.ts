@@ -61,6 +61,8 @@ export type PartConnectorSource = Readonly<{
   headerComplete: boolean;
   attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation;
     dynamicValue?: true;
+    /** Decoded authored coordinates, never an already resolved static value. */
+    referencedValue?: Readonly<{ text: string; references: readonly PartReference[] }>;
     dataSchema?: CompiledHsonSchema;
     dataEvidence?: PartDataSchemaEvidence }>[];
 }>;
@@ -392,8 +394,11 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               ? producer.template.templateSpans[directSlots[0]!.substitution]?.expression : undefined;
             const schema = dataSchema(expression);
             const dynamicValue: true | undefined = attr.value?.direct === true || typeof value === "string" && has_part_reference(value) ? true : undefined;
+            const references = attr.value?.direct !== true && typeof value === "string" && (attr.name === "at" || attr.name === "lib")
+              && has_part_reference(value) ? part_placeholder_matches(value) : undefined;
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
               ...(dynamicValue === undefined ? {} : { dynamicValue }),
+              ...(references === undefined || typeof value !== "string" ? {} : { referencedValue: { text: value, references } }),
               ...(schema === undefined ? {} : { dataSchema: schema.schema, dataEvidence: schema }),
               ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && (argument === undefined || argument.kind === "scalar") ? {} : { value }) }];
           }) });
