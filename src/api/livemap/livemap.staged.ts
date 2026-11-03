@@ -11,7 +11,7 @@ import type { JsonValue } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
-import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal } from "../../internal/interaction-storage.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal, register_disabled_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { capture_document_attrs_command, type DocumentAttrsCommand, admit_public_document_graph_operation } from "./livemap.document.mutation.js";
 import { validate_document_path } from "./livemap.document.path.js";
 import { must_json_value, must_live_path } from "./livemap.guard.js";
@@ -283,6 +283,8 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
       interactionValue = value;
       writes.push(Object.freeze({ target: aggregate.systemTarget(interactionSystem, ["descriptors"]), kind: "replace", value }));
     });
+  } else {
+    register_disabled_interaction_draft_internal(writer, assert_open);
   }
   return Object.freeze({
     writer: writer as unknown as LiveMapStagedWriter<TMap, void>,

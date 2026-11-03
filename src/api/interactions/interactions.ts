@@ -21,7 +21,7 @@ import {
   hson_data_value,
   ExactDataCarrier,
 } from "../data/hson-data.js";
-import type { LiveMap } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import type { ListenerBuilder, ListenerSub } from "../../types/listen.types.js";
 import { resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
@@ -38,6 +38,7 @@ import {
   INTERACTION_RESERVED_LIBRARY_KEY,
   INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
   interaction_draft_capability_internal,
+  interaction_storage_not_enabled_internal,
 } from "../../internal/interaction-storage.js";
 import {
   observe_livetree_realizations_internal,
@@ -103,7 +104,7 @@ export function enable_interactions(map: LiveMap): void {
   );
 }
 
-export function add_interaction(target: object, descriptor: InteractionDescriptor): void {
+export function add_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
   prepare_local_slot_for_add(target, descriptor);
   const storage = interaction_storage(target);
   const current = descriptor_array(storage.read());
@@ -136,7 +137,7 @@ function prepare_local_slot_for_add(target: object, descriptor: InteractionDescr
     hsonTransform.fromJson({ descriptors: [] }).toNode(), INTERACTION_SCHEMA);
 }
 
-export function replace_interaction(target: object, descriptor: InteractionDescriptor): void {
+export function replace_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
   const storage = interaction_storage(target);
   const current = descriptor_array(storage.read());
   const index = current.findIndex((entry) => descriptor_id(entry) === descriptor.id);
@@ -146,7 +147,7 @@ export function replace_interaction(target: object, descriptor: InteractionDescr
   storage.replace(ordered_projected_array(next));
 }
 
-export function remove_interaction(target: object, descriptorId: string): void {
+export function remove_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptorId: string): void {
   if (typeof descriptorId !== "string") throw new TypeError("Canonical interaction ID must be a string.");
   const storage = interaction_storage(target);
   const current = descriptor_array(storage.read());
@@ -417,7 +418,7 @@ function interaction_storage(target: object): Storage {
   if (draft !== undefined) return Object.freeze({ read: draft.read, replace: draft.replace });
   const aggregate = internal_livemap_aggregate_authority(target);
   const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (system === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
+  if (system === undefined) interaction_storage_not_enabled_internal();
   return Object.freeze({
     read: () => {
       const root = projected_value_from_hson_node(aggregate.systemRoot(system));

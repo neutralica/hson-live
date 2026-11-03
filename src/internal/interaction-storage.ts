@@ -11,6 +11,16 @@ type InteractionDraftCapability = Readonly<{
 }>;
 
 const DRAFTS = new WeakMap<object, InteractionDraftCapability>();
+const DISABLED_DRAFTS = new WeakMap<object, () => void>();
+
+export function interaction_storage_not_enabled_internal(): never {
+  throw new Error("Canonical interaction storage is not enabled. Enable it during initial LiveMap/Locus configuration before interaction mutation: call enable_interactions(map) before the first transition, or pass interactions: [] when creating or resuming Locus.");
+}
+
+/** Remember authentic writers whose owner has no interaction storage. */
+export function register_disabled_interaction_draft_internal(draft: object, assertOpen: () => void): void {
+  DISABLED_DRAFTS.set(draft, assertOpen);
+}
 
 export function register_interaction_draft_internal(
   draft: object,
@@ -24,5 +34,10 @@ export function register_interaction_draft_internal(
 export function interaction_draft_capability_internal(
   draft: object,
 ): InteractionDraftCapability | undefined {
+  const assertOpen = DISABLED_DRAFTS.get(draft);
+  if (assertOpen !== undefined) {
+    assertOpen();
+    interaction_storage_not_enabled_internal();
+  }
   return DRAFTS.get(draft);
 }
