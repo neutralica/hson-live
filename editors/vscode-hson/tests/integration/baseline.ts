@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { nativeCompositionSupported } from "./native-composition.js";
+import { HSON_BRANDING } from "../../src/appearance-branding.generated.js";
 
 async function pause(): Promise<void> { await new Promise(resolve => setTimeout(resolve, 100)); }
 
@@ -27,18 +28,18 @@ export async function run(): Promise<void> {
   const settings = Object.assign({}, ...extension.packageJSON.contributes.configuration.map(
     (group: { properties: object }) => group.properties,
   ));
-  assert.equal(settings["hson.appearance.authoringMarkerStrength"].default, 0.7);
+  assert.equal(settings["hson.appearance.authoringMarkerStrength"].default, HSON_BRANDING.authoringOpacity);
   assert.equal(settings["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
   assert.equal(settings["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
-  const hueDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" } as const;
-  for (const key of Object.keys(hueDefaults) as (keyof typeof hueDefaults)[]) {
+  const hueDefaults = HSON_BRANDING.colors;
+  for (const [key, value] of Object.entries(hueDefaults)) {
     const colorSetting = settings[`hson.appearance.${key}`];
-    assert.equal(colorSetting.default, hueDefaults[key]); assert.equal(colorSetting.type, "string");
-    assert.ok(new RegExp(colorSetting.pattern).test("#00adf6"));
+    assert.equal(colorSetting.default, value); assert.equal(colorSetting.type, "string");
+    assert.ok(new RegExp(colorSetting.pattern).test(value));
   }
   assert.equal(settings["hson.appearance.orange"], undefined);
-  assert.equal(settings["hson.appearance.colorLibraryMarker"].default, true);
-  assert.equal(settings["hson.appearance.librarySeparatorColor"].default, "#7247d4");
+  assert.equal(settings["hson.appearance.colorLibraryMarker"].default, HSON_BRANDING.colorLibraryMarker);
+  assert.equal(settings["hson.appearance.librarySeparatorColor"].default, HSON_BRANDING.librarySeparator.color);
   const override = {
     "hson.libraryMarker.h": "#123456",
     "hson.authoringMarker.h": "#123456CC",
@@ -66,18 +67,18 @@ export async function run(): Promise<void> {
   assert.equal(extension.isActive, true, "lowercase marker toggle refresh must not reload the extension");
   assert.deepEqual(vscode.workspace.getConfiguration("workbench").get("colorCustomizations"), override,
     "shared colors do not mutate the advanced theme-specific color IDs");
-  for (const key of Object.keys(hueDefaults)) {
+  for (const [key, value] of Object.entries(hueDefaults)) {
     await appearance.update(key, undefined, vscode.ConfigurationTarget.Workspace);
-    assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), hueDefaults[key as keyof typeof hueDefaults]);
+    assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), value);
   }
   await appearance.update("librarySeparatorColor", undefined, vscode.ConfigurationTarget.Workspace);
   await appearance.update("colorLibraryMarker", undefined, vscode.ConfigurationTarget.Workspace);
   await appearance.update("authoringMarkerStrength", undefined, vscode.ConfigurationTarget.Workspace);
   await appearance.update("libraryMarkerStrength", undefined, vscode.ConfigurationTarget.Workspace);
-  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("authoringMarkerStrength"), 0.7);
-  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("libraryMarkerStrength"), 1);
-  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("librarySeparatorColor"), "#7247d4");
-  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("colorLibraryMarker"), true);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("authoringMarkerStrength"), HSON_BRANDING.authoringOpacity);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("libraryMarkerStrength"), HSON_BRANDING.libraryOpacity);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("librarySeparatorColor"), HSON_BRANDING.librarySeparator.color);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("colorLibraryMarker"), HSON_BRANDING.colorLibraryMarker);
   await vscode.commands.executeCommand("hson.openSettings");
   assert.equal(extension.isActive, true, "opening native Hson Settings must not reload the extension");
   process.stdout.write("ok - real VS Code strengths, four shared colors, lowercase toggle, and separator color update and restore live without extension reload; contributed color overrides remain intact; Hson Settings command opens\n");

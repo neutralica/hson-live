@@ -1,5 +1,6 @@
-import { generateThemes } from "../scripts/generate-themes.mjs";
+import { appearanceSource, generateThemes } from "../scripts/generate-themes.mjs";
 await generateThemes({ check: true });
+const { HSON_APPEARANCE: appearance } = await appearanceSource();
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -99,8 +100,8 @@ assert.match(readme, /responsible for its own authentication, authorization, and
 assert.match(readme, /additional processes created by application code remain application-owned and are not generically supervised/);
 const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
 assert.equal(Object.keys(configuration).some(key => key.startsWith("hson.trustedSchemaDiagnostics.")), false);
-assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);
-assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, 0.7);
+assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, appearance.branding.library.opacity);
+assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, appearance.branding.authoring.opacity);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
 assert.equal(configuration["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
 assert.deepEqual({
@@ -117,7 +118,7 @@ assert.deepEqual(configuration["hson.formatting.formatOnSave"], {
   title: "Format Hson on Save",
   markdownDescription: "Format recognized Hson authoring regions on explicit Save or Save All. Auto-save does not format.",
 });
-const appearanceDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" };
+const appearanceDefaults = appearance.branding.palette;
 assert.deepEqual(Object.keys(appearanceDefaults).map(key => ({
   key: `hson.appearance.${key}`,
   default: configuration[`hson.appearance.${key}`].default,
@@ -127,7 +128,7 @@ assert.equal(configuration["hson.appearance.orange"], undefined);
 assert.deepEqual({
   enabled: configuration["hson.appearance.colorLibraryMarker"].default,
   separator: configuration["hson.appearance.librarySeparatorColor"].default,
-}, { enabled: true, separator: "#7247d4" });
+}, { enabled: appearance.branding.library.enabled, separator: appearance.branding.library.separator.color });
 assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
 assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, undefined);
 assert.ok(manifest.devDependencies.esbuild);

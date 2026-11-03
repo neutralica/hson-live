@@ -14,6 +14,7 @@ import {
   hsonIdentityMarkers,
 } from "../src/authoring-marker.js";
 import { markdown_hson_fence_marker_parts } from "../src/markdown-fence-marker.js";
+import { HSON_APPEARANCE } from "../src/appearance.js";
 
 async function run(): Promise<void> {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
@@ -470,7 +471,8 @@ async function run(): Promise<void> {
       ...hsonIdentityMarkers.map(marker => marker.colorId), HSON_LIBRARY_SEPARATOR_COLOR_ID,
     ]);
     assert.deepEqual(manifest.contributes.colors.map((color: { defaults: object }) => color.defaults), [
-      ...["#00adf6", "#c9d100", "#ff4a8c", "#39a500", "#00adf6", "#c9d100", "#ff4a8c", "#39a500", "#7247d4"]
+      ...[...hsonIdentityMarkers.map(marker => HSON_APPEARANCE.branding.palette[marker.colorSetting]),
+        HSON_APPEARANCE.branding.library.separator.color]
         .map(color => ({ dark: color, light: color, highContrast: "editor.foreground", highContrastLight: "editor.foreground" })),
     ]);
   });
