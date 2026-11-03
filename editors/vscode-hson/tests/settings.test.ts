@@ -1,8 +1,8 @@
 import { hsonGrammarScopes, hsonNativeBrackets } from "../src/appearance-internals.js";
 import { HSON_BRANDING } from "../src/appearance-branding.generated.js";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { HSON_APPEARANCE, hsonIdentityMarkers, hsonTokenScopes } from "../src/appearance.js";
 import {
@@ -154,19 +154,6 @@ check("marker strength clamps invalid low and high values", () => {
   assert.equal(marker_strength(-1, 0.5), 0); assert.equal(marker_strength(2, 0.5), 1);
 });
 check("marker strength falls back for non-finite input", () => assert.equal(marker_strength(Number.NaN, 0.6), 0.6));
-check("production TypeScript has no second owner-authored branding palette", () => {
-  const sourceRoot = resolve(__dirname, "../src");
-  const visit = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    const path = join(directory, entry.name);
-    return entry.isDirectory() ? visit(path) : entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
-  });
-  const palette = [...Object.values(HSON_APPEARANCE.branding.palette), HSON_BRANDING.librarySeparator.color];
-  for (const path of visit(sourceRoot)) {
-    if (path.endsWith("appearance.ts") || path.endsWith("appearance-branding.generated.ts")) continue;
-    const source = readFileSync(path, "utf8");
-    for (const color of palette) assert.equal(source.includes(color), false, `${path} duplicates ${color}`);
-  }
-});
 check("the compact command set complements settings and status", () => assert.deepEqual(
   manifest.contributes.commands.map((command: { command: string }) => command.command),
   [

@@ -97,8 +97,6 @@ for (const mode of ['light', 'dark']) {
   // Palette contrast is owner-authored; validate structure without a minimum ratio.
   assert.equal(semantic.hsonLocalReferenceSigil, blend(syntax.reference.local.marker.house[mode].foreground,
     appearance.ui.palette.background.house[mode].foreground, syntax.reference.local.marker.house[mode].intensity));
-  assert.notEqual(semantic.hsonDirective, semantic.hsonKeyword);
-  assert.notEqual(semantic.hsonQuote, semantic.hsonString);
   for (const type of Object.keys(definitions)) {
     assert.ok(manifest.contributes.semanticTokenTypes.some(entry => entry.id === type));
     const rule = theme.tokenColors.findLast(rule => JSON.stringify(rule.scope) === JSON.stringify(definitions[type].scopes));
@@ -439,3 +437,85 @@ try {
   assert.match(generated.stderr, /syntax\.hson\.reference\.selectorOpen\.house\.dark\.intensite: Unknown property "intensite"\. Did you mean "intensity"\?/);
 } finally { await rm(invalidOwner, { recursive: true, force: true }); }
 console.log('ok - native UI typo paths, inheritance suggestions and real generator-time rejection without TypeScript checking');
+
+// Generate only inside a disposable extension; changing the owner catalog must
+// update every derived default without changing the catalog or the validator.
+const ownerFixture = await realpath(await mkdtemp(join(tmpdir(), 'hson-appearance-defaults-')));
+try {
+  for (const directory of ['scripts', 'src', 'syntaxes']) await mkdir(join(ownerFixture, directory));
+  for (const relative of ['package.json', 'scripts/generate-themes.mjs', 'scripts/appearance-catalog.mjs',
+    'syntaxes/hson.tmLanguage.json', 'src/appearance-internals.ts', 'src/appearance-bindings.ts', 'src/appearance-branding.generated.ts'])
+    await writeFile(join(ownerFixture, relative), await readFile(new URL('../' + relative, import.meta.url)));
+  await symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), join(ownerFixture, 'node_modules'), 'dir');
+  const owner = structuredClone(appearance);
+  owner.branding.palette = { blue: '#b5d4f6', yellow: '#bda065', pink: '#dd97cc', green: '#80a894' };
+  owner.branding.library.opacity = 0.45;
+  owner.branding.authoring.opacity = 0.25;
+  owner.branding.library.enabled = false;
+  owner.branding.library.separator.color = '#abcd';
+  const runGenerator = (...args) => spawnSync(process.execPath, [join(ownerFixture, 'scripts/generate-themes.mjs'), ...args], { encoding: 'utf8' });
+  const success = result => assert.equal(result.status, 0, result.stderr);
+  const author = async catalog => {
+    const text = `export const HSON_APPEARANCE = ${JSON.stringify(catalog, null, 2)};\n`;
+    await writeFile(join(ownerFixture, 'src/appearance.ts'), text);
+    return text;
+  };
+  const outputs = ['package.json', 'src/appearance-branding.generated.ts',
+    ...['dark', 'light'].map(mode => `themes/hson-house-${mode}-color-theme.json`)];
+  const snapshot = () => Promise.all(outputs.map(relative => readFile(join(ownerFixture, relative), 'utf8')));
+  const source = await author(owner);
+  success(runGenerator());
+  const generated = await snapshot();
+  success(runGenerator('--check'));
+  success(runGenerator());
+  assert.deepEqual(await snapshot(), generated, 'repeated generation cannot restore older defaults');
+  assert.equal(await readFile(join(ownerFixture, 'src/appearance.ts'), 'utf8'), source);
+  const packageJson = JSON.parse(generated[0]);
+  const settings = Object.assign({}, ...packageJson.contributes.configuration.map(group => group.properties));
+  const branding = brandingRuntime(owner.branding);
+  for (const [key, value] of Object.entries({ ...branding.colors, libraryMarkerStrength: branding.libraryOpacity,
+    authoringMarkerStrength: branding.authoringOpacity, colorLibraryMarker: branding.colorLibraryMarker,
+    librarySeparatorColor: branding.librarySeparator.color })) assert.equal(settings[`hson.appearance.${key}`].default, value);
+  for (const marker of [...branding.identityMarkers, branding.librarySeparator]) {
+    const value = marker.color ?? branding.colors[marker.colorSetting];
+    assert.deepEqual(packageJson.contributes.colors.find(color => color.id === marker.colorId).defaults,
+      { dark: value, light: value, highContrast: 'editor.foreground', highContrastLight: 'editor.foreground' });
+  }
+  for (const [index, mode] of ['dark', 'light'].entries())
+    assert.deepEqual(JSON.parse(generated[index + 2]), houseTheme(owner, definitions, mode));
+  // Check mode detects drift without repairing the evidence being validated.
+  for (const [index, relative] of outputs.entries()) {
+    const drifted = generated[index].replace(/#[\da-f]{3,8}/i, '#010203');
+    assert.notEqual(drifted, generated[index]);
+    await writeFile(join(ownerFixture, relative), drifted);
+    const checked = runGenerator('--check');
+    assert.notEqual(checked.status, 0, relative);
+    assert.match(checked.stderr, /Generated appearance is stale/);
+    assert.equal(await readFile(join(ownerFixture, relative), 'utf8'), drifted);
+    await writeFile(join(ownerFixture, relative), generated[index]);
+  }
+  for (const key of Object.keys(owner.branding.palette)) {
+    const missing = structuredClone(owner);
+    delete missing.branding.palette[key];
+    await author(missing);
+    const checked = runGenerator('--check');
+    assert.notEqual(checked.status, 0);
+    assert.match(checked.stderr, new RegExp(`branding\\.palette\\.${key}: Expected a hexadecimal color`));
+  }
+  for (const value of ['blue', '#12', '#gggggg', 123456]) {
+    const malformed = structuredClone(owner);
+    malformed.branding.palette.blue = value;
+    await author(malformed);
+    const checked = runGenerator('--check');
+    assert.notEqual(checked.status, 0);
+    assert.match(checked.stderr, /branding\.palette\.blue: Expected a hexadecimal color/);
+  }
+  for (const value of ['#000000', '#ffffff', '#808080', '#FF00FF', '#abc', '#abcd', '#12345600']) {
+    for (const key of Object.keys(owner.branding.palette)) owner.branding.palette[key] = value;
+    const source = await author(owner);
+    success(runGenerator());
+    success(runGenerator('--check'));
+    assert.equal(await readFile(join(ownerFixture, 'src/appearance.ts'), 'utf8'), source);
+  }
+} finally { await rm(ownerFixture, { recursive: true, force: true }); }
+console.log('ok - owner palette and setting edits propagate, repeated generation is stable, drift and invalid roles fail, all hues and hex forms are accepted');

@@ -121,7 +121,18 @@ function sameJson(left, right) {
   return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
 }
 
-export async function validateVsix(vsixPath, expectedManifest) {
+async function themeContents(extensionRoot, manifest) {
+  const contents = new Map();
+  for (const theme of manifest.contributes?.themes ?? []) {
+    const path = String(theme.path).replace(/^\.\//, "");
+    const text = await readFile(resolve(extensionRoot, path), "utf8");
+    JSON.parse(text);
+    contents.set(path, text);
+  }
+  return contents;
+}
+
+export async function validateVsix(vsixPath, expectedManifest, expectedThemes) {
   let archive;
   try {
     archive = await JSZip.loadAsync(await readFile(vsixPath), { checkCRC32: true });
@@ -160,7 +171,7 @@ export async function validateVsix(vsixPath, expectedManifest) {
     throw new StageError("artifact validation failure", "packaged TypeScript server plugin contributions differ from the current manifest");
   }
 
-  for (const key of ["themes", "semanticTokenTypes", "semanticTokenScopes"]) {
+  for (const key of ["colors", "themes", "semanticTokenTypes", "semanticTokenScopes"]) {
     if (!sameJson(manifest.contributes?.[key], expectedManifest.contributes?.[key]))
       throw new StageError("artifact validation failure", `packaged ${key} contributions differ from the current manifest`);
   }
@@ -170,6 +181,14 @@ export async function validateVsix(vsixPath, expectedManifest) {
     if ((await entry.async("uint8array")).byteLength === 0) {
       throw new StageError("artifact validation failure", `VSIX contains an empty extension/${path}`);
     }
+  }
+
+  expectedThemes ??= await themeContents(resolve(import.meta.dirname, ".."), expectedManifest);
+  for (const theme of expectedManifest.contributes?.themes ?? []) {
+    const path = String(theme.path).replace(/^\.\//, "");
+    const expected = expectedThemes.get(path);
+    if (expected === undefined || await archive.file(`extension/${path}`).async("string") !== expected)
+      throw new StageError("artifact validation failure", `packaged theme differs from generated artifact: ${path}`);
   }
 
   for (const root of typescriptPluginRoots(expectedManifest)) {
@@ -295,7 +314,6 @@ async function sourceMapsFromVsix(vsixPath) {
 export async function packageCurrentSource(options) {
   const extensionRoot = resolve(options.extensionRoot);
   const repositoryRoot = resolve(options.repositoryRoot ?? join(extensionRoot, "../.."));
-  const expectedManifest = JSON.parse(await readFile(join(extensionRoot, "package.json"), "utf8"));
   const canonicalVsix = join(extensionRoot, CANONICAL_VSIX_NAME);
   const canonicalAuthority = join(extensionRoot, AUTHORITY_NAME);
   const temporaryRoot = await mkdtemp(join(extensionRoot, ".hson-vsix-"));
@@ -313,6 +331,9 @@ export async function packageCurrentSource(options) {
     if (options.runWorktreeValidation) await options.runWorktreeValidation();
     else await requireSuccessful("artifact validation failure", "npm", ["run", "validate:artifact"], { cwd: extensionRoot, capture: false, runProcess: runner });
 
+    // The build derives manifest appearance defaults from appearance.ts.
+    const expectedManifest = JSON.parse(await readFile(join(extensionRoot, "package.json"), "utf8"));
+    const expectedThemes = await themeContents(extensionRoot, expectedManifest);
     if (options.runPackager) await options.runPackager(temporaryVsix);
     else {
       const vsce = join(extensionRoot, "node_modules", ".bin", "vsce");
@@ -326,7 +347,7 @@ export async function packageCurrentSource(options) {
     if (!await pathExists(temporaryVsix)) {
       throw new StageError("packaging failure", "packager did not create the requested temporary VSIX");
     }
-    const artifact = await validateVsix(temporaryVsix, expectedManifest);
+    const artifact = await validateVsix(temporaryVsix, expectedManifest, expectedThemes);
     const source = await sourceInputAuthority(extensionRoot, await sourceMapsFromVsix(temporaryVsix));
     const git = await gitIdentity(repositoryRoot, runner);
     const authority = {
@@ -343,7 +364,7 @@ export async function packageCurrentSource(options) {
 
     await rename(temporaryVsix, canonicalVsix);
     await rename(temporaryAuthority, canonicalAuthority);
-    return { artifact, authority, canonicalVsix, canonicalAuthority, manifest: expectedManifest };
+    return { artifact, authority, canonicalVsix, canonicalAuthority, manifest: expectedManifest, expectedThemes };
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -463,7 +484,7 @@ export async function inspectPackageAuthority(extensionRoot) {
 
   let artifact;
   try {
-    artifact = await validateVsix(vsixPath, manifest);
+    artifact = await validateVsix(vsixPath, manifest, await themeContents(root, manifest));
   } catch (error) {
     return { state: "stale", manifest, vsixPath, reason: error.message };
   }
@@ -541,7 +562,7 @@ export async function inspectStatus(options) {
 export async function installCurrentSource(options) {
   const cli = options.cli ?? await discoverVsCodeCli(options);
   const packaged = await packageCurrentSource(options);
-  const installArtifact = await validateVsix(packaged.canonicalVsix, packaged.manifest);
+  const installArtifact = await validateVsix(packaged.canonicalVsix, packaged.manifest, packaged.expectedThemes);
   if (installArtifact.vsixSha256 !== packaged.artifact.vsixSha256) {
     throw new StageError("artifact validation failure", "canonical VSIX changed between packaging and installation");
   }

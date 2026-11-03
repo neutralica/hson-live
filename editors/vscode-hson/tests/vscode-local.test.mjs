@@ -17,8 +17,11 @@ import {
   installCurrentSource,
   normalizeManifest,
   packageCurrentSource,
-  validateVsix,
+  validateVsix as validateVsixArtifact,
 } from "../scripts/vscode-local-lib.mjs";
+
+const validateVsix = (path, manifest) => validateVsixArtifact(path, manifest,
+  new Map(manifest.contributes.themes.map(theme => [theme.path.replace(/^\.\//, ''), '{}\n'])));
 
 let checks = 0;
 async function check(name, body) {
@@ -200,6 +203,37 @@ await check("package uses a fresh temporary VSIX and atomically replaces canonic
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
+await check("package validates against appearance defaults generated during its build", async () => {
+  const fixture = await makeFixture();
+  try {
+    const generated = fixtureManifest();
+    generated.contributes.configuration[0].properties['hson.appearance.blue'] = { type: 'string', default: '#b5d4f6' };
+    generated.contributes.colors = [{ id: 'hson.libraryMarker.h', defaults: { dark: '#b5d4f6', light: '#b5d4f6' } }];
+    const result = await packageCurrentSource(await fixturePackageOptions(fixture, {
+      runBuild: async () => writeFile(join(fixture.extensionRoot, 'package.json'), JSON.stringify(generated)),
+      runPackager: async path => makeVsix(path, generated),
+    }));
+    assert.deepEqual(result.manifest, generated);
+    await validateVsix(result.canonicalVsix, generated);
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
+await check("corrupted packaged themes reject before promotion", async () => {
+  const fixture = await makeFixture();
+  try {
+    const canonical = join(fixture.extensionRoot, CANONICAL_VSIX_NAME);
+    await writeFile(canonical, 'previous valid package');
+    for (const contents of [null, '', 'not JSON', '{"colors":{"editor.background":"#acc"}}']) {
+      await assert.rejects(packageCurrentSource(await fixturePackageOptions(fixture, {
+        runPackager: path => makeVsix(path, fixtureManifest(), { payload: {
+          'themes/hson-house-dark-color-theme.json': contents,
+        } }),
+      })), /missing|empty|packaged theme differs/);
+      assert.equal(await readFile(canonical, 'utf8'), 'previous valid package');
+    }
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
 await check("failed packaging preserves the old canonical artifact without promoting temporary output", async () => {
   const fixture = await makeFixture();
   try {
@@ -282,13 +316,14 @@ await check("VSIX validation requires the local-host runner and source map", asy
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
-await check("VSIX validation rejects wrong identity, version, configuration, and grammar wiring", async () => {
+await check("VSIX validation rejects wrong identity, version, configuration, colors, and grammar wiring", async () => {
   const fixture = await makeFixture();
   try {
     for (const [name, mutate, pattern] of [
       ["identity", m => { m.publisher = "wrong"; }, /expected terminal-gothic/],
       ["version", m => { m.version = "9.9.9"; }, /expected version/],
       ["configuration", m => { m.contributes.configuration = []; }, /configuration contributions differ/],
+      ["colors", m => { m.contributes.colors = [{ id: 'hson.libraryMarker.h', defaults: { dark: '#123456' } }]; }, /colors contributions differ/],
       ["themes", m => { m.contributes.themes = []; }, /themes contributions differ/],
       ["semantic-types", m => { m.contributes.semanticTokenTypes = []; }, /semanticTokenTypes contributions differ/],
       ["grammars", m => { m.contributes.grammars = []; }, /grammar contributions differ/],
