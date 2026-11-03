@@ -1,15 +1,17 @@
-import { part_source_coordinates, type PartSourceFacts, type PartDocumentSource, type PartConnectorSource, type PartDataSchemaEvidence, type PartSourceBatch, type PartLibrarySource } from "../hson-schema/part-source.js";
+import { part_source_coordinates, type PartSourceFacts, type PartDocumentSource, type PartConnectorSource, type PartDataSchemaEvidence, type PartSourceBatch, type PartLibrarySource, type PartWriteSource } from "../hson-schema/part-source.js";
 import { inspect_schema_data, schema_projection_description, OBJECT_VALUE, type SchemaDataPath, type SchemaDataProjection } from "../hson-schema/data-projection.js";
 import { part_argument_name, whole_part_reference } from "../part-placeholder.js";
 import type { PartBindingDeclaration } from "./part-bindings.js";
 
 type PartDataInvocation = Readonly<{
-  source: PartDocumentSource;
-  connector: PartConnectorSource;
+  source?: PartDocumentSource;
+  connector?: PartConnectorSource;
+  write?: PartWriteSource;
   definition: PartDocumentSource;
   batch: PartSourceBatch;
   library: PartLibrarySource;
-  root: Readonly<{ source: PartDocumentSource; connector: PartConnectorSource; batch: PartSourceBatch }>;
+  root: Readonly<{ source: PartDocumentSource; connector: PartConnectorSource; batch: PartSourceBatch; write?: never }>
+    | Readonly<{ write: PartWriteSource; batch: PartSourceBatch; source?: never; connector?: never }>;
   parent?: PartDataInvocation;
   depth: number;
   /** Traversal boundaries remain visible on the invocation that encountered them. */
@@ -21,7 +23,7 @@ export type PartDataContext = PartDataInvocation & Readonly<{
   incoming: string;
   /** The existing exact lexical identity, when source correspondence permits it. */
   receiving?: PartBindingDeclaration;
-  argument?: PartConnectorSource["attributes"][number];
+  argument?: PartConnectorSource["attributes"][number] | PartWriteSource["arguments"][number];
   evidence?: PartDataSchemaEvidence;
   /** Relative to the original Schema authority; no Schema subtree is compiled. */
   path: SchemaDataPath;
@@ -50,11 +52,11 @@ function context_index(facts: PartSourceFacts): ContextIndex {
         && member.documents.length === 1 && definition.parameterCompleteness === "complete" });
       selected.set(key, entries);
     }
-    const expand = (source: PartDocumentSource, connector: PartConnectorSource, root: PartDataInvocation["root"],
-      budget: { frames: number }, reached: boolean, parent?: PartDataInvocation, inputs: readonly PartDataContext[] = []): void => {
-      const coordinates = part_source_coordinates(connector, parent?.library.name);
-      const entries = coordinates === undefined || coordinates.issue !== undefined ? []
-        : selected.get(JSON.stringify([coordinates.library, coordinates.member])) ?? [];
+    const expand = (source: PartDocumentSource | undefined, connector: PartConnectorSource | undefined, root: PartDataInvocation["root"],
+      budget: { frames: number }, reached: boolean, parent?: PartDataInvocation, inputs: readonly PartDataContext[] = [], write?: PartWriteSource): void => {
+      const coordinates = connector === undefined ? undefined : part_source_coordinates(connector, parent?.library.name);
+      const entries = write !== undefined ? [{ definition: write.definition, library: write.library, certain: false }]
+        : coordinates === undefined || coordinates.issue !== undefined ? [] : selected.get(JSON.stringify([coordinates.library, coordinates.member])) ?? [];
       if (entries.length === 0) {
         parent?.incomplete.push("unresolved nested Part coordinate or source inventory; runtime destination unknown");
         return;
@@ -65,43 +67,45 @@ function context_index(facts: PartSourceFacts): ContextIndex {
         }
         budget.frames++;
         const depth = parent === undefined ? 0 : parent.depth + 1;
-        let boundary = parent !== undefined && !connector.headerComplete ? "incomplete nested Part header; unknown continuation" : undefined;
+        let boundary = parent !== undefined && !connector?.headerComplete ? "incomplete nested Part header; unknown continuation" : undefined;
         for (let ancestor = parent; ancestor !== undefined; ancestor = ancestor.parent) {
           if (ancestor.definition === definition && ancestor.library === library) { boundary = "forwarding cycle; unknown continuation"; break; }
         }
         if (depth >= FORWARDING_DEPTH) boundary = `forwarding depth limit (${FORWARDING_DEPTH}); unknown continuation`;
         const incomplete: string[] = boundary === undefined ? [] : [boundary];
-        const invocation: PartDataInvocation = { source, connector, definition, batch, library, root, parent, depth, incomplete };
-        const arguments_ = connector.attributes.flatMap(attribute => {
+        const invocation: PartDataInvocation = { source, connector, write, definition, batch, library, root, parent, depth, incomplete };
+        const arguments_ = connector?.attributes.flatMap(attribute => {
           const argument = part_argument_name(attribute.name);
           return argument === undefined ? [] : [{ attribute, argument }];
-        });
+        }) ?? [];
         const contract = definition.signature;
-        const interfaceValid = parent === undefined && contract !== undefined && connector.attributes.every(attribute => attribute.name === "lib" || attribute.name === "at" || part_argument_name(attribute.name) !== undefined)
+        const interfaceValid = parent === undefined && contract !== undefined && connector !== undefined && connector.attributes.every(attribute => attribute.name === "lib" || attribute.name === "at" || part_argument_name(attribute.name) !== undefined)
           && arguments_.every(({ attribute, argument }) => contract.parameters.get(argument.name) === argument.kind && (attribute.value !== undefined || attribute.dynamicValue === true))
           && new Set(arguments_.map(({ argument }) => argument.name)).size === arguments_.length
           && [...contract.requiredness].every(([name, requiredness]) => requiredness !== "required" || arguments_.some(({ argument }) => argument.name === name));
         const contexts: PartDataContext[] = [];
         for (const declaration of definition.receivingDeclarations.filter(declaration => declaration.kind === "data")) {
-          const argument = connector.attributes.find(attribute => attribute.name === `${declaration.incoming}:data`);
+          const authoredArgument = connector?.attributes.find(attribute => attribute.name === `${declaration.incoming}:data`);
+          const argument = write?.arguments.find(argument => argument.name === declaration.incoming && argument.kind === "data") ?? authoredArgument;
           const receiving = definition.bindingSources?.declarations.find(binding => binding.origin === "receiving" && binding.name === declaration.name && binding.incoming === declaration.incoming);
-          const reference = argument?.value === undefined ? undefined : whole_part_reference(argument.value);
+          const reference = authoredArgument?.value === undefined ? undefined : whole_part_reference(authoredArgument.value);
           const where = argument?.valueLocation;
           const use = reference?.namespace !== "local" || where?.precision !== "exact" ? undefined
-            : source.bindingSources?.references.find(use => use.context === "forwarding" && use.resolution === "resolved" && use.location.start >= where.start && use.location.end <= where.end
+            : source?.bindingSources?.references.find(use => use.context === "forwarding" && use.resolution === "resolved" && use.location.start >= where.start && use.location.end <= where.end
               && use.reference.reference === reference.reference && use.reference.start === reference.start && use.reference.end === reference.end);
           const origin = use?.declaration === undefined ? undefined : part_binding_data_origin(use.declaration);
           const input = origin === undefined ? undefined : inputs.find(context => context.receiving === origin.receiving);
           const path = input === undefined || origin === undefined || reference === undefined ? [] : [...input.path, ...origin.path, ...reference.path];
           const evidence = boundary === undefined ? input?.evidence ?? (parent === undefined || reference === undefined ? argument?.dataEvidence : undefined) : undefined;
           const uncertainty = [...(input?.uncertainty ?? [])];
+          if (root.write !== undefined && input === undefined) uncertainty.push("detached .write() authoring; admission and execution unknown");
           if (evidence === undefined) uncertainty.push(boundary ?? (argument === undefined ? "absent Data argument" : "unknown or unsupported Data evidence"));
           if (reference?.optional) uncertainty.push("optional forwarding reference; value may be absent");
           if (definition.bindingSources?.references.some(use => use.context === "receiving" && use.reference.name === declaration.incoming && use.reference.optional)) {
             uncertainty.push("optional receiving argument; value may be absent");
           }
           const context: PartDataContext = { ...invocation, invocation, incoming: declaration.incoming, receiving, argument, evidence, path, uncertainty,
-            executionCertain: parent === undefined && reached && certain && entries.length === 1 && interfaceValid && connector.headerComplete
+            executionCertain: parent === undefined && write === undefined && reached && certain && entries.length === 1 && interfaceValid && connector?.headerComplete === true
               && definition.admission === "qualified" && definition.optionalStructures.length === 0 };
           contexts.push(context);
           const incoming = result.get(definition) ?? new Map<string, PartDataContext[]>();
@@ -127,6 +131,9 @@ function context_index(facts: PartSourceFacts): ContextIndex {
       for (const connector of source.connectors) {
         expand(source, connector, { source, connector, batch }, { frames: 0 }, reached);
       }
+    }
+    for (const write of facts.writes) if (write.batch === batch) {
+      expand(undefined, undefined, { write, batch }, { frames: 0 }, false, undefined, [], write);
     }
   }
   indexes.set(facts, result);
@@ -163,9 +170,11 @@ export function part_data_projection(evidence: PartDataSchemaEvidence, path: Sch
 
 /** Keep caller identity and evidence strength together in editor presentation. */
 export function part_data_context_description(context: PartDataContext, path: SchemaDataPath): string {
-  const position = (call: Pick<PartDataInvocation, "source" | "connector">): string => {
-    const where = call.source.producer.getSourceFile().getLineAndCharacterOfPosition(call.connector.location.start);
-    const file = call.connector.location.file.replaceAll("\\", "/").split("/").at(-1);
+  const position = (call: Pick<PartDataInvocation, "source" | "connector" | "write">): string => {
+    const location = call.write?.location ?? call.connector!.location;
+    const source = call.write?.call ?? call.source!.producer;
+    const where = source.getSourceFile().getLineAndCharacterOfPosition(location.start);
+    const file = location.file.replaceAll("\\", "/").split("/").at(-1);
     return `${file}:${where.line + 1}:${where.character + 1}`;
   };
   const description = context.evidence === undefined ? "unknown Schema evidence"
@@ -178,7 +187,9 @@ export function part_data_context_description(context: PartDataContext, path: Sc
   const forwarding = chain.length === 0 ? "" : `; forwarded via ${chain.join(" → ")}; Schema path ${JSON.stringify(context.path.map(step => step === OBJECT_VALUE ? { objectValue: true } : step))}`
     + (context.evidence === undefined ? "" : `; Schema ${context.evidence.schemaLocation.file}:${context.evidence.schemaLocation.start}`)
     + `; batch ${context.batch.location.file}:${context.batch.location.start}; Parts Library ${JSON.stringify(context.library.name)}`;
-  return `${position(context.root)}: ${description}${forwarding}${uncertainty.size === 0 ? "" : "; " + [...uncertainty].join("; ")}`;
+  const write = context.root.write === undefined ? "" : `; .write() source Parts Library ${JSON.stringify(context.root.write.library.name)}`
+    + (context.evidence === undefined ? "" : `; Schema ${context.evidence.schemaLocation.file}:${context.evidence.schemaLocation.start}; annotation ${context.evidence.annotationLocation.file}:${context.evidence.annotationLocation.start}`);
+  return `${position(context.root)}: ${description}${write}${forwarding}${uncertainty.size === 0 ? "" : "; " + [...uncertainty].join("; ")}`;
 }
 
 export function part_data_hover(facts: PartSourceFacts, file: string, offset: number) {
@@ -190,7 +201,7 @@ export function part_data_hover(facts: PartSourceFacts, file: string, offset: nu
     const contexts = part_data_contexts(facts, definition, origin.receiving.incoming).filter(context => context.receiving === origin.receiving);
     if (!contexts.some(context => context.evidence !== undefined)) continue;
     const descriptions = contexts.map(context => part_data_context_description(context, [...origin.path, ...use.reference.path]));
-    const kind = contexts.some(context => context.parent !== undefined) ? "recognized invocation contexts; recognized callers only" : `direct invocation${contexts.length === 1 ? "" : "s"}`;
+    const kind = contexts.some(context => context.parent !== undefined || context.root.write !== undefined) ? "recognized invocation contexts; recognized callers only" : `direct invocation${contexts.length === 1 ? "" : "s"}`;
     return { location: use.location, text: `Local Data ${use.reference.name} ← incoming ${origin.receiving.incoming}\n`
       + `Contextual Schema evidence (${contexts.length} ${kind})\n` + descriptions.join("\n") };
   }

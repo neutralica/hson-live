@@ -23,16 +23,25 @@ export function forwarding_fixture({ shape = forwarding_shape, value = forwardin
     + 'const map=maps.fromLibraries({components:{parts:{A:{kind:"document",document:A},B:{kind:"document",document:B}}},page:{document:page}});';
 }
 
+/** Same immutable definitions and receiving interfaces, with detached TS roots. */
+export function write_fixture(options: Parameters<typeof forwarding_fixture>[0] = {}, calls = 'map.parts.components.A.write({incoming:input});'): string {
+  return forwarding_fixture(options)
+    .replace('const page=Hson.document`<hson-part at="components/A" incoming:data="${input}"/>`;\n', '')
+    .replace(',page:{document:page}', '') + '\n' + calls;
+}
+
 /** Shared analysis assertions execute unchanged in Node and Worker. */
 export function run_forwarding_editor_cases(): void {
   const directory = mkdtempSync(join(tmpdir(), 'part-forwarding-parity-')), file = join(directory, 'index.ts');
   const markedBody = '<section hson:part data:record="%{payload}" <b "^{record.ti|tle}"/> <hson-part at="^{record.kind}"/>/>';
   const body = markedBody.replace('|', '');
-  const source = forwarding_fixture({ forward: '^{outer.nested}', body })
+  const directSource = forwarding_fixture({ forward: '^{outer.nested}', body })
     .replace('const page=', 'const T=Hson.schema`<type "data" content <nested <content <title "boolean" kind <exact "heading">>>>>`;const other:HsonData<typeof T>=Hson.data`<nested <title true kind "heading">>`;const page=')
     .replace('<hson-part at="components/A" incoming:data="${input}"/>', '<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>')
     .replace('B:{kind:"document",document:B}', 'B:{kind:"document",document:B},quote:{kind:"document",document:"<p hson:part/>"},heading:{kind:"document",document:"<h1 hson:part/>"}');
-  try {
+  try { for (const source of [directSource, directSource
+    .replace('<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>', '<main/>')
+    + '\nmap.parts.components.A.write({incoming:input});\nmap.parts.components.A.write({incoming:other});']) {
     writeFileSync(join(directory, 'package.json'), '{"type":"module"}'); writeFileSync(file, source);
     const program = ts.createProgram([file], { strict: true, noEmit: true, skipLibCheck: true, types: [], target: ts.ScriptTarget.ESNext,
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, baseUrl: resolve(import.meta.dirname, '../..'), paths: { 'hson-live': ['src/index.ts'] } });
@@ -42,6 +51,7 @@ export function run_forwarding_editor_cases(): void {
     const contexts = part_data_contexts(facts, child, 'payload');
     assert.equal(contexts.length, 2); assert.notEqual(contexts[0]!.root, contexts[1]!.root);
     assert.ok(contexts.every(context => context.parent !== undefined && context.evidence?.strength === 'validated' && !context.executionCertain));
+    if (source.includes('.write(')) assert.ok(contexts.every(context => context.root.write !== undefined && context.uncertainty.some(reason => reason.includes('detached'))));
     assert.deepEqual(contexts.map(context => context.path), [['nested'], ['nested']]);
     const completion = query_hson_editor_context({ mode: 'document', source: body, cursor: markedBody.indexOf('|'), parts: { facts, file, offset } });
     const title = completion.candidates.find(candidate => candidate.label === 'record.title')!;
@@ -51,5 +61,5 @@ export function run_forwarding_editor_cases(): void {
     const selection = source.indexOf('record.kind') + 'record.kind'.length - 1;
     assert.deepEqual(part_definition_targets(facts, file, selection).map(target => target.name), ['quote', 'heading']);
     assert.deepEqual(static_part_reference_diagnostics(facts), []);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+  } } finally { rmSync(directory, { recursive: true, force: true }); }
 }

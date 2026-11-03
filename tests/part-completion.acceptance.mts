@@ -8,7 +8,7 @@ import { HsonEditorCompletionCache, type HostCompletion } from "../editors/vscod
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
 import { hson_grammar_checkpoint } from "../src/api/transform/parsers/tokenize-hson.ts";
-import { forwarding_fixture } from "./fixtures/part-forwarding-cases.mts";
+import { forwarding_fixture, write_fixture } from "./fixtures/part-forwarding-cases.mts";
 import { part_data_hover } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { part_source_coordinates } from "../src/internal/hson-schema/part-source.ts";
 import { part_definition_targets } from "../src/internal/editor-introspection/part-definition-target.ts";
@@ -1223,6 +1223,126 @@ check('C1 upstream-only Schema and intermediate Part edits withdraw and restore 
   edit('c1-parent.ts', 'export const A='); assert.equal(observe().hover, undefined);
   edit('c1-parent.ts', parent()); assert.match(observe().hover!, /validated/);
   assert.equal(versions.get(file('app.ts')), version); assert.equal(files.get(file('app.ts')), original.text);
+});
+
+function typedWrite(body = '<p hson:part data:record="%{incoming}" "^{record.ti|tle}"/>', shape = typedShape, value = typedValue,
+  calls = 'map.parts.components.A.write({incoming:input});'): string {
+  return write_fixture({ shape, value, intermediate: body, body: '<p hson:part/>' }, calls);
+}
+check('C2a actual language-service completion and hover retain types, finite values, provenance and detached uncertainty', () => {
+  const actual = integratedTypedDetails(typedWrite());
+  assert.ok(actual.entries.some(entry => entry.name === 'record.title'));
+  assert.match(actual.detail!, /string \(required\); validated/);
+  assert.match(actual.hover!, /record ← incoming incoming/);
+  assert.match(actual.hover!, /1 recognized invocation contexts/);
+  assert.match(actual.hover!, /\.write\(\) source Parts Library "components"; Schema .*annotation/);
+  assert.match(actual.hover!, /detached.*admission and execution unknown/);
+  for (const [label, expected] of [['record.note', /number \(optional\)/], ['record.kind', /"card" \(required\)/],
+    ['record.state', /"ready" \| "done"/], ['record.nested.caption', /string \(required\)/]] as const) {
+    const source = typedWrite().replace('record.ti|tle', label.slice(0, -1) + '|' + label.slice(-1));
+    const result = complete(source);
+    const isolatedHost = { ...host };
+    const integrated = create_schema_language_service(ts, ts.createLanguageService(isolatedHost), isolatedHost, join(directory, 'tsconfig.json'));
+    try {
+      const entries = integrated.getCompletionsAtPosition(file('app.ts'), result.offset, {})?.entries ?? [];
+      assert.ok(entries.some(entry => entry.name === label), `${label}: ${entries.map(entry => entry.name)}; cache: ${result.labels}`);
+      const detail = integrated.getCompletionEntryDetails(file('app.ts'), result.offset, label, undefined, undefined, undefined, undefined);
+      assert.match(detail!.displayParts!.map(part => part.text).join(''), expected);
+      const hover = integrated.getQuickInfoAtPosition(file('app.ts'), result.offset - 1)!;
+      assert.equal(result.text.slice(hover.textSpan.start, hover.textSpan.start + hover.textSpan.length), '^{' + label + '}');
+      assert.match(hover.displayParts!.map(part => part.text).join(''), expected);
+    } finally { integrated.dispose(); }
+  }
+  const advisory = integratedTypedDetails(typedWrite(undefined, typedShape, '<>'));
+  assert.match(advisory.detail!, /advisory/); assert.match(advisory.hover!, /advisory/);
+  const unavailable = integratedTypedDetails(typedWrite().replace('const input:HsonData<typeof S>=Hson.data`' + typedValue + '`;', 'declare const input:HsonData<typeof S>;'));
+  assert.match(unavailable.detail!, /advisory/); assert.match(unavailable.hover!, /advisory/);
+  assert.deepEqual(actual.errors, []); assert.deepEqual(advisory.errors, []);
+});
+check('C2a unsupported write targets, argument records and expressions stay unknown at the editor boundary', () => {
+  for (const call of ['dynamic.write({incoming:input});', 'map.parts.components[dynamic].write({incoming:input});',
+    'map.parts.components.A.write({...dynamic,incoming:input});', 'map.parts.components.A.write({["incoming"]:input});',
+    'map.parts.components.A.write({incoming:dynamic});', 'map.parts.components.A.write({incoming:S.certify(input)});']) {
+    const actual = integratedTypedDetails(typedWrite(undefined, typedShape, typedValue, call));
+    assert.ok(!/validated|advisory|caller Schema/.test(actual.detail ?? ''), call);
+    assert.equal(actual.hover, undefined, call); assert.deepEqual(actual.errors, []);
+  }
+});
+check('C2a receiving declarations correlate arguments by interface identity despite equal local spellings', () => {
+  const source = typedWrite('<p hson:part data:record="%{incoming}" data:incoming="%{other}" "^{record.ti|tle}:^{incoming.title}"/>',
+    '<title "string">', '<title "hello">', 'map.parts.components.A.write({incoming:input,other});')
+    .replace('const map=', 'const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonData<typeof T>=Hson.data`<title 3>`;const map=');
+  const actual = integratedTypedDetails(source);
+  assert.match(actual.detail!, /string \(required\); validated/); assert.ok(!actual.detail!.includes('number (required)'));
+  const isolatedHost = { ...host };
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(isolatedHost), isolatedHost, join(directory, 'tsconfig.json'));
+  try {
+    const offset = actual.result.text.indexOf('^{incoming.title}') + 8;
+    const hover = integrated.getQuickInfoAtPosition(file('app.ts'), offset)!.displayParts!.map(part => part.text).join('');
+    assert.match(hover, /incoming ← incoming other/); assert.match(hover, /number \(required\); validated/);
+  } finally { integrated.dispose(); }
+});
+check('C2a two independent write callers retain separate Schema alternatives without definitive member errors', () => {
+  const source = typedWrite(undefined, '<title "string">', '<title "hello">',
+    'map.parts.components.A.write({incoming:input});\nmap.parts.components.A.write({incoming:other});')
+    .replace('const map=', 'const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonData<typeof T>=Hson.data`<title 3>`;const map=');
+  const actual = integratedTypedDetails(source);
+  assert.match(actual.detail!, /string \(required\); validated/); assert.match(actual.detail!, /number \(required\); validated/);
+  assert.match(actual.hover!, /2 recognized invocation contexts/);
+  const callers = actual.hover!.split('\n').filter(line => line.startsWith('app.ts:'));
+  assert.equal(callers.length, 2); assert.notEqual(callers[0]!.split(': ').at(0), callers[1]!.split(': ').at(0));
+  assert.deepEqual(actual.errors, []);
+  const absent = integratedTypedDetails(source.replace('<title "number">', '<count "number">').replace('<title 3>', '<count 3>'));
+  assert.match(absent.detail!, /absent in this Schema; validated/); assert.deepEqual(absent.errors, []);
+  const facts = collect_part_source_facts(ts, absent.result.program);
+  assert.deepEqual(static_part_reference_diagnostics(facts), []);
+});
+check('C2a write roots use C1 whole/subtree forwarding and Pass B navigation through the language service', () => {
+  for (const [forward, expected] of [['^{outer}', /string \(required\)/], ['^{outer.nested}', /number \(required\)/]] as const) {
+    const body = '<section hson:part data:record="%{payload}" <b "^{record.ti|tle}"/> <hson-part at="^{record.kind}"/>/>';
+    const source = write_fixture({ forward, body }).replace('B:{kind:"document",document:B}',
+      'B:{kind:"document",document:B},heading:{kind:"document",document:"<h1 hson:part/>"},quote:{kind:"document",document:"<p hson:part/>"}');
+    const actual = integratedTypedDetails(source);
+    assert.match(actual.detail!, expected); assert.match(actual.hover!, expected); assert.match(actual.hover!, /forwarded via/);
+    assert.match(actual.hover!, /detached.*execution unknown/); assert.deepEqual(actual.errors, []);
+    const isolatedHost = { ...host };
+    const integrated = create_schema_language_service(ts, ts.createLanguageService(isolatedHost), isolatedHost, join(directory, 'tsconfig.json'));
+    try {
+      const offset = actual.result.text.indexOf('^{record.kind}') + 9;
+      const targets = integrated.getDefinitionAtPosition(file('app.ts'), offset)!;
+      assert.deepEqual(targets.map(target => target.name), [forward === '^{outer}' ? 'heading' : 'quote']);
+      const hover = integrated.getQuickInfoAtPosition(file('app.ts'), offset)!.displayParts!.map(part => part.text).join('');
+      assert.match(hover, /validated/); assert.match(hover, /detached/);
+    } finally { integrated.dispose(); }
+  }
+});
+check('C2a imported immutable targets refresh on upstream-only Schema and receiving-interface edits', () => {
+  const schema = 'import {Hson,type HsonData} from "hson-live";export const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonData<typeof S>=Hson.data`<title "ok">`;';
+  const part = 'import {Hson} from "hson-live";export const A=Hson.document`<p hson:part data:record="%{incoming}" "^{record.title}"/>`;';
+  edit('c2a-schema.ts', schema); edit('c2a-part.ts', part);
+  edit('c2a-target.ts', 'import {hsonLiveMap as maps} from "hson-live";import {A} from "./c2a-part.js";const map=maps.fromLibraries({components:{parts:{A:{kind:"document",document:A}}}});export const selected=map.parts.components.A;');
+  const consumer = 'import {selected} from "./c2a-target.js";import {input} from "./c2a-schema.js";const alias=selected;alias.write({"incoming":input});';
+  edit('app.ts', consumer); const version = versions.get(file('app.ts'));
+  const isolatedHost = { ...host };
+  const integrated = create_schema_language_service(ts, ts.createLanguageService(isolatedHost), isolatedHost, join(directory, 'tsconfig.json'));
+  const observe = () => {
+    const offset = files.get(file('c2a-part.ts'))!.indexOf('record.title') + 9;
+    const hover = integrated.getQuickInfoAtPosition(file('c2a-part.ts'), offset)?.displayParts?.map(part => part.text).join('');
+    const completion = integrated.getCompletionsAtPosition(file('c2a-part.ts'), offset, {})?.entries.map(entry => entry.name) ?? [];
+    const detail = integrated.getCompletionEntryDetails(file('c2a-part.ts'), offset, 'record.title', undefined, undefined, undefined, undefined)?.displayParts?.map(part => part.text).join('');
+    return { hover, completion, detail };
+  };
+  try {
+    assert.match(observe().hover!, /string \(required\); validated/); assert.ok(observe().completion.includes('record.title'));
+    edit('c2a-schema.ts', schema.replace('<title "string">', '<title "number">').replace('<title "ok">', '<title 7>'));
+    assert.match(observe().hover!, /number \(required\); validated/);
+    edit('c2a-schema.ts', 'export const S='); assert.equal(observe().hover, undefined); assert.ok(!/validated|advisory|caller Schema/.test(observe().detail ?? ''));
+    edit('c2a-schema.ts', schema); assert.match(observe().hover!, /validated/);
+    edit('c2a-part.ts', part.replace('%{incoming}', '%{renamed}')); assert.equal(observe().hover, undefined); assert.ok(!/validated|advisory|caller Schema/.test(observe().detail ?? ''));
+    edit('c2a-part.ts', 'export const A='); assert.equal(observe().hover, undefined);
+    edit('c2a-part.ts', part); assert.match(observe().hover!, /validated/); assert.ok(observe().completion.includes('record.title'));
+    assert.equal(versions.get(file('app.ts')), version); assert.equal(files.get(file('app.ts')), consumer);
+  } finally { integrated.dispose(); }
 });
 
 selectorService.dispose();

@@ -15,7 +15,7 @@ import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { PART_DECLARATION, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
-import { library_source_admission, library_source_field_candidates, library_source_fields } from "./library-source.js";
+import { library_source_admission, library_source_field_candidates, library_source_fields, is_object_literal_prototype_setter } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_provenance } from "./schema-annotation.js";
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
@@ -130,8 +130,19 @@ export type PartSourceBatch = Readonly<{
   /** Existing receivers/resume can contain Libraries absent from this batch. */
   receivingInventory: "candidate-only" | "open";
 }>;
+/** Detached authoring against an exact immutable Part, not a receiving batch. */
+export type PartWriteSource = Readonly<{
+  call: ts.CallExpression;
+  location: PartSourceLocation;
+  /** Source inventory authority only; eventual admission/execution is unknown. */
+  batch: PartSourceBatch;
+  library: PartLibrarySource;
+  definition: PartDocumentSource;
+  arguments: readonly Readonly<{ name: string; kind: "scalar" | "data" | "doc"; expression: ts.Expression;
+    nameLocation: PartSourceLocation; valueLocation: PartSourceLocation; dataEvidence?: PartDataSchemaEvidence }>[];
+}>;
 /** Program-snapshot facts, owned by the compiler. No registry, runtime identity or durable cache. */
-export type PartSourceFacts = Readonly<{ batches: readonly PartSourceBatch[]; documents: readonly PartDocumentSource[] }>;
+export type PartSourceFacts = Readonly<{ batches: readonly PartSourceBatch[]; documents: readonly PartDocumentSource[]; writes: readonly PartWriteSource[] }>;
 
 type Candidates = ReturnType<typeof static_source_candidates>;
 function location(node: ts.Node): PartSourceLocation {
@@ -569,12 +580,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     return { documents: found, lexicalCertain, certain: lexicalCertain && found[0]!.admission === "qualified" };
   };
   const batches: PartSourceBatch[] = [];
+  const writeCalls: ts.CallExpression[] = [];
   for (const file of program.getSourceFiles()) {
     if (file.isDeclarationFile || program.isSourceFileFromExternalLibrary(file) || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) continue;
     const mapSymbols = read_supported_hson_import_symbols(file, checker, [], "hsonLiveMap", typescript);
     const visit = (node: ts.Node): void => {
       if (typescript.isTaggedTemplateExpression(node)) document(node);
       if (typescript.isCallExpression(node)) {
+        if (typescript.isPropertyAccessExpression(node.expression) && node.expression.name.text === "write") writeCalls.push(node);
         const admission = library_source_admission(node, checker, mapSymbols, false, typescript, sources.eligible);
         if (admission !== undefined) {
           const eligible = admission.eligible && sources.eligible(admission.definitions);
@@ -646,9 +659,57 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     if (receivers.length !== 0 || found.connectors.length === 0) continue;
     for (const batch of batches) receivers.push({ batch: batch.call, certainty: "possible" });
   }
-  const facts = { batches, documents: [...documents.values()] };
+  const writes: PartWriteSource[] = [];
+  for (const call of writeCalls) {
+    const target = part_write_target(typescript, checker, sources, batches, call), input = call.arguments[0];
+    if (target === undefined || input === undefined || !typescript.isObjectLiteralExpression(input) || !sources.eligible(call)) continue;
+    const arguments_: PartWriteSource["arguments"][number][] = [];
+    let supported = true;
+    for (const property of input.properties) {
+      if ((!typescript.isPropertyAssignment(property) && !typescript.isShorthandPropertyAssignment(property))
+        || is_object_literal_prototype_setter(property, typescript)
+        || typescript.isShorthandPropertyAssignment(property) && property.objectAssignmentInitializer !== undefined
+        || !typescript.isIdentifier(property.name) && !typescript.isStringLiteral(property.name)) { supported = false; break; }
+      const name = property.name.text, kind = target.definition.signature?.parameters.get(name);
+      if (kind === undefined || arguments_.some(argument => argument.name === name)) { supported = false; break; }
+      const expression = typescript.isPropertyAssignment(property) ? property.initializer : property.name;
+      arguments_.push({ name, kind, expression, nameLocation: location(property.name), valueLocation: location(expression),
+        ...(kind === "data" ? { dataEvidence: dataSchema(expression) } : {}) });
+    }
+    if (supported) writes.push({ call, location: location(call), ...target, arguments: arguments_ });
+  }
+  const facts: PartSourceFacts = { batches, documents: [...documents.values()], writes };
   sourceFacts.set(program, facts);
   return facts;
+}
+
+/** Shared immutable coordinate resolution for write-key completion and ingress. */
+function part_write_target(typescript: typeof ts, checker: ts.TypeChecker, sources: Candidates, batches: readonly PartSourceBatch[], call: ts.CallExpression) {
+  if (!typescript.isPropertyAccessExpression(call.expression) || call.expression.name.text !== "write" || call.arguments.length !== 1
+    || call.questionDotToken !== undefined || call.expression.questionDotToken !== undefined) return undefined;
+  const coordinate = (input: ts.Expression, depth = 0): { batch: PartSourceBatch; path: string[] } | undefined => {
+    if (depth > 16 || !sources.eligible(input)) return undefined;
+    const node = sources.unwrap(input);
+    if (typescript.isPropertyAccessExpression(node)) {
+      if (node.questionDotToken !== undefined) return undefined;
+      const parent = coordinate(node.expression, depth + 1);
+      return parent === undefined ? undefined : { batch: parent.batch, path: [...parent.path, node.name.text] };
+    }
+    if (typescript.isIdentifier(node)) {
+      const binding = immutable_source_declaration(typescript, checker, node, sources.eligible);
+      return !binding?.eligible || binding.declaration.initializer === undefined ? undefined : coordinate(binding.declaration.initializer, depth + 1);
+    }
+    const batch = batches.find(batch => batch.call === node && batch.eligible);
+    return batch === undefined ? undefined : { batch, path: [] };
+  };
+  const owner = coordinate(call.expression.expression);
+  if (owner === undefined || owner.path.length !== 3 || owner.path[0] !== "parts") return undefined;
+  const libraries = owner.batch.libraries.filter(library => library.name === owner.path[1] && library.family === "parts");
+  const library = libraries.length === 1 ? libraries[0] : undefined;
+  const members = library?.members.filter(member => member.name === owner.path[2]);
+  const documents = members?.length === 1 ? members[0]!.documents : undefined;
+  const definition = documents?.length === 1 ? documents[0] : undefined;
+  return definition?.parameterCompleteness === "complete" && library !== undefined ? { batch: owner.batch, library, definition } : undefined;
 }
 
 /** Advisory write-key evidence from an immutable coordinate expression. A later governed
@@ -667,29 +728,9 @@ export function part_write_context(typescript: typeof ts, program: ts.Program, f
     typescript.forEachChild(node, visit);
   };
   visit(file);
-  if (call === undefined || !typescript.isPropertyAccessExpression(call.expression)) return undefined;
-  const coordinate = (node: ts.Expression, depth = 0): { batch: ts.CallExpression; path: string[] } | undefined => {
-    if (depth > 16) return undefined;
-    node = sources.unwrap(node);
-    if (typescript.isPropertyAccessExpression(node)) {
-      const parent = coordinate(node.expression, depth + 1);
-      return parent === undefined ? undefined : { batch: parent.batch, path: [...parent.path, node.name.text] };
-    }
-    if (typescript.isIdentifier(node)) {
-      const declaration = sources.declaration(node);
-      return declaration?.initializer === undefined ? undefined : coordinate(declaration.initializer, depth + 1);
-    }
-    return typescript.isCallExpression(node) && facts.batches.some(batch => batch.call === node && batch.eligible)
-      ? { batch: node, path: [] } : undefined;
-  };
-  const owner = coordinate(call.expression.expression);
-  if (owner === undefined || owner.path.length !== 3 || owner.path[0] !== "parts") return undefined;
-  const batch = facts.batches.find(batch => batch.call === owner.batch);
-  const libraries = batch?.libraries.filter(library => library.name === owner.path[1] && library.family === "parts");
-  const members = libraries?.length === 1 ? libraries[0]!.members.filter(member => member.name === owner.path[2]) : undefined;
-  const documents = members?.length === 1 ? members[0]!.documents : undefined;
-  const definition = documents?.length === 1 ? documents[0] : undefined;
-  if (definition?.parameterCompleteness !== "complete") return undefined;
+  if (call === undefined) return undefined;
+  const definition = part_write_target(typescript, program.getTypeChecker(), sources, facts.batches, call)?.definition;
+  if (definition === undefined) return undefined;
   const argument = call.arguments[0]!;
   if (!typescript.isObjectLiteralExpression(argument)) return undefined;
   let start = offset, end = offset, assignment = false, namedProperty = false;

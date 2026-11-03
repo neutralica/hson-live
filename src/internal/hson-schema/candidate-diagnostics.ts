@@ -73,7 +73,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         || use.reference.path.length === 0) continue;
       for (const context of part_data_contexts(facts, document, binding.incoming)) {
         if (context.receiving !== binding || !context.executionCertain || context.evidence?.strength !== "validated"
-          || context.argument === undefined || memberInvocations.has(context.connector)) continue;
+          || context.argument === undefined || context.connector === undefined || memberInvocations.has(context.connector)) continue;
         const alternatives = part_data_projection(context.evidence, use.reference.path).alternatives;
         const invalid = alternatives.length > 0 && alternatives.every(alternative => alternative.presence === "required"
           && (alternative.kind === "invalid-traversal" || !use.reference.optional && alternative.kind === "absent"));

@@ -95,7 +95,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
                 + ":\n" + contexts.map(caller => part_data_context_description(caller, selectors)).join("\n"));
             }
           }
-          if (argument?.value === undefined) continue;
+          if (argument === undefined || !("value" in argument) || argument.value === undefined) continue;
           try { for (const path of data_paths(project_ordered_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
           catch { /* Invalid or dynamic inputs provide no shape evidence. */ }
         }

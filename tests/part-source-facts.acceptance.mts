@@ -11,7 +11,7 @@ import { read_supported_hson_import_symbols } from "../src/internal/embedded-hso
 import { query_hson_part_source } from "../src/internal/editor-introspection/query.ts";
 import { part_data_contexts, part_data_projection } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { OBJECT_VALUE, schema_projection_description } from "../src/internal/hson-schema/data-projection.ts";
-import { forwarding_fixture } from "./fixtures/part-forwarding-cases.mts";
+import { forwarding_fixture, write_fixture } from "./fixtures/part-forwarding-cases.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-source-facts", title: "Compiler-owned Part source facts", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "source-evidence", "typescript", "provenance"]) });
@@ -730,6 +730,72 @@ check('C1 cycles, unresolved inventories and traversal limits retain conservativ
   const wide = evidenceProject('c1-frames', { 'index.ts': forwarding_fixture({ intermediate: fanout }) });
   assert.equal(part_data_contexts(wide.facts, wide.document('B'), 'payload').length, 255);
   assert.match(part_data_contexts(wide.facts, wide.document('A'), 'incoming')[0]!.incomplete.join(';'), /frame limit \(256\)/);
+});
+
+check('C2a write facts preserve exact target, argument transport, provenance and receiving identities', () => {
+  const source = write_fixture({}, 'const chosen=map.parts.components.A; const alias=chosen;\nalias.write({incoming:input});\nchosen.write({incoming:input});');
+  const test = evidenceProject('c2a-facts', { 'index.ts': source });
+  const writes = test.facts.writes;
+  assert.equal(writes.length, 2);
+  const parents = part_data_contexts(test.facts, test.document('A'), 'incoming');
+  const children = part_data_contexts(test.facts, test.document('B'), 'payload');
+  assert.equal(parents.length, 2); assert.equal(children.length, 2);
+  for (const [index, write] of writes.entries()) {
+    assert.equal(write.definition, test.document('A')); assert.equal(write.batch, test.batch('map'));
+    assert.equal(write.library.name, 'components'); assert.equal(test.slice(write.location), write.call.getText());
+    const argument = write.arguments[0]!, parent = parents[index]!, child = children[index]!;
+    assert.equal(argument.name, 'incoming'); assert.equal(argument.kind, 'data'); assert.equal(argument.expression.getText(), 'input');
+    assert.equal(test.slice(argument.nameLocation), 'incoming'); assert.equal(test.slice(argument.valueLocation), 'input');
+    assert.equal(parent.argument, argument); assert.equal(parent.receiving?.name, 'outer');
+    assert.equal(parent.receiving, test.document('A').bindingSources!.declarations.find(binding => binding.origin === 'receiving'));
+    assert.equal(parent.evidence?.strength, 'validated'); assert.equal(child.evidence, parent.evidence);
+    assert.equal(parent.evidence, argument.dataEvidence); assert.equal(child.parent, parent.invocation);
+    assert.equal(parent.root.write, write); assert.equal(parent.connector, undefined); assert.equal(parent.executionCertain, false);
+    assert.equal(child.executionCertain, false); assert.match(child.uncertainty.join(';'), /detached.*execution unknown/);
+    assert.match(test.slice(parent.evidence!.annotationLocation), /HsonData<typeof S>/);
+    assert.match(test.slice(parent.evidence!.schemaLocation), /S=Hson.schema/);
+    assert.match(test.slice(parent.evidence!.valueLocation), /Hson.data/);
+  }
+  assert.notEqual(parents[0]!.root, parents[1]!.root);
+  assert.equal(parents[0]!.evidence, parents[1]!.evidence, 'same annotation reuses compiled evidence and projection cache');
+  assert.equal(part_data_projection(parents[0]!.evidence!, ['title']), part_data_projection(parents[1]!.evidence!, ['title']));
+});
+check('C2a imported Part targets and annotated Data preserve declaration provenance across immutable aliases', () => {
+  const definitions = write_fixture({}, 'export const selected=map.parts.components.A; export {input};');
+  const test = evidenceProject('c2a-imports', { 'parts.ts': definitions, 'index.ts':
+    'import {selected,input} from "./parts.js"; const alias=selected; alias.write({incoming:input});' });
+  assert.equal(test.facts.writes.length, 1);
+  const context = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;
+  assert.equal(context.evidence?.strength, 'validated'); assert.ok(context.evidence!.annotationLocation.file.endsWith('parts.ts'));
+  assert.ok(context.root.write!.location.file.endsWith('index.ts'));
+});
+check('C2a advisory, unknown, mismatched and unsupported authoring never acquires execution proof', () => {
+  for (const [index, expression, strength] of [
+    [0, 'input', 'advisory'], [1, 'dynamic', undefined], [2, 'S.certify(input)', undefined],
+    [3, 'Hson.data.from({title:"projected"})', undefined], [4, '({title:"projected"})', undefined],
+  ] as const) {
+    const test = evidenceProject('c2a-strength-' + index, { 'index.ts': write_fixture({ value: '<>' }, 'map.parts.components.A.write({incoming:' + expression + '});') });
+    assert.equal(test.facts.writes.length, 1);
+    const context = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;
+    assert.equal(context.evidence?.strength, strength); assert.equal(context.executionCertain, false);
+  }
+  for (const [index, call] of [
+    'dynamic.write({incoming:input});', 'map.parts.components[dynamic].write({incoming:input});',
+    'map.parts.components.A.write({...dynamic,incoming:input});', 'map.parts.components.A.write({["incoming"]:input});',
+    'map.parts.components.A.write({get incoming(){return input;}});', 'map.parts.components.A.write({incoming:input,incoming:input});',
+    'map.parts.components.A.write({incoming = input});',
+    'map.parts.components.A.write({outer:input});', 'map.parts.components.A?.write({incoming:input});',
+    'let alias=map.parts.components.A; alias.write({incoming:input});',
+  ].entries()) {
+    const test = evidenceProject('c2a-unsupported-' + index, { 'index.ts': write_fixture({}, call) });
+    assert.deepEqual(test.facts.writes, [], call);
+    assert.deepEqual(part_data_contexts(test.facts, test.document('A'), 'incoming'), [], call);
+  }
+  const prototype = evidenceProject('c2a-prototype-setter', { 'index.ts': write_fixture({
+    intermediate: '<p hson:part data:outer="%{__proto__}" "^{outer.title}"/>'
+  }, 'map.parts.components.A.write({__proto__:input});') });
+  assert.equal(prototype.document('A').parameterCompleteness, 'complete');
+  assert.deepEqual(prototype.facts.writes, [], 'a prototype setter does not supply an own receiving argument');
 });
 
 events.terminal("pass");
