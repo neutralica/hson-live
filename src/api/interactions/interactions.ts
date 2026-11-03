@@ -357,7 +357,8 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
 function snapshot_activation(options: InteractionActivationOptions, currentTree?: () => LiveTree): ActivationSnapshot {
   const map = options.map;
   const tree = options.tree;
-  const documentNames = map.capture().libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name);
+  const documentNames = internal_livemap_aggregate_authority(map).hostedRegistry().libraries
+    .filter((entry) => entry.scope === undefined && entry.mode === "document").map((entry) => entry.name);
   const document = options.document ?? (documentNames.length === 1 ? documentNames[0] : undefined);
   if (document === undefined || !documentNames.includes(document)) {
     throw new TypeError("Canonical interaction activation requires a selected document Library.");

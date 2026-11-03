@@ -215,6 +215,7 @@
     "test:livetree-dom-realm": "node --import=tsx tests/livetree-dom-realm.acceptance.mts",
     "test:livetree-listener-contract": "node --import=tsx tests/livetree-listener-contract.acceptance.mts",
     "test:canonical-interactions": "node --import=tsx tests/canonical-interactions.acceptance.mts",
+    "test:scoped-canonical-activation": "node --import=tsx tests/scoped-canonical-activation.acceptance.mts",
     "test:interaction-ownership": "node --import=tsx tests/interaction-ownership.acceptance.mts",
     "test:interaction-subject-paths": "node --import=tsx tests/interaction-subject-paths.acceptance.mts",
     "test:canonical-interactions-worker": "node --import=tsx tests/canonical-interactions-worker.acceptance.mts",

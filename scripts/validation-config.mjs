@@ -88,6 +88,7 @@ export const ordinary = Object.freeze([
   "test:livetree-dataset-batch",
   "test:livetree-form-properties",
   "test:canonical-interactions",
+  "test:scoped-canonical-activation",
   "test:interaction-ownership",
   "test:interaction-subject-paths",
   "test:canonical-interactions-worker",
