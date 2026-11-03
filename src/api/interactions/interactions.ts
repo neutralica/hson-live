@@ -18,8 +18,10 @@ import {
 import {
   encode_hson_data_internal,
   hson_data_from_value,
+  hson_data_text,
   hson_data_value,
-  ExactDataCarrier,
+  admit_hson_data_input,
+  type ExactDataCarrier,
 } from "../data/hson-data.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
@@ -65,6 +67,7 @@ type RuntimeRecord = Readonly<{
 type RuntimeBrowserDescriptor = Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args: HsonData }>;
 type RuntimeLocusDescriptor = Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload: HsonData }>;
 type RuntimeDescriptor = RuntimeBrowserDescriptor | RuntimeLocusDescriptor;
+type PreparedRuntimeDescriptor = Readonly<{ descriptor: RuntimeDescriptor; data: ExactDataCarrier }>;
 
 type ActivationSnapshot = Readonly<{
   map: LiveMap;
@@ -197,14 +200,15 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
         const currentSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
         const desired = currentSystem === undefined ? [] : read_descriptors(require_member(
           require_object(projected_value_from_hson_node(aggregate.systemRoot(currentSystem))), "descriptors"));
-        const desiredById = new Map(desired.map((descriptor) => [descriptor.id, descriptor] as const));
+        const desiredById = new Map(desired.map((prepared) => [prepared.descriptor.id, prepared] as const));
 
         for (const [id, record] of [...records]) {
-          const descriptor = desiredById.get(id);
+          const prepared = desiredById.get(id);
+          const descriptor = prepared?.descriptor;
           let subject: LiveTree | undefined;
           try { subject = descriptor === undefined ? undefined : resolve_local_subject(activation, descriptor); }
           catch { subject = undefined; }
-          const fingerprint = descriptor === undefined ? undefined : descriptor_fingerprint(descriptor);
+          const fingerprint = prepared === undefined ? undefined : descriptor_fingerprint(prepared.descriptor, prepared.data);
           if (descriptor === undefined || subject === undefined
             || active_subject_for_tree(subject) !== record.node || fingerprint !== record.fingerprint) {
             record.sub.off();
@@ -216,7 +220,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
         // the longest desired active prefix already in installation order,
         // then move only the remaining active records. A consumed once record
         // has no installed listener and keeps its state across a reorder.
-        const installable = desired.filter((descriptor) => {
+        const installable = desired.filter(({ descriptor }) => {
           if (descriptor.subject.library !== activation.document) return false;
           if (records.has(descriptor.id)) return true;
           try {
@@ -226,7 +230,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
               && (descriptor.kind !== "locus" || activation.dispatch !== undefined)
               && resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length > 0;
           } catch { return false; }
-        }).map((descriptor) => descriptor.id);
+        }).map(({ descriptor }) => descriptor.id);
         const desiredActive = installable.filter((id) => !records.get(id)?.state.consumed);
         const installedActive = [...records].filter(([, record]) => !record.state.consumed)
           .map(([id]) => id);
@@ -244,7 +248,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
           records.delete(id);
         }
 
-        for (const descriptor of desired) {
+        for (const { descriptor, data } of desired) {
           if (records.has(descriptor.id)) continue;
           let subject: LiveTree | undefined;
           try { subject = resolve_local_subject(activation, descriptor); } catch (cause) {
@@ -266,6 +270,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
           const state = { consumed: false };
           let materialized = false;
           try {
+            const fingerprint = descriptor_fingerprint(descriptor, data);
             const handler = (event: Event): void => {
               if (disposed) return;
               if (currentTree !== undefined) {
@@ -275,10 +280,10 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                   const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
                   const currentDescriptor = system === undefined ? undefined : read_descriptors(require_member(
                     require_object(projected_value_from_hson_node(aggregate.systemRoot(system))), "descriptors"))
-                    .find(candidate => candidate.id === descriptor.id);
+                    .find(candidate => candidate.descriptor.id === descriptor.id);
                   const current = currentDescriptor === undefined
-                    || descriptor_fingerprint(currentDescriptor) !== descriptor_fingerprint(descriptor)
-                    ? undefined : resolve_local_subject(activation, currentDescriptor);
+                    || descriptor_fingerprint(currentDescriptor.descriptor, currentDescriptor.data) !== fingerprint
+                    ? undefined : resolve_local_subject(activation, currentDescriptor.descriptor);
                   if (current === undefined || active_subject_for_tree(current) !== active_subject_for_tree(subject)) return;
                 } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
               }
@@ -307,7 +312,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
               continue;
             }
             records.set(descriptor.id, Object.freeze({
-              fingerprint: descriptor_fingerprint(descriptor),
+              fingerprint,
               node: active_subject_for_tree(subject),
               subject,
               sub,
@@ -432,7 +437,7 @@ function interaction_storage(target: object): Storage {
   });
 }
 
-function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjectedObject {
+function descriptor_to_value(descriptor: InteractionDescriptor, data?: ExactDataCarrier): OrderedProjectedObject {
   const kind = exact_record(descriptor, descriptor.kind === "browser"
     ? ["id", "subject", "listener", "kind", "key", "args"]
     : ["id", "subject", "listener", "kind", "key", "payload"], "interaction descriptor");
@@ -447,8 +452,8 @@ function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjecte
     ["key", scalar(kind.key)],
   ];
   return ordered_projected_object(descriptor.kind === "browser"
-    ? [...common, ["args", interaction_data_value(kind.args)]]
-    : [...common, ["payload", interaction_data_value(kind.payload)]]);
+    ? [...common, ["args", interaction_data_value(data ?? kind.args)]]
+    : [...common, ["payload", interaction_data_value(data ?? kind.payload)]]);
 }
 
 function listener_to_value(input: unknown): OrderedProjectedObject {
@@ -488,9 +493,7 @@ function scalar(value: unknown): OrderedProjectedValue {
 }
 
 function interaction_data_value(value: unknown): OrderedProjectedValue {
-  return hson_data_value(typeof value === "string"
-    ? ExactDataCarrier.fromHson(value as import("../transform/transform.types.js").HsonCanonical)
-    : ExactDataCarrier.from(value));
+  return hson_data_value(admit_hson_data_input(value));
 }
 
 function descriptor_array(value: OrderedProjectedValue): readonly OrderedProjectedObject[] {
@@ -506,8 +509,8 @@ function descriptor_id(value: OrderedProjectedObject): string {
   return id;
 }
 
-function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescriptor[] {
-  return Object.freeze(descriptor_array(value).map((entry): RuntimeDescriptor => {
+function read_descriptors(value: OrderedProjectedValue): readonly PreparedRuntimeDescriptor[] {
+  return Object.freeze(descriptor_array(value).map((entry): PreparedRuntimeDescriptor => {
     const kind = member(entry, "kind");
     const base = {
       id: require_string(member(entry, "id")),
@@ -515,17 +518,13 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
       listener: read_listener(require_object(member(entry, "listener"))),
       key: require_string(member(entry, "key")),
     };
-    if (kind === "browser") return Object.freeze({
-      ...base,
-      kind,
-      args: hson_data_from_value(require_member(entry, "args")).toHson() as HsonData,
-    }) satisfies BrowserInteractionDescriptor;
-    if (kind === "locus") return Object.freeze({
-      ...base,
-      kind,
-      payload: hson_data_from_value(require_member(entry, "payload")).toHson() as HsonData,
-    }) satisfies LocusInteractionDescriptor;
-    throw new Error("Canonical interaction descriptor discriminant is malformed.");
+    if (kind !== "browser" && kind !== "locus") throw new Error("Canonical interaction descriptor discriminant is malformed.");
+    const data = hson_data_from_value(require_member(entry, kind === "browser" ? "args" : "payload"));
+    const descriptor: RuntimeDescriptor = Object.freeze(kind === "browser"
+      ? { ...base, kind, args: hson_data_text(data) }
+      : { ...base, kind, payload: hson_data_text(data) });
+    // Keep the owned value beside its public projection for internal fingerprinting.
+    return Object.freeze({ descriptor, data });
   }));
 }
 
@@ -580,8 +579,8 @@ function require_missing_policy(value: OrderedProjectedValue | undefined): Inter
   throw new Error("Canonical interaction missing-target policy is malformed.");
 }
 
-function descriptor_fingerprint(descriptor: InteractionDescriptor): string {
-  const value = descriptor_to_value(descriptor);
+function descriptor_fingerprint(descriptor: RuntimeDescriptor, data: ExactDataCarrier): string {
+  const value = descriptor_to_value(descriptor, data);
   // A canonical path rewrite follows the same local subject. It must not
   // replace that subject's listener or reset once/resource ownership.
   return encode_hson_data_internal(hson_data_from_value(ordered_projected_object(

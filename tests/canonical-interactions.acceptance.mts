@@ -35,6 +35,7 @@ import { is_ordered_projected_object, ordered_projected_array, ordered_projected
 import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { ExactDataCarrier, hson_data_from_value } from "../src/api/data/hson-data.ts";
 
 install_fake_document();
 
@@ -473,6 +474,164 @@ await check("local to local to authoritative reconciliation owns one exact subje
   assert.equal(target.registrations.length, 0);
   assert.equal(map.rev, 3);
   reflection.dispose();
+});
+
+await check("fingerprinting retains owned exact data without parsing or materialization", () => {
+  const values = [
+    Hson.data.from({ nested: [null, [], {}, "", "123", "true", "null", -0, Number.MIN_VALUE, Number.MAX_VALUE] }),
+    Hson.data`<'10' -0 '2' <__proto__ true constructor null> '1' []>`,
+    Hson.data.from(-0), Hson.data.from("123"), Hson.data.from("true"), Hson.data.from("null"),
+    Hson.data.from(""), Hson.data.from(null), Hson.data.from([]), Hson.data.from({}),
+    Hson.data.fromHson(Hson.canonical`123`), Hson.data.fromHson(Hson.canonical`true`),
+  ];
+  const map = map_fixture();
+  for (const [index, value] of values.entries()) {
+    add_interaction(map, local(`browser-${index}`, "run", value));
+    add_interaction(map, authoritative(`locus-${index}`, "save", value));
+  }
+  const reflection = hsonMirror(map.doc.must("page"));
+  const target = new Target();
+  link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
+  const received: HsonData[] = [];
+  const from = ExactDataCarrier.from, fromHson = ExactDataCarrier.fromHson;
+  const toHson = ExactDataCarrier.prototype.toHson, materialize = ExactDataCarrier.prototype.materialize;
+  let retentions = 0, serializations = 0;
+  let dispose: (() => void) | undefined;
+  try {
+    ExactDataCarrier.from = (value) => {
+      const admitted = from(value);
+      assert.equal(admitted, value, "fingerprinting must retain the authenticated exact carrier");
+      retentions += 1;
+      return admitted;
+    };
+    ExactDataCarrier.fromHson = () => { throw new Error("Reconciliation must not parse Hson data."); };
+    ExactDataCarrier.prototype.materialize = () => { throw new Error("Reconciliation must not materialize exact data."); };
+    ExactDataCarrier.prototype.toHson = function () { serializations += 1; return toHson.call(this); };
+    dispose = activate_interactions({
+      map, tree: reflection.tree,
+      local: { run: (_event, _subject, args) => { received.push(args); } },
+      dispatch: async (_key, payload) => { received.push(payload); },
+    });
+    assert.equal(serializations, values.length * 2, "only public descriptor projection serializes data");
+    const listeners = target.registrations.map(({ listener }) => listener);
+    assert.equal(listeners.length, values.length * 2);
+    target.fire();
+    assert.equal(serializations, values.length * 2, "invocation must reuse public data text");
+    serializations = 0;
+    map.data.must("state").at(["count"]).set(1);
+    assert.equal(serializations, values.length * 2, "fingerprints must not serialize data again");
+    assert.deepEqual(target.registrations.map(({ listener }) => listener), listeners);
+    target.fire();
+    assert.equal(serializations, values.length * 2);
+    assert.ok(retentions > 0);
+  } finally {
+    ExactDataCarrier.from = from;
+    ExactDataCarrier.fromHson = fromHson;
+    ExactDataCarrier.prototype.toHson = toHson;
+    ExactDataCarrier.prototype.materialize = materialize;
+    dispose?.(); reflection.dispose();
+  }
+  const expected = values.flatMap((value) => [value, value]);
+  assert.deepEqual(received, [...expected, ...expected]);
+});
+
+await check("fingerprints normalize descriptor fields and distinguish exact data changes", () => {
+  const map = map_fixture();
+  add_interaction(map, local("fingerprint", "run", Hson.data`<'10' -0 '2' 2>`));
+  const reflection = hsonMirror(map.doc.must("page"));
+  const target = new Target();
+  link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
+  let received: HsonData | undefined;
+  const dispose = activate_interactions({ map, tree: reflection.tree,
+    local: { run: (_event, _subject, args) => { received = args; } },
+  });
+  try {
+    let installed = target.registrations[0]?.listener;
+    assert.ok(installed);
+    const { aggregate, system, descriptors } = canonical_descriptors(map);
+    const descriptor = descriptors[0]!;
+    const reordered = ordered_projected_object([...descriptor.entries].reverse().map(([key, value]) => [key,
+      key === "listener" && is_ordered_projected_object(value)
+        ? ordered_projected_object([...value.entries].reverse()) : value,
+    ]));
+    aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
+      value: ordered_projected_array([reordered]) }]);
+    assert.equal(target.registrations[0]?.listener, installed);
+    for (const data of [Hson.data`<'2' 2 '10' -0>`, Hson.data`<'2' 2 '10' 0>`,
+      Hson.data.from("123"), Hson.data.from(123)]) {
+      replace_interaction(map, local("fingerprint", "run", data));
+      assert.equal(target.registrations.length, 1);
+      assert.notEqual(target.registrations[0]?.listener, installed);
+      installed = target.registrations[0]?.listener;
+      target.fire();
+      assert.equal(received, data);
+    }
+  } finally { dispose(); reflection.dispose(); }
+});
+
+await check("failure observers receive frozen public descriptors with canonical data text", () => {
+  const map = map_fixture();
+  const data = Hson.data`<'10' -0 '2' <nested [null, "123"]>>`;
+  const descriptors = [local("browser-failure", "run", data), authoritative("locus-failure", "save", data)];
+  for (const descriptor of descriptors) add_interaction(map, descriptor);
+  const reflection = hsonMirror(map.doc.must("page"));
+  const target = new Target();
+  link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
+  const failures: import("../src/types/interaction.types.ts").InteractionFailure[] = [];
+  const cause = new Error("invocation failed");
+  const dispose = activate_interactions({ map, tree: reflection.tree,
+    local: { run: (_event, _subject, args) => { assert.equal(args, data); throw cause; } },
+    dispatch: (_key, payload) => { assert.equal(payload, data); throw cause; },
+    onFailure: (failure) => { failures.push(failure); },
+  });
+  try {
+    target.fire();
+    assert.deepEqual(failures.map(({ descriptor }) => descriptor), descriptors);
+    assert.deepEqual(failures.map(({ phase }) => phase), ["browser-invocation", "locus-invocation"]);
+    for (const failure of failures) {
+      assert.equal(failure.cause, cause);
+      assert.ok(Object.isFrozen(failure));
+      assert.ok(Object.isFrozen(failure.descriptor));
+      assert.ok(Object.isFrozen(failure.descriptor.subject));
+      assert.ok(Object.isFrozen(failure.descriptor.listener));
+    }
+    target.fire();
+    assert.equal(failures[2]?.descriptor, failures[0]?.descriptor);
+    assert.equal(failures[3]?.descriptor, failures[1]?.descriptor);
+  } finally { dispose(); reflection.dispose(); }
+});
+
+await check("interaction data admission shares action string rules and strict ownership checks", () => {
+  const map = map_fixture();
+  const ordinary = { nested: [null, [], {}, -0, "123", "true", "null"] };
+  add_interaction(map, local("ordinary", "run", ordinary as never));
+  ordinary.nested.push("caller mutation");
+  add_interaction(map, local("encoded", "run", "123" as HsonData));
+  add_interaction(map, local("literal", "run", Hson.data.from("123")));
+  const admitted = canonical_descriptors(map).descriptors;
+  const data = (index: number) => {
+    const descriptor = admitted[index];
+    assert.ok(is_ordered_projected_object(descriptor));
+    return descriptor.entries.find(([key]) => key === "args")?.[1];
+  };
+  assert.equal(data(1), 123);
+  assert.equal(data(2), "123");
+  const ordinaryValue = data(0);
+  assert.ok(ordinaryValue !== undefined);
+  assert.deepEqual(hson_data_from_value(ordinaryValue).materialize(), { nested: [null, [], {}, -0, "123", "true", "null"] });
+  let getterCalls = 0;
+  const accessor = Object.defineProperty({}, "value", { enumerable: true, get: () => { getterCalls += 1; return 1; } });
+  const cycle: Record<string, unknown> = {}; cycle.self = cycle;
+  const invalid = [accessor, cycle, new Date(), [, 1], { value: undefined }, { value: NaN },
+    { _hson_bad: 1 }, Object.create(ExactDataCarrier.prototype),
+    '<p @000000001/>', '<p title="document"/>'];
+  const before = map.capture(), rev = map.rev;
+  for (const value of invalid) {
+    assert.throws(() => add_interaction(map, local("invalid", "run", value as never)));
+    assert.equal(map.rev, rev);
+    assert.deepEqual(map.capture(), before);
+  }
+  assert.equal(getterCalls, 0);
 });
 
 await check("once is retained per materialization and reset by replacement/reactivation", () => {
