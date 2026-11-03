@@ -55,7 +55,8 @@ function resolve(facts: PartSourceFacts, document: PartDocumentSource, connector
   const path = [...origin.path, ...reference.path];
   const contexts = part_data_contexts(facts, document, origin.receiving.incoming).filter(context => context.receiving === origin.receiving).map((caller): Context => {
     const values = new Set<string>(), alternatives = new Set<string>();
-    const projection = caller.evidence === undefined ? undefined : part_data_projection(caller.evidence, path);
+    const projection = caller.evidence === undefined ? undefined : part_data_projection(caller.evidence, [...caller.path, ...path]);
+    for (const reason of caller.uncertainty) alternatives.add(reason);
     if (projection === undefined || projection.alternatives.length === 0) alternatives.add("unknown or unavailable Schema evidence");
     for (const alternative of projection?.alternatives ?? []) {
       if (alternative.presence === "optional") alternatives.add("optional path; value may be absent");
@@ -100,7 +101,8 @@ function source_location(location: PartSourceLocation): string {
 }
 
 export function part_selector_hover(result: PartSelectorResolution): string {
-  const lines = [`Possible destination Parts (${result.contexts.length} recognized direct caller contexts).`,
+  const kind = result.contexts.some(context => context.caller.parent !== undefined) ? "recognized invocation contexts; recognized callers only" : "recognized direct caller contexts";
+  const lines = [`Possible destination Parts (${result.contexts.length} ${kind}).`,
     "Contextual Schema candidates; no guaranteed runtime destination or universal Part contract."];
   if (result.contexts.length === 0) lines.push("No recognized direct caller; unknown Schema evidence and source selection.");
   for (const context of result.contexts) {

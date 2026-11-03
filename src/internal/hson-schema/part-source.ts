@@ -67,12 +67,12 @@ export type PartConnectorSource = Readonly<{
     dataEvidence?: PartDataSchemaEvidence }>[];
 }>;
 /** Static projection only: opaque coordinate values never establish selection. */
-export function part_source_coordinates(connector: PartConnectorSource): ReturnType<typeof part_coordinates> | undefined {
+export function part_source_coordinates(connector: PartConnectorSource, enclosingLibrary?: string): ReturnType<typeof part_coordinates> | undefined {
   const fields = (name: string) => connector.attributes.filter(attribute => attribute.name === name);
   const libs = fields("lib"), ats = fields("at");
   if (libs.length > 1 || ats.length > 1 || libs.some(attr => attr.value === undefined) || ats.some(attr => attr.value === undefined)) return undefined;
   if (connector.attributes.some(attr => attr.name.startsWith("^{") || attr.name.startsWith("#{"))) return undefined;
-  return part_coordinates(libs[0]?.value, ats[0]?.value);
+  return part_coordinates(libs[0]?.value, ats[0]?.value, enclosingLibrary);
 }
 export type PartDocumentSource = Readonly<{
   producer: ts.Expression;

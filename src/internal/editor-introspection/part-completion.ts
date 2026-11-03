@@ -84,15 +84,15 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         const contexts = part_data_contexts(facts, document, origin.incoming);
         for (const context of contexts) {
           const argument = context.argument;
-          if (context.evidence !== undefined) for (const { path, selectors } of schema_paths(context.evidence, origin.path, declaration.name, prefix)) {
+          if (context.evidence !== undefined) for (const { path, selectors } of schema_paths(context.evidence, origin.path, declaration.name, prefix, context.path)) {
             add(path, 0, false);
             if (!schemaDetails.has(path)) {
               const shared = contexts.every(caller => {
-                const alternatives = caller.evidence === undefined ? [] : part_data_projection(caller.evidence, selectors).alternatives;
+                const alternatives = caller.evidence === undefined ? [] : part_data_projection(caller.evidence, [...caller.path, ...selectors]).alternatives;
                 return alternatives.length > 0 && alternatives.every(alternative => alternative.kind === "supported");
               });
               schemaDetails.set(path, (shared ? "Member described in every recognized caller Schema" : "Partial or unknown support across recognized callers")
-                + ":\n" + [...new Set(contexts.map(caller => part_data_context_description(caller, selectors)))].join("\n"));
+                + ":\n" + contexts.map(caller => part_data_context_description(caller, selectors)).join("\n"));
             }
           }
           if (argument?.value === undefined) continue;
@@ -226,7 +226,7 @@ function data_paths(values: readonly OrderedProjectedValue[], root: string): rea
 const member_path = (root: string, key: string | number) => root + (typeof key === "number" ? `[${key}]` : is_part_parameter_name(key) ? `.${key}` : `[${JSON.stringify(key)}]`);
 
 /** Suggestions retain union and presence information for each caller. */
-function schema_paths(evidence: PartDataSchemaEvidence, origin: SchemaDataPath, root: string, prefix: string): readonly { path: string; selectors: SchemaDataPath }[] {
+function schema_paths(evidence: PartDataSchemaEvidence, origin: SchemaDataPath, root: string, prefix: string, contextPath: SchemaDataPath): readonly { path: string; selectors: SchemaDataPath }[] {
   const reference = scan_part_reference(`^{${prefix}`, 0, true);
   const selected = reference?.name === root ? reference.path.slice(0, /[.\]]$/.test(prefix) ? undefined : -1) : [];
   const spelling = selected.reduce<string>(member_path, root);
@@ -234,13 +234,13 @@ function schema_paths(evidence: PartDataSchemaEvidence, origin: SchemaDataPath, 
   while (pending.length && result.length < 512) {
     const current = pending.pop()!;
     if (current.depth >= 16) continue;
-    const projection = part_data_projection(evidence, current.path);
+    const projection = part_data_projection(evidence, [...contextPath, ...current.path]);
     if (projection.alternatives.some(alternative => alternative.kind === "budget-exhausted")) continue;
     const names = new Set(projection.alternatives.flatMap(alternative => alternative.kind === "supported" && alternative.node.kind === "object" ? alternative.node.members.map(member => member.name) : []));
     for (const name of names) {
       // Preserve existing iterator suggestions: heterogeneous element/value
       // origins offer common members, while retaining their richer type detail.
-      if (origin.some(selector => selector === null || selector === OBJECT_VALUE)
+      if ([...contextPath, ...origin].some(selector => selector === null || selector === OBJECT_VALUE)
         && projection.alternatives.some(alternative => alternative.kind !== "supported" || alternative.node.kind !== "object" || !alternative.node.members.some(member => member.name === name))) continue;
       const spelling = member_path(current.spelling, name), path = [...current.path, name];
       result.push({ path: spelling, selectors: path });

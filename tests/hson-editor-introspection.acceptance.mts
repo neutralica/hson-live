@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { run_forwarding_editor_cases } from "./fixtures/part-forwarding-cases.mts";
+import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { readFileSync } from "node:fs";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -227,8 +230,7 @@ console.log("ok - compiler-owned editor checkpoint, completion, and interpolatio
 // Compare runtime tokens, errors, mutation and rejection semantics with the pinned
 // committed implementation. Only import locations change in the temporary modules.
 const root = resolve(import.meta.dirname, '..');
-mkdirSync(join(root, 'tmp'), { recursive: true });
-const baselineDirectory = mkdtempSync(join(root, 'tmp', 'part-scanner-baseline-'));
+const baselineDirectory = mkdtempSync(join(tmpdir(), 'part-scanner-baseline-'));
 const baselineModule = (name: string) => {
   const original = execFileSync('git', ['show', '6938769e:' + name], { cwd: root, encoding: 'utf8' });
   const rewritten = original.replace(/(from\s+["'])(\.[^"']+)(["'])/g, (_match, before: string, specifier: string, after: string) =>
@@ -258,3 +260,13 @@ try {
   }
   console.log('ok - pinned runtime scanner and governed placeholder placement parity');
 } finally { rmSync(baselineDirectory, { recursive: true, force: true }); }
+
+run_forwarding_editor_cases();
+await new Promise<void>((resolve, reject) => {
+  const worker = repository_typescript_worker(new URL("./fixtures/part-forwarding.worker.mts", import.meta.url));
+  let passed = false;
+  worker.once("message", value => { passed = value === "passed"; });
+  worker.once("error", reject);
+  worker.once("exit", code => { try { assert.equal(code, 0); assert.ok(passed); resolve(); } catch (error) { reject(error); } });
+});
+console.log("ok - nested Part source facts, lexical bindings, Schema projections, completion, hover and finite navigation in Node and Worker");

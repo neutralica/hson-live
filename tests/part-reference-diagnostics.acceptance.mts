@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
+import { tmpdir } from "node:os";
 import { static_part_reference_diagnostics, static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { inspect_schema_data } from "../src/internal/hson-schema/data-projection.ts";
@@ -10,6 +11,8 @@ import { produce_document_diagnostics } from "../editors/vscode-hson/src/documen
 import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
 import type { LiveMapPartsLibraryInput } from "../src/types/livemap.types.ts";
+import { forwarding_fixture } from "./fixtures/part-forwarding-cases.mts";
+import { part_data_contexts } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-reference-diagnostics", title: "Conservative static Part references", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "editor", "provenance"]) });
@@ -20,8 +23,7 @@ function check(name: string, run: () => void): void {
   catch (error) { events.diagnostic(name, "assertion", String(error)); events.case_end(name, "fail"); events.terminal("fail"); throw error; }
 }
 const root = resolve(import.meta.dirname, "..");
-mkdirSync(join(root, "tmp"), { recursive: true });
-const directory = mkdtempSync(join(root, "tmp", "part-reference-diagnostics-"));
+const directory = mkdtempSync(join(tmpdir(), "part-reference-diagnostics-"));
 process.once("exit", () => rmSync(directory, { recursive: true, force: true }));
 writeFileSync(join(directory, "package.json"), '{"type":"module"}');
 const files = new Map<string, string>();
@@ -897,5 +899,24 @@ check('incomplete cross-file inputs and exhausted projection budgets cannot prod
   assert.ok(inspect_schema_data(evidence.schema, path).alternatives.some(alternative => alternative.kind === 'budget-exhausted'));
   assert.equal(memberErrors(result).length, 0);
 });
+
+check('C1 forwarding never extends direct member diagnostics or borrows guaranteed execution', () => {
+  for (const intermediate of [
+    '<section hson:part data:outer="%{incoming}" <hson-part at="B" payload:data="^{outer}"/>/>',
+    '<section hson:part data:outer="%{incoming}" <hson-part part:optional at="B" payload:data="^{outer}"/>/>',
+    '<section hson:part data:outer="%{incoming}" <hson-part for:outer="^{outer.rows}" at="B" payload:data="^{outer}"/>/>',
+  ]) {
+    const result = inspect(forwarding_fixture({ shape: '<rows <array <content <title "string">>>>', value: '<rows «»>', intermediate,
+      body: '<p hson:part data:record="%{payload}" "^{record.typo}"/>' }));
+    const child = result.facts.documents.find(document => document.receivingDeclarations.some(binding => binding.name === 'record'))!;
+    assert.ok(part_data_contexts(result.facts, child, 'payload').length);
+    assert.ok(part_data_contexts(result.facts, child, 'payload').every(context => !context.executionCertain));
+    assert.deepEqual(memberErrors(result), []);
+  }
+  const direct = inspect(forwarding_fixture({ body: '<p hson:part data:record="%{payload}" "^{record.typo}"/>' })
+    .replace('<section hson:part data:outer="%{incoming}"', '<section hson:part data:outer="%{incoming}" "^{outer.typo}"'));
+  assert.equal(memberErrors(direct).length, 1); assert.deepEqual(direct.slices.filter(slice => slice === '"components/A"'), ['"components/A"']);
+});
+
 service.dispose();
 events.terminal("pass");

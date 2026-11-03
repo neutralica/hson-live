@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
+import { tmpdir } from "node:os";
 import { collect_part_source_facts, static_part_inventory, type PartSourceLocation } from "../src/internal/hson-schema/part-source.ts";
 import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
 import { discover_hson_schema_declarations } from "../src/internal/hson-schema/schema-discovery.ts";
 import { library_source_definitions } from "../src/internal/hson-schema/library-source.ts";
 import { read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { query_hson_part_source } from "../src/internal/editor-introspection/query.ts";
+import { part_data_contexts, part_data_projection } from "../src/internal/editor-introspection/part-data-evidence.ts";
+import { OBJECT_VALUE, schema_projection_description } from "../src/internal/hson-schema/data-projection.ts";
+import { forwarding_fixture } from "./fixtures/part-forwarding-cases.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-source-facts", title: "Compiler-owned Part source facts", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "source-evidence", "typescript", "provenance"]) });
@@ -18,8 +22,7 @@ function check(name: string, run: () => void): void {
   catch (error) { events.diagnostic(name, "assertion", String(error)); events.case_end(name, "fail"); events.terminal("fail"); throw error; }
 }
 const root = resolve(import.meta.dirname, "..");
-mkdirSync(join(root, "tmp"), { recursive: true });
-const directory = mkdtempSync(join(root, "tmp", "part-source-facts-"));
+const directory = mkdtempSync(join(tmpdir(), "part-source-facts-"));
 process.once("exit", () => rmSync(directory, { recursive: true, force: true }));
 writeFileSync(join(directory, "package.json"), '{"type":"module"}');
 const source = String.raw`
@@ -623,4 +626,110 @@ check("optional source facts count authored values, excluding declarations and s
   for (const flag of definition.optionalStructures) assert.equal(test.slice(flag.location), 'part:optional');
   assert.deepEqual(definition.parameterSpellings.map(parameter => parameter.name), ['d']);
 });
+
+check('C1 whole and subtree forwarding retain original evidence and exact invocation parents', () => {
+  for (const [forward, path, expected] of [
+    ['^{outer}', [], /string \(required\)/], ['^{outer.nested}', ['nested'], /number \(required\)/],
+  ] as const) {
+    const test = evidenceProject('c1-path-' + path.length, { 'index.ts': forwarding_fixture({ forward }) });
+    const parent = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;
+    const child = part_data_contexts(test.facts, test.document('B'), 'payload')[0]!;
+    assert.ok(child); assert.equal(child.evidence, parent.evidence); assert.equal(child.evidence?.strength, 'validated');
+    assert.equal(child.parent, parent.invocation); assert.equal(child.root, parent.root); assert.notEqual(child.invocation, parent.invocation);
+    assert.equal(child.receiving?.name, 'record'); assert.equal(parent.receiving?.name, 'outer');
+    assert.deepEqual(child.path, path); assert.equal(child.executionCertain, false); assert.equal(parent.executionCertain, true);
+    assert.match(schema_projection_description(part_data_projection(child.evidence!, [...child.path, 'title'])), expected);
+    assert.equal(part_data_contexts(test.facts, test.document('B'), 'payload')[0], child, 'Program-owned contexts are cached');
+  }
+});
+check('C1 multiple forwarding edges accumulate paths and qualified transitions change the enclosing Library', () => {
+  const source = forwarding_fixture({ shape: '<nested <content <deep <content <title "number">>>>>', value: '<nested <deep <title 8>>>', forward: '^{outer.nested}',
+    body: '<section hson:part data:record="%{payload}" <hson-part at="C" final:data="^{record.deep}"/>/>' })
+    .replace('const page=', 'const C=Hson.document`<p hson:part data:leaf="%{final}" "^{leaf.title}"/>`;const page=')
+    .replace('at="B"', 'at="other/B"')
+    .replace('A:{kind:"document",document:A},B:{kind:"document",document:B}', 'A:{kind:"document",document:A}')
+    .replace('},page:{document:page}', '},other:{parts:{B:{kind:"document",document:B},C:{kind:"document",document:C}}},page:{document:page}');
+  const test = evidenceProject('c1-multiple-edges', { 'index.ts': source });
+  const first = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;
+  const second = part_data_contexts(test.facts, test.document('B'), 'payload')[0]!;
+  const third = part_data_contexts(test.facts, test.document('C'), 'final')[0]!;
+  assert.equal(third.evidence, first.evidence); assert.equal(third.parent, second.invocation); assert.equal(third.root, first.root);
+  assert.deepEqual(third.path, ['nested', 'deep']); assert.equal(second.library.name, 'other'); assert.equal(third.library.name, 'other');
+  assert.match(schema_projection_description(part_data_projection(third.evidence!, [...third.path, 'title'])), /number/);
+});
+check('C1 shared connectors retain independent roots, argument correlations and batch Library authority', () => {
+  const source = forwarding_fixture().replace('const page=',
+    'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonData<typeof T>=Hson.data`<title true>`;const page=')
+    .replace('<hson-part at="components/A" incoming:data="${input}"/>',
+      '<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>');
+  const test = evidenceProject('c1-independent', { 'index.ts': source });
+  const contexts = part_data_contexts(test.facts, test.document('B'), 'payload');
+  assert.equal(contexts.length, 2); assert.equal(contexts[0]!.connector, contexts[1]!.connector);
+  assert.notEqual(contexts[0]!.root, contexts[1]!.root); assert.notEqual(contexts[0]!.parent, contexts[1]!.parent);
+  assert.notEqual(contexts[0]!.evidence, contexts[1]!.evidence);
+  assert.deepEqual(contexts.map(context => schema_projection_description(part_data_projection(context.evidence!, ['title']))), ['string (required)', 'boolean (required)']);
+  const sameSource = source + '\nconst next=maps.fromLibraries({other:{parts:{A:{kind:"document",document:A},B:{kind:"document",document:B}}},page:{document:Hson.document`<hson-part at="other/A" incoming:data="${input}"/>`}});';
+  const batches = evidenceProject('c1-batches', { 'index.ts': sameSource });
+  const children = part_data_contexts(batches.facts, batches.document('B'), 'payload');
+  assert.equal(children.length, 3); assert.equal(children[0]!.definition, children[2]!.definition);
+  assert.notEqual(children[0]!.batch, children[2]!.batch); assert.equal(children[2]!.parent?.library.name, 'other');
+  assert.deepEqual(children.map(context => context.library.name), ['components', 'components', 'other']);
+  const correlated = evidenceProject('c1-correlations', { 'index.ts': forwarding_fixture({
+    intermediate: '<section hson:part data:outer="%{incoming}" data:second="%{extra}" <hson-part at="B" payload:data="^{second}"/>/>'
+  }).replace('const page=', 'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonData<typeof T>=Hson.data`<title true>`;const page=')
+    .replace('incoming:data="${input}"', 'incoming:data="${input}" extra:data="${other}"') });
+  const child = part_data_contexts(correlated.facts, correlated.document('B'), 'payload');
+  assert.equal(child.length, 1, 'one frame per invocation, not per receiving argument');
+  assert.match(schema_projection_description(part_data_projection(child[0]!.evidence!, ['title'])), /boolean/);
+});
+check('C1 existing iterator origins preserve array/object selectors, shadowing and optional uncertainty', () => {
+  const cases = [
+    { shape: '<rows <array <content <title "number">>>>', value: '<rows «»>', directive: 'for:outer="^{outer.rows}"', path: ['rows', null] },
+    { shape: '<rows <content <one <content <title "number">>>>>', value: '<rows <one <title 1>>>', directive: 'per:key:outer="^{outer.rows}"', path: ['rows', OBJECT_VALUE] },
+  ];
+  for (const [index, item] of cases.entries()) {
+    const source = forwarding_fixture({ shape: item.shape, value: item.value,
+      intermediate: '<section hson:part data:outer="%{incoming}" <hson-part ' + item.directive + ' at="B" payload:data="^{outer}"/>/>' });
+    const test = evidenceProject('c1-iteration-' + index, { 'index.ts': source });
+    const child = part_data_contexts(test.facts, test.document('B'), 'payload')[0]!;
+    assert.deepEqual(child.path, item.path); assert.equal(child.executionCertain, false); assert.ok(child.evidence);
+    assert.match(schema_projection_description(part_data_projection(child.evidence!, [...child.path, 'title'])), /number/);
+  }
+  for (const [index, source] of [
+    forwarding_fixture({ forward: '^{outer.nested?}' }).replace('%{incoming}', '%{incoming?}'),
+    forwarding_fixture().replace(' incoming:data="${input}"', '').replace('%{incoming}', '%{incoming?}'),
+    forwarding_fixture().replace('${input}', '${dynamic}'),
+    forwarding_fixture({ forward: '%{incoming}' }),
+  ].entries()) {
+    const test = evidenceProject('c1-uncertainty-' + index, { 'index.ts': source });
+    const child = part_data_contexts(test.facts, test.document('B'), 'payload')[0]!;
+    assert.ok(child); assert.equal(child.executionCertain, false);
+    if (index === 0) { assert.equal(child.evidence?.strength, 'validated'); assert.match(child.uncertainty.join(';'), /optional/); }
+    else { assert.equal(child.evidence, undefined); assert.ok(child.uncertainty.length); }
+  }
+});
+check('C1 cycles, unresolved inventories and traversal limits retain conservative boundaries', () => {
+  const cyclic = evidenceProject('c1-cycle', { 'index.ts': forwarding_fixture({ body:
+    '<section hson:part data:record="%{payload}" <hson-part at="A" incoming:data="^{record}"/>/>' }) });
+  const roots = part_data_contexts(cyclic.facts, cyclic.document('A'), 'incoming');
+  assert.equal(roots.length, 2); assert.equal(roots[1]!.evidence, undefined); assert.match(roots[1]!.uncertainty.join(';'), /cycle/);
+  for (const [index, selector] of ['missing/B', 'components//B', 'Missing'].entries()) {
+    const test = evidenceProject('c1-unresolved-' + index, { 'index.ts': forwarding_fixture().replace('at="B"', 'at="' + selector + '"') });
+    assert.deepEqual(part_data_contexts(test.facts, test.document('B'), 'payload'), []);
+    assert.match(part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!.incomplete.join(';'), /unknown/);
+  }
+  const chain = Array.from({length: 19}, (_, index) => 'P' + index + ':{kind:"document",document:Hson.document`<section hson:part data:d="%{input}"'
+    + (index < 18 ? ' <hson-part at="P' + (index + 1) + '" input:data="^{d}"/>' : ' "^{d.title}"') + '/>`}').join(',');
+  const bounded = evidenceProject('c1-depth', { 'index.ts': forwarding_fixture().replace('A:{kind:"document",document:A},B:{kind:"document",document:B}', chain).replace('components/A', 'components/P0').replace('incoming:data', 'input:data') });
+  const atDepth = (depth: number) => bounded.facts.documents.find(document => document.receivingDeclarations.length && document.connectors[0]?.attributes.some(attribute => attribute.value === 'P' + (depth + 1)))!;
+  assert.equal(part_data_contexts(bounded.facts, atDepth(15), 'input')[0]!.evidence?.strength, 'validated');
+  const terminal = part_data_contexts(bounded.facts, atDepth(16), 'input')[0]!;
+  assert.equal(terminal.evidence, undefined); assert.match(terminal.uncertainty.join(';'), /depth limit \(16\)/);
+  assert.deepEqual(part_data_contexts(bounded.facts, atDepth(17), 'input'), []);
+  const fanout = '<section hson:part data:outer="%{incoming}" ' + Array.from({length: 270}, () => '<hson-part at="B" payload:data="^{outer}"/>').join(' ') + '/>';
+  const wide = evidenceProject('c1-frames', { 'index.ts': forwarding_fixture({ intermediate: fanout }) });
+  assert.equal(part_data_contexts(wide.facts, wide.document('B'), 'payload').length, 255);
+  assert.match(part_data_contexts(wide.facts, wide.document('A'), 'incoming')[0]!.incomplete.join(';'), /frame limit \(256\)/);
+});
+
 events.terminal("pass");

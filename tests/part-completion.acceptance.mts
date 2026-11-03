@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
+import { tmpdir } from "node:os";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { HsonEditorCompletionCache, type HostCompletion } from "../editors/vscode-hson/src/editor-completion.ts";
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { query_hson_editor_context } from "../src/internal/editor-introspection/query.ts";
 import { hson_grammar_checkpoint } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { forwarding_fixture } from "./fixtures/part-forwarding-cases.mts";
 import { part_data_hover } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { part_source_coordinates } from "../src/internal/hson-schema/part-source.ts";
 import { part_definition_targets } from "../src/internal/editor-introspection/part-definition-target.ts";
@@ -22,8 +24,7 @@ function check(name: string, run: () => void): void {
   catch (error) { events.diagnostic(name, "assertion", String(error)); events.case_end(name, "fail"); events.terminal("fail"); throw error; }
 }
 const root = resolve(import.meta.dirname, "..");
-mkdirSync(join(root, "tmp"), { recursive: true });
-const directory = mkdtempSync(join(root, "tmp", "part-completion-"));
+const directory = mkdtempSync(join(tmpdir(), "part-completion-"));
 process.once("exit", () => rmSync(directory, { recursive: true, force: true }));
 writeFileSync(join(directory, "package.json"), '{"type":"module"}');
 const files = new Map<string, string>();
@@ -1109,6 +1110,121 @@ check('representative cold and warm navigation measures single/multiple callers 
   }
   console.log(JSON.stringify({ finiteSelectorNavigation: measurements, warmSamples: 100, scope: 'small in-memory fixture; cold includes language-service Program creation' }));
 });
+
+check('C1 integrated child completion and hover project whole values, subtrees and optional members', () => {
+  for (const [forward, expected] of [['^{outer}', /string \(required\); validated/], ['^{outer.nested}', /number \(required\); validated/]] as const) {
+    const actual = integratedTypedDetails(forwarding_fixture({ forward, body: '<p hson:part data:record="%{payload}" "^{record.ti|tle}"/>' }));
+    assert.ok(actual.entries.some(entry => entry.name === 'record.title'));
+    assert.match(actual.detail!, expected); assert.match(actual.hover!, expected);
+    assert.match(actual.hover!, /forwarded via/); assert.match(actual.hover!, /recognized callers only/);
+    assert.match(actual.detail!, /possible source context/); assert.deepEqual(actual.errors, []);
+    assert.match(actual.hover!, forward.includes('nested') ? /Schema path \["nested"\]/ : /Schema path \[\]/);
+  }
+  const optional = complete(forwarding_fixture({ body: '<p hson:part data:record="%{payload}" "^{record.no|te}"/>' }));
+  assert.match(optional.entries.find(entry => entry.candidate.label === 'record.note')!.candidate.detail, /number \(optional\); validated/);
+  assert.equal(applied(optional, 'record.note'), optional.text);
+});
+check('C1 integrated grandchild consumers accumulate paths across two forwarding edges', () => {
+  const source = forwarding_fixture({ shape: '<nested <content <deep <content <title "number">>>>>', value: '<nested <deep <title 8>>>', forward: '^{outer.nested}',
+    body: '<section hson:part data:record="%{payload}" <hson-part at="C" final:data="^{record.deep}"/>/>' })
+    .replace('const page=', 'const C=Hson.document`<p hson:part data:record="%{final}" "^{record.ti|tle}"/>`;const page=')
+    .replace('B:{kind:"document",document:B}', 'B:{kind:"document",document:B},C:{kind:"document",document:C}');
+  const actual = integratedTypedDetails(source);
+  assert.match(actual.detail!, /number \(required\); validated/); assert.match(actual.hover!, /Schema path \["nested","deep"\]/);
+  assert.match(actual.hover!, /forwarded via .* → /); assert.deepEqual(actual.errors, []);
+});
+check('C1 two independent callers through immutable A keep child alternatives, strengths and absence', () => {
+  const base = forwarding_fixture({ body: '<p hson:part data:record="%{payload}" "^{record.ti|tle}"/>' });
+  for (const [extra, expected] of [
+    ['const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonData<typeof T>=Hson.data`<title 3>`;', /number \(required\); validated/],
+    ['const T=Hson.schema`<type "data" content <count "number">>`;const other:HsonData<typeof T>=Hson.data`<count 3>`;', /absent in this Schema; validated/],
+    ['const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonData<typeof T>=Hson.data`<>`;', /number \(required\); advisory/],
+    ['const other=dynamic;', /unknown Schema evidence/],
+  ] as const) {
+    const source = base.replace('const page=', extra + 'const page=').replace('<hson-part at="components/A" incoming:data="${input}"/>',
+      '<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>');
+    const actual = integratedTypedDetails(source);
+    const lines = actual.detail!.split('\n').filter(line => line.startsWith('app.ts:'));
+    assert.equal(lines.length, 2); assert.match(lines[0]!, /string \(required\); validated/); assert.match(lines[1]!, expected);
+    assert.notEqual(lines[0]!.split(': string')[0], lines[1]!.split(': number')[0]);
+    assert.match(actual.hover!, /2 recognized invocation contexts/); assert.match(actual.hover!, expected); assert.deepEqual(actual.errors, []);
+    if (!extra.includes('title')) assert.match(actual.detail!, /Partial or unknown support/);
+  }
+});
+check('C1 child editor projections preserve iteration selectors and lexical shadowing', () => {
+  for (const [shape, value, directive] of [
+    ['<rows <array <content <title "number">>>>', '<rows «»>', 'for:outer="^{outer.rows}"'],
+    ['<rows <content <one <content <title "number">>>>>', '<rows <one <title 1>>>', 'per:key:outer="^{outer.rows}"'],
+  ]) {
+    const actual = integratedTypedDetails(forwarding_fixture({ shape, value,
+      intermediate: '<section hson:part data:outer="%{incoming}" <hson-part ' + directive + ' at="B" payload:data="^{outer}"/>/>',
+      body: '<p hson:part data:record="%{payload}" "^{record.ti|tle}"/>' }));
+    assert.match(actual.detail!, /number \(required\); validated/); assert.match(actual.hover!, /number \(required\); validated/);
+    assert.deepEqual(actual.errors, [], 'empty iteration remains informational');
+  }
+  const source = forwarding_fixture({ shape: '<title "string" rows <array <content <children <array <content <title "number">>>>>>>',
+    value: '<title "outer" rows «»>',
+    intermediate: '<section hson:part data:outer="%{incoming}" <i for:outer="^{outer.rows}" <hson-part for:outer="^{outer.children}" at="B" payload:data="^{outer}"/>/> <hson-part at="B" payload:data="^{outer}"/>/>',
+    body: '<p hson:part data:record="%{payload}" "^{record.ti|tle}"/>' });
+  const actual = integratedTypedDetails(source);
+  assert.match(actual.detail!, /number \(required\); validated/); assert.match(actual.detail!, /string \(required\); validated/);
+  assert.match(actual.hover!, /2 recognized invocation contexts/); assert.deepEqual(actual.errors, []);
+});
+check('C1 optional forwarding and optional receiving retain possible-context qualifications', () => {
+  const actual = integratedTypedDetails(forwarding_fixture({ forward: '^{outer.nested?}',
+    body: '<p hson:part data:record="%{payload?}" "^{record.ti|tle?}"/>' }).replace('%{incoming}', '%{incoming?}'));
+  assert.match(actual.detail!, /number \(required\); validated/); assert.match(actual.detail!, /optional forwarding reference/);
+  assert.match(actual.hover!, /optional receiving argument/); assert.deepEqual(actual.errors, []);
+  const absent = integratedTypedDetails(forwarding_fixture({ body: '<p hson:part data:record="%{payload?}" "^{record.ti|tle}"/>' })
+    .replace(' incoming:data="${input}"', '').replace('%{incoming}', '%{incoming?}'));
+  assert.doesNotMatch(absent.detail ?? '', /Contextual Schema/); assert.equal(absent.hover, undefined);
+});
+check('C1 nested finite navigation uses accumulated paths and each batch enclosing Library', () => {
+  const body = '<section hson:part data:record="%{payload}" <hson-part at="^{record.kind}"/>/>';
+  const base = forwarding_fixture({ forward: '^{outer.nested}', body }).replace('B:{kind:"document",document:B}', 'B:{kind:"document",document:B},quote:' + leaf);
+  const first = select(base, 'record.kind'); assert.deepEqual(first.names, ['quote']);
+  assert.match(first.text, /Schema path \["nested"\]/); assert.match(first.text, /forwarded via/);
+  assert.equal(first.result!.contexts[0]!.caller.parent?.definition.producer.getText().startsWith('Hson.document`<section'), true);
+  for (const library of ['components', 'other']) {
+    const source = base + '\nconst next=maps.fromLibraries({' + library + ':{parts:{A:{kind:"document",document:A},B:{kind:"document",document:B}}},page:{document:Hson.document`<hson-part at="' + library + '/A" incoming:data="${input}"/>`}});';
+    const test = select(source, 'record.kind');
+    assert.equal(test.result!.contexts.length, 2); assert.notEqual(test.result!.contexts[0]!.caller.batch, test.result!.contexts[1]!.caller.batch);
+    assert.deepEqual(test.result!.contexts.map(context => context.candidates.map(candidate => [candidate.coordinates.library, candidate.source])), [[['components', 'qualified']], [[library, 'missing']]]);
+    assert.deepEqual(test.names, ['quote']); assert.equal(test.text.split('\n').filter(line => line.startsWith('Caller ')).length, 2);
+  }
+  const qualified = select(base.replace('at="^{record.kind}"', 'lib="components" at="^{record.kind}"'), 'record.kind');
+  assert.deepEqual(qualified.names, ['quote']);
+  for (const change of [
+    (text: string) => text.replace('parts:{A:', 'parts:{...dynamic,A:'),
+    (text: string) => text.replace('maps.fromLibraries(', 'maps.locus.create({}).admit('),
+  ]) {
+    const partial = select(change(base.replace(',quote:' + leaf, '')), 'record.kind');
+    assert.deepEqual(partial.names, []); assert.match(partial.text, /runtime existence is unknown/); assert.doesNotMatch(partial.text, /no definition in this complete/);
+  }
+});
+check('C1 upstream-only Schema and intermediate Part edits withdraw and restore child editor evidence', () => {
+  const schema = (name = 'title') => selectorImports + 'export const S=Hson.schema`<type "data" content <nested <content <' + name + ' "number">>>>`;';
+  const parent = (forward = '^{outer.nested}') => selectorImports + 'export const A=Hson.document`<section hson:part data:outer="%{incoming}" <hson-part at="B" payload:data="' + forward + '"/>/>`;';
+  edit('c1-schema.ts', schema()); edit('c1-parent.ts', parent());
+  const source = forwarding_fixture({ shape: '<nested <content <title "number">>>', value: '<nested <title 7>>',
+    body: '<p hson:part data:record="%{payload}" "^{record.ti|tle}"/>' })
+    .replace(/const S=Hson\.schema`[^`]*`;/, 'import {S} from "./c1-schema.js";')
+    .replace(/const A=Hson\.document`[^`]*`;/, 'import {A} from "./c1-parent.js";');
+  const original = complete(source), version = versions.get(file('app.ts'));
+  const observe = () => {
+    const program = service.getProgram()!;
+    return { entries: cache.complete(file('app.ts'), original.text, version!, original.offset, program),
+      hover: hoverText(program, original.text, '^{record.title}') };
+  };
+  assert.match(observe().hover!, /number \(required\); validated/);
+  edit('c1-schema.ts', 'export const S='); assert.equal(observe().hover, undefined); assert.ok(!observe().entries.some(entry => entry.candidate.detail.includes('Schema')));
+  edit('c1-schema.ts', schema()); assert.match(observe().hover!, /validated/);
+  edit('c1-parent.ts', parent('^{outer.missing}')); assert.match(observe().hover!, /absent in this Schema/); assert.ok(!observe().entries.some(entry => entry.candidate.label === 'record.title' && entry.candidate.detail.includes('Schema')));
+  edit('c1-parent.ts', 'export const A='); assert.equal(observe().hover, undefined);
+  edit('c1-parent.ts', parent()); assert.match(observe().hover!, /validated/);
+  assert.equal(versions.get(file('app.ts')), version); assert.equal(files.get(file('app.ts')), original.text);
+});
+
 selectorService.dispose();
 service.dispose();
 events.terminal("pass");
