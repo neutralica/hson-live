@@ -1,7 +1,8 @@
 import { scout_delivery_cases } from "./scout-delivery.cases.mts";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -312,14 +313,44 @@ events.case_begin("root output has no Scout import", "root output has no Scout i
 assert.doesNotMatch(readFileSync(resolve(repositoryRoot, "dist/index.js"), "utf8"), /api\/scout/);
 events.case_end("root output has no Scout import", "pass");
 await scout_delivery_cases();
-const { build } = await import("esbuild");
-const published = await build({ entryPoints: ["dist/api/scout/auto.js"], bundle: true, format: "esm", platform: "browser",
-  target: "es2022", minify: true, write: false, metafile: true, legalComments: "none" });
-assert.ok(published.outputFiles[0].text === readFileSync("dist/scout-auto.js", "utf8"), "Published Scout asset is stale");
-assert.equal(Object.values(published.metafile.outputs)[0].imports.length, 0);
-const included = Object.entries(Object.values(published.metafile.outputs)[0].inputs).filter(([, value]) => value.bytesInOutput > 0).map(([path]) => path);
+const { build_scout_browser } = await import("../scripts/scout-browser-build.mjs");
+const { bootstrap, runtime } = await build_scout_browser();
+for (const result of [bootstrap, runtime]) {
+  const output = result.outputFiles[0];
+  assert.equal(output.text, readFileSync(output.path, "utf8"), "Published Scout delivery pair is stale");
+}
+const initialInputs = Object.keys(bootstrap.metafile.inputs);
+assert.deepEqual(initialInputs.sort(), ["dist/api/scout/auto.js", "dist/api/scout/scout.runtime.js"]);
+assert.equal(Object.values(bootstrap.metafile.outputs)[0].imports[0].kind, "dynamic-import");
+assert.equal(Object.values(runtime.metafile.outputs)[0].imports.length, 0);
+const included = Object.entries(Object.values(runtime.metafile.outputs)[0].inputs).filter(([, value]) => value.bytesInOutput > 0).map(([path]) => path);
 assert.equal(included.filter(path => path.endsWith("/livetree/livetree.js")).length, 1);
 assert.equal(included.some(path => /api\/livehost\/|locus\.(session|registry|aggregate\.authority)\.js|node_modules\/ws\//.test(path)), false);
+const packageDirectory = mkdtempSync(resolve(tmpdir(), "hson-scout-package-"));
+try {
+  const packed = spawnSync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packageDirectory], {
+    cwd: repositoryRoot, encoding: "utf8",
+    env: { ...process.env, npm_config_cache: resolve(packageDirectory, "cache") },
+  });
+  assert.equal(packed.status, 0, packed.stderr);
+  const inventory: { filename: string; files: { path: string }[] }[] = JSON.parse(packed.stdout);
+  const deliveryFiles = ["dist/scout-auto.js", "dist/scout-hosted.js"];
+  for (const path of [...deliveryFiles, "scripts/scout-browser-build.mjs"]) {
+    assert.ok(inventory[0].files.some(file => file.path === path), `Package omitted ${path}`);
+  }
+  const extracted = spawnSync("tar", ["-xzf", resolve(packageDirectory, inventory[0].filename), "-C", packageDirectory], { encoding: "utf8" });
+  assert.equal(extracted.status, 0, extracted.stderr);
+  const packageRoot = resolve(packageDirectory, "package");
+  // Copy installed dependencies so the writer cannot resolve through the checkout.
+  cpSync(resolve(repositoryRoot, "node_modules"), resolve(packageRoot, "node_modules"), { recursive: true, dereference: true });
+  const expected = deliveryFiles.map(path => readFileSync(resolve(packageRoot, path)));
+  for (const path of deliveryFiles) rmSync(resolve(packageRoot, path));
+  const rebuilt = spawnSync(process.execPath, ["scripts/build-hson-schema-cli.mjs"], { cwd: packageRoot, encoding: "utf8" });
+  assert.equal(rebuilt.status, 0, rebuilt.stderr || rebuilt.stdout);
+  deliveryFiles.forEach((path, index) => assert.deepEqual(readFileSync(resolve(packageRoot, path)), expected[index], `Rebuilt ${path} differs`));
+} finally {
+  rmSync(packageDirectory, { recursive: true, force: true });
+}
 case_run("automatic asset imports safely without a browser", `await import("hson-live/scout/auto");`);
 case_run("explicit deployment modes cannot replace an owner", `
   ${fakeBrowser}

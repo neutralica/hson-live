@@ -11,7 +11,8 @@ import { encode_ignition, ignition_path, SCOUT_LOADER_ATTRIBUTE } from "../scout
 
 /** Deliver one authorized capture with an authored Scout Part and the standard module.
  * The returned HTTP response contains a credential and is private and non-cacheable.
- * Serve the published scout-auto.js bytes at the supplied module path. */
+ * Serve scout-auto.js at the supplied module path and its matching scout-hosted.js
+ * companion in the same directory. Deploy both files from the same build. */
 export function deliver_scout(session: LocusSession, now: LocusSessionHtmlNow,
   scout: Readonly<{ write: (args: Readonly<{ payload: string }>) => HsonAuthored }>,
   paths: Readonly<{ endpoint: string; module: string }>): Response {

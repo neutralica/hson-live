@@ -264,7 +264,7 @@ await check("tooling identity follows transitive implementation, build inputs an
   mkdirSync(join(tooling, "scripts"), { recursive: true });
   cpSync(join(root, "src"), join(tooling, "src"), { recursive: true });
   cpSync(join(root, "dist"), join(tooling, "dist"), { recursive: true });
-  for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "tsconfig.json"]) cpSync(join(root, file), join(tooling, file));
+  for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "scripts/scout-browser-build.mjs", "tsconfig.json"]) cpSync(join(root, file), join(tooling, file));
   const current = schema_tooling_fingerprint(tooling);
   assert.equal(current, schema_tooling_fingerprint(root), "installation path does not affect identity");
   assert.equal(current, schema_tooling_fingerprint(tooling));

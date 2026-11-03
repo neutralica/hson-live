@@ -6,6 +6,7 @@
     "dist",
     "src",
     "scripts/build-hson-schema-cli.mjs",
+    "scripts/scout-browser-build.mjs",
     "scripts/hson-schema.mts",
     "tsconfig.json",
     "README.md",

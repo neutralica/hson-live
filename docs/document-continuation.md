@@ -268,6 +268,44 @@ continuation when the browser imports `hson-live/scout`. Its import registers
 `hson-scout` automatically; a page without the element does not continue
 automatically. Manual `continue_hosted_document` remains available.
 
+Standard automatic delivery uses `deliver_scout(session, now, scoutPart, paths)`
+from `hson-live/ssr` and the side-effect entrypoint `hson-live/scout/auto`.
+The production writer publishes a matching pair: `dist/scout-auto.js` and
+`dist/scout-hosted.js`. Serve the bootstrap at `paths.module` and the companion
+under the name `scout-hosted.js` in that same directory. Deploy both from the
+same build, preferably under one immutable versioned directory, for example
+`/releases/v3.5.0/scout-auto.js` and `/releases/v3.5.0/scout-hosted.js`.
+The package includes both artifacts. There is no single-file fallback.
+
+The independently loadable bootstrap registers Scout, configures automatic
+ownership and validates eligible declarations without loading the hosted runtime.
+Only an eligible connected Scout after parser readiness triggers the native
+relative ESM `import("./scout-hosted.js")`. Resolution uses the bootstrap's module
+URL, independently of the document's `<base>`. The standard delivery envelope
+continues to require a relative base and origin-relative loader and endpoint
+paths. Allow both JavaScript requests under the deployment's module/CSP policy;
+serve each as JavaScript. The companion contains ignition decoding, state
+admission, HTTP transport construction, and the existing hosted continuation.
+It reuses the original registries, error constructors, and LiveTree implementation.
+
+A failed runtime download leaves usable SSR content and the hidden declaration
+in place. Removing or moving the claimant, or receiving `pagehide` before
+handoff, cancels its claim and releases its readiness/lifecycle listeners.
+Native module downloads cannot be aborted; a late result cannot provision or
+start an abandoned claim. No transport or root reservation is created while
+the automatic runtime download is pending. After preparation, Scout and the
+validated loader leave synchronously immediately before `prepared.start()`;
+no import or await occurs between removal and exact adoption. Once started,
+the automatic owner retains Echo suspend/resume, terminal cleanup, and disposal.
+
+`node scripts/measure-scout-browser.mjs` measures both published artifacts and
+their sum in minified, gzip (level 9), and Brotli bytes. It also reports the
+bootstrap's complete static input closure, enforced by the production writer
+as only `auto.js` and `scout.runtime.js`. Schema, LiveMap, Transform, Echo, Mirror,
+and LiveTree are deferred. The two bundles have no shared input modules.
+
+The advanced provider entrypoint remains `hson-live/scout`:
+
 The application supplies ordinary hosted-continuation options through one
 `ScoutProvider(payload?: string)`. The provider can be configured before or
 after Scout connects and may load session material asynchronously. Scout passes
@@ -358,7 +396,7 @@ claim, and prepares hosted continuation without adopting the DOM. It removes
 itself and its entire payload synchronously and immediately starts exact DOM
 adoption, with no asynchronous gap between removal and adoption. The ordinary
 controller handles Mirror, Echo synchronization, interactions, and CSS binding.
-A provider or preparation failure leaves Scout hidden in place and rejects the
+A runtime import, provider, or preparation failure leaves Scout hidden in place and rejects the
 configured Promise. After handoff, ordinary continuation cleanup handles start
 failure. Scout keeps only a weak document-keyed consumed marker after success;
 the application receives and owns the continuation result. Disposing it does
@@ -367,7 +405,7 @@ releases its claim, and a replacement invokes the same configured provider for
 its own attempt. Late results from the abandoned attempt are ignored. A
 same-document move preserves the claim; moving a claimed Scout to another
 Document cancels it and makes that element inert. The element has no Shadow DOM
-or ongoing page lifecycle hooks. A second Scout in the same document is removed
+or ongoing page lifecycle hooks after handoff. A second Scout in the same document is removed
 without another provider call. If a manual continuation already owns the exact
 root, Scout is redundant and removes itself; distinct manual roots retain their
 normal behavior. A restored BFCache page relies on its existing continuation,

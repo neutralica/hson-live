@@ -4,7 +4,8 @@ import type { HostedContinuationOptions } from "../continuation/continue-hosted-
 /** Application-owned options; payload is unchanged opaque transport text, or undefined for an empty Scout. */
 export type ScoutProvider = (payload?: string) => HostedContinuationOptions | Promise<HostedContinuationOptions>;
 
-type ScoutProvision = Readonly<{
+/** @internal Resources owned by one Scout attempt. */
+export type ScoutProvision = Readonly<{
   options: HostedContinuationOptions;
   handoff?: () => void;
   accept?: (continuation: HostedDocumentContinuation) => void;
@@ -14,6 +15,7 @@ type Provider = (payload: string | undefined, document: Document, signal: AbortS
 
 type ScoutClaim = {
   abort: AbortController;
+  pagehide: () => void;
   document: Document | undefined;
   owner: HTMLElement | undefined;
   phase: "waiting" | "running" | "starting" | "cancelled";
@@ -28,6 +30,11 @@ let mode: "standard" | "advanced" | undefined;
 let activeClaim: ScoutClaim | undefined;
 let resolveResult: ((continuation: HostedDocumentContinuation) => void) | undefined;
 let rejectResult: ((cause: unknown) => void) | undefined;
+
+/** @internal The single deferred dependency for both deployment modes. */
+export function load_scout_hosted_internal() {
+  return import("./scout-hosted.js");
+}
 
 /** Supply options once and receive the ordinary continuation after Scout finishes. */
 export function configure_scout(configuration: ScoutProvider): Promise<HostedDocumentContinuation> {
@@ -69,9 +76,14 @@ function current(claim: ScoutClaim): boolean {
     && (claim.phase === "waiting" || claim.phase === "running");
 }
 
+function release_listeners(claim: ScoutClaim): void {
+  claim.document?.removeEventListener("DOMContentLoaded", wakeWaiting);
+  claim.document?.defaultView?.removeEventListener("pagehide", claim.pagehide);
+}
+
 function cancel(claim: ScoutClaim): void {
   const doc = claim.document;
-  doc?.removeEventListener("DOMContentLoaded", wakeWaiting);
+  release_listeners(claim);
   if (doc !== undefined && records.get(doc) === claim) records.delete(doc);
   waiting.delete(claim);
   const wasActive = activeClaim === claim;
@@ -94,7 +106,7 @@ function retireWaiting(): void {
 function settle(claim: ScoutClaim, phase: "consumed" | "failed" | "redundant"): boolean {
   const doc = claim.document;
   if (doc === undefined || records.get(doc) !== claim) return false;
-  doc.removeEventListener("DOMContentLoaded", wakeWaiting);
+  release_listeners(claim);
   records.set(doc, { phase });
   waiting.delete(claim);
   if (activeClaim === claim) activeClaim = undefined;
@@ -162,16 +174,14 @@ async function run(claim: ScoutClaim, configured: Provider): Promise<void> {
     if (options.root.ownerDocument !== claim.document) {
       throw new Error("Scout continuation root belongs to a different document.");
     }
-    const continuation = await import("../continuation/continue-hosted-document.js");
+    const continuation = await load_scout_hosted_internal();
     if (!current(claim)) return;
     let prepared: ReturnType<typeof continuation.prepare_hosted_document_internal>;
     try {
       prepared = continuation.prepare_hosted_document_internal(options);
     } catch (cause) {
-      const common = await import("../continuation/continuation.common.js");
-      if (!current(claim)) return;
-      if (cause instanceof common.ContinuationRootReservedError
-        && common.continuation_root_is_active(options.root)) {
+      if (cause instanceof continuation.ContinuationRootReservedError
+        && continuation.continuation_root_is_active(options.root)) {
         claim.owner?.remove();
         fail(claim, cause, "redundant");
         return;
@@ -187,6 +197,7 @@ async function run(claim: ScoutClaim, configured: Provider): Promise<void> {
       prepared.dispose();
       return;
     }
+    release_listeners(claim);
     claim.phase = "starting";
     try {
       scout.remove();
@@ -234,7 +245,10 @@ if (typeof HTMLElement !== "undefined" && typeof customElements !== "undefined")
         this.remove();
         return;
       }
-      const claim: ScoutClaim = { document: doc, owner: this, phase: "waiting", abort: new AbortController() };
+      const claim: ScoutClaim = { document: doc, owner: this, phase: "waiting", abort: new AbortController(),
+        pagehide: () => cancel(claim) };
+      // Native import cannot be aborted; invalidate its claim before it can provision resources.
+      doc.defaultView?.addEventListener("pagehide", claim.pagehide, { once: true });
       this.claim = claim;
       this.everClaimed = true;
       records.set(doc, claim);

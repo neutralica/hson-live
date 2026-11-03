@@ -23,7 +23,7 @@ cpSync(join(root, "dist"), join(installed, "dist"), { recursive: true });
 // The CLI fingerprints its packaged source/build inputs when certifying evidence.
 cpSync(join(root, "src"), join(installed, "src"), { recursive: true });
 mkdirSync(join(installed, "scripts"));
-for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "tsconfig.json"]) {
+for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "scripts/scout-browser-build.mjs", "tsconfig.json"]) {
   cpSync(join(root, file), join(installed, file));
 }
 const producer = join(temporary, "producer");

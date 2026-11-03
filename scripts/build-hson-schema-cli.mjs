@@ -17,14 +17,8 @@ writeFileSync(outputPath, result.outputText);
 chmodSync(outputPath, 0o755);
 
 // Publish the standard browser entry through the existing distribution writer.
-const { build } = await import("esbuild");
-const browser = await build({ entryPoints: ["dist/api/scout/auto.js"], bundle: true,
-  format: "esm", platform: "browser", target: "es2022", minify: true,
-  write: false, metafile: true, legalComments: "none" });
-if (browser.outputFiles.length !== 1 || Object.values(browser.metafile.outputs).some(output => output.imports.length)) {
-  throw new Error("Scout must publish one self-contained browser module.");
+const { build_scout_browser } = await import("./scout-browser-build.mjs");
+const { bootstrap, runtime } = await build_scout_browser();
+for (const output of [...bootstrap.outputFiles, ...runtime.outputFiles]) {
+  writeFileSync(output.path, output.text);
 }
-if (Object.keys(browser.metafile.inputs).some(path => /(?:node:|api\/livehost\/node|node_modules\/ws\/)/.test(path))) {
-  throw new Error("Server dependencies entered the Scout browser asset.");
-}
-writeFileSync(resolve("dist/scout-auto.js"), browser.outputFiles[0].text);

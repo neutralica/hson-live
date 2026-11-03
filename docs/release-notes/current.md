@@ -55,7 +55,7 @@
 - Consolidated Locus lifecycle and authority APIs around creation, durable resume, persistence, and explicit client-public/server-private library admission.
 - Simplified LiveMap and Locus write surfaces with path-owned mutation, atomic batching, and staged authoritative writes.
 - Added object-owned SSR cut/render primitives and strengthened non-destructive LiveTree DOM graft/continuation workflows.
-- Added Scout, a declarative browser ignition mechanism supporting progressive enhancement from inert server-rendered HTML.
+- Added Scout, a declarative browser ignition mechanism supporting progressive enhancement from inert server-rendered HTML. Automatic delivery now requires the matching `scout-auto.js` bootstrap and deferred `scout-hosted.js` companion in the same deployment directory.
 - Added Schema configured relational uniqueness for finite projected-key constraints.
 - Expanded Schema unions to n-ary ordered unions with bounded distinguishability analysis.
 - Reworked Schema admission to tolerate presentation differences while preserving semantic validity.
