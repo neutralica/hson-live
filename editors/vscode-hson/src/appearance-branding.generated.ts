@@ -1,10 +1,10 @@
 // Generated from appearance.ts; edit the catalog and run themes:generate.
 export const HSON_BRANDING = {
   "colors": {
-    "blue": "#00adf6",
-    "yellow": "#c9d100",
-    "pink": "#ff4a8c",
-    "green": "#39a500"
+    "blue": "#84a9d6",
+    "yellow": "#bda065",
+    "pink": "#dd97cc",
+    "green": "#80a894"
   },
   "libraryOpacity": 1,
   "authoringOpacity": 0.7,

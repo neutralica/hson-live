@@ -90,7 +90,7 @@
         "support.function"
       ],
       "settings": {
-        "foreground": "#405f83"
+        "foreground": "#7a602b"
       }
     },
     {
@@ -148,7 +148,7 @@
         "entity.other.attribute-name.system.hson"
       ],
       "settings": {
-        "foreground": "#6f4f8f"
+        "foreground": "#687482"
       }
     },
     {
@@ -164,7 +164,7 @@
         "meta.part.selector.member.hson"
       ],
       "settings": {
-        "foreground": "#435b35"
+        "foreground": "#536e61"
       }
     },
     {
@@ -204,7 +204,7 @@
         "entity.other.attribute-name.sending.hson"
       ],
       "settings": {
-        "foreground": "#405f83"
+        "foreground": "#7a602b"
       }
     },
     {
@@ -212,7 +212,7 @@
         "keyword.control.iteration.hson"
       ],
       "settings": {
-        "foreground": "#7a602b"
+        "foreground": "#405f83"
       }
     },
     {
@@ -220,7 +220,7 @@
         "keyword.operator.interpolation.caret.hson"
       ],
       "settings": {
-        "foreground": "#6c7176"
+        "foreground": "#3d434b"
       }
     },
     {
@@ -228,7 +228,7 @@
         "keyword.operator.interpolation.percent.hson"
       ],
       "settings": {
-        "foreground": "#6c7176"
+        "foreground": "#3d434b"
       }
     },
     {
@@ -286,7 +286,7 @@
         "punctuation.definition.identity.hson"
       ],
       "settings": {
-        "foreground": "#9983ae"
+        "foreground": "#687482"
       }
     },
     {
@@ -395,7 +395,7 @@
         "entity.other.attribute-name.sending.hson meta.attribute.qualifier.hson"
       ],
       "settings": {
-        "foreground": "#405f83"
+        "foreground": "#7a602b"
       }
     },
     {
@@ -449,29 +449,29 @@
     "variable": "#465467",
     "parameter": "#465467",
     "property": "#465467",
-    "function": "#405f83",
-    "method": "#405f83",
+    "function": "#7a602b",
+    "method": "#7a602b",
     "enumMember": "#76552e",
     "hsonType": "#245c70",
     "hsonProperty": "#465467",
-    "hsonPartSystemAttribute": "#6f4f8f",
+    "hsonPartSystemAttribute": "#687482",
     "hsonPartLibrary": "#536e61",
-    "hsonPartMember": "#435b35",
+    "hsonPartMember": "#536e61",
     "hsonPartSeparator": "#525d6c",
     "hsonFlag": "#576983",
     "hsonDirective": "#6f4f8f",
     "hsonReceiving": "#28313d",
-    "hsonSending": "#405f83",
-    "hsonIteration": "#7a602b",
-    "hsonLocalReferenceSigil": "#6c7176",
-    "hsonIncomingReferenceSigil": "#6c7176",
+    "hsonSending": "#7a602b",
+    "hsonIteration": "#405f83",
+    "hsonLocalReferenceSigil": "#3d434b",
+    "hsonIncomingReferenceSigil": "#3d434b",
     "hsonString": "#435b35",
     "hsonNumber": "#76552e",
     "hsonKeyword": "#5b5486",
     "hsonDeclaration": "#6f4f8f",
     "hsonQuid": "#70518f",
     "hsonQuad": "#70518f",
-    "hsonIdentityMarker": "#9983ae",
+    "hsonIdentityMarker": "#687482",
     "hsonComment": "#606b78",
     "hsonDelimiter": "#5b6573",
     "hsonOperator": "#525d6c",
@@ -485,7 +485,7 @@
     "*.hsonQualifier": "#687482",
     "hsonReceiving.hsonLocalName": "#28313d",
     "hsonReceiving.hsonQualifier": "#687482",
-    "hsonSending.hsonQualifier": "#405f83",
+    "hsonSending.hsonQualifier": "#7a602b",
     "hsonSending.hsonLocalName": "#687482",
     "hsonReference.hsonMember": "#767a7e",
     "hsonOperator.hsonInterpolationSigil": "#477cad"

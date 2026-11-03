@@ -108,7 +108,7 @@
           },
           "hson.appearance.blue": {
             "type": "string",
-            "default": "#00adf6",
+            "default": "#84a9d6",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #00adf6.",
             "scope": "window",
@@ -118,7 +118,7 @@
           },
           "hson.appearance.yellow": {
             "type": "string",
-            "default": "#c9d100",
+            "default": "#bda065",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #c9d100.",
             "scope": "window",
@@ -128,7 +128,7 @@
           },
           "hson.appearance.pink": {
             "type": "string",
-            "default": "#ff4a8c",
+            "default": "#dd97cc",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #ff4a8c.",
             "scope": "window",
@@ -138,7 +138,7 @@
           },
           "hson.appearance.green": {
             "type": "string",
-            "default": "#39a500",
+            "default": "#80a894",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #39a500.",
             "scope": "window",
@@ -206,17 +206,26 @@
             "markdownDescription": "Stable loopback port for LiveHost Node. Set 0 to request an ephemeral port. A port conflict is reported rather than selecting another port."
           },
           "hson.localHost.buildCommand": {
-            "type": "string", "default": "", "scope": "resource", "order": 50,
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "order": 50,
             "title": "Build Command",
             "markdownDescription": "Project-owned command run in the workspace folder before starting or restarting the Local App. Required for rebuild on save; for example, a project script that produces the configured JavaScript entry."
           },
           "hson.localHost.restartOnSave": {
-            "type": "boolean", "default": false, "scope": "resource", "order": 60,
+            "type": "boolean",
+            "default": false,
+            "scope": "resource",
+            "order": 60,
             "title": "Restart on Save",
             "markdownDescription": "After an explicit Save or Save All in Source Directory, run Build Command and restart or retry an enabled Local App. Auto-save does not reload. Requires Build Command."
           },
           "hson.localHost.sourceDirectory": {
-            "type": "string", "default": "src", "scope": "resource", "order": 70,
+            "type": "string",
+            "default": "src",
+            "scope": "resource",
+            "order": 70,
             "title": "Source Directory",
             "markdownDescription": "Workspace-relative directory whose saved files trigger Build Command and Local App restart when Restart on Save is enabled."
           }
@@ -313,8 +322,8 @@
         "id": "hson.libraryMarker.h",
         "description": "Hson library facade marker: h (strong blue).",
         "defaults": {
-          "dark": "#00adf6",
-          "light": "#00adf6",
+          "dark": "#84a9d6",
+          "light": "#84a9d6",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -323,8 +332,8 @@
         "id": "hson.libraryMarker.s",
         "description": "Hson library facade marker: s (strong yellow).",
         "defaults": {
-          "dark": "#c9d100",
-          "light": "#c9d100",
+          "dark": "#bda065",
+          "light": "#bda065",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -333,8 +342,8 @@
         "id": "hson.libraryMarker.o",
         "description": "Hson library facade marker: o (strong pink).",
         "defaults": {
-          "dark": "#ff4a8c",
-          "light": "#ff4a8c",
+          "dark": "#dd97cc",
+          "light": "#dd97cc",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -343,8 +352,8 @@
         "id": "hson.libraryMarker.n",
         "description": "Hson library facade marker: n (strong green).",
         "defaults": {
-          "dark": "#39a500",
-          "light": "#39a500",
+          "dark": "#80a894",
+          "light": "#80a894",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -353,8 +362,8 @@
         "id": "hson.authoringMarker.h",
         "description": "Hson notation marker: H (soft blue).",
         "defaults": {
-          "dark": "#00adf6",
-          "light": "#00adf6",
+          "dark": "#84a9d6",
+          "light": "#84a9d6",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -363,8 +372,8 @@
         "id": "hson.authoringMarker.s",
         "description": "Hson notation marker: S (soft yellow).",
         "defaults": {
-          "dark": "#c9d100",
-          "light": "#c9d100",
+          "dark": "#bda065",
+          "light": "#bda065",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -373,8 +382,8 @@
         "id": "hson.authoringMarker.o",
         "description": "Hson notation marker: O (soft pink).",
         "defaults": {
-          "dark": "#ff4a8c",
-          "light": "#ff4a8c",
+          "dark": "#dd97cc",
+          "light": "#dd97cc",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -383,8 +392,8 @@
         "id": "hson.authoringMarker.n",
         "description": "Hson notation marker: N (soft green).",
         "defaults": {
-          "dark": "#39a500",
-          "light": "#39a500",
+          "dark": "#80a894",
+          "light": "#80a894",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }

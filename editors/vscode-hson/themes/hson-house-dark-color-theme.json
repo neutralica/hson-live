@@ -34,10 +34,10 @@
     "list.activeSelectionBackground": "#30485E",
     "list.activeSelectionForeground": "#D8DEE8",
     "editorBracketHighlight.foreground1": "#7f718b",
-    "editorBracketHighlight.foreground2": "#d99db5",
+    "editorBracketHighlight.foreground2": "#dd97cc",
     "editorBracketHighlight.foreground3": "#9989b6",
     "editorBracketHighlight.foreground4": "#7f718b",
-    "editorBracketHighlight.foreground5": "#d99db5",
+    "editorBracketHighlight.foreground5": "#dd97cc",
     "editorBracketHighlight.foreground6": "#9989b6"
   },
   "tokenColors": [
@@ -81,7 +81,7 @@
         "support.type"
       ],
       "settings": {
-        "foreground": "#c6caca"
+        "foreground": "#c4d0fb"
       }
     },
     {
@@ -90,7 +90,7 @@
         "support.function"
       ],
       "settings": {
-        "foreground": "#b685af"
+        "foreground": "#9d8452"
       }
     },
     {
@@ -132,7 +132,7 @@
         "entity.name.type.quoted.hson"
       ],
       "settings": {
-        "foreground": "#c6caca"
+        "foreground": "#c4d0fb"
       }
     },
     {
@@ -148,7 +148,7 @@
         "entity.other.attribute-name.system.hson"
       ],
       "settings": {
-        "foreground": "#a99abd"
+        "foreground": "#898a8b"
       }
     },
     {
@@ -156,7 +156,7 @@
         "meta.part.selector.library.hson"
       ],
       "settings": {
-        "foreground": "#8daa9c"
+        "foreground": "#758e82"
       }
     },
     {
@@ -164,7 +164,7 @@
         "meta.part.selector.member.hson"
       ],
       "settings": {
-        "foreground": "#abb0b0"
+        "foreground": "#80a894"
       }
     },
     {
@@ -196,7 +196,7 @@
         "entity.other.attribute-name.receiving.hson"
       ],
       "settings": {
-        "foreground": "#d99db5"
+        "foreground": "#dd97cc"
       }
     },
     {
@@ -204,7 +204,7 @@
         "entity.other.attribute-name.sending.hson"
       ],
       "settings": {
-        "foreground": "#b685af"
+        "foreground": "#9d8452"
       }
     },
     {
@@ -212,7 +212,7 @@
         "keyword.control.iteration.hson"
       ],
       "settings": {
-        "foreground": "#9d8452"
+        "foreground": "#b685af"
       }
     },
     {
@@ -220,7 +220,7 @@
         "keyword.operator.interpolation.caret.hson"
       ],
       "settings": {
-        "foreground": "#b6b2a9"
+        "foreground": "#cec9bd"
       }
     },
     {
@@ -228,7 +228,7 @@
         "keyword.operator.interpolation.percent.hson"
       ],
       "settings": {
-        "foreground": "#b6b2a9"
+        "foreground": "#c7bfad"
       }
     },
     {
@@ -270,7 +270,7 @@
         "constant.other.quid.hson"
       ],
       "settings": {
-        "foreground": "#c4ade2"
+        "foreground": "#b691de"
       }
     },
     {
@@ -278,7 +278,7 @@
         "constant.other.quad.hson"
       ],
       "settings": {
-        "foreground": "#c4ade2"
+        "foreground": "#b691de"
       }
     },
     {
@@ -286,7 +286,7 @@
         "punctuation.definition.identity.hson"
       ],
       "settings": {
-        "foreground": "#8e7fa6"
+        "foreground": "#898a8b"
       }
     },
     {
@@ -350,7 +350,7 @@
         "variable.parameter.incoming.hson"
       ],
       "settings": {
-        "foreground": "#8daa9c"
+        "foreground": "#bda065"
       }
     },
     {
@@ -395,7 +395,7 @@
         "entity.other.attribute-name.sending.hson meta.attribute.qualifier.hson"
       ],
       "settings": {
-        "foreground": "#b685af"
+        "foreground": "#9d8452"
       }
     },
     {
@@ -411,7 +411,7 @@
         "entity.other.attribute-name.receiving.hson meta.attribute.local-name.hson"
       ],
       "settings": {
-        "foreground": "#d99db5"
+        "foreground": "#dd97cc"
       }
     },
     {
@@ -440,52 +440,52 @@
     }
   ],
   "semanticTokenColors": {
-    "type": "#c6caca",
-    "class": "#c6caca",
-    "interface": "#c6caca",
-    "enum": "#c6caca",
-    "typeParameter": "#c6caca",
-    "namespace": "#c6caca",
+    "type": "#c4d0fb",
+    "class": "#c4d0fb",
+    "interface": "#c4d0fb",
+    "enum": "#c4d0fb",
+    "typeParameter": "#c4d0fb",
+    "namespace": "#c4d0fb",
     "variable": "#84a9d6",
     "parameter": "#84a9d6",
     "property": "#84a9d6",
-    "function": "#b685af",
-    "method": "#b685af",
+    "function": "#9d8452",
+    "method": "#9d8452",
     "enumMember": "#d8b78f",
-    "hsonType": "#c6caca",
+    "hsonType": "#c4d0fb",
     "hsonProperty": "#84a9d6",
-    "hsonPartSystemAttribute": "#a99abd",
-    "hsonPartLibrary": "#8daa9c",
-    "hsonPartMember": "#abb0b0",
+    "hsonPartSystemAttribute": "#898a8b",
+    "hsonPartLibrary": "#758e82",
+    "hsonPartMember": "#80a894",
     "hsonPartSeparator": "#a093a8",
     "hsonFlag": "#6891c2",
     "hsonDirective": "#9989b6",
-    "hsonReceiving": "#d99db5",
-    "hsonSending": "#b685af",
-    "hsonIteration": "#9d8452",
-    "hsonLocalReferenceSigil": "#b6b2a9",
-    "hsonIncomingReferenceSigil": "#b6b2a9",
+    "hsonReceiving": "#dd97cc",
+    "hsonSending": "#9d8452",
+    "hsonIteration": "#b685af",
+    "hsonLocalReferenceSigil": "#cec9bd",
+    "hsonIncomingReferenceSigil": "#c7bfad",
     "hsonString": "#abb0b0",
     "hsonNumber": "#d8b78f",
     "hsonKeyword": "#b8b5dd",
     "hsonDeclaration": "#9989b6",
-    "hsonQuid": "#c4ade2",
-    "hsonQuad": "#c4ade2",
-    "hsonIdentityMarker": "#8e7fa6",
+    "hsonQuid": "#b691de",
+    "hsonQuad": "#b691de",
+    "hsonIdentityMarker": "#898a8b",
     "hsonComment": "#939daa",
     "hsonDelimiter": "#7f718b",
     "hsonOperator": "#a093a8",
     "hsonColon": "#658fa5",
     "hsonEscape": "#d4ba86",
     "hsonInvalid": "#f08b94",
-    "hsonIncomingReference": "#8daa9c",
+    "hsonIncomingReference": "#bda065",
     "hsonReference": "#d99db5",
     "hsonInterpolationDelimiter": "#7f718b",
     "hsonQuote": "#778571",
     "*.hsonQualifier": "#898a8b",
-    "hsonReceiving.hsonLocalName": "#d99db5",
+    "hsonReceiving.hsonLocalName": "#dd97cc",
     "hsonReceiving.hsonQualifier": "#898a8b",
-    "hsonSending.hsonQualifier": "#b685af",
+    "hsonSending.hsonQualifier": "#9d8452",
     "hsonSending.hsonLocalName": "#898a8b",
     "hsonReference.hsonMember": "#aba89f",
     "hsonOperator.hsonInterpolationSigil": "#4e81b1"

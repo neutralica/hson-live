@@ -14,13 +14,23 @@
  * generation rejects divergence rather than promising unavailable distinctions.
  * Iteration classification and native bracket behavior are deliberately unchanged.
  */
+const basicBlue = "#84a9d6";
+const basicGreen = "#80a894";
+const basicYellow = "#bda065";
+const basicPink = "#dd97cc";
 
-const _faded = {dark: { foreground: "#898a8b"}, light:{foreground: "#687482"} };
-const _outgoing = { dark: "#b685af", light: "#405F83" };
-const _each = { dark: "#9d8452", light: "#7A602B" }
-const _local ={  dark: { foreground: "#d99db5" },light: { foreground: "#28313D" }}
-const _placeholder = {  dark: { foreground:"#8daa9c" },light: { foreground: "#6c7d75" }}
-
+const _tag = { dark: { foreground: "#c4d0fb" }, light: { foreground: "#245C70" } };
+const _faded = { dark: { foreground: "#898a8b" }, light: { foreground: "#687482" } };
+const _outgoing = { dark: "#9d8452", light: "#7A602B" };
+const _each = { dark: "#b685af", light: "#405F83" };
+const _local = { dark: { foreground: basicPink}, light: { foreground: "#28313D" } }
+const _placeholder = { dark: { foreground: basicYellow }, light: { foreground: "#6c7d75" } }
+const _quad = { dark: { foreground: "#b691de" }, light: { foreground: "#70518F" } };
+const _at = { dark: { foreground: basicGreen }, light: { foreground: "#6F4F8F" } };
+const _component = { dark: { foreground: "#758e82" }, light: { foreground: "#536E61" } };
+const _key = { dark: { foreground: "#80a894" }, light: { foreground: "#536E61" } };
+const _percent = { dark: { foreground: "#c7bfad", }, light: { foreground: "#3D434B", } };
+const _carat = { dark: { foreground: "#cec9bd", }, light: { foreground: "#3D434B", } };
 
 export const HSON_APPEARANCE = {
   syntax: {
@@ -32,10 +42,7 @@ export const HSON_APPEARANCE = {
             { code: "<section/>", highlight: "section" },
             { code: "<'custom name'/>", highlight: "custom name" }
           ],
-          house: {
-            dark: { foreground: "#c6caca" },
-            light: { foreground: "#245C70" }
-          }
+          house: _tag
         }
       },
       attribute: {
@@ -45,7 +52,7 @@ export const HSON_APPEARANCE = {
             { code: '<button class="primary"/>', highlight: "class" }
           ],
           house: {
-            dark: { foreground: "#84a9d6" },
+            dark: { foreground: basicBlue},
             light: { foreground: "#465467" }
           }
         },
@@ -82,10 +89,7 @@ export const HSON_APPEARANCE = {
               { code: '<hson-part at="components/%{member}"/>', highlight: "at" }
             ],
             inherits: "attribute.name",
-            house: {
-              dark: { foreground: "#a99abd" },
-              light: { foreground: "#6F4F8F" }
-            }
+            house: { dark: { ..._faded.dark }, light: { ..._faded.light } }
           }
         },
         selector: {
@@ -97,10 +101,7 @@ export const HSON_APPEARANCE = {
               { code: '<hson-part lib=components at=foo/>', highlight: "components" }
             ],
             inherits: "value.string",
-            house: {
-              dark: { foreground: "#8daa9c" },
-              light: { foreground: "#536E61" }
-            }
+            house: _component,
           },
           member: {
             label: "Part selector member",
@@ -110,7 +111,8 @@ export const HSON_APPEARANCE = {
               { code: '<hson-part at=foo/>', highlight: "foo" },
               { code: '<hson-part at=components/foo/>', highlight: "foo" }
             ],
-            inherits: "value.string"
+            inherits: "value.string",
+            house: _key,
           },
           separator: {
             label: "Part selector separator",
@@ -143,7 +145,7 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: "<section data:slide=%{currentSlide}/>", highlight: "slide", occurrence: 1 }
           ],
-          house:_local
+          house: _local
         },
         receivingKind: {
           label: "Receiving argument kind",
@@ -189,10 +191,7 @@ export const HSON_APPEARANCE = {
             examples: [
               { code: "<p \"%{slide}\"/>", highlight: "%" }
             ],
-            house: {
-              dark: { foreground: "#eee7d8", intensity: 0.75 },
-              light: { foreground: "#3D434B", intensity: 0.75 }
-            }
+            house: _percent
           }
         },
         local: {
@@ -212,10 +211,7 @@ export const HSON_APPEARANCE = {
             examples: [
               { code: "<p \"^{slide.title}\"/>", highlight: "^" }
             ],
-            house: {
-              dark: { foreground: "#eee7d8", intensity: 0.75 },
-              light: { foreground: "#3D434B", intensity: 0.75 }
-            }
+            house: _carat
           }
         },
         member: {
@@ -300,10 +296,7 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: "<section @:deck/>", highlight: "deck" }
           ],
-          house: {
-            dark: { foreground: "#C4ADE2" },
-            light: { foreground: "#70518F" }
-          }
+          house: _quad
         },
         punctuation: {
           marker: {
@@ -313,10 +306,8 @@ export const HSON_APPEARANCE = {
               { code: "<p @012345678/>", highlight: "@" }
             ],
             inherits: "identity.quad",
-            house: {
-              dark: { foreground: "#C4ADE2", intensity: 0.7 },
-              light: { foreground: "#70518F", intensity: 0.7 }
-            }
+            house: { dark: { ..._faded.dark }, light: { ..._faded.light } },
+
           },
           colon: {
             label: "Identity colon",
@@ -672,10 +663,10 @@ export const HSON_APPEARANCE = {
   },
   branding: {
     palette: {
-      blue: "#00adf6",
-      yellow: "#c9d100",
-      pink: "#ff4a8c",
-      green: "#39a500"
+      blue: basicBlue,
+      yellow: basicYellow,
+      pink: basicPink,
+      green: basicGreen
     },
     library: {
       enabled: true,
