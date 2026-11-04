@@ -221,7 +221,7 @@ check("empty document Schema governs runtime graphs without certifying empty tex
   assert.equal(emptyPermitting.certify(Hson.document`<item/>`), Hson.document`<item/>`);
   const dataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
   assert.throws(() => dataSchema.certify("" as never),
-    (cause) => cause instanceof TypeError && /HsonData\.fromHson.*data-mode Hson/.test(cause.message));
+    (cause) => cause instanceof TypeError && /Data input requires JSON or Hson Data/.test(cause.message));
 });
 
 check("public and worker entrypoint Schema fixtures compile and admit their documents", () => {

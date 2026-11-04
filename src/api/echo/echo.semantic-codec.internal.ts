@@ -1,6 +1,6 @@
 import type { LocusClientMessage, LocusServerMessage } from "../../types/locus.types.js";
 import type { EchoSynchronizationRequest } from "../../types/echo.transport.types.js";
-import { decode_hson_data_internal, encode_hson_data_internal, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
+import { decode_hson_data_internal, encode_hson_data_internal, admit_data_input, hson_data_text } from "../data/hson-data.js";
 import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "../locus/locus.aggregate.protocol.js";
 
 export type EchoWebSocketControlMessage = Extract<LocusServerMessage, { type: "session-fenced" }> | import("../../types/echo.transport.types.js").EchoFiniteOperationOutcome;
@@ -33,7 +33,7 @@ export function encodeEndpointMessage(message: LocusClientMessage | EchoSynchron
   const { payload, ...rest } = message;
   return JSON.stringify({
     ...rest,
-    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(admit_hson_data_input(payload)) }),
+    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(admit_data_input(payload)) }),
   });
 }
 

@@ -18,10 +18,9 @@ import { lower_internal_document_content_remove } from "./livemap.document.logic
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import type { PortableDocumentQuads, LiveMapGraphOp } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
-import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
-import { admit_hson_data_input } from "../data/hson-data.js";
+import { admit_data_input, hson_data_value } from "../data/hson-data.js";
 import { document_css_subject_identities, omit_part_css_subjects } from "../../internal/css/css-identity-translation.js";
 import { scope_part_stylesheet } from "../../internal/css/part-stylesheet.js";
 import { DOCUMENT_SCOPED_QUAD_LIMITS, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord, type ScopedQuadOccurrenceRecord } from "./livemap.document.scoped-quad-codec.js";
@@ -78,7 +77,7 @@ export function document_composition_options(input: DocumentCompositionOptions |
   // strict data-only receiver; JS records retain their descriptor-only checks.
   // The caller's capture fence already encloses this admission and projection.
   const configuration = Object.hasOwn(values, "configuration") ? normalize_configuration(
-    typeof values.configuration === "string" ? admit_hson_data_input(values.configuration).materialize() : values.configuration,
+    typeof values.configuration === "string" ? admit_data_input(values.configuration).materialize() : values.configuration,
   ) : undefined;
   return Object.freeze({ configuration, schema, maxDepth: limit("maxDepth"), maxNodes: limit("maxNodes"), maxCharacters: limit("maxCharacters") });
 }
@@ -312,7 +311,7 @@ export function expand_document_composition(
       if (argument.kind !== "scalar") {
         if (typeof value !== "string") throw new TypeError("Typed Part parameters require serialized strings.");
         if (whole_part_reference(value) === undefined) {
-          try { if (argument.kind === "data") admit_canonical_hson_data_value(value); else documentInput(node, raw, value); }
+          try { if (argument.kind === "data") admit_data_input(value); else documentInput(node, raw, value); }
           catch (cause) { throw new TypeError(`Invalid Part ${argument.kind} parameter ${JSON.stringify(argument.name)}.`, { cause }); }
         }
       } else if (!parameter_scalar(value)) throw new TypeError("Part parameters require scalar values.");
@@ -649,7 +648,7 @@ export function expand_document_composition(
           } else if (argument.kind === "doc") {
             parameters.set(argument.name, { kind: "doc", value, document: documentInput(item, raw, value) });
           } else {
-            try { parameters.set(argument.name, { kind: "data", value: admit_canonical_hson_data_value(value) }); }
+            try { parameters.set(argument.name, { kind: "data", value: hson_data_value(admit_data_input(value)) }); }
             catch (cause) { throw new TypeError(`Invalid Part data parameter ${JSON.stringify(argument.name)} in ${context}.`, { cause }); }
           }
         }

@@ -174,11 +174,13 @@ await check("public livemap endpoint admits exact data and rejects document payl
     const submitted = sent.length;
     for (const invalid of ['<p style="broken"/>', '<p style="color:red"/>', '<p/>', '<p @000000001/>', '<a 1 a 2>', '1e999']) {
       assert.throws(() => act(invalid), (error) => error instanceof TypeError
-        && /requires data-mode Hson/.test(error.message) && error.cause instanceof Error);
+        && /Data input requires JSON or Hson Data/.test(error.message) && error.cause instanceof Error);
       assert.equal(sent.length, submitted, "invalid data must not reach semantic transport");
       assert.equal(echo.session.status, "attached");
     }
     assert.equal((await bounded(act('<zero -0>'))).type, "ack");
+    assert.equal(last(sent, "action").payload, '<zero -0>');
+    assert.equal((await bounded(act('{"zero":-0}'))).type, "ack");
     assert.equal(last(sent, "action").payload, '<zero -0>');
   } finally { echo.dispose(); }
 });

@@ -219,7 +219,7 @@ await check("strings, exact ordering, ownership, structural Transform and Docume
   values.nested.push("later");
   assert.notDeepEqual(map.data.must("state").snap(), values);
   assert.equal(map.data.must("literal").snap(), "$_meta _hson_root");
-  for (const invalidSource of ["$_meta", "<a 1>"]) {
+  for (const invalidSource of ["$_meta", "<p/>"]) {
     assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { data: invalidSource } }));
   }
   assert.equal(certify("42"), Hson.data.from(42));

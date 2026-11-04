@@ -20,7 +20,7 @@ import {
   hson_data_from_value,
   hson_data_text,
   hson_data_value,
-  admit_hson_data_input,
+  admit_data_input,
   type ExactDataCarrier,
 } from "../data/hson-data.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
@@ -493,7 +493,7 @@ function scalar(value: unknown): OrderedProjectedValue {
 }
 
 function interaction_data_value(value: unknown): OrderedProjectedValue {
-  return hson_data_value(admit_hson_data_input(value));
+  return hson_data_value(admit_data_input(value));
 }
 
 function descriptor_array(value: OrderedProjectedValue): readonly OrderedProjectedObject[] {

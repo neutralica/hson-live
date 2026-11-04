@@ -5,6 +5,7 @@ import {
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { admit_data_source } from "../../core/data-source-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { HsonCanonical } from "../transform/transform.types.js";
 import type { HsonData as PublicHsonData } from "../transform/transform.types.js";
@@ -122,11 +123,14 @@ export function hson_data_from_text(value: PublicHsonData): ExactDataCarrier {
   return ExactDataCarrier.fromHson(value);
 }
 
-/** @internal Action input policy: a top-level string is canonical Hson data. */
-export function admit_hson_data_input(value: unknown): ExactDataCarrier {
-  return typeof value === "string"
-    ? ExactDataCarrier.fromHson(value as HsonCanonical)
-    : ExactDataCarrier.from(value);
+/** @internal Data input policy: a top-level string is serialized JSON or Hson Data. */
+export function admit_data_input(value: unknown): ExactDataCarrier {
+  if (typeof value !== "string") return ExactDataCarrier.from(value);
+  try {
+    return hson_data_from_value(admit_data_source(value));
+  } catch (cause) {
+    throw new TypeError("Data input requires JSON or Hson Data; Document structure is not Data.", { cause });
+  }
 }
 
 /** @internal Convert an owned exact carrier to its public semantic string. */

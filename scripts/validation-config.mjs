@@ -13,6 +13,7 @@ export const ordinary = Object.freeze([
   "test:livemap-data-ownership",
   "test:reserved-data-names",
   "test:data-source-admission",
+  "test:data-source-consumers",
   "test:livemap-commit-publication-ownership",
   "test:portable-node-ingress",
   "test:hson-multiline",
@@ -206,6 +207,8 @@ const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383
 const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","481044d2398b6a059e38d087ce1b233aefbf6f9dc6a2617d53c043831f3a03bc"]];
 
 export const declaredExecution = Object.freeze({
+  "tests/data-source-consumers.acceptance.mts": { sha256: "0a9bfe13acfbd83b45dc98c02f4077b0d646236be46c14e48cbd66d81d618847", route: workerRoute,
+    targets: [["tests/fixtures/data-source-consumers.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/data-source-admission.acceptance.mts": { sha256: "f95babde032f9cec5a35df19b9f68fe476511552c0a7e3ba03acdb29b0a517f6", route: workerRoute,
     targets: [["tests/fixtures/data-source-admission.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "scripts/run-document-css-reconciliation-browser.mjs": { sha256: "d2f13b8403334bd2af3f8ee86f741992a2305221c6090258a95410be48eef3d0", route: browserRoute,

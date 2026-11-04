@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { admit_hson_data_input, hson_data_text } from "../../src/api/data/hson-data.ts";
+import { admit_data_input, hson_data_text } from "../../src/api/data/hson-data.ts";
 import type { LiveMapCssOp } from "../../src/types/livemap.types.ts";
 import { lookup_document_quad_internal } from "../../src/api/livemap/livemap.document.quad.ts";
 import { document_css_state_internal, document_css_subjects_internal } from "../../src/api/livemap/livemap.libraries.ts";
@@ -14,7 +14,7 @@ import { is_persisted_quid } from "../../src/core/hson-node-quid.ts";
 import { queued_fixture } from "./hosted-css-subject-correspondence-cases.mts";
 import { deferred, hosted_css_authority_fixture } from "../helpers/hosted-css-authority-fixture.mts";
 
-const wire = (payload: unknown) => hson_data_text(admit_hson_data_input(payload));
+const wire = (payload: unknown) => hson_data_text(admit_data_input(payload));
 
 function rule(selector: string, key = "admission", scopes: readonly string[] = []): Extract<LiveMapCssOp, { kind: "rule" }> {
   return { domain: "css", kind: "rule", ruleKey: key, scopes,

@@ -354,6 +354,26 @@ check("structured receiving interfaces diagnose local errors and retain dynamic 
   const nested = '{x:{kind:"document",document:Hson.document`<p hson:part data:local="%{payload}" <hson-part at="y" data:data="^{local}"/>/>`},y:{kind:"document",document:Hson.document`<b hson:part data:data="%{data}" "^{data.title}"/>`}}';
   assert.deepEqual(inspect(application(invocation('payload:data="<title 0>"'), nested)).codes, []);
 });
+check("JSON and Hson Data argument diagnostics agree with composition without inventing Schema evidence", () => {
+  const body = '<ul hson:part data:items="%{incoming}" <li per:key:value="^{items}" "^{key}"/>/>';
+  const definition = '{x:{kind:"document",document:Hson.document`' + body + '`}}';
+  const runtime = hsonLiveMap.fromLibraries({ components: { parts: { x: { kind: "document", document: body } } } });
+  for (const source of ['{"10":-0,"2":[]}', "<'10' -0 '2' []>", "{}", "<>"]) {
+    const invocation = '<hson-part at="components/x" incoming:data=' + JSON.stringify(source) + '/>';
+    assert.deepEqual(inspect(application(invocation, definition)).codes, [], source);
+    runtime.addLibraries({ ["page" + runtime.rev]: { document: invocation } });
+  }
+  for (const source of ["[]", "«»"]) {
+    const invocation = '<hson-part at="components/x" incoming:data=' + JSON.stringify(source) + '/>';
+    assert.deepEqual(inspect(application(invocation, definition)).codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.throws(() => runtime.addLibraries({ rejected: { document: invocation } }), /object/);
+  }
+  for (const source of ['{"nested":{"_hson_quid":"000000001"}}', '<nested <_hson_quid "000000001">>', '<p/>']) {
+    const invocation = '<hson-part at="components/x" incoming:data=' + JSON.stringify(source) + '/>';
+    assert.ok(inspect(application(invocation, definition)).codes.includes('HSON_PART_DATA_INVALID'), source);
+    assert.throws(() => runtime.addLibraries({ rejected: { document: invocation } }));
+  }
+});
 check("optional diagnostics validate flags and preserve omitted forwarding uncertainty", () => {
   const definition = '{x:{kind:"document",document:Hson.document`<section hson:part part:optional data:d="%{payload}" <p part:optional "^{d.title}"/> <hson-part part:optional at="leaf" payload:data="^{d.child}"/>/>`},leaf:{kind:"document",document:Hson.document`<b hson:part part:optional data:d="%{payload}" "^{d.value}"/>`}}';
   const invocation = '<hson-part lib="components" at="x" payload:data="<>"/>';

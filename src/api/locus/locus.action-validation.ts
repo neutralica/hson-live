@@ -3,7 +3,7 @@ import type {
   LocusSchemaResult,
   LocusValidator,
 } from "../../types/locus.types.js";
-import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_data_input, hson_data_text } from "../data/hson-data.js";
 import { hson_data_value } from "../data/hson-data.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
@@ -52,7 +52,7 @@ export function decode_locus_action_payload<TValue>(
     if (!result.ok) return result;
     if (result.value === undefined) return { ok: true, value: undefined };
     try {
-      return { ok: true, value: admit_hson_data_input(result.value) };
+      return { ok: true, value: admit_data_input(result.value) };
     } catch {
       return { ok: false, issues: ["Schema decoder output is not canonical Hson data."] };
     }

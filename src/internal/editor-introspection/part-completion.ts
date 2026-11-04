@@ -1,5 +1,5 @@
 import { part_coordinates } from "../part-coordinates.js";
-import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
+import { admit_data_source } from "../../core/data-source-admission.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
@@ -96,7 +96,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
             }
           }
           if (argument === undefined || !("value" in argument) || argument.value === undefined) continue;
-          try { for (const path of data_paths(project_ordered_data(admit_canonical_hson_data_value(argument.value), origin.path), declaration.name)) add(path, 0, false); }
+          try { for (const path of data_paths(project_ordered_data(admit_data_source(argument.value), origin.path), declaration.name)) add(path, 0, false); }
           catch { /* Invalid or dynamic inputs provide no shape evidence. */ }
         }
       }

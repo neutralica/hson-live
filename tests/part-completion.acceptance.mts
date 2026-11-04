@@ -658,6 +658,16 @@ check("object iterator bindings share scope, source-before-shadow and edit recov
   assert.equal(iterator.declaration!.kind, 'object'); assert.equal(iterator.declaration!.key, 'new'); assert.equal(iterator.declaration!.value, 'record');
   assert.equal(repaired.text.slice(iterator.location.start, iterator.location.end), 'per:new:record');
 });
+check("JSON and Hson literal Data contribute the same advisory member completions", () => {
+  const body = '<p hson:part data:record="%{incoming}" "^{record.|}"/>';
+  for (const source of ['{"title":"42","nested":{"count":-0},"empty":[]}', '<title "42" nested <count -0> empty []>']) {
+    const result = complete(imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`' + body
+      + '`}}},page:{document:Hson.document`<hson-part at="components/x" incoming:data=' + JSON.stringify(source) + '/>`}});');
+    assert.deepEqual(result.labels, ['record.empty', 'record.nested', 'record.nested.count', 'record.title']);
+    assert.ok(result.entries.every(entry => entry.candidate.certainty === 'possible'));
+    assert.ok(result.entries.every(entry => !/validated.*Schema/.test(entry.candidate.detail ?? '')));
+  }
+});
 check("object iterator property evidence preserves keys and conservative heterogeneous alternatives", () => {
   const definition = (body: string) => 'components:{parts:{list:{kind:"document",document:Hson.document`' + body + '`}}}';
   const body = '<ul hson:part data:items="%{items}" <li per:name:record="^{items}" "^{record.|}"/>/>';

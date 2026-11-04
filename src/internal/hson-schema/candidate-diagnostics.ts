@@ -16,7 +16,7 @@ import { is_part_argument_attribute, part_argument_name, part_direction_issue, w
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
-import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
+import { admit_data_source } from "../../core/data-source-admission.js";
 import { part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
@@ -106,7 +106,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         const literalInput = (name: string): OrderedProjectedValue | undefined => {
           if (!inputs.has(name)) {
             const argument = connector.attributes.find(attribute => attribute.name === name);
-            try { inputs.set(name, argument?.value === undefined ? undefined : admit_canonical_hson_data_value(argument.value)); }
+            try { inputs.set(name, argument?.value === undefined ? undefined : admit_data_source(argument.value)); }
             catch { inputs.set(name, undefined); } // Serialized input diagnostics own invalid Data.
           }
           return inputs.get(name);
@@ -176,7 +176,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         supplied.add(argument.name);
         if (argument.kind !== "scalar" && attribute.value !== undefined && whole_part_reference(attribute.value) === undefined) {
           try {
-            if (argument.kind === "data") admit_canonical_hson_data_value(attribute.value);
+            if (argument.kind === "data") admit_data_source(attribute.value);
             else {
               const root = qualify_hson_document_root(parse_authored_document_library(attribute.value).root);
               if (root.$_content.length !== 1 || !is_ordinary_element_node(root.$_content[0])) throw new TypeError("Document input requires one authored element.");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { bind_locus_http, continue_hosted_document, hsonLiveMap, hsonTransform } from "../../src/index.ts";
-import { admit_hson_data_input } from "../../src/api/data/hson-data.ts";
+import { admit_data_input } from "../../src/api/data/hson-data.ts";
 import { create_registry_locus_internal } from "../../src/api/locus/locus.registry.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
 import { document_css_subjects_internal } from "../../src/api/livemap/livemap.libraries.ts";
@@ -24,7 +24,7 @@ async function caught_up(echo: { sync: { appliedRev: number | undefined; status:
   await eventually(() => echo.sync.appliedRev === revision && echo.sync.status === "caught_up");
 }
 
-function wire_payload(request: any): any { return admit_hson_data_input(request.payload).materialize(); }
+function wire_payload(request: any): any { return admit_data_input(request.payload).materialize(); }
 
 export async function hosted_css_subject_rejection_cases() {
   const f = await hosted_css_authority_fixture();

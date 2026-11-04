@@ -2,7 +2,7 @@ import type { OwnedLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { resolve_document_css_action_subjects } from "../../internal/css/document-css-action-subjects.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_data_input, hson_data_text } from "../data/hson-data.js";
 import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
@@ -1307,7 +1307,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         result = await locus.dispatch_action(request.name, payload, publicRequest, origin);
       }
       seq += 1;
-      const admittedResult = result === undefined ? undefined : admit_hson_data_input(result);
+      const admittedResult = result === undefined ? undefined : admit_data_input(result);
       return Object.freeze({
         state: "succeeded",
         seq,
@@ -1429,7 +1429,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
   ): Readonly<{ ok: true; payload: ExactDataCarrier | undefined; executeDocument?: (draft: LocusHostedAggregateStageWriter) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
-      const admittedPayload = request.payload === undefined ? undefined : admit_hson_data_input(request.payload);
+      const admittedPayload = request.payload === undefined ? undefined : admit_data_input(request.payload);
       if (is_document_action(request.name)) {
         const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
         const libraryName = required_string(record.library);
@@ -1497,7 +1497,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         message: locus_client_error_message(cause, "Locus action payload is invalid."),
       });
     }
-    return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : admit_hson_data_input(request.payload) });
+    return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : admit_data_input(request.payload) });
   }
 
   async function dispatch_message(message: import("../../types/locus.types.js").LocusClientActionMessage): Promise<LocusClientActionResult> {

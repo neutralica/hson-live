@@ -1,5 +1,5 @@
 import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchemaMode } from "../transform/transform.types.js";
-import { ExactDataCarrier, admit_hson_data_input } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_data_input } from "../data/hson-data.js";
 import { qualify_hson_document_source } from "../document/hson-document.js";
 import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../internal/hson-schema/compiler.js";
@@ -64,7 +64,7 @@ export class HsonSchema<
       validate_hson_schema_graph(this, document);
       return serialize_hson_owned_document_content(document) as unknown as Certified<TSchema>;
     }
-    const data = admit_hson_data_input(candidate);
+    const data = admit_data_input(candidate);
     validate_hson_schema_graph(this, projected_value_to_hson_node(hson_data_value(data)));
     return data.toHson() as unknown as Certified<TSchema>;
   }

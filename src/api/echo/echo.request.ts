@@ -1,4 +1,4 @@
-import { admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
+import { admit_data_input, hson_data_text } from "../data/hson-data.js";
 import type { HsonData } from "../transform/transform.types.js";
 
 let nextFallbackIdentityId = 0;
@@ -13,5 +13,5 @@ export function make_echo_reload_safe_id(prefix: string): string {
 
 /** @internal Admit and snapshot one configured-action payload exactly once. */
 export function admit_echo_action_payload(value: unknown): HsonData {
-  return hson_data_text(admit_hson_data_input(value));
+  return hson_data_text(admit_data_input(value));
 }

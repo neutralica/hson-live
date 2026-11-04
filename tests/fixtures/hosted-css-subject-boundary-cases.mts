@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { lookup_document_quad_internal } from "../../src/api/livemap/livemap.document.quad.ts";
-import { admit_hson_data_input } from "../../src/api/data/hson-data.ts";
+import { admit_data_input } from "../../src/api/data/hson-data.ts";
 import { hosted_css_authority_fixture } from "../helpers/hosted-css-authority-fixture.mts";
 
 /** Public queued authoring traverses the real HTTP action admission and replay. */
@@ -14,7 +14,7 @@ export async function hosted_css_subject_boundary_cases() {
     await f.continuation.tree.async.css.global.sel(".plain").setProp("color", "teal");
     const plain = f.actions.at(-1)!;
     if (plain.type !== "action") throw Error("Expected action");
-    assert.equal(Object.hasOwn(admit_hson_data_input(plain.payload).materialize() as object, "subjectContext"), false);
+    assert.equal(Object.hasOwn(admit_data_input(plain.payload).materialize() as object, "subjectContext"), false);
     const initial = f.state();
     for (const values of [
       { "@:label": { color: "red" } },
@@ -29,7 +29,7 @@ export async function hosted_css_subject_boundary_cases() {
       const action = f.actions.at(-1)!;
       assert.equal(action.type, "action");
       if (action.type !== "action") throw Error("Expected action");
-      const payload = admit_hson_data_input(action.payload).materialize() as any;
+      const payload = admit_data_input(action.payload).materialize() as any;
       assert.equal(payload.subjectContext.at.revision, before);
       assert.equal(payload.subjectContext.at.sessionId, f.continuation.echo.session.sessionId);
       assert.equal(payload.subjectContext.subjects.length, "@:other" in values ? 2 : 1);
