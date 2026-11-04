@@ -14,7 +14,7 @@ import { canonical_portable_document_css_op } from "../../internal/css/portable-
 import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal, register_disabled_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { capture_document_attrs_command, type DocumentAttrsCommand, admit_public_document_graph_operation } from "./livemap.document.mutation.js";
 import { validate_document_path } from "./livemap.document.path.js";
-import { must_json_value, must_live_path } from "./livemap.guard.js";
+import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
 import type { InternalLiveMapAggregateAuthority } from "./livemap.internal.js";
 import type { LiveMapAggregateWrite, LiveMapLibraryIdentity } from "./livemap.library.js";
 
@@ -125,11 +125,11 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
       },
       set(value: JsonValue) {
         assert_current();
-        writes.push(Object.freeze({ target, kind: "set", value: must_json_value(normalize(value), stablePath) }));
+        writes.push(Object.freeze({ target, kind: "set", value: must_ordered_projected_value(normalize(value), stablePath) }));
       },
       replace(value: JsonValue) {
         assert_current();
-        writes.push(Object.freeze({ target, kind: "replace", value: must_json_value(normalize(value), stablePath) }));
+        writes.push(Object.freeze({ target, kind: "replace", value: must_ordered_projected_value(normalize(value), stablePath) }));
       },
       delete() {
         assert_current();

@@ -267,6 +267,7 @@
     "test:livemap-projected-identity-acquisition": "node --import=tsx tests/livemap-projected-identity-acquisition.acceptance.mts",
     "test:livemap-commit-publication-ownership": "node --import=tsx tests/livemap-commit-publication-ownership.acceptance.mts",
     "test:livemap-data-ownership": "node --import=tsx tests/livemap-data-ownership.acceptance.mts",
+    "test:livemap-setter-exact-order": "node --import=tsx tests/livemap-setter-exact-order.acceptance.mts",
     "test:livemap-library-ownership": "node --import=tsx tests/livemap-library-ownership.acceptance.mts",
     "test:livemap-aggregate-library-transitions": "node --import=tsx tests/livemap-aggregate-library-transitions.acceptance.mts",
     "test:livemap-n-library-engine": "node --import=tsx tests/livemap-n-library-engine.acceptance.mts",

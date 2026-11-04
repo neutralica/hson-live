@@ -68,7 +68,7 @@ import { projected_value_to_hson_root } from "../../core/projected-value-graph.j
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_live_path } from "./livemap.path.js";
-import { must_json_value, must_live_path } from "./livemap.guard.js";
+import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
 import {
   internal_livemap_aggregate_authority,
   register_internal_authority_position_observer,
@@ -1322,12 +1322,12 @@ function make_data_library(
       set: (value: LiveMapSetValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "set",
-        value: must_json_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(value, stablePath) : value, stablePath),
+        value: must_ordered_projected_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(value, stablePath) : value, stablePath),
       }])),
       replace: (value: LiveMapWriteValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "replace",
-        value: must_json_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(value, stablePath) : value, stablePath),
+        value: must_ordered_projected_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(value, stablePath) : value, stablePath),
       }])),
       delete: () => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
@@ -1338,7 +1338,7 @@ function make_data_library(
         return public_data_commit(aggregate.commit([{
           target: aggregate.target(library.identity, stablePath),
           kind: "set",
-          value: must_json_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(updater(read() as TValue), stablePath) : updater(read() as TValue), stablePath),
+          value: must_ordered_projected_value(contract.validation === PART_COLLECTION_VALIDATION ? normalize_part_css_authoring(updater(read() as TValue), stablePath) : updater(read() as TValue), stablePath),
         }]));
       },
       kind: currentKind,

@@ -11,7 +11,7 @@ import type {
   LiveMapPathKind,
   LivePath,
 } from "../../types/livemap.types.js";
-import { must_json_value, must_live_path } from "./livemap.guard.js";
+import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import { clone_live_path, format_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
@@ -79,7 +79,9 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
   const handlePath = must_live_path(path);
   const read = () => check?.() === false ? undefined : core.snap(handlePath);
   const projected = livemap_projected_propagation(core);
-  const checkedAuthority = projected === undefined ? undefined : {
+  // Shape helpers already require this capability; setters use the same exact path.
+  if (projected === undefined) throw new Error("LiveMap object helper has no projected propagation capability.");
+  const checkedAuthority = {
     ...projected, read: (path: LivePath) => check?.() === false ? undefined : projected.read(path),
   };
   const objectApi = make_livemap_object_api<TValue>(core, handlePath, checkedAuthority);
@@ -105,12 +107,12 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
       const childPath = [...handlePath, ...must_live_path(path)];
       return make_livemap_path_handle(core, childPath, listener => core.at(childPath).watch(listener), check);
     }) as unknown as LiveMapPathHandle<TValue>["at"],
-    set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
-    replace: (value) => core.replace(handlePath, must_json_value(value, handlePath)),
+    set: (value) => projected.commit([{ kind: "set", path: handlePath, value: must_ordered_projected_value(value, handlePath) }]),
+    replace: (value) => projected.commit([{ kind: "replace", path: handlePath, value: must_ordered_projected_value(value, handlePath) }]),
     delete: () => core.delete(handlePath),
     update: (updater) => {
       require_data_location(check);
-      return core.set(handlePath, must_json_value(updater(read() as TValue), handlePath));
+      return projected.commit([{ kind: "set", path: handlePath, value: must_ordered_projected_value(updater(read() as TValue), handlePath) }]);
     },
     kind: currentKind,
     present: () => currentKind() === "missing"

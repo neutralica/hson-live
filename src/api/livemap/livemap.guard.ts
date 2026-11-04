@@ -1,13 +1,11 @@
 // guard.ts
 
-import type { JsonValue } from "../../core/types.js";
-import type { LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
 import { format_live_path } from "./livemap.path.js";
 import {
   admit_projected_value,
   ProjectedValueAdmissionError,
 } from "../../core/projected-value-admission.js";
-import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
   is_ordered_projected_object,
   is_ordered_projected_value,
@@ -33,11 +31,6 @@ export function must_live_path(path: unknown): LivePath {
   return path.map((part, index) => must_live_path_part(part, index));
 }
 
-/** Validate a value as JSON before it enters LiveMap mutation surfaces. */
-export function must_json_value(value: unknown, path: LivePath): JsonValue {
-  return materialize_projected_value(must_ordered_projected_value(value, path));
-}
-
 /** Admit one public JavaScript value into LiveMap's immutable semantic carrier. */
 export function must_ordered_projected_value(value: unknown, path: LivePath): OrderedProjectedValue {
   try {
@@ -51,16 +44,6 @@ export function must_ordered_projected_value(value: unknown, path: LivePath): Or
     }
     throw error;
   }
-}
-
-/**
- * Validate `setMany` input as a plain JSON object.
- *
- * `setMany` is intentionally object-only: each own enumerable key becomes a
- * child write under `path`, and each child value must be valid JSON.
- */
-export function must_set_many_values(value: unknown, path: LivePath): LiveMapSetManyValues {
-  return materialize_projected_value(must_ordered_projected_object(value, path)) as LiveMapSetManyValues;
 }
 
 /** Admit the ordered object bag accepted by `setMany` without materializing it. */

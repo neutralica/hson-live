@@ -11,6 +11,7 @@ export const ordinary = Object.freeze([
   "test:locus-graph-content-codec",
   "test:livemap-exact-route-closure",
   "test:livemap-data-ownership",
+  "test:livemap-setter-exact-order",
   "test:reserved-data-names",
   "test:data-source-admission",
   "test:data-source-consumers",
@@ -207,6 +208,8 @@ const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383
 const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","481044d2398b6a059e38d087ce1b233aefbf6f9dc6a2617d53c043831f3a03bc"]];
 
 export const declaredExecution = Object.freeze({
+  "tests/livemap-setter-exact-order.acceptance.mts": { sha256: "3d268d934cc4d2e3ebe8679b203f4d9314314e6dd838b7f09e87e255ec1196b2", route: workerRoute,
+    targets: [["tests/fixtures/livemap-setter-exact-order.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/data-source-consumers.acceptance.mts": { sha256: "0a9bfe13acfbd83b45dc98c02f4077b0d646236be46c14e48cbd66d81d618847", route: workerRoute,
     targets: [["tests/fixtures/data-source-consumers.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/data-source-admission.acceptance.mts": { sha256: "f95babde032f9cec5a35df19b9f68fe476511552c0a7e3ba03acdb29b0a517f6", route: workerRoute,
