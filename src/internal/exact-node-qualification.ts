@@ -318,11 +318,13 @@ export function qualify_exact_hson_graph(root: HsonNode, operation: string, root
       continue;
     }
     if (!structural) {
-      if (!is_valid_hson_data_name(tag) || ((role === 'branch' || role === 'runtime-branch') && tag.length === 0)) fail(operation, child(path, '$_tag'), 'invalid ordinary name for structural role');
-      if ((role === 'branch' || role === 'runtime-branch') && content.length === 0) continue;
-      if (content.length !== 1) fail(operation, child(path, '$_content'), 'ordinary relationship must contain exactly one structural node');
       const dataRelationship = role === 'runtime-branch' && is_Node(content[0])
         && (content[0].$_tag === OBJ_TAG || content[0].$_tag === ARR_TAG);
+      // Data member reservation does not govern ordinary Document element names.
+      if (((role === 'member' || dataRelationship) && !is_valid_hson_data_name(tag))
+        || ((role === 'branch' || role === 'runtime-branch') && tag.length === 0)) fail(operation, child(path, '$_tag'), 'invalid ordinary name for structural role');
+      if ((role === 'branch' || role === 'runtime-branch') && content.length === 0) continue;
+      if (content.length !== 1) fail(operation, child(path, '$_content'), 'ordinary relationship must contain exactly one structural node');
       enqueue(content[0], role === 'member' || dataRelationship ? 'object-relationship' : 'element-content', 0);
     } else if (tag === II_TAG) {
       if (content.length !== 1) fail(operation, child(path, '$_content'), 'II must contain exactly one value');

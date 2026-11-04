@@ -159,6 +159,7 @@
     "test:hson-definition-identity": "node --import=tsx tests/hson-definition-identity.acceptance.mts",
     "test:hson-multiline": "node --import=tsx tests/hson-multiline.acceptance.mts",
     "test:hson-data": "node --import=tsx tests/hson-data.acceptance.mts",
+    "test:reserved-data-names": "node --import=tsx tests/reserved-data-names.acceptance.mts",
     "test:transform-node-exact": "node --import=tsx tests/transform-node-exact.acceptance.mts",
     "test:inline-style": "node --import=tsx tests/inline-style.acceptance.mts",
     "test:inline-style-browser": "node --import=tsx scripts/run-inline-style-browser.mjs",

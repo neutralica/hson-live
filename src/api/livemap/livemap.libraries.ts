@@ -62,7 +62,9 @@ import { hson_data_text_from_value } from "../data/hson-data.js";
 import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
-import { hsonTransform } from "../transform/transform.facade.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { parse_ordered_json_text } from "../../core/exact-data-codec.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_live_path } from "./livemap.path.js";
@@ -1903,7 +1905,10 @@ function is_record(value: unknown): value is Record<string, unknown> {
 function library_root(input: NormalizedLibraryInput): HsonNode {
   if ("data" in input) {
     if (input.data === undefined) throw new TypeError("LiveMap data Library requires JSON material.");
-    return hsonTransform.fromJson(input.data).toNode();
+    // This receiver admits application Data, never Transform structural envelopes.
+    // Strings retain JSON source semantics and decoded member order.
+    return projected_value_to_hson_root(typeof input.data === "string"
+      ? parse_ordered_json_text(input.data) : admit_projected_value(input.data));
   }
   if (input.document === undefined) throw new TypeError("LiveMap document Library requires Hson material.");
   return typeof input.document === "string"

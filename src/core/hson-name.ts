@@ -17,16 +17,16 @@ export function is_valid_hson_attribute_name(value: string): boolean {
   return ATTRIBUTE_NAME.test(value);
 }
 
-/** Return whether one ordinary data name is outside Hson's structural namespace. */
+/** Return whether one ordinary data name is outside Hson's reserved namespaces. */
 export function is_valid_hson_data_name(value: unknown): value is string {
-  return typeof value === "string" && !value.startsWith(HSON_SYS_PREFIX);
+  return typeof value === "string" && !value.startsWith(HSON_SYS_PREFIX) && !value.startsWith("$_");
 }
 
 /** Require one ordinary canonical Hson data-object member name. */
 export function assert_valid_hson_data_name(value: unknown): asserts value is string {
   if (is_valid_hson_data_name(value)) return;
   throw new TypeError(
-    `Reserved Hson prefix ${JSON.stringify(HSON_SYS_PREFIX)} is not allowed in data object key ${JSON.stringify(value)}.`,
+    `Reserved Hson prefix in data object key ${JSON.stringify(value)}.`,
   );
 }
 

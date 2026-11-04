@@ -11,6 +11,7 @@ export const ordinary = Object.freeze([
   "test:locus-graph-content-codec",
   "test:livemap-exact-route-closure",
   "test:livemap-data-ownership",
+  "test:reserved-data-names",
   "test:livemap-commit-publication-ownership",
   "test:portable-node-ingress",
   "test:hson-multiline",

@@ -22,7 +22,7 @@ import { _throw_transform_err } from "./errors.js";
 import { is_valid_inline_style } from "./inline-style.js";
 import { is_Node } from "./node-guards.js";
 import { make_string } from "./stringify.js";
-import { is_valid_hson_attribute_name } from "./hson-name.js";
+import { is_valid_hson_attribute_name, is_valid_hson_data_name } from "./hson-name.js";
 import {
   hson_metadata_candidate_key,
   hson_metadata_policy,
@@ -360,6 +360,12 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
 
       if (!p.$_tag.startsWith(HSON_SYS_PREFIX)) {
+        // An ordinary child of OBJ is a Data member, even in generic Transform.
+        // Structural scalar carriers and Document elements have different roles.
+        if (!is_valid_hson_data_name(p.$_tag)) {
+          push(errs, cfg, `${pHere}: reserved Hson prefix in Data member ${JSON.stringify(p.$_tag)}`);
+          if (cfg.throwOnFirst) return;
+        }
         if (seen.has(p.$_tag)) {
           push(errs, cfg, `${pHere}: [ERR: OBJ003] duplicate property tag "${p.$_tag}" inside _hson_obj`);
           if (cfg.throwOnFirst) return;

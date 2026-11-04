@@ -459,21 +459,20 @@ check("successful parse isolates later mutations in both directions", () => {
   const input = {
     div: {
       nested: [1, 2],
-      $_attrs: { title: "original", style: { color: " red " } },
+      details: { title: "original", style: { color: " red " } },
     },
   } as unknown as JsonValue;
   const result = parse_json(input);
   const snapshot = structuredClone(result);
   const inputRecord = input as unknown as {
-    div: { $_attrs: { title: string; style: { color: string } }; nested: number[] };
+    div: { details: { title: string; style: { color: string } }; nested: number[] };
   };
-  inputRecord.div.$_attrs.title = "changed";
-  inputRecord.div.$_attrs.style.color = "blue";
+  inputRecord.div.details.title = "changed";
+  inputRecord.div.details.style.color = "blue";
   inputRecord.div.nested.push(3);
   assert.deepEqual(result, snapshot);
 
   const div = only_standard(result, "div");
-  if (div.$_attrs) div.$_attrs.title = "result-only";
   const divObject = div.$_content[0];
   assert.ok(is_Node(divObject));
   const nested = divObject.$_content[0];
@@ -485,7 +484,7 @@ check("successful parse isolates later mutations in both directions", () => {
   const firstValue = firstItem.$_content[0];
   assert.ok(is_Node(firstValue));
   firstValue.$_content[0] = 99;
-  assert.equal(inputRecord.div.$_attrs.title, "changed");
+  assert.equal(inputRecord.div.details.title, "changed");
   assert.deepEqual(inputRecord.div.nested, [1, 2, 3]);
 });
 
