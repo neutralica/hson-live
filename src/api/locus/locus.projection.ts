@@ -46,6 +46,15 @@ export type LocusEffectiveProjection = Readonly<{
   hasSystemFeature: (feature: LocusProjectionSystemFeature) => boolean;
 }>;
 
+// Only this module's fully materialized immutable contracts may back reuse.
+// Object.freeze alone does not establish internal projection ownership.
+const effective_projections = new WeakSet<LocusEffectiveProjection>();
+
+/** @internal Recognize a contract minted by the projection owner. */
+export function is_locus_effective_projection_internal(value: LocusEffectiveProjection): boolean {
+  return effective_projections.has(value);
+}
+
 export type LocusHostedProjectionPolicy = Readonly<{
   registry: HostedRegistry;
   authority: HostedAuthorityFence;
@@ -223,13 +232,15 @@ function materialize_effective_projection(
   // The canonical digest input has no root, revision, policy, or excluded registry topology.
   const digest = locus_projection_contract_digest(authority, included, features, writable);
   const compositionDigest = sha256_sync(JSON.stringify({ format: "locus-session-composition", digest, initializerDigest }));
-  return Object.freeze({ authority, libraries: Object.freeze(included), local, initializerDigest, compositionDigest,
+  const effective: LocusEffectiveProjection = Object.freeze({ authority, libraries: Object.freeze(included), local, initializerDigest, compositionDigest,
     systemFeatures: features, writableDocuments: writable, digest,
     includesLibrary: (name: string) => includedNames.has(name),
     includesLocal: (name: string) => localNames.has(name),
     canAuthorDocument: (name: string) => writable.includes(name),
     hasSystemFeature: (feature: LocusProjectionSystemFeature) => features.includes(feature),
   });
+  effective_projections.add(effective);
+  return effective;
 }
 
 /** The Step 6A digest definition, also used to admit a decoded Step 6B contract. @internal */

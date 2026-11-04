@@ -322,6 +322,7 @@
     "test:locus-hosted-runtime-replay": "node --import=tsx tests/locus-hosted-runtime-replay.acceptance.mts",
     "test:locus-hosted-runtime-fallback": "node --import=tsx tests/locus-hosted-runtime-fallback.acceptance.mts",
     "test:locus-live-projection-6c": "node --import=tsx tests/locus-live-projection-6c.acceptance.mts",
+    "test:locus-projected-registry-reuse": "node --import=tsx tests/locus-projected-registry-reuse.acceptance.mts",
     "test:locus-live-wire-6c": "node --import=tsx tests/locus-live-wire-6c.acceptance.mts",
     "test:locus-authority-acceptance-z1z2": "node --import=tsx tests/locus-authority-acceptance-z1z2.acceptance.mts",
     "test:locus-live-lineage-6c": "node --import=tsx tests/locus-live-lineage-6c.acceptance.mts",

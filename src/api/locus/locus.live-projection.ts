@@ -8,7 +8,7 @@ import { encode_livemap_replay_transport } from "../livemap/livemap.transport.js
 import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
-import type { LocusEffectiveProjection } from "./locus.projection.js";
+import { is_locus_effective_projection_internal, type LocusEffectiveProjection } from "./locus.projection.js";
 
 /** Session-projected commit contract for visible authority effects. */
 export const LOCUS_LIVE_PROJECTED_COMMIT_FORMAT = "hson-locus-live-projected-client-commit" as const;
@@ -106,7 +106,20 @@ export function project_locus_live_revision_internal(
     afterVisible.system === null ? undefined : decode_hosted_root(afterVisible.system.interactions));
 }
 
+const projected_registry_digests = new WeakMap<LocusEffectiveProjection, string>();
+
 export function projected_registry_digest(effective: LocusEffectiveProjection): string {
+  const owned = is_locus_effective_projection_internal(effective);
+  const cached = owned ? projected_registry_digests.get(effective) : undefined;
+  if (cached !== undefined) return cached;
+  const digest = prepare_projected_registry_digest(effective);
+  // Cache only successfully verified evidence. Derived topology subsets and
+  // caller-created lookalikes retain the complete computation on every use.
+  if (owned) projected_registry_digests.set(effective, digest);
+  return digest;
+}
+
+function prepare_projected_registry_digest(effective: LocusEffectiveProjection): string {
   const bindings: HostedRegistryBinding[] = effective.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchema.fromHson(entry.schema), identity: Object.freeze({}),
     ...(entry.validation === undefined ? {} : { validation: entry.validation }),

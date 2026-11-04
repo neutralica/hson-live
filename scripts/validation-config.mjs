@@ -122,6 +122,7 @@ export const ordinary = Object.freeze([
   "test:locus-selected-capture-z3a",
   "test:locus-checkpoint-z3b",
   "test:locus-live-projection-6c",
+  "test:locus-projected-registry-reuse",
   "test:locus-live-wire-6c",
   "test:locus-authority-acceptance-z1z2",
   "test:locus-live-lineage-6c",
