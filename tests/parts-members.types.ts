@@ -1,4 +1,4 @@
-import { Hson, ANY_DATA, type HsonSchema, type HsonAuthored } from "hson-live/hson";
+import { Hson, ANY_DATA, ANY_DOCUMENT, type HsonSchema, type HsonAuthored, type HsonData } from "hson-live/hson";
 import { hsonLiveMap, type LiveMapCommit, type LiveMapDocumentPart, type LiveMapPartCollection, type LiveMapLibraryPathHandle } from "hson-live/livemap";
 import type { LocusActionContext, LocusDataLocation, ReadDataLocation } from "hson-live/locus";
 import type { Echo } from "hson-live/echo";
@@ -134,12 +134,12 @@ read.parts.must(dynamicName).at([dynamicName]).write();
 echoParts.heading.write();
 echo.parts.must(dynamicName).at([dynamicName]).write();
 Hson.document`<section ${parts.heading.write()}/>` satisfies HsonAuthored;
-// @ts-expect-error Explicit undefined is not a scalar argument record.
+// @ts-expect-error Explicit undefined is not an argument record.
 parts.heading.write(undefined);
-// @ts-expect-error Explicit undefined is not a scalar argument value.
+// @ts-expect-error Explicit undefined is not an argument value.
 parts.heading.write({ content: undefined });
-// @ts-expect-error Structural values are unsupported.
-parts.heading.write({ content: {} });
+// Structured candidates are permitted; the runtime receiving declaration chooses transport.
+parts.heading.write({ content: {} }) satisfies HsonAuthored;
 // @ts-expect-error Entire collections have no authoring method.
 parts.write();
 // @ts-expect-error Collection root locations have no authoring method.
@@ -284,6 +284,52 @@ actionBase.present()?.write();
 
 // HsonData uses the existing string branch of Part.write; no new wrapper or overload.
 parts.heading.write({ slide: Hson.data`<title "Visible">`, index: Hson.data`0` }) satisfies HsonAuthored;
+
+// Direct Data admission supports interfaces without index signatures, readonly arrays and optional fields.
+interface Incoming { readonly count: number; readonly label: string; readonly note?: boolean; }
+declare const incoming: Incoming;
+declare const values: readonly Incoming[];
+declare const mixed: Incoming | readonly Incoming[] | number | boolean | null | HsonData;
+parts.heading.write({ incoming, values, mixed, empty: {}, array: [] }) satisfies HsonAuthored;
+read.parts.components.heading.write({ incoming }) satisfies HsonAuthored;
+locus.parts.components.heading.write({ incoming: values }) satisfies HsonAuthored;
+echoParts.heading.write({ incoming }) satisfies HsonAuthored;
+// @ts-expect-error Sending prefixes remain authored-only, including structured values.
+parts.heading.write({ "incoming:data": incoming });
+// @ts-expect-error Bigints remain outside the candidate value domain.
+parts.heading.write({ incoming: 1n });
+
+declare const schemaIdentity: unique symbol, otherIdentity: unique symbol;
+declare const dataSchema: HsonSchema<Incoming, "data", typeof schemaIdentity>;
+declare const otherSchema: HsonSchema<Incoming, "data", typeof otherIdentity>;
+declare const documentSchema: HsonSchema<unknown, "document", typeof schemaIdentity>;
+const directCertificate = dataSchema.certify(incoming);
+directCertificate satisfies HsonData<typeof dataSchema>;
+dataSchema.certify({ count: 42, label: "Example" }) satisfies HsonData<typeof dataSchema>;
+ANY_DATA.certify(values) satisfies HsonData<typeof ANY_DATA>;
+ANY_DATA.certify(mixed) satisfies HsonData<typeof ANY_DATA>;
+ANY_DATA.certify(42) satisfies HsonData<typeof ANY_DATA>;
+ANY_DATA.certify(false) satisfies HsonData<typeof ANY_DATA>;
+ANY_DATA.certify(null) satisfies HsonData<typeof ANY_DATA>;
+dataSchema.certify(Hson.data`<count 42 label "Example">`) satisfies HsonData<typeof dataSchema>;
+documentSchema.certify(Hson.document`<main/>`);
+ANY_DOCUMENT.certify(Hson.document`<main/>`);
+// @ts-expect-error Certification keeps the exact Schema identity.
+directCertificate satisfies HsonData<typeof otherSchema>;
+// @ts-expect-error Plain strings still require existing source qualification.
+dataSchema.certify("<count 42 label 'Example'>");
+// @ts-expect-error Data Schemas still reject authored Document candidates statically.
+dataSchema.certify(Hson.document`<main/>`);
+// @ts-expect-error Document Schemas cannot certify ordinary objects.
+documentSchema.certify(incoming);
+// @ts-expect-error Document Schemas cannot certify ordinary arrays.
+documentSchema.certify(values);
+// @ts-expect-error Document Schemas cannot certify ordinary primitives.
+documentSchema.certify(42);
+// @ts-expect-error Document Schemas still reject Data strings.
+documentSchema.certify(Hson.data`42`);
+// @ts-expect-error Undefined is not Data.
+ANY_DATA.certify(undefined);
 
 // Document edits return the aggregate stream, including CSS installation/retirement.
 const optionalParts = hsonLiveMap.fromLibraries({ parts: { parts: {

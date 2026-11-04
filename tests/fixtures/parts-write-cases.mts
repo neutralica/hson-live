@@ -3,12 +3,14 @@ import { Hson, hsonLiveMap, type HsonAuthored } from "../../src/index.js";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.js";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.js";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.js";
+import { direct_data_part_cases } from "./direct-data-admission-cases.mts";
 
 const heading = { kind: "document", document: '<h1 hson:part "%{content}"/>' } as const;
 const blank = { kind: "document", document: "<hr hson:part/>" } as const;
 const definitions = { components: { parts: { heading, blank } }, ordinary: { data: { heading } } };
 
 export async function parts_write_cases() {
+  direct_data_part_cases();
   const renamed = hsonLiveMap.fromLibraries({ parts: { parts: { x: { kind: "document",
     document: '<p hson:part data:model="%{style}" data:other="%{__proto__}" "^{model.title}:^{other}"/>' } } } });
   const protectedNames = Object.fromEntries([['style', Hson.data.from({ title: 'Own' })], ['__proto__', Hson.data.from(false)]]);

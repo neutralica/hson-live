@@ -159,7 +159,8 @@ check("omitted arguments still prove names and representations", () => {
   assert.throws(() => map.parts.components.x.write({ get payload() { reads++; return '<>'; } }));
   assert.equal(reads, 0);
   assert.throws(() => map.parts.components.x.write(Object.defineProperty({}, 'payload', { value: '<>' })));
-  assert.throws(() => map.parts.components.x.write({ payload: false }));
+  const direct = map.parts.components.x.write({ payload: false });
+  assert.equal(direct, map.parts.components.x.write({ payload: Hson.data.from(false) }));
   assert.throws(() => Reflect.apply(map.parts.components.x.write, undefined, [{ 'payload:data': '<>' }]));
 });
 

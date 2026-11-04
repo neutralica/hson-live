@@ -53,6 +53,7 @@ loc.parts.components.`;
 import assert from 'node:assert/strict';
 import { hsonLiveMap as root } from 'hson-live';
 import { hsonLiveMap } from 'hson-live/livemap';
+import { Hson, ANY_DATA } from 'hson-live/hson';
 assert.equal(root, hsonLiveMap);
 const map = hsonLiveMap.fromLibraries({components: {parts: {submit: {kind: 'document', document: '<button hson:part/>'}}}});
 assert.equal(map.parts.components.submit.snap().document, '<button hson:part/>');
@@ -61,6 +62,17 @@ const invocation = map.parts.components.submit.write();
 assert.equal(invocation, map.parts.components.at(['submit']).write());
 map.addLibraries({page: {document: invocation}});
 assert.match(JSON.stringify(map.doc.must('page').root()), /button/);
+const RecordSchema = Hson.schema\`<type "data" content <count "number" label "string">>\`;
+const direct = hsonLiveMap.fromLibraries({components: {parts: {
+  record: {kind: 'document', document: '<p hson:part data:d="%{incoming}" "^{d.label}:^{d.count}"/>'}
+}}});
+const record = {count: 42, label: 'Example'};
+const directSource = direct.parts.components.record.write({incoming: record});
+assert.equal(directSource, direct.parts.components.record.write({incoming: Hson.data.from(record)}));
+assert.equal(RecordSchema.certify(record), Hson.data.from(record));
+assert.equal(ANY_DATA.certify(-0), Hson.data\`-0\`);
+direct.addLibraries({page: {document: directSource}});
+assert.ok(direct.doc.must('page').render().includes('<p>Example:42</p>'));
 const styled = hsonLiveMap.fromLibraries({parts:{parts:{
   ordinary:{kind:'document',document:'<b hson:part/>',stylesheet:'b{color:blue}'},
   optional:{kind:'document',document:'<p hson:part part:optional data:d="%{payload}" "^{d.title}"/>',stylesheet:'p{color:red}'},

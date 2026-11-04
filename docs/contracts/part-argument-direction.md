@@ -28,6 +28,10 @@ does not bind names in the caller. Literal structured arguments retain serialize
 Data/Document string transport; local forwarding retains its declared kind.
 `.write({ incomingBlocks, incomingNav })` accepts the same plain argument record
 and emits `incomingBlocks:data` and `incomingNav:doc` from the receiving contract.
+For Data receivers, non-string arguments enter through exact Data admission and
+are serialized by `.write()`; existing serialized strings retain their composition
+validation timing. Document receivers require serialized strings. Ordinary
+parameters retain scalar transport regardless of the supplied value's shape.
 
 On invocations, `for:` and `per:` are reserved iterator prefixes and take
 precedence over outgoing type suffixes. Thus `for:data=^{blocks}` declares an

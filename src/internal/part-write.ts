@@ -5,6 +5,7 @@ import { qualify_authored_document_source, serialize_authored_document } from ".
 import { part_argument_name } from "./part-placeholder.js";
 import { is_public_attr_name } from "../core/public-attrs.js";
 import type { HsonNode } from "../core/types.js";
+import { ExactDataCarrier } from "../api/data/hson-data.js";
 
 type Writer = (...input: readonly unknown[]) => HsonAuthored;
 const writers = new WeakMap<object, Writer>();
@@ -56,12 +57,16 @@ export function write_part_invocation(library: string, member: string, input: re
         throw new TypeError("Part.write arguments require own enumerable data fields.");
       }
       const value: unknown = field.value;
-      if (value !== null && typeof value !== "string" && typeof value !== "boolean"
-        && !(typeof value === "number" && Number.isFinite(value))) {
-        throw new TypeError("Part.write arguments require finite scalar values.");
+      if (kind === "data" && typeof value !== "string") {
+        attrs[`${name}:data`] = ExactDataCarrier.from(value).toHson();
+      } else {
+        if (value !== null && typeof value !== "string" && typeof value !== "boolean"
+          && !(typeof value === "number" && Number.isFinite(value))) {
+          throw new TypeError("Part.write arguments require finite scalar values.");
+        }
+        if (kind !== "scalar" && typeof value !== "string") throw new TypeError(`Part.write ${kind} arguments require serialized strings.`);
+        attrs[kind === "scalar" ? name : `${name}:${kind}`] = String(value);
       }
-      if (kind !== "scalar" && typeof value !== "string") throw new TypeError(`Part.write ${kind} arguments require serialized strings.`);
-      attrs[kind === "scalar" ? name : `${name}:${kind}`] = String(value);
       supplied.add(name);
     }
   }

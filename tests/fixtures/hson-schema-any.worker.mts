@@ -1,5 +1,8 @@
 import { parentPort } from "node:worker_threads";
 import { ANY_DATA, ANY_DOCUMENT, Hson, HsonData, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
+import { direct_data_schema_cases } from "./direct-data-admission-cases.mts";
+
+direct_data_schema_cases();
 
 const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload "any">>`;
 const canonical = Hson.canonical`<args [null, true, -0] payload <z 1 a <nested []>>>`;

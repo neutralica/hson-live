@@ -7,6 +7,7 @@ import { inspect_schema_data, project_schema_data, schema_projection_description
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { direct_data_schema_cases } from "./fixtures/direct-data-admission-cases.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "hson-schema-mvp",
@@ -31,6 +32,8 @@ const check = (name: string, run: () => void): void => {
     throw error;
   } console.log(`ok ${++checks} - ${name}`); };
 const compile = (body: string) => compile_hson_schema(`<type "data" content <${body}>>`);
+
+check("ordinary Data certification shares exact admission and production validation", direct_data_schema_cases);
 
 check("valid primitive and closed structure lower deterministically", () => {
   const left = compile('name "string" active "boolean" nothing "null" score "number"');

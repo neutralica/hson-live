@@ -1,7 +1,6 @@
 import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchemaMode } from "../transform/transform.types.js";
-import { ExactDataCarrier, hson_data_from_value } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_hson_data_input } from "../data/hson-data.js";
 import { qualify_hson_document_source } from "../document/hson-document.js";
-import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
 import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../internal/hson-schema/compiler.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
@@ -51,19 +50,21 @@ export class HsonSchema<
     return schema_state_of(this).source;
   }
 
-  certify<TSchema extends HsonSchema, const TCandidate extends HsonCanonical | HsonAuthored>(
+  /** Certify source, or a supported ordinary value for a Data Schema. Top-level strings retain source semantics. */
+  certify<TSchema extends HsonSchema, const TCandidate extends HsonCanonical | HsonAuthored | number | boolean | null | object>(
     this: TSchema,
-    candidate: TCandidate & (TCandidate extends WrongMode<TSchema> ? never : unknown),
+    candidate: TCandidate & (TCandidate extends WrongMode<TSchema> ? never : unknown)
+      & ([TSchema] extends [HsonSchema<unknown, "document">] ? HsonCanonical | HsonAuthored : unknown),
   ): Certified<TSchema> {
-    if (typeof candidate !== "string") throw new TypeError("Schema certification requires Hson text.");
     const compiled = schema_state_of(this).compiled;
     if (compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element") {
+      if (typeof candidate !== "string") throw new TypeError("Schema certification requires Hson text.");
       // Canonical qualification rejects unconsumed QUADs before Schema evidence is issued.
       const document = qualify_hson_document_source(candidate);
       validate_hson_schema_graph(this, document);
       return serialize_hson_owned_document_content(document) as unknown as Certified<TSchema>;
     }
-    const data = hson_data_from_value(admit_canonical_hson_data_value(candidate));
+    const data = admit_hson_data_input(candidate);
     validate_hson_schema_graph(this, projected_value_to_hson_node(hson_data_value(data)));
     return data.toHson() as unknown as Certified<TSchema>;
   }
