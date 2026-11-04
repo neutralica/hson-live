@@ -4,7 +4,8 @@ import { validate_document_path, resolve_document_path } from "../livemap/livema
 import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { kind_live_path, project_live_path } from "../livemap/livemap.editor.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import {
@@ -196,8 +197,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
       do {
         pending = false;
         const currentSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-        const desired = currentSystem === undefined ? [] : read_descriptors(require_member(
-          require_object(projected_value_from_hson_node(aggregate.systemRoot(currentSystem))), "descriptors"));
+        const desired = currentSystem === undefined ? [] : read_descriptors(installed_descriptors(aggregate.systemRoot(currentSystem)));
         const desiredById = new Map(desired.map((prepared) => [prepared.descriptor.id, prepared] as const));
 
         for (const [id, record] of [...records]) {
@@ -276,8 +276,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 // movement. A transition must never fall back to an obsolete handle.
                 try {
                   const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-                  const currentDescriptor = system === undefined ? undefined : read_descriptors(require_member(
-                    require_object(projected_value_from_hson_node(aggregate.systemRoot(system))), "descriptors"))
+                  const currentDescriptor = system === undefined ? undefined : read_descriptors(installed_descriptors(aggregate.systemRoot(system)))
                     .find(candidate => candidate.descriptor.id === descriptor.id);
                   const current = currentDescriptor === undefined
                     || descriptor_fingerprint(currentDescriptor.descriptor, currentDescriptor.data) !== fingerprint
@@ -416,6 +415,14 @@ function snapshot_local_behaviors(
   return snapshot;
 }
 
+/** Read only the selected installed system member; drafts keep their ordered authority. */
+function installed_descriptors(root: import("../../core/types.js").HsonNode): OrderedProjectedValue {
+  if (kind_live_path(root, []) !== "object") throw new Error("Canonical interaction object is malformed.");
+  const descriptors = project_live_path(root, ["descriptors"]);
+  if (descriptors === undefined) throw new Error("Canonical interaction member descriptors is missing.");
+  return descriptors;
+}
+
 function interaction_storage(target: object): Storage {
   const draft = interaction_draft_capability_internal(target);
   if (draft !== undefined) return Object.freeze({ read: draft.read, replace: draft.replace });
@@ -424,8 +431,7 @@ function interaction_storage(target: object): Storage {
   if (system === undefined) interaction_storage_not_enabled_internal();
   return Object.freeze({
     read: () => {
-      const root = projected_value_from_hson_node(aggregate.systemRoot(system));
-      return require_member(require_object(root), "descriptors");
+      return installed_descriptors(aggregate.systemRoot(system));
     },
     replace: (value) => { aggregate.commit([{
       target: aggregate.systemTarget(system, ["descriptors"]),

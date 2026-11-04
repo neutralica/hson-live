@@ -319,8 +319,16 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     phase?: "published" | "installed") => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
-  /** Active Library ownership plus its immutable data value; never a public mutable observation. */
-  projectedValue: (library: LiveMapLibraryIdentity) => import("../../core/ordered-projected-value.js").OrderedProjectedValue;
+  /** Temporary canonical projection of the selected installed graph; never retained. */
+  projectedValue: {
+    (library: LiveMapLibraryIdentity): import("../../core/ordered-projected-value.js").OrderedProjectedValue;
+    (library: LiveMapLibraryIdentity, path: LivePath): import("../../core/ordered-projected-value.js").OrderedProjectedValue | undefined;
+  };
+  dataKind: (library: LiveMapLibraryIdentity, path: LivePath) => import("../../types/livemap.types.js").LiveMapPathKind;
+  dataKeys: (library: LiveMapLibraryIdentity, path: LivePath) => readonly string[] | undefined;
+  dataArrayRange: (library: LiveMapLibraryIdentity, path: LivePath,
+    bounds: (length: number) => readonly [number, number]) => JsonValue[] | undefined;
+  dataLength: (library: LiveMapLibraryIdentity, path: LivePath) => number | undefined;
   /** Immutable installed private scope/lifetime evidence; not a public lookup API. */
   documentScopes: (library: LiveMapLibraryIdentity) => import("./livemap.document.scoped-quad.js").DocumentScopedQuads | undefined;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;

@@ -249,7 +249,7 @@ check("multi-library root assignments preserve other values, identity, and the i
   ];
   for (const { initial, next, proposal, schema } of cases) {
     const map = hsonLiveMap.fromLibraries({
-      state: { data: JSON.stringify(initial), ...(schema === undefined ? {} : { schema }) },
+      state: { data: Hson.data.fromSource(JSON.stringify(initial)), ...(schema === undefined ? {} : { schema }) },
       other: { data: { keep: { value: 1 } } },
     });
     // Runtime Schema cases intentionally use the Schema-neutral selector.

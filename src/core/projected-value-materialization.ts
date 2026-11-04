@@ -19,9 +19,7 @@ export function materialize_projected_value(value: OrderedProjectedValue): JsonV
     if (Array.isArray(candidate)) {
       const result: JsonValue[] = [];
       for (const child of candidate) {
-        Object.defineProperty(result, result.length, {
-          value: visit(child), enumerable: true, writable: true, configurable: true,
-        });
+        define_materialized_property(result, result.length, visit(child));
       }
       return result;
     }
@@ -31,15 +29,15 @@ export function materialize_projected_value(value: OrderedProjectedValue): JsonV
 
     const result: Record<string, JsonValue> = {};
     for (const [key, child] of candidate.entries) {
-      Object.defineProperty(result, key, {
-        value: visit(child),
-        enumerable: true,
-        writable: true,
-        configurable: true,
-      });
+      define_materialized_property(result, key, visit(child));
     }
     return result;
   };
 
   return visit(value);
+}
+
+/** Create an own Data property without invoking inherited setters. @internal */
+export function define_materialized_property(target: object, key: string | number, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
 }

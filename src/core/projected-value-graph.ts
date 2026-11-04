@@ -19,7 +19,8 @@ import {
   ordered_projected_object,
   type OrderedProjectedValue,
 } from "./ordered-projected-value.js";
-import type { HsonNode, Primitive } from "./types.js";
+import { define_materialized_property } from "./projected-value-materialization.js";
+import type { HsonNode, JsonValue, Primitive } from "./types.js";
 
 /** Construct one canonical Hson value node from the neutral ordered carrier. */
 export function projected_value_to_hson_node(value: OrderedProjectedValue): HsonNode {
@@ -94,72 +95,108 @@ export function is_projected_value_hson_node(node: HsonNode): boolean {
     && (child.$_tag === STR_TAG || child.$_tag === VAL_TAG || child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG);
 }
 
-/** Project one canonical generic Hson value/root into the ordered carrier. */
-export function projected_value_from_hson_node(node: HsonNode): OrderedProjectedValue {
+/** Collapse only the transparent relationships recognized by canonical Data projection. */
+export function projected_hson_value_node(node: HsonNode): HsonNode {
   if (node.$_tag === ROOT_TAG) {
     const [child] = node.$_content;
     if (node.$_content.length !== 1 || !is_Node(child)) {
       throw new TypeError("Projected Hson root must contain exactly one value node.");
     }
-    return projected_value_from_hson_node(child);
+    return projected_hson_value_node(child);
   }
+  if (node.$_tag === OBJ_TAG && node.$_content.length === 1 && is_Node(node.$_content[0])) {
+    const only = node.$_content[0];
+    if (only.$_tag === STR_TAG || only.$_tag === VAL_TAG || only.$_tag === ARR_TAG || only.$_tag === OBJ_TAG) {
+      return projected_hson_value_node(only);
+    }
+  }
+  return node;
+}
 
+/** Project one canonical generic Hson value/root into the ordered carrier. */
+export function projected_value_from_hson_node(node: HsonNode): OrderedProjectedValue {
+  return read_projected_hson_node(node, orderedReader);
+}
+
+/** Fresh detached JavaScript Data, using exactly the canonical projection decoder. */
+export function materialize_projected_hson_node(node: HsonNode): JsonValue {
+  return read_projected_hson_node(node, javascriptReader);
+}
+
+type DataReader<T, A, O> = Readonly<{
+  scalar: (value: Primitive) => T;
+  array: () => A;
+  item: (target: A, index: number, value: T) => void;
+  finishArray: (target: A) => T;
+  object: () => O;
+  property: (target: O, key: string, value: T) => void;
+  finishObject: (target: O) => T;
+}>;
+
+type OrderedEntries = Array<readonly [string, OrderedProjectedValue]>;
+const orderedReader: DataReader<OrderedProjectedValue, OrderedProjectedValue[], OrderedEntries> = {
+  scalar: value => value,
+  array: () => [],
+  item: (items, index, value) => define_materialized_property(items, index, value),
+  finishArray: ordered_projected_array,
+  object: () => [],
+  property: (entries, key, value) => define_materialized_property(entries, entries.length, [key, value]),
+  finishObject: ordered_projected_object,
+};
+type JavascriptObject = { value: Record<string, JsonValue>; duplicate: string | undefined };
+const javascriptReader: DataReader<JsonValue, JsonValue[], JavascriptObject> = {
+  scalar: value => value,
+  array: () => [],
+  item: define_materialized_property,
+  finishArray: items => items,
+  object: () => ({ value: {}, duplicate: undefined }),
+  property: (target, key, value) => {
+    if (Object.hasOwn(target.value, key)) target.duplicate ??= key;
+    define_materialized_property(target.value, key, value);
+  },
+  finishObject: target => {
+    // Ordered projection checks duplicates after decoding all child relationships.
+    if (target.duplicate !== undefined) throw new TypeError(`Duplicate ordered data object key ${JSON.stringify(target.duplicate)}.`);
+    return target.value;
+  },
+};
+
+/** Both output forms share scalar interpretation, relationship checks and failure behavior. */
+function read_projected_hson_node<T, A, O>(source: HsonNode, reader: DataReader<T, A, O>): T {
+  const node = projected_hson_value_node(source);
   if (node.$_tag === STR_TAG) {
     const [value] = node.$_content;
     if (node.$_content.length !== 1 || typeof value !== "string") {
       throw new TypeError("Projected _hson_str must contain exactly one string.");
     }
-    return value;
+    return reader.scalar(value);
   }
-
   if (node.$_tag === VAL_TAG) {
     const [value] = node.$_content;
     if (node.$_content.length !== 1 || is_Node(value)) {
       throw new TypeError("Projected _hson_val must contain exactly one primitive.");
     }
-    if (typeof value === "number") return admit_hson_number(value);
-    if (value === null || typeof value === "boolean") return value;
+    if (typeof value === "number") return reader.scalar(admit_hson_number(value));
+    if (value === null || typeof value === "boolean") return reader.scalar(value);
     throw new TypeError("Projected _hson_val must contain number, boolean, or null.");
   }
-
   if (node.$_tag === ARR_TAG) {
-    return ordered_projected_array(node.$_content.map((wrapper, index) => {
-      if (!is_Node(wrapper) || wrapper.$_tag !== II_TAG) {
-        throw new TypeError("Projected _hson_arr children must be _hson_ii nodes.");
-      }
-      if (wrapper.$_meta?.[HSON_META_INDEX] !== String(index)) {
-        throw new TypeError(`Data array index metadata must match position ${index}.`);
-      }
-      const [child] = wrapper.$_content;
-      if (wrapper.$_content.length !== 1 || !is_Node(child)) {
-        throw new TypeError("Projected _hson_ii must contain exactly one value node.");
-      }
-      return projected_value_from_hson_node(child);
-    }));
+    const result = reader.array();
+    for (let index = 0; index < node.$_content.length; index++) {
+      reader.item(result, index, read_projected_array_item(node.$_content[index], index, reader));
+    }
+    return reader.finishArray(result);
   }
-
   if (node.$_tag !== OBJ_TAG) {
     throw new TypeError(`Unsupported projected Hson value node <${node.$_tag}>.`);
   }
-
-  if (node.$_content.length === 1 && is_Node(node.$_content[0])) {
-    const only = node.$_content[0];
-    if (only.$_tag === STR_TAG || only.$_tag === VAL_TAG || only.$_tag === ARR_TAG || only.$_tag === OBJ_TAG) {
-      return projected_value_from_hson_node(only);
-    }
+  const result = reader.object();
+  for (const property of node.$_content) {
+    if (!is_Node(property)) throw new TypeError("Projected _hson_obj properties must be nodes.");
+    const child = projected_relationship_value_node(property);
+    reader.property(result, property.$_tag, read_projected_hson_node(child, reader));
   }
-
-  return ordered_projected_object(node.$_content.map((property) => {
-    if (!is_Node(property)) {
-      throw new TypeError("Projected _hson_obj properties must be nodes.");
-    }
-    assert_projected_object_key(property.$_tag);
-    const [child] = property.$_content;
-    if (property.$_content.length !== 1 || !is_Node(child)) {
-      throw new TypeError(`Data property ${JSON.stringify(property.$_tag)} must contain exactly one value relationship.`);
-    }
-    return [property.$_tag, projected_value_from_hson_node(child)] as const;
-  }));
+  return reader.finishObject(result);
 }
 
 function assert_projected_object_key(key: string): void {
@@ -188,4 +225,31 @@ export function assert_canonical_hson_data_value(
 
 function value_node(tag: typeof STR_TAG | typeof VAL_TAG | typeof OBJ_TAG | typeof ARR_TAG, content: HsonNode[] | Primitive[]): HsonNode {
   return CREATE_NODE({ $_tag: tag, $_content: content });
+}
+
+/** Decode an occurrence using its original physical index. @internal */
+export function materialize_projected_array_item(wrapper: unknown, index: number): JsonValue {
+  return read_projected_array_item(wrapper, index, javascriptReader);
+}
+
+function read_projected_array_item<T, A, O>(wrapper: unknown, index: number, reader: DataReader<T, A, O>): T {
+  if (!is_Node(wrapper)) throw new TypeError("Projected _hson_arr children must be _hson_ii nodes.");
+  const child = projected_relationship_value_node(wrapper, index);
+  return read_projected_hson_node(child, reader);
+}
+
+/** Shared selected member/item relationship qualification. @internal */
+export function projected_relationship_value_node(wrapper: HsonNode, index?: string | number): HsonNode {
+  if (index !== undefined) {
+    if (wrapper.$_tag !== II_TAG) throw new TypeError("Projected _hson_arr children must be _hson_ii nodes.");
+    if (wrapper.$_meta?.[HSON_META_INDEX] !== String(index)) throw new TypeError(`Data array index metadata must match position ${index}.`);
+  } else {
+    assert_projected_object_key(wrapper.$_tag);
+  }
+  const [child] = wrapper.$_content;
+  if (wrapper.$_content.length !== 1 || !is_Node(child)) {
+    throw new TypeError(index !== undefined ? "Projected _hson_ii must contain exactly one value node."
+      : `Data property ${JSON.stringify(wrapper.$_tag)} must contain exactly one value relationship.`);
+  }
+  return child;
 }

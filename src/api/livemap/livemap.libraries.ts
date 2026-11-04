@@ -62,7 +62,7 @@ import type {
 } from "../../types/livemap.types.js";
 import { hson_data_text_from_value } from "../data/hson-data.js";
 import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { admit_data_input, hson_data_value } from "../data/hson-data.js";
@@ -126,7 +126,7 @@ import { expand_document_composition, document_composition_options, has_part_con
 import { parse_authored_document_library, register_document_quad_lookup, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { PART_COLLECTION_VALIDATION, admit_part_library, type PartLibraryCandidate, own_data_library_validation,
-  validate_data_library, read_admitted_part, type DataLibraryValidation, type ValidatedPart } from "./livemap.parts.js";
+  validate_data_library, read_admitted_part, read_admitted_part_member, type DataLibraryValidation, type ValidatedPart } from "./livemap.parts.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -967,7 +967,7 @@ function make_livemap_library_receiver(
     if (entry.family !== "data" || contract?.validation !== PART_COLLECTION_VALIDATION) {
       throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
     }
-    const part = read_admitted_part(aggregate.projectedValue(entry.identity), member);
+    const part = read_admitted_part_member(aggregate.projectedValue(entry.identity, [member]), member);
     if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify(`${collection}/${member}`)}.`);
     checkCapture();
     return part;
@@ -1272,7 +1272,7 @@ function make_data_library(
   }
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
   const canonical = (path: LivePath = []) => {
-    const value = ordered_projected_value_at(aggregate.projectedValue(library.identity), path);
+    const value = aggregate.projectedValue(library.identity, path);
     return value === undefined ? undefined : hson_data_text_from_value(value);
   };
   const public_data_commit = (commit: LiveMapAggregateCommit): LiveMapCommit<string, LiveMapDataOp> =>
@@ -1286,12 +1286,14 @@ function make_data_library(
       const actual = currentKind();
       return kind === "present" ? actual !== "missing" : actual === kind;
     });
-    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => check?.() === false ? undefined : ordered_projected_value_at(
-      aggregate.projectedValue(library.identity),
-      targetPath,
-    );
+    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => check?.() === false ? undefined : aggregate.projectedValue(library.identity, targetPath);
     const projectedAuthority: LiveMapProjectedPropagation<DataCommit> = {
       read: projectedRead,
+      snap: path => check?.() === false ? undefined : snap(path),
+      kind: path => check?.() === false ? "missing" : aggregate.dataKind(library.identity, path),
+      keys: path => check?.() === false ? undefined : aggregate.dataKeys(library.identity, path),
+      arrayRange: (path, bounds) => check?.() === false ? undefined : aggregate.dataArrayRange(library.identity, path, bounds),
+      length: path => check?.() === false ? undefined : aggregate.dataLength(library.identity, path),
       feed: () => { throw new Error("Named Library shape helpers do not expose an internal feed."); },
       commit: (ops) => public_data_commit(aggregate.commit(ops.map((op) => ({
         target: aggregate.target(library.identity, op.path),
@@ -1302,11 +1304,7 @@ function make_data_library(
     const arrayApi = make_livemap_array_api<TValue, DataCommit>({} as never, stablePath, projectedAuthority);
     const objectCapabilities = omit_object_discriminant(contract.validation === PART_COLLECTION_VALIDATION ? part_object_boundary(objectApi, stablePath) : objectApi);
     const arrayCapabilities = omit_array_collisions(arrayApi);
-    const currentKind = () => {
-      const value = projectedRead(stablePath);
-      return value === undefined ? "missing" : is_ordered_projected_object(value) ? "object"
-        : typeof value === "object" && value !== null ? "array" : "scalar";
-    };
+    const currentKind = () => projectedAuthority.kind(stablePath);
     const initialKind = currentKind();
     const hson = () => check?.() === false ? undefined : canonical(stablePath);
     const facade = {
@@ -1370,11 +1368,11 @@ function make_data_library(
         const assertCurrent = aggregate.captureFence();
         const readMember = () => {
           require_data_location(check);
-          const value = ordered_projected_value_at(aggregate.projectedValue(library.identity), stablePath);
+          const value = aggregate.projectedValue(library.identity, [...stablePath, "document"]);
           if (value === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
           return value;
         };
-        const document = ordered_projected_value_at(readMember(), ["document"]);
+        const document = readMember();
         if (typeof document !== "string") throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
         // Connector authoring needs the receiving interface, not the selected
         // Part's CSS or occurrence associations. Those belong to composition.
@@ -1417,7 +1415,7 @@ function make_data_library(
   });
   const frozen = Object.freeze(facade);
   const selected = contract.validation === PART_COLLECTION_VALIDATION
-    ? make_parts_facade(frozen, name => ordered_projected_value_at(aggregate.projectedValue(library.identity), [name]) !== undefined) : frozen;
+    ? make_parts_facade(frozen, name => aggregate.dataKind(library.identity, [name]) !== "missing") : frozen;
   register_livemap_projected_identity_api(selected, make_livemap_projected_identity_api(
     () => selected,
     Object.freeze({

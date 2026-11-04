@@ -6,7 +6,7 @@ import { ordered_projected_value_at } from "../../core/ordered-projected-value-m
 import type { LivePath, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayMutationName, LiveMapObjectMutationName } from "../../types/livemap.types.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
-import type { LiveMapProjectedPropagation, LiveMapProjectedPropagationWrite } from "./livemap.projected-propagation.js";
+import { ordered_candidate_reads, type LiveMapProjectedPropagation, type LiveMapProjectedPropagationWrite } from "./livemap.projected-propagation.js";
 
 export const ARRAY_COMMANDS = ["push", "pushMany", "unshift", "unshiftMany", "pop", "shift", "clear", "reverse", "sortNumbers", "sortStrings", "splice", "insert", "remove", "replace", "move", "unique", "removeValue", "removeAll"] as const satisfies readonly LiveMapArrayMutationName[];
 export const OBJECT_COMMANDS = ["setKey", "setMany", "clear", "deleteKey", "deleteMany", "renameKey"] as const satisfies readonly LiveMapObjectMutationName[];
@@ -46,7 +46,7 @@ export function collection_commands<TResult>(send: (command: CollectionCommand) 
 export function plan_collection_command(value: OrderedProjectedValue, path: LivePath, command: CollectionCommand): readonly LiveMapProjectedPropagationWrite[] {
   let writes: readonly LiveMapProjectedPropagationWrite[] = [];
   const authority: LiveMapProjectedPropagation<void> = {
-    read: target => ordered_projected_value_at(value, target),
+    ...ordered_candidate_reads(target => ordered_projected_value_at(value, target)),
     feed: () => { throw Error("Collection command planners cannot subscribe."); },
     commit: ops => { writes = ops; },
   };

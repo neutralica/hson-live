@@ -1,0 +1,300 @@
+Hson D4d Boundary A: graph-backed installed Data reads
+
+R1 baseline and repository protection
+
+Verified main at 166cb26b54f9dffa565f8d76da9e2ee213223902,
+"Reuse immutable projected registry digests" (parent
+1e68335fc9d20d44252021676aa3f7eb2f5611c7). The pre-commit hook runs
+npm run check; process inspection found no active hook, Git operation, test/build
+writer or implementation-path writer. No Git operation/lock markers remained.
+Implementation began only after this verification. HEAD remains this commit.
+
+No staging, commit, push, reset, worktree creation or full repository gate.
+README, tracked distribution, Deck and Scout were left untouched. README needs
+no update because public contracts did not change. The original patch for the
+five owner appearance files was compared byte-for-byte and is unchanged:
+  editors/vscode-hson/package.json
+  editors/vscode-hson/src/appearance-branding.generated.ts
+  editors/vscode-hson/src/appearance.ts
+  editors/vscode-hson/themes/hson-house-dark-color-theme.json
+  editors/vscode-hson/themes/hson-house-light-color-theme.json
+
+Installed read inventory and migrated routes
+
+* aggregate_snap now resolves the installed HsonNode graph and materializes only
+  the selected node. Named Library snap, path handles, internal path authorities,
+  update callbacks, and watch/feed snapshot values use this route.
+* aggregate.projectedValue now produces a temporary immutable projection of the
+  selected graph subtree, with an optional path; it no longer returns retained
+  library.projectedValue. Ordinary callers supply a selected path.
+* Named and legacy handle hson reads use selected graph projection followed by
+  hson_data_text_from_value and the existing exact serializer. No JavaScript
+  object recapture occurs. Missing paths remain undefined; must reads fail.
+* The existing private propagation capability now supplies snap, kind, keys and
+  length as well as selected ordered projection. Shape refinements, object
+  presence/key/getKey, array length/index/first/last, and collection guards use
+  these graph-local operations. Keys preserve physical graph order.
+* Array slices/take/drop/last variants materialize only selected items; toArray
+  and map materialize the selected array directly. Object toObject/getKey also
+  materialize directly. Sorting, equality scans, object values/entries and
+  pick/omit can temporarily project the complete selected container. pick/omit
+  preserve their read-before-caller-key-list-access snapshot timing, including
+  reentrant getters. These are temporary values, not retained caches.
+* Installed Part selection and composition project only the selected admitted
+  member; Part write reads only its document string. Membership checks are
+  graph-local. Pending transaction Part values remain ordered candidates.
+* Interaction activation, current-subject lookup and installed descriptor storage
+  select the descriptors graph member. Installed subject validation also reads
+  this member from the graph. Interaction drafts remain ordered candidates.
+
+Canonical machinery and direct materialization
+
+The existing LiveMap resolve_value_node/project_live_path machinery qualifies
+selected paths. The canonical projected-value graph decoder now shares one
+traversal between ordered output and direct JavaScript output. It reuses
+admit_hson_number, canonical scalar checks, transparent-wrapper rules, property
+name checks, array occurrence/index checks, duplicate rejection, and safe own
+property creation. Direct output writes its result containers as it traverses;
+it does not allocate a complete intermediate ordered value or decoded-entry
+representation. Static reader strategies contain functions only, not Data.
+
+Direct reads preserve signed zero, finite extremes/subnormals, null, booleans,
+strings (including lone surrogates), empty containers, nested structure, and
+safe own __proto__/constructor members. Snapshots are detached and writable at
+runtime as before. Integer-like keys follow JavaScript enumeration rules in
+ordinary objects; exact order is proved with graph keys, carriers and Hson.
+
+Unsupported tags, malformed scalar payloads, reserved properties, duplicate
+members, sparse graph content, malformed relationships and invalid array index
+metadata fail. No failed canonical projection is replaced with a successful
+fallback. Duplicate failure is deferred until all children are decoded, matching
+canonical ordered projection's failure precedence. Constant-work shape queries
+rely on the already-admitted installed graph; they do not recursively re-admit
+entire containers.
+
+Differential evidence: 200 deterministic nested structures per runtime, explicit
+scalar/container and transparent-wrapper cases, root and nested selections,
+22 malformed graph cases, exact Hson comparisons, and thrown getters in unrelated
+subtrees. Each direct materialization is checked against
+materialize_projected_value(project_live_path(...)) and independently authored
+ordered values. Graph and exact serialization witness numeric member order.
+
+Ownership, identity, transaction isolation
+
+LiveMapLibraryState.projectedValue and LiveMapSystemState.projectedValue remain.
+Candidate construction still seeds from those retained ordered values. The
+collection planner uses ordered_candidate_reads over its progressively updated
+candidate, with the same writes and admission behavior. This is not Boundary B.
+
+The two D4a assertions tying installed ordered-subtree object references to
+submitted values were replaced with exact Data evidence. Carrier authentication
+still preserves input identity; an additional staged HsonDataValue test asserts
+that queued.value is the authentic carrier at submission handoff. Capture-once,
+revocation, detachment, exact ordering and rejection assertions remain.
+
+Read tests check unchanged graph contents, revision, identity epoch and issued
+ledger object across repeated reads, plus actual QUID continuity and detached
+snapshot mutation. Direct/staged mutations, array move/sort, stale refinements,
+missing paths, invalid indexes, Part reads and interaction updates remain
+consistent. Root ownership, reservation, management, schema validation,
+acceptance, durable/observer ordering, echo replay/restoration and identity
+algorithms are unchanged. No read issues identity or mutates installed storage.
+
+Regression and type validation (corrected Boundary A)
+
+The initial Boundary A run had three inherited fixture failures. The independent
+review found a fourth in livemap-root-mutation. Before editing, identical test
+sources bundled against committed R1 and pre-correction Boundary A reproduced
+matching failing cases, passing prefixes and SCHEMA_VALIDATION TYPE_MISMATCH:
+  projected-value-admission: public prototype-safe snapshots (object vs string)
+  livemap-projected-array-move-intent: nested ordered objects (object vs string)
+  livemap-projected-rename-intent: source position (object vs string)
+  livemap-root-mutation: multi-Library root assignments (array vs string)
+All four now explicitly use Hson.data.fromSource where serialized Data was
+intended. Literal strings and production admission are unchanged. Assertions for
+ordering, signed zero, root assignments, identity epochs and atomicity remain.
+
+The maintained graph-read suite now includes public-export Document/Data
+compatibility, malformed Data and selected relationships, and range selection
+counts, boundaries and detachment. It executes 11 groups in Node and a real
+Worker, with awaited parity. Registration and launcher pin are unchanged.
+Full focused regression and integrity results are recorded in the correction
+section below and correction.tests in the measurement JSON.
+
+Read measurements
+
+Reproduce with separate, idle runs:
+  node --expose-gc scripts/measure-graph-reads.mjs --baseline
+  node --expose-gc scripts/measure-graph-reads.mjs
+
+--baseline bundles committed HEAD source through git show, without modifying
+the checkout. At this task's baseline HEAD is the R1 commit above. The current
+run bundles working-tree source. Both use Node v22.20.0 and esbuild target
+node22. Fixtures have 64, 512 or 2,048 rows in an array and an equally sized
+object catalog (two semantic occurrences of each row). Setup, admission, root
+cloning and mutation planning are outside the measurements. Most paths/handles
+are retained; kind includes constructing a handle for the public query.
+
+Each timing reports seven batches after warm-up: min / median / max microseconds
+per read. V8 HeapProfiler allocation sampling uses a 16,384-byte interval and
+includes objects collected by minor/major GC. Bytes/read are statistical
+estimates, not exact allocations or retained-heap measurements. No performance
+gates, Spectre/Locus campaign or mutation-planner benchmark was introduced.
+
+Rows  Operation          Before us (min/median/max)       After us (min/median/max)        Sampled bytes/read before -> after
+  64  scalar                 0.301/    0.366/    0.539      0.300/    0.508/    0.975         591 ->        306
+  64  subtree                2.111/    2.138/    2.209      2.542/    2.640/    3.841        3393 ->       1653
+  64  kind                   1.350/    1.458/    1.913      1.456/    1.482/    2.355        9173 ->       9160
+  64  keys                   1.154/    2.322/    2.493      1.337/    1.766/    2.498        7333 ->       1432
+  64  presence               1.135/    1.230/    1.356      0.966/    1.009/    1.552        3588 ->       1094
+  64  length                 0.105/    0.226/    0.275      0.203/    0.285/    0.385         328 ->        405
+  64  indexed                2.137/    2.228/    2.286      2.799/    2.898/    3.060        3174 ->       2189
+  64  snap                 219.016/  222.740/  227.724    337.683/  358.801/  366.301      369537 ->     168291
+  64  hson                   1.553/    2.382/    2.878      7.281/    7.444/    8.889        7865 ->      11722
+  64  graphOrderedSnap     600.588/  604.011/  607.269    820.661/  824.396/  877.371      770134 ->     889592
+ 512  scalar                 0.176/    0.253/    0.543      0.339/    0.524/    0.895         438 ->        405
+ 512  subtree                2.188/    2.436/    2.516      2.646/    2.983/    3.026        3250 ->       1457
+ 512  kind                   1.492/    1.674/    1.803      1.545/    1.783/    1.858        9034 ->       9805
+ 512  keys                   6.779/    8.763/    8.932      8.049/    9.628/   11.103       53099 ->       5015
+ 512  presence               6.664/    6.788/    6.971      3.811/    3.985/    4.226       23024 ->       1280
+ 512  length                 0.171/    0.221/    0.480      0.301/    0.566/    0.620         383 ->        437
+ 512  indexed                2.240/    2.481/    2.523      3.038/    3.417/    3.476        3097 ->       2365
+ 512  snap                1881.307/ 1901.497/ 1906.013   2920.451/ 2965.018/ 3008.294     3215200 ->    1588048
+ 512  hson                   1.786/    2.677/    2.952      7.164/    7.468/    7.584        7745 ->      11032
+ 512  graphOrderedSnap    5232.365/ 5301.208/ 5351.346   7218.544/ 7315.583/ 7374.935     6459622 ->    7354390
+2048  scalar                 0.167/    0.252/    0.560      0.869/    0.876/    0.897         624 ->        197
+2048  subtree                1.774/    2.131/    2.352      2.828/    3.821/    4.127        3195 ->       1402
+2048  kind                   1.490/    1.670/    2.607      1.539/    1.682/    2.720        9464 ->      10463
+2048  keys                  29.208/   30.382/   31.151     26.193/   30.575/   31.155      196868 ->      16017
+2048  presence              24.573/   24.969/   25.093     12.888/   13.637/   14.129       92269 ->       1270
+2048  length                 0.129/    0.174/    0.409      0.238/    0.303/    0.636         383 ->        613
+2048  indexed                1.863/    2.379/    2.445      3.335/    4.283/    4.320        3273 ->       2310
+2048  snap                8296.339/ 8416.771/ 8465.109  12741.037/13113.448/13796.198    13406824 ->    6668545
+2048  hson                   1.822/    2.598/    3.710      7.671/    8.751/   10.053        7646 ->      11219
+2048  graphOrderedSnap   23731.083/24363.760/26534.208  30391.635/30802.542/31518.000    26102042 ->   29806137
+
+Interpretation:
+  64 rows: complete snap is 1.61x retained-value baseline time, with 54.5% fewer sampled bytes. Direct graph materialization is 2.30x faster than the current graph -> ordered -> JavaScript comparator, with 81.1% fewer sampled bytes.
+  512 rows: complete snap is 1.56x retained-value baseline time, with 50.6% fewer sampled bytes. Direct graph materialization is 2.47x faster than the current graph -> ordered -> JavaScript comparator, with 78.4% fewer sampled bytes.
+  2048 rows: complete snap is 1.56x retained-value baseline time, with 50.3% fewer sampled bytes. Direct graph materialization is 2.35x faster than the current graph -> ordered -> JavaScript comparator, with 77.6% fewer sampled bytes.
+  Selected scalar/subtree/index reads have graph-resolution overhead. Exact
+  selected Hson also pays for a fresh selected projection. Key/presence reads
+  avoid materializing child values; timing/variation and allocation are reported
+  individually above, including regressions. Leaf reads and shape queries avoid
+  whole-Library projection. Read gains must not be described as mutation-planner gains.
+
+Boundary B work deliberately remaining
+
+* Remove retained ordered storage only together with the mutation-planner and
+  accepted-storage cutover. make_aggregate_data_candidate still takes the
+  installed projectedValue as its candidate baseline.
+* preserve_part_members/assert_part_write and Part-addition validation still
+  inspect retained baseline values as mutation-policy checks.
+* System candidate creation, staged descriptor composition and accepted-change
+  partition comparisons still use retained ordered system baselines.
+* Restoration/client-composition preparation retains its existing values for
+  unchanged libraries, local descriptor partitions and replay fallback state.
+  These are preparation/replay authority routes, not ordinary installed reads.
+* Installation, restoration and system replacement still populate both root and
+  projectedValue. Their algorithms, candidate ordering, reservations and
+  publication paths were not rewritten.
+
+Temporary authenticated carriers, submission payloads, operation descriptions
+and progressively updated transaction candidates remain intentionally ordered;
+they are distinct from installed read authority. No graph copy-on-write, schema
+hardening, schema.use binding-replacement repair, nested QUAD navigation or
+further Locus optimization was undertaken.
+
+Narrow correction after independent review
+
+Public snap_live_path compatibility:
+  Data context is chosen structurally from the root value relationship. Root
+  Data reads use the shared strict canonical decoder. Selected Data reads check
+  root/member/item arity, names and index relationships using shared canonical
+  relationship machinery. No decoding exception selects permissive behavior.
+  Generic Document observations retain the historical node_to_json_value path;
+  its canonical Data branch now materializes directly. The valid <main/>
+  reproduction returns {}, matching R1, instead of throwing. Generic Transform
+  and Document admission are unchanged.
+
+Array ranges:
+  The private arrayRange capability selects/qualifies one graph array, captures
+  its content reference locally, computes bounds against that length, and
+  materializes only returned occurrences through the canonical item decoder at
+  their original physical indexes. The selection is never retained. Candidate
+  adaptation remains ordered and immutable. slice/take/drop/takeLast/dropLast
+  share this route. Refined handles retain one additional fixed shape guard;
+  selection/guard counts are independent of returned item count (including 0).
+  No JavaScript materialization/recapture or persistent cache is introduced.
+
+Performance: Node v22.20.0, separate R1 / pre-correction / corrected bundles,
+20 warmups, seven batches of 15 reads; admission and setup excluded. Microseconds
+per slice (min / median / max), without a speed gate:
+  short-small: 3.39/7.16/8.84 | 5.72/15.44/15.84 | 4.07/11.49/12.86
+  large: 1764.14/1768.52/1789.55 | 3114.31/3146.59/3271.09 | 2268.26/2303.33/2325.37
+  deep: 243.62/261.94/270.91 | 933.01/939.36/975.78 | 279.08/298.31/302.28
+  wide-original: 334.65/350.25/363.57 | 24564.41/24628.18/24935.88 | 362.51/380.33/386.53
+  empty: 1.79/2.52/4.51 | 0.87/1.40/1.81 | 2.28/2.85/4.03
+  negative-boundary: 24.58/26.51/42.72 | 78.35/80.37/98.29 | 23.03/33.98/39.49
+  outside: 6.82/7.27/21.34 | 5.20/5.27/5.76 | 3.10/6.92/10.01
+The wide-original case has 512 returned items behind 2,048 sibling properties.
+The deep case has twelve nested object relationships. Large reads return 4,096
+objects; short reads return two of eight. Empty, negative/clamped bounds and
+out-of-range results are also checked for exact output before timing. Small
+microbenchmarks have visible JIT/GC variation; wide and deep traversal savings
+are repeatable and explained by eliminating per-item resolution. Raw parameters
+and measurements, including pre-correction source hashes, are in the JSON.
+
+The original full-snapshot baseline/allocation comparison above is retained.
+Its approximately 56% latency regression and halved sampled allocation remain
+limitations; no repeated whole-Data projection was found. No persistent cache,
+Boundary B storage removal, mutation-planner cutover, Schema hardening, or
+serialization duplicate-validation optimization was performed.
+
+Complete revised Boundary A inventory (five owner appearance paths excluded)
+
+  docs/contracts/d4d-boundary-a-read-measurements.json
+  docs/contracts/d4d-boundary-a-report.txt
+  package.json
+  scripts/measure-array-ranges.mjs
+  scripts/measure-graph-reads.mjs
+  scripts/validation-config.mjs
+  src/api/interactions/interactions.ts
+  src/api/livemap/livemap.collection-command.ts
+  src/api/livemap/livemap.core.ts
+  src/api/livemap/livemap.editor.ts
+  src/api/livemap/livemap.handle-array.ts
+  src/api/livemap/livemap.handle-object.ts
+  src/api/livemap/livemap.handle.ts
+  src/api/livemap/livemap.internal.ts
+  src/api/livemap/livemap.libraries.ts
+  src/api/livemap/livemap.parts.ts
+  src/api/livemap/livemap.projected-propagation.ts
+  src/core/projected-value-graph.ts
+  src/core/projected-value-materialization.ts
+  tests/fixtures/livemap-graph-reads-cases.mts
+  tests/fixtures/livemap-graph-reads.worker.mts
+  tests/fixtures/livemap-setter-exact-order-cases.mts
+  tests/livemap-graph-reads.acceptance.mts
+  tests/livemap-projected-array-move-intent.acceptance.mts
+  tests/livemap-projected-rename-intent.acceptance.mts
+  tests/livemap-root-mutation.acceptance.mts
+  tests/projected-value-admission.acceptance.mts
+
+Total: 27 paths. No commit was made.
+
+Final correction validation:
+  33 focused regression suites passed, including all four migrated fixtures,
+  D4a/D4b/D4c/R1, collections, handles, Parts, interactions, identity, schema,
+  authority acceptance, Locus restoration and Echo replay. The graph-read suite
+  separately passed 11 Node + 11 real Worker groups plus parity (34 suites total).
+  Source-package Parts rerun: 97 Node + 97 actual Worker groups passed.
+  Independent held mixed Data/Document append tests: normal acceptance, clean
+  failure, uncertain failure, restoration, authority denial, reentrant observers
+  and staged schema rejection passed. Read/graph consistency remained intact.
+  Source tsc --noEmit and 37 source-resolved affected test entrypoints passed.
+  Inventory preflight, maintained script syntax and scoped whitespace passed.
+  Both installed projectedValue fields and all mutation-planning authority remain.
+  Owner appearance hashes and unstaged index protection verified unchanged.
+  No full gate or tracked distribution generation was run. No correctness blocker
+  remains from this correction; independent re-review is still required.

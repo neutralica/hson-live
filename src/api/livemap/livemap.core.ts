@@ -11,7 +11,7 @@ import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, document_scoped_quads_semantically_equal, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { encode_document_scoped_quads, make_document_scoped_quads } from "./livemap.document.scoped-quad.js";
 import { local_scoped_css_operation, prepare_document_scoped_css_operation, encode_document_scoped_effects, replay_document_scoped_effects } from "./livemap.document.scoped-effects.js";
-import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, read_admitted_part, validate_part_additions, assert_part_members_preserved, immutable_part_error, type DataLibraryValidation, type PartLibraryCandidate } from "./livemap.parts.js";
+import { PART_COLLECTION_VALIDATION, own_data_library_validation, validate_data_library, read_admitted_part, read_admitted_part_member, validate_part_additions, assert_part_members_preserved, immutable_part_error, type DataLibraryValidation, type PartLibraryCandidate } from "./livemap.parts.js";
 import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
@@ -61,7 +61,6 @@ import {
   type OrderedProjectedValue
 } from "../../core/ordered-projected-value.js";
 import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
-import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { rewrite_interaction_subjects, validate_interaction_descriptor_ids, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import { interaction_descriptors_from_root, merge_interaction_descriptors, partition_interaction_descriptors } from "../../internal/interaction-partitions.js";
@@ -99,6 +98,11 @@ import {
   clone_live_root,
   overwrite_hson_node,
   project_live_path,
+  snap_live_path,
+  snap_live_array_range,
+  kind_live_path,
+  keys_live_path,
+  length_live_path,
   resolve_value_node
 } from "./livemap.editor.js";
 import { LiveMapDocumentMutationError, LiveMapProjectedMutationError, LiveMapReplayError, LiveMapRevError } from "./livemap.error.js";
@@ -646,7 +650,7 @@ function make_livemap_registry_engine(
           throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
         }
         const library = require_library(binding.identity);
-        const part = read_admitted_part(installed_projected_value(library.identity), member);
+        const part = read_admitted_part_member(installed_projected_value(library.identity, [member]), member);
         if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
         return part;
       },
@@ -713,14 +717,19 @@ function make_livemap_registry_engine(
     };
   }
 
-  function installed_projected_value(identity: LiveMapLibraryIdentity): OrderedProjectedValue {
+  function installed_data_root(identity: LiveMapLibraryIdentity): HsonNode {
     const library = require_library(identity);
-    // Part observations retain the incomplete-transaction and authority fence,
-    // without re-admitting immutable source. Every installation owns admission.
+    // Preserve the existing Part observation fence; installation owns admission.
     if (library.validation !== undefined) capture_fence()();
     require_projected_library(library);
-    if (library.projectedValue === undefined) throw new Error("Data library has no projected value.");
-    return library.projectedValue;
+    return library.root;
+  }
+
+  function installed_projected_value(identity: LiveMapLibraryIdentity): OrderedProjectedValue;
+  function installed_projected_value(identity: LiveMapLibraryIdentity, path: LivePath): OrderedProjectedValue | undefined;
+  function installed_projected_value(identity: LiveMapLibraryIdentity, path?: LivePath): OrderedProjectedValue | undefined {
+    const root = installed_data_root(identity);
+    return path === undefined ? must_projected_root_value(root) : project_live_path(root, must_live_path(path));
   }
 
   function part_library_name(library: LiveMapLibraryState): string {
@@ -785,8 +794,7 @@ function make_livemap_registry_engine(
     libraryIdentity: LiveMapLibraryIdentity,
     path: LivePath = [],
   ): JsonValue | undefined {
-    const value = ordered_projected_value_at(installed_projected_value(libraryIdentity), must_live_path(path));
-    return value === undefined ? undefined : materialize_projected_value(value);
+    return snap_live_path(installed_data_root(libraryIdentity), must_live_path(path));
   }
 
   function aggregate_quid_locations(
@@ -1153,7 +1161,10 @@ function make_livemap_registry_engine(
       }
       const library = require_library(binding.identity);
       admitPendingParts(library.identity);
-      const selected = read_admitted_part(partCandidates.get(library.identity)?.value ?? installed_projected_value(library.identity), member);
+      const candidate = partCandidates.get(library.identity);
+      const selected = candidate === undefined
+        ? read_admitted_part_member(installed_projected_value(library.identity, [member]), member)
+        : read_admitted_part(candidate.value, member);
       if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return selected;
     };
@@ -2098,7 +2109,7 @@ function make_livemap_registry_engine(
       return Object.freeze({ ...raw });
     });
     if (systemState?.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_subjects(ordered_projected_value_at(systemState.projectedValue, ["descriptors"]),
+      validate_interaction_subjects(project_live_path(systemState.root, ["descriptors"]),
         (name) => bindingsInput.some((binding) => binding.name === name && binding.mode === "document"
           && binding.scope === undefined));
     }
@@ -2328,7 +2339,7 @@ function make_livemap_registry_engine(
         throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
       }
       const part = pending?.part !== undefined ? read_admitted_part(pending.part.value, member)
-        : definition === undefined && binding !== undefined ? read_admitted_part(installed_projected_value(binding.identity), member)
+        : definition === undefined && binding !== undefined ? read_admitted_part_member(installed_projected_value(binding.identity, [member]), member)
         : validate_data_library(source.root, mode, source.validation)?.find(part => part.key === member);
       if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return part;
@@ -4198,6 +4209,10 @@ function make_livemap_registry_engine(
       return root;
     },
     projectedValue: installed_projected_value,
+    dataKind: (identity, path) => kind_live_path(installed_data_root(identity), must_live_path(path)),
+    dataKeys: (identity, path) => keys_live_path(installed_data_root(identity), must_live_path(path)),
+    dataArrayRange: (identity, path, bounds) => snap_live_array_range(installed_data_root(identity), must_live_path(path), bounds),
+    dataLength: (identity, path) => length_live_path(installed_data_root(identity), must_live_path(path)),
     documentOverlay: (library) => {
       const overlay = require_library(library).documentOverlay;
       if (overlay === undefined) throw new Error("Selected LiveMap library is not a document library.");

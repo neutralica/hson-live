@@ -26,8 +26,8 @@ function check(name: string, run: () => void): void {
 }
 
 const ItemsSchema = Hson.schema`<type "data" content <items <array "any">>>`;
-const library = (value: string | { items: readonly unknown[] }): LiveMapDataLibrary<unknown> => hsonLiveMap.fromLibraries({ state: { data: value as JsonValue, schema: ItemsSchema } }).data.must("state");
-const moved = (items: readonly unknown[], from: number, to: number) => {
+const library = (value: string | { items: readonly JsonValue[] }): LiveMapDataLibrary<unknown> => hsonLiveMap.fromLibraries({ state: { data: typeof value === "string" ? Hson.data.fromSource(value) : Hson.data.from(value), schema: ItemsSchema } }).data.must("state");
+const moved = (items: readonly JsonValue[], from: number, to: number) => {
   const target = library({ items });
   const commit = target.at(["items"]).asArray()!.array.move(from, to);
   return { target, commit };

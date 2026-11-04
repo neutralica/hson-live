@@ -1,0 +1,1603 @@
+{
+  "baselineCommit": "166cb26b54f9dffa565f8d76da9e2ee213223902",
+  "before": {
+    "mode": "committed",
+    "baseline": "166cb26b54f9dffa565f8d76da9e2ee213223902",
+    "node": "v22.20.0",
+    "samples": 7,
+    "allocation": "V8 statistical allocation sampling, includes collected objects; estimates, not exact counts",
+    "results": [
+      {
+        "size": 64,
+        "operation": "scalar",
+        "iterations": 1500,
+        "minUs": 0.3011939999999716,
+        "medianUs": 0.3662500000000364,
+        "maxUs": 0.5386946666664395,
+        "sampledBytesPerRead": 590.992
+      },
+      {
+        "size": 64,
+        "operation": "subtree",
+        "iterations": 1500,
+        "minUs": 2.1113333333332776,
+        "medianUs": 2.138333333333321,
+        "maxUs": 2.2094719999998538,
+        "sampledBytesPerRead": 3392.688
+      },
+      {
+        "size": 64,
+        "operation": "kind",
+        "iterations": 1500,
+        "minUs": 1.3497226666668212,
+        "medianUs": 1.4584719999999531,
+        "maxUs": 1.9130833333332096,
+        "sampledBytesPerRead": 9173.301333333333
+      },
+      {
+        "size": 64,
+        "operation": "keys",
+        "iterations": 300,
+        "minUs": 1.1536133333326386,
+        "medianUs": 2.3223599999998137,
+        "maxUs": 2.4929166666667393,
+        "sampledBytesPerRead": 7332.666666666667
+      },
+      {
+        "size": 64,
+        "operation": "presence",
+        "iterations": 1500,
+        "minUs": 1.1354446666667475,
+        "medianUs": 1.2299999999998665,
+        "maxUs": 1.35591666666672,
+        "sampledBytesPerRead": 3588.0266666666666
+      },
+      {
+        "size": 64,
+        "operation": "length",
+        "iterations": 1500,
+        "minUs": 0.10533333333357102,
+        "medianUs": 0.22630599999987075,
+        "maxUs": 0.2748886666665082,
+        "sampledBytesPerRead": 328.32533333333333
+      },
+      {
+        "size": 64,
+        "operation": "indexed",
+        "iterations": 1500,
+        "minUs": 2.1365279999999984,
+        "medianUs": 2.228194666666544,
+        "maxUs": 2.286388666666729,
+        "sampledBytesPerRead": 3173.6693333333333
+      },
+      {
+        "size": 64,
+        "operation": "snap",
+        "iterations": 128,
+        "minUs": 219.01628125000272,
+        "medianUs": 222.74023437499935,
+        "maxUs": 227.72428906250042,
+        "sampledBytesPerRead": 369537.0625
+      },
+      {
+        "size": 64,
+        "operation": "hson",
+        "iterations": 1500,
+        "minUs": 1.552583333333132,
+        "medianUs": 2.3819999999999104,
+        "maxUs": 2.878110666666847,
+        "sampledBytesPerRead": 7864.837333333333
+      },
+      {
+        "size": 64,
+        "operation": "graphOrderedSnap",
+        "iterations": 128,
+        "minUs": 600.5882187500014,
+        "medianUs": 604.0110703124988,
+        "maxUs": 607.269203125,
+        "sampledBytesPerRead": 770134.0625
+      },
+      {
+        "size": 512,
+        "operation": "scalar",
+        "iterations": 1500,
+        "minUs": 0.17600000000008245,
+        "medianUs": 0.25294466666673543,
+        "maxUs": 0.5433333333336728,
+        "sampledBytesPerRead": 437.76
+      },
+      {
+        "size": 512,
+        "operation": "subtree",
+        "iterations": 1500,
+        "minUs": 2.1879446666668323,
+        "medianUs": 2.436194666666779,
+        "maxUs": 2.516000000000228,
+        "sampledBytesPerRead": 3250.1493333333333
+      },
+      {
+        "size": 512,
+        "operation": "kind",
+        "iterations": 1500,
+        "minUs": 1.4915833333331345,
+        "medianUs": 1.673694666666658,
+        "maxUs": 1.8029166666662302,
+        "sampledBytesPerRead": 9034.144
+      },
+      {
+        "size": 512,
+        "operation": "keys",
+        "iterations": 300,
+        "minUs": 6.778750000000097,
+        "medianUs": 8.763056666666671,
+        "maxUs": 8.931526666665377,
+        "sampledBytesPerRead": 53099.17333333333
+      },
+      {
+        "size": 512,
+        "operation": "presence",
+        "iterations": 1500,
+        "minUs": 6.664471999999781,
+        "medianUs": 6.787805333333381,
+        "maxUs": 6.971193999999741,
+        "sampledBytesPerRead": 23023.866666666665
+      },
+      {
+        "size": 512,
+        "operation": "length",
+        "iterations": 1500,
+        "minUs": 0.17141666666672487,
+        "medianUs": 0.22147266666676538,
+        "maxUs": 0.4798053333336914,
+        "sampledBytesPerRead": 383.20533333333333
+      },
+      {
+        "size": 512,
+        "operation": "indexed",
+        "iterations": 1500,
+        "minUs": 2.2404166666668366,
+        "medianUs": 2.481083333333421,
+        "maxUs": 2.5225833333333867,
+        "sampledBytesPerRead": 3097.0933333333332
+      },
+      {
+        "size": 512,
+        "operation": "snap",
+        "iterations": 16,
+        "minUs": 1881.3073124999846,
+        "medianUs": 1901.4973749999626,
+        "maxUs": 1906.012999999973,
+        "sampledBytesPerRead": 3215200.5
+      },
+      {
+        "size": 512,
+        "operation": "hson",
+        "iterations": 1500,
+        "minUs": 1.7864446666668907,
+        "medianUs": 2.6765833333332316,
+        "maxUs": 2.9521386666668454,
+        "sampledBytesPerRead": 7744.672
+      },
+      {
+        "size": 512,
+        "operation": "graphOrderedSnap",
+        "iterations": 16,
+        "minUs": 5232.364562499981,
+        "medianUs": 5301.208375000044,
+        "maxUs": 5351.346374999992,
+        "sampledBytesPerRead": 6459622
+      },
+      {
+        "size": 2048,
+        "operation": "scalar",
+        "iterations": 1500,
+        "minUs": 0.16738866666673857,
+        "medianUs": 0.2521386666661177,
+        "maxUs": 0.560361333333276,
+        "sampledBytesPerRead": 623.8826666666666
+      },
+      {
+        "size": 2048,
+        "operation": "subtree",
+        "iterations": 1500,
+        "minUs": 1.7737220000005134,
+        "medianUs": 2.130638666666831,
+        "maxUs": 2.3521666666668657,
+        "sampledBytesPerRead": 3195.0453333333335
+      },
+      {
+        "size": 2048,
+        "operation": "kind",
+        "iterations": 1500,
+        "minUs": 1.4901393333329906,
+        "medianUs": 1.6703613333332517,
+        "maxUs": 2.60736133333315,
+        "sampledBytesPerRead": 9464.234666666667
+      },
+      {
+        "size": 2048,
+        "operation": "keys",
+        "iterations": 300,
+        "minUs": 29.20847333333465,
+        "medianUs": 30.3824999999991,
+        "maxUs": 31.15124999999959,
+        "sampledBytesPerRead": 196868.26666666666
+      },
+      {
+        "size": 2048,
+        "operation": "presence",
+        "iterations": 1500,
+        "minUs": 24.57325000000007,
+        "medianUs": 24.969278000000486,
+        "maxUs": 25.09288866666672,
+        "sampledBytesPerRead": 92268.928
+      },
+      {
+        "size": 2048,
+        "operation": "length",
+        "iterations": 1500,
+        "minUs": 0.12855599999966216,
+        "medianUs": 0.1743333333336826,
+        "maxUs": 0.40861066666669404,
+        "sampledBytesPerRead": 383.05066666666664
+      },
+      {
+        "size": 2048,
+        "operation": "indexed",
+        "iterations": 1500,
+        "minUs": 1.8632219999999506,
+        "medianUs": 2.3791666666656965,
+        "maxUs": 2.445472666666319,
+        "sampledBytesPerRead": 3272.816
+      },
+      {
+        "size": 2048,
+        "operation": "snap",
+        "iterations": 8,
+        "minUs": 8296.33862500009,
+        "medianUs": 8416.770874999884,
+        "maxUs": 8465.109375000111,
+        "sampledBytesPerRead": 13406824
+      },
+      {
+        "size": 2048,
+        "operation": "hson",
+        "iterations": 1500,
+        "minUs": 1.821749999999156,
+        "medianUs": 2.59822199999932,
+        "maxUs": 3.7096666666669385,
+        "sampledBytesPerRead": 7645.6106666666665
+      },
+      {
+        "size": 2048,
+        "operation": "graphOrderedSnap",
+        "iterations": 8,
+        "minUs": 23731.08324999998,
+        "medianUs": 24363.7604999999,
+        "maxUs": 26534.20825000012,
+        "sampledBytesPerRead": 26102042
+      }
+    ]
+  },
+  "after": {
+    "mode": "working-tree",
+    "baseline": "166cb26b54f9dffa565f8d76da9e2ee213223902",
+    "node": "v22.20.0",
+    "samples": 7,
+    "allocation": "V8 statistical allocation sampling, includes collected objects; estimates, not exact counts",
+    "results": [
+      {
+        "size": 64,
+        "operation": "scalar",
+        "iterations": 1500,
+        "minUs": 0.29969399999998814,
+        "medianUs": 0.5083333333333447,
+        "maxUs": 0.9753613333333343,
+        "sampledBytesPerRead": 306.27733333333333
+      },
+      {
+        "size": 64,
+        "operation": "subtree",
+        "iterations": 1500,
+        "minUs": 2.5416393333333267,
+        "medianUs": 2.6403333333333308,
+        "maxUs": 3.84138866666666,
+        "sampledBytesPerRead": 1653.2533333333333
+      },
+      {
+        "size": 64,
+        "operation": "kind",
+        "iterations": 1500,
+        "minUs": 1.4560833333333296,
+        "medianUs": 1.481611333333338,
+        "maxUs": 2.3546106666666824,
+        "sampledBytesPerRead": 9159.648
+      },
+      {
+        "size": 64,
+        "operation": "keys",
+        "iterations": 300,
+        "minUs": 1.3373599999999897,
+        "medianUs": 1.7662499999998242,
+        "maxUs": 2.4983333333331834,
+        "sampledBytesPerRead": 1432.4
+      },
+      {
+        "size": 64,
+        "operation": "presence",
+        "iterations": 1500,
+        "minUs": 0.9657499999999951,
+        "medianUs": 1.0090279999999818,
+        "maxUs": 1.5520833333333333,
+        "sampledBytesPerRead": 1094.4213333333332
+      },
+      {
+        "size": 64,
+        "operation": "length",
+        "iterations": 1500,
+        "minUs": 0.20313866666667005,
+        "medianUs": 0.2848333333333433,
+        "maxUs": 0.38527800000000906,
+        "sampledBytesPerRead": 404.73066666666665
+      },
+      {
+        "size": 64,
+        "operation": "indexed",
+        "iterations": 1500,
+        "minUs": 2.7992773333333316,
+        "medianUs": 2.8978886666666694,
+        "maxUs": 3.059638666666691,
+        "sampledBytesPerRead": 2189.3013333333333
+      },
+      {
+        "size": 64,
+        "operation": "snap",
+        "iterations": 128,
+        "minUs": 337.6832656250004,
+        "medianUs": 358.80142968749954,
+        "maxUs": 366.3011093749997,
+        "sampledBytesPerRead": 168291.0625
+      },
+      {
+        "size": 64,
+        "operation": "hson",
+        "iterations": 1500,
+        "minUs": 7.280611333333279,
+        "medianUs": 7.444360666666626,
+        "maxUs": 8.888778000000002,
+        "sampledBytesPerRead": 11721.909333333333
+      },
+      {
+        "size": 64,
+        "operation": "graphOrderedSnap",
+        "iterations": 128,
+        "minUs": 820.6608124999999,
+        "medianUs": 824.3961640625006,
+        "maxUs": 877.3707656250007,
+        "sampledBytesPerRead": 889591.9375
+      },
+      {
+        "size": 512,
+        "operation": "scalar",
+        "iterations": 1500,
+        "minUs": 0.3385833333334934,
+        "medianUs": 0.5239446666667694,
+        "maxUs": 0.8951386666667531,
+        "sampledBytesPerRead": 404.73066666666665
+      },
+      {
+        "size": 512,
+        "operation": "subtree",
+        "iterations": 1500,
+        "minUs": 2.646110666666876,
+        "medianUs": 2.982833333333474,
+        "maxUs": 3.0264726666667534,
+        "sampledBytesPerRead": 1456.5813333333333
+      },
+      {
+        "size": 512,
+        "operation": "kind",
+        "iterations": 1500,
+        "minUs": 1.5451666666664703,
+        "medianUs": 1.7826666666666522,
+        "maxUs": 1.8577499999998206,
+        "sampledBytesPerRead": 9804.624
+      },
+      {
+        "size": 512,
+        "operation": "keys",
+        "iterations": 300,
+        "minUs": 8.049443333332723,
+        "medianUs": 9.627640000000307,
+        "maxUs": 11.103473333334174,
+        "sampledBytesPerRead": 5014.693333333334
+      },
+      {
+        "size": 512,
+        "operation": "presence",
+        "iterations": 1500,
+        "minUs": 3.8109166666666474,
+        "medianUs": 3.9845833333332243,
+        "maxUs": 4.225500000000163,
+        "sampledBytesPerRead": 1280.3626666666667
+      },
+      {
+        "size": 512,
+        "operation": "length",
+        "iterations": 1500,
+        "minUs": 0.3014719999998003,
+        "medianUs": 0.5664166666665551,
+        "maxUs": 0.6201386666668137,
+        "sampledBytesPerRead": 437.46666666666664
+      },
+      {
+        "size": 512,
+        "operation": "indexed",
+        "iterations": 1500,
+        "minUs": 3.0378606666666506,
+        "medianUs": 3.416638666666889,
+        "maxUs": 3.47605599999982,
+        "sampledBytesPerRead": 2364.672
+      },
+      {
+        "size": 512,
+        "operation": "snap",
+        "iterations": 16,
+        "minUs": 2920.4505000000154,
+        "medianUs": 2965.018187499993,
+        "maxUs": 3008.294249999977,
+        "sampledBytesPerRead": 1588048
+      },
+      {
+        "size": 512,
+        "operation": "hson",
+        "iterations": 1500,
+        "minUs": 7.163861333333443,
+        "medianUs": 7.46761133333348,
+        "maxUs": 7.584444666666665,
+        "sampledBytesPerRead": 11031.749333333333
+      },
+      {
+        "size": 512,
+        "operation": "graphOrderedSnap",
+        "iterations": 16,
+        "minUs": 7218.5443125,
+        "medianUs": 7315.5833750000165,
+        "maxUs": 7374.934875000008,
+        "sampledBytesPerRead": 7354389.5
+      },
+      {
+        "size": 2048,
+        "operation": "scalar",
+        "iterations": 1500,
+        "minUs": 0.869027999999768,
+        "medianUs": 0.8758886666667726,
+        "maxUs": 0.897194666666716,
+        "sampledBytesPerRead": 196.92266666666666
+      },
+      {
+        "size": 2048,
+        "operation": "subtree",
+        "iterations": 1500,
+        "minUs": 2.827528000000408,
+        "medianUs": 3.821444666666745,
+        "maxUs": 4.1270273333332925,
+        "sampledBytesPerRead": 1401.5626666666667
+      },
+      {
+        "size": 2048,
+        "operation": "kind",
+        "iterations": 1500,
+        "minUs": 1.5386940000001534,
+        "medianUs": 1.6816113333334215,
+        "maxUs": 2.720055333333221,
+        "sampledBytesPerRead": 10463.002666666667
+      },
+      {
+        "size": 2048,
+        "operation": "keys",
+        "iterations": 300,
+        "minUs": 26.1926399999993,
+        "medianUs": 30.575416666667177,
+        "maxUs": 31.1545833333336,
+        "sampledBytesPerRead": 16017.44
+      },
+      {
+        "size": 2048,
+        "operation": "presence",
+        "iterations": 1500,
+        "minUs": 12.888388666666893,
+        "medianUs": 13.636888666666588,
+        "maxUs": 14.128860666667,
+        "sampledBytesPerRead": 1269.808
+      },
+      {
+        "size": 2048,
+        "operation": "length",
+        "iterations": 1500,
+        "minUs": 0.23802733333347229,
+        "medianUs": 0.3025833333334352,
+        "maxUs": 0.6361666666665163,
+        "sampledBytesPerRead": 612.6506666666667
+      },
+      {
+        "size": 2048,
+        "operation": "indexed",
+        "iterations": 1500,
+        "minUs": 3.335028000000117,
+        "medianUs": 4.282805999999861,
+        "maxUs": 4.319527999999991,
+        "sampledBytesPerRead": 2309.504
+      },
+      {
+        "size": 2048,
+        "operation": "snap",
+        "iterations": 8,
+        "minUs": 12741.036500000064,
+        "medianUs": 13113.44787500002,
+        "maxUs": 13796.198000000004,
+        "sampledBytesPerRead": 6668545
+      },
+      {
+        "size": 2048,
+        "operation": "hson",
+        "iterations": 1500,
+        "minUs": 7.6706113333329995,
+        "medianUs": 8.750583333333148,
+        "maxUs": 10.0531386666662,
+        "sampledBytesPerRead": 11219.301333333333
+      },
+      {
+        "size": 2048,
+        "operation": "graphOrderedSnap",
+        "iterations": 8,
+        "minUs": 30391.635499999895,
+        "medianUs": 30802.541625000005,
+        "maxUs": 31518.00000000003,
+        "sampledBytesPerRead": 29806137
+      }
+    ]
+  },
+  "tests": [
+    {
+      "suite": "livemap-graph-reads",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-setter-exact-order",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "locus-submission-ownership",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "data-source-admission",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "data-source-consumers",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "locus-projected-registry-reuse",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "projected-value-admission",
+      "exit": 1,
+      "baselineFailure": true
+    },
+    {
+      "suite": "projected-value-equality",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-projected-value-equivalence",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-shape-handles",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-projected-identity-acquisition",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-projected-identity-lifecycle",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-projected-array-move-intent",
+      "exit": 1,
+      "baselineFailure": true
+    },
+    {
+      "suite": "livemap-projected-rename-intent",
+      "exit": 1,
+      "baselineFailure": true
+    },
+    {
+      "suite": "livemap-data-ownership",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-exact-route-closure",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "parts-members",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-part-collections",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "canonical-interactions",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "canonical-interactions-worker",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "interaction-initialization",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "interaction-ownership",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "reserved-data-names",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "hson-data",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-projected-intent-propagation",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-exact-propagation",
+      "exit": 0,
+      "baselineFailure": false
+    },
+    {
+      "suite": "livemap-commit-publication-ownership",
+      "exit": 0,
+      "baselineFailure": false
+    }
+  ],
+  "baselineFailureEvidence": {
+    "method": "Temporary esbuild bundles load all src/*.ts from git show HEAD:path; checkout and index remain untouched. All three reproduce the same failing case and SCHEMA_VALIDATION TYPE_MISMATCH: expected object, received string.",
+    "cases": {
+      "projected-value-admission": "public LiveMap snapshots are prototype-safe, detached and truthful about integer-key enumeration",
+      "livemap-projected-array-move-intent": "nested ordered objects move without rematerialization",
+      "livemap-projected-rename-intent": "rename retains source position and removes old destination"
+    }
+  },
+  "correction": {
+    "baseline": "166cb26b54f9dffa565f8d76da9e2ee213223902",
+    "inventory": [
+      "docs/contracts/d4d-boundary-a-read-measurements.json",
+      "docs/contracts/d4d-boundary-a-report.txt",
+      "package.json",
+      "scripts/measure-array-ranges.mjs",
+      "scripts/measure-graph-reads.mjs",
+      "scripts/validation-config.mjs",
+      "src/api/interactions/interactions.ts",
+      "src/api/livemap/livemap.collection-command.ts",
+      "src/api/livemap/livemap.core.ts",
+      "src/api/livemap/livemap.editor.ts",
+      "src/api/livemap/livemap.handle-array.ts",
+      "src/api/livemap/livemap.handle-object.ts",
+      "src/api/livemap/livemap.handle.ts",
+      "src/api/livemap/livemap.internal.ts",
+      "src/api/livemap/livemap.libraries.ts",
+      "src/api/livemap/livemap.parts.ts",
+      "src/api/livemap/livemap.projected-propagation.ts",
+      "src/core/projected-value-graph.ts",
+      "src/core/projected-value-materialization.ts",
+      "tests/fixtures/livemap-graph-reads-cases.mts",
+      "tests/fixtures/livemap-graph-reads.worker.mts",
+      "tests/fixtures/livemap-setter-exact-order-cases.mts",
+      "tests/livemap-graph-reads.acceptance.mts",
+      "tests/livemap-projected-array-move-intent.acceptance.mts",
+      "tests/livemap-projected-rename-intent.acceptance.mts",
+      "tests/livemap-root-mutation.acceptance.mts",
+      "tests/projected-value-admission.acceptance.mts"
+    ],
+    "inventoryCount": 27,
+    "rangeMeasurements": [
+      {
+        "mode": "R1",
+        "node": "v22.20.0",
+        "samples": 7,
+        "iterations": 15,
+        "results": [
+          {
+            "name": "short-small",
+            "size": 8,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 2,
+            "minUs": 3.3861333333334187,
+            "medianUs": 7.163866666663428,
+            "maxUs": 8.841666666648962
+          },
+          {
+            "name": "large",
+            "size": 4096,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 4096,
+            "minUs": 1764.1444666666757,
+            "medianUs": 1768.5166666666798,
+            "maxUs": 1789.5472000000154
+          },
+          {
+            "name": "deep",
+            "size": 512,
+            "width": 0,
+            "depth": 12,
+            "start": 0,
+            "end": 512,
+            "minUs": 243.62219999999675,
+            "medianUs": 261.94439999999304,
+            "maxUs": 270.9083333333183
+          },
+          {
+            "name": "wide-original",
+            "size": 512,
+            "width": 2048,
+            "depth": 0,
+            "start": 0,
+            "end": 512,
+            "minUs": 334.6528000000035,
+            "medianUs": 350.24719999998223,
+            "maxUs": 363.5666666666718
+          },
+          {
+            "name": "empty",
+            "size": 0,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 0,
+            "minUs": 1.7861333333106206,
+            "medianUs": 2.522199999990941,
+            "maxUs": 4.5056000000234535
+          },
+          {
+            "name": "negative-boundary",
+            "size": 512,
+            "width": 64,
+            "depth": 2,
+            "start": -32,
+            "end": 1024,
+            "minUs": 24.580533333331307,
+            "medianUs": 26.5138666666644,
+            "maxUs": 42.722199999995304
+          },
+          {
+            "name": "outside",
+            "size": 512,
+            "width": 64,
+            "depth": 0,
+            "start": 999,
+            "end": 1000,
+            "minUs": 6.816666666691162,
+            "medianUs": 7.274999999996605,
+            "maxUs": 21.336133333352336
+          }
+        ]
+      },
+      {
+        "mode": "pre-correction",
+        "node": "v22.20.0",
+        "samples": 7,
+        "iterations": 15,
+        "results": [
+          {
+            "name": "short-small",
+            "size": 8,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 2,
+            "minUs": 5.716666666667909,
+            "medianUs": 15.441666666665318,
+            "maxUs": 15.844466666665843
+          },
+          {
+            "name": "large",
+            "size": 4096,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 4096,
+            "minUs": 3114.3055333333377,
+            "medianUs": 3146.588933333328,
+            "maxUs": 3271.0888666666656
+          },
+          {
+            "name": "deep",
+            "size": 512,
+            "width": 0,
+            "depth": 12,
+            "start": 0,
+            "end": 512,
+            "minUs": 933.0138666666547,
+            "medianUs": 939.355599999999,
+            "maxUs": 975.7805333333407
+          },
+          {
+            "name": "wide-original",
+            "size": 512,
+            "width": 2048,
+            "depth": 0,
+            "start": 0,
+            "end": 512,
+            "minUs": 24564.40833333333,
+            "medianUs": 24628.17779999999,
+            "maxUs": 24935.880599999986
+          },
+          {
+            "name": "empty",
+            "size": 0,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 0,
+            "minUs": 0.866666666661331,
+            "medianUs": 1.397266666632883,
+            "maxUs": 1.8055333333298524
+          },
+          {
+            "name": "negative-boundary",
+            "size": 512,
+            "width": 64,
+            "depth": 2,
+            "start": -32,
+            "end": 1024,
+            "minUs": 78.35000000001553,
+            "medianUs": 80.3666666666686,
+            "maxUs": 98.28886666667434
+          },
+          {
+            "name": "outside",
+            "size": 512,
+            "width": 64,
+            "depth": 0,
+            "start": 999,
+            "end": 1000,
+            "minUs": 5.197199999990214,
+            "medianUs": 5.269399999997404,
+            "maxUs": 5.761066666673287
+          }
+        ]
+      },
+      {
+        "mode": "corrected",
+        "node": "v22.20.0",
+        "samples": 7,
+        "iterations": 15,
+        "results": [
+          {
+            "name": "short-small",
+            "size": 8,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 2,
+            "minUs": 4.066666666665242,
+            "medianUs": 11.494466666666389,
+            "maxUs": 12.86113333333295
+          },
+          {
+            "name": "large",
+            "size": 4096,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 4096,
+            "minUs": 2268.263866666666,
+            "medianUs": 2303.3305333333296,
+            "maxUs": 2325.366666666666
+          },
+          {
+            "name": "deep",
+            "size": 512,
+            "width": 0,
+            "depth": 12,
+            "start": 0,
+            "end": 512,
+            "minUs": 279.080533333331,
+            "medianUs": 298.3083333333373,
+            "maxUs": 302.27780000000166
+          },
+          {
+            "name": "wide-original",
+            "size": 512,
+            "width": 2048,
+            "depth": 0,
+            "start": 0,
+            "end": 512,
+            "minUs": 362.51386666666195,
+            "medianUs": 380.32780000000156,
+            "maxUs": 386.52773333333243
+          },
+          {
+            "name": "empty",
+            "size": 0,
+            "width": 0,
+            "depth": 0,
+            "start": 0,
+            "end": 0,
+            "minUs": 2.2805999999945925,
+            "medianUs": 2.8527333333386196,
+            "maxUs": 4.027800000009544
+          },
+          {
+            "name": "negative-boundary",
+            "size": 512,
+            "width": 64,
+            "depth": 2,
+            "start": -32,
+            "end": 1024,
+            "minUs": 23.027799999999843,
+            "medianUs": 33.983333333329334,
+            "maxUs": 39.486133333336205
+          },
+          {
+            "name": "outside",
+            "size": 512,
+            "width": 64,
+            "depth": 0,
+            "start": 999,
+            "end": 1000,
+            "minUs": 3.100000000010065,
+            "medianUs": 6.922200000008161,
+            "maxUs": 10.013933333326955
+          }
+        ]
+      }
+    ],
+    "baselineFailuresBeforeMigration": [
+      {
+        "suite": "projected-value-admission",
+        "baselineExit": 1,
+        "currentExit": 1,
+        "identicalFixture": true,
+        "comparableEvidenceEqual": true,
+        "evidence": {
+          "cases": [
+            {
+              "t": "case_end",
+              "caseId": "primitive admission preserves strings, isolated surrogates, booleans, null, zero and negative zero",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "ordinary object admission captures enumerable data descriptors in observable own-key order",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "null-prototype objects admit and materialize as compatible ordinary objects",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "frozen objects and sealed arrays admit by detached value",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "carrier recognition requires factory ownership without inspecting external behavior",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "frozen external containers detach and never become trusted through recognition or admission",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "only owned children can be retained and object brands cannot be copied or proxied",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "carrier factories own their containers while sharing established immutable children",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "dense empty and populated ordinary arrays admit with exact indexes",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "repeated acyclic source references are copied structurally without identity",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "repeated admission is deterministic and never mutates caller descriptors",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "dangerous names admit as exact ordinary carrier entries",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "undefined rejects with a path-specific structured code",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "NaN and both infinities reject through the finite-number boundary",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "bigint, symbols and functions reject without coercion",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "boxed primitive objects reject by unsupported prototype",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "custom prototypes, class instances and exotic built-ins reject",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "ordinary getters reject from descriptors without executing user code",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "ordinary setters reject from descriptors without executing user code",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "nonenumerable own string properties reject",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "symbol-keyed object and array properties reject",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "sparse arrays and explicit undefined entries reject distinctly",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "extra named and numeric-looking array properties reject without scanning missing positions",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "array accessor indexes and subclassed arrays reject",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "cycles reject with both current and originating structured paths",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "materialization defines dangerous own data without changing Object.prototype",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "materialization returns fresh dense arrays, nested objects and repeated carrier occurrences",
+              "status": "pass"
+            },
+            {
+              "t": "diagnostic",
+              "caseId": "public LiveMap snapshots are prototype-safe, detached and truthful about integer-key enumeration",
+              "kind": "assertion",
+              "message": "Hson Schema validation failed."
+            },
+            {
+              "t": "case_end",
+              "caseId": "public LiveMap snapshots are prototype-safe, detached and truthful about integer-key enumeration",
+              "status": "fail"
+            }
+          ],
+          "schema": [
+            "code: 'SCHEMA_VALIDATION',",
+            "path: [],",
+            "code: 'TYPE_MISMATCH',",
+            "path: [],",
+            "expected: 'object',",
+            "received: 'string'"
+          ]
+        }
+      },
+      {
+        "suite": "livemap-projected-array-move-intent",
+        "baselineExit": 1,
+        "currentExit": 1,
+        "identicalFixture": true,
+        "comparableEvidenceEqual": true,
+        "evidence": {
+          "cases": [
+            {
+              "t": "case_end",
+              "caseId": "forward final index",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "backward final index",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "forward adjacent",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "backward adjacent",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "first to last",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "last to first",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "same-position move is an exact no-op",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "move emits named semantic intent and one revision",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "negative source rejects",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "negative destination rejects",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "unsafe source rejects",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "unsafe destination rejects",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "out-of-range source rejects atomically",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "out-of-range destination rejects atomically",
+              "status": "pass"
+            },
+            {
+              "t": "diagnostic",
+              "caseId": "nested ordered objects move without rematerialization",
+              "kind": "assertion",
+              "message": "Hson Schema validation failed."
+            },
+            {
+              "t": "case_end",
+              "caseId": "nested ordered objects move without rematerialization",
+              "status": "fail"
+            }
+          ],
+          "schema": [
+            "code: 'SCHEMA_VALIDATION',",
+            "path: [],",
+            "code: 'TYPE_MISMATCH',",
+            "path: [],",
+            "expected: 'object',",
+            "received: 'string'"
+          ]
+        }
+      },
+      {
+        "suite": "livemap-projected-rename-intent",
+        "baselineExit": 1,
+        "currentExit": 1,
+        "identicalFixture": true,
+        "comparableEvidenceEqual": true,
+        "evidence": {
+          "cases": [
+            {
+              "t": "case_end",
+              "caseId": "simple rename emits named semantic intent",
+              "status": "pass"
+            },
+            {
+              "t": "diagnostic",
+              "caseId": "rename retains source position and removes old destination",
+              "kind": "assertion",
+              "message": "Hson Schema validation failed."
+            },
+            {
+              "t": "case_end",
+              "caseId": "rename retains source position and removes old destination",
+              "status": "fail"
+            }
+          ],
+          "schema": [
+            "code: 'SCHEMA_VALIDATION',",
+            "path: [],",
+            "code: 'TYPE_MISMATCH',",
+            "path: [],",
+            "expected: 'object',",
+            "received: 'string'"
+          ]
+        }
+      },
+      {
+        "suite": "livemap-root-mutation",
+        "baselineExit": 1,
+        "currentExit": 1,
+        "identicalFixture": true,
+        "comparableEvidenceEqual": true,
+        "evidence": {
+          "cases": [
+            {
+              "t": "case_end",
+              "caseId": "root object set is a shallow patch and publishes one final state",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "root update receives a detached structural snapshot and uses set semantics",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "root and nested no-ops follow the same revision and publication policy",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "invalid root candidates reject before any revision, commit, or feed",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "nested set and update preserve shallow patch versus exact replacement",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "explicit root replacement removes omitted members and validates the complete candidate",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "root arrays and tuples assign the whole endpoint and retain ordinary no-ops",
+              "status": "pass"
+            },
+            {
+              "t": "case_end",
+              "caseId": "root primitive set and update replace the value with atomic validation",
+              "status": "pass"
+            },
+            {
+              "t": "diagnostic",
+              "caseId": "multi-library root assignments preserve other values, identity, and the issued epoch",
+              "kind": "assertion",
+              "message": "Hson Schema validation failed."
+            },
+            {
+              "t": "case_end",
+              "caseId": "multi-library root assignments preserve other values, identity, and the issued epoch",
+              "status": "fail"
+            }
+          ],
+          "schema": [
+            "code: 'SCHEMA_VALIDATION',",
+            "path: [],",
+            "code: 'TYPE_MISMATCH',",
+            "path: [],",
+            "expected: 'array',",
+            "received: 'string'"
+          ]
+        }
+      }
+    ],
+    "publicExample": {
+      "R1": {},
+      "preCorrection": "TypeError: Unsupported projected Hson value node <main>.",
+      "corrected": {}
+    },
+    "rangeSelection": "One selected-array lookup per invocation; refined handles retain an additional fixed shape guard lookup. No per-item path lookup or retained selection.",
+    "deferred": "Duplicate serialization validation optimization remains deferred.",
+    "preCorrectionSourceManifestSha256": "4a12e8f4809cad6f8cbfb950996c12476bd2839700514e814ac90ca16bf3d182",
+    "preCorrectionChangedSourceSha256": {
+      "src/api/interactions/interactions.ts": "b53ee3b84ee07cabf4b901473f71733f05de8b5c7be615c59289ddeb7a94f229",
+      "src/api/livemap/livemap.collection-command.ts": "bdf0acd9030f746707720bf09b8aa004aa9c929d01ef51e7b269a869481fa914",
+      "src/api/livemap/livemap.core.ts": "cd9556ad2ad0663f15faff2fb928d79773a26845984bae3c29b594958e608faa",
+      "src/api/livemap/livemap.editor.ts": "dd4fde49d19dcdeaa0cf2158560896d5dc1c2705734869e9f82fa474e782ad74",
+      "src/api/livemap/livemap.handle-array.ts": "c08f017dcff585c8f3475fff716ced463edb6577228fde78c83fcb9922b89e5e",
+      "src/api/livemap/livemap.handle-object.ts": "5e3e615f141d829e52d5a4456d429a46edfecafc6fb75d3fae4c6dd04032bde2",
+      "src/api/livemap/livemap.handle.ts": "93fd29b02ef25ad3158e680e8fe04d5ddb45681d93ad1d6efe95f365676aef3e",
+      "src/api/livemap/livemap.internal.ts": "db18a2064113494ec97e21c74933472672cef452c21e82a16926c80e6217bd3c",
+      "src/api/livemap/livemap.libraries.ts": "825a1a18edd27998e438e9910208bd9ecea9c9221d3912b295897ab2de1af9d3",
+      "src/api/livemap/livemap.parts.ts": "d802613dad8e0ebe7b18f1a0102c1af2014b7fd4214ffdda942c8519020afdc4",
+      "src/api/livemap/livemap.projected-propagation.ts": "60497a6a650991e00ee31933abe14c54f7a17a1924712985e473bac6725b8fca",
+      "src/core/projected-value-graph.ts": "333a04e8975fa5d2d05c02920b343b1ca045082b101137011ff816e645057616",
+      "src/core/projected-value-materialization.ts": "72ced1c6d9370b68362eddce30f8c1e025593e02a5f756833632d7eccac42969"
+    },
+    "tests": [
+      {
+        "suite": "livemap-setter-exact-order",
+        "exit": 0,
+        "seconds": 3.72,
+        "caseEnds": 30
+      },
+      {
+        "suite": "locus-submission-ownership",
+        "exit": 0,
+        "seconds": 2.17,
+        "caseEnds": 37
+      },
+      {
+        "suite": "data-source-admission",
+        "exit": 0,
+        "seconds": 0.23,
+        "caseEnds": 9
+      },
+      {
+        "suite": "data-source-consumers",
+        "exit": 0,
+        "seconds": 1.68,
+        "caseEnds": 8
+      },
+      {
+        "suite": "locus-projected-registry-reuse",
+        "exit": 0,
+        "seconds": 0.84,
+        "caseEnds": 0
+      },
+      {
+        "suite": "projected-value-admission",
+        "exit": 0,
+        "seconds": 0.28,
+        "caseEnds": 29
+      },
+      {
+        "suite": "projected-value-equality",
+        "exit": 0,
+        "seconds": 0.08,
+        "caseEnds": 24
+      },
+      {
+        "suite": "livemap-projected-value-equivalence",
+        "exit": 0,
+        "seconds": 0.32,
+        "caseEnds": 25
+      },
+      {
+        "suite": "livemap-shape-handles",
+        "exit": 0,
+        "seconds": 0.3,
+        "caseEnds": 0
+      },
+      {
+        "suite": "livemap-projected-identity-acquisition",
+        "exit": 0,
+        "seconds": 0.29,
+        "caseEnds": 22
+      },
+      {
+        "suite": "livemap-projected-identity-lifecycle",
+        "exit": 0,
+        "seconds": 0.34,
+        "caseEnds": 23
+      },
+      {
+        "suite": "livemap-projected-array-move-intent",
+        "exit": 0,
+        "seconds": 0.34,
+        "caseEnds": 19
+      },
+      {
+        "suite": "livemap-projected-rename-intent",
+        "exit": 0,
+        "seconds": 0.31,
+        "caseEnds": 13
+      },
+      {
+        "suite": "livemap-data-ownership",
+        "exit": 0,
+        "seconds": 0.55,
+        "caseEnds": 31
+      },
+      {
+        "suite": "livemap-exact-route-closure",
+        "exit": 0,
+        "seconds": 2.45,
+        "caseEnds": 24
+      },
+      {
+        "suite": "parts-members",
+        "exit": 0,
+        "seconds": 12.97,
+        "caseEnds": 0
+      },
+      {
+        "suite": "livemap-part-collections",
+        "exit": 0,
+        "seconds": 7.84,
+        "caseEnds": 97
+      },
+      {
+        "suite": "canonical-interactions",
+        "exit": 0,
+        "seconds": 2.35,
+        "caseEnds": 32
+      },
+      {
+        "suite": "canonical-interactions-worker",
+        "exit": 0,
+        "seconds": 0.81,
+        "caseEnds": 1
+      },
+      {
+        "suite": "interaction-initialization",
+        "exit": 0,
+        "seconds": 0.41,
+        "caseEnds": 0
+      },
+      {
+        "suite": "interaction-ownership",
+        "exit": 0,
+        "seconds": 3.34,
+        "caseEnds": 0
+      },
+      {
+        "suite": "reserved-data-names",
+        "exit": 0,
+        "seconds": 0.41,
+        "caseEnds": 9
+      },
+      {
+        "suite": "hson-data",
+        "exit": 0,
+        "seconds": 1.62,
+        "caseEnds": 0
+      },
+      {
+        "suite": "livemap-projected-intent-propagation",
+        "exit": 0,
+        "seconds": 0.35,
+        "caseEnds": 12
+      },
+      {
+        "suite": "livemap-exact-propagation",
+        "exit": 0,
+        "seconds": 0.32,
+        "caseEnds": 8
+      },
+      {
+        "suite": "livemap-commit-publication-ownership",
+        "exit": 0,
+        "seconds": 0.52,
+        "caseEnds": 15
+      },
+      {
+        "suite": "livemap-root-mutation",
+        "exit": 0,
+        "seconds": 0.34,
+        "caseEnds": 13
+      },
+      {
+        "suite": "locus-authority-acceptance-z1z2",
+        "exit": 0,
+        "seconds": 0.57,
+        "caseEnds": 0
+      },
+      {
+        "suite": "locus-hosted-multi-library-h4",
+        "exit": 0,
+        "seconds": 0.83,
+        "caseEnds": 8
+      },
+      {
+        "suite": "locus-hosted-runtime-replay",
+        "exit": 0,
+        "seconds": 0.99,
+        "caseEnds": 0
+      },
+      {
+        "suite": "echo-scoped-replay",
+        "exit": 0,
+        "seconds": 64.93,
+        "caseEnds": 56
+      },
+      {
+        "suite": "locus-scoped-preparation",
+        "exit": 0,
+        "seconds": 2.43,
+        "caseEnds": 50
+      },
+      {
+        "suite": "interaction-subject-paths",
+        "exit": 0,
+        "seconds": 0.67,
+        "caseEnds": 0
+      }
+    ],
+    "graphTests": {
+      "node": 11,
+      "worker": 11,
+      "parity": "passed"
+    },
+    "checks": {
+      "sourceTypeScript": "passed",
+      "affectedTestTypeScript": "passed (37 source-resolved entrypoints)",
+      "inventoryPreflight": "passed",
+      "heldAcceptanceRestorationReentrancy": "passed",
+      "sourcePackageParts": "97 Node + 97 Worker groups passed"
+    }
+  }
+}

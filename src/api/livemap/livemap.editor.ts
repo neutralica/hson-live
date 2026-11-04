@@ -3,8 +3,8 @@
 
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
-import type { LivePathPart, LivePath, LiveMapEditResult } from "../../types/livemap.types.js";
-import { _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
+import type { LivePathPart, LivePath, LiveMapEditResult, LiveMapPathKind } from "../../types/livemap.types.js";
+import { _HSON_, ARR_TAG, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
 import { clone_node } from "../../core/clone-node.js";
@@ -17,6 +17,10 @@ import {
 } from "../../core/ordered-projected-value.js";
 import {
   is_projected_value_hson_node,
+  materialize_projected_hson_node,
+  materialize_projected_array_item,
+  projected_relationship_value_node,
+  projected_hson_value_node,
   projected_array_item_to_hson_node,
   projected_object_property_to_hson_node,
   projected_value_from_hson_node,
@@ -67,14 +71,53 @@ export function clone_live_root(root: HsonNode): HsonNode {
  * back into ordinary JSON-ish data.
  */
 export function snap_live_path(root: HsonNode, path: LivePath): JsonValue | undefined {
-  const valueNode = resolve_value_node(root, path);
-  return valueNode === undefined ? undefined : node_to_json_value(valueNode);
+  // Root relationship determines Data context, even when its arity is malformed.
+  const first = root.$_content[0];
+  const dataContext = is_value_node(root) || (root.$_tag === ROOT_TAG && is_Node(first) && is_value_node(first));
+  if (dataContext && path.length === 0) return materialize_projected_hson_node(root);
+  const valueNode = dataContext ? resolve_data_read_node(root, path) : resolve_value_node(root, path);
+  return valueNode === undefined ? undefined : dataContext ? materialize_projected_hson_node(valueNode) : node_to_json_value(valueNode);
 }
 
 /** Read one data path as the immutable internal carrier. */
 export function project_live_path(root: HsonNode, path: LivePath): OrderedProjectedValue | undefined {
   const valueNode = resolve_value_node(root, path);
   return valueNode === undefined ? undefined : projected_value_from_hson_node(valueNode);
+}
+
+/** Shape reads are restricted to admitted installed Data graphs; no container projection. */
+export function kind_live_path(root: HsonNode, path: LivePath): LiveMapPathKind {
+  const node = qualified_live_value(root, path);
+  if (node === undefined) return "missing";
+  switch (node.$_tag) {
+    case OBJ_TAG: return "object";
+    case ARR_TAG: return "array";
+    case STR_TAG:
+    case VAL_TAG:
+      // Scalar validation is constant work and shares the canonical decoder.
+      materialize_projected_hson_node(node);
+      return "scalar";
+    default: throw new TypeError(`Unsupported projected Hson value node <${node.$_tag}>.`);
+  }
+}
+
+export function keys_live_path(root: HsonNode, path: LivePath): readonly string[] | undefined {
+  const node = qualified_live_value(root, path);
+  if (node?.$_tag !== OBJ_TAG) return undefined;
+  return node.$_content.map(child => {
+    if (!is_Node(child)) throw new TypeError("Projected _hson_obj properties must be nodes.");
+    return child.$_tag;
+  });
+}
+
+export function length_live_path(root: HsonNode, path: LivePath): number | undefined {
+  const node = qualified_live_value(root, path);
+  return node?.$_tag === ARR_TAG ? node.$_content.length : undefined;
+}
+
+function qualified_live_value(root: HsonNode, path: LivePath): HsonNode | undefined {
+  const node = resolve_value_node(root, path);
+  return node === undefined ? undefined : projected_hson_value_node(node);
 }
 
 /**
@@ -420,7 +463,7 @@ function delete_object_property(parent: HsonNode, key: string): void {
  */
 export function node_to_json_value(node: HsonNode): JsonValue {
   if (is_projected_value_hson_node(node)) {
-    return materialize_projected_value(projected_value_from_hson_node(node));
+    return materialize_projected_hson_node(node);
   }
   const transparentPayload = unwrap_transparent_object_payload(node);
   if (transparentPayload !== undefined) return node_to_json_value(transparentPayload);
@@ -654,4 +697,32 @@ export function overwrite_hson_node(target: HsonNode, source: HsonNode): void {
   if (source.$_meta === undefined) delete target.$_meta;
   else target.$_meta = { ...source.$_meta };
   target.$_content = source.$_content.map(clone_hson_content);
+}
+
+/** One ephemeral selected array; bounds and materialization share that selection. @internal */
+export function snap_live_array_range(root: HsonNode, path: LivePath,
+  bounds: (length: number) => readonly [number, number]): JsonValue[] | undefined {
+  const node = qualified_live_value(root, path);
+  if (node?.$_tag !== ARR_TAG) return undefined;
+  const content = node.$_content;
+  const [start, end] = bounds(content.length);
+  return Array.from({ length: Math.max(0, end - start) }, (_, offset) =>
+    materialize_projected_array_item(content[start + offset], start + offset));
+}
+
+/** Validate selected relationships before unwrapping; never fall back after a Data failure. */
+function resolve_data_read_node(root: HsonNode, path: LivePath): HsonNode | undefined {
+  let current = root;
+  if (root.$_tag === ROOT_TAG) {
+    const first = root.$_content[0];
+    if (root.$_content.length !== 1 || !is_Node(first)) throw new TypeError("Projected Hson root must contain exactly one value node.");
+    current = first;
+  }
+  for (const part of path) {
+    const value = projected_hson_value_node(current);
+    const wrapper = find_child_wrapper(value, part);
+    if (wrapper === undefined) return undefined;
+    current = projected_relationship_value_node(wrapper, value.$_tag === ARR_TAG ? part : undefined);
+  }
+  return current;
 }

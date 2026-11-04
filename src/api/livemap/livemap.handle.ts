@@ -1,5 +1,5 @@
 import { required_reads } from "../../internal/required-reads.js";
-import { data_path_kind, data_location_check, require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
+import { require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 // handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
@@ -20,7 +20,6 @@ import {
   type LiveMapProjectedPropagationWrite,
 } from "./livemap.projected-propagation.js";
 import {
-  is_ordered_projected_object,
   ordered_projected_value_equal,
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
@@ -82,13 +81,20 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
   // Shape helpers already require this capability; setters use the same exact path.
   if (projected === undefined) throw new Error("LiveMap object helper has no projected propagation capability.");
   const checkedAuthority = {
-    ...projected, read: (path: LivePath) => check?.() === false ? undefined : projected.read(path),
+    ...projected,
+    read: (path: LivePath) => check?.() === false ? undefined : projected.read(path),
+    snap: (path: LivePath) => check?.() === false ? undefined : projected.snap(path),
+    kind: (path: LivePath) => check?.() === false ? "missing" as const : projected.kind(path),
+    keys: (path: LivePath) => check?.() === false ? undefined : projected.keys(path),
+    arrayRange: (path: LivePath, bounds: (length: number) => readonly [number, number]) => check?.() === false ? undefined : projected.arrayRange(path, bounds),
+    length: (path: LivePath) => check?.() === false ? undefined : projected.length(path),
   };
   const objectApi = make_livemap_object_api<TValue>(core, handlePath, checkedAuthority);
   const arrayApi = make_livemap_array_api<TValue>(core, handlePath, checkedAuthority);
-  const currentKind = (): LiveMapPathKind => data_path_kind(read());
+  const currentKind = (): LiveMapPathKind => checkedAuthority.kind(handlePath);
   const refine = (kind: "present" | "object" | "array" | "scalar") =>
-    make_livemap_path_handle<TValue>(core, handlePath, watch, data_location_check(() => core.snap(handlePath), kind, check));
+    make_livemap_path_handle<TValue>(core, handlePath, watch, () => check?.() !== false
+      && (kind === "present" ? projected.kind(handlePath) !== "missing" : projected.kind(handlePath) === kind));
   const objectCapabilities = omit_object_discriminant(objectApi);
   const arrayCapabilities = omit_array_collisions(arrayApi);
 
@@ -244,10 +250,10 @@ function must_handle_link_target(
   projected: NonNullable<ReturnType<typeof livemap_projected_propagation>>,
   path: LivePath,
 ): void {
-  if (path.length === 0 || projected.read(path) !== undefined) return;
+  if (path.length === 0 || projected.kind(path) !== "missing") return;
   const parent = parent_live_path(path);
   const key = path[path.length - 1];
-  if (parent !== undefined && typeof key === "string" && is_ordered_projected_object(projected.read(parent))) return;
+  if (parent !== undefined && typeof key === "string" && projected.kind(parent) === "object") return;
   throw new Error(`LiveMap set path does not resolve: ${format_live_path(path)}`);
 }
 

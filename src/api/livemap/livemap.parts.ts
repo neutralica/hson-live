@@ -122,6 +122,11 @@ export function validate_part_member(key: string, member: OrderedProjectedValue)
 export function read_admitted_part(value: OrderedProjectedValue, key: string): ValidatedPart | undefined {
   if (!is_ordered_projected_object(value)) throw new Error("Invalid admitted Part collection.");
   const member = value.entries.find(([name]) => name === key)?.[1];
+  return read_admitted_part_member(member, key);
+}
+
+/** Interpret only a selected, already-admitted member. @internal */
+export function read_admitted_part_member(member: OrderedProjectedValue | undefined, key: string): ValidatedPart | undefined {
   if (member === undefined) return undefined;
   if (!is_ordered_projected_object(member)) throw new Error("Invalid admitted Part definition.");
   const fields = new Map(member.entries), source = fields.get("document");
