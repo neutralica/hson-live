@@ -3,7 +3,8 @@ import { HsonSchemaError } from "../../api/livemap/livemap.error.js";
 import { parse_hson } from "../../api/transform/parsers/parse-hson.js";
 import { detach_hson_root_value } from "../../api/transform/utils/node-utils/detach-hson-root-value.js";
 import { compiled_hson_schema_of } from "../../api/schema/hson-schema.js";
-import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import { assert_canonical_hson_data_value, projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
 
 /** Shared synchronous canonical boundary. No map construction or certification. */
@@ -30,6 +31,16 @@ export function validate_hson_schema_graph(schema: HsonSchema, graph: import("..
     catch { throw new HsonSchemaError("Hson Schema validation failed.", [], [Object.freeze({ code: "TYPE_MISMATCH" as const, path: [], message: "Expected data Hson; received document Hson." })]); }
     result = evaluate_canonical_projected_schema(compiled.graph, projected);
   }
+  require_schema_match(result);
+}
+
+/** @internal Evaluate owned Data directly, preserving qualification and diagnostic mapping. */
+export function validate_hson_schema_data(schema: HsonSchema, value: OrderedProjectedValue): void {
+  assert_canonical_hson_data_value(value);
+  require_schema_match(evaluate_canonical_projected_schema(compiled_hson_schema_of(schema).graph, value));
+}
+
+function require_schema_match(result: ReturnType<typeof evaluate_canonical_projected_schema>): void {
   if (!result.ok) throw new HsonSchemaError("Hson Schema validation failed.", result.issues[0]?.path ?? [], result.issues.map((issue) => Object.freeze({
     code: issue.code, path: issue.path, message: `Schema validation failed at ${issue.path.join(".") || "root"}.`,
     ...(issue.expected === undefined ? {} : { expected: issue.expected }),

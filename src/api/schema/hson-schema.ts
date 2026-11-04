@@ -3,9 +3,8 @@ import { ExactDataCarrier, admit_data_input } from "../data/hson-data.js";
 import { qualify_hson_document_source } from "../document/hson-document.js";
 import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../internal/hson-schema/compiler.js";
-import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
+import { validate_hson_schema_graph, validate_hson_schema_data } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { hson_data_value } from "../data/hson-data.js";
-import { projected_value_to_hson_node } from "../../core/projected-value-graph.js";
 import { schema_definition_identity } from "../../internal/hson-schema/definition-identity.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
@@ -65,7 +64,7 @@ export class HsonSchema<
       return serialize_hson_owned_document_content(document) as unknown as Certified<TSchema>;
     }
     const data = admit_data_input(candidate);
-    validate_hson_schema_graph(this, projected_value_to_hson_node(hson_data_value(data)));
+    validate_hson_schema_data(this, hson_data_value(data));
     return data.toHson() as unknown as Certified<TSchema>;
   }
 }

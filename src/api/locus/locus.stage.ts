@@ -1,9 +1,15 @@
+import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
+import { capture_before_submission, capture_plain_instruction } from "../../internal/capture-instruction.js";
+import { document_location_commands } from "../../internal/document-location-commands.js";
+import { capture_document_attrs, capture_document_attrs_command, capture_document_attr_value, capture_document_content } from "../livemap/livemap.document.mutation.js";
+import { normalize_document_request_target } from "../livemap/livemap.document.target.js";
+import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { forward_part_write } from "../../internal/part-write.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { type OwnedLibraryDefinition, admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
-import { document_css_commands, document_css_reads, dispatch_document_css_command } from "../../internal/document-css-commands.js";
+import { document_css_commands, document_css_reads, dispatch_document_css_command, capture_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands, normalize_part_collection_command } from "../livemap/livemap.collection-command.js";
 import { collection_observations, live_observation, live_subscription, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
@@ -13,7 +19,7 @@ import type {
   LiveMapStagedWriter, LivePath, LiveMapDataLibrary, LiveMapDocumentLibrary,
 } from "../../types/livemap.types.js";
 import type { LocusDefinitions, LocusStage } from "../../types/locus.core.types.js";
-import { must_live_path } from "../livemap/livemap.guard.js";
+import { must_live_path, must_ordered_projected_value } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { register_governed_document, write_document_quad } from "../../internal/governed-document.js";
@@ -54,6 +60,16 @@ export function make_locus_stage<TMap extends LiveMap>(
       const location = selected_data(writer, name).at(stable);
       Reflect.apply(Reflect.get(Reflect.get(location, command.collection), command.method), undefined, command.args);
     }), cause => Promise.reject(cause), command => resolve_livemap_library_internal(map, name)?.family === "parts" ? normalize_part_collection_command(command, stable) : command);
+    const isParts = resolve_livemap_library_internal(map, name)?.family === "parts";
+    const write = (method: "set" | "replace", value: JsonValue): Promise<void> => capture_before_submission(() => {
+      const owned = must_ordered_projected_value(isParts ? normalize_part_css_authoring(value, stable) : value, stable);
+      return submit(writer => {
+        if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle.");
+        raw.snap();
+        const location = selected_data(writer, name).at(stable);
+        Reflect.apply(location[method], location, [owned]);
+      });
+    });
     const snap = observe(() => raw.snap());
     const hson = observe(() => raw.hson());
     const facade = {
@@ -69,8 +85,8 @@ export function make_locus_stage<TMap extends LiveMap>(
       asObject: observe(() => { const checked = raw.asObject(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); }),
       asScalar: observe(() => { const checked = raw.asScalar(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); }),
       at: observe((child: LivePath) => data_path(name, [...stable, ...must_live_path(child)], owner, raw.at(child))),
-      set: (value: JsonValue) => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).set(value); }),
-      replace: (value: JsonValue) => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).replace(value); }),
+      set: (value: JsonValue) => write("set", value),
+      replace: (value: JsonValue) => write("replace", value),
       delete: () => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
     };
     return Object.freeze(forward_part_write(facade, raw, assertReadable)) as unknown as import("../../types/governor.types.js").LocusDataLocation;
@@ -85,8 +101,9 @@ export function make_locus_stage<TMap extends LiveMap>(
       document.root();
       run(selected_document(writer, name).at(stable) as import("../livemap/livemap.staged.js").StagedDocumentLocation);
     });
+    const commands = document_location_commands(edit);
     return Object.freeze({
-      ...read,
+      ...read, ...commands,
       get rev() { return read.rev; },
       present: observe(() => { const checked = raw.present(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
       asElement: observe(() => { const checked = raw.asElement(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
@@ -94,22 +111,8 @@ export function make_locus_stage<TMap extends LiveMap>(
       asText: observe(() => { const checked = raw.asText(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
       id: observe((id: string) => { const found = raw.id(id); return found === undefined ? undefined : document_location(name, found.path(), document, found); }),
       at: observe((child: readonly number[]) => { raw.snap(); return document_location(name, [...stable, ...validate_document_path(child)], document, raw.at(child)); }),
-      replace: (value: LiveMapDocumentContent) => edit(location => location.replace(value)),
-      delete: () => edit(location => location.delete()),
-      insert: (index: number, value: LiveMapDocumentContent) => edit(location => location.insert(index, value)),
-      move: (from: number, to: number) => edit(location => location.move(from, to)),
-      attrs: Object.freeze({ ...read.attrs,
-        set: (name: string, value: LiveMapDocumentAttributeValue) => edit(location => location.attrs.set(name, value)),
-        drop: (name: string) => edit(location => location.attrs.drop(name)),
-        replace: (values: LiveMapDocumentAttrs) => edit(location => location.attrs.replace(values)),
-        setMany: (values: LiveMapDocumentAttrs) => edit(location => location.attrs.setMany(values)),
-        dropMany: (names: readonly string[]) => edit(location => location.attrs.dropMany(names)),
-        clear: () => edit(location => location.attrs.clear()),
-      }),
-      flags: Object.freeze({ ...read.flags,
-        set: (...names: string[]) => edit(location => location.flags.set(...names)),
-        clear: (...names: string[]) => edit(location => location.flags.clear(...names)),
-      }),
+      attrs: Object.freeze({ ...read.attrs, ...commands.attrs }),
+      flags: Object.freeze({ ...read.flags, ...commands.flags }),
     });
   };
   const admit = async (definitions: LocusDefinitions): Promise<void> => {
@@ -137,30 +140,48 @@ export function make_locus_stage<TMap extends LiveMap>(
           document.root();
           run(selected_document(writer, name));
         });
-        const commands = document_css_commands(command => edit(draft => {
-          // The command facade records the same closed authoring call in the staged writer.
-          dispatch_document_css_command(draft.css, command);
+        const commands = document_css_commands(input => capture_before_submission(() => {
+          const command = capture_document_css_command(input);
+          return edit(draft => {
+            // The command facade records the same closed authoring call in the staged writer.
+            dispatch_document_css_command(draft.css, command);
+          });
         }), () => { document.root(); });
         const reads = document_css_reads(document.css, assertReadable);
         const css = Object.assign(
-          (operation: LiveMapCssOp) => edit(draft => { draft.css(operation); }),
+          (input: LiveMapCssOp) => capture_before_submission(() => {
+            const operation = canonical_portable_document_css_op(capture_plain_instruction(input));
+            return edit(draft => { draft.css(operation); });
+          }),
           commands, reads, {
             var: Object.freeze({ ...commands.var, ...reads.var }),
             atProperty: Object.freeze({ ...commands.atProperty, ...reads.atProperty }),
             keyframes: Object.freeze({ ...commands.keyframes, ...reads.keyframes }),
           },
         );
+        const request = (target: LiveMapDocumentRequestTarget) =>
+          normalize_document_request_target(capture_plain_instruction(target), "replace-attrs");
         const content = Object.assign(
           observe(() => document.document.content()),
           {
-            replace: (target: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) =>
-              edit(draft => { draft.content.replace(target, index, value); }),
-            insert: (target: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) =>
-              edit(draft => { draft.content.insert(target, index, value); }),
-            remove: (target: LiveMapDocumentRequestTarget, index: number) =>
-              edit(draft => { draft.content.remove(target, index); }),
-            move: (target: LiveMapDocumentRequestTarget, from: number, to: number) =>
-              edit(draft => { draft.content.move(target, from, to); }),
+            replace: (target: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) => capture_before_submission(() => {
+              const stableTarget = request(target);
+              const owned = capture_document_content(value, "replace-content");
+              return edit(draft => { draft.content.replace(stableTarget, index, owned); });
+            }),
+            insert: (target: LiveMapDocumentRequestTarget, index: number, value: LiveMapDocumentContent) => capture_before_submission(() => {
+              const stableTarget = request(target);
+              const owned = capture_document_content(value, "insert-content");
+              return edit(draft => { draft.content.insert(stableTarget, index, owned); });
+            }),
+            remove: (target: LiveMapDocumentRequestTarget, index: number) => capture_before_submission(() => {
+              const stableTarget = request(target);
+              return edit(draft => { draft.content.remove(stableTarget, index); });
+            }),
+            move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => capture_before_submission(() => {
+              const stableTarget = request(target);
+              return edit(draft => { draft.content.move(stableTarget, from, to); });
+            }),
           },
         );
         const handle = Object.freeze({
@@ -183,8 +204,14 @@ export function make_locus_stage<TMap extends LiveMap>(
           css,
           document: Object.freeze({ root: observe(() => document.document.root()),
             flags: Object.freeze({ has: observe(document.document.flags.has),
-              set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => edit(draft => { draft.flags.set(target, ...names); }),
-              clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) => edit(draft => { draft.flags.clear(target, ...names); }),
+              set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                return edit(draft => { draft.flags.set(stableTarget, ...names); });
+              }),
+              clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                return edit(draft => { draft.flags.clear(stableTarget, ...names); });
+              }),
             }),
             content,
             attrs: Object.freeze({
@@ -192,15 +219,35 @@ export function make_locus_stage<TMap extends LiveMap>(
               has: observe(document.document.attrs.has.bind(document.document.attrs)),
               keys: observe(document.document.attrs.keys.bind(document.document.attrs)),
               must: Object.freeze({ get: observe(document.document.attrs.must.get) }),
-              setMany: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) => edit(draft => { draft.attrs.setMany(target, values); }),
-              dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) => edit(draft => { draft.attrs.dropMany(target, names); }),
-              clear: (target: LiveMapDocumentRequestTarget) => edit(draft => { draft.attrs.clear(target); }),
-              set: (target: LiveMapDocumentRequestTarget, attribute: string, value: LiveMapDocumentAttributeValue) =>
-                edit(draft => { draft.attrs.set(target, attribute, value); }),
-              drop: (target: LiveMapDocumentRequestTarget, attribute: string) =>
-                edit(draft => { draft.attrs.drop(target, attribute); }),
-              replace: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) =>
-                edit(draft => { draft.attrs.replace(target, values); }),
+              setMany: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                const owned = capture_document_attrs(values);
+                return edit(draft => { draft.attrs.setMany(stableTarget, owned); });
+              }),
+              dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                const owned = capture_document_attrs_command({ kind: "dropMany", names });
+                if (owned.kind !== "dropMany") throw new Error("Expected attribute removal command.");
+                return edit(draft => { draft.attrs.dropMany(stableTarget, owned.names); });
+              }),
+              clear: (target: LiveMapDocumentRequestTarget) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                return edit(draft => { draft.attrs.clear(stableTarget); });
+              }),
+              set: (target: LiveMapDocumentRequestTarget, attribute: string, value: LiveMapDocumentAttributeValue) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                const owned = capture_document_attr_value(attribute, value, "set-attr");
+                return edit(draft => { draft.attrs.set(stableTarget, attribute, owned); });
+              }),
+              drop: (target: LiveMapDocumentRequestTarget, attribute: string) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                return edit(draft => { draft.attrs.drop(stableTarget, attribute); });
+              }),
+              replace: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) => capture_before_submission(() => {
+                const stableTarget = request(target);
+                const owned = capture_document_attrs(values, "attrs");
+                return edit(draft => { draft.attrs.replace(stableTarget, owned); });
+              }),
             }),
           }),
         });

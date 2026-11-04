@@ -15,7 +15,6 @@ import {
 } from "../canonical-schema/graph.js";
 import { verify_canonical_schema_graph } from "../canonical-schema/verify.js";
 import { evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
-import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_public_attr_name } from "../../core/public-attrs.js";
 import { is_valid_hson_data_name } from "../../core/hson-name.js";
 import type { HsonSemanticPrimitive } from "../../core/types.js";
@@ -183,8 +182,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
     return failure("INVALID_ROOT", [], error instanceof Error ? error.message : "Schema must be ordinary data Hson.");
   }
 
-  const admitted = admit_projected_value(materialized);
-  const bootstrapResult = evaluate_canonical_projected_schema(HSON_SCHEMA_MVP_BOOTSTRAP, admitted);
+  const bootstrapResult = evaluate_canonical_projected_schema(HSON_SCHEMA_MVP_BOOTSTRAP, orderedDefinition);
   if (!bootstrapResult.ok && bootstrapResult.issues.some((entry) => entry.evidence.kind === "resource-limit")) {
     return failure("INVALID_SCHEMA_EXPRESSION", bootstrapResult.issues[0]?.path ?? [], "Hson Schema exceeds the MVP resource limits.");
   }

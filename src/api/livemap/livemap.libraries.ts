@@ -480,6 +480,11 @@ export function prepare_hosted_livemap_library_add_internal(
   return prepare_library_add(map, owner, public_library_definitions(inputs).map(definition => ({ ...definition, authored: true })), css, assertEntryCurrent);
 }
 
+/** Capture raw internal Library inputs before queueing; resolve composition and authority later. @internal */
+export function capture_hosted_library_sources_internal(inputs: LiveMapDefinitions): readonly OwnedLibraryDefinition[] {
+  return Object.freeze(public_library_definitions(inputs));
+}
+
 /** Owned queued definitions retain their captured storage, never the caller's source aliases. @internal */
 export function prepare_hosted_admitted_libraries_internal(map: LiveMap, owner: object,
   definitions: readonly OwnedLibraryDefinition[], css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {}) {

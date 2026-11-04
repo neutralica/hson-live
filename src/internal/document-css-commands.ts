@@ -3,7 +3,7 @@ import { live_observation } from "./library-observation.js";
 import { managed_css_rule_key, trim_managed_css } from "./css/managed-css-lexical.js";
 import type { DocumentCssCommands, DocumentCssRuleCommands, DocumentCssRead, DocumentCssHandle, DocumentCssValue } from "../types/document-css.types.js";
 import type { LiveMapCssOp } from "../types/livemap.types.js";
-import { clone_node } from "../core/clone-node.js";
+import { capture_plain_instruction } from "./capture-instruction.js";
 import { make_livemap_document_css } from "../api/livemap/livemap.css.js";
 import { empty_portable_document_stylesheet, type PortableDocumentStylesheet } from "./css/portable-document-stylesheet.js";
 
@@ -24,7 +24,7 @@ export function dispatch_document_css_command(css: DocumentCssHandle | DocumentC
 
 /** Capture arguments now; validate with the same authoring normalization as local CSS. */
 export function capture_document_css_command(command: DocumentCssCommand): DocumentCssCommand {
-  const captured = clone_node(command);
+  const captured = capture_plain_instruction(command);
   dispatch_document_css_command(make_livemap_document_css(empty_portable_document_stylesheet, () => {}, name => `[hson\\:quad="${name}"]`), captured);
   return captured;
 }
@@ -46,10 +46,10 @@ export function document_css_commands<TResult>(send: (command: DocumentCssComman
   });
   const scoped = (input: DocumentCssCommand["route"]): DocumentCssRuleCommands<TResult> => {
     assertCurrent();
-    const route = clone_node(input);
+    const route = capture_plain_instruction(input);
     const rule = (method: "rule" | "sel", args: readonly unknown[]): ReturnType<DocumentCssRuleCommands<TResult>["rule"]> => {
       assertCurrent();
-      const selected = clone_node([...route, { method, args }]);
+      const selected = capture_plain_instruction([...route, { method, args }]);
       const rawSelector = args[method === "rule" ? 1 : 0], rawKey = args[0];
       if (typeof rawSelector !== "string" || typeof rawKey !== "string") throw new TypeError("Document CSS keys and selectors must be strings.");
       const selector = trim_managed_css(rawSelector);

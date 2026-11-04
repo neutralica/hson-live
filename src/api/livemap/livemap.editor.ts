@@ -269,14 +269,8 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
  *
  * Core owns a stable root node reference that path handles and subscriptions
  * close over, so root replacement must overwrite the existing root node rather
- * than returning a new one. The replacement value is converted through the same
- * editor-local JSON projection used by path writes.
+ * than returning a new one. The replacement uses an already-admitted ordered value.
  */
-export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEditResult {
-  return materialize_projected_edit(replace_live_root_from_projected(root, admit_projected_value(value)));
-}
-
-/** Replace the data root from one already-admitted carrier. */
 export function replace_live_root_from_projected(
   root: HsonNode,
   nextCarrier: OrderedProjectedValue,
@@ -302,11 +296,6 @@ export function replace_live_root_from_projected(
  * unspecified object siblings inside the replaced endpoint are removed while
  * outer/root identity remains stable.
  */
-export function replace_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {
-  return materialize_projected_edit(replace_live_path_from_projected(root, path, admit_projected_value(value)));
-}
-
-/** Replace one resolved path from one already-admitted carrier. */
 export function replace_live_path_from_projected(
   root: HsonNode,
   path: LivePath,

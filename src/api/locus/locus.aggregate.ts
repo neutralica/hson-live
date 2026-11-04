@@ -3,6 +3,7 @@ import { has_part_connector } from "../livemap/livemap.document.composition.js";
 import { prepare_locus_scoped_commit_internal } from "./locus.scoped-preparation.internal.js";
 import type { JsonValue } from "../../core/types.js";
 import { ExactDataCarrier } from "../data/hson-data.js";
+import { capture_before_submission, capture_plain_instruction, freeze_owned_instruction } from "../../internal/capture-instruction.js";
 import type {
   LiveMap,
   LiveMapDefinitions,
@@ -15,7 +16,7 @@ import {
   type HostedAggregateCommit,
 } from "../livemap/livemap.hosted.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
-import { type OwnedLibraryDefinition, prepare_hosted_admitted_libraries_internal, prepare_hosted_livemap_library_add_internal } from "../livemap/livemap.libraries.js";
+import { type OwnedLibraryDefinition, capture_hosted_library_sources_internal, prepare_hosted_admitted_libraries_internal } from "../livemap/livemap.libraries.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "../livemap/livemap.staged.js";
 
 export { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "./locus.aggregate.protocol.js";
@@ -235,7 +236,7 @@ export function create_locus_hosted_aggregate_internal(
     return next;
   };
 
-  function enqueue_libraries(prepare: () => ReturnType<typeof prepare_hosted_livemap_library_add_internal>,
+  function enqueue_libraries(prepare: () => ReturnType<typeof prepare_hosted_admitted_libraries_internal>,
     afterInstall?: () => void, ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[]) {
     const run = async (): Promise<HostedAggregateCommit> => {
       if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
@@ -256,8 +257,13 @@ export function create_locus_hosted_aggregate_internal(
     async stage(callback) {
       return (await enqueue(callback, true)).commit;
     },
-    add_libraries_internal: (definitions, afterInstall, ownership, css) => enqueue_libraries(
-      () => prepare_hosted_livemap_library_add_internal(options.map, owner, definitions, css), afterInstall, ownership),
+    add_libraries_internal: (definitions, afterInstall, ownership, css) => capture_before_submission(() => {
+      const captured = freeze_owned_instruction(capture_hosted_library_sources_internal(definitions));
+      const capturedCss = capture_plain_instruction(css);
+      const capturedOwnership = capture_plain_instruction(ownership);
+      return enqueue_libraries(() => prepare_hosted_admitted_libraries_internal(options.map, owner, captured, capturedCss),
+        afterInstall, capturedOwnership);
+    }),
     add_owned_libraries_internal: (definitions, afterInstall, ownership, css) => enqueue_libraries(
       () => prepare_hosted_admitted_libraries_internal(options.map, owner, definitions, css), afterInstall, ownership),
     async dispatch_action(name, payload, message, origin = directOrigin) {
