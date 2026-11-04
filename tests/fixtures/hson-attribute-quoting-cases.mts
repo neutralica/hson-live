@@ -128,7 +128,7 @@ export function run_attribute_quoting_cases(): number {
   assert.equal(Hson.document`<p title="${false}"/>`, '<p title="false"/>');
   assert.equal(Hson.document`<p title="pre${null}${2}post"/>`, '<p title="prenull2post"/>');
   assert.throws(() => Hson.document`<p title="${undefined}"/>`, error => read_transform_error_details(error)?.code === "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
-  assert.deepEqual(Hson.data.materialize(Hson.data`<n 2 enabled true items «null, -0»>`), { n: 2, enabled: true, items: [null, -0] });
+  assert.deepEqual((Hson.data`<n 2 enabled true items «null, -0»>`).materialize(), { n: 2, enabled: true, items: [null, -0] });
   const node = hsonTransform.fromHson('<p title="literal\\\\n"/>').toNode();
   assert.deepEqual(hsonTransform.fromBinary(hsonTransform.fromNode(node).toBinary().serialize()).toNode(), node);
   assert.equal(hsonTransform.fromNode(node).toHson().serialize(), '<p title="literal\\\\n"/>');

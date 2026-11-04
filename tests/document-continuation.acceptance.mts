@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import {
   DocumentContinuationError,
   Hson,
-  HsonData,
   add_interaction,
   continue_document,
   enable_interactions,

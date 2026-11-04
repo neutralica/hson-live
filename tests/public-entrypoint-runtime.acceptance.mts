@@ -108,15 +108,16 @@ check("diagnostics entrypoints exist in the package and built output", () => {
   assert.equal(existsSync(resolve(repositoryRoot, "dist", "diagnostics", "verify-universal-circuit.js")), true);
 });
 
-check("HsonData is a primitive semantic string across intended entrypoints", () => {
+check("HsonDataValue is the same nominal class across intended entrypoints", () => {
   const source = `
-    import { Hson as RootHson } from "hson-live";
-    import { Hson as NarrowHson } from "hson-live/hson";
+    import { Hson as RootHson, HsonDataValue as RootValue } from "hson-live";
+    import { Hson as NarrowHson, HsonDataValue as NarrowValue } from "hson-live/hson";
     if (RootHson !== NarrowHson) throw new Error("Hson identity diverged");
     const exact = NarrowHson.data\`<'10' -0 '2' <__proto__ true>>\`;
-    if (typeof exact !== "string") throw new Error("HsonData is not a string");
-    const entries = NarrowHson.data.entries(exact);
-    if (!Object.is(NarrowHson.data.materialize(entries[0][1]), -0)) throw new Error("signed zero was lost");
+    if (RootValue !== NarrowValue || !(exact instanceof NarrowValue)) throw new Error("Data carrier identity diverged");
+    if (typeof exact.toHson() !== "string") throw new Error("HsonData text unavailable");
+    const entries = exact.entries();
+    if (!Object.is(entries[0][1].materialize(), -0)) throw new Error("signed zero was lost");
     if (entries.map(([name]) => name).join(",") !== "10,2") throw new Error("object order was lost");
   `;
   const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
@@ -128,8 +129,8 @@ check("HsonData is a primitive semantic string across intended entrypoints", () 
 
 check("HsonDocument is a primitive semantic string across root and Hson entrypoints", () => {
   const source = `
-    import { Hson as RootHson } from "hson-live";
-    import { Hson as NarrowHson } from "hson-live/hson";
+    import { Hson as RootHson, HsonDataValue as RootValue } from "hson-live";
+    import { Hson as NarrowHson, HsonDataValue as NarrowValue } from "hson-live/hson";
     if (RootHson !== NarrowHson) throw new Error("Hson identity diverged");
     let emptyRejected = false;
     try { NarrowHson.document.fromHson(""); } catch { emptyRejected = true; }
@@ -258,17 +259,17 @@ const directHsonDataSources = new Map<string, string>([
   ["root", `
     import { Hson } from "hson-live";
     const value = Hson.data\`<'10' -0 '2' <__proto__ true>>\`;
-    if (Hson.data.fromHson(value) !== value) throw new Error("root round trip failed");
+    if (Hson.data.from(value) !== value) throw new Error("root round trip failed");
   `],
   ["hson", `
     import { Hson } from "hson-live/hson";
     const value = Hson.data\`<'10' -0 '2' <__proto__ true>>\`;
-    if (Hson.data.fromHson(value) !== value) throw new Error("Hson round trip failed");
+    if (Hson.data.from(value) !== value) throw new Error("Hson round trip failed");
   `],
   ["transform", `
     import { Hson } from "hson-live/hson";
     const value = Hson.data.from({ value: -0, nested: { constructor: true } });
-    if (Hson.data.fromHson(value) !== value) throw new Error("Transform round trip failed");
+    if (Hson.data.from(value) !== value) throw new Error("Transform round trip failed");
   `],
   ["livemap", `
     import { hsonLiveMap } from "hson-live/livemap";
@@ -277,7 +278,7 @@ const directHsonDataSources = new Map<string, string>([
     const schema = Hson.schema\`<type "data" content <value "number">>\`;
     const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema } });
     const value = Hson.data.from(map.data.must("state").snap());
-    const roundTrip = hsonLiveMap.fromLibraries({ state: { data: Hson.data.materialize(value), schema } });
+    const roundTrip = hsonLiveMap.fromLibraries({ state: { data: value.materialize(), schema } });
     if (!Object.is(roundTrip.data.must("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
   `],
   ["echo", `
@@ -289,7 +290,7 @@ const directHsonDataSources = new Map<string, string>([
     const call = echo.action("probe", { value: -0, nested: { constructor: true } });
     void call.catch(() => {});
     const value = call.request.payload;
-    if (typeof value !== "string") throw new Error("Echo HsonData conversion unavailable");
+    if (typeof value !== "object" || typeof value?.toHson !== "function") throw new Error("Echo Data carrier unavailable");
     echo.dispose();
   `],
 ]);

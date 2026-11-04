@@ -7,7 +7,7 @@ import { internal_livemap_aggregate_authority } from "../../src/api/livemap/live
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.js";
 import { admit_projected_value } from "../../src/core/projected-value-admission.js";
 import { ordered_projected_object } from "../../src/core/ordered-projected-value.js";
-import { hson_data_from_value, hson_data_value, ExactDataCarrier } from "../../src/api/data/hson-data.js";
+import { hson_data_from_value, hson_data_value, HsonDataValue } from "../../src/api/data/hson-data.js";
 import { projected_value_to_hson_node } from "../../src/core/projected-value-graph.js";
 import { validate_hson_schema_data, validate_hson_schema_graph } from "../../src/internal/schema-hson-validation/validate-canonical-hson.js";
 import { HsonSchema, compiled_hson_schema_of, hson_schema_digest } from "../../src/api/schema/hson-schema.js";
@@ -81,7 +81,7 @@ function invalid_values(): unknown[] {
   const owned = ordered_projected_object([["value", 1]]);
   return [NaN, Infinity, -Infinity, undefined, new Date(), new (class Unsupported {})(), cyclic, [, 1],
     Object.defineProperty({}, "value", { enumerable: true, get() { throw Error("Getter must not run"); } }),
-    Object.assign({}, owned), Object.create(ExactDataCarrier.prototype), { "$_meta": "000009001" }, { "_hson_obj": 1 }];
+    Object.assign({}, owned), Object.create(HsonDataValue.prototype), { "$_meta": "000009001" }, { "_hson_obj": 1 }];
 }
 
 export async function locus_submission_ownership_cases(check: Check): Promise<void> {
@@ -102,7 +102,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
           assert.deepEqual(selected.asObject()!.object.keys(), ["value", "items", "10", "2"]);
           assert.equal(selected.at(["2"]).hson(), expected.entries()![1]![1].toHson());
         } else assert.equal(actual, expected.toHson());
-        assert.ok(Object.is(Hson.data.materialize(selected.at(["10"]).hson()!), -0));
+        assert.ok(Object.is(Hson.data.fromSource(selected.at(["10"]).hson()!).materialize(), -0));
         stop();
       } finally { locus.dispose(); }
     });
@@ -420,7 +420,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
     const schema = Hson.schema`<type "data" content <'10' <exact -0> '2' "number" note <optional "string">>>`;
     const good = ordered_projected_object([["10", -0], ["2", Number.MAX_VALUE]]);
     const exact = hson_data_from_value(good), identity = hson_schema_digest(schema);
-    assert.equal(schema.certify(exact), exact.toHson()); assert.equal(hson_data_value(exact), good);
+    assert.strictEqual(schema.certify(exact), exact); assert.equal(hson_data_value(exact), good);
     assert.equal(hson_schema_digest(schema), identity);
     for (const candidate of [good, ordered_projected_object([["10", 0], ["2", "wrong"]])]) {
       const result = (run: () => void) => { try { run(); return undefined; } catch (error) { return error; } };

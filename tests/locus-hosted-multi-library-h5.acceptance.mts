@@ -269,7 +269,7 @@ draft.doc.must("page").graph(insert_item()); })();
   const aggregateStarted = performance.now();
   const themeAll = await client.action("theme.all");
   assert.equal(themeAll.type, "ack");
-  if (themeAll.type === "ack") assert.equal(themeAll.result === undefined ? undefined : Hson.data.materialize(themeAll.result), "ok");
+  if (themeAll.type === "ack") assert.equal(themeAll.result === undefined ? undefined : (themeAll.result).materialize(), "ok");
   const stateColorsPageMs = performance.now() - aggregateStarted;
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
   assert.equal(clientMap.data.must("state").snap(["theme"]), "dark");

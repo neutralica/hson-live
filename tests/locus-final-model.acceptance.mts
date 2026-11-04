@@ -31,7 +31,7 @@ const definition = [{ "A": { data: { value: 1 }, access: "shared" } }, { logical
 const read = (locus: ReturnType<typeof hsonLiveMap.locus.create>, name: string) => {
   const library = locus.data.must(name);
   if (String(library.mode) === "document") throw new Error("Expected data Library.");
-  return Hson.data.materialize(library.at(["value"]).hson()!);
+  return Hson.data.fromSource((library.at(["value"]).hson()!)).materialize();
 };
 
 const fresh = hsonLiveMap.locus.create({ "secret": { data: { value: 1 }, access: "private" }, "public": { data: { value: 2 }, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }] });
@@ -177,7 +177,7 @@ for (const fixture of orderedRootReconstructionFixtures.filter(entry => entry.id
   const persistence = new MemoryCheckpointAdapter();
   const options = [{ "base": { data: 1, access: "shared" } }, { logicalMapId: `ordered-root-${fixture.id}`, persistence }] as const;
   const created = await hsonLiveMap.locus.resume(options[0], options[1]);
-  await created.admit({ "ordered": { data: fixture.expectedJson, access: "shared" } });
+  await created.admit({ "ordered": { data: Hson.data.fromSource(fixture.expectedJson), access: "shared" } });
   const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
   assert.equal(canonical_hson_graph_equal(locus_map_internal(created).data.must("ordered").root(), original), true);
   const payload = locus_map_internal(created).capture().libraries.find(entry => entry.name === "ordered")!.root.payload;

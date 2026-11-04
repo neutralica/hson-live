@@ -9,7 +9,7 @@ import type {
 } from "./livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
-import type { HsonData } from "../api/transform/transform.types.js";
+import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LocusActionId,
@@ -30,7 +30,7 @@ import type {
 } from "./locus.shared.types.js";
 
 /** Wire-safe representation of a data value that may be absent. */
-export type LocusActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
+export type LocusActionPayloads = Readonly<Record<string, HsonDataInput | undefined>>;
 
 export type LocusDocumentActionName =
   | "document.attrs.set"
@@ -155,7 +155,7 @@ export type LocusActionAuthorizationContext<
   [TName in keyof TActions & string]: Readonly<{
     action: TName;
     session: LocusActionAuthorizationSession;
-    payload: HsonData | undefined;
+    payload: HsonDataValue | undefined;
     logicalMapId: LocusLogicalMapId;
     incarnationId: LocusIncarnationId;
     connection?: LocusConnectionContext;
@@ -168,8 +168,8 @@ export type LocusActionAuthorizer<
   context: LocusActionAuthorizationContext<TActions>,
 ) => boolean | Promise<boolean>;
 
-export type LocusActionSchema<TPayload extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
-  payload?: HsonSchema | LocusValidator<HsonData | undefined> | LocusSchemaDecoder<unknown>;
+export type LocusActionSchema<TPayload extends HsonDataInput | undefined = HsonDataInput | undefined> = Readonly<{
+  payload?: HsonSchema | LocusValidator<HsonDataValue | undefined> | LocusSchemaDecoder<unknown>;
 }>;
 
 export type LocusSchema<
@@ -194,7 +194,7 @@ export type LocusClientActionMessageFor<
     clientId?: LocusClientId;
     retry?: true;
     name: TName;
-    payload?: HsonData | Exclude<TActions[TName], undefined>;
+    payload?: HsonDataValue | Exclude<TActions[TName], undefined>;
   }>
   : Readonly<{
     type: "action";
@@ -204,7 +204,7 @@ export type LocusClientActionMessageFor<
     clientId?: LocusClientId;
     retry?: true;
     name: TName;
-    payload: HsonData | TActions[TName];
+    payload: HsonDataValue | TActions[TName];
   }>;
 
 export type LocusClientActionMessage<
@@ -264,7 +264,7 @@ export type LocusServerAckMessage = Readonly<{
   id: LocusActionId;
   ok: true;
   seq: LocusSeq;
-  result?: HsonData;
+  result?: HsonDataValue;
   requestId?: LocusActionRequestId;
   attemptId?: LocusActionId;
   completionRev?: number;
@@ -303,7 +303,7 @@ export type LocusActionTerminalOutcome =
     state: "succeeded";
     seq: LocusSeq;
     completionRev: number;
-    result?: HsonData;
+    result?: HsonDataValue;
   }>
   | Readonly<{
     state: "failed";

@@ -18,7 +18,7 @@ import { compile_hson_schema } from "../../src/internal/hson-schema/compiler.ts"
 import { evaluate_static_schema_candidate } from "../../src/internal/hson-schema/candidate-evaluation.ts";
 import { atomic, doc, part } from "./livemap-document-composition-cases.mts";
 
-const invocation = (items: unknown) => Hson.document`<hson-part lib="parts" at="list" items:data="${Hson.data.from(items)}"/>`;
+const invocation = (items: unknown) => Hson.document`<hson-part lib="parts" at="list" items:data="${(Reflect.apply(Hson.data.from, Hson.data, [items])).toHson()}"/>`;
 const fixture = (body: string, items: unknown, css?: CssMap) => hsonLiveMap.fromLibraries({
   parts: { parts: { list: { ...part(body), ...(css === undefined ? {} : { css }) } } }, page: { document: invocation(items) },
 });
@@ -40,7 +40,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
       ['per::value', '^{value}', ['10', '2', 'false', 'null', 'slash', 'own']],
     ] as const) {
       const map = hsonLiveMap.fromLibraries({ parts: { parts: { list: part(`<dl hson:part data:items="%{items}" <div ${directive}="^{items}" "${text}"/>/>`) } },
-        page: { document: Hson.document`<hson-part lib="parts" at="list" items:data="${items}"/>` } });
+        page: { document: Hson.document`<hson-part lib="parts" at="list" items:data="${(items).toHson()}"/>` } });
       assert.deepEqual(leaves(doc(map).root()), expected);
       assert.equal(scopes(map).occurrences.length, 7);
       const canonical = Hson.document.fromNode(doc(map).root()), transform = hsonTransform.fromHson(canonical);
@@ -142,7 +142,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
     const map = hsonLiveMap.fromLibraries({ parts: { parts: {
       list: part('<main hson:part data:items="%{items}" doc:content="%{content}" <section per:key:value="^{items}" @:row <hson-part ^{content}/> <hson-part at="leaf" name="^{key}" value:data="^{value}" part:optional/>/>/>'),
       leaf: part('<i hson:part data:value="%{value}" <em per::ignored="^{value}"/> "%{name}"/>'),
-    } }, page: { document: Hson.document`<hson-part lib="parts" at="list" items:data="${Hson.data.from({ first: {}, second: {} })}" content:doc="${content}"/>` } });
+    } }, page: { document: Hson.document`<hson-part lib="parts" at="list" items:data="${(Hson.data.from({ first: {}, second: {} })).toHson()}" content:doc="${content}"/>` } });
     assert.deepEqual(leaves(doc(map).root()), ['document', 'first', 'document', 'second']);
     const state = scopes(map);
     assert.equal(state.occurrences.filter(scope => scope.bindings.some(binding => binding.name === 'row')).length, 2);
@@ -244,7 +244,7 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
 
   for (const kind of ['array', 'object'] as const) {
     const check = (name: string, run: () => void) => verify(`${kind} ${name}`, run);
-    const invocation = (items: unknown) => Hson.document`<hson-part lib="parts" at="list" items:data="${Hson.data.from(kind === 'object' && Array.isArray(items) ? Object.fromEntries(items.map((value, index) => [`entry/${index}`, value])) : items)}"/>`;
+    const invocation = (items: unknown) => Hson.document`<hson-part lib="parts" at="list" items:data="${(Reflect.apply(Hson.data.from, Hson.data, [kind === 'object' && Array.isArray(items) ? Object.fromEntries(items.map((value, index) => [`entry/${index}`, value])) : items])).toHson()}"/>`;
     const column = {
       list: { ...part(`<section hson:part @:root data:items="%{items}" <hson-part ${kind === 'array' ? 'for:block:i' : 'per:i:block'}="^{items}" @:row lib="parts" at="^{block.kind}" block:data="^{block}"/>/>`), css: { '& .content': { fontWeight: 'bold' } } },
       heading: { ...part('<h1 hson:part @:root data:block="%{block}" class="content" "^{block.text}"/>'), css: { color: 'blue' } },

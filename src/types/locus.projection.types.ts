@@ -34,6 +34,10 @@ export type LocusLocalInitializer = Readonly<{
   validation?: "hson-part-collection-v1";
   root: Readonly<{ format: "hson-exact-value"; payload: string }>;
   css?: import("./document-css.types.js").DocumentCssRecord;
+  /** Complete authored Document correspondence; empty for unaddressed/Data seeds. */
+  quads: PortableDocumentQuads;
+  /** Existing occurrence namespaces, never flattened into Document names. */
+  scopes?: import("../api/livemap/livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
   fingerprint: string;
 }>;
 

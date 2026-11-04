@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
+import { compose_client_projection_internal } from "../src/api/echo/echo.projection.ts";
 import { hsonLiveMap } from "../src/index.ts";
 import { document_css_state_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { render_portable_document_stylesheet_carriers } from "../src/internal/css/portable-document-stylesheet.ts";
@@ -35,9 +36,25 @@ const html = map.doc.must("page").render();
 const expectedCarriers = render_portable_document_stylesheet_carriers(document_css_state_internal(map.doc.must("page")));
 assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, expectedCarriers.length);
 
+const structuredDefinition = {
+  document: '<html <head/> <body <main @:target id="structured-target"/>/>/>',
+  stylesheet: { color: "rgb(1, 2, 3)", "--tone": "rgb(4, 5, 6)",
+    "& > body": { padding: { value: 5, unit: "px" } },
+    "@:target": { color: "var(--tone)", width: { value: 37, unit: "px" }, __before: { content: '"prefix"' } },
+    $media: { screen: { "@:target": { display: "grid" } } },
+  },
+};
+const structured = hsonLiveMap.fromLibraries({ page: structuredDefinition });
+const localLocus = hsonLiveMap.locus.create({}, { local: [{ name: "page", initializer: structuredDefinition }], authorizeProjection: () => ({ libraries: ["page"] }) });
+const localNow = (await localLocus.session.create({ libraries: ["page"] })).now();
+const localMap = compose_client_projection_internal(localNow.libs, JSON.parse(JSON.stringify(localNow.local)));
+const structuredHtml = localMap.doc.must("page").render();
+assert.equal(structuredHtml, structured.doc.must("page").render());
+localLocus.dispose();
+assert.match(structuredHtml, /hson:quad="target"/);
 const server = createServer((_request, response) => {
   response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  response.end(html + '<script>document.documentElement.dataset.scriptRan="yes"</script>');
+  response.end((_request.url === "/structured" ? structuredHtml : html) + '<script>document.documentElement.dataset.scriptRan="yes"</script>');
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
@@ -120,7 +137,18 @@ try {
     const {computedStyle} = await send("CSS.getComputedStyleForNode", {nodeId});
     for (const [name, value] of Object.entries(values)) assert.equal(computedStyle.find(item => item.name === name)?.value, value, selector + " SSR " + name);
   }
-  console.log("Document CSS native Chrome/no-JavaScript acceptance passed.");
+  const structuredLoaded = new Promise(resolve => { const listener = raw => { if (JSON.parse(raw.toString()).method === "Page.loadEventFired") { socket.off("message", listener); resolve(); } }; socket.on("message", listener); });
+  await send("Page.navigate", { url: `http://127.0.0.1:${address.port}/structured` }); await structuredLoaded;
+  const { root: structuredRoot } = await send("DOM.getDocument");
+  for (const [selector, expected] of [["html", { color: "rgb(1, 2, 3)" }], ["body", { "padding-top": "5px" }],
+    ["#structured-target", { color: "rgb(4, 5, 6)", width: "37px", display: "grid" }]]) {
+    const { nodeId } = await send("DOM.querySelector", { nodeId: structuredRoot.nodeId, selector }); assert.ok(nodeId);
+    const { computedStyle } = await send("CSS.getComputedStyleForNode", { nodeId });
+    for (const [name, value] of Object.entries(expected)) assert.equal(computedStyle.find(item => item.name === name)?.value, value, `structured SSR ${selector} ${name}`);
+  }
+  const { nodeId: structuredHtmlNode } = await send("DOM.querySelector", { nodeId: structuredRoot.nodeId, selector: "html" });
+  assert.equal((await send("DOM.getAttributes", { nodeId: structuredHtmlNode })).attributes.includes("data-script-ran"), false);
+  console.log("Document CSS text and CssMap native Chrome/no-JavaScript acceptance passed.");
 } finally {
   socket?.close();
   if (chrome !== undefined && chrome.exitCode === null) {

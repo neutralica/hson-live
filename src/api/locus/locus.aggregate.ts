@@ -2,7 +2,7 @@ import { is_Node } from "../../core/node-guards.js";
 import { has_part_connector } from "../livemap/livemap.document.composition.js";
 import { prepare_locus_scoped_commit_internal } from "./locus.scoped-preparation.internal.js";
 import type { JsonValue } from "../../core/types.js";
-import { ExactDataCarrier } from "../data/hson-data.js";
+import { type HsonDataInput, type HsonDataValue, admit_data_input } from "../data/hson-data.js";
 import { capture_before_submission, capture_plain_instruction, freeze_owned_instruction } from "../../internal/capture-instruction.js";
 import type {
   LiveMap,
@@ -45,7 +45,7 @@ export type LocusHostedAggregateActionContext = Readonly<{
 
 export type LocusHostedAggregateAction = (
   context: LocusHostedAggregateActionContext,
-  payload: ExactDataCarrier | undefined,
+  payload: HsonDataValue | undefined,
   message?: LocusClientActionMessage,
 ) => unknown | void | Promise<unknown | void>;
 
@@ -96,7 +96,7 @@ export type LocusHostedAggregate = Readonly<{
   add_owned_libraries_internal: (definitions: readonly OwnedLibraryDefinition[], afterInstall?: () => void,
     ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
-  dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
+  dispatch_action: (name: string, payload?: HsonDataInput, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   /** Internal exact transition feed for retained authority history. */
@@ -269,7 +269,7 @@ export function create_locus_hosted_aggregate_internal(
     async dispatch_action(name, payload, message, origin = directOrigin) {
       const action = options.actions?.[name];
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
-      const admittedPayload = payload === undefined ? undefined : ExactDataCarrier.from(payload);
+      const admittedPayload = payload === undefined ? undefined : admit_data_input(payload);
       return (await enqueue(async (writer) => {
         const context: LocusHostedAggregateActionContext = Object.freeze({
           map: options.map,

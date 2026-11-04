@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { HsonDataValue } from "../../src/index.ts";
 import { deferred, hosted_css_authority_fixture } from "../helpers/hosted-css-authority-fixture.mts";
 
 export async function hosted_css_queue_revocation_cases() {
@@ -70,8 +71,22 @@ export async function hosted_css_queue_revocation_cases() {
       const values = (color: string) => ({ color, _hover: { "& > p": { color } }, $media: { screen: { color } } });
       await Promise.all([rule.setMany(values("red")), rule.setMany(values("blue"))]);
       assert.equal(f.locus.rev, revision + 2); assert.equal(f.actions.length, 2);
-      const first = f.actions[0], second = f.actions[1];
-      assert.match(JSON.stringify(first), /red/); assert.match(JSON.stringify(second), /blue/);
+      for (const [index, color] of ["red", "blue"].entries()) {
+        const action = f.actions[index];
+        assert.ok(action?.type === "action" && action.payload instanceof HsonDataValue);
+        const payload = action.payload.materialize();
+        assert.deepEqual(payload, { library: "page", operation: { domain: "css", kind: "batch", operations: [
+          { domain: "css", kind: "rule", ruleKey: "sel:.ordered", scopes: [], rule: {
+            ruleKey: "sel:.ordered", selector: ".ordered", scopes: [], declarations: [["color", color]],
+          } },
+          { domain: "css", kind: "rule", ruleKey: "sel:.ordered:hover>p", scopes: [], rule: {
+            ruleKey: "sel:.ordered:hover>p", selector: ".ordered:hover>p", scopes: [], declarations: [["color", color]],
+          } },
+          { domain: "css", kind: "rule", ruleKey: "sel:.ordered", scopes: ["@media screen"], rule: {
+            ruleKey: "sel:.ordered", selector: ".ordered", scopes: ["@media screen"], declarations: [["color", color]],
+          } },
+        ] } });
+      }
       const state = f.owner.capture().libraries.find(entry => entry.name === "page")!.css!;
       assert.equal(state.rules.length, 3);
       assert.ok(state.rules.every(rule => rule.declarations.some(([name, value]) => name === "color" && value === "blue")));

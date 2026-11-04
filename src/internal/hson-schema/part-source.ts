@@ -3,7 +3,7 @@ import { analyze_part_definition, transform_part_parameter_strings, type PartLoc
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
-import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_package_declaration_path, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
@@ -195,7 +195,20 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   const schemas = new Map<string, CompiledHsonSchema | undefined>();
   const schemaDeclarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>();
   const evidence = new Map<ts.Declaration, PartDataSchemaEvidence | undefined>();
-  const dataSchema = (input: ts.Expression | undefined): PartDataSchemaEvidence | undefined => {
+  const dataSchema = (expression: ts.Expression | undefined, serialized = false): PartDataSchemaEvidence | undefined => {
+    let input = expression;
+    if (serialized) {
+      // Authored attributes carry text; only the official carrier serializer
+      // connects that text to value evidence. A same-spelled method is unknown.
+      if (input === undefined || !sources.eligible(input) || !typescript.isCallExpression(input) || input.arguments.length !== 0
+        || !typescript.isPropertyAccessExpression(input.expression) || input.expression.name.text !== "toHson") return undefined;
+      const method = checker.getSymbolAtLocation(input.expression.name)?.declarations;
+      const declaration = method?.length === 1 ? method[0] : undefined;
+      if (declaration === undefined || !typescript.isMethodDeclaration(declaration)
+        || !typescript.isClassDeclaration(declaration.parent) || declaration.parent.name?.text !== "HsonDataValue"
+        || !["src/api/data/hson-data.ts", "dist/api/data/hson-data.d.ts"].includes(hson_package_declaration_path(declaration.getSourceFile().fileName) ?? "")) return undefined;
+      input = input.expression.expression;
+    }
     if (input === undefined || !typescript.isIdentifier(input) || !sources.eligible(input)) return undefined;
     const binding = immutable_source_declaration(typescript, checker, input, sources.eligible);
     const declaration = binding?.declaration;
@@ -213,9 +226,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     if (schema === undefined) return undefined;
     // A type annotation supplies context only. Validation uses the existing
     // bounded static Hson candidate admission and production Schema evaluator.
-    const candidates = declaration.initializer === undefined ? undefined : sources.candidates(declaration.initializer, "certify");
-    const validated = candidates !== undefined && candidates.length > 0 && candidates.every(candidate => "source" in candidate
-      && candidate.family === "data" && evaluate_static_schema_candidate(schema, candidate).kind === "valid");
+    const candidates = declaration.initializer === undefined ? undefined : sources.candidates(declaration.initializer, "data");
+    const validated = candidates !== undefined && candidates.length > 0 && candidates.every(candidate => evaluate_static_schema_candidate(schema, candidate).kind === "valid");
     const result: PartDataSchemaEvidence = { schema, strength: validated ? "validated" : "advisory",
       schemaLocation: location(provenance.declaration), annotationLocation: location(declaration.type),
       valueLocation: location(declaration.initializer ?? declaration) };
@@ -403,7 +415,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               ? slots.filter(slot => attr.start.index <= slot.offset && slot.offset <= attr.end.index) : [];
             const expression = directSlots.length === 1 && typescript.isTaggedTemplateExpression(producer) && typescript.isTemplateExpression(producer.template)
               ? producer.template.templateSpans[directSlots[0]!.substitution]?.expression : undefined;
-            const schema = dataSchema(expression);
+            const schema = dataSchema(expression, true);
             const dynamicValue: true | undefined = attr.value?.direct === true || typeof value === "string" && has_part_reference(value) ? true : undefined;
             const references = attr.value?.direct !== true && typeof value === "string" && (attr.name === "at" || attr.name === "lib")
               && has_part_reference(value) ? part_placeholder_matches(value) : undefined;

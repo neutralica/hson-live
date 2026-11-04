@@ -551,22 +551,22 @@ check("typed data quoted transport escapes Unicode separators and preserves exac
   const value = { text: '  first  \n\n\tsecond "quoted" \\ literal\\n </> «» [] {} %{literal} // &amp;\r\nlast  ',
     unicode: "雪😀 é \u0085 \u2028 \u2029", nested: [null, false, -0, { empty: "", blank: "  \n " }] };
   const data = Hson.data.from(value);
-  const authored = Hson.document`<hson-part lib="parts" at="nav" slide:data="${data}"/>`;
+  const authored = Hson.document`<hson-part lib="parts" at="nav" slide:data="${(data).toHson()}"/>`;
   assert.doesNotMatch(authored, /[\u0085\u2028\u2029]/);
   for (const escape of ["\\u0085", "\\u2028", "\\u2029"]) assert.ok(authored.includes(escape));
   const parsed = nodes(hsonTransform.fromHson(authored).toNode()).find(node => node.$_tag === "hson-part")!;
-  assert.equal(parsed.$_attrs?.["slide:data"], data);
-  assert.deepEqual(Hson.data.materialize(data), value);
-  const compact = hsonTransform.fromHson(data).toHson().noBreak().serialize();
+  assert.equal(parsed.$_attrs?.["slide:data"], data.toHson());
+  assert.deepEqual((data).materialize(), value);
+  const compact = hsonTransform.fromHson((data).toHson()).toHson().noBreak().serialize();
   const literal = `<hson-part lib="parts" at="nav" slide:data=${JSON.stringify(compact)}/>`;
   const decoded = nodes(hsonTransform.fromHson(literal).toNode()).find(node => node.$_tag === "hson-part")!.$_attrs?.["slide:data"];
   assert.equal(decoded, compact);
   assert.equal(typeof decoded, "string");
   if (typeof decoded !== "string") throw Error("Expected data string");
-  assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(compact)), value);
+  assert.deepEqual((Hson.data.fromSource(compact)).materialize(), value);
   for (const raw of ["\n", "\r", "\t"]) assert.throws(() => hsonTransform.fromHson(`<p x="a${raw}b"/>`).toNode());
-  assert.throws(() => Hson.document`<hson-part x:data=${data}/>`);
-  assert.throws(() => Hson.document`<main ${data}/>`);
+  assert.throws(() => Hson.document`<hson-part x:data=${(data).toHson()}/>`);
+  assert.throws(() => Hson.document`<main ${(data).toHson()}/>`);
 });
 
 process.stdout.write(`# ${checks} ordinary attribute transport checks passed\n`);

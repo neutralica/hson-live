@@ -45,7 +45,7 @@ export function visit_structured_css(
   emit(map, selector, scopes);
 }
 
-export function structured_part_stylesheet(input: unknown, names: ReadonlySet<string>): DocumentCssRecord {
+export function structured_part_stylesheet(input: unknown, names: ReadonlySet<string>, rootSelector = ":scope"): DocumentCssRecord {
   const map = normalize_css_map(input);
   let length = 0, next = 0;
   const rules: DocumentCssRecord["rules"][number][] = [];
@@ -68,7 +68,7 @@ export function structured_part_stylesheet(input: unknown, names: ReadonlySet<st
         }
       } else if (key.startsWith('@:')) {
         const name = key.slice(2);
-        if (!names.has(name)) throw new TypeError(`Part CSS references missing local QUAD ${name}.`);
+        if (!names.has(name)) throw new TypeError(`Stylesheet references missing local QUAD ${name}.`);
         output.push(...emit(body, `[hson\\:quad="${name}"]`, scopes));
       } else {
         const pseudo = CSS_PSEUDOS[key];
@@ -80,6 +80,6 @@ export function structured_part_stylesheet(input: unknown, names: ReadonlySet<st
     if (length > 4_000_000) throw new SyntaxError('Structured CSS expansion limit exceeded.');
     return output;
   };
-  const order = emit(map, ':scope');
+  const order = emit(map, rootSelector);
   return encode_portable_document_stylesheet(decode_portable_document_stylesheet({ rules, properties: [], keyframes: [], order }));
 }

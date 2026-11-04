@@ -1,3 +1,4 @@
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { CompiledHsonSchema } from "./compiler.js";
 import { parse_hson_with_provenance } from "../hson-source-provenance/parse-hson-with-provenance.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
@@ -13,7 +14,7 @@ import { parse_authored_document_library } from "../../api/livemap/livemap.docum
 import { admit_public_livemap_root, qualify_livemap_document } from "../../api/livemap/livemap.node-admission.js";
 import { validate_part_collection, type ValidatedPart } from "../../api/livemap/livemap.parts.js";
 
-export type StaticSchemaCandidate = Readonly<{ source: string; family: "data" | "document" | "canonical" }> | Readonly<{ json: unknown }>;
+export type StaticSchemaCandidate = Readonly<{ source: string; family: "data" | "document" | "canonical" }> | Readonly<{ json: unknown }> | Readonly<{ data: OrderedProjectedValue }>;
 export type StaticSchemaEvaluation = Readonly<{ kind: "valid" }> | Readonly<{ kind: "unknown"; error?: string }>
   | Readonly<{ kind: "invalid"; issue: CanonicalGraphIssue; range?: HsonSourceRange; relatedRange?: HsonSourceRange }>;
 
@@ -23,7 +24,7 @@ export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, c
   try {
     const document = compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element";
     // A different carrier family cannot establish this proof.
-    const family = "json" in candidate ? "data" : candidate.family === "canonical" ? document ? "document" : "data" : candidate.family;
+    const family = "json" in candidate || "data" in candidate ? "data" : candidate.family === "canonical" ? document ? "document" : "data" : candidate.family;
     if (family !== (document ? "document" : "data")) return { kind: "unknown" };
     const authored = document && "source" in candidate ? parse_authored_document_library(candidate.source) : undefined;
     let realized: HsonNode | undefined;
@@ -53,7 +54,7 @@ export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, c
       ? parse_hson_with_provenance(candidate.source, { allowTopLevelDocumentText: family === "document" }) : undefined;
     const result = realized !== undefined ? evaluate_canonical_document_schema(compiled.graph, realized)
       : document && parsed !== undefined ? evaluate_canonical_document_schema(compiled.graph, parsed.value)
-      : evaluate_canonical_projected_schema(compiled.graph, "json" in candidate ? admit_projected_value(candidate.json) : projected_value_from_hson_node(parsed!.value));
+      : evaluate_canonical_projected_schema(compiled.graph, "json" in candidate ? admit_projected_value(candidate.json) : "data" in candidate ? candidate.data : projected_value_from_hson_node(parsed!.value));
     if (result.ok) return { kind: "valid" };
     const issue = result.issues[0];
     if (issue === undefined || issue.evidence.kind === "resource-limit" || issue.code === "INVALID_SCHEMA") return { kind: "unknown" };

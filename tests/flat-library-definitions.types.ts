@@ -89,3 +89,61 @@ declare const uncertainShape: { document: string } | { document: string; data: u
 loc.admit({ bad: uncertainShape });
 // @ts-expect-error Parts member Schema claims remain forbidden under either optional mode.
 loc.admit({ bad: { parts: { button: { kind: "document", document: "<button hson:part/>", schema: undefined } } } });
+
+const structured = { color: "red", "--tone": "blue", width: { value: 2, unit: "em" },
+  "& > body": { marginTop: undefined }, "@:heading": { _hover: { color: "pink" } },
+  $media: { screen: { "@:heading": { fontSize: 12 } } } } as const;
+hsonLiveMap.fromLibraries({ page: { document: "<main @:heading/>", stylesheet: structured } });
+loc.admit({ page: { document: "<main @:heading/>", stylesheet: structured } });
+hsonLiveMap.locus.create({}, { local: [{ name: "ui", initializer: { document: "<main @:heading/>" }, stylesheet: structured }] });
+// @ts-expect-error Generic Document admission retains declaration-key diagnostics.
+hsonLiveMap.fromLibraries({ page: { document: "<main/>", stylesheet: { notAProperty: "red" } } });
+// @ts-expect-error Relative blocks retain unknown-key diagnostics too.
+loc.admit({ page: { document: "<main/>", stylesheet: { "& > p": { colour: "red" } } } });
+// @ts-expect-error Media blocks retain nested declaration checks.
+loc.admit({ page: { document: "<main/>", stylesheet: { $media: { screen: { colour: "red" } } } } });
+// @ts-expect-error Local override stylesheets have the same exact CssMap grammar.
+hsonLiveMap.locus.create({}, { local: [{ name: "ui", initializer: { document: "<main/>" }, stylesheet: { colour: "red" } }] });
+// @ts-expect-error Structured CSS cannot weaken the Library envelope.
+loc.admit({ page: { document: "<main/>", stylesheet: structured, extra: true } });
+
+// Interfaces use the same recursive Data check as object literals.
+import { hsonLiveMap as DedicatedMap } from "hson-live/livemap";
+interface RecordData { readonly count: number; label?: string; }
+declare const recordData: RecordData;
+declare const interfaceUnion: RecordData | readonly RecordData[] | string | null;
+{ const factory = hsonLiveMap;
+  const admitted = factory.fromLibraries({ state: { data: recordData } });
+  admitted.addLibraries({ other: { data: interfaceUnion } });
+  const authority = factory.locus.create({ state: { data: interfaceUnion } });
+  authority.admit({ other: { data: recordData } });
+  const opaque: object = new Date();
+  // @ts-expect-error Opaque objects supply no structural evidence.
+  factory.fromLibraries({ state: { data: opaque } });
+  // @ts-expect-error Dynamic admission uses the same check.
+  admitted.addLibraries({ bad: { data: opaque } });
+  // @ts-expect-error Hosted admission uses the same check.
+  authority.admit({ bad: { data: opaque } });
+  // @ts-expect-error Identifiable unsupported instances remain invalid.
+  factory.fromLibraries({ bad: { data: new Date() } });
+  // @ts-expect-error Functions remain invalid.
+  factory.fromLibraries({ bad: { data: () => 1 } });
+}
+
+{ const factory = DedicatedMap;
+  const admitted = factory.fromLibraries({ state: { data: recordData } });
+  admitted.addLibraries({ other: { data: interfaceUnion } });
+  const authority = factory.locus.create({ state: { data: interfaceUnion } });
+  authority.admit({ other: { data: recordData } });
+  const opaque: object = new Date();
+  // @ts-expect-error Opaque objects supply no structural evidence.
+  factory.fromLibraries({ state: { data: opaque } });
+  // @ts-expect-error Dynamic admission uses the same check.
+  admitted.addLibraries({ bad: { data: opaque } });
+  // @ts-expect-error Hosted admission uses the same check.
+  authority.admit({ bad: { data: opaque } });
+  // @ts-expect-error Identifiable unsupported instances remain invalid.
+  factory.fromLibraries({ bad: { data: new Date() } });
+  // @ts-expect-error Functions remain invalid.
+  factory.fromLibraries({ bad: { data: () => 1 } });
+}

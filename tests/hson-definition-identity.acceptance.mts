@@ -48,12 +48,12 @@ try {
   }
   for (const source of ["< a 1 b -0 >", "[1, 2,]", "«1,2,»"]) {
     const generic = hsonTransform.fromHson(source).toHson().serialize();
-    assert.equal(Hson.data.fromHson(source as never), Hson.data.fromHson(generic));
-    assert.equal(Hson.data.fromHson(hsonTransform.fromHson(source).toHson().noBreak().serialize()), Hson.data.fromHson(generic));
+    assert.equal((Hson.data.fromSource(source as never)).toHson(), (Hson.data.fromSource(generic)).toHson());
+    assert.equal((Hson.data.fromSource(hsonTransform.fromHson(source).toHson().noBreak().serialize())).toHson(), (Hson.data.fromSource(generic)).toHson());
   }
-  assert.deepEqual(Hson.data.entries(Hson.data.fromHson("<'10' 0 '2' -0>" as never))?.map(([name]) => name), ["10", "2"]);
-  assert.notEqual(Hson.data.fromHson('<a "">' as never), Hson.data.fromHson('<>' as never));
-  for (const source of ["<a 1 a 2>", "<a 1 'a' 2>", "<_hson_reserved 1>", "<x @000000001/>", "1e999", "<main hidden/>"]) assert.throws(() => Hson.data.fromHson(source as never));
+  assert.deepEqual((Hson.data.fromSource("<'10' 0 '2' -0>" as never)).entries()?.map(([name]) => name), ["10", "2"]);
+  assert.notEqual((Hson.data.fromSource('<a "">' as never)).toHson(), (Hson.data.fromSource('<>' as never)).toHson());
+  for (const source of ["<a 1 a 2>", "<a 1 'a' 2>", "<_hson_reserved 1>", "<x @000000001/>", "1e999", "<main hidden/>"]) assert.throws(() => Hson.data.fromSource(source as never));
   assert.equal(Hson.document.fromHson(' <main  "a" "" "b" /> ' as never), Hson.document`<main "a" "" "b"/>`);
   assert.equal(hson_schema_digest(HsonSchema.fromHson(a)), digest(b));
   console.log("ordered definition identity and relaxed admission passed");

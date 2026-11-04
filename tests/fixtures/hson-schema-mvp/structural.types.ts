@@ -1,4 +1,4 @@
-import { Hson, hsonLiveMap, type HsonData, type JsonFromSchema, type LiveTree } from "hson-live";
+import { Hson, hsonLiveMap, type HsonDataValue, type JsonFromSchema, type LiveTree } from "hson-live";
 import type { LiveMapWriteValue } from "hson-live/livemap";
 import { SameShapeOneSchema, SameShapeTwoSchema, TreeSchema, UserSchema } from "./producer.js";
 
@@ -83,9 +83,9 @@ rootSnapshot.slides.push({ id: "two", column1: [] });
 // @ts-expect-error Required fields remain required.
 const missing: JsonFromSchema<typeof DeckSchema> = { slides: [{ column1: [] }] };
 // @ts-expect-error JSON is not a Schema-bound Hson certificate.
-const certificate: HsonData<typeof DeckSchema> = example;
+const certificate: HsonDataValue<typeof DeckSchema> = example;
 // @ts-expect-error Strings do not certify themselves.
-const stringCertificate: HsonData<typeof DeckSchema> = "<slides []>";
+const stringCertificate: HsonDataValue<typeof DeckSchema> = "<slides []>";
 
 declare const tree: JsonFromSchema<typeof TreeSchema>;
 const recursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: 1, children: [tree] };
@@ -104,7 +104,7 @@ mutualMap.data.must("mutual").at([]).replace(mutual);
 
 declare const one: JsonFromSchema<typeof SameShapeOneSchema>;
 const two: JsonFromSchema<typeof SameShapeTwoSchema> = one;
-declare const userInput: HsonData<typeof UserSchema>;
+declare const userInput: HsonDataValue<typeof UserSchema>;
 const users = hsonLiveMap.fromLibraries({ user: { data: userInput, schema: UserSchema } });
 const user = users.data.must("user").snap();
 users.data.must("user").at(["pair"]).replace(user.pair);
@@ -151,8 +151,8 @@ const reservedMap = hsonLiveMap.fromLibraries({ refs: { data: { a: { name: "Ada"
 reservedMap.data.must("refs").at(["e"]).replace(reservedRefs.e);
 const mutableEmpty: [] = [];
 const readonlyEmpty: readonly [] = [];
-type EmptyProposal = Assert<Equal<LiveMapWriteValue<readonly []>, [] | readonly []>>;
-type MutableEmptyProposal = Assert<Equal<LiveMapWriteValue<[]>, []>>;
+type EmptyProposal = Assert<Equal<LiveMapWriteValue<readonly []>, HsonDataValue | [] | readonly []>>;
+type MutableEmptyProposal = Assert<Equal<LiveMapWriteValue<[]>, HsonDataValue | []>>;
 const emptyProposal: LiveMapWriteValue<readonly []> = mutableEmpty;
 const readonlyEmptyProposal: LiveMapWriteValue<readonly []> = readonlyEmpty;
 reservedMap.data.must("refs").at(["e"]).replace(mutableEmpty);

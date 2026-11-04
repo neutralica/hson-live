@@ -659,16 +659,16 @@ check('C1 multiple forwarding edges accumulate paths and qualified transitions c
 });
 check('C1 shared connectors retain independent roots, argument correlations and batch Library authority', () => {
   const source = forwarding_fixture().replace('const page=',
-    'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonData<typeof T>=Hson.data`<title true>`;const page=')
-    .replace('<hson-part at="components/A" incoming:data="${input}"/>',
-      '<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>');
+    'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data`<title true>`;const page=')
+    .replace('<hson-part at="components/A" incoming:data="${input.toHson()}"/>',
+      '<main <hson-part at="components/A" incoming:data="${input.toHson()}"/> <hson-part at="components/A" incoming:data="${other.toHson()}"/>/>');
   const test = evidenceProject('c1-independent', { 'index.ts': source });
   const contexts = part_data_contexts(test.facts, test.document('B'), 'payload');
   assert.equal(contexts.length, 2); assert.equal(contexts[0]!.connector, contexts[1]!.connector);
   assert.notEqual(contexts[0]!.root, contexts[1]!.root); assert.notEqual(contexts[0]!.parent, contexts[1]!.parent);
   assert.notEqual(contexts[0]!.evidence, contexts[1]!.evidence);
   assert.deepEqual(contexts.map(context => schema_projection_description(part_data_projection(context.evidence!, ['title']))), ['string (required)', 'boolean (required)']);
-  const sameSource = source + '\nconst next=maps.fromLibraries({other:{parts:{A:{kind:"document",document:A},B:{kind:"document",document:B}}},page:{document:Hson.document`<hson-part at="other/A" incoming:data="${input}"/>`}});';
+  const sameSource = source + '\nconst next=maps.fromLibraries({other:{parts:{A:{kind:"document",document:A},B:{kind:"document",document:B}}},page:{document:Hson.document`<hson-part at="other/A" incoming:data="${input.toHson()}"/>`}});';
   const batches = evidenceProject('c1-batches', { 'index.ts': sameSource });
   const children = part_data_contexts(batches.facts, batches.document('B'), 'payload');
   assert.equal(children.length, 3); assert.equal(children[0]!.definition, children[2]!.definition);
@@ -676,8 +676,8 @@ check('C1 shared connectors retain independent roots, argument correlations and 
   assert.deepEqual(children.map(context => context.library.name), ['components', 'components', 'other']);
   const correlated = evidenceProject('c1-correlations', { 'index.ts': forwarding_fixture({
     intermediate: '<section hson:part data:outer="%{incoming}" data:second="%{extra}" <hson-part at="B" payload:data="^{second}"/>/>'
-  }).replace('const page=', 'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonData<typeof T>=Hson.data`<title true>`;const page=')
-    .replace('incoming:data="${input}"', 'incoming:data="${input}" extra:data="${other}"') });
+  }).replace('const page=', 'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data`<title true>`;const page=')
+    .replace('incoming:data="${input.toHson()}"', 'incoming:data="${input.toHson()}" extra:data="${other.toHson()}"') });
   const child = part_data_contexts(correlated.facts, correlated.document('B'), 'payload');
   assert.equal(child.length, 1, 'one frame per invocation, not per receiving argument');
   assert.match(schema_projection_description(part_data_projection(child[0]!.evidence!, ['title'])), /boolean/);
@@ -697,8 +697,8 @@ check('C1 existing iterator origins preserve array/object selectors, shadowing a
   }
   for (const [index, source] of [
     forwarding_fixture({ forward: '^{outer.nested?}' }).replace('%{incoming}', '%{incoming?}'),
-    forwarding_fixture().replace(' incoming:data="${input}"', '').replace('%{incoming}', '%{incoming?}'),
-    forwarding_fixture().replace('${input}', '${dynamic}'),
+    forwarding_fixture().replace(' incoming:data="${input.toHson()}"', '').replace('%{incoming}', '%{incoming?}'),
+    forwarding_fixture().replace('${input.toHson()}', '${dynamic}'),
     forwarding_fixture({ forward: '%{incoming}' }),
   ].entries()) {
     const test = evidenceProject('c1-uncertainty-' + index, { 'index.ts': source });
@@ -752,7 +752,7 @@ check('C2a write facts preserve exact target, argument transport, provenance and
     assert.equal(parent.evidence, argument.dataEvidence); assert.equal(child.parent, parent.invocation);
     assert.equal(parent.root.write, write); assert.equal(parent.connector, undefined); assert.equal(parent.executionCertain, false);
     assert.equal(child.executionCertain, false); assert.match(child.uncertainty.join(';'), /detached.*execution unknown/);
-    assert.match(test.slice(parent.evidence!.annotationLocation), /HsonData<typeof S>/);
+    assert.match(test.slice(parent.evidence!.annotationLocation), /HsonDataValue<typeof S>/);
     assert.match(test.slice(parent.evidence!.schemaLocation), /S=Hson.schema/);
     assert.match(test.slice(parent.evidence!.valueLocation), /Hson.data/);
   }
@@ -768,6 +768,32 @@ check('C2a imported Part targets and annotated Data preserve declaration provena
   const context = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;
   assert.equal(context.evidence?.strength, 'validated'); assert.ok(context.evidence!.annotationLocation.file.endsWith('parts.ts'));
   assert.ok(context.root.write!.location.file.endsWith('index.ts'));
+});
+check('Data value evidence distinguishes literal strings, official source admission and unknown producers', () => {
+  for (const [index, expression, strength] of [
+    [0, '"<title \\"ok\\">"', 'advisory'],
+    [1, 'Hson.data.from("<title \\"ok\\">")', 'advisory'],
+    [2, 'Hson.data.fromSource("<title \\"ok\\">")', 'validated'],
+    [3, 'Hson.data.fromSource(\'{"title":"ok"}\')', 'validated'],
+    [4, 'Hson.data`<title "ok">`', 'validated'],
+    [5, 'dynamic', 'advisory'],
+    [6, 'fake.data.fromSource("<title \\"ok\\">")', 'advisory'],
+  ] as const) {
+    const source = write_fixture({ shape: '<title "string">', value: '<title "ok">' })
+      .replace('declare const dynamic:any;', 'declare const dynamic:any; declare const fake:typeof Hson;')
+      .replace('Hson.data`<title "ok">`', expression);
+    const test = evidenceProject('data-value-' + index, { 'index.ts': source });
+    assert.deepEqual(test.program.getSyntacticDiagnostics(), [], expression);
+    const context = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;
+    assert.equal(context.evidence?.strength, strength, expression);
+    assert.equal(context.executionCertain, false);
+  }
+  for (const [index, replacement] of ['input', 'dynamic.toHson()'].entries()) {
+    const source = forwarding_fixture().replace('${input.toHson()}', '${' + replacement + '}');
+    const test = evidenceProject('unqualified-serialization-' + index, { 'index.ts': source });
+    assert.equal(part_data_contexts(test.facts, test.document('A'), 'incoming')[0]?.evidence, undefined,
+      'Carrier interpolation and same-spelled serializers establish no authored transport proof');
+  }
 });
 check('C2a advisory, unknown, mismatched and unsupported authoring never acquires execution proof', () => {
   for (const [index, expression, strength] of [

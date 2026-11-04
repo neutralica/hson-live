@@ -87,7 +87,7 @@ await check("the internal admission capability remains bound after the normal ag
   let locus!: import("../src/types/locus.types.ts").Locus<ReturnType<typeof make_map>, TestActions>;
   locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(make_map(), test_application_catalog(make_map())), authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; }, actions: { held: (_context, payload) => payload } });
   const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
-  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : Hson.data.materialize(result.result), 4);
+  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : (result.result).materialize(), 4);
   assert.equal(locus.session.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();
 });
 

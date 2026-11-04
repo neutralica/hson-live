@@ -9,14 +9,12 @@ type UserHson = HsonFromSchema<typeof UserSchema>;
 type UserJson = JsonFromSchema<typeof UserSchema>;
 const user: UserHson = Hson.data`<user <age 37>>`;
 const same = UserSchema.certify(user);
-// same === user; return type is HsonData<typeof UserSchema>.
+// same === user; return type is HsonDataValue<typeof UserSchema>.
 ```
 
 The Schema object's `certify` method validates one canonical candidate in its
-own mode and returns a Schema-proven primitive string. LiveMap's distinct
-operation is establishing a governing library contract: either at admission with `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` / `map.addLibraries({ state: { data, schema: UserSchema } })`, or afterward on an unmanaged local map with `map.data.must("state").schema.use(UserSchema)`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. A context-neutral
-`Hson.canonical` string such as `"text"` can be admitted according to the
-Schema's mode; a known wrong-mode candidate rejects.
+own mode and returns a Schema-proven Data carrier or Document text, according to its mode. LiveMap's distinct
+operation is establishing a governing library contract: either at admission with `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` / `map.addLibraries({ state: { data, schema: UserSchema } })`, or afterward on an unmanaged local map with `map.data.must("state").schema.use(UserSchema)`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. Data certification treats every ordinary string as literal Data. Serialized JSON/Hson enters through `Hson.data.fromSource()`. Document certification retains explicit source admission.
 
 Post-hoc `schema.use` is tightening-only. A family-top contract may acquire one
 same-family specific Schema after the complete current root validates. The
@@ -70,7 +68,7 @@ The expression lowers directly to the existing canonical `projected-any` node.
 Canonical Schema graphs have one unversioned current shape. Generated compiler
 projects use content-derived tooling identity and input observations for freshness.
 
-Echo/Locus actions also retain exact `HsonData` payloads and results, including
+Echo/Locus actions also retain exact `HsonDataValue` payloads and results, including
 negative zero, ordered members, and valid own `__proto__` names. See the
 [Echo API](../echo/api-echo.md) for payload admission and retry identity.
 
@@ -198,15 +196,10 @@ const map = hsonLiveMap.fromLibraries({
 });
 ```
 
-A Library's `data` field parses strings as JSON source, not Hson source. To
-use canonical Hson data at runtime, explicitly materialize it with
-`Hson.data.materialize(value)` or convert it to JSON first. That convenience
-view has JavaScript's integer-key enumeration limits; the static analyzer does
-not execute materialization calls to prove their contents. Dynamic candidate
-validation remains owned by runtime admission.
+A Library's `data` field accepts supported JavaScript values and authenticated carriers. Ordinary strings are literal Data. `Hson.data.fromSource(source)` explicitly admits JSON/Hson while preserving exact member order and signed zero; no materialization round trip is needed. Static analysis uses official binding identity and canonical admission for known producers. Unknown expressions retain advisory evidence.
 
 Supported static Data analysis uses `HsonFromSchema<typeof DataSchema>` or
-`HsonData<S>` annotations and the headless Schema analyzer without calling
+`HsonDataValue<S>` annotations and the headless Schema analyzer without calling
 `schema.certify`. Direct `Hson.document` authoring returns `HsonAuthored`;
 editor analysis does not establish `HsonDocument<S>` proof for that source.
 Use `schema.certify(candidate)` for canonical Document admission and Schema
@@ -220,3 +213,5 @@ Runtime `schemaDigest` is SHA-256 of a deterministic encoding of the fully valid
 Identity ignores whitespace/layout, quote and escape spelling, accepted equivalent array syntax, and physical-versus-escaped newlines with the same decoded value. It preserves authored definition/member order (including integer-like names), def names/ref structure, unused definitions, inline versus ref, union order, document sequence order, optionality, exact values and configured uniqueness mapping/order. This is definition identity, not universal behavioral equivalence. Every definition, including unused definitions and reference cycles, validates before identity is available.
 
 Compiler topology, evaluator diagnostics and source ranges do not enter identity. Tooling retains exact authored source and `sourceDigest` as provenance/evidence; runtime Schema handles retain the normalized definition. Registry compatibility uses Schema identity plus ordered library names, scope, root mode and root codec; it excludes Schema presentation bytes. Local initializer fingerprints use Schema identity while retaining exact root/CSS state. Echo/Locus/checkpoint reconstruction verifies exact transport/chunk checksums where applicable, parses and fully validates Schema source, recomputes its definition digest, and then enforces authority/revision/session/topology/permission fences. Existing persisted artifacts hard-cut; no compatibility or version path is provided.
+
+Carrier-seeded Libraries derive root-category evidence from the carrier’s semantic Schema parameter. An unqualified carrier supplies conservative Data evidence. A seed certificate alone does not install a governing Schema or guarantee its initial members after mutation; pass `schema` explicitly for governed member precision. Opaque `object` inputs require structural narrowing before Data factories, certification, or Part writing.

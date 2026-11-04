@@ -555,9 +555,9 @@ check("collection source diagnostics belong to proven invocations, never a unive
     assert.match(result.diagnostics[0]!.message, /requires object Data for this invocation/);
   }
   assert.deepEqual(inspect(literal('<>')).codes, []);
-  const annotated = (shape: string, input = '${records}', definitionBody = body) => imports
-    + 'import type { HsonData } from "hson-live"; const Records=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
-    + 'declare const records: HsonData<typeof Records>; const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + definitionBody + '`}}},'
+  const annotated = (shape: string, input = '${records.toHson()}', definitionBody = body) => imports
+    + 'import type { HsonDataValue } from "hson-live"; const Records=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
+    + 'declare const records: HsonDataValue<typeof Records>; const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + definitionBody + '`}}},'
     + 'page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + input + '"/>`}});';
   for (const shape of ['"number"', '<array "string">']) {
     const result = inspect(annotated(shape));
@@ -568,7 +568,7 @@ check("collection source diagnostics belong to proven invocations, never a unive
   for (const shape of ['<content <first "string" second "number">>', '"any"']) assert.deepEqual(inspect(annotated(shape)).codes, []);
   assert.deepEqual(inspect(annotated('"number"', '${dynamic}')).codes, []);
   const nested = '<ul hson:part data:items="%{items}" <li per::value="^{items}" <b per:key="^{value}" "^{key}"/>/>/>';
-  assert.deepEqual(inspect(annotated('<content <first <optional "number">>>', '${records}', nested)).codes, [], 'possibly empty outer iteration cannot prove execution');
+  assert.deepEqual(inspect(annotated('<content <first <optional "number">>>', '${records.toHson()}', nested)).codes, [], 'possibly empty outer iteration cannot prove execution');
   assert.deepEqual(inspect(application('<main/>', definition)).codes, [], 'an uninvoked reusable Part has no inferred source type');
 });
 check("nested iterator value diagnostics require enclosing execution across for and per", () => {
@@ -634,19 +634,19 @@ check("nested collection projections preserve source-before-shadow and conservat
       assert.deepEqual(result.codes, value === '2' ? ['HSON_PART_REFERENCE_INVALID'] : [], `${outer}/${inner} shadowed collection`);
     }
     const shape = outer === 'for' ? '<array "number">' : '<content <first <optional "number">>>';
-    const annotated = imports + 'import type { HsonData } from "hson-live"; const Items=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
-      + 'declare const items: HsonData<typeof Items>; const loc=maps.fromLibraries({components:{parts:' + definition + '},page:{document:Hson.document`<hson-part lib="components" at="list" items:data="${items}"/>`}});';
+    const annotated = imports + 'import type { HsonDataValue } from "hson-live"; const Items=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
+      + 'declare const items: HsonDataValue<typeof Items>; const loc=maps.fromLibraries({components:{parts:' + definition + '},page:{document:Hson.document`<hson-part lib="components" at="list" items:data="${items.toHson()}"/>`}});';
     assert.deepEqual(inspect(annotated).codes, [], 'Schema collection elements do not establish outer execution');
   }
 });
 check("independent inner Schemas require literal outer execution and deeper correlations remain conservative", () => {
   for (const outer of ['for:item', 'per:key:item']) for (const inner of ['for:value', 'per:name:value']) {
     const body = `<ul hson:part data:items="%{items}" data:other="%{other}" <li ${outer}="^{items}" <b ${inner}="^{other}"/>/>/>`;
-    const prefix = imports + 'import type { HsonData } from "hson-live"; const Other=Hson.schema`<type "data" defs <Input "number"> content <ref "Input">>`; declare const other:HsonData<typeof Other>;';
+    const prefix = imports + 'import type { HsonDataValue } from "hson-live"; const Other=Hson.schema`<type "data" defs <Input "number"> content <ref "Input">>`; declare const other:HsonDataValue<typeof Other>;';
     for (const nonempty of [false, true]) {
       const items = outer.startsWith('for:') ? nonempty ? '«0»' : '«»' : nonempty ? '<first 0>' : '<>';
       const result = inspect(prefix + 'const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + body
-        + '`}}},page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + items + '" other:data="${other}"/>`}});');
+        + '`}}},page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + items + '" other:data="${other.toHson()}"/>`}});');
       assert.deepEqual(result.codes, nonempty ? ['HSON_PART_REFERENCE_INVALID'] : []);
       if (nonempty) assert.deepEqual(result.slices, ['other:data']);
     }
@@ -802,10 +802,10 @@ check("on-prefixed structured forwarding retains typed source facts and represen
   }
 });
 function schemaApplication(reference: string, shape = '<title "string">', value = '<title "ok">', receiving = '%{incoming}', supplied = true, body?: string): string {
-  return imports + 'import type {HsonData} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
-    + 'const input:HsonData<typeof S>=Hson.data`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
+  return imports + 'import type {HsonDataValue} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
+    + 'const input:HsonDataValue<typeof S>=Hson.data`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
     + (body ?? '<p hson:part data:record="' + receiving + '" "' + reference + '"/>')
-    + '`}}},page:{document:Hson.document`<hson-part at="components/card"' + (supplied ? ' incoming:data="${input}"' : '') + '/>`}});';
+    + '`}}},page:{document:Hson.document`<hson-part at="components/card"' + (supplied ? ' incoming:data="${input.toHson()}"' : '') + '/>`}});';
 }
 const memberErrors = (result: ReturnType<typeof inspect>) => result.diagnostics.filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID');
 check('validated direct input proves one invocation member error with exact reference and binding provenance', () => {
@@ -842,8 +842,8 @@ check('optional incoming absence propagates while explicitly supplied values ret
 });
 check('two distinct caller Schemas produce an error only for the proven failing invocation', () => {
   const source = schemaApplication('^{record.typo}')
-    .replace('const map=', 'const Other=Hson.schema`<type "data" content <typo "string">>`; const other:HsonData<typeof Other>=Hson.data`<typo "valid">`; const map=')
-    .replace('<hson-part at="components/card" incoming:data="${input}"/>', '<main <hson-part at="components/card" incoming:data="${input}"/> <hson-part at="components/card" incoming:data="${other}"/>/>');
+    .replace('const map=', 'const Other=Hson.schema`<type "data" content <typo "string">>`; const other:HsonDataValue<typeof Other>=Hson.data`<typo "valid">`; const map=')
+    .replace('<hson-part at="components/card" incoming:data="${input.toHson()}"/>', '<main <hson-part at="components/card" incoming:data="${input.toHson()}"/> <hson-part at="components/card" incoming:data="${other.toHson()}"/>/>');
   const result = inspect(source), errors = memberErrors(result);
   assert.equal(errors.length, 1); assert.equal(errors[0]!.start, result.text.indexOf('"components/card"'));
   assert.equal(result.text.slice(errors[0]!.start, errors[0]!.end), '"components/card"');
@@ -852,8 +852,8 @@ check('two distinct caller Schemas produce an error only for the proven failing 
 check('unknown inputs advisory annotations and variant-dependent members remain member-diagnostic silent', () => {
   for (const source of [
     schemaApplication('^{record.typo}', '<title "string">', '<>'),
-    schemaApplication('^{record.typo}').replace('const input:HsonData<typeof S>=Hson.data`<title "ok">`', 'declare const input:HsonData<typeof S>'),
-    schemaApplication('^{record.typo}').replace('HsonData<typeof S>', 'HsonData'),
+    schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`', 'declare const input:HsonDataValue<typeof S>'),
+    schemaApplication('^{record.typo}').replace('HsonDataValue<typeof S>', 'HsonDataValue'),
     schemaApplication('^{record.typo}').replace('Hson.data`<title "ok">`', 'Hson.data.from(dynamic)'),
     schemaApplication('^{record.choice.title}', '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'),
     schemaApplication('^{record.title.typo}', '<title <optional <content <caption "string">>>>', '<>'),
@@ -904,10 +904,10 @@ check('upstream-only edits withdraw and restore validated diagnostic evidence wi
   edit('member-schema.ts', 'export {};');
 });
 check('incomplete cross-file inputs and exhausted projection budgets cannot produce new member errors', () => {
-  const unknown = schemaApplication('^{record.typo}').replace('const input:HsonData<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./missing-input.js";');
+  const unknown = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./missing-input.js";');
   assert.equal(memberErrors(inspect(unknown)).length, 0);
-  edit('member-input.ts', 'import {Hson,type HsonData} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonData<typeof S>=Hson.data`<title "ok">`;');
-  const imported = schemaApplication('^{record.typo}').replace('const input:HsonData<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./member-input.js";');
+  edit('member-input.ts', 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;');
+  const imported = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./member-input.js";');
   assert.equal(memberErrors(inspect(imported)).length, 1);
   assert.equal(memberErrors(inspect(imported.replace('import {input}', 'import type {input}'))).length, 0, 'a type-only value alias supplies no runtime evidence');
   let shape = '<title "string">', value = '<title "ok">';

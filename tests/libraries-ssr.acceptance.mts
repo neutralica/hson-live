@@ -394,7 +394,7 @@ await check("Libraries rendering selection and hosted cuts preserve the aggregat
 for (const fixture of orderedRootReconstructionFixtures) {
   await check(`SSR cut and bootstrap retain independent source order: ${fixture.id}`, () => {
     const expected: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
-    const source = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson }, page: { document: "<main/>" } });
+    const source = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource(fixture.expectedJson) }, page: { document: "<main/>" } });
     assert.equal(canonical_hson_graph_equal(source.data.must("state").root(), expected), true);
     const cut = source.cut({ html: "page" });
     const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(cut.libs));

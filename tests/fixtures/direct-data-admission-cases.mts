@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonSchema } from "../../src/index.js";
+import { ANY_DATA, ANY_DOCUMENT, Hson, HsonDataValue, hsonLiveMap, type HsonSchema } from "../../src/index.js";
 import { HsonSchemaError } from "../../src/api/livemap/livemap.error.js";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.js";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.js";
@@ -38,17 +38,17 @@ export function direct_data_part_cases(): void {
   const parts = map.parts.components, owner = internal_livemap_aggregate_authority(map);
   const before = owner.captureSemanticCheckpoint(), issued = owner.identityEpoch().issued();
   // Different invocations of one immutable definition retain their own values and shapes.
-  const values = [{ count: 42, label: "Example" }, ["42", 42, true, null, -0, [], {}], 42, true, false, null, -0,
+  const values: import("../../src/api/data/hson-data.js").HsonDataInput[] = [{ count: 42, label: "Example" }, ["42", 42, true, null, -0, [], {}], 42, true, false, null, -0,
     {}, [], { nested: [[], {}, { text: "", zero: -0, booleanText: "true", nullText: "null" }] }];
   const invocations = values.map(incoming => parts.value.write({ incoming }));
   for (const [index, source] of invocations.entries()) {
     const connector = parse_authored_document_library(source).root.$_content[0];
     assert.ok(typeof connector === "object" && connector !== null);
     assert.deepEqual(Object.keys(connector.$_attrs!).sort(), ["at", "incoming:data", "lib"]);
-    assert.equal(connector.$_attrs!["incoming:data"], Hson.data.from(values[index]));
-    assert.equal(source, parts.value.write({ incoming: Hson.data.from(values[index]) }));
+    assert.equal(connector.$_attrs!["incoming:data"], (Reflect.apply(Hson.data.from, Hson.data, [values[index]])).toHson());
+    assert.equal(source, parts.value.write({ incoming: Reflect.apply(Hson.data.from, Hson.data, [values[index]]) }));
   }
-  assert.equal(parts.value.write({ incoming: "42" }), parts.value.write({ incoming: 42 }));
+  assert.notEqual(parts.value.write({ incoming: "42" }), parts.value.write({ incoming: 42 }));
   assert.notEqual(parts.value.write({ incoming: Hson.data.from("42") }), parts.value.write({ incoming: 42 }));
   const direct = { count: 42, label: "Example" };
   const recordSource = parts.record.write({ incoming: direct });
@@ -74,12 +74,12 @@ export function direct_data_part_cases(): void {
   const numericSource = parts.entries.write({ incoming: numericKeys });
   const numericConnector = parse_authored_document_library(numericSource).root.$_content[0];
   assert.ok(typeof numericConnector === "object" && numericConnector !== null);
-  assert.equal(numericConnector.$_attrs!["incoming:data"], Hson.data`<'2' 42 '10' -0>`);
+  assert.equal(numericConnector.$_attrs!["incoming:data"], (Hson.data`<'2' 42 '10' -0>`).toHson());
   const exactSource = Hson.data`<'10' -0 '2' "42" tail false>`;
   const exactInvocation = parts.entries.write({ incoming: exactSource });
   const exactConnector = parse_authored_document_library(exactInvocation).root.$_content[0];
   assert.ok(typeof exactConnector === "object" && exactConnector !== null);
-  assert.equal(exactConnector.$_attrs!["incoming:data"], exactSource);
+  assert.equal(exactConnector.$_attrs!["incoming:data"], exactSource.toHson());
   map.addLibraries({ exact: { document: exactInvocation } });
   assert.match(map.doc.must("exact").render(), /<li>0<\/li><li>42<\/li><li>false<\/li>/);
   // A declaration chooses transport even when the caller uses identical keys.
@@ -89,11 +89,13 @@ export function direct_data_part_cases(): void {
   assert.throws(() => parts.record.write({ record: {} }), /unexpected/);
   const checkpoint = owner.captureSemanticCheckpoint(), ledger = owner.identityEpoch().issued();
   rejects_unsupported(value => Reflect.apply(parts.value.write, undefined, [{ incoming: value }]));
-  // Serialized source remains detached until composition, including invalid source and local identity claims.
+  // Source-looking strings are ordinary Data; explicit source admission rejects invalid claims.
   for (const incoming of ["<broken", '<p @000000001/>', '<_hson_obj @000000001>']) {
     const source = parts.value.write({ incoming });
-    assert.throws(() => map.addLibraries({ rejected: { document: source } }));
-    assert.equal(map.doc("rejected"), undefined);
+    const connector = parse_authored_document_library(source).root.$_content[0];
+    assert.ok(typeof connector === "object" && connector !== null);
+    assert.equal(connector.$_attrs?.["incoming:data"], Hson.data.from(incoming).toHson());
+    assert.throws(() => parts.value.write({ incoming: Hson.data.fromSource(incoming) }));
   }
   // A supported value can still fail its receiving use; that remains a composition failure.
   const wrongShape = parts.record.write({ incoming: { count: 1 } });
@@ -122,28 +124,28 @@ export function direct_data_schema_cases(): void {
     [choice, [{ kind: "count", count: 42 }, { kind: "label", label: "Example" }]]] as const) {
     const identity = schema.toHson();
     for (const candidate of candidates) {
-      const certified = schema.certify(candidate);
-      assert.equal(typeof certified, "string");
-      assert.equal(certified, schema.certify(Hson.data.from(candidate)));
-      assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(certified)), candidate);
+      const certified = Reflect.apply(schema.certify, schema, [candidate]);
+      assert.ok(certified instanceof HsonDataValue);
+      assert.ok((Reflect.apply(schema.certify, schema, [Reflect.apply(Hson.data.from, Hson.data, [candidate])]) as HsonDataValue).equals(certified));
+      assert.deepEqual(certified.materialize(), candidate);
     }
     assert.equal(schema.toHson(), identity); assert.ok(Object.isFrozen(schema));
   }
   const input = { nested: [-0, "42", 42, "true", true, "null", null, "", [], {}] };
   const certificate = ANY_DATA.certify(input);
   input.nested.push("after");
-  assert.equal(certificate, Hson.data`<nested [-0,"42",42,"true",true,"null",null,"",[],<>]>`);
+  assert.equal((certificate).toHson(), (Hson.data`<nested [-0,"42",42,"true",true,"null",null,"",[],<>]>`).toHson());
   const ordinary = Object.fromEntries([["z", -0], ["a", true], ["__proto__", { constructor: null }]]);
   const ordered = ANY_DATA.certify(ordinary);
-  assert.deepEqual(Hson.data.entries(ordered)?.map(([name]) => name), ["z", "a", "__proto__"]);
-  assert.ok(Object.is(Hson.data.materialize(Hson.data.entries(ordered)![0]![1]), -0));
-  assert.equal(ANY_DATA.certify(Object.fromEntries([["10", -0], ["2", 42]])), Hson.data`<'2' 42 '10' -0>`);
+  assert.deepEqual((ordered).entries()?.map(([name]) => name), ["z", "a", "__proto__"]);
+  assert.ok(Object.is(((ordered).entries()![0]![1]).materialize(), -0));
+  assert.equal((ANY_DATA.certify(Object.fromEntries([["10", -0], ["2", 42]]))).toHson(), (Hson.data`<'2' 42 '10' -0>`).toHson());
   const authored = Hson.data`<'10' -0 '2' "42" tail false>`;
-  assert.equal(ANY_DATA.certify(authored), authored);
-  // D2 leaves the established top-level string policy intact: strings are source.
-  assert.equal(Reflect.apply(number.certify, number, ["42"]), Hson.data`42`);
-  assert.throws(() => Reflect.apply(string.certify, string, ["42"]), HsonSchemaError);
-  assert.equal(string.certify(Hson.data.from("42")), Hson.data`"42"`);
+  assert.equal((ANY_DATA.certify(authored)).toHson(), (authored).toHson());
+  // D4c makes ordinary strings literal, and source admission explicit.
+  assert.throws(() => Reflect.apply(number.certify, number, ["42"]), HsonSchemaError);
+  assert.equal((Reflect.apply(string.certify, string, ["42"]) as HsonDataValue).scalar(), "42");
+  assert.equal((Reflect.apply(number.certify, number, [Hson.data.fromSource("42")]) as HsonDataValue).scalar(), 42);
   for (const candidate of [42, [], {}, { count: "42", label: "x" }, { count: 1, label: "x", extra: true },
     { count: 1, label: "x", note: null }]) {
     const failure = (value: unknown): HsonSchemaError => {
@@ -151,7 +153,7 @@ export function direct_data_schema_cases(): void {
       catch (error) { assert.ok(error instanceof HsonSchemaError); return error; }
       throw Error("Expected certification failure");
     };
-    const direct = failure(candidate), serialized = failure(Hson.data.from(candidate));
+    const direct = failure(candidate), serialized = failure(Reflect.apply(Hson.data.from, Hson.data, [candidate]));
     assert.equal(direct.code, "SCHEMA_VALIDATION"); assert.equal(direct.message, serialized.message);
     assert.deepEqual(direct.path, serialized.path); assert.deepEqual(direct.issues, serialized.issues);
   }
@@ -167,7 +169,7 @@ export function direct_data_schema_cases(): void {
   }
   rejects_unsupported(value => Reflect.apply(ANY_DATA.certify, ANY_DATA, [value]));
   for (const source of ["<broken", '<p @000000001/>', '<_hson_obj @000000001>']) {
-    assert.throws(() => Reflect.apply(ANY_DATA.certify, ANY_DATA, [source]), TypeError);
+    assert.throws(() => Hson.data.fromSource(source), TypeError);
   }
   const document = Hson.document`<main "Existing"/>`;
   assert.equal(ANY_DOCUMENT.certify(document), document);

@@ -6,7 +6,7 @@ import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_public_projection } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { Hson, type HsonData, hsonLiveMap, type HsonSchema, type LiveMap } from "../src/index.ts";
+import { Hson, HsonDataValue, hsonLiveMap, type HsonSchema, type LiveMap } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -219,8 +219,8 @@ await check("aggregate retry request payloads detach nested records and arrays f
   };
   const initial = echo.action("stable", payload);
   const retained = initial.request.payload;
-  assert.equal(typeof retained, "string");
-  const retainedView = Hson.data.materialize(retained as HsonData) as typeof payload;
+  assert.equal(typeof retained, "object");
+  const retainedView = Hson.data.from(retained!).materialize() as typeof payload;
   assert.notEqual(retained, payload);
   assert.notEqual(retainedView.nested, payload.nested);
   assert.notEqual(retainedView.rows, payload.rows);
@@ -240,8 +240,8 @@ await check("aggregate retry request payloads detach nested records and arrays f
 
   const retry = echo.retryAction(initial.request);
   const retryPayload = retry.request.payload;
-  assert.equal(typeof retryPayload, "string");
-  assert.deepEqual(Hson.data.materialize(retryPayload as HsonData), {
+  assert.equal(typeof retryPayload, "object");
+  assert.deepEqual(Hson.data.from(retryPayload!).materialize(), {
     nested: { value: 1 },
     rows: [[1, 2], { label: "original" }],
   });
@@ -262,7 +262,7 @@ await check("named document denial is terminal without mutation and the next que
     map: authority,
     authorizeAction(context: Parameters<import("../src/types/locus.protocol.types.ts").LocusActionAuthorizer>[0]) {
       decisions.push(context);
-      const payload = context.payload === undefined ? undefined : Hson.data.materialize(context.payload) as { name?: string };
+      const payload = context.payload === undefined ? undefined : (context.payload).materialize() as { name?: string };
       return payload?.name !== "blocked";
     },
   }));
@@ -294,10 +294,10 @@ await check("named document denial is terminal without mutation and the next que
   const projectedPage = echoMap.doc.must("page");
   if (projectedPage.mode !== "document") throw new Error("Expected projected page document.");
   assert.equal(projectedPage.document.attrs.get({ kind: "path", path: [0] }, "title"), "accepted");
-  const evidence = decisions[0] as { session: { resumable: boolean }; logicalMapId: string; incarnationId: string; connection: { principalId?: string }; payload: HsonData };
+  const evidence = decisions[0] as { session: { resumable: boolean }; logicalMapId: string; incarnationId: string; connection: { principalId?: string }; payload: HsonDataValue };
   assert.equal(evidence.logicalMapId, locus.logicalMapId);
   assert.equal(evidence.connection.principalId, "principal-a");
-  assert.equal((Hson.data.materialize(evidence.payload) as { library?: string }).library, "page");
+  assert.equal((evidence.payload.materialize() as { library?: string }).library, "page");
   echo.dispose();
   locus.dispose();
 });
@@ -308,12 +308,12 @@ await check("application payload decoding precedes authorization and mutation", 
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, schema: {
       actions: {
         validated: {
-          payload: (value: unknown): value is HsonData => typeof value === "string" && typeof (Hson.data.materialize(value as HsonData) as { value?: unknown }).value === "number",
+          payload: (value: unknown): value is HsonDataValue => value instanceof HsonDataValue && typeof (value.materialize() as { value?: unknown }).value === "number",
         },
       },
     }, authorizeAction() { authorizations += 1; return true; } }), actions: {
       validated: async (context, payload) => {
-        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
+        const value = (payload === undefined ? undefined : (payload).materialize()) as { value: number };
         await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
       },
     } });
@@ -339,7 +339,7 @@ await check("resumable session reattachment retains one projected aggregate auth
   let sessionNumber = 0;
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }), actions: {
       "state.set": async (context, payload) => {
-        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
+        const value = (payload === undefined ? undefined : (payload).materialize()) as { value: number };
         await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
       },
     } });
@@ -380,7 +380,7 @@ await check("retry, dedupe conflict, and action status use the hosted request co
   let executions = 0;
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" } }), actions: {
       "state.set": async (context, payload) => {
-        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
+        const value = (payload === undefined ? undefined : (payload).materialize()) as { value: number };
         executions += 1;
         await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
       },

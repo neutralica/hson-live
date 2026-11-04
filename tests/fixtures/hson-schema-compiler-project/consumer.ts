@@ -1,5 +1,5 @@
 /// <reference path="./support/ambient.d.ts" />
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDataValue, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
 import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
 import { slideSchema as sameSlide } from "./schema.js";
@@ -26,12 +26,12 @@ type StructuralFlags = Assert<Equal<JsonFromSchema<typeof RecordSchema>["flags"]
 declare const document: HsonDocument<typeof slideSchema>;
 const sameDocument: HsonDocument<typeof sameSlide> = document;
 // @ts-expect-error Document mode cannot be admitted as data mode.
-type WrongMode = HsonData<typeof slideSchema>;
+type WrongMode = HsonDataValue<typeof slideSchema>;
 // @ts-expect-error Identical document text does not make two declarations interchangeable.
 const otherDocument: HsonDocument<typeof twinSchema> = document;
-declare const plain: HsonData<typeof PlainA>;
+declare const plain: HsonDataValue<typeof PlainA>;
 // @ts-expect-error Value types are both JsonValue; their Schema identities still differ.
-const otherPlain: HsonData<typeof PlainB> = plain;
+const otherPlain: HsonDataValue<typeof PlainB> = plain;
 
 declare const value: JsonFromSchema<typeof RecordSchema>;
 const status: "ready" = value.status;
@@ -166,9 +166,9 @@ export function getRefinedTitle() {
 }
 
 // Existing static-literal validation is reused for generated inputs as well.
-const authored: HsonData<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
+const authored: HsonDataValue<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
 const authoredDocument: HsonDocument<typeof slideSchema> = slideSchema.certify(Hson.document`<main/>`);
-const broadData: HsonData<typeof annotatedSchema> = annotatedSchema.certify(Hson.data`42`);
+const broadData: HsonDataValue<typeof annotatedSchema> = annotatedSchema.certify(Hson.data`42`);
 
 declare const tsSchema: typeof TsSchema;
 // @ts-expect-error Same stem and export name, distinct .mts declaration.

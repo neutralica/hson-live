@@ -36,7 +36,10 @@ export type LibraryGroupDefinitions<T> = {
 };
 
 /** Only the root category is stable without a Schema; initial members are not evidence. */
-type DataRoot<T> = T extends readonly unknown[] ? readonly JsonValue[]
+type DataRoot<T> = T extends import("../api/data/hson-data.js").HsonDataValue<infer S extends HsonSchema<unknown, "data">>
+  ? JsonValue extends DataSchemaValue<S> ? JsonValue : OrdinaryDataRoot<DataSchemaValue<S>>
+  : OrdinaryDataRoot<T>;
+type OrdinaryDataRoot<T> = T extends readonly unknown[] ? readonly JsonValue[]
   : T extends object ? Readonly<Record<string, JsonValue>> : JsonValue;
 type DefinitionSchema<T, F extends "data" | "document"> = T extends { schema: infer S extends HsonSchema } ? S
   : "schema" extends keyof T ? HsonSchema<unknown, F>

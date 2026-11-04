@@ -104,16 +104,18 @@ map.addLibraries({ page: { document: Hson.document`<main ${invocation}/>` } });
 optional argument is a plain record of own enumerable data fields using incoming
 parameter names, without type suffixes. Scalar values are strings, finite numbers,
 booleans, or null and become attributes through `String(value)` (`-0` becomes `"0"`).
-Data and Document arguments require serialized strings; the writer derives outgoing
-`:data` / `:doc` suffixes from the selected immutable definition. Arrays, objects,
-undefined, accessors, and symbols are not argument values or fields. `lib` and `at`
+Data arguments accept supported JavaScript values or authenticated `HsonDataValue` carriers. Strings are literal Data; use `Hson.data.fromSource(source)` for encoded input. Document arguments require serialized source. The writer serializes admitted Data into the established authored attribute representation and derives outgoing
+`:data` / `:doc` suffixes from the selected immutable definition. Arrays and objects
+are supported Data values; scalar parameters remain limited to scalar values.
+Undefined values, accessors, and symbols are not argument values or fields. `lib` and `at`
 are reserved; `style` and `__proto__` cannot be scalar parameters but may name
 structured inputs.
 
 Selected-source analysis, unexpected-input checks, transport-kind checks, and
-statically required missing-input checks run during `.write()`. Structured payload
-parsing, conditional requirements, and nested selection remain receiving-composition
-checks. The writer issues no subject identity, compiles no occurrence CSS, and changes
+statically required missing-input checks run during `.write()`, along with direct
+Data value admission. Authored Part attributes remain serialized transport. Receiving
+composition decodes that transport and performs its established interface, structural,
+conditional-requirement, and nested-selection checks. The writer issues no subject identity, compiles no occurrence CSS, and changes
 no revision. Receiving composition resolves the immutable definition in its own owner;
 another owner may bind the coordinates differently. The invocation carries neither a
 definition snapshot nor a live binding. Staged writers have no `.write()`; ordinary,

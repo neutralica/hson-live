@@ -69,8 +69,10 @@ const direct = hsonLiveMap.fromLibraries({components: {parts: {
 const record = {count: 42, label: 'Example'};
 const directSource = direct.parts.components.record.write({incoming: record});
 assert.equal(directSource, direct.parts.components.record.write({incoming: Hson.data.from(record)}));
-assert.equal(RecordSchema.certify(record), Hson.data.from(record));
-assert.equal(ANY_DATA.certify(-0), Hson.data\`-0\`);
+const carrier = Hson.data.from(record);
+assert.equal(RecordSchema.certify(carrier), carrier);
+assert.ok(RecordSchema.certify(record).equals(carrier));
+assert.ok(ANY_DATA.certify(-0).equals(Hson.data\`-0\`));
 direct.addLibraries({page: {document: directSource}});
 assert.ok(direct.doc.must('page').render().includes('<p>Example:42</p>'));
 const styled = hsonLiveMap.fromLibraries({parts:{parts:{

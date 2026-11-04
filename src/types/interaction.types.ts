@@ -1,4 +1,4 @@
-import type { HsonData } from "../api/transform/transform.types.js";
+import type { HsonDataValue } from "../api/data/hson-data.js";
 import type { LiveMap } from "./livemap.types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { InteractionDescriptor } from "./interaction.descriptor.types.js";
@@ -13,14 +13,14 @@ export type {
 export type InteractionLocalBehavior = (
   event: Event,
   subject: LiveTree,
-  args: HsonData,
+  args: HsonDataValue,
 ) => void | Promise<void>;
 
 export type InteractionLocalBehaviors = Readonly<Record<string, InteractionLocalBehavior>>;
 
 export type InteractionActionDispatcher = (
   actionKey: string,
-  payload: HsonData,
+  payload: HsonDataValue,
 ) => Promise<void>;
 
 export type InteractionFailure = Readonly<{

@@ -1,3 +1,4 @@
+import type { HsonDataValue } from "../src/index.js";
 import { create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { CssRuntimeManager } from "../src/api/livetree/managers/css-manager.ts";
 import { authority_definitions_from_map_fixture } from "./helpers/locus-definition-fixture.mts";
@@ -6,7 +7,7 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { DocumentContinuationError, Hson, HsonData, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocusWebSocketLike } from "../src/index.ts";
+import { DocumentContinuationError, Hson, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
@@ -362,7 +363,7 @@ function socketPair(): Readonly<{
   const authority = makeMap();
   enable_interactions(authority);
   add_interaction(authority, descriptor);
-  let handled: HsonData | undefined;
+  let handled: HsonDataValue | undefined;
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
       { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }), actions: { save: (_context, payload) => { handled = payload; } } });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
@@ -416,7 +417,7 @@ function socketPair(): Readonly<{
   assert.equal(continuation.echo.data.must("ui").mode, "data-object");
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
-  assert.equal(handled === Hson.data.from({ exact: true }), true);
+  assert.equal(handled?.equals(Hson.data.from({ exact: true })), true);
   continuation.dispose();
   handled = undefined;
   button.dispatchEvent(new Event("click"));

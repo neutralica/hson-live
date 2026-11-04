@@ -1,3 +1,4 @@
+import { capture_plain_instruction } from "../../internal/capture-instruction.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
@@ -39,7 +40,15 @@ export function create_echo<TActions extends LocusActionPayloads = LocusActionPa
       throw new TypeError("Echo replica creation requires now and credential.");
     }
     claimTransport(options.transport, true);
-    return createReplica<TActions>(options as EchoReplicaOptions);
+    try {
+      // Own portable evidence before returning, while runtime capabilities retain
+      // their identity. Replica attachment and authority resolution stay lazy.
+      const captured: EchoReplicaOptions = { ...options, now: capture_plain_instruction(options.now) };
+      return createReplica<TActions>(captured);
+    } catch (cause) {
+      claimedTransports.delete(options.transport);
+      return Promise.reject(cause);
+    }
   }
   if ("map" in options || "recovery" in options) throw new TypeError("Echo endpoint creation received replica state.");
   claimTransport(options.transport, false);

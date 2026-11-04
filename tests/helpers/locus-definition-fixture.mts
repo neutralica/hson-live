@@ -48,9 +48,8 @@ function registry_options<TMap extends LiveMap, A extends LocusActionPayloads>(o
   for (const entry of local) {
     if (entry === undefined || !entry.name || names.has(entry.name)) throw new Error("Invalid or duplicated fixture local initializer.");
     names.add(entry.name);
-    const localCss = options[fixtureCss]?.[entry.name]
-      ?? (entry.stylesheet === undefined ? undefined : opaque_document_stylesheet(entry.stylesheet));
-    libraries.push({ name: entry.name, ownership: "local", initializer: entry.initializer,
+    const localCss = options[fixtureCss]?.[entry.name];
+    libraries.push({ name: entry.name, ownership: "local", initializer: entry.stylesheet === undefined ? entry.initializer : { ...entry.initializer, stylesheet: entry.stylesheet },
       ...(localCss === undefined ? {} : { css: localCss }) });
   }
   // The fixture inventory proves these reconstructed definitions are TMap's.
@@ -103,7 +102,7 @@ export function authority_definitions_from_map_fixture<TMap extends LiveMap>(map
     const schema = HsonSchema.fromHson(registry.schema);
     const definition: LiveMapLibraryDefinition = registry.mode === "document"
       ? { document: state.root, schema }
-      : (() => { const value = node_to_json_value(state.root); return { data: typeof value === "string" ? JSON.stringify(value) : value, schema }; })();
+      : (() => { const value = node_to_json_value(state.root); return { data: value, schema }; })();
     definitions[entry.name] = { ...definition, access: entry.ownership };
     if (state.css !== undefined) css[entry.name] = state.css;
   }

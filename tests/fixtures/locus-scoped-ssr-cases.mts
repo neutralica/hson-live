@@ -59,18 +59,18 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
     const locus = hsonLiveMap.locus.create({ parts: {access:'private', parts: {
       panel: {kind:'document', document:'<section hson:part doc:control="%{control}" @:root <hson-part @:child ^{control}/>/>', stylesheet:':scope{color:red}'},
       leaf: {kind:'document', document:'<b hson:part data:slide="%{slide}" @:root title="^{slide.title}" "^{slide.no}"/>'},
-    }}, page: {access:'shared', document:Hson.document`<html <head/> <body <hson-part @:one lib="parts" at="panel" control:doc="${control(slide)}"/> <hson-part @:two lib="parts" at="panel" control:doc="${control(slide)}"/>/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
+    }}, page: {access:'shared', document:Hson.document`<html <head/> <body <hson-part @:one lib="parts" at="panel" control:doc="${control((slide).toHson())}"/> <hson-part @:two lib="parts" at="panel" control:doc="${control((slide).toHson())}"/>/>/>`} }, { authorizeProjection: ({requested}) => ({libraries:requested.libraries}) });
     try {
       const session = await locus.session.create({libraries:['page','parts']});
       const cut = session.now({html:'page'}); assert_cut(cut, 4);
       assert.match(cut.html, /title="Visible">0<\/b>/);
       assert.doesNotMatch(JSON.stringify(cut), /PRIVATE_ARGUMENT|slide:data|%\{slide/);
       await assert.rejects(locus.stage(w => {
-        w.doc.must('page').at([1]).asElement().insert(0, node(Hson.document`<hson-part lib="parts" at="panel" control:doc="${control(slide)}"/>`));
+        w.doc.must('page').at([1]).asElement().insert(0, node(Hson.document`<hson-part lib="parts" at="panel" control:doc="${control((slide).toHson())}"/>`));
         w.doc.must('page').at([1]).asElement().insert(1, node('<hson-part lib="parts" at="panel" control:doc="broken"/>'));
       }));
       assert.deepEqual(session.now({html:'page'}), cut);
-      await locus.stage(w => w.doc.must('page').at([1,0]).replace(node(Hson.document`<hson-part lib="parts" at="panel" control:doc="${control(Hson.data`<title "Next" no 3>`)}"/>`)));
+      await locus.stage(w => w.doc.must('page').at([1,0]).replace(node(Hson.document`<hson-part lib="parts" at="panel" control:doc="${control((Hson.data`<title "Next" no 3>`).toHson())}"/>`)));
       const next = session.now({html:'page'}); assert_cut(next, 4);
       assert.equal(next.libs.revision, cut.libs.revision + 1); assert.match(next.html, /title="Next">3<\/b>/);
       assert.match(cut.html, /title="Visible">0<\/b>/);

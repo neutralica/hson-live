@@ -81,8 +81,8 @@ check("authored any certifies canonical nested data but not document Hson", () =
     Hson.canonical`<args [] payload <>>`,
     Hson.canonical`<args [null, "x", -0, <nested [true, <empty <>>]>] payload <action "rename" details <names ["Ada", "Grace"]> empty []>>`,
   ];
-  for (const value of values) assert.equal(schema.certify(value), value);
-  assert.throws(() => schema.certify(Hson.canonical`<main/>`));
+  for (const value of values) assert.equal((schema.certify(Hson.data.fromSource(value))).toHson(), value);
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<main/>`)));
   assert.throws(() => Hson.canonical`<_hson_private true>`);
 });
 check("invalid root envelope rejects", () => assert.equal(compile_hson_schema('<type "document" content <>>').ok, false));
@@ -177,9 +177,9 @@ check("Deck four-way ref union compiles, certifies, and generates four alternati
     Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
   > content <content <blocks <array <ref "Block">>>>>`;
   const values = Hson.canonical`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" language "ts" source "const x = 1">, <kind "list" items ["a", "b"]>]>`;
-  assert.equal(schema.certify(values), values);
-  assert.throws(() => schema.certify(Hson.canonical`<blocks [<kind "unknown" text "body">]>`));
-  assert.throws(() => schema.certify(Hson.canonical`<blocks [<kind "code" source 1>]>`));
+  assert.equal((schema.certify(Hson.data.fromSource(values))).toHson(), values);
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<blocks [<kind "unknown" text "body">]>`)));
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<blocks [<kind "code" source 1>]>`)));
   assert.equal(Hson.schema.fromHson(schema.toHson()).toHson(), schema.toHson());
   const map = hsonLiveMap.fromLibraries({ blocks: { data: { blocks: [{ kind: "paragraph", text: "body" }] }, schema } });
   assert.deepEqual(map.data.must("blocks").snap(), { blocks: [{ kind: "paragraph", text: "body" }] });
@@ -347,10 +347,10 @@ check("runtime certification accepts every finite-domain member and rejects outs
     Hson.canonical`<phase "ready" turn "player2" score 2 zero -0 flag false>`,
     Hson.canonical`<phase "playing" turn null score 1 zero 0 flag false>`,
     Hson.canonical`<phase "finished" turn "player1" score 2 zero -0 flag true>`,
-  ]) assert.equal(schema.certify(candidate), candidate);
-  assert.throws(() => schema.certify(Hson.canonical`<phase "paused" turn "player1" score 1 zero 0 flag true>`));
-  assert.throws(() => schema.certify(Hson.canonical`<phase "lobby" turn "player3" score 1 zero 0 flag true>`));
-  assert.throws(() => schema.certify(Hson.canonical`<phase "lobby" turn "player1" score 3 zero 0 flag true>`));
+  ]) assert.equal((schema.certify(Hson.data.fromSource(candidate))).toHson(), candidate);
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<phase "paused" turn "player1" score 1 zero 0 flag true>`)));
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<phase "lobby" turn "player3" score 1 zero 0 flag true>`)));
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<phase "lobby" turn "player1" score 3 zero 0 flag true>`)));
 });
 check("bootstrap has a deterministic authored Hson machine representation", () => {
   const authored = encode_canonical_schema_graph_hson(HSON_SCHEMA_MVP_BOOTSTRAP);
@@ -406,11 +406,11 @@ check("refinement diagnostics retain exact authored source provenance", () => {
 check("refinement evaluation covers numeric, Unicode, literals, length, and uniqueness", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> glyph <string <len 1>> values <array <content "number" unique true minlen 1 maxlen 2>>>>`;
   const valid = Hson.canonical`<age 0 code "ID-7" glyph "😀" values [0, -0]>`;
-  assert.equal(schema.certify(valid), valid);
+  assert.equal((schema.certify(Hson.data.fromSource(valid))).toHson(), valid);
   const dynamic = hsonTransform.fromJson({ age: 12, code: "ID-7", glyph: "😀", values: [1, 2] }).toHson().serialize();
-  assert.equal(schema.certify(dynamic), dynamic);
+  assert.equal((schema.certify(Hson.data.fromSource(dynamic))).toHson(), dynamic);
   const invalidDynamic = hsonTransform.fromJson({ age: 12.5, code: "ID-7", glyph: "😀", values: [1, 1] }).toHson().serialize();
-  assert.throws(() => schema.certify(invalidDynamic));
+  assert.throws(() => schema.certify(Hson.data.fromSource(invalidDynamic)));
   for (const invalid of [
     Hson.canonical`<age 1.5 code "ID-7" glyph "😀" values [1]>`,
     Hson.canonical`<age -1 code "ID-7" glyph "😀" values [1]>`,
@@ -422,18 +422,18 @@ check("refinement evaluation covers numeric, Unicode, literals, length, and uniq
     Hson.canonical`<age 1 code "ID-7" glyph "é" values [1]>`,
     Hson.canonical`<age 1 code "ID-7" glyph "😀" values []>`,
     Hson.canonical`<age 1 code "ID-7" glyph "😀" values [1, 1]>`,
-  ]) assert.throws(() => schema.certify(invalid));
+  ]) assert.throws(() => schema.certify(Hson.data.fromSource(invalid)));
   const bounds: HsonSchema = Hson.schema`<type "data" content <n <number <over 0 max 2>>>>`;
-  assert.doesNotThrow(() => bounds.certify(Hson.canonical`<n 1>`));
-  assert.doesNotThrow(() => bounds.certify(Hson.canonical`<n 2>`));
-  assert.throws(() => bounds.certify(Hson.canonical`<n 0>`));
-  assert.throws(() => bounds.certify(Hson.canonical`<n 3>`));
+  assert.doesNotThrow(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 1>`)));
+  assert.doesNotThrow(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 2>`)));
+  assert.throws(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 0>`)));
+  assert.throws(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 3>`)));
   const empty: HsonSchema = Hson.schema`<type "data" content <s <string <len 0 prefix "" suffix "" contains "">> xs <array <content "number" len 0 unique true>>>>`;
-  assert.doesNotThrow(() => empty.certify(Hson.canonical`<s "" xs []>`));
+  assert.doesNotThrow(() => empty.certify(Hson.data.fromSource(Hson.canonical`<s "" xs []>`)));
 });
 check("alphabet composes conjunctively with length and literal string refinements", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <code <string <len 4 alphabet "ID-7" prefix "ID" suffix "7" contains "-">>>>`;
-  assert.doesNotThrow(() => schema.certify(Hson.canonical`<code "ID-7">`));
+  assert.doesNotThrow(() => schema.certify(Hson.data.fromSource(Hson.canonical`<code "ID-7">`)));
   for (const invalid of [
     Hson.canonical`<code "ID7">`,
     Hson.canonical`<code "ID--7">`,
@@ -441,34 +441,34 @@ check("alphabet composes conjunctively with length and literal string refinement
     Hson.canonical`<code "ID-X">`,
     Hson.canonical`<code "ID77">`,
     Hson.canonical`<code "ID_7">`,
-  ]) assert.throws(() => schema.certify(invalid));
+  ]) assert.throws(() => schema.certify(Hson.data.fromSource(invalid)));
   const ranged: HsonSchema = Hson.schema`<type "data" content <code <string <minlen 2 maxlen 4 alphabet "ab">>>>`;
-  for (const valid of [Hson.canonical`<code "aa">`, Hson.canonical`<code "abab">`]) assert.doesNotThrow(() => ranged.certify(valid));
-  for (const invalid of [Hson.canonical`<code "a">`, Hson.canonical`<code "ababa">`, Hson.canonical`<code "abc">`]) assert.throws(() => ranged.certify(invalid));
+  for (const valid of [Hson.canonical`<code "aa">`, Hson.canonical`<code "abab">`]) assert.doesNotThrow(() => ranged.certify(Hson.data.fromSource(valid)));
+  for (const invalid of [Hson.canonical`<code "a">`, Hson.canonical`<code "ababa">`, Hson.canonical`<code "abc">`]) assert.throws(() => ranged.certify(Hson.data.fromSource(invalid)));
   const empty: HsonSchema = Hson.schema`<type "data" content <onlyEmpty <string <alphabet "">>>>`;
-  assert.doesNotThrow(() => empty.certify(Hson.canonical`<onlyEmpty "">`));
-  assert.throws(() => empty.certify(Hson.canonical`<onlyEmpty "a">`));
+  assert.doesNotThrow(() => empty.certify(Hson.data.fromSource(Hson.canonical`<onlyEmpty "">`)));
+  assert.throws(() => empty.certify(Hson.data.fromSource(Hson.canonical`<onlyEmpty "a">`)));
   const impossible: HsonSchema = Hson.schema`<type "data" content <value <string <len 1 alphabet "">>>>`;
-  assert.throws(() => impossible.certify(Hson.canonical`<value "">`));
+  assert.throws(() => impossible.certify(Hson.data.fromSource(Hson.canonical`<value "">`)));
 });
 check("alphabet follows string iteration for Unicode, controls, repetition, and case", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value <string <alphabet "aé😀e\u0301\n\ud800">>>>`;
   for (const valid of ["", "aaa", "é", "😀", "e\u0301", "\n", "\ud800"]) {
     const candidate = hsonTransform.fromJson({ value: valid }).toHson().serialize();
-    assert.doesNotThrow(() => schema.certify(candidate), JSON.stringify(valid));
+    assert.doesNotThrow(() => schema.certify(Hson.data.fromSource(candidate)), JSON.stringify(valid));
   }
   for (const invalid of ["A", "É", "x", "\ud801"]) {
     const candidate = hsonTransform.fromJson({ value: invalid }).toHson().serialize();
-    assert.throws(() => schema.certify(candidate), JSON.stringify(invalid));
+    assert.throws(() => schema.certify(Hson.data.fromSource(candidate)), JSON.stringify(invalid));
   }
 });
 check("generic length plus alphabet expresses persisted QUID validation", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <quid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>>>`;
   for (const value of ["000000000", "012345678", "abcdefghj", "zzzzzzzzz"]) {
-    assert.doesNotThrow(() => schema.certify(hsonTransform.fromJson({ quid: value }).toHson().serialize()), value);
+    assert.doesNotThrow(() => schema.certify(Hson.data.fromSource(hsonTransform.fromJson({ quid: value }).toHson().serialize())), value);
   }
   for (const value of ["00000000", "0000000000", "!!!!!!!!a", "00000000i", "00000000l", "00000000o", "00000000u", "00000000A", "00000000😀"]) {
-    assert.throws(() => schema.certify(hsonTransform.fromJson({ quid: value }).toHson().serialize()), value);
+    assert.throws(() => schema.certify(Hson.data.fromSource(hsonTransform.fromJson({ quid: value }).toHson().serialize())), value);
   }
 });
 check("alphabet canonical Hson round trips repertoire order and Unicode units", () => {
@@ -488,10 +488,10 @@ check("alphabet canonical Hson round trips repertoire order and Unicode units", 
 check("runtime validation returns unchanged canonical identity", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <name "string" score "number">>`;
   const candidate = Hson.canonical`<name "Ada" score 37>`;
-  assert.equal(schema.certify(candidate), candidate);
-  assert.throws(() => schema.certify(Hson.canonical`<name "Ada" score "37">`));
+  assert.equal((schema.certify(Hson.data.fromSource(candidate))).toHson(), candidate);
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<name "Ada" score "37">`)));
   const dynamic = hsonTransform.fromJson({ name: "Ada", score: 37 }).toHson().serialize();
-  assert.equal(schema.certify(dynamic), dynamic);
+  assert.equal((schema.certify(Hson.data.fromSource(dynamic))).toHson(), dynamic);
 });
 
 testEvents.terminal("pass");

@@ -27,7 +27,6 @@ import {
   decode_hson_data_internal,
   encode_hson_data_internal,
   admit_data_input,
-  hson_data_text,
 } from "../data/hson-data.js";
 function ok<T>(value: T): LocusResult<T> {
   return { ok: true, value };
@@ -146,7 +145,7 @@ function decode_action_message<TActions extends LocusActionPayloads>(value: Read
   if (payloadPresent) {
     if (typeof value.payloadData !== "string") return fail("Locus action exact data must be a string.");
     try {
-      payload = hson_data_text(decode_hson_data_internal(value.payloadData));
+      payload = decode_hson_data_internal(value.payloadData);
     } catch (cause) {
       return fail("Locus action exact data is malformed or noncanonical.", { cause });
     }

@@ -62,7 +62,7 @@ check("named library Schemas retain construction evidence and expose tightening"
 
 check("Schema object owns certification and portable Schema data", () => {
   const schema: root.HsonSchema = root.Hson.schema`<type "data" content <age "number">>`;
-  const canonical = root.Hson.canonical`<age 37>`;
+  const canonical = root.Hson.data`<age 37>`;
   assert.equal(schema.certify(canonical), canonical);
   assert.throws(() => schema.certify(root.Hson.canonical`<age "37">`));
   assert.equal(typeof schema, "object");
@@ -73,15 +73,20 @@ check("Schema object owns certification and portable Schema data", () => {
   assert.equal(restored.toHson(), schema.toHson());
   assert.equal(restored.certify(canonical), canonical);
   assert.equal(root.Hson.schema.fromHson(` ${schema.toHson()}` as root.HsonSchemaData).toHson(), schema.toHson());
-  assert.equal(schema.certify(` <age 37>` as root.HsonCanonical), canonical);
+  assert.ok(schema.certify(root.Hson.data.fromSource(" <age 37>")).equals(canonical));
+  assert.equal(canonical.toHson(), root.Hson.canonical`<age 37>`);
+  assert.deepEqual(canonical.materialize(), { age: 37 });
+  assert.equal(root.ANY_DATA.certify("42").scalar(), "42");
+  assert.throws(() => schema.certify(Object.create(root.HsonDataValue.prototype)));
+  assert.ok(Object.is(root.ANY_DATA.certify(-0).scalar(), -0));
   for (const module of [root, narrow, map, transform]) assert.equal(Object.hasOwn(module, "validate"), false);
 });
 
-check("semantic values stay primitive while Hson is a noncallable namespace", () => {
+check("Data uses authentic carriers while source remains text and Hson is noncallable", () => {
   const declaration = readFileSync(new URL("../dist/hson-authoring.d.ts", import.meta.url), "utf8");
   assert.match(declaration, /export declare const Hson: Readonly/);
   assert.equal(typeof root.Hson.canonical`37`, "string");
-  assert.equal(typeof root.Hson.data`37`, "string");
+  assert.ok(root.Hson.data`37` instanceof root.HsonDataValue);
   assert.equal(typeof root.Hson.document`<main/>`, "string");
   assert.throws(() => (root.Hson as unknown as Function)(), TypeError);
   assert.equal(Object.hasOwn(String.prototype, "certify"), false);
@@ -104,7 +109,7 @@ check("lowercase aggregate remains frozen and noncallable", () => {
 });
 
 check("narrow authoring exports no aggregate or subsystem facade", () => {
-  assert.deepEqual(Object.keys(narrow).sort(), ["ANY_DATA", "ANY_DOCUMENT", "Hson", "TransformError", "is_transform_error", "read_transform_error_details"]);
+  assert.deepEqual(Object.keys(narrow).sort(), ["ANY_DATA", "ANY_DOCUMENT", "Hson", "HsonDataValue", "TransformError", "is_transform_error", "read_transform_error_details"]);
 });
 
 check("root facade exports preserve subsystem identities", () => {

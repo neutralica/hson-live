@@ -2,7 +2,7 @@ import { Hson, hsonLiveMap } from "hson-live";
 // @ts-expect-error JsonFromSchema is the sole public Schema value projection.
 import type { HsonSchemaValue } from "hson-live";
 import type {
-  HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonFromSchema, JsonFromSchema,
+  HsonAuthored, HsonCanonical, HsonData, HsonDataValue, HsonDocument, HsonSchemaData, HsonFromSchema, JsonFromSchema,
   LiveMapDocumentLibrary, LiveMapDataLibrary, LiveMapStagedWriter, Locus,
   HsonSchema,
 } from "hson-live";
@@ -10,19 +10,19 @@ import { SameShapeOneSchema, SameShapeTwoSchema, UserSchema } from "./fixtures/h
 import { PageSchema } from "./fixtures/hson-schema-document/out/producer.js";
 
 declare const canonical: HsonCanonical;
-declare const unproved: HsonData;
+declare const unproved: HsonDataValue;
 declare const document: HsonDocument;
-declare const proved: HsonData<typeof UserSchema>;
+declare const proved: HsonDataValue<typeof UserSchema>;
 declare const schemaData: HsonSchemaData;
-declare const firstProof: HsonData<typeof SameShapeOneSchema>;
+declare const firstProof: HsonDataValue<typeof SameShapeOneSchema>;
 const documentSchemaMode: HsonSchema<unknown, "document"> = PageSchema;
 void documentSchemaMode;
 declare const documentValueProjection: DocumentSchemaGraph<typeof PageSchema>;
 void documentValueProjection;
 
-const dataCanonical: HsonCanonical = unproved;
+const dataCanonical: HsonCanonical = unproved.toHson();
 const documentCanonical: HsonCanonical = document;
-const proofBase: HsonData = proved;
+const proofBase: HsonDataValue = proved;
 const schemaBase: HsonData = schemaData;
 const schemaCanonical: HsonCanonical = schemaData;
 const portable: HsonSchemaData = UserSchema.toHson();
@@ -39,9 +39,9 @@ const dataAsDocument: HsonDocument = unproved;
 // @ts-expect-error Document and data classifications differ.
 const documentAsData: HsonData = document;
 // @ts-expect-error Unproved data cannot impersonate one Schema certificate.
-const unprovedAsProved: HsonData<typeof UserSchema> = unproved;
+const unprovedAsProved: HsonDataValue<typeof UserSchema> = unproved;
 // @ts-expect-error Identically shaped Schemas retain separate identities.
-const crossIdentity: HsonData<typeof SameShapeTwoSchema> = firstProof;
+const crossIdentity: HsonDataValue<typeof SameShapeTwoSchema> = firstProof;
 // @ts-expect-error Arbitrary data does not define a validated Schema.
 const dataAsSchema: HsonSchemaData = unproved;
 // @ts-expect-error A document Schema cannot parameterize HsonData.
@@ -49,17 +49,17 @@ type WrongDataMode = HsonData<typeof PageSchema>;
 // @ts-expect-error A data Schema cannot parameterize HsonDocument.
 type WrongDocumentMode = HsonDocument<typeof UserSchema>;
 // @ts-expect-error String operations drop semantic proof.
-const sliced: HsonData = unproved.slice(0, 2);
+const sliced: HsonData = unproved.toHson().slice(0, 2);
 // @ts-expect-error String concatenation drops semantic proof.
-const appended: HsonData = unproved + "x";
+const appended: HsonDataValue = unproved.toHson() + "x";
 // @ts-expect-error A document Schema rejects data candidates statically.
 PageSchema.certify(unproved);
-// @ts-expect-error A data Schema rejects document candidates statically.
+// Data receivers treat every string literally; certification still validates the Schema.
 UserSchema.certify(document);
 // @ts-expect-error The Schema namespace, not Hson itself, owns certification.
 Hson.certify(UserSchema, canonical);
-// @ts-expect-error Semantic values are primitive strings, not public wrappers.
-unproved.toHson();
+const serialized: HsonData = unproved.toHson();
+void serialized;
 
 void neutralAsData; void dataAsDocument; void documentAsData; void unprovedAsProved;
 void crossIdentity; void dataAsSchema; void sliced; void appended;
@@ -82,7 +82,7 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
 type Assert<T extends true> = T;
 type DeckHson = HsonFromSchema<typeof UserSchema>;
 type DeckJson = JsonFromSchema<typeof UserSchema>;
-type DataRepresentation = Assert<Equal<DeckHson, HsonData<typeof UserSchema>>>;
+type DataRepresentation = Assert<Equal<DeckHson, HsonDataValue<typeof UserSchema>>>;
 type DocumentRepresentation = Assert<Equal<HsonFromSchema<typeof PageSchema>, HsonDocument<typeof PageSchema>>>;
 declare const deckJson: DeckJson;
 const deckHson: DeckHson = proved;

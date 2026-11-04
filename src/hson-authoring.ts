@@ -1,5 +1,6 @@
 import { admit_hson, admit_hson_source, reconstruct_hson_interpolated_template } from "./api/transform/hson-admission.js";
-import { ExactDataCarrier, hson_data_value } from "./api/data/hson-data.js";
+import { HsonDataValue, hson_data_value, hson_data_from_value } from "./api/data/hson-data.js";
+import { admit_canonical_hson_data_value } from "./api/data/hson-data-hson.js";
 import { ExactDocumentCarrier } from "./api/document/hson-document.js";
 import { qualify_authored_document_source, assemble_authored_document, serialize_authored_document } from "./api/document/hson-authored.js";
 import { ELEM_TAG, STR_TAG } from "./core/constants.js";
@@ -17,7 +18,7 @@ import { is_transform_error } from "./core/errors.js";
 import { is_Node } from "./core/node-guards.js";
 import { HsonSchema } from "./api/schema/hson-schema.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
-import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
+import type { HsonAuthored, HsonCanonical, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
 import type { Tokens } from "./api/transform/token.types.js";
 
 type Substitution = string | number | boolean | null;
@@ -70,7 +71,7 @@ function interpolation_values(
         });
       } else if (mode === "data" || token.context === "data-value") {
         values[token.slot] = [projected_value_to_hson_node(
-          hson_data_value(ExactDataCarrier.fromHson(admit_hson_source(candidate))),
+          hson_data_value(hson_data_from_value(admit_canonical_hson_data_value(admit_hson_source(candidate)))),
         )];
       } else {
         const semantic = detach_hson_root_value(parse_hson(candidate));
@@ -107,14 +108,14 @@ function canonical(strings: TemplateStringsArray, ...substitutions: readonly Sub
   return serialize_hson(detach_hson_root_value(root));
 }
 
-function data_tag(strings: TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonData {
+function data_tag(strings: TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonDataValue {
   const template = reconstruct_hson_interpolated_template(strings, substitutions);
-  if (template.slots.length === 0) return ExactDataCarrier.fromHson(admit_hson_source(template.source)).toHson() as HsonData;
+  if (template.slots.length === 0) return hson_data_from_value(admit_canonical_hson_data_value(admit_hson_source(template.source)));
   const tokens = tokenize_hson(template.source, 0, undefined, template.slots, "data", substitutions);
   const values = interpolation_values(template.source, tokens, substitutions, "data");
   try {
     const root = parse_hson_interpolated_template(template.source, "data", values, tokens);
-    return ExactDataCarrier.fromHson(serialize_hson(detach_hson_root_value(root))).toHson() as HsonData;
+    return hson_data_from_value(admit_canonical_hson_data_value(serialize_hson(detach_hson_root_value(root))));
   } catch (cause) {
     if (is_transform_error(cause)) throw cause;
     _throw_transform_err("composed Hson.data value failed admission", "Hson.data", undefined, cause,
@@ -146,18 +147,8 @@ function schema_tag(strings: TemplateStringsArray): HsonSchema {
 export const Hson = Object.freeze({
   canonical,
   data: Object.freeze(Object.assign(data_tag, {
-    from(value: unknown): HsonData {
-      return ExactDataCarrier.from(value).toHson() as HsonData;
-    },
-    fromHson(source: HsonCanonical): HsonData {
-      return ExactDataCarrier.fromHson(source).toHson() as HsonData;
-    },
-    materialize(value: HsonData): import("./core/types.js").JsonValue {
-      return ExactDataCarrier.fromHson(value).materialize();
-    },
-    entries(value: HsonData): readonly (readonly [string, HsonData])[] | undefined {
-      return ExactDataCarrier.fromHson(value).entries()?.map(([name, item]) => [name, item.toHson() as HsonData] as const);
-    },
+    from: HsonDataValue.from,
+    fromSource: HsonDataValue.fromSource,
   })),
   document: Object.freeze(Object.assign(document_tag, {
     fromHson(source: HsonCanonical): HsonDocument {
@@ -186,3 +177,6 @@ export type {
 } from "./core/types.js";
 export { TransformError, is_transform_error, read_transform_error_details } from "./core/errors.js";
 export type { TransformErrorDetails, TransformErrorRelated, TransformErrorSource } from "./core/errors.js";
+
+export { HsonDataValue } from "./api/data/hson-data.js";
+export type { HsonDataInput } from "./api/data/hson-data.js";

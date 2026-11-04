@@ -32,10 +32,10 @@ export function run_schema_diagnostic_cases(): void {
   for (const strings of rejected) assert.throws(() => Reflect.apply(Hson.data, Hson, [strings]),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "HSON_TAGGED_TEMPLATE_REQUIRED");
   const raw = Hson.data`<name "\\n">`;
-  assert.deepEqual(Hson.data.materialize(raw), { name: "\\n" });
-  assert.deepEqual(Hson.data.materialize(Hson.data`// \n \u0041 \0
-<name "Ada">`), { name: "Ada" });
-  assert.deepEqual(Hson.data.materialize(Hson.data`<name "\n">`), { name: "\n" });
+  assert.deepEqual((raw).materialize(), { name: "\\n" });
+  assert.deepEqual((Hson.data`// \n \u0041 \0
+<name "Ada">`).materialize(), { name: "Ada" });
+  assert.deepEqual((Hson.data`<name "\n">`).materialize(), { name: "\n" });
   const schema: HsonSchema = Hson.schema`<type "data" defs <
     Title <content <kind <exact "title">>>
     Code <content <kind <exact "code"> language "string" body "string">>
@@ -68,11 +68,11 @@ export function run_schema_diagnostic_cases(): void {
     assert.equal(error.issues[0]?.expected, "string"); assert.equal(error.issues[0]?.received, "missing");
     return true;
   });
-  const staticFailure = evaluate_static_schema_candidate(compiled, { source: candidate, family: "data" });
+  const staticFailure = evaluate_static_schema_candidate(compiled, { source: candidate.toHson(), family: "data" });
   assert.equal(staticFailure.kind, "invalid");
   if (staticFailure.kind === "invalid") {
     assert.deepEqual(staticFailure.issue.path, ["items", 0, "language"]);
-    assert.equal(candidate.slice(staticFailure.range?.start, staticFailure.range?.end), ">");
+    assert.equal((candidate).toHson().slice(staticFailure.range?.start, staticFailure.range?.end), ">");
   }
 
   const multiKey: HsonSchema = Hson.schema`<type "data" content <value <union [

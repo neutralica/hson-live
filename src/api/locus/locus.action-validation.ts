@@ -3,7 +3,7 @@ import type {
   LocusSchemaResult,
   LocusValidator,
 } from "../../types/locus.types.js";
-import { ExactDataCarrier, admit_data_input, hson_data_text } from "../data/hson-data.js";
+import { type HsonDataValue, admit_data_input } from "../data/hson-data.js";
 import { hson_data_value } from "../data/hson-data.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
@@ -31,8 +31,8 @@ export function decode_locus_schema_value<TValue>(
 
 export function decode_locus_action_payload<TValue>(
   schema: HsonSchema | LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
-  value: ExactDataCarrier | undefined,
-): LocusSchemaResult<ExactDataCarrier | undefined> {
+  value: HsonDataValue | undefined,
+): LocusSchemaResult<HsonDataValue | undefined> {
   if (!schema) return { ok: true, value };
   if (schema instanceof HsonSchemaHandle) {
     if (value === undefined) return { ok: false, issues: ["Hson Schema requires present action data."] };
@@ -47,7 +47,7 @@ export function decode_locus_action_payload<TValue>(
           `${issue.code} at ${JSON.stringify(issue.path)}`
         )) };
   }
-  const result = schema(value === undefined ? undefined : hson_data_text(value));
+  const result = schema(value === undefined ? undefined : value);
   if (is_schema_result<TValue>(result)) {
     if (!result.ok) return result;
     if (result.value === undefined) return { ok: true, value: undefined };

@@ -95,7 +95,7 @@ check("required references and unrelated errors stay strict beside optional abse
     '<p hson:part data:d="%{data}" title="%{optional?}:^{d.missing}"/>',
   ]) {
     const map = fixture(body);
-    assert.throws(() => map.addLibraries({ bad: { document: map.parts.components.x.write({ data: '<>' }) } }), /Missing Part path/);
+    assert.throws(() => map.addLibraries({ bad: { document: map.parts.components.x.write({ data: Hson.data.fromSource('<>') }) } }), /Missing Part path/);
     assert.equal(map.doc('bad'), undefined);
   }
   for (const ref of ['%{x??}', '%{x?bad}', '^{d?.x}', '#{x?}', '%{x.path?}']) {
@@ -113,7 +113,7 @@ check("conditional Data demand defers empty iterators under optional roots", () 
   assert.throws(() => map.addLibraries({ empty: { document: empty } }), /exactly one/);
   const nonempty = map.parts.components.x.write({ rows: Hson.data.from([1]) });
   assert.throws(() => map.addLibraries({ bad: { document: nonempty } }), /missing Data input payload/);
-  assert.doesNotThrow(() => map.parts.components.x.write({ rows: Hson.data.from([1]), payload: '<title "yes">' }));
+  assert.doesNotThrow(() => map.parts.components.x.write({ rows: Hson.data.from([1]), payload: Hson.data.fromSource('<title "yes">') }));
   const requiredRoot = fixture(body.replace(' part:optional', ''));
   assert.throws(() => requiredRoot.parts.components.x.write({ rows: Hson.data.from([]) }), /missing Data input payload/);
   for (const suffix of ['"%{scalar}"', '<hson-part ^{control}/>']) {
@@ -129,7 +129,7 @@ check("nested for and per ancestry and shadowed aliases retain lexical demand", 
   const map = fixture(body);
   assert.throws(() => map.addLibraries({ empty: { document: map.parts.components.x.write({ rows: Hson.data.from([]) }) } }), /exactly one/);
   // The root model declaration is shadowed; the inner value is the row's value.
-  map.addLibraries({ live: { document: map.parts.components.x.write({ rows: Hson.data.from([{ a: false }]), payload: '<unused 0>' }) } });
+  map.addLibraries({ live: { document: map.parts.components.x.write({ rows: Hson.data.from([{ a: false }]), payload: Hson.data.fromSource('<unused 0>') }) } });
   assert.equal(map.doc.must('live').render(), complete_html('<main><section><b>false</b></section></main>'));
   const nested = '<main hson:part part:optional data:rows="%{rows}" data:model="%{payload}" <section for:row="^{rows}" <b per:key:value="^{model}" "^{value}"/>/>/>';
   const other = fixture(nested);
@@ -150,11 +150,15 @@ check("omitted arguments still prove names and representations", () => {
     assert.equal(map.doc('bad'), undefined);
   }
   const map = fixture('<main hson:part data:d="%{payload?}" doc:c="%{content?}" "^{d?}" <hson-part ^{c?}/>/>' );
-  const malformed: readonly Readonly<Record<string, string>>[] = [{ payload: '<broken' }, { content: '<broken' }, { content: '' }];
+  const malformed: readonly Readonly<Record<string, string>>[] = [{ content: '<broken' }, { content: '' }];
   for (const input of malformed) {
     const authored = map.parts.components.x.write(input);
     assert.throws(() => map.addLibraries({ bad: { document: authored } }));
   }
+  assert.throws(() => map.parts.components.x.write({ payload: Hson.data.fromSource('<broken') }));
+  const literal = map.parts.components.x.write({ payload: '<broken' });
+  map.addLibraries({ literal: { document: literal } });
+  assert.match(map.doc.must('literal').render(), /&lt;broken/);
   let reads = 0;
   assert.throws(() => map.parts.components.x.write({ get payload() { reads++; return '<>'; } }));
   assert.equal(reads, 0);

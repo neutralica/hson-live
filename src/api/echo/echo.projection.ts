@@ -53,7 +53,7 @@ export function compose_client_portable_aggregate_internal(
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
     names.add(initializer.name);
-    inputs.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
+    inputs.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.quads.length ? { quads: initializer.quads } : {}), ...(initializer.scopes === undefined ? {} : { scopes: initializer.scopes }), ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
     if (initializer.css !== undefined) css[initializer.name] = initializer.css;
   }
   if (inputs.length === 0) {

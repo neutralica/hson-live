@@ -5,7 +5,7 @@
  * contracts are owned by their explicit package subpaths.
  */
 
-export { Hson } from "./hson-authoring.js";
+export { Hson, HsonDataValue, type HsonDataInput } from "./hson-authoring.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
 export type {
   AuthorityProjectionSnapshot,

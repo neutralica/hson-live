@@ -39,9 +39,9 @@ check("family tops use ordinary canonical Schema and generated evidence", () => 
 
 check("data top certifies every supported data family and rejects invalid material", () => {
   for (const candidate of [Hson.data`<x 1>`, Hson.data`[1, true, null]`, Hson.data`"hello"`, Hson.data`-0`, Hson.data`true`, Hson.data`null`]) {
-    assert.equal(ANY_DATA.certify(candidate), candidate);
+    assert.equal((ANY_DATA.certify(candidate)).toHson(), (candidate).toHson());
   }
-  assert.throws(() => ANY_DATA.certify('<main/>' as never));
+  assert.equal(ANY_DATA.certify("<main/>").scalar(), "<main/>");
   assert.throws(() => ANY_DATA.certify(undefined as never));
 });
 
@@ -64,7 +64,7 @@ check("document top accepts broad content while explicit empty and tag narrow", 
 
 check("primitive data roots admit, expose scalar handles, commit, and round trip", () => {
   const cases = [
-    { data: '"hello"', mode: "data-string", value: "hello", next: 'world' },
+    { data: 'hello', mode: "data-string", value: "hello", next: 'world' },
     { data: 3, mode: "data-number", value: 3, next: 4 },
     { data: true, mode: "data-boolean", value: true, next: false },
     { data: null, mode: "data-null", value: null, next: null },

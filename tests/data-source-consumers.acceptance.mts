@@ -4,7 +4,7 @@ import { repository_typescript_worker } from "./helpers/repository-typescript-wo
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "data-source-consumers", title: "Bilingual Data admission at existing consumer boundaries",
+  id: "data-source-consumers", title: "Public Data values and explicit bilingual source admission",
   category: "LiveMap", runtime: "node", tags: Object.freeze(["data", "admission", "parts", "schema", "actions", "interactions", "worker"]),
 });
 const events = create_test_event_emitter("data-source-consumers");

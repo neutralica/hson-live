@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../../src/index.js";
 import type { LiveMap, LivePath } from "../../src/types/livemap.types.js";
 import type { JsonValue } from "../../src/core/types.js";
-import { ExactDataCarrier, hson_data_text_from_value } from "../../src/api/data/hson-data.js";
+import { HsonDataValue, hson_data_text_from_value } from "../../src/api/data/hson-data.js";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.js";
 import { decode_hosted_root } from "../../src/api/livemap/livemap.hosted.js";
 import { make_livemap_staged_writer } from "../../src/api/livemap/livemap.staged.js";
@@ -214,7 +214,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
     assert.ok(is_ordered_projected_object(carrier));
     const forged = Object.freeze({ ...carrier });
     const rejected: unknown[] = [new Date(), Object.create({ inherited: true }), accessor, [1, , 2], cycle, NaN, Infinity, -Infinity,
-      forged, Object.create(ExactDataCarrier.prototype), toJSON, coercion, { $_meta: { quid: "000000001" } }, { _hson_root: {} }, { nested: { $_future: 1 } }];
+      forged, Object.create(HsonDataValue.prototype), toJSON, coercion, { $_meta: { quid: "000000001" } }, { _hson_root: {} }, { nested: { $_future: 1 } }];
     for (const input of rejected) for (const staged of [false, true]) {
       const map = create(), owner = internal_livemap_aggregate_authority(map);
       const dataIdentity = acquire_projected_identity(state(map), ["value"]);

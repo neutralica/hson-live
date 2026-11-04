@@ -1,3 +1,4 @@
+import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
 import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
@@ -271,9 +272,9 @@ type LiveMapMutationCandidateTuple<TValue extends readonly unknown[]> =
     : [];
 
 /** Remove `undefined` from write positions, accepting detached reads as proposals. */
-export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
+export type LiveMapWriteValue<TValue> = HsonDataValue | ([Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
   ? Exclude<LiveMapMutationCandidateValue<TValue> | TValue, undefined>
-  : JsonValue;
+  : JsonValue);
 
 export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
 /**
@@ -283,11 +284,11 @@ export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWrite
  * shallow object patch shape because runtime `set` preserves unspecified object
  * siblings. Use `replace` for exact object replacement.
  */
-export type LiveMapSetValue<TValue> = NonNullable<LiveMapMutationCandidateValue<TValue>> extends readonly unknown[]
+export type LiveMapSetValue<TValue> = HsonDataValue | (NonNullable<LiveMapMutationCandidateValue<TValue>> extends readonly unknown[]
   ? LiveMapWriteValue<TValue>
   : NonNullable<LiveMapMutationCandidateValue<TValue>> extends object
   ? LiveMapObjectSetManyValues<TValue>
-  : LiveMapWriteValue<TValue>;
+  : LiveMapWriteValue<TValue>);
 export type LiveMapPathSetValue<TValue, TPath extends LivePath> = LiveMapSetValue<LiveMapPathValue<TValue, TPath>>;
 /** Object patch shape accepted by `setMany` at a data path. */
 export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
@@ -1135,8 +1136,8 @@ type InternalLocationFlagsApi<TDescriptor> =
 export type LiveMapDataLibraryInput<
   TSchema extends HsonSchema<unknown, HsonSchemaMode> = HsonSchema<unknown, HsonSchemaMode>,
 > = Readonly<{
-  /** A JSON value or JSON source text for this named data library. */
-  data: JsonValue | string;
+  /** A JavaScript Data value or an authenticated HsonDataValue. Strings are literal Data. */
+  data: HsonDataInput;
   schema: TSchema;
   document?: never;
   parts?: never;
@@ -1152,7 +1153,7 @@ export type LiveMapDocumentLibraryInput<
   schema: TSchema;
   data?: never;
   parts?: never;
-  stylesheet?: string;
+  stylesheet?: string | import("../core/style.types.js").CssMap;
 }>;
 
 /** Established data, document, or intrinsically governed Parts input. */
@@ -1182,6 +1183,10 @@ export type LiveMapLibraryDefinition =
   | Readonly<Omit<LiveMapDocumentLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>;
 
 export type LiveMapDefinitions = Readonly<Record<string, LiveMapLibraryDefinition>>;
+/** Inference candidates are checked recursively at every public admission. */
+export type LiveMapDefinitionCandidates = Readonly<Record<string,
+  | Exclude<LiveMapLibraryDefinition, { data: unknown }>
+  | (Omit<Extract<LiveMapLibraryDefinition, { data: unknown }>, "data"> & { readonly data: unknown })>>;
 
 /** Inferred required keys distinguish presence from optional-never annotations in either compiler mode. */
 type LiveMapPartSchemaCheck<TInput> = [Extract<TInput, { readonly schema: unknown }>] extends [never] ? unknown : never;
@@ -1200,12 +1205,16 @@ export type LiveMapPartsDefinitionsCheck<TDefinitions> = {
   readonly [TName in keyof TDefinitions]: LiveMapPartsDefinitionCheck<TDefinitions[TName]>;
 };
 
+export type LiveMapDocumentStylesheetCheck<T> = T extends { readonly stylesheet: infer S }
+  ? { readonly stylesheet: S & (S extends string ? unknown : import("../core/style.types.js").CssMapInputCheck<S>) } : unknown;
+
 /** Reject required contradictory family fields even without exact optional properties. */
 type RequiredDefinitionKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
 type LiveMapDefinitionValidity<T, Metadata extends string> = T extends unknown
   ? (Exclude<keyof T, "data" | "document" | "parts" | "schema" | "stylesheet" | Metadata> extends never ? unknown : never)
     & ("access" extends Metadata ? T extends { access: infer A } ? [A] extends ["private" | "shared"] ? unknown : never : unknown : unknown)
-    & LiveMapPartsDefinitionCheck<T> & (
+    & (T extends { data: infer V } ? { readonly data: import("../api/data/hson-data.js").HsonDataInputCheck<V> } : unknown)
+    & LiveMapPartsDefinitionCheck<T> & LiveMapDocumentStylesheetCheck<T> & (
     T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "document" | "schema" | "stylesheet"> extends never ? unknown : never
     : T extends { data: unknown } ? Extract<RequiredDefinitionKeys<T>, "document" | "parts" | "stylesheet"> extends never ? unknown : never
     : T extends { document: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "parts"> extends never ? unknown : never
@@ -1219,7 +1228,12 @@ export type LiveMapDefinitionCheck<T, Metadata extends string = never> = 0 exten
 export type LiveMapDefinitionsCheck<T, Metadata extends string = never> = { readonly [K in keyof T]: LiveMapDefinitionCheck<T[K], Metadata> };
 
 /** Only keys named by the type itself establish static topology. */
-export type LiveMapKnownDefinitions<TLibraries extends LiveMapDefinitions> = LibraryLiteralDefinitions<TLibraries>;
+type AdmittedDefinition<T> = T extends LiveMapLibraryDefinition ? T
+  : T extends { data: infer V } ? Omit<T, "data"> & { readonly data: V & HsonDataInput } : never;
+export type LiveMapAdmittedDefinitions<TLibraries extends LiveMapDefinitionCandidates> = {
+  readonly [K in keyof TLibraries]: AdmittedDefinition<TLibraries[K]>;
+};
+export type LiveMapKnownDefinitions<TLibraries extends LiveMapDefinitionCandidates> = LibraryLiteralDefinitions<LiveMapAdmittedDefinitions<TLibraries>>;
 
 /** The shared construction and runtime-admission definition grammar. */
 export type LiveMapInput = LiveMapDefinitions;
@@ -1938,6 +1952,10 @@ export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
     definitions: TDefinitions & LiveMapDefinitionsCheck<NoInfer<TDefinitions>> & (Extract<LibraryCertainNames<LiveMapKnownDefinitions<TDefinitions>>, LibraryCertainNames<LiveMapKnownDefinitions<TLibraries>>> extends never
       ? unknown : never),
   ): LiveMapLibraryAdmission<TDefinitions>;
+  addLibraries<const TDefinitions extends LiveMapDefinitionCandidates>(
+    definitions: TDefinitions & LiveMapDefinitionsCheck<NoInfer<TDefinitions>> & (Extract<LibraryCertainNames<LiveMapKnownDefinitions<TDefinitions>>, LibraryCertainNames<LiveMapKnownDefinitions<TLibraries>>> extends never
+      ? unknown : never),
+  ): LiveMapLibraryAdmission<LiveMapAdmittedDefinitions<TDefinitions>>;
   /** Replay one portable local library-add commit at its recorded base revision. */
   replay: (commit: LiveMapCommit) => LiveMapCommit;
   /** Capture one detached semantic snapshot of the complete public and hidden registry. */
@@ -2256,11 +2274,11 @@ export type LiveMapObjectValue<TValue, TKey extends string> = TKey extends keyof
 export type LiveMapObjectWriteValue<TValue, TKey extends LiveMapObjectKey<TValue>> = LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
 export type LiveMapObjectSetValue<TValue, TKey extends LiveMapObjectKey<TValue>> = LiveMapSetValue<LiveMapObjectShape<TValue>[TKey]>;
 
-export type LiveMapObjectSetManyValues<TValue> = string extends LiveMapObjectKey<TValue>
+export type LiveMapObjectSetManyValues<TValue> = HsonDataValue | (string extends LiveMapObjectKey<TValue>
   ? LiveMapSetManyValues
   : Readonly<{
-    [TKey in LiveMapObjectKey<TValue>]?: LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
-  }>;
+    [TKey in LiveMapObjectKey<TValue>]?: Exclude<LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>, HsonDataValue>;
+  }>);
 
 export type LiveMapObjectEntry<TValue> = {
   [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
@@ -2415,12 +2433,12 @@ export type LiveMapPathArrayApi<
   at: (index: number) => LiveMapArrayItem<TValue>;
   first: () => LiveMapArrayItem<TValue>;
   last: () => LiveMapArrayItem<TValue>;
-  includes: (value: JsonValue) => boolean;
-  indexOf: (value: JsonValue) => number;
+  includes: (value: HsonDataInput) => boolean;
+  indexOf: (value: HsonDataInput) => number;
   push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
-  pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => TCommit;
+  pushMany: (values: HsonDataValue | readonly NoInfer<Exclude<LiveMapArrayWriteItem<TValue>, HsonDataValue>>[]) => TCommit;
   unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
-  unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => TCommit;
+  unshiftMany: (values: HsonDataValue | readonly NoInfer<Exclude<LiveMapArrayWriteItem<TValue>, HsonDataValue>>[]) => TCommit;
   pop: () => TCommit;
   shift: () => TCommit;
   clear: () => TCommit;
@@ -2433,8 +2451,8 @@ export type LiveMapPathArrayApi<
   replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
   move: (fromIndex: number, toIndex: number) => TCommit;
   unique: () => TCommit;
-  removeValue: (value: JsonValue) => TCommit;
-  removeAll: (value: JsonValue) => TCommit;
+  removeValue: (value: HsonDataInput) => TCommit;
+  removeAll: (value: HsonDataInput) => TCommit;
 }>;
 
 export type HsonSchemaIssueCode =

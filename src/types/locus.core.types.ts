@@ -16,7 +16,7 @@ import type {
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { LibraryCut, LibraryCommits } from "./governor.types.js";
-import type { HsonData } from "../api/transform/transform.types.js";
+import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -66,14 +66,14 @@ export type LocusActionContext<
 }>;
 
 export type LocusActionHandler<
-  TPayload extends JsonValue | undefined = JsonValue | undefined,
+  TPayload extends HsonDataInput | undefined = HsonDataInput | undefined,
   TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = (
   ctx: LocusActionContext<TMap>,
-  payload: HsonData | undefined,
-  message: LocusClientActionMessage<TActions>,
-) => unknown | void | Promise<unknown | void>;
+  payload: HsonDataValue | undefined,
+  message: Omit<LocusClientActionMessage<TActions>, "payload"> & Readonly<{ payload?: HsonDataValue }>,
+) => HsonDataInput | void | Promise<HsonDataInput | void>;
 
 export type LocusActions<
   TMap extends LiveMap = LiveMap,
@@ -114,16 +114,18 @@ export type LocusRegistryOptions<
 /** Flat authority Library definition shared by construction and atomic admission. */
 export type LocusLibraryDefinition = LiveMapLibraryDefinition & Readonly<{ access?: "private" | "shared" }>;
 export type LocusDefinitions = Readonly<Record<string, LocusLibraryDefinition>>;
+export type LocusDefinitionCandidates = Readonly<Record<string,
+  import("./livemap.types.js").LiveMapDefinitionCandidates[string] & { readonly access?: "private" | "shared" }>>;
 
 /** Client-local seeds remain separate from the authority inventory. */
 export type LocusLocalLibraryDefinition = Readonly<{ name: string } & (
   | { initializer: LiveMapLibraryDefinition; stylesheet?: never }
-  | { initializer: Extract<LiveMapLibraryDefinition, { document: unknown }>; stylesheet: string }
+  | { initializer: Extract<LiveMapLibraryDefinition, { document: unknown }>; stylesheet: string | import("../core/style.types.js").CssMap }
 )>;
 
 type InvalidLocalEntry<T> = T extends { initializer: infer D }
   ? Exclude<keyof T, "name" | "initializer" | "stylesheet"> extends never
-    ? D extends LiveMapDefinitionCheck<D> ? never : T
+    ? D extends LiveMapDefinitionCheck<D> ? T extends import("./livemap.types.js").LiveMapDocumentStylesheetCheck<T> ? never : T : T
     : T
   : never;
 export type LocusLocalEntriesCheck<TEntries> = TEntries extends readonly (infer TEntry)[]
@@ -140,7 +142,7 @@ export type LocusLocalNameCheck<D, L> =
 
 /** Existing owner configuration, separate from the flat authority definitions. */
 export type LocusDefinitionOptions<
-  D extends LocusDefinitions = LocusDefinitions,
+  D extends LocusDefinitionCandidates = LocusDefinitions,
   A extends LocusActionPayloads = LocusActionPayloads,
   L extends readonly (LocusLocalLibraryDefinition | undefined)[] = readonly (LocusLocalLibraryDefinition | undefined)[],
 > = LocusConfigurationOptions<LiveMap<LiveMapKnownDefinitions<D>>, A> & Readonly<{
@@ -270,14 +272,14 @@ export type EchoActionRequest<
 > = Readonly<{
   requestId: LocusActionRequestId;
   name: TName;
-  payload?: HsonData | TActions[TName];
+  payload?: HsonDataValue | TActions[TName];
 }>;
 
 export type EchoActionPromise<
   TActions extends LocusActionPayloads = LocusActionPayloads,
   TName extends keyof TActions & string = keyof TActions & string,
 > = Promise<LocusClientActionResult> & Readonly<{
-  request: EchoActionRequest<TActions, TName>;
+  request: EchoActionRequest<TActions, TName> & Readonly<{ payload?: HsonDataValue }>;
 }>;
 
 export type LocusEventListener = (message: LocusServerEventMessage) => void;
@@ -287,8 +289,8 @@ export type EchoActionFn<
 > = <TName extends keyof TActions & string>(
   name: TName,
   ...args: undefined extends TActions[TName]
-    ? [payload?: Exclude<TActions[TName], undefined> | HsonData]
-    : [payload: TActions[TName] | HsonData]
+    ? [payload?: Exclude<TActions[TName], undefined> | HsonDataValue]
+    : [payload: TActions[TName] | HsonDataValue]
 ) => EchoActionPromise<TActions, TName>;
 
 export type EchoRetryActionFn<
@@ -462,7 +464,7 @@ export type Locus<
   readonly parts: LibraryFamilySelector<LiveMapEffectiveDefinitions<TMap>, "locus", "parts">;
   cut: LibraryCut;
   commits: LibraryCommits;
-  admit: <const D extends LocusDefinitions>(
+  admit: <const D extends LocusDefinitionCandidates>(
     definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
   ) => Promise<void>;
   readonly logicalMapId: LocusLogicalMapId;
@@ -495,7 +497,7 @@ export interface LocusPersistenceAdapter {
 }
 
 export type LocusResumeOptions<
-  D extends LocusDefinitions = LocusDefinitions,
+  D extends LocusDefinitionCandidates = LocusDefinitions,
   A extends LocusActionPayloads = LocusActionPayloads,
   L extends readonly (LocusLocalLibraryDefinition | undefined)[] = readonly (LocusLocalLibraryDefinition | undefined)[],
 > = LocusDefinitionOptions<D, A, L> & Readonly<{

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,11 +18,11 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const temporary = mkdtempSync(join(tmpdir(), "hson-flat-library-definitions-"));
 try {
   const compiler = join(root, "node_modules/typescript/bin/tsc");
-  execFileSync(process.execPath, [compiler, "-p", join(root, "tsconfig.json"), "--outDir", join(temporary, "src"),
+  execFileSync(process.execPath, [compiler, "-p", join(root, "tsconfig.json"), "--outDir", join(temporary, "dist"),
     "--emitDeclarationOnly", "--declarationMap", "false"], { stdio: "inherit" });
   mkdirSync(join(temporary, "tests"));
-  cpSync(join(root, "tests/flat-library-definitions.types.ts"), join(temporary, "tests/flat-library-definitions.types.ts"));
-  writeFileSync(join(temporary, "package.json"), '{"type":"module"}\n');
+  writeFileSync(join(temporary, "tests/flat-library-definitions.types.ts"), readFileSync(join(root, "tests/flat-library-definitions.types.ts"), "utf8").replaceAll("../src/", "../dist/"));
+  cpSync(join(root, "package.json"), join(temporary, "package.json"));
   symlinkSync(join(root, "node_modules"), join(temporary, "node_modules"), "dir");
   for (const exact of ["false", "true"]) {
     execFileSync(process.execPath, [compiler, "--noEmit", "--strict", "--noUncheckedIndexedAccess",

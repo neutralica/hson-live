@@ -138,7 +138,7 @@ export async function collection_capability_cases() {
   updatePath.array.clear();
   for (const action of [() => updatePath.array.pop(), () => updatePath.array.shift(), () => updatePath.array.first(), () => updatePath.array.at(0)]) assert.throws(action);
 
-  const ordered = hsonLiveMap.fromLibraries({ record: { data: '{"10":10,"2":2,"a":1}' } });
+  const ordered = hsonLiveMap.fromLibraries({ record: { data: Hson.data.fromSource('{"10":10,"2":2,"a":1}') } });
   const object = ordered.data.must("record").at([]).asObject()!.object;
   assert.deepEqual(object.keys(), ["10", "2", "a"]);
   assert.deepEqual(object.entries().map(([key]) => key), ["10", "2", "a"]);

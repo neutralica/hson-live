@@ -59,13 +59,13 @@ transports retain their existing capacity limits.
 
 ## Hson authoring and semantic strings
 
-`Hson` is a frozen namespace with four member tags. Canonical and Data return canonical primitive strings; Document returns authored `HsonAuthored` source for governed admission, including authored QUAD declarations. Schema returns an immutable Schema object. Authored source is not itself canonical Document proof or runtime identity authority.
+`Hson` is a frozen namespace with four member tags. Canonical returns canonical text; Data returns an immutable authenticated `HsonDataValue`; Document returns authored `HsonAuthored` source for governed admission, including authored QUAD declarations. Schema returns an immutable Schema object. Authored source is not itself canonical Document proof or runtime identity authority.
 
 ```ts
-import { Hson, type HsonAuthored, type HsonCanonical, type HsonData, type HsonDocument } from "hson-live/hson";
+import { Hson, type HsonAuthored, type HsonCanonical, type HsonDataValue, type HsonDocument } from "hson-live/hson";
 
 const canonical: HsonCanonical = Hson.canonical`<main/>`;
-const data: HsonData = Hson.data`<count -0>`;
+const data: HsonDataValue = Hson.data`<count -0>`;
 const authored: HsonAuthored = Hson.document`<main/><aside/>`;
 const document: HsonDocument = Hson.document.fromHson(Hson.canonical`<main/><aside/>`);
 const schema = Hson.schema`<type "data" content <count "number">>`;
@@ -81,17 +81,23 @@ Interpolation boundaries are semantic boundaries and never fuse into surrounding
 
 ### Data
 
-`HsonData` preserves exact canonical order, signed zero, nested values, and valid names such as `__proto__`. It is already Hson text and has no instance methods.
+`HsonDataValue` is the nominal, immutable Data representation. It retains exact member order, signed zero, nested values, and valid names such as `__proto__`. `HsonData` remains the serialized canonical text returned by `.toHson()` and explicit Library `.hson()` reads.
 
 ```ts
 const ordinary = Hson.data.from({ enabled: true });
+const literal = Hson.data.from("42"); // string Data
+const parsed = Hson.data.fromSource("42"); // numeric Data; JSON or Hson source
 const authored = Hson.data`<'10' -0 '2' 2 __proto__ true>`;
-const entries = Hson.data.entries(authored); // ordered [name, HsonData] pairs
-const view = Hson.data.materialize(authored); // detached ordinary JS
-const readBack = Hson.data.fromHson(authored);
+const entries = authored.entries(); // ordered [name, HsonDataValue] pairs
+const view = authored.materialize(); // fresh detached ordinary JS
+const text = authored.toHson(); // HsonData
+const readBack = Hson.data.fromSource(text);
+console.log(authored.equals(readBack)); // true
 ```
 
-`Hson.data.from` safely reads own descriptors and rejects accessors, cycles, unsupported values, and sparse arrays. Materialization is a convenience view; JavaScript object enumeration can reorder integer-like names, while the canonical string retains their authored order. Selected data Libraries expose `map.data.must("state").data(path?)` and their `.at(path).data()` for exact reads. Library `data` ingress accepts JSON values/source text, so a canonical Hson data string must be explicitly materialized or converted to JSON before that ingress.
+`Hson.data.from` authenticates existing carriers before ordinary-object capture and retains a genuine carrier by identity. Ordinary JavaScript strings are literal Data in Libraries, setters, Parts `.write()`, Data Schema `.certify()`, actions, Echo, and interaction descriptors. Serialized source requires `Hson.data.fromSource(source)`, which uses bilingual JSON/Hson admission. Nested strings remain literal. Carriers embedded within ordinary records are rejected; explicitly materialize them when constructing an ordinary record.
+
+Admission reads own data descriptors and rejects accessors, cycles, unsupported values, sparse arrays, reserved Data names, and identity claims. `.materialize()` is a convenience view whose integer-like keys follow JavaScript enumeration rules; `.entries()` and `.toHson()` preserve exact semantic order. Template interpolation retains its primitive grammar: serialize a carrier with `.toHson()` before using it in a source slot. Document admission remains source-oriented.
 
 ### Authored source and canonical Document
 
@@ -102,7 +108,7 @@ separate namespace/occurrence evidence. `Hson.document.toNode` expects a canonic
 Transform parsing and standalone LiveTree construction do not establish QUAD
 namespaces. See the [Part contract](../contracts/styled-part-composition.md).
 
-`HsonDocument` is a normalized primitive string for an exact notation-closed document. Data/document `fromHson` admission accepts presentation-equivalent valid Hson and returns normalized output without a source-byte equality gate. It supports text-only, single-root, and multi-root documents, each containing at least one item. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. Governed Document Libraries additionally require complete pages; see [authored completion and exact restoration](../livemap/api-livemap.md#complete-governed-documents).
+`HsonDocument` is a normalized primitive string for an exact notation-closed document. Document `fromHson` admission accepts presentation-equivalent valid Hson and returns normalized output without a source-byte equality gate. It supports text-only, single-root, and multi-root documents, each containing at least one item. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. Governed Document Libraries additionally require complete pages; see [authored completion and exact restoration](../livemap/api-livemap.md#complete-governed-documents).
 
 ```ts
 const document = Hson.document.fromHson(Hson.canonical`<main/><aside/>`);
@@ -115,7 +121,7 @@ console.log(roundTrip === document); // true
 
 ### Schema definitions
 
-`Hson.schema` returns a frozen nominal object that compiles a valid Schema. `schema.toHson()` returns `HsonSchemaData`, a primitive `HsonData` known to define a valid Schema. `Hson.schema.fromHson(schema.toHson())` validates and reconstructs an operational Schema object. Dynamic certification belongs to `schema.certify(candidate)`; it returns a data or document string with Schema-specific proof. Hosted transport compares deterministic identities of fully validated ordered Schema definitions. Exact source bytes remain provenance, while whitespace, quoting, escaping, and accepted syntax presentation do not change the runtime contract.
+`Hson.schema` returns a frozen nominal object that compiles a valid Schema. `schema.toHson()` returns `HsonSchemaData`, a primitive `HsonData` known to define a valid Schema. `Hson.schema.fromHson(schema.toHson())` validates and reconstructs an operational Schema object. Dynamic certification belongs to `schema.certify(candidate)`; a Data Schema returns `HsonDataValue<typeof Schema>` with Schema-specific proof; a Document Schema returns `HsonDocument<typeof Schema>`. Hosted transport compares deterministic identities of fully validated ordered Schema definitions. Exact source bytes remain provenance, while whitespace, quoting, escaping, and accepted syntax presentation do not change the runtime contract.
 
 Runtime text containing arbitrary authored Hson is a separate operation:
 

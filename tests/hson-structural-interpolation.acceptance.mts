@@ -78,37 +78,37 @@ check("data slots preserve one value in each legal position", () => {
   const object = Hson.data`<a 1 b 2>`;
   const scalar = Hson.data`-0`;
   const string = Hson.data`"hello"`;
-  assert.equal(Hson.data`${scalar}`, scalar);
-  assert.equal(Hson.data`${string}`, string);
-  assert.equal(Hson.data`${object}`, object);
-  assert.equal(Hson.data`${array}`, array);
-  assert.equal(Hson.data`<outer ${array}>`, Hson.data`<outer «1,2,3»>`);
-  assert.equal(Hson.data`<outer ${object}>`, Hson.data`<outer <a 1 b 2>>`);
-  assert.equal(Hson.data`«${array}»`, Hson.data`««1,2,3»»`);
-  assert.equal(Hson.data`«${scalar},${array}»`, Hson.data`«-0,«1,2,3»»`);
-  assert.deepEqual(Hson.data.materialize(Hson.data`<outer ${object}>`), { outer: { a: 1, b: 2 } });
+  assert.equal((Hson.data`${(scalar).toHson()}`).toHson(), (scalar).toHson());
+  assert.equal((Hson.data`${(string).toHson()}`).toHson(), (string).toHson());
+  assert.equal((Hson.data`${(object).toHson()}`).toHson(), (object).toHson());
+  assert.equal((Hson.data`${(array).toHson()}`).toHson(), (array).toHson());
+  assert.equal((Hson.data`<outer ${(array).toHson()}>`).toHson(), (Hson.data`<outer «1,2,3»>`).toHson());
+  assert.equal((Hson.data`<outer ${(object).toHson()}>`).toHson(), (Hson.data`<outer <a 1 b 2>>`).toHson());
+  assert.equal((Hson.data`«${(array).toHson()}»`).toHson(), (Hson.data`««1,2,3»»`).toHson());
+  assert.equal((Hson.data`«${(scalar).toHson()},${(array).toHson()}»`).toHson(), (Hson.data`«-0,«1,2,3»»`).toHson());
+  assert.deepEqual((Hson.data`<outer ${(object).toHson()}>`).materialize(), { outer: { a: 1, b: 2 } });
 });
 
 check("unquoted data primitives and candidate modes are checked independently", () => {
   for (const value of [1, -0, true, false, null] as const) {
-    assert.deepEqual(Hson.data.materialize(Hson.data`<value ${value}>`), { value });
-    assert.equal(Hson.data.materialize(Hson.data`${value}`), value);
-    assert.deepEqual(Hson.data.materialize(Hson.data`«${value}»`), [value]);
+    assert.deepEqual((Hson.data`<value ${value}>`).materialize(), { value });
+    assert.equal((Hson.data`${value}`).materialize(), value);
+    assert.deepEqual((Hson.data`«${value}»`).materialize(), [value]);
     error(() => Hson.document`<body ${value}/>`, "HSON_INTERPOLATION_CANDIDATE_TYPE_INVALID");
     const text = Object.is(value, -0) ? "-0" : String(value);
-    assert.deepEqual(Hson.data.materialize(Hson.data`<value "${value}">`), { value: text });
+    assert.deepEqual((Hson.data`<value "${value}">`).materialize(), { value: text });
   }
-  assert.equal(Hson.data`${-0}`, "-0");
+  assert.equal((Hson.data`${-0}`).toHson(), "-0");
   error(() => Hson.data`${Infinity}`, "HSON_NUMBER_NONFINITE");
   for (const value of [{}, new String("<main/>")]) {
     error(() => (Hson.document as any)`<body ${value}/>`, "HSON_INTERPOLATION_CANDIDATE_TYPE_INVALID");
     error(() => (Hson.data as any)`${value}`, "HSON_INTERPOLATION_CANDIDATE_TYPE_INVALID");
   }
-  error(() => Hson.document`<body ${Hson.data`<a 1>`}/>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
+  error(() => Hson.document`<body ${(Hson.data`<a 1>`).toHson()}/>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   error(() => Hson.data`${Hson.document`<main/>`}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   error(() => Hson.data`${""}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   error(() => Hson.data`<label ${"hello"}>`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
-  assert.equal(Hson.data`<label "${"hello"}">`, Hson.data`<label "hello">`);
+  assert.equal((Hson.data`<label "${"hello"}">`).toHson(), (Hson.data`<label "hello">`).toHson());
   assert.equal(Hson.document`<body ${"<main/>"}/>`, Hson.document`<body <main/>/>`);
 });
 
@@ -119,7 +119,7 @@ check("quoted slots accept primitives and literal segments; unsupported values r
   const value = "x";
   assert.equal(Hson.document`<p "hello ${value}"/>`, Hson.document`<p "hello x"/>`);
   assert.equal(Hson.document`<p "${value} world"/>`, Hson.document`<p "x world"/>`);
-  assert.equal(Hson.data`<a "a ${value} b">`, Hson.data`<a "a x b">`);
+  assert.equal((Hson.data`<a "a ${value} b">`).toHson(), (Hson.data`<a "a x b">`).toHson());
   assert.equal(Hson.document`<p "a ${value} b ${value}"/>`, Hson.document`<p "a x b x"/>`);
   assert.equal(Hson.document`<p title="${value} world"/>`, Hson.document`<p title="x world"/>`);
 });
@@ -144,20 +144,20 @@ check("names, comments, and fused slots cannot be interpolated", () => {
 <main/>`,
   ]) error(run, "HSON_INTERPOLATION_POSITION_INVALID");
   assert.equal(Hson.document`<p "#foo"/>`, Hson.document`<p "#foo"/>`);
-  assert.equal(Hson.data`<'#' 1>`, Hson.data`<'#' 1>`);
+  assert.equal((Hson.data`<'#' 1>`).toHson(), (Hson.data`<'#' 1>`).toHson());
   assert.equal(Hson.document`// # is inert comment text
 <main/>`, value);
-  error(() => Hson.data`<a 1 ${Hson.data`2`}>`, "HSON_INTERPOLATION_POSITION_INVALID");
+  error(() => Hson.data`<a 1 ${(Hson.data`2`).toHson()}>`, "HSON_INTERPOLATION_POSITION_INVALID");
 });
 
 check("canonical shares source interpolation while Schema remains substitution-free", () => {
-  assert.equal(Hson.canonical`${Hson.data`1`}`, "1");
+  assert.equal(Hson.canonical`${(Hson.data`1`).toHson()}`, "1");
   assert.equal(Hson.canonical`${"<main/>"}`, "<main/>");
   assert.equal(Hson.canonical`${-0}`, "-0");
   assert.equal(Hson.canonical`${true}`, "true");
   assert.equal(Hson.canonical`${false}`, "false");
   assert.equal(Hson.canonical`${null}`, "null");
-  assert.throws(() => (Hson.schema as any)`${Hson.data`1`}`, /substitution-free/);
+  assert.throws(() => (Hson.schema as any)`${(Hson.data`1`).toHson()}`, /substitution-free/);
 });
 
 check("whole-document admission catches special-tag violations", () => {

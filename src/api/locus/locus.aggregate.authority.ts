@@ -2,7 +2,7 @@ import type { OwnedLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { resolve_document_css_action_subjects } from "../../internal/css/document-css-action-subjects.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import { ExactDataCarrier, admit_data_input, hson_data_text } from "../data/hson-data.js";
+import { type HsonDataInput, type HsonDataValue, admit_data_input } from "../data/hson-data.js";
 import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
@@ -120,7 +120,7 @@ type HostedRequest =
     type: "action";
     id: string;
     name: string;
-    payload?: ExactDataCarrier | JsonValue;
+    payload?: HsonDataInput;
     requestId?: string;
     attemptId?: string;
     clientId?: string;
@@ -1290,20 +1290,20 @@ export function create_locus_hosted_aggregate_authority_internal<
 
   async function execute_action(
     request: Extract<HostedRequest, { type: "action" }>,
-    payload: ExactDataCarrier | undefined,
+    payload: HsonDataValue | undefined,
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
   ): Promise<LocusActionTerminalOutcome> {
     try {
       let result: unknown | void;
       if (is_document_action(request.name)) {
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
-        const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) }), origin);
+        const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: payload }) }), origin);
         if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
         await locus.stage(validated.executeDocument);
         result = undefined;
       } else {
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
-        const publicRequest = Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) });
+        const publicRequest = Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: payload }) });
         result = await locus.dispatch_action(request.name, payload, publicRequest, origin);
       }
       seq += 1;
@@ -1312,7 +1312,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         state: "succeeded",
         seq,
         completionRev: locus.rev,
-        ...(admittedResult === undefined ? {} : { result: hson_data_text(admittedResult) }),
+        ...(admittedResult === undefined ? {} : { result: admittedResult }),
       });
     } catch (cause) {
       return Object.freeze({
@@ -1427,7 +1427,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   function validate_action_request(
     request: Extract<HostedRequest, { type: "action" }>,
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
-  ): Readonly<{ ok: true; payload: ExactDataCarrier | undefined; executeDocument?: (draft: LocusHostedAggregateStageWriter) => void }> | Readonly<{ ok: false; code: string; message: string }> {
+  ): Readonly<{ ok: true; payload: HsonDataValue | undefined; executeDocument?: (draft: LocusHostedAggregateStageWriter) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
       const admittedPayload = request.payload === undefined ? undefined : admit_data_input(request.payload);
       if (is_document_action(request.name)) {
@@ -1453,7 +1453,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         const normalized: JsonValue = normalizedCandidate;
         return Object.freeze({
           ok: true,
-          payload: ExactDataCarrier.from(normalized),
+          payload: admit_data_input(normalized),
           executeDocument: (draft: LocusHostedAggregateStageWriter) => {
             const target = draft.doc.must(libraryName);
             if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");

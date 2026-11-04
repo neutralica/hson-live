@@ -69,7 +69,7 @@ async function run(): Promise<void> {
     assert.deepEqual(shape(template('«]»')).map(token => token[2]), [false, true, false]);
   });
   check("non-template calls, ordinary host text, and native Markdown receive no custom colors", () => {
-    assert.deepEqual(depths(prefix + 'const x=["<", "«"]; const y=`<a 1>`; Hson.data.fromHson("<a 1>");'), []);
+    assert.deepEqual(depths(prefix + 'const x=["<", "«"]; const y=`<a 1>`; Hson.data.fromSource("<a 1>");'), []);
     assert.deepEqual(depths('```hson\n<a «1»>\n```', 'markdown'), []);
   });
   check("depth results reuse bounded document/version evidence and disappear with the region", () => {

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
-import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { ANY_DATA, Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { HsonSchemaError } from "../src/api/livemap/livemap.error.js";
 import { HsonSchema as RuntimeHsonSchema } from "../src/api/schema/hson-schema.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
@@ -221,7 +222,9 @@ check("empty document Schema governs runtime graphs without certifying empty tex
   assert.equal(emptyPermitting.certify(Hson.document`<item/>`), Hson.document`<item/>`);
   const dataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
   assert.throws(() => dataSchema.certify("" as never),
-    (cause) => cause instanceof TypeError && /Data input requires JSON or Hson Data/.test(cause.message));
+    (cause) => cause instanceof HsonSchemaError && cause.issues.some(issue => issue.code === "TYPE_MISMATCH" && issue.received === "string"));
+  assert.equal(ANY_DATA.certify("").materialize(), "");
+  assert.throws(() => Hson.data.fromSource(""), TypeError);
 });
 
 check("public and worker entrypoint Schema fixtures compile and admit their documents", () => {

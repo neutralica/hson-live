@@ -2,7 +2,6 @@ import { is_Node } from "../../core/node-guards.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
 import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
-import type { HsonData } from "../transform/transform.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../core/projected-value-graph.js";
@@ -18,10 +17,9 @@ import {
 import {
   encode_hson_data_internal,
   hson_data_from_value,
-  hson_data_text,
   hson_data_value,
   admit_data_input,
-  type ExactDataCarrier,
+  type HsonDataValue,
 } from "../data/hson-data.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
@@ -64,10 +62,10 @@ type RuntimeRecord = Readonly<{
   state: { consumed: boolean };
 }>;
 
-type RuntimeBrowserDescriptor = Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args: HsonData }>;
-type RuntimeLocusDescriptor = Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload: HsonData }>;
+type RuntimeBrowserDescriptor = Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args: HsonDataValue }>;
+type RuntimeLocusDescriptor = Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload: HsonDataValue }>;
 type RuntimeDescriptor = RuntimeBrowserDescriptor | RuntimeLocusDescriptor;
-type PreparedRuntimeDescriptor = Readonly<{ descriptor: RuntimeDescriptor; data: ExactDataCarrier }>;
+type PreparedRuntimeDescriptor = Readonly<{ descriptor: RuntimeDescriptor; data: HsonDataValue }>;
 
 type ActivationSnapshot = Readonly<{
   map: LiveMap;
@@ -437,7 +435,7 @@ function interaction_storage(target: object): Storage {
   });
 }
 
-function descriptor_to_value(descriptor: InteractionDescriptor, data?: ExactDataCarrier): OrderedProjectedObject {
+function descriptor_to_value(descriptor: InteractionDescriptor, data?: HsonDataValue): OrderedProjectedObject {
   const kind = exact_record(descriptor, descriptor.kind === "browser"
     ? ["id", "subject", "listener", "kind", "key", "args"]
     : ["id", "subject", "listener", "kind", "key", "payload"], "interaction descriptor");
@@ -521,8 +519,8 @@ function read_descriptors(value: OrderedProjectedValue): readonly PreparedRuntim
     if (kind !== "browser" && kind !== "locus") throw new Error("Canonical interaction descriptor discriminant is malformed.");
     const data = hson_data_from_value(require_member(entry, kind === "browser" ? "args" : "payload"));
     const descriptor: RuntimeDescriptor = Object.freeze(kind === "browser"
-      ? { ...base, kind, args: hson_data_text(data) }
-      : { ...base, kind, payload: hson_data_text(data) });
+      ? { ...base, kind, args: data }
+      : { ...base, kind, payload: data });
     // Keep the owned value beside its public projection for internal fingerprinting.
     return Object.freeze({ descriptor, data });
   }));
@@ -579,7 +577,7 @@ function require_missing_policy(value: OrderedProjectedValue | undefined): Inter
   throw new Error("Canonical interaction missing-target policy is malformed.");
 }
 
-function descriptor_fingerprint(descriptor: RuntimeDescriptor, data: ExactDataCarrier): string {
+function descriptor_fingerprint(descriptor: RuntimeDescriptor, data: HsonDataValue): string {
   const value = descriptor_to_value(descriptor, data);
   // A canonical path rewrite follows the same local subject. It must not
   // replace that subject's listener or reset once/resource ownership.

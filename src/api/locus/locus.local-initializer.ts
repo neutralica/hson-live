@@ -1,3 +1,4 @@
+import { decode_document_scoped_library } from "../livemap/livemap.document.scoped-portable.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
@@ -9,7 +10,7 @@ import type {
 import type { LocusSessionNow } from "../../types/locus.core.types.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
-import { assert_portable_document_css_correspondence } from "../livemap/livemap.document.quad.js";
+import { decode_document_quads, assert_portable_document_css_correspondence } from "../livemap/livemap.document.quad.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import {
   type CanonicalLibraryDefinition,
@@ -98,7 +99,7 @@ export function admit_locus_session_now(input: unknown): LocusSessionNow {
 function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "local" }>): LocusLocalInitializer {
   const map = hsonLiveMap.fromLibraries(Object.freeze({ [entry.name]: entry.initializer }));
   const snapshot = map.capture();
-  const library = snapshot.libraries[0];
+  const library = internal_livemap_aggregate_authority(map).captureSelectedHosted([entry.name], false).libraries[0];
   const registry = snapshot.registry.libraries[0];
   if (library === undefined || registry === undefined || library.name !== entry.name || registry.name !== entry.name) {
     throw new Error("Local initializer canonicalization lost its Library.");
@@ -113,7 +114,10 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
   if (registry.mode !== "document" && entry.css !== undefined) {
     throw new TypeError(`Locus local data initializer ${JSON.stringify(entry.name)} cannot define CSS.`);
   }
-  if (css !== undefined) assert_portable_document_css_correspondence(decoded, registry.mode, undefined, css);
+  const quads = library.quads ?? Object.freeze([]);
+  const scopes = library.scopes === undefined ? undefined
+    : decode_document_scoped_library({ root: decoded, scopes: library.scopes, css }).scopes;
+  if (css !== undefined && scopes === undefined) assert_portable_document_css_correspondence(decoded, registry.mode, quads.length ? quads : undefined, css);
   const base = Object.freeze({
     name: entry.name,
     mode: registry.mode,
@@ -122,6 +126,8 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
     ...(registry.validation === undefined ? {} : { validation: registry.validation }),
     rootCodec: "hson-exact-value" as const,
     root: encode_hosted_root(decoded),
+    quads,
+    ...(scopes === undefined ? {} : { scopes }),
     ...(css === undefined ? {} : { css }),
   });
   return Object.freeze({ ...base, fingerprint: initializer_fingerprint(base) });
@@ -182,7 +188,7 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
   const names = new Set<string>();
   const admitted = input.map((candidate) => {
     const hasCss = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "css");
-    const value = exact_record(candidate, ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", ...(hasCss ? ["css"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), "fingerprint"]);
+    const value = exact_record(candidate, ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "quads", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "scopes") ? ["scopes"] : []), ...(hasCss ? ["css"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), "fingerprint"]);
     if (typeof value.name !== "string" || value.name.length === 0 || names.has(value.name)
       || typeof value.schema !== "string" || typeof value.schemaDigest !== "string"
       || typeof value.fingerprint !== "string" || value.rootCodec !== "hson-exact-value") {
@@ -206,7 +212,17 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
       ? canonical_local_css(value.css)
       : undefined;
     if (mode !== "document" && hasCss) throw new Error("Local data initializer cannot carry CSS.");
-    if (css !== undefined) assert_portable_document_css_correspondence(root, mode, undefined, css);
+    // An explicit empty array is canonical absence; old envelopes without this
+    // evidence fail exact_record. Nonempty associations use the shared validator.
+    const quads = Array.isArray(value.quads) && value.quads.length === 0
+      && Object.getPrototypeOf(value.quads) === Array.prototype && Reflect.ownKeys(value.quads).length === 1
+      ? Object.freeze([]) : decode_document_quads(value.quads, root, mode);
+    if (quads === undefined) throw new Error("Local initializer correspondence is required.");
+    const scopes = Object.hasOwn(value, "scopes")
+      ? decode_document_scoped_library({ root, scopes: value.scopes, css }).scopes : undefined;
+    if (scopes !== undefined && quads.length) throw new Error("Conflicting flat/scoped correspondence.");
+    if (scopes !== undefined && mode !== "document") throw new Error("Local Data initializer cannot carry scopes.");
+    if (css !== undefined && scopes === undefined) assert_portable_document_css_correspondence(root, mode, quads.length ? quads : undefined, css);
     const base = Object.freeze({
       name: value.name,
       mode,
@@ -215,6 +231,8 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
       ...(validation === undefined ? {} : { validation }),
       rootCodec: "hson-exact-value" as const,
       root: encode_hosted_root(root),
+      quads,
+      ...(scopes === undefined ? {} : { scopes }),
       ...(css === undefined ? {} : { css }),
     });
     if (initializer_fingerprint(base) !== value.fingerprint) throw new Error("Local initializer fingerprint is inconsistent.");
@@ -281,7 +299,7 @@ export function install_client_local_initializers_internal(
   for (const initializer of missing) {
     const root = decode_hosted_root(initializer.root, HOSTED_MAX_SNAPSHOT_BYTES);
     const schema = HsonSchema.fromHson(initializer.schema);
-    definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
+    definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.quads.length ? { quads: initializer.quads } : {}), ...(initializer.scopes === undefined ? {} : { scopes: initializer.scopes }), ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
     if (initializer.css !== undefined) css[initializer.name] = initializer.css;
   }
   add_client_local_libraries_internal(map, Object.freeze(definitions), css, installContracts, assertAcceptance);

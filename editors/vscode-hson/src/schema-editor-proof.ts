@@ -102,6 +102,16 @@ function template_raw(source: HsonTaggedTemplateSource): string {
 /** Suppress only incompatibility through the Schema proof, never other properties. */
 function redundant_brand_error(message: string | ts.DiagnosticMessageChain): boolean {
   if (typeof message === "string") return false;
+  // The caller has already established official binding identity and an exact
+  // failed proof range. Class variance may report the missing Schema argument
+  // directly, rather than naming the private nominal field.
+  if (/^Type 'HsonDataValue<HsonSchema<unknown, "data"(?:, unknown)?>>' is not assignable to type '.+'\.$/s.test(message.messageText)
+    && message.next?.length === 1) {
+    const schema = message.next[0]!;
+    if (/^Type 'HsonSchema<unknown, "data"(?:, unknown)?>' is not assignable to type 'HsonSchema<.+>'\.$/s.test(schema.messageText)
+      && schema.next?.length === 1 && schema.next[0]?.next === undefined
+      && /^Type 'unknown' is not assignable to type '.+'\.$/s.test(schema.next[0]!.messageText)) return true;
+  }
   // TypeScript may report a property or a nested property path. In either
   // shape the incompatibility must be rooted in our verified proof identity.
   if (/^(?:Types of property|The types of) '\[HSON_SCHEMA_PROOF\](?:\[HSON_SCHEMA_EVIDENCE\])?(?:\.[A-Za-z_$][\w$]*)*' are incompatible(?:\.| between these types\.)$/.test(message.messageText)) return true;

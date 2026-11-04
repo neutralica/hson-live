@@ -21,7 +21,7 @@ import type {
 import { LocusDisconnectedError, LocusDuplicateActionIdError } from "../locus/locus.error.js";
 import { EchoSessionError } from "./echo.error.js";
 import { admit_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
-import type { HsonData } from "../transform/transform.types.js";
+import type { HsonDataValue } from "../data/hson-data.js";
 import type {
   EchoFiniteOperationCapability,
   EchoFiniteOperationOutcome,
@@ -103,8 +103,8 @@ export type EchoEndpoint<TActions extends LocusActionPayloads = LocusActionPaylo
   action: <TName extends keyof TActions & string>(
     name: TName,
     ...args: undefined extends TActions[TName]
-      ? [payload?: Exclude<TActions[TName], undefined> | HsonData]
-      : [payload: TActions[TName] | HsonData]
+      ? [payload?: Exclude<TActions[TName], undefined> | HsonDataValue]
+      : [payload: TActions[TName] | HsonDataValue]
   ) => EchoActionPromise<TActions, TName>;
   retryAction: <TName extends keyof TActions & string>(request: EchoActionRequest<TActions, TName>) => EchoActionPromise<TActions, TName>;
   actionStatus: (requestId: LocusActionRequestId) => Promise<EchoActionStatusResult>;
@@ -471,7 +471,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   }
 
   function actionHandle<TName extends keyof TActions & string>(
-    request: EchoActionRequest<TActions, TName>, retry: boolean,
+    request: EchoActionPromise<TActions, TName>["request"], retry: boolean,
   ): EchoActionPromise<TActions, TName> {
     const attemptId = makeAttemptId();
     if (!(retry ? canRecoverFiniteOperation() : isReady()))
@@ -513,11 +513,11 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   function action<TName extends keyof TActions & string>(
     name: TName,
     ...args: undefined extends TActions[TName]
-      ? [payload?: Exclude<TActions[TName], undefined> | HsonData]
-      : [payload: TActions[TName] | HsonData]
+      ? [payload?: Exclude<TActions[TName], undefined> | HsonDataValue]
+      : [payload: TActions[TName] | HsonDataValue]
   ): EchoActionPromise<TActions, TName> {
     const requestId = makeActionId();
-    const request: EchoActionRequest<TActions, TName> = Object.freeze({
+    const request: EchoActionPromise<TActions, TName>["request"] = Object.freeze({
       requestId,
       name,
       ...(args[0] === undefined ? {} : { payload: admit_echo_action_payload(args[0]) }),
@@ -526,7 +526,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   }
 
   function retryAction<TName extends keyof TActions & string>(request: EchoActionRequest<TActions, TName>): EchoActionPromise<TActions, TName> {
-    const stable: EchoActionRequest<TActions, TName> = Object.freeze({
+    const stable: EchoActionPromise<TActions, TName>["request"] = Object.freeze({
       requestId: request.requestId,
       name: request.name,
       ...(request.payload === undefined ? {} : { payload: admit_echo_action_payload(request.payload) }),

@@ -1,5 +1,5 @@
 import { InteractionFieldsSchema, ReuseSchema, TreeSchema, UserSchema } from "./producer.js";
-import { type JsonFromSchema, HsonData, Hson, type HsonNumber } from "hson-live";
+import { type JsonFromSchema, HsonDataValue, Hson, type HsonNumber } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
 import type { HsonCanonical } from "hson-live/hson";
 
@@ -44,19 +44,19 @@ const plainAlphabet: JsonFromSchema<typeof UserSchema>["key"] = "abc";
 // @ts-expect-error a plain number has no Hson number evidence
 const ordinaryNumber: HsonNumber = 37;
 // @ts-expect-error broad canonical Hson has no exact Schema proof
-const broadHson: HsonData<typeof UserSchema> = canonical;
-declare function consumeCertified(value: HsonData<typeof UserSchema>): void;
+const broadHson: HsonDataValue<typeof UserSchema> = canonical;
+declare function consumeCertified(value: HsonDataValue<typeof UserSchema>): void;
 // @ts-expect-error proof acquisition is restricted to an analyzer-recognized module-scope const
 consumeCertified(Hson.data`<name "Ada">`);
 // Runtime certification grants this Schema's proof after validation.
-consumeCertified(UserSchema.certify(canonical));
+consumeCertified(UserSchema.certify(Hson.data.fromSource(canonical)));
 // @ts-expect-error optional means absence, not explicit undefined
 const explicitUndefined: JsonFromSchema<typeof UserSchema> = { ...projected, nickname: undefined };
 const fabricatedRecursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: 1, children: [] };
 const plainReferencedAge: JsonFromSchema<typeof TreeSchema>["age"] = 1;
 const unrelatedDefinitionShape: typeof reuse.right = reuse.left;
 // @ts-expect-error broad canonical Hson cannot impersonate recursive Schema evidence
-const broadRecursiveHson: HsonData<typeof TreeSchema> = canonical;
+const broadRecursiveHson: HsonDataValue<typeof TreeSchema> = canonical;
 
 void optionalRead;
 void indexedRead;

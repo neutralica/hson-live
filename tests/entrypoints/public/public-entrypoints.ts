@@ -24,6 +24,7 @@ import { configure_scout, type ScoutProvider } from "hson-live/scout";
 import {
   Hson,
   HsonData,
+  HsonDataValue,
   HsonDocument,
   hson,
   hsonTransform,
@@ -160,18 +161,18 @@ continue_document({ map: continuationRegistry, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.
 continue_hosted_document({ echo: continuationEcho, root: continuationRoot, interactions: { local: {}, dispatch: async () => {} } });
 
-declare const genuineHsonData: HsonData;
-const retainedHsonData: HsonData = genuineHsonData;
-void retainedHsonData.length;
-void Hson.data.materialize(retainedHsonData);
-type StructuralHsonData = Pick<HsonData, keyof HsonData>;
+declare const genuineHsonData: HsonDataValue;
+const retainedHsonData: HsonDataValue = genuineHsonData;
+const encodedData: HsonData = retainedHsonData.toHson();
+void encodedData.length;
+void retainedHsonData.materialize();
+type StructuralHsonData = Pick<HsonDataValue, keyof HsonDataValue>;
 declare const structuralHsonData: StructuralHsonData;
 // @ts-expect-error HsonData retains private instance-side nominality.
-const forgedHsonData: HsonData = structuralHsonData;
-// @ts-expect-error The private HsonData brand cannot be named by consumers.
-type HsonDataPrivateBrand = HsonData["#hsonDataNominal"];
+const forgedHsonData: HsonDataValue = structuralHsonData;
+// @ts-expect-error The nominal authority field is private.
+genuineHsonData.hsonDataNominal;
 void (0 as unknown as typeof forgedHsonData);
-void (0 as unknown as HsonDataPrivateBrand);
 
 declare const genuineHsonDocument: HsonDocument;
 const retainedHsonDocument: HsonDocument = genuineHsonDocument;
@@ -223,7 +224,7 @@ import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
 declare const standaloneSchema: HsonSchema;
-const standaloneCanonical: HsonCanonical = standaloneSchema.certify(Hson.canonical`37`);
+const standaloneCanonical: HsonCanonical = standaloneSchema.certify(Hson.data`37`).toHson();
 // @ts-expect-error Hson.validate is absent; Schema objects own certification.
 Hson.validate(standaloneSchema, Hson.canonical`37`);
 // @ts-expect-error The narrow authoring subpath also exposes certify, not validate.
@@ -1146,7 +1147,7 @@ hson`<retired/>`;
 import { hson as retiredSubpathAggregate } from "hson-live/hson";
 // @ts-expect-error Subsystems use their own entrypoints or the package root.
 import { hsonLiveMap as retiredAuthoringMap } from "hson-live/hson";
-// @ts-expect-error Canonical input is required at every validation entrance.
+// Data certification accepts literal strings.
 standaloneSchema.certify("37");
 const authoredTypeIdentity: AuthoringCanonical = standaloneCanonical;
 const originalTypeIdentity: HsonCanonical = authoredTypeIdentity;

@@ -204,11 +204,11 @@ check("document item composition and productive recursion use existing document 
 check("runtime certification validates finite recursive candidates and preserves exact identity", () => {
   const schema: HsonSchema = Hson.schema`<type "data" defs <Tree <content <value "string" children <array <ref "Tree">>>>> content <ref "Tree">>`;
   const valid = Hson.canonical`<value "root" children [<value "leaf" children []>]>`;
-  assert.equal(schema.certify(valid), valid);
-  assert.throws(() => schema.certify(Hson.canonical`<value "root" children [<value 1 children []>]>`));
+  assert.equal((schema.certify(Hson.data.fromSource(valid))).toHson(), valid);
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<value "root" children [<value 1 children []>]>`)));
   const mutual: HsonSchema = Hson.schema`<type "data" defs <A <content <name <exact "a"> bs <array <ref "B">>>> B <content <name <exact "b"> as <array <ref "A">>>>> content <ref "A">>`;
   const mutualCandidate = Hson.canonical`<name "a" bs [<name "b" as []>]>`;
-  assert.equal(mutual.certify(mutualCandidate), mutualCandidate);
+  assert.equal((mutual.certify(Hson.data.fromSource(mutualCandidate))).toHson(), mutualCandidate);
 });
 
 check("moderately nested recursive validation and generation remain bounded", () => {
@@ -219,7 +219,7 @@ check("moderately nested recursive validation and generation remain bounded", ()
   const candidate = Hson.canonical`<value "0" children [<value "1" children [<value "2" children [<value "3" children [<value "4" children []>]>]>]>]>`;
   const schema: HsonSchema = Hson.schema`<type "data" defs <Tree <content <value "string" children <array <ref "Tree">>>>> content <ref "Tree">>`;
   const started = performance.now();
-  assert.equal(schema.certify(candidate), candidate);
+  assert.equal((schema.certify(Hson.data.fromSource(candidate))).toHson(), candidate);
   const elapsed = performance.now() - started;
   assert.ok(generated.declarations.length < 5_000);
   assert.ok(elapsed < 1_000, `recursive validation took ${elapsed}ms`);

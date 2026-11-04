@@ -20,16 +20,14 @@ specialist capability from its owning public subpath.
 ## Roles, without a mandatory sequence
 
 - **Hson authoring and Transform** create and convert the canonical Hson graph.
-  `Hson.canonical` and `.data` author canonical strings; `.document` authors `HsonAuthored` source for governed admission; `Hson.schema` compiles an immutable Schema object; `hsonTransform` is the DOM-free converter.
+  `Hson.canonical` authors canonical text and `.data` authors immutable Data values; `.document` authors `HsonAuthored` source for governed admission; `Hson.schema` compiles an immutable Schema object; `hsonTransform` is the DOM-free converter.
   Choose `fromTrustedHtml` only for input already trusted by the application;
   `fromUntrustedHtml` is the explicit sanitizing ingress. There is no output
   sanitizer and no `sanitizeBEWARE`.
-- **HsonData** is a canonical primitive string with exact semantic data for data values and action
-  payloads. Use `Hson.data.entries(data)` for exact ordered inspection and `Hson.data.materialize(data)`
-  only when a detached ordinary JavaScript view is wanted.
+- **HsonDataValue** is the authenticated immutable value used for Data and normalized action payloads/results. Use `data.entries()` for ordered inspection, `data.materialize()` for a detached JavaScript view, and `data.toHson()` for explicit `HsonData` text. Ordinary strings are literal Data; admit JSON/Hson source with `Hson.data.fromSource(source)`.
 - **HsonDocument** is a canonical primitive string in document context. It can be converted to a detached graph and admits one or many top-level items;
   it carries no LiveMap authority or browser realization behavior.
-- **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `HsonFromSchema<typeof Schema>` for either Hson family and data-only `JsonFromSchema<typeof DataSchema>` for JS/JSON-shaped values. `HsonData<S>` and `HsonDocument<S>` remain the precise lower-level string proof types.
+- **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `HsonFromSchema<typeof Schema>` for either Hson family and data-only `JsonFromSchema<typeof DataSchema>` for JS/JSON-shaped values. `HsonDataValue<S>` and `HsonDocument<S>` carry the corresponding Schema proof; `HsonData` is serialized Data text.
 - **LiveMap and Libraries** own local canonical state. `hsonLiveMap.create` and
   `fromLibraries` construct bare state. `hsonLiveMap.locus` constructs an
   authoritative governor; `hsonLiveMap.echo` constructs a replica governor or
@@ -85,10 +83,10 @@ map.data.must("state").at(["count"]).set(1);
 const count = map.data.must("state").at(["count"]).snap();
 ```
 
-For exact data rather than a materialized object, use `map.data.must("state").data()`; action
-handlers receive `HsonData | undefined`, so inspect it or call
-`payload === undefined ? undefined : Hson.data.materialize(payload)` instead of assuming application properties are on the
-payload object. Runtime coverage: LiveMap mutation and HsonData acceptance
+For exact data rather than a materialized object, admit the explicit read with `Hson.data.fromSource(map.data.must("state").must.hson())`; action
+handlers receive `HsonDataValue | undefined`, so inspect it or call
+`payload === undefined ? undefined : payload.materialize()` instead of assuming application properties are on the
+payload object. Runtime coverage: LiveMap mutation and Data-value acceptance
 tests.
 
 ### 3. Standalone LiveTree — a browser tree without state authority
@@ -228,7 +226,7 @@ add_interaction(libraries, descriptor);
 const dispose = activate_interactions({
   map: libraries,
   tree,
-  local: { reveal: (event, subject, args) => show(subject, Hson.data.materialize(args)) },
+  local: { reveal: (event, subject, args) => show(subject, args.materialize()) },
   dispatch: async (key, payload) => { await echo.action(key, payload); },
 });
 dispose();
@@ -264,8 +262,8 @@ and document continuation.
 
 - Replace retired `hson-live/types` imports with `/hson` core types and owning
   specialist subpaths; keep normal composition imports at the package root.
-- Treat action payload/result values as `HsonData`: check presence, use
-  `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
+- Treat action payload/result values as `HsonDataValue`: check presence, use
+  `value.entries()` for exact semantics or `value.materialize()` for a detached JS view.
 - Construct Locus from flat keyed definitions with `access` metadata and a separate configuration argument; put local initializers in configuration. One-Library applications use the same path. Runtime authority admissions use `locus.admit(definitions)`. Use `hsonLiveMap.locus.resume` for durable authority and keep the adapter server-side.
 - Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
   use `map.doc.must("page").render()` for local HTML and path document requests for mutation.

@@ -176,20 +176,20 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
       const schema = resolve_immutable_schema(ts, checker, annotation.schema, item => byDeclaration.get(item), new Set(), undefined, "type-query");
       if (schema === undefined) continue;
       const mode = annotation.kind === "hson" ? schema_mode(schema) : annotation.kind;
-      const typeName = mode === "data" ? "HsonData" : "HsonDocument";
-      if (schema_mode(schema) !== (typeName === "HsonData" ? "data" : "document")) {
+      const typeName = mode === "data" ? "HsonDataValue" : "HsonDocument";
+      if (schema_mode(schema) !== (typeName === "HsonDataValue" ? "data" : "document")) {
         diagnostics.push({ file: sourceFile.fileName, start: declaration.type.getStart(), message: `Schema mode does not match ${typeName}.` });
         continue;
       }
       if (ts.isTaggedTemplateExpression(declaration.initializer)) {
-        if (!is_official_hson_member_tag(declaration.initializer, typeName === "HsonData" ? "data" : "document", checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
+        if (!is_official_hson_member_tag(declaration.initializer, typeName === "HsonDataValue" ? "data" : "document", checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
           diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Schema-bound ${typeName} requires a direct substitution-free official semantic Hson tag.` });
           continue;
         }
         let source: string;
-        try { source = admit_hson_tagged_template(ts, declaration.initializer, typeName === "HsonData" ? "data" : "document"); }
+        try { source = admit_hson_tagged_template(ts, declaration.initializer, typeName === "HsonDataValue" ? "data" : "document"); }
         catch (error) { diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: error_message(error) }); continue; }
-        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: typeName === "HsonData" ? "data" : "document" });
+        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: typeName === "HsonDataValue" ? "data" : "document" });
         if (evaluated.kind !== "valid") {
           // Semantic failures are reported once by shared relationship analysis.
           if (evaluated.kind === "unknown" && evaluated.error !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: evaluated.error });
@@ -211,7 +211,7 @@ function format_ts_diagnostic(diagnostic: ts.Diagnostic): string {
   return `${diagnostic.file.fileName}:${position.line + 1}:${position.character + 1}: ${message}`;
 }
 
-function official_binding(identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument", checker: ts.TypeChecker): boolean {
+function official_binding(identifier: ts.Identifier, expected: "Hson" | "HsonDataValue" | "HsonDocument", checker: ts.TypeChecker): boolean {
   return is_official_hson_package_binding(identifier, expected, checker, true);
 }
 

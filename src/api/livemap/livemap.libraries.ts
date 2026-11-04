@@ -1,3 +1,5 @@
+import { normalize_css_map, type NormalizedCssMap } from "../../core/css-map.js";
+import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { live_subscription } from "../../internal/library-observation.js";
 import { complete_document_source } from "../../internal/complete-document.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
@@ -63,7 +65,7 @@ import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSc
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { admit_data_source } from "../../core/data-source-admission.js";
+import { admit_data_input, hson_data_value } from "../data/hson-data.js";
 import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
@@ -561,12 +563,13 @@ export function admit_public_livemap_definitions(inputs: unknown, hosted = false
 }> {
   if (!is_record(inputs)) throw new TypeError("Library definitions must be a keyed object.");
   const sources: [string, ReturnType<typeof must_library_input>][] = [];
+  const stylesheets: Record<string, NormalizedCssMap> = Object.create(null);
   const css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord> = Object.create(null);
   const ownership: Record<string, "private" | "shared"> = Object.create(null);
   for (const name of Reflect.ownKeys(inputs)) {
     if (typeof name !== "string" || hosted && name.length === 0) throw new TypeError("Invalid Library name.");
     assert_hson_identifier_name(name, "Library");
-    let input = must_library_input(name, inputs[name], { hosted, css, ownership });
+    let input = must_library_input(name, inputs[name], { hosted, css, stylesheets, ownership });
     if ("document" in input && typeof input.document !== "string") {
       input = Object.freeze({ document: admit_public_livemap_root(input.document, "document", `Library ${name}`), schema: input.schema });
     }
@@ -576,6 +579,13 @@ export function admit_public_livemap_definitions(inputs: unknown, hosted = false
   // admit Parts) before interpreting authored Document strings. Retain only
   // owned candidates across the receiving/queued continuation.
   const definitions = sources.map(([name, input]) => capture_library_source(name, input));
+  // The caller map is already captured. Qualify Document targets only after
+  // canonical source admission, using the established authored QUAD namespace.
+  for (const definition of definitions) {
+    const sheet = stylesheets[definition.name];
+    if (sheet === undefined) continue;
+    css[definition.name] = structured_part_stylesheet(sheet, new Set(own_document_quads(definition)?.map(quad => quad.name) ?? []), ":root");
+  }
   return Object.freeze({ definitions: Object.freeze(definitions), css: Object.freeze(css), ownership: Object.freeze(ownership) });
 }
 
@@ -1823,6 +1833,7 @@ type OwnedPartInput = Readonly<{ part: PartLibraryCandidate; schema: HsonSchemaH
 function must_library_input(name: string, value: unknown, metadata?: {
   hosted: boolean;
   css: Record<string, import("../../types/document-css.types.js").DocumentCssRecord>;
+  stylesheets: Record<string, NormalizedCssMap>;
   ownership: Record<string, "private" | "shared">;
 }): OwnedPartInput | NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle; validation?: DataLibraryValidation }> {
   assert_hson_identifier_name(name, "Library");
@@ -1863,8 +1874,8 @@ function must_library_input(name: string, value: unknown, metadata?: {
     }
     if (Object.hasOwn(selected, "stylesheet") && !hasDocument) throw new TypeError("Initial CSS requires a document definition.");
     if (selected.stylesheet !== undefined) {
-      if (typeof selected.stylesheet !== "string") throw new TypeError("Document CSS requires stylesheet text.");
-      metadata.css[name] = opaque_document_stylesheet(selected.stylesheet);
+      if (typeof selected.stylesheet === "string") metadata.css[name] = opaque_document_stylesheet(selected.stylesheet);
+      else metadata.stylesheets[name] = normalize_css_map(selected.stylesheet);
     }
     delete selected.access;
     delete selected.stylesheet;
@@ -1911,9 +1922,8 @@ function library_root(input: NormalizedLibraryInput): HsonNode {
   if ("data" in input) {
     if (input.data === undefined) throw new TypeError("LiveMap data Library requires Data material.");
     // This receiver admits application Data, never Transform structural envelopes.
-    // Strings admit JSON or Hson source, retaining exact decoded member order.
-    return projected_value_to_hson_root(typeof input.data === "string"
-      ? admit_data_source(input.data) : admit_projected_value(input.data));
+    // Authenticate carriers before ordinary value capture; strings are literal Data.
+    return projected_value_to_hson_root(hson_data_value(admit_data_input(input.data)));
   }
   if (input.document === undefined) throw new TypeError("LiveMap document Library requires Hson material.");
   return typeof input.document === "string"

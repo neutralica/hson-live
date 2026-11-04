@@ -1,6 +1,6 @@
 import type { LocusClientMessage, LocusServerMessage } from "../../types/locus.types.js";
 import type { EchoSynchronizationRequest } from "../../types/echo.transport.types.js";
-import { decode_hson_data_internal, encode_hson_data_internal, admit_data_input, hson_data_text } from "../data/hson-data.js";
+import { decode_hson_data_internal, encode_hson_data_internal, admit_data_input } from "../data/hson-data.js";
 import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES } from "../locus/locus.aggregate.protocol.js";
 
 export type EchoWebSocketControlMessage = Extract<LocusServerMessage, { type: "session-fenced" }> | import("../../types/echo.transport.types.js").EchoFiniteOperationOutcome;
@@ -69,7 +69,7 @@ export function decodeEndpointMessage(raw: string, format?: string): EchoWebSock
       || (deliveryPresent && value.delivery !== "executed" && value.delivery !== "joined" && value.delivery !== "cached" && value.delivery !== "rejected")
       || (resultPresent && typeof value.resultData !== "string")) return undefined;
     try {
-      const result = resultPresent ? hson_data_text(decode_hson_data_internal(value.resultData as string)) : undefined;
+      const result = resultPresent ? decode_hson_data_internal(value.resultData as string) : undefined;
       return Object.freeze({
         type: "ack",
         id: value.id,
@@ -100,7 +100,7 @@ export function decodeEndpointMessage(raw: string, format?: string): EchoWebSock
       if (!hasExactKeys(value.outcome, ["state", "seq", "completionRev", ...(resultPresent ? ["resultData"] : [])])
         || (resultPresent && typeof value.outcome.resultData !== "string")) return undefined;
       try {
-        const result = resultPresent ? hson_data_text(decode_hson_data_internal(value.outcome.resultData as string)) : undefined;
+        const result = resultPresent ? decode_hson_data_internal(value.outcome.resultData as string) : undefined;
         return Object.freeze({
           type: "action-status",
           id: value.id,

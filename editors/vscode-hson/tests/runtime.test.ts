@@ -653,7 +653,7 @@ check("editor completion uses current same-file Schema and exact partial token r
     host.readFile = name => name === file ? text : read(name);
     return cache.complete(file, text, version, offset, ts.createProgram([file], options, host));
   };
-  const source = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonData<typeof S> = Hson.data`<co`';
+  const source = 'import { Hson, type HsonDataValue } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonDataValue<typeof S> = Hson.data`<co`';
   const result = complete("/workspace/completion.ts", source, 1, source.length - 1);
   assert.deepEqual(result.map(entry => entry.candidate.label), ["count", "color"]);
   assert.deepEqual(result[0]?.range, { start: source.length - 3, end: source.length - 1 });
@@ -724,19 +724,21 @@ check("literal escape failures survive opaque partial quoted slots with exact ho
 });
 
 check("static interpolation diagnostics report position failures without inferring branded source", () => {
-  const prefix = 'import { Hson, type HsonData, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonData<typeof S> = Hson.data`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
+  const prefix = 'import { Hson, type HsonDataValue, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonDataValue<typeof S> = Hson.data`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
   const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/interpolation.ts").map(d => d.code).filter(code => code?.includes("STATIC_TYPE") || code?.includes("DATA_IN_DOCUMENT") || code?.includes("DOCUMENT_IN_DATA"));
-  assert.deepEqual(codes('Hson.document`<main ${data}/>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main ${data}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.document`<main ${data.toHson()}/>`;'), []);
   const mismatchSource = prefix + 'Hson.document`<main ${123}/>`;';
   const mismatch = diagnose(mismatchSource, "typescript", "/workspace/interpolation.ts").find(d => d.code === "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
   assert.deepEqual(mismatch?.range, { start: mismatchSource.lastIndexOf("${123}") + 2, end: mismatchSource.lastIndexOf("${123}") + 5 });
   assert.deepEqual(codes('Hson.data`<value ${document}>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${document}/>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${undefined}/>`;'), []);
-  assert.deepEqual(codes('Hson.data`<value ${data}>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${data}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.data`<value ${data.toHson()}>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${plain}/>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${canonical}/>`;'), []);
-  assert.deepEqual(codes('Hson.document`<main "${data}"/>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main "${data}"/>`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
   assert.deepEqual(codes('Hson.document`<main "${123}"/>`;'), []);
   assert.deepEqual(codes('Hson.document`<main ${123}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
   assert.deepEqual(codes('Hson.document`<main ${true}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
@@ -755,15 +757,15 @@ check("static interpolation diagnostics report position failures without inferri
 });
 
 check("Canonical static diagnostics accept string candidates and reject object candidates in whole slots", () => {
-  const prefix = 'import { Hson, type HsonCanonical, type HsonData, type HsonDocument } from "hson-live"; declare const dynamicString: string; declare const canonical: HsonCanonical; declare const data: HsonData; declare const document: HsonDocument; ';
+  const prefix = 'import { Hson, type HsonCanonical, type HsonDataValue, type HsonDocument } from "hson-live"; declare const dynamicString: string; declare const canonical: HsonCanonical; declare const data: HsonDataValue; declare const document: HsonDocument; ';
   const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/canonical-candidates.ts").map(diagnostic => diagnostic.code);
-  for (const candidate of ["dynamicString", "canonical", "data", "document", '"37"', "37", "true", "null"]) {
+  for (const candidate of ["dynamicString", "canonical", "data.toHson()", "document", '"37"', "37", "true", "null"]) {
     assert.deepEqual(codes('Hson.canonical`${' + candidate + '}`;'), []);
     assert.deepEqual(codes('Hson.canonical`"${' + candidate + '}"`;'), []);
   }
   // These are intentional rejection cases in the public entrypoint fixture.
   // TypeScript consumes the fixture's @ts-expect-error comments; Hson does not.
-  for (const candidate of ["{}", "[]", "() => {}"]) {
+  for (const candidate of ["data", "{}", "[]", "() => {}"]) {
     assert.deepEqual(codes('// @ts-expect-error\nHson.canonical`${' + candidate + '}`;'), ["HSON_INTERPOLATION_CANONICAL_STATIC_TYPE"]);
     assert.deepEqual(codes('Hson.canonical`"${' + candidate + '}"`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
   }
@@ -966,21 +968,26 @@ check("coincident quoted slots stay unknown despite later malformed source and h
   assert.deepEqual(diagnostics[0]?.range, { start: resumed.indexOf("1n"), end: resumed.indexOf("1n") + 2 });
 });
 
-check("inferred Hson brands leave serialized candidate qualification to runtime", () => {
+check("inferred Data carriers require serialization while source qualification stays at runtime", () => {
   const prefix = 'import { Hson } from "hson-live"; ';
   const familyCodes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/inferred.ts")
     .map(diagnostic => diagnostic.code)
     .filter(code => code?.includes("STATIC_TYPE") || code === "HSON_INTERPOLATION_DATA_IN_DOCUMENT" || code === "HSON_INTERPOLATION_DOCUMENT_IN_DATA");
-  assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.document`<main ${data}/>`;'), []);
+  for (const [body, code] of [
+    ['const data = Hson.data`<x 1>`; Hson.document`<main ${data}/>`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data`<x 1>`; Hson.data`<x ${data}>`;', "HSON_INTERPOLATION_DATA_STATIC_TYPE"],
+    ['const data = Hson.data`"hello"`; Hson.document`${data}`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data`<x 1>`; Hson.document`<p "${data}"/>`;', "HSON_QUOTED_INTERPOLATION_STATIC_TYPE"],
+    ['const data = Hson.data`<main "">`; Hson.document`<html <head/> ${data}/>`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+  ] as const) {
+    assert.deepEqual(familyCodes(body), [code]);
+    assert.deepEqual(familyCodes(body.replaceAll('${data}', '${data.toHson()}')), []);
+  }
   assert.deepEqual(familyCodes('const doc = Hson.document`<main/>`; Hson.data`<x ${doc}>`;'), []);
   assert.deepEqual(familyCodes('const doc = Hson.document`<main/>`; Hson.document`<body ${doc}/>`;'), []);
-  assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.data`<x ${data}>`;'), []);
-  assert.deepEqual(familyCodes('const data = Hson.data`"hello"`; Hson.document`${data}`;'), []);
   assert.deepEqual(familyCodes('const doc = Hson.document`"hello"`; Hson.data`${doc}`;'), []);
   assert.deepEqual(familyCodes('const source: string = "<main/>"; Hson.document`${source}`;'), []);
-  assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.document`<p "${data}"/>`;'), []);
-  assert.deepEqual(familyCodes('const data = Hson.data`<main "">`; Hson.document`<html <head/> ${data}/>`;'), []);
-  assert.deepEqual(familyCodes('const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;'), []);
 });
 
 check("authored QUAD syntax diagnostics are distinct from canonical producer proof", () => {

@@ -1,6 +1,7 @@
+import { normalize_css_map } from "../../core/css-map.js";
 import type { LiveMap, LiveMapKnownDefinitions, LiveMapDefinitionsCheck } from "../../types/livemap.types.js";
 import type {
-  Locus, LocusDefinitions, LocusLocalLibraryDefinition, LocusLocalNameCheck,
+  Locus, LocusDefinitions, LocusDefinitionCandidates, LocusLocalLibraryDefinition, LocusLocalNameCheck,
   LocusDefinitionOptions, LocusLocalEntriesCheck, LocusRegistryOptions, LocusResumeOptions,
 } from "../../types/locus.core.types.js";
 import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
@@ -8,7 +9,6 @@ import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.type
 import { admit_public_livemap_definitions, make_livemap_from_admitted_libraries_internal } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { enable_interactions, add_interaction } from "../interactions/interactions.js";
-import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { create_registry_locus } from "./locus.registry.js";
 import { resume_registry_locus, checkpoint_registry_locus } from "./locus.registry.persistence.js";
 
@@ -29,7 +29,7 @@ function capture_configuration<T extends object>(input: T, durable: boolean): T 
 }
 
 /** Normalize construction into the existing registry owner. Admission has its own managed lifecycle. */
-function construct_locus_definition<D extends LocusDefinitions, A extends LocusActionPayloads>(
+function construct_locus_definition<D extends LocusDefinitionCandidates, A extends LocusActionPayloads>(
   definitions: D, options: LocusDefinitionOptions<D, A>,
 ): LocusRegistryOptions<LiveMap<LiveMapKnownDefinitions<D>>, A> {
   const captured = admit_public_livemap_definitions(definitions, true);
@@ -46,8 +46,16 @@ function construct_locus_definition<D extends LocusDefinitions, A extends LocusA
         throw new TypeError("Locus local initializer is invalid or duplicated.");
       }
       names.add(entry.name);
-      catalog.push({ name: entry.name, ownership: "local", initializer: entry.initializer,
-        ...(entry.stylesheet === undefined ? {} : { css: opaque_document_stylesheet(entry.stylesheet) }) });
+      let initializer = entry.initializer;
+      const ownStylesheet = Object.getOwnPropertyDescriptor(initializer, "stylesheet");
+      const override = entry.stylesheet;
+      const stylesheet = override === undefined ? ownStylesheet === undefined ? undefined : Reflect.get(initializer, "stylesheet") : override;
+      if (stylesheet !== undefined) {
+        const descriptors = Object.getOwnPropertyDescriptors(initializer);
+        descriptors.stylesheet = { value: typeof stylesheet === "string" ? stylesheet : normalize_css_map(stylesheet), enumerable: true };
+        initializer = Object.create(Object.getPrototypeOf(initializer), descriptors);
+      }
+      catalog.push({ name: entry.name, ownership: "local", initializer });
     }
   }
   const map = make_livemap_from_admitted_libraries_internal(captured.definitions, [], undefined, captured.css);
@@ -71,13 +79,33 @@ export function create<const D extends LocusDefinitions, A extends LocusActionPa
   const L extends LocalEntries = readonly []>(
   definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
   configuration?: LocusDefinitionOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
+): Locus<LiveMap<LiveMapKnownDefinitions<D>>, A>;
+export function create<const D extends LocusDefinitionCandidates, A extends LocusActionPayloads = LocusActionPayloads,
+  const L extends LocalEntries = readonly []>(
+  definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  configuration?: LocusDefinitionOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
+): Locus<LiveMap<LiveMapKnownDefinitions<D>>, A>;
+export function create<const D extends LocusDefinitionCandidates, A extends LocusActionPayloads = LocusActionPayloads,
+  const L extends LocalEntries = readonly []>(
+  definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  configuration?: LocusDefinitionOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
 ): Locus<LiveMap<LiveMapKnownDefinitions<D>>, A> {
   const options = capture_configuration<LocusDefinitionOptions<D, A, L>>(configuration === undefined ? {} : configuration, false);
   return create_registry_locus(construct_locus_definition<D, A>(definitions, options));
 }
 
 /** Restore a durable authority or establish the declared initial authority durably. */
-export async function resume<const D extends LocusDefinitions, A extends LocusActionPayloads = LocusActionPayloads,
+export function resume<const D extends LocusDefinitions, A extends LocusActionPayloads = LocusActionPayloads,
+  const L extends LocalEntries = readonly []>(
+  definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  configuration: LocusResumeOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
+): Promise<Locus<LiveMap<LiveMapKnownDefinitions<D>>, A>>;
+export function resume<const D extends LocusDefinitionCandidates, A extends LocusActionPayloads = LocusActionPayloads,
+  const L extends LocalEntries = readonly []>(
+  definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
+  configuration: LocusResumeOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
+): Promise<Locus<LiveMap<LiveMapKnownDefinitions<D>>, A>>;
+export async function resume<const D extends LocusDefinitionCandidates, A extends LocusActionPayloads = LocusActionPayloads,
   const L extends LocalEntries = readonly []>(
   definitions: D & LiveMapDefinitionsCheck<NoInfer<D>, "access">,
   configuration: LocusResumeOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,

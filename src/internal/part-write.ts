@@ -5,7 +5,7 @@ import { qualify_authored_document_source, serialize_authored_document } from ".
 import { part_argument_name } from "./part-placeholder.js";
 import { is_public_attr_name } from "../core/public-attrs.js";
 import type { HsonNode } from "../core/types.js";
-import { ExactDataCarrier } from "../api/data/hson-data.js";
+import { admit_data_input, hson_data_value, hson_data_text_from_value } from "../api/data/hson-data.js";
 
 type Writer = (...input: readonly unknown[]) => HsonAuthored;
 const writers = new WeakMap<object, Writer>();
@@ -57,8 +57,8 @@ export function write_part_invocation(library: string, member: string, input: re
         throw new TypeError("Part.write arguments require own enumerable data fields.");
       }
       const value: unknown = field.value;
-      if (kind === "data" && typeof value !== "string") {
-        attrs[`${name}:data`] = ExactDataCarrier.from(value).toHson();
+      if (kind === "data") {
+        attrs[`${name}:data`] = hson_data_text_from_value(hson_data_value(admit_data_input(value)));
       } else {
         if (value !== null && typeof value !== "string" && typeof value !== "boolean"
           && !(typeof value === "number" && Number.isFinite(value))) {

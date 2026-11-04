@@ -54,6 +54,7 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
 function type_family(node: ts.TypeNode, checker: ts.TypeChecker, seen = new Set<ts.Symbol>()): StaticInterpolationFamily {
   if (ts.isParenthesizedTypeNode(node)) return type_family(node.type, checker, seen);
   if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+    if (is_official_hson_package_binding(node.typeName, "HsonDataValue", checker)) return "object";
     if (is_official_hson_package_binding(node.typeName, "HsonData", checker)) return "data";
     if (is_official_hson_package_binding(node.typeName, "HsonDocument", checker)) return "document";
     if (is_official_hson_package_binding(node.typeName, "HsonAuthored", checker)) return "document";
@@ -118,7 +119,7 @@ function expression_family(node: ts.Expression, checker: ts.TypeChecker, seen: S
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)) return "string";
   if (ts.isTaggedTemplateExpression(node) && ts.isPropertyAccessExpression(node.tag) && ts.isIdentifier(node.tag.expression)
     && is_official_hson_package_binding(node.tag.expression, "Hson", checker)) {
-    if (node.tag.name.text === "data") return "data";
+    if (node.tag.name.text === "data") return "object";
     if (node.tag.name.text === "document") return "document";
     if (node.tag.name.text === "canonical") return "canonical";
   }

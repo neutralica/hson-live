@@ -7,7 +7,7 @@ import { read_document_quad } from "../../internal/governed-document.js";
 import { document_css_reads } from "../../internal/document-css-commands.js";
 import { live_observation, live_subscription, read_data_location, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
-import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
+import { type HsonDataValue } from "../data/hson-data.js";
 import type {
   LiveMap,
   LiveMapStagedWriter,
@@ -113,7 +113,7 @@ export function create_registry_locus_internal<
   const observe = live_observation(assertReadable);
   const actions: Record<string, (
     context: unknown,
-    payload: ExactDataCarrier | undefined,
+    payload: HsonDataValue | undefined,
     message?: LocusClientActionMessage,
   ) => unknown | void | Promise<unknown | void>> = {};
   const readFacades = new WeakMap<object, ReturnType<typeof readLib>>();
@@ -171,15 +171,15 @@ export function create_registry_locus_internal<
         // established action context callable without fabricating a stream.
         emitEvent: () => false,
       }) as unknown as LocusActionContext<TMap>;
-      const message: LocusClientActionMessage<TActions> = (actionMessage ?? Object.freeze({
+      const message: Parameters<typeof handler>[2] = (actionMessage ?? Object.freeze({
         type: "action",
         id: `locus-action-${actionSequence}`,
         name,
-        ...(payload === undefined ? {} : { payload: hson_data_text(payload) }),
-      })) as LocusClientActionMessage<TActions>;
+        ...(payload === undefined ? {} : { payload: payload }),
+      })) as Parameters<typeof handler>[2];
       return handler(
         publicContext,
-        payload === undefined ? undefined : hson_data_text(payload),
+        payload === undefined ? undefined : payload,
         message,
       );
     };

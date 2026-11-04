@@ -1,7 +1,7 @@
 import { prepare_portable_native_handoff } from "./continuation.portable.js";
 import { capture_startup_dom } from "./continuation.startup-dom.js";
 import type { ReceivingDocumentHandoff, ReceivingDocumentHandoffOwner } from "../livemap/livemap.internal.js";
-import type { HsonData } from "../transform/transform.types.js";
+import type { HsonDataValue } from "../data/hson-data.js";
 import type { HsonNode } from "../../core/types.js";
 import { echo_receiving_document_handoff_internal, prepare_echo_replica_internal } from "../echo/echo.replica-preparation.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
@@ -217,7 +217,7 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     startupFaultHook?.("recovered", echo);
     if (interactions !== undefined) {
       try {
-        const dispatch = async (actionKey: string, payload: HsonData): Promise<void> => {
+        const dispatch = async (actionKey: string, payload: HsonDataValue): Promise<void> => {
           const outcome = await echo.action(actionKey, payload);
           if (outcome.type === "ack" && outcome.ok === true) return;
           const error = new Error(outcome.error.message, { cause: outcome.error });

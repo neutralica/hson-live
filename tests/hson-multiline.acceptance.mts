@@ -11,7 +11,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "hson.multiline", tit
 const testEvents = create_test_event_emitter(HSON_LIVE_TEST_METADATA.id);
 testEvents.case_begin("multiline-value-preservation", HSON_LIVE_TEST_METADATA.title);
 try {
-  const value = (source: string) => Hson.data.materialize(Hson.data.fromHson(source as never));
+  const value = (source: string) => (Hson.data.fromSource(source as never)).materialize();
   const cases: readonly (readonly [string, string])[] = [
     ['"a\nb\rc\r\nd\\re"', "a\nb\nc\nd\re"],
     ['"\r\n  a\n  b\r  c\\r\r\n  "', "a\nb\nc\r"],
@@ -30,7 +30,7 @@ try {
   ];
   for (const [source, expected] of cases) {
     assert.equal(value(source), expected, JSON.stringify(source));
-    assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(`<v ${source}>` as never)), { v: expected });
+    assert.deepEqual((Hson.data.fromSource(`<v ${source}>` as never)).materialize(), { v: expected });
     assert.deepEqual(value(`[${source}, ""]`), [expected, ""]);
     const document = Hson.document.fromHson(`<p ${source} "" "next"/>` as never);
     const node = Hson.document.toNode(document);
@@ -87,7 +87,7 @@ try {
   const compactSchema = '<type "data" content <message <exact "hello\\nworld">>>';
   const multilineSchema = '<type "data" content <message <exact "\n    hello\n    world\n  ">>>';
   assert.equal(hson_schema_source_digest(compactSchema), hson_schema_source_digest(multilineSchema));
-  assert.equal(HsonSchema.fromHson(multilineSchema).certify(Hson.data.from({ message: "hello\nworld" })), Hson.data.from({ message: "hello\nworld" }));
+  assert.equal((HsonSchema.fromHson(multilineSchema).certify(Hson.data.from({ message: "hello\nworld" }))).toHson(), (Hson.data.from({ message: "hello\nworld" })).toHson());
   const readableOutput = hsonTransform.fromJson(JSON.stringify("hello\nworld")).toHson();
   const compactOutput = readableOutput.noBreak();
   assert.notEqual(readableOutput.serialize(), compactOutput.serialize());

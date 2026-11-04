@@ -16,7 +16,7 @@ export async function representation_required_cases() {
   assert.equal(required, value.must);
   assert.equal(map.data.state.at(["nullable"]).must.snap(), null);
   assert.deepEqual(required.snap(), [1]);
-  assert.deepEqual(Hson.data.materialize(required.hson()), [1]);
+  assert.deepEqual(Hson.data.fromSource(required.hson()).materialize(), [1]);
   const detached = required.snap();
   assert.ok(Array.isArray(detached)); detached.push(99);
   assert.deepEqual(required.snap(), [1]);
@@ -39,7 +39,7 @@ export async function representation_required_cases() {
   const part = map.parts.parts.submit, partMust = part.must;
   const definition = partMust.snap(); Reflect.set(definition, "document", "<aside/>");
   assert.equal(partMust.snap().document, "<button hson:part/>");
-  assert.deepEqual(Hson.data.materialize(partMust.hson()), { kind: "document", document: "<button hson:part/>" });
+  assert.deepEqual(Hson.data.fromSource(partMust.hson()).materialize(), { kind: "document", document: "<button hson:part/>" });
   assert.equal("render" in part, false); assert.equal("data" in part, false);
   assert.throws(() => part.delete(), /Immutable Part/);
   assert.equal(part.snap()?.document, "<button hson:part/>");

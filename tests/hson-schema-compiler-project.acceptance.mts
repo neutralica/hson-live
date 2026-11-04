@@ -495,9 +495,9 @@ check("producer admission gates CLI evidence, attachments and regenerated govern
   // The same source-generation admission boundary must protect assignment
   // overlays even when its Schema producer is valid.
   for (const tag of ['Hson.data`// \\8\r\n<name "Ada">`', 'Hson?.data`<name "Ada">`', 'Hson.data?.`<name "Ada">`']) {
-    writeFileSync(join(directory, "index.ts"), valid + '\r\nimport type { HsonData } from "hson-live";\r\n' + `const candidate: HsonData<typeof Bad> = ${tag};\r\n`);
+    writeFileSync(join(directory, "index.ts"), valid + '\r\nimport type { HsonDataValue } from "hson-live";\r\n' + `const candidate: HsonDataValue<typeof Bad> = ${tag};\r\n`);
     assert.notEqual(generate(directory).status, 0, tag);
-    assert.doesNotMatch(mirrored().slice(mirrored().indexOf("const candidate:")), /as unknown as HsonData/);
+    assert.doesNotMatch(mirrored().slice(mirrored().indexOf("const candidate:")), /as unknown as HsonDataValue/);
   }
   // A custom watch-analysis callback cannot bypass producer eligibility at
   // materialization by supplying a raw-compilable rejected producer record.

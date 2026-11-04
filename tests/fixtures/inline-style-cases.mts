@@ -63,14 +63,14 @@ export function inline_style_cases(check: (name: string, run: () => void) => voi
     }
   });
   check("data receiving context rejects attributes while document CSS remains strict", () => {
-    const text = (source: string) => source as Parameters<typeof Hson.data.fromHson>[0];
-    const data = Hson.data.fromHson(text('<z -0 a ["", null, true, <nested []>]>'));
-    assert.deepEqual(Hson.data.entries(data)?.map(([name]) => name), ["z", "a"]);
-    assert.equal(Object.is(Hson.data.materialize(Hson.data.entries(data)![0]![1]), -0), true);
-    assert.equal(Hson.data.fromHson(data), data);
-    assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(text('<style "broken CSS text">'))), { style: "broken CSS text" });
+    const text = (source: string) => source as Parameters<typeof Hson.data.fromSource>[0];
+    const data = Hson.data.fromSource(text('<z -0 a ["", null, true, <nested []>]>'));
+    assert.deepEqual((data).entries()?.map(([name]) => name), ["z", "a"]);
+    assert.equal(Object.is(((data).entries()![0]![1]).materialize(), -0), true);
+    assert.equal((Hson.data.from(data)).toHson(), (data).toHson());
+    assert.deepEqual((Hson.data.fromSource(text('<style "broken CSS text">'))).materialize(), { style: "broken CSS text" });
     for (const source of ['<p style="color:red"/>', '<p style="broken"/>', '<p title="x"/>', '<p/>', '<p @000000001/>', '<a 1 a 2>', '1e999']) {
-      assert.throws(() => Hson.data.fromHson(text(source)), TypeError);
+      assert.throws(() => Hson.data.fromSource(text(source)), TypeError);
     }
     const page = Hson.document`<p style="color:red!important;color:blue"/>`;
     const p = Hson.document.toNode(ANY_DOCUMENT.certify(page)).$_content[0] as HsonNode;

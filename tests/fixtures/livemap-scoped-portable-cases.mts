@@ -69,7 +69,7 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
     }}, page:{document:'<main/>'} });
     const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
     const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;
-    const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" slide:data="${data}"/> <hson-part lib="parts" at="panel" slide:data="${data}"/>/>`);
+    const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" slide:data="${(data).toHson()}"/> <hson-part lib="parts" at="panel" slide:data="${(data).toHson()}"/>/>`);
     const candidate = a.prepareScopedDocument(owner, {root:parsed.root, quads:parsed.declarations});
     const portable = a.captureScopedDocument(candidate);
     assert.doesNotMatch(JSON.stringify(portable), /PRIVATE_ARGUMENT|slide:data|hson-part|parameters|bindings.*slide/);

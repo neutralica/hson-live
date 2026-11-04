@@ -711,3 +711,66 @@ for (const stage of ["message", "close"] as const) {
 }
 
 console.log("Echo initialization and sync current, replay, reconcile, local ownership, admission, QUID fencing, and failure cleanup passed.");
+
+// Submission capture precedes the lazy replica import, including nested evidence.
+for (const revoke of [false, true]) {
+  const locus = hsonLiveMap.locus.create({ state: { data: 0, access: "shared" } }, {
+    local: [{ name: "ui", initializer: { document: '<main @:target "Original"/>', stylesheet: { "@:target": { color: "red" } } } }],
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
+  });
+  const session = await locus.session.create({ libraries: ["state", "ui"] });
+  const pair = socket_pair(), detach = bind_locus_websocket(locus, pair.server);
+  const caller = JSON.parse(JSON.stringify(session.now()));
+  const proxy = Proxy.revocable(caller, {});
+  try {
+    const pending = hsonLiveMap.echo.create({ now: revoke ? proxy.proxy : caller, credential: session.credential!, transport: test_echo_transport(pair.client) });
+    caller.local[0].quads[0].path[0] = 999;
+    caller.local[0].css.rules[0].declarations[0][1] = "blue";
+    caller.local[0].fingerprint = "tampered";
+    proxy.revoke();
+    const echo = await pending;
+    try {
+      assert.match(echo.doc.must("ui").css.snapshot(), /red/);
+      assert.doesNotMatch(echo.doc.must("ui").css.snapshot(), /blue/);
+      assert.match(echo_map_internal(echo).doc.must("ui").render(), /hson:quad="target"/);
+    } finally { echo.dispose(); }
+  } finally { detach(); locus.dispose(); }
+}
+{
+  const locus = hsonLiveMap.locus.create({ state: { data: 0, access: "shared" } }, { authorizeProjection: () => ({ libraries: ["state"] }) });
+  const session = await locus.session.create({ libraries: ["state"] });
+  const pair = socket_pair(), transport = test_echo_transport(pair.client);
+  const invalid = JSON.parse(JSON.stringify(session.now())); invalid.local = [{ name: "missing-evidence" }];
+  let pending: Promise<unknown> | undefined;
+  assert.doesNotThrow(() => { pending = hsonLiveMap.echo.create({ now: invalid, credential: session.credential!, transport }); });
+  await assert.rejects(pending!);
+  assert.equal(pair.clientListenerCount(), 0);
+  const detach = bind_locus_websocket(locus, pair.server);
+  try { const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport }); echo.dispose(); }
+  finally { detach(); locus.dispose(); }
+}
+console.log("Echo submission captures nested correspondence/CSS and revocable input before returning its promise; invalid admission rejects asynchronously without retaining transport ownership.");
+
+// Scoped portable evidence must also be owned before asynchronous attachment.
+{
+  const { scoped_portable_fixture_capture } = await import("./fixtures/livemap-scoped-portable-cases.mts");
+  const { ANY_DOCUMENT, hson_schema_digest } = await import("../src/api/schema/hson-schema.ts");
+  const { locus_local_initializer_digest } = await import("../src/api/locus/locus.local-initializer.ts");
+  const capture = scoped_portable_fixture_capture();
+  const scopes = { ...capture.scopes, document: capture.scopes.document.filter(binding => binding.name !== "mainAlias") };
+  const base = { name: "scoped", mode: "document", schema: ANY_DOCUMENT.toHson(), schemaDigest: hson_schema_digest(ANY_DOCUMENT), rootCodec: "hson-exact-value", root: encode_hosted_root(capture.root), quads: [], scopes, css: capture.css };
+  const { schema: _schema, ...contract } = base;
+  const local = [{ ...base, fingerprint: sha256_sync(JSON.stringify({ format: "hson-local-initializer", ...contract })) }];
+  const locus = hsonLiveMap.locus.create({ state: { data: 0, access: "shared" } }, { authorizeProjection: () => ({ libraries: ["state"] }) });
+  const session = await locus.session.create({ libraries: ["state"] });
+  const now = JSON.parse(JSON.stringify({ ...session.now(), local, initializerDigest: locus_local_initializer_digest(local as never) }));
+  const pair = socket_pair(), original = test_echo_transport(pair.client);
+  let submitted = false;
+  const transport = { ...original, operations: { ...original.operations, async submit() { submitted = true; throw Error("scoped-capture-reached-attachment"); } } };
+  const pending = hsonLiveMap.echo.create({ now, credential: session.credential!, transport });
+  now.local[0].scopes.occurrences[0].bindings[0].path = [999];
+  now.local[0].css.rules.length = 0;
+  await assert.rejects(pending);
+  assert.equal(submitted, true, "original scoped graph/CSS was admitted before execution reached transport");
+  locus.dispose();
+}

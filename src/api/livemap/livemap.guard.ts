@@ -1,3 +1,4 @@
+import { is_hson_data_value, hson_data_value } from "../data/hson-data.js";
 // guard.ts
 
 import type { LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
@@ -36,6 +37,7 @@ export function must_ordered_projected_value(value: unknown, path: LivePath): Or
   try {
     // Only factory-owned immutable carriers may bypass public descriptor capture.
     // Planning, operation materialization and graph admission share this stable value.
+    if (is_hson_data_value(value)) return hson_data_value(value);
     if (is_ordered_projected_value(value)) return value;
     return admit_projected_value(value, path);
   } catch (error) {

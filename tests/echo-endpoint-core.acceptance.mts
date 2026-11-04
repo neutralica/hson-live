@@ -3,7 +3,7 @@ import { authority_definitions_from_catalog_fixture, authority_definitions_from_
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import assert from "node:assert/strict";
-import { Hson } from "../src/index.ts";
+import { Hson, HsonDataValue } from "../src/index.ts";
 import * as hsonLiveMap from "../src/api/livemap/index.ts";
 
 
@@ -167,21 +167,24 @@ await check("public livemap endpoint admits exact data and rejects document payl
   try {
     echo.connect();
     await echo.session.create();
-    const payload = Hson.data.fromHson('<tail [] zero -0 empty "">' as Parameters<typeof Hson.data.fromHson>[0]);
+    const payload = Hson.data.fromSource('<tail [] zero -0 empty "">' as Parameters<typeof Hson.data.fromSource>[0]);
     const act = (value: unknown): ReturnType<typeof echo.action> => Reflect.apply(echo.action, echo, ["probe", value]);
     assert.equal((await bounded(act(payload))).type, "ack");
     assert.equal(last(sent, "action").payload, payload);
     const submitted = sent.length;
     for (const invalid of ['<p style="broken"/>', '<p style="color:red"/>', '<p/>', '<p @000000001/>', '<a 1 a 2>', '1e999']) {
-      assert.throws(() => act(invalid), (error) => error instanceof TypeError
-        && /Data input requires JSON or Hson Data/.test(error.message) && error.cause instanceof Error);
-      assert.equal(sent.length, submitted, "invalid data must not reach semantic transport");
+      assert.throws(() => act(Hson.data.fromSource(invalid)), TypeError);
+      assert.equal(sent.length, submitted, "invalid source admission must not reach semantic transport");
       assert.equal(echo.session.status, "attached");
     }
-    assert.equal((await bounded(act('<zero -0>'))).type, "ack");
-    assert.equal(last(sent, "action").payload, '<zero -0>');
-    assert.equal((await bounded(act('{"zero":-0}'))).type, "ack");
-    assert.equal(last(sent, "action").payload, '<zero -0>');
+    for (const text of ['<zero -0>', '{"zero":-0}']) {
+      assert.equal((await bounded(act(text))).type, "ack");
+      const literal = last(sent, "action").payload; assert.ok(literal instanceof HsonDataValue);
+      assert.equal(literal.scalar(), text);
+      const admitted = Hson.data.fromSource(text);
+      assert.equal((await bounded(act(admitted))).type, "ack");
+      assert.strictEqual(last(sent, "action").payload, admitted);
+    }
   } finally { echo.dispose(); }
 });
 

@@ -1,5 +1,4 @@
-import type { JsonObj, JsonValue } from "../core/types.js";
-import type { HsonData } from "../api/transform/transform.types.js";
+import type { HsonDataInput } from "../api/data/hson-data.js";
 import type { LiveMapDocumentPathInput } from "./livemap.types.js";
 
 /** Complete normalized portable semantics of one LiveTree listener registration. */
@@ -15,7 +14,7 @@ export type InteractionListener = Readonly<{
   stopImmediatePropagation: boolean;
 }>;
 
-type InteractionDataInput = HsonData | number | boolean | null | JsonObj | JsonValue[];
+type InteractionDataInput = HsonDataInput;
 
 /** Portable coordinate of a document subject in the authority registry. */
 export type InteractionSubject = Readonly<{

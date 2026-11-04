@@ -88,7 +88,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
     const f = fixture('<main <i/>/>');
     f.definitions.at([]).object.setKey('optional', part('<aside hson:part @:root part:optional data:d="%{payload}" "^{d.title}"/>', ':scope{color:orange}'));
     const input = (data: object) => {
-      const value = source(Hson.document`<hson-part lib="parts" at="optional" payload:data="${Hson.data.from(data)}"/>`).root.$_content[0];
+      const value = source(Hson.document`<hson-part lib="parts" at="optional" payload:data="${(Reflect.apply(Hson.data.from, Hson.data, [data])).toHson()}"/>`).root.$_content[0];
       assert.ok(is_Node(value)); return value;
     };
     const insertOptional = (data: object, index = 1): LiveMapGraphOp => ({ domain: 'graph', op: 'insert-content', target: target([0, 0]), index, content: input(data) });
@@ -122,7 +122,7 @@ export function scoped_composition_cases(check: (name: string, run: () => void) 
     f.definitions.at([]).object.setKey('typed', part('<section hson:part data:slide="%{slide}" @:root title="^{slide.title}" <hson-part @:child at="typedLeaf" payload:data="^{slide}"/>/>', ':scope{color:red}'));
     f.definitions.at([]).object.setKey('typedLeaf', part('<b hson:part data:payload="%{payload}" @:root "^{payload.title}"/>', ':scope{color:blue}'));
     const input = (title: string) => {
-      const root = source(Hson.document`<hson-part lib="parts" at="typed" slide:data="${Hson.data.from({ title })}"/>`).root;
+      const root = source(Hson.document`<hson-part lib="parts" at="typed" slide:data="${(Hson.data.from({ title })).toHson()}"/>`).root;
       const node = root.$_content[0]; assert.ok(is_Node(node)); return node;
     };
     const insertTyped = (title: string, index: number): LiveMapGraphOp => ({ domain: 'graph', op: 'insert-content', target: target([0, 0]), index, content: input(title) });

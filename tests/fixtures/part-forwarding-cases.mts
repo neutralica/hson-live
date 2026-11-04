@@ -16,17 +16,17 @@ export function forwarding_fixture({ shape = forwarding_shape, value = forwardin
   body = '<p hson:part data:record="%{payload}" "^{record.title}"/>',
   intermediate = '<section hson:part data:outer="%{incoming}" <hson-part at="B" payload:data="' + forward + '"/>/>'
 }: { shape?: string; value?: string; forward?: string; body?: string; intermediate?: string } = {}): string {
-  return 'import {Hson,hsonLiveMap as maps,type HsonData} from "hson-live";\ndeclare const dynamic:any;\n'
-    + 'const S=Hson.schema`<type "data" content ' + shape + '>`;\nconst input:HsonData<typeof S>=Hson.data`' + value + '`;\n'
+  return 'import {Hson,hsonLiveMap as maps,type HsonDataValue} from "hson-live";\ndeclare const dynamic:any;\n'
+    + 'const S=Hson.schema`<type "data" content ' + shape + '>`;\nconst input:HsonDataValue<typeof S>=Hson.data`' + value + '`;\n'
     + 'const A=Hson.document`' + intermediate + '`;\nconst B=Hson.document`' + body + '`;\n'
-    + 'const page=Hson.document`<hson-part at="components/A" incoming:data="${input}"/>`;\n'
+    + 'const page=Hson.document`<hson-part at="components/A" incoming:data="${input.toHson()}"/>`;\n'
     + 'const map=maps.fromLibraries({components:{parts:{A:{kind:"document",document:A},B:{kind:"document",document:B}}},page:{document:page}});';
 }
 
 /** Same immutable definitions and receiving interfaces, with detached TS roots. */
 export function write_fixture(options: Parameters<typeof forwarding_fixture>[0] = {}, calls = 'map.parts.components.A.write({incoming:input});'): string {
   return forwarding_fixture(options)
-    .replace('const page=Hson.document`<hson-part at="components/A" incoming:data="${input}"/>`;\n', '')
+    .replace('const page=Hson.document`<hson-part at="components/A" incoming:data="${input.toHson()}"/>`;\n', '')
     .replace(',page:{document:page}', '') + '\n' + calls;
 }
 
@@ -36,11 +36,11 @@ export function run_forwarding_editor_cases(): void {
   const markedBody = '<section hson:part data:record="%{payload}" <b "^{record.ti|tle}"/> <hson-part at="^{record.kind}"/>/>';
   const body = markedBody.replace('|', '');
   const directSource = forwarding_fixture({ forward: '^{outer.nested}', body })
-    .replace('const page=', 'const T=Hson.schema`<type "data" content <nested <content <title "boolean" kind <exact "heading">>>>>`;const other:HsonData<typeof T>=Hson.data`<nested <title true kind "heading">>`;const page=')
-    .replace('<hson-part at="components/A" incoming:data="${input}"/>', '<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>')
+    .replace('const page=', 'const T=Hson.schema`<type "data" content <nested <content <title "boolean" kind <exact "heading">>>>>`;const other:HsonDataValue<typeof T>=Hson.data`<nested <title true kind "heading">>`;const page=')
+    .replace('<hson-part at="components/A" incoming:data="${input.toHson()}"/>', '<main <hson-part at="components/A" incoming:data="${input.toHson()}"/> <hson-part at="components/A" incoming:data="${other.toHson()}"/>/>')
     .replace('B:{kind:"document",document:B}', 'B:{kind:"document",document:B},quote:{kind:"document",document:"<p hson:part/>"},heading:{kind:"document",document:"<h1 hson:part/>"}');
   try { for (const source of [directSource, directSource
-    .replace('<main <hson-part at="components/A" incoming:data="${input}"/> <hson-part at="components/A" incoming:data="${other}"/>/>', '<main/>')
+    .replace('<main <hson-part at="components/A" incoming:data="${input.toHson()}"/> <hson-part at="components/A" incoming:data="${other.toHson()}"/>/>', '<main/>')
     + '\nmap.parts.components.A.write({incoming:input});\nmap.parts.components.A.write({incoming:other});']) {
     writeFileSync(join(directory, 'package.json'), '{"type":"module"}'); writeFileSync(file, source);
     const program = ts.createProgram([file], { strict: true, noEmit: true, skipLibCheck: true, types: [], target: ts.ScriptTarget.ESNext,

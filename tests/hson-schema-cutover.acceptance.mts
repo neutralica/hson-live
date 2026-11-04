@@ -78,13 +78,13 @@ check("a separate stock compiler consumes structural JSON and Schema-bound Hson 
   writeFileSync(join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true, types: [], target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] } }, files: ["consumer.ts"] }));
   writeFileSync(join(consumer, "consumer.ts"), `import { S, Twin, Alias, getSchema, imported, arrow, holder, contract } from "schema-package";
 import { S as Direct } from "schema-package/schema";
-import type { HsonData, JsonFromSchema } from "hson-live";
+import type { HsonDataValue, JsonFromSchema } from "hson-live";
 const label: string = contract.label;
 const a: typeof S = getSchema(); const b: typeof S = imported(); const c: typeof S = arrow();
 const d: typeof S = holder.schema; const e: typeof S = holder.method(); const alias: typeof S = Alias;
-declare const data: HsonData<typeof S>; const same: HsonData<typeof Direct> = data;
+declare const data: HsonDataValue<typeof S>; const same: HsonDataValue<typeof Direct> = data;
 // @ts-expect-error identical schemas from separate declarations have distinct identities
-const other: HsonData<typeof Twin> = data;
+const other: HsonDataValue<typeof Twin> = data;
 declare const value: JsonFromSchema<typeof S>; const exact: "ready" = value.phase;
 // JSON exposes the structural primitive; Schema refinements remain runtime constraints.
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;

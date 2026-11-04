@@ -7,7 +7,7 @@ export function admit_canonical_hson_data_value(input: string): OrderedProjected
   try {
     return parse_canonical_hson_data(input);
   } catch (cause) {
-    throw new TypeError("HsonData.fromHson requires data-mode Hson; document Hson is not data.", { cause });
+    throw new TypeError("Canonical Data admission requires data-mode Hson; document Hson is not data.", { cause });
   }
 }
 

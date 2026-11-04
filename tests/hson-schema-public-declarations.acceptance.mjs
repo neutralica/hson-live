@@ -127,14 +127,14 @@ export const privateGoverned = privateLocus.data.deck;
 check("packaged compiler proves type-only Schema queries through re-exports and immutable aliases", () => {
   const directory = join(temporary, "type-only-schema");
   const source = `
-import { Hson, type HsonData } from "hson-live";
+import { Hson, type HsonDataValue } from "hson-live";
 import type { S } from "./schema.js";
 import { S as Value } from "./schema.js";
 import { type Reexported, type Chained } from "./bridge.js";
-export const value: HsonData<typeof S> = Hson.data\`<name "Ada">\`;
-export const reexported: HsonData<typeof Reexported> = Hson.data\`<name "Ada">\`;
-export const chained: HsonData<typeof Chained> = Hson.data\`<name "Ada">\`;
-export const ordinary: HsonData<typeof Value> = Hson.data\`<name "Ada">\`;
+export const value: HsonDataValue<typeof S> = Hson.data\`<name "Ada">\`;
+export const reexported: HsonDataValue<typeof Reexported> = Hson.data\`<name "Ada">\`;
+export const chained: HsonDataValue<typeof Chained> = Hson.data\`<name "Ada">\`;
+export const ordinary: HsonDataValue<typeof Value> = Hson.data\`<name "Ada">\`;
 `;
   project(directory, source, { ...options, lib: ["ESNext", "DOM"] });
   writeFileSync(join(directory, "schema.ts"), 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <name "string">>`; export const Alias = S; export const Next = Alias;');
@@ -155,7 +155,7 @@ check("Worker producer generates evidence and emits public declarations", () => 
   assert.equal(readFileSync(join(producer, "index.ts"), "utf8"), before);
   const publicDeclaration = readFileSync(join(producer, "out/index.d.ts"), "utf8");
   assert.doesNotMatch(publicDeclaration, /HSON_SCHEMA_PROOF|HSON_DATA_BRAND|HSON_DOCUMENT_BRAND|LiveMapKnownDefinitions|liveMapLibrariesType/);
-  assert.match(publicDeclaration, /certificate: import\("hson-live\/hson"\)\.HsonData</);
+  assert.match(publicDeclaration, /certificate: import\("hson-live\/hson"\)\.HsonDataValue</);
   assert.match(publicDeclaration, /map: import\("hson-live\/livemap"\)\.LiveMap</);
   for (const declaration of declarations(join(producer, "out"))) {
     assert.doesNotMatch(declaration, /["']hson-live["']|\.hson\/|__hson_assert_library_schema/);
@@ -301,7 +301,7 @@ export const library = map.data.must("state");
   for (const action of ["generate", "build"]) run([join(installed, "dist/hson-schema.mjs"), action, "--project", join(rootProducer, "tsconfig.json")]);
   const declaration = readFileSync(join(rootProducer, "out/index.d.ts"), "utf8");
   assert.match(declaration, /map: import\("hson-live\/livemap"\)\.LiveMap</);
-  assert.match(declaration, /certificate: import\("hson-live\/hson"\)\.HsonData</);
+  assert.match(declaration, /certificate: import\("hson-live\/hson"\)\.HsonDataValue</);
   assert.doesNotMatch(declaration, /["']hson-live["']|HSON_SCHEMA_PROOF|LiveMapKnownDefinitions/);
   const rootConsumer = join(temporary, "root-consumer");
   project(rootConsumer, `

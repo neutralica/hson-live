@@ -1,3 +1,4 @@
+import { install_libraries_snapshot } from "../../src/api/livemap/index.js";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../../src/index.js";
 import type { Locus, LocusDefinitions } from "../../src/types/locus.core.types.js";
@@ -46,6 +47,8 @@ export async function flat_library_definition_cases() {
     await rejected(locus, { earlier: { data: 1 }, [name]: { data: 2 } });
     locus.dispose();
   }
+  await document_stylesheet_cases();
+  await local_correspondence_correction_cases();
   const literalNames = hsonLiveMap.fromLibraries({ "a\\b": { data: 1 }, "a%2Fb": { data: 2 } });
   assert.equal(literalNames.data.must("a\\b").snap(), 1);
   assert.equal(literalNames.data.must("a%2Fb").snap(), 2);
@@ -166,4 +169,200 @@ export async function flat_library_definition_cases() {
   const local = hsonLiveMap.fromLibraries({ page: { document: "<main/>", stylesheet: "main{color:red}" } });
   assert.match(local.doc.must("page").css.snapshot(), /color:red/);
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: "<main/>", access: "shared" } } as never), /metadata/);
+}
+
+/** Checkpoint B: the actual construction, topology, local seed and durable receivers. */
+async function document_stylesheet_cases() {
+  const document = '<html @:page <head/> <body <h1 @:title "Title"/>/>/>';
+  const makeStyle = () => ({ color: "red", "--Tone": "purple", width: { value: 20, unit: "px" }, marginTop: undefined,
+    "& > body": { padding: { value: 2, unit: "em" } },
+    "@:title": { color: "blue", _hover: { color: "green" }, "&::before": { content: '"prefix"' } },
+    $media: { "(min-width: 1px)": { "@:title": { fontSize: { value: 15, unit: "px" } } } },
+  });
+  const assertSheet = (map: ReturnType<typeof hsonLiveMap.create>, name: string) => {
+    const page = map.doc.must(name), sheet = page.css.snapshot(), record = map.capture().libraries.find(entry => entry.name === name)!.css!;
+    assert.match(sheet, /:root\{color:red;\}/); assert.match(sheet, /:root\{--Tone:purple;\}/);
+    assert.match(sheet, /:root\{width:20px;\}/); assert.doesNotMatch(sheet, /margin-top/);
+    assert.match(sheet, /:root>body\{padding:2em;\}/); assert.match(sheet, /:hover\{color:green;\}/);
+    assert.match(sheet, /::before\{content:"prefix";\}/); assert.match(sheet, /@media\s*\(min-width:1px\)/);
+    assert.match(sheet, /font-size:15px/); assert.doesNotMatch(sheet, /@scope/);
+    assert.deepEqual(record.rules.slice(0, 4).map(rule => rule.declarations[0]), [["color", "red"], ["--Tone", "purple"], ["width", "20px"], ["padding", "2em"]]);
+    assert.match(record.rules[4]!.selector, /hson\\:quad="title"/);
+    assert.match(page.render(), /data-hson-managed-document-css/);
+    assert.match(page.render(), /hson:quad="title"/); // SSR subjects and their stylesheet correspond before any browser code.
+    const restored = install_libraries_snapshot(map.capture()).map;
+    assert.deepEqual(restored.capture().libraries.find(entry => entry.name === name)!.css, record);
+    assert.equal(restored.doc.must(name).render(), page.render());
+  };
+  for (const dynamic of [false, true]) {
+    const style = makeStyle(), map = hsonLiveMap.fromLibraries(dynamic ? {} : { page: { document, stylesheet: style } });
+    if (dynamic) map.addLibraries({ page: { document, stylesheet: style } });
+    style.color = "pink"; style["@:title"].color = "orange"; style.width.value = 99;
+    assertSheet(map, "page");
+    const before = map.capture(), owner = internal_livemap_aggregate_authority(map), issued = owner.identityEpoch().issued();
+    let observations = 0; map.commits.observe(() => observations++);
+    const invalid = [{ unknownProperty: "red" }, { "@:missing": { color: "red" } }, { "& >": { color: "red" } },
+      { color: "red", CoLoR: "blue" }, { padding: { value: 2, unit: "bogus" } }, { color: false },
+      { $media: { "screen,": { color: "red" } } }, { color: "red; background:blue" }];
+    for (const stylesheet of invalid) {
+      assert.throws(() => Reflect.apply(map.addLibraries, map, [{ first: { data: 1 }, invalid: { document, stylesheet } }]));
+      assert.deepEqual(map.capture(), before); assert.strictEqual(owner.identityEpoch().issued(), issued); assert.equal(observations, 0);
+    }
+  }
+  const text = " /* opaque: & @:missing */\nBOGUS { future-property : untouched }\n";
+  const opaque = hsonLiveMap.fromLibraries({ page: { document, stylesheet: text } });
+  assert.equal(opaque.doc.must("page").css.snapshot(), text);
+  opaque.addLibraries({ later: { document, stylesheet: text } }); assert.equal(opaque.doc.must("later").css.snapshot(), text);
+  const empty = hsonLiveMap.fromLibraries({ page: { document, stylesheet: { color: undefined, "--missing": undefined } } });
+  assert.equal(empty.doc.must("page").css.snapshot(), "");
+  const short = hsonLiveMap.fromLibraries({ page: { document: '<main @:title/>', stylesheet: { color: "red", "@:title": { color: "blue" } } } });
+  assert.match(short.doc.must("page").css.snapshot(), /:root\{color:red;\}/); assert.match(short.doc.must("page").render(), /color:blue/);
+
+  const locus = hsonLiveMap.locus.create({ page: { document, stylesheet: makeStyle(), access: "shared" } }, {
+    local: [{ name: "ui", initializer: Object.freeze({ document, stylesheet: { color: "orange" } }), stylesheet: { color: "red", "& > body": { margin: 0 }, $media: { screen: { _hover: { color: "blue" } } } } }],
+    authorizeProjection: () => ({ libraries: ["page", "ui"] }),
+  });
+  try {
+    assertSheet(locus_map_internal(locus), "page");
+    await locus.admit({ later: { document, stylesheet: makeStyle(), access: "shared" } }); assertSheet(locus_map_internal(locus), "later");
+    await rejected(locus, { first: { data: 1 }, invalid: { document, stylesheet: { "@:missing": { color: "red" } } } });
+    const now = (await locus.session.create({ libraries: ["page", "ui"] })).now();
+    assert.match(JSON.stringify(now.local), /red/); assert.doesNotMatch(JSON.stringify(now.local), /orange/);
+    const localRecord = now.local.find(entry => entry.name === "ui")!.css!;
+    assert.ok(localRecord.rules.some(rule => rule.selector === ":root"));
+    assert.ok(localRecord.rules.some(rule => rule.selector === ":root>body"));
+  } finally { locus.dispose(); }
+
+  let sourceReads = 0;
+  const accessorInitializer = Object.defineProperty({}, "document", { enumerable: true, get() { sourceReads++; return document; } });
+  const baselineGetterLocus = Reflect.apply(hsonLiveMap.locus.create, undefined, [{}, { local: [{ name: "ui", initializer: accessorInitializer }] }]);
+  baselineGetterLocus.dispose();
+  const baselineSourceReads = sourceReads; sourceReads = 0;
+  const getterLocus = Reflect.apply(hsonLiveMap.locus.create, undefined, [{}, { local: [{ name: "ui", initializer: accessorInitializer, stylesheet: { color: "red" } }] }]);
+  getterLocus.dispose();
+  assert.ok(baselineSourceReads > 0);
+  assert.equal(sourceReads, baselineSourceReads, "A local stylesheet override preserves ordinary configuration getter capture");
+  assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined, [{}, { local: [{ name: "ui", initializer: { document }, stylesheet: null }] }]));
+
+  class HeldCssLoad extends MemoryCheckpointAdapter {
+    readonly entered = deferred(); readonly release = deferred();
+    override async load(logicalMapId: string) {
+      this.entered.resolve(); await this.release.promise; return super.load(logicalMapId);
+    }
+  }
+  for (const outer of [false, true]) {
+    const adapter = new HeldCssLoad(), sheet = Proxy.revocable({ color: "red", "& > body": { margin: 0 } }, {});
+    const pending = hsonLiveMap.locus.resume({}, { logicalMapId: `local-css-capture-${outer}`, persistence: adapter,
+      local: [{ name: "ui", initializer: { document: "<main/>", ...(outer ? {} : { stylesheet: sheet.proxy }) }, ...(outer ? { stylesheet: sheet.proxy } : {}) }],
+      authorizeProjection: () => ({ libraries: ["ui"] }),
+    });
+    await adapter.entered.promise; sheet.revoke(); adapter.release.resolve();
+    const resumed = await pending;
+    try {
+      const now = (await resumed.session.create({ libraries: ["ui"] })).now();
+      const localSheet = now.local.find(entry => entry.name === "ui")!.css!;
+      assert.ok(localSheet.rules.some(rule => rule.selector === ":root" && rule.declarations.some(([name, value]) => name === "color" && value === "red")));
+    } finally { resumed.dispose(); }
+  }
+
+  const namedLocal = hsonLiveMap.locus.create({}, { local: [{ name: "ui", initializer: { document, stylesheet: makeStyle() } }] });
+  namedLocal.dispose();
+
+  class HeldCssAppend extends MemoryCheckpointAdapter {
+    readonly entered = deferred(); readonly release = deferred();
+    override async appendCommit(record: Parameters<MemoryCheckpointAdapter["appendCommit"]>[0]) {
+      this.entered.resolve(); await this.release.promise; await super.appendCommit(record);
+    }
+  }
+  const persistence = new HeldCssAppend(), config = { logicalMapId: "d4c-css-map", persistence };
+  const durable = await hsonLiveMap.locus.resume({ state: { data: 0 } }, config);
+  try {
+    const blocking = durable.stage(draft => { draft.data.must("state").at([]).set(1); }); await persistence.entered.promise;
+    const style = makeStyle(), proxy = Proxy.revocable(style, {});
+    const pending = durable.admit({ page: { document, stylesheet: proxy.proxy } });
+    style.color = "orange"; style["@:title"].color = "orange"; proxy.revoke();
+    persistence.release.resolve(); await blocking; await pending; assertSheet(locus_map_internal(durable), "page");
+  } finally { persistence.release.resolve(); durable.dispose(); }
+  const resumed = await hsonLiveMap.locus.resume({ state: { data: 0 } }, config);
+  try { assertSheet(locus_map_internal(resumed), "page"); await hsonLiveMap.locus.checkpoint(resumed); }
+  finally { resumed.dispose(); }
+  const checkpointed = await hsonLiveMap.locus.resume({ state: { data: 0 } }, config);
+  try { assertSheet(locus_map_internal(checkpointed), "page"); }
+  finally { checkpointed.dispose(); }
+}
+
+async function local_correspondence_correction_cases() {
+  const { admit_locus_local_initializers, install_client_local_initializers_internal } = await import("../../src/api/locus/locus.local-initializer.js");
+  const { compose_client_projection_internal } = await import("../../src/api/echo/echo.projection.js");
+  const { sha256_sync } = await import("../../src/core/sha256-sync.js");
+  const { lookup_document_quad_internal } = await import("../../src/api/livemap/livemap.document.quad.js");
+  const { authority_definitions_from_map_fixture, create_locus_fixture } = await import("../helpers/locus-definition-fixture.mts");
+  const original = hsonLiveMap.fromLibraries({ text: { data: "42" } });
+  const reconstructed = create_locus_fixture(authority_definitions_from_map_fixture(original, [{ name: "text", ownership: "shared" }]));
+  assert.equal(reconstructed.data.must("text").snap(), "42"); reconstructed.dispose();
+  const seed = async (document: string) => {
+    const locus = hsonLiveMap.locus.create({}, { local: [{ name: "ui", initializer: { document, stylesheet: { color: "orange" } }, stylesheet: { color: "red", "@:title": { color: "blue" } } }], authorizeProjection: () => ({ libraries: ["ui"] }) });
+    try { return (await locus.session.create({ libraries: ["ui"] })).now(); } finally { locus.dispose(); }
+  };
+  const a = await seed('<main <h1 @:title/> <p/>/>'), b = await seed('<main <h1/> <p @:title/>/>');
+  assert.deepEqual(a.local[0]!.root, b.local[0]!.root);
+  assert.notDeepEqual(a.local[0]!.quads, b.local[0]!.quads);
+  assert.notEqual(a.local[0]!.fingerprint, b.local[0]!.fingerprint);
+  const transported = JSON.parse(JSON.stringify(a.local));
+  const admitted = admit_locus_local_initializers(transported);
+  transported[0].quads[0].path[0] = 99;
+  assert.deepEqual(admitted, a.local); assert.ok(Object.isFrozen(admitted[0]!.quads[0]!.path));
+  const rehash = (record: Record<string, unknown>) => { const { name, mode, schemaDigest, validation, rootCodec, root, quads, scopes, css } = record; const contract = { name, mode, schemaDigest, ...(validation === undefined ? {} : { validation }), rootCodec, root, quads, ...(scopes === undefined ? {} : { scopes }), ...(css === undefined ? {} : { css }) }; return { ...record, fingerprint: sha256_sync(JSON.stringify({ format: "hson-local-initializer", ...contract })) }; };
+  const first = compose_client_projection_internal(a.libs, admitted);
+  const later = compose_client_projection_internal(a.libs, admitted);
+  install_client_local_initializers_internal(later, admit_locus_local_initializers([rehash({ ...admitted[0], name: "later" })]));
+  for (const map of [first, later]) {
+    assert.ok(lookup_document_quad_internal(map.doc.must(map === first ? "ui" : "later"), "title"));
+    const html = map.doc.must(map === first ? "ui" : "later").render(); assert.match(html, /blue/); assert.match(html, /red/); assert.doesNotMatch(html, /orange/);
+  }
+  assert.notEqual(lookup_document_quad_internal(first.doc.must("ui"), "title")!.quid, lookup_document_quad_internal(later.doc.must("later"), "title")!.quid);
+  const before = later.capture(); const owner = internal_livemap_aggregate_authority(later), issued = owner.identityEpoch().issued();
+  for (const quads of [[{ name: "title", path: [999] }], [{ name: "bad/name", path: admitted[0]!.quads[0]!.path }], [...admitted[0]!.quads, ...admitted[0]!.quads], [{ ...admitted[0]!.quads[0], name: "other" }], []]) {
+    const forged = rehash({ ...admitted[0], quads });
+    assert.throws(() => admit_locus_local_initializers([forged]));
+    assert.throws(() => install_client_local_initializers_internal(later, [forged as never]));
+    assert.deepEqual(later.capture(), before); assert.equal(owner.identityEpoch().issued(), issued);
+  }
+  const { quads: omitted, ...old } = admitted[0]!;
+  assert.throws(() => admit_locus_local_initializers([old]));
+  assert.throws(() => admit_locus_local_initializers([{ ...admitted[0], quads: b.local[0]!.quads }]));
+  // Existing portable occurrence namespaces exercise repeated internal Part names.
+  const { scoped_portable_fixture_capture } = await import("./livemap-scoped-portable-cases.mts");
+  const { encode_hosted_root, decode_hosted_root, HOSTED_MAX_SNAPSHOT_BYTES } = await import("../../src/api/livemap/livemap.hosted.js");
+  const { ANY_DOCUMENT, hson_schema_digest } = await import("../../src/api/schema/hson-schema.js");
+  const capturedScoped = scoped_portable_fixture_capture();
+  // The low-level fixture adds a second alias to one subject. Public authored
+  // Documents have one name per subject; preserve its repeated Part occurrences.
+  const scoped = { ...capturedScoped, scopes: { ...capturedScoped.scopes, document: capturedScoped.scopes.document.filter(binding => binding.name !== "mainAlias") } };
+  const record = rehash({ name: "scoped", mode: "document", schema: ANY_DOCUMENT.toHson(), schemaDigest: hson_schema_digest(ANY_DOCUMENT), rootCodec: "hson-exact-value", root: encode_hosted_root(scoped.root), css: scoped.css, quads: [], scopes: scoped.scopes });
+  const scopedSeeds = admit_locus_local_initializers([record]);
+  const scopedMap = compose_client_projection_internal(a.libs, scopedSeeds, true);
+  assert.ok(scopedMap.doc.must("scoped").render().length > 0);
+  assert.deepEqual(scopedSeeds[0]!.scopes, scoped.scopes);
+  assert.ok(scoped.scopes.occurrences.filter(scope => scope.bindings.some(binding => binding.name === "label")).length > 1);
+  install_client_local_initializers_internal(later, scopedSeeds);
+  assert.match(later.doc.must("scoped").render(), /display:grid/);
+  const { document_scoped_libraries_semantically_equal } = await import("../../src/api/livemap/livemap.document.scoped-portable.js");
+  const captureScoped = (map: typeof later) => {
+    const captured = internal_livemap_aggregate_authority(map).captureSelectedHosted(["scoped"], false, true).libraries[0]!;
+    return { root: decode_hosted_root(captured.root, HOSTED_MAX_SNAPSHOT_BYTES), scopes: captured.scopes, css: captured.css };
+  };
+  assert.ok(document_scoped_libraries_semantically_equal(captureScoped(later), captureScoped(scopedMap)));
+  const restored = install_libraries_snapshot(first.capture()).map;
+  assert.equal(restored.doc.must("ui").render(), first.doc.must("ui").render());
+  assert.throws(() => admit_locus_local_initializers([rehash({ ...record, quads: admitted[0]!.quads })]));
+  for (const mutation of ["duplicate", "outside", "name"]) {
+    const scopes = structuredClone(scoped.scopes);
+    const occurrence = scopes.occurrences[0]!;
+    const binding = occurrence.bindings[0]!;
+    const invalidScopes = { ...scopes, occurrences: [{ ...occurrence, bindings: mutation === "duplicate"
+      ? [...occurrence.bindings, binding]
+      : [{ ...binding, ...(mutation === "outside" ? { path: [] } : { name: "bad/name" }) }, ...occurrence.bindings.slice(1)] }, ...scopes.occurrences.slice(1)] };
+    assert.throws(() => admit_locus_local_initializers([rehash({ ...record, scopes: invalidScopes })]));
+  }
 }

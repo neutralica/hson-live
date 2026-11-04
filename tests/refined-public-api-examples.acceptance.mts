@@ -13,7 +13,7 @@ state.at(["count"]).set(1);
 assert.equal(state.snap(["count"]), 1);
 const data = state.at(["count"]).hson();
 assert.equal(typeof data, "string");
-assert.equal(data === undefined ? undefined : Hson.data.materialize(data), 1);
+assert.equal(data === undefined ? undefined : Hson.data.fromSource((data)).materialize(), 1);
 
 const documents = hsonLiveMap.fromLibraries({ page: { document: '<main "Ready"/>' } });
 const page = documents.doc.must("page");

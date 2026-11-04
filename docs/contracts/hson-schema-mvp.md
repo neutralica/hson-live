@@ -20,7 +20,7 @@ const authored: UserHson = Hson.data`<name "Ada" score 37>`;
 
 The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in current tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `HsonFromSchema<typeof UserSchema>` and `JsonFromSchema<typeof UserSchema>`; it does not import generated suffix names.
 
-`HsonFromSchema<S>` chooses `HsonData<S>` or `HsonDocument<S>` from the Schema family. `JsonFromSchema<S>` projects a data Schema to its ordinary JS/JSON-shaped TypeScript value, including readonly structure, exact literals, unions and recursive refs, without nominal refinement or ref proof. Numeric/string refinements and relational uniqueness remain runtime constraints. Every governed JSON read uses this structural projection. Mutation proposals are derived separately and accept structurally valid readonly snapshots; document Schemas are rejected. The lower-level `HsonData<S>` and `HsonDocument<S>` remain precise canonical string carrier/proof types.
+`HsonFromSchema<S>` chooses `HsonDataValue<S>` or `HsonDocument<S>` from the Schema family. `JsonFromSchema<S>` projects a data Schema to its ordinary JS/JSON-shaped TypeScript value, including readonly structure, exact literals, unions and recursive refs, without nominal refinement or ref proof. Numeric/string refinements and relational uniqueness remain runtime constraints. Every governed JSON read uses this structural projection. Mutation proposals are derived separately and accept structurally valid readonly snapshots; document Schemas are rejected. The lower-level `HsonDataValue<S>` and `HsonDocument<S>` remain precise nominal Data carrier and canonical Document text proof types.
 
 For example, a data Schema can use this representation pair:
 
@@ -31,7 +31,7 @@ type DeckJson = JsonFromSchema<typeof DeckSchema>;
 const deck: DeckHson = Hson.data`<title "Introduction">`;
 ```
 
-Run `hson-schema generate --project tsconfig.json` after authoring or changing Schemas, and `hson-schema check --project tsconfig.json` in the authoritative build. `verify` checks artifact freshness without repairing it. Static authored assignments are proven only when the analyzer validates the direct `Hson.data` source against current generated evidence. Plain TypeScript sees the tag's unproved `HsonData` return and cannot grant proof on its own. The TypeScript editor plugin uses current in-memory compiler views, including unsaved source. See the [compiler workflow and publishing contract](./hson-schema-compiler-project-phase-4.md).
+Run `hson-schema generate --project tsconfig.json` after authoring or changing Schemas, and `hson-schema check --project tsconfig.json` in the authoritative build. `verify` checks artifact freshness without repairing it. Static authored assignments are proven only when the analyzer validates the direct `Hson.data` source against current generated evidence. Plain TypeScript sees the tag's unproved `HsonDataValue` return and cannot grant proof on its own. The TypeScript editor plugin uses current in-memory compiler views, including unsaved source. See the [compiler workflow and publishing contract](./hson-schema-compiler-project-phase-4.md).
 
 Dynamic values are certified through the Schema object:
 
@@ -41,7 +41,7 @@ const portableDefinition = UserSchema.toHson(); // HsonSchemaData primitive stri
 const reconstructed = Hson.schema.fromHson(portableDefinition);
 ```
 
-`certify` validates the candidate in the Schema's data mode and returns the canonical primitive string. `fromHson` validates the portable Schema definition again; reconstructed object identity need not equal the original. LiveMap admission uses `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` and validates future mutations against that Schema.
+`certify` validates the candidate in the Schema's data mode and returns an authenticated Schema-specific `HsonDataValue`; ordinary string candidates are literal Data and source requires `Hson.data.fromSource()`. Document certification returns canonical Document text. `fromHson` validates the portable Schema definition again; reconstructed object identity need not equal the original. LiveMap admission uses `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` and validates future mutations against that Schema.
 
 An authored `union` takes an ordered array of at least two branches. Every pair must be distinguishable. For closed objects, a shared required member with different direct exact-string values establishes distinction, including when the branches are local refs:
 

@@ -48,7 +48,7 @@ const WideSchema = Hson.schema`<type "data" content <
   '10' <optional "any"> '2' <optional "any"> '1' <optional "any">
   '__proto__' <optional "any"> constructor <optional "any"> prototype <optional "any">
 >>`;
-const registry = (data: string | Record<string, unknown>) => hsonLiveMap.fromLibraries({ state: { data: data as JsonValue, schema: WideSchema } });
+const registry = (data: string | Record<string, unknown>) => hsonLiveMap.fromLibraries({ state: { data: typeof data === "string" ? Hson.data.fromSource(data) : data as JsonValue, schema: WideSchema } });
 const dataLibrary = (map: ReturnType<typeof registry>): LiveMapDataLibrary<unknown> => map.data.must("state");
 const root = (map: ReturnType<typeof registry>) => dataLibrary(map).root();
 const payload = (map: ReturnType<typeof registry>) => map.capture().libraries[0]!.root.payload;
@@ -148,7 +148,7 @@ check("document attribute equality is unordered by name", () => {
 for (const fixture of orderedRootReconstructionFixtures) {
   check(`ordered-root receiving paths: ${fixture.id}`, () => {
     const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
-    const source = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson } });
+    const source = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource(fixture.expectedJson) } });
     assert.equal(canonical_hson_graph_equal(source.data.must("state").root(), original), true);
     const engine = internal_livemap_aggregate_authority(source);
     const snapshot = source.capture();

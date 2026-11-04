@@ -33,7 +33,7 @@ export async function parts_write_cases() {
   } } });
   for (const [name, value] of [['empty', {}], ['present', { title: 'Visible' }]] as const) {
     const written = optional.parts.parts.x.write({ payload: Hson.data.from(value) });
-    assert.equal(written, Hson.document`<hson-part lib="parts" at="x" payload:data="${Hson.data.from(value)}"/>`);
+    assert.equal(written, Hson.document`<hson-part lib="parts" at="x" payload:data="${(Hson.data.from(value)).toHson()}"/>`);
     optional.addLibraries({ [name]: { document: Hson.document`<main ${written}/>` } });
     const result = optional.doc.must(name).render();
     assert.equal(result.includes('<p'), name === 'present');
@@ -45,7 +45,7 @@ export async function parts_write_cases() {
   const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();
   const slide = Hson.data`<title "Navigation" no -0>`;
   const written: HsonAuthored = structured.parts.components.nav.write({ payload: slide });
-  assert.equal(written, Hson.document`<hson-part lib="components" at="nav" payload:data="${slide}"/>`);
+  assert.equal(written, Hson.document`<hson-part lib="components" at="nav" payload:data="${(slide).toHson()}"/>`);
   const malformed = structured.parts.components.nav.write({ payload: "<broken" });
   assert.deepEqual(structuredAuthority.captureSemanticCheckpoint(), structuredBefore);
   assert.equal(structuredAuthority.identityEpoch().issued(), structuredIssued);

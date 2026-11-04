@@ -54,7 +54,7 @@ function cells(positions: readonly string[]): ReturnType<typeof Hson.canonical> 
 }
 
 function accepts(schema: HsonSchema, candidate: ReturnType<typeof Hson.canonical>): boolean {
-  try { assert.equal(schema.certify(candidate), candidate); return true; }
+  try { assert.equal((schema.certify(Hson.data.fromSource(candidate))).toHson(), candidate); return true; }
   catch { return false; }
 }
 
@@ -84,7 +84,7 @@ check("selector boundary rejects missing, nonprimitive, and unmapped values at t
     [Hson.canonical`<cells [<position "unknown" body "unmapped">]>`, "INVALID_CONSTRAINT"],
   ];
   for (const [candidate, code] of failures) {
-    assert.throws(() => DecksSchema.certify(candidate), (error: unknown) => {
+    assert.throws(() => DecksSchema.certify(Hson.data.fromSource(candidate)), (error: unknown) => {
       assert.equal(error instanceof HsonSchemaError, true);
       if (!(error instanceof HsonSchemaError)) return false;
       assert.deepEqual(error.path, ["cells", 0, "position"]);
@@ -95,7 +95,7 @@ check("selector boundary rejects missing, nonprimitive, and unmapped values at t
 });
 
 check("conflict diagnostics retain later primary path, earlier related path, and exact key", () => {
-  assert.throws(() => DecksSchema.certify(cells(["top-right", "top-half"])), (error: unknown) => {
+  assert.throws(() => DecksSchema.certify(Hson.data.fromSource(cells(["top-right", "top-half"]))), (error: unknown) => {
     assert.equal(error instanceof HsonSchemaError, true);
     if (!(error instanceof HsonSchemaError)) return false;
     assert.deepEqual(error.path, ["cells", 1, "position"]);
@@ -108,7 +108,7 @@ check("conflict diagnostics retain later primary path, earlier related path, and
 check("HsonData and runtime-origin canonical ingress use the identical evaluator", () => {
   const valid = Hson.data.from({ cells: [{ position: "top-right", body: "a" }, { position: "bottom-left", body: "b" }] });
   const invalid = Hson.data.from({ cells: [{ position: "top-right", body: "a" }, { position: "top-half", body: "b" }] });
-  assert.equal(DecksSchema.certify(valid), valid);
+  assert.equal((DecksSchema.certify(valid)).toHson(), (valid).toHson());
   assert.throws(() => DecksSchema.certify(invalid));
 });
 
@@ -122,9 +122,9 @@ check("selector and derived-key equality distinguish positive and negative zero"
 check("ordinary and configured unique remain independent at different array locations", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", ["A"]], ["b", ["B"]]]>>> ids <array <content "number" unique true>>>>`;
   const valid = Hson.canonical`<cells [<position "a">, <position "b">] ids [0, -0]>`;
-  assert.equal(schema.certify(valid), valid);
-  assert.throws(() => schema.certify(Hson.canonical`<cells [<position "a">, <position "b">] ids [1, 1]>`));
-  assert.throws(() => schema.certify(Hson.canonical`<cells [<position "a">, <position "a">] ids [1, 2]>`));
+  assert.equal((schema.certify(Hson.data.fromSource(valid))).toHson(), valid);
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<cells [<position "a">, <position "b">] ids [1, 1]>`)));
+  assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<cells [<position "a">, <position "a">] ids [1, 2]>`)));
 });
 
 check("generic scheduling and hardware relations are not domain-specific", () => {

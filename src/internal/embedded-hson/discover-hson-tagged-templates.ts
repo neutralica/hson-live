@@ -18,7 +18,7 @@ const supportedPackageSpecifiers: ReadonlySet<string> = new Set([
 /** Require the lexical import binding, rather than a matching symbol name or filename. */
 export function is_official_hson_package_binding(
   identifier: ts.Identifier,
-  expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema",
+  expected: "Hson" | "HsonDataValue" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema",
   checker: ts.TypeChecker,
   requireResolvedOrigin = false,
   typescript: typeof ts = defaultTs,
@@ -59,12 +59,12 @@ export function hson_package_declaration_path(fileName: string): string | undefi
   }
 }
 
-function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema"): boolean {
+function official_declaration_origin(fileName: string, expected: "Hson" | "HsonDataValue" | "HsonData" | "HsonDocument" | "HsonAuthored" | "HsonFromSchema" | "JsonFromSchema"): boolean {
   const path = hson_package_declaration_path(fileName);
   return path !== undefined && (expected === "Hson"
     ? ["src/index.ts", "src/hson-authoring.ts", "dist/index.d.ts", "dist/hson-authoring.d.ts"].includes(path)
-    : ["src/index.ts", "src/hson-authoring.ts", "src/api/transform/transform.types.ts",
-      "dist/index.d.ts", "dist/hson-authoring.d.ts", "dist/api/transform/transform.types.d.ts"].includes(path));
+    : ["src/index.ts", "src/hson-authoring.ts", "src/api/transform/transform.types.ts", "src/api/data/hson-data.ts",
+      "dist/index.d.ts", "dist/hson-authoring.d.ts", "dist/api/transform/transform.types.d.ts", "dist/api/data/hson-data.d.ts"].includes(path));
 }
 
 export type InterpolatedEmbeddedHsonTemplate = Readonly<{

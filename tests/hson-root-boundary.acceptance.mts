@@ -362,8 +362,8 @@ check("root content expansion preserves typed-value and data-mode exclusions", (
   ];
   for (const [source, code] of fixtures) expectTransformError(source, code);
   assert.throws(() => serialize_hson(node("_hson_elem", [node("_hson_val", [1])])));
-  assert.throws(() => Hson.data.fromHson(Hson.canonical`"a" "b"`));
-  assert.throws(() => Hson.data.fromHson(Hson.canonical`"a"<p/>`));
+  assert.throws(() => Hson.data.fromSource(Hson.canonical`"a" "b"`));
+  assert.throws(() => Hson.data.fromSource(Hson.canonical`"a"<p/>`));
 });
 
 check("single tagged object-side input detaches only _hson_root", () => {

@@ -30,7 +30,7 @@ const extension = join(root, "editors/vscode-hson");
 const manifest = JSON.parse(readFileSync(join(extension, "package.json"), "utf8"));
 const plugin = manifest.contributes.typescriptServerPlugins[0].name;
 const schema = 'import { Hson, type JsonFromSchema } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" content <name "string">>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "main" content "string">`;\nconst after: number = "after";\ndeclare const local: JsonFromSchema<typeof Thing>;\nlocal.na';
-const consumer = 'import { hsonLiveMap, type JsonFromSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.doc.must("home").schema.use(Page);\nconst exactPage: typeof Page = map.doc.must("home").schema.get();\nconst pageText: string = map.doc.must("home").at([0]).snap();\n';
+const consumer = 'import { hsonLiveMap, type JsonFromSchema, type HsonDataValue, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonDataValue<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.doc.must("home").schema.use(Page);\nconst exactPage: typeof Page = map.doc.must("home").schema.get();\nconst pageText: string = map.doc.must("home").at([0]).snap();\n';
 const file = name => join(directory, name);
 writeFileSync(file("package.json"), '{"type":"module"}');
 writeFileSync(file("schema.ts"), schema);
@@ -54,7 +54,7 @@ for (const ext of ["ts", "tsx", "mts", "cts", "local.ts"]) {
   }
   writeFileSync(file(name), 'export {};\n');
 }
-const proofSource = 'import { Hson, type HsonData } from "hson-live";\nconst S = Hson.schema`<type "data" content <name "string">>`;\nconst bad: HsonData<typeof S> = Hson.data`<name 3>`;';
+const proofSource = 'import { Hson, type HsonDataValue } from "hson-live";\nconst S = Hson.schema`<type "data" content <name "string">>`;\nconst bad: HsonDataValue<typeof S> = Hson.data`<name 3>`;';
 writeFileSync(file("proof.ts"), proofSource);
 const partProducer = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` } } as const;';
 writeFileSync(file("parts.ts"), partProducer);
@@ -172,7 +172,7 @@ try {
     const values = ['tick`name', '${Math.random()}', 'quote"\\u0060\\Ω\n', 'e\u0301', '\u00e9', ''];
     const escaped = value => JSON.stringify(value).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
     const schema = '<type "data" content <value <union [' + values.map(value => '<exact ' + escaped(value) + '>').join(', ') + ']>>>';
-    const prefix = '\uFEFFimport { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`' + schema + '`;\r\nconst x: HsonData<typeof S> = Hson.data`<value ';
+    const prefix = '\uFEFFimport { Hson, type HsonDataValue } from "hson-live";\r\nconst S = Hson.schema`' + schema + '`;\r\nconst x: HsonDataValue<typeof S> = Hson.data`<value ';
     const suffix = '`;\r\nconst untouched = "keep"; // keep\r\nconst adjacent = Hson.data`<value "keep">`;';
     for (const [body, from, to] of [['|>', 0, 0], ['"|old">', 1, 4], ['"|', 1, 1]]) {
       const source = prefix + body.replace("|", "") + suffix;
@@ -193,14 +193,14 @@ try {
         if (body !== '"|') {
           const site = discovery.sources.find(site => site.authoringKind === "data");
           assert.ok(site);
-          assert.deepEqual(Hson.data.materialize(Hson.data.fromHson(admit_hson_tagged_source(site))), { value: values[i] });
+          assert.deepEqual((Hson.data.fromSource(admit_hson_tagged_source(site))).materialize(), { value: values[i] });
         }
       }
     }
     await editConsumer(consumer);
   });
   await check("packaged contextual requests refresh imported Schema edits and preserve interpolation completion", async () => {
-    const prefix = 'import { Hson, type HsonData } from "hson-live"; import { S } from "./contextual-schema.js"; declare const dynamic: string; const x: HsonData<typeof S> = Hson.data`';
+    const prefix = 'import { Hson, type HsonDataValue } from "hson-live"; import { S } from "./contextual-schema.js"; declare const dynamic: string; const x: HsonDataValue<typeof S> = Hson.data`';
     const marked = prefix + '<blocks [<kind "code" language |>]>`;';
     const source = marked.replace("|", "");
     await editConsumer(source);
@@ -381,7 +381,7 @@ const loc = hsonLiveMap.locus.create({
     await editConsumer(consumer);
   });
   await check("bundled proof filtering follows malformed initializers through CRLF unsaved edits", async () => {
-    const text = '\uFEFFimport { Hson, type HsonData, type JsonFromSchema } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst malformed: HsonData<typeof S> = Hson.data`\r\n <name "Ada"`;\r\nconst unrelated: number = "wrong";\r\nconst field: JsonFromSchema<typeof S> = { name: 37 };\r\ndeclare const dynamic: HsonData;\r\nconst unproven: HsonData<typeof S> = dynamic;\r\n';
+    const text = '\uFEFFimport { Hson, type HsonDataValue, type JsonFromSchema } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst malformed: HsonDataValue<typeof S> = Hson.data`\r\n <name "Ada"`;\r\nconst unrelated: number = "wrong";\r\nconst field: JsonFromSchema<typeof S> = { name: 37 };\r\ndeclare const dynamic: HsonDataValue;\r\nconst unproven: HsonDataValue<typeof S> = dynamic;\r\n';
     await editConsumer(text);
     const errors = await diagnostics("consumer.ts");
     assert.equal(errors.length, 3, JSON.stringify(errors));
@@ -417,7 +417,7 @@ const loc = hsonLiveMap.locus.create({
     await editConsumer(consumer);
   });
   await check("bundled proof errors stay independent of expectation and nested-template failures", async () => {
-    const text = '\uFEFFimport { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\ndeclare const dynamic: string;\r\nconst unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;\r\nconst nested: HsonData<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;\r\nconst own: HsonData<typeof S> = Hson.data`+1 ${missing}`;\r\nconst escaped: HsonData<typeof S> = Hson.data`// \\8\r\n<name "Ada">`;\r\nconst outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;\r\nconst unrelated: number = "wrong";\r\n';
+    const text = '\uFEFFimport { Hson, type HsonDataValue } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\ndeclare const dynamic: string;\r\nconst unused: HsonDataValue<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;\r\nconst nested: HsonDataValue<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;\r\nconst own: HsonDataValue<typeof S> = Hson.data`+1 ${missing}`;\r\nconst escaped: HsonDataValue<typeof S> = Hson.data`// \\8\r\n<name "Ada">`;\r\nconst outer: HsonDataValue<typeof S> = Hson.data`<name ${dynamic}>`;\r\nconst unrelated: number = "wrong";\r\n';
     const assertErrors = async (source, ownProof) => {
       const errors = await diagnostics("consumer.ts");
       const assignments = errors.filter(error => error.code === 2322);
@@ -436,12 +436,12 @@ const loc = hsonLiveMap.locus.create({
   });
   await check("optional-chain candidate and producer tags retain grammar diagnostics until repaired", async () => {
     const schema = '<type "data" content <name "string">>';
-    const text = '\uFEFF' + ['import { Hson, type HsonData } from "hson-live";', `const S = Hson.schema\`${schema}\`;`,
-      'const access: HsonData<typeof S> = Hson?.data`<name "Ada">`;',
-      'const tagged: HsonData<typeof S> = Hson.data?.`<name "Ada">`;',
-      `const AccessSchema = Hson?.schema\`${schema}\`;`, 'const fromAccess: HsonData<typeof AccessSchema> = Hson.data`<name "Ada">`;',
-      `const TaggedSchema = Hson.schema?.\`${schema}\`;`, 'const fromTagged: HsonData<typeof TaggedSchema> = Hson.data`<name "Ada">`;',
-      'const valid: HsonData<typeof S> = Hson.data`<name "Ada">`;', 'const unrelated: number = "wrong";',
+    const text = '\uFEFF' + ['import { Hson, type HsonDataValue } from "hson-live";', `const S = Hson.schema\`${schema}\`;`,
+      'const access: HsonDataValue<typeof S> = Hson?.data`<name "Ada">`;',
+      'const tagged: HsonDataValue<typeof S> = Hson.data?.`<name "Ada">`;',
+      `const AccessSchema = Hson?.schema\`${schema}\`;`, 'const fromAccess: HsonDataValue<typeof AccessSchema> = Hson.data`<name "Ada">`;',
+      `const TaggedSchema = Hson.schema?.\`${schema}\`;`, 'const fromTagged: HsonDataValue<typeof TaggedSchema> = Hson.data`<name "Ada">`;',
+      'const valid: HsonDataValue<typeof S> = Hson.data`<name "Ada">`;', 'const unrelated: number = "wrong";',
     ].join('\r\n');
     await editConsumer(text);
     const errors = await diagnostics("consumer.ts");

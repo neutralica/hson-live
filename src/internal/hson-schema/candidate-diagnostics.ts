@@ -265,7 +265,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   const reported = new Set<string>();
   const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data", parts?: ReadonlyMap<string, unknown>): void => {
     if (contract === undefined) return;
-    const possible = candidates(input, family);
+    const possible = candidates(input, family === "certify" ? contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "data" : family);
     if (possible === undefined || possible.length === 0) return;
     const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate, parts));
     // A valid branch, opaque branch or malformed Hson belongs to runtime/authoring diagnostics.
@@ -346,7 +346,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       }
       if (annotation.kind !== "hson" && initializer.tag.name.text !== annotation.kind) continue;
       if (contract === undefined) {
-        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
+        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "data" ? "HsonDataValue" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
         continue;
       }
       report(contract, initializer, "certify");

@@ -42,7 +42,7 @@ void [html, authored, Hson.document.toNode(exactDocument)];
 const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
 dataMap.data.must("state").at(["count"]).set(1);
 const exactData: HsonData | undefined = dataMap.data.must("state").at([]).hson();
-void (exactData === undefined ? undefined : Hson.data.entries(exactData));
+void (exactData === undefined ? undefined : Hson.data.fromSource(exactData).entries());
 
 const standalone = hsonLiveTree.fromNode(hsonTransform.fromTrustedHtml("<main/>").toNode());
 standalone.attrs.set("data-ready", "yes");
@@ -77,7 +77,7 @@ const disposeInteractions = activate_interactions({
   tree,
   local: {
     reveal(event, subject, args) {
-      void [event, subject, Hson.data.materialize(args)];
+      void [event, subject, (args).materialize()];
     },
   },
   dispatch: async (key, payload) => {

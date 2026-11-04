@@ -324,9 +324,9 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 
 for (const fixture of orderedRootReconstructionFixtures) {
   const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
-  const server = hsonLiveMap.fromLibraries({ state: { data: fixture.expectedJson } });
+  const server = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource(fixture.expectedJson) } });
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
-  const seeds = local_initializers({ ui: { data: fixture.expectedJson } });
+  const seeds = local_initializers({ ui: { data: Hson.data.fromSource(fixture.expectedJson) } });
   const stopConstruction = forbid_structural_js_enumeration();
   let client;
   try { client = compose_client_portable_aggregate_internal(snapshot, seeds); }
@@ -338,7 +338,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   const engine = internal_livemap_aggregate_authority(client);
   const identities = engine.libraries();
   const accounting = livemap_identity_epoch_accounting(ui);
-  const laterSeeds = local_initializers({ later: { data: fixture.expectedJson } });
+  const laterSeeds = local_initializers({ later: { data: Hson.data.fromSource(fixture.expectedJson) } });
   const stopLocal = forbid_structural_js_enumeration();
   try { install_client_local_initializers_internal(client, laterSeeds); }
   finally { stopLocal(); }
@@ -349,7 +349,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
 
   const replica = create_echo_aggregate_replica_capability_internal(client);
-  const commit = server.addLibraries({ zzAdded: { data: fixture.expectedJson } }).commit;
+  const commit = server.addLibraries({ zzAdded: { data: Hson.data.fromSource(fixture.expectedJson) } }).commit;
   const added = commit.operations[0];
   assert.ok(added && "kind" in added.operation && added.operation.kind === "library-add");
   const topology: LiveMapLibraryAddOperation = { library: added.library, operation: added.operation };

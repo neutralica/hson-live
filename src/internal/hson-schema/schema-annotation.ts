@@ -64,9 +64,9 @@ export function resolve_hson_schema_annotation(
     if (current === undefined || !eligible(current.node) || !typescript.isTypeReferenceNode(current.node)) return undefined;
     const { node, parameters } = current;
     if (typescript.isIdentifier(node.typeName)) {
-      for (const [name, kind] of [["HsonData", "data"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
+      for (const [name, kind] of [["HsonDataValue", "data"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
         if (!is_official_hson_package_binding(node.typeName, name, checker, true, typescript, eligible)) continue;
-        // Bare HsonData/HsonDocument intentionally request no Schema proof.
+        // Bare HsonDataValue/HsonDocument intentionally request no Schema proof.
         if (node.typeArguments?.length !== 1) return undefined;
         const argument = node.typeArguments[0];
         const query = argument === undefined ? undefined : substitute({ node: argument, parameters });

@@ -355,14 +355,14 @@ write("tsconfig.json", JSON.stringify({ extends: "./base.json", include: ["./*.t
 write("package.json", '{"type":"module"}\n');
 write("schema.ts", imports + 'export const S = Hson.schema`<props <');
 write("consumer.ts", `import { S, Twin } from './schema.js';
-import type { JsonFromSchema, HsonData } from 'hson-live';
+import type { JsonFromSchema, HsonDataValue } from 'hson-live';
 declare const value: JsonFromSchema<typeof S>;
 const exact: 'a' = value.value;
 // @ts-expect-error exact Schema value
 const wrong: 'b' = value.value;
-declare const first: HsonData<typeof S>;
+declare const first: HsonDataValue<typeof S>;
 // @ts-expect-error nominal identities remain separate even with identical content
-const second: HsonData<typeof Twin> = first;
+const second: HsonDataValue<typeof Twin> = first;
 void exact; void wrong; void second;
 `);
 const output = join(project, ".hson/compiler-input/tsconfig.json");
@@ -473,28 +473,28 @@ try {
     write("base.json", JSON.stringify({ ...base, include: ["./*.ts"] })); current = await next(); passes(); preserve();
   });
   await check("static proof overlays, document mode and refinement evidence share the existing compiler", async () => {
-    write("precision.ts", `import { Hson, type HsonAuthored, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";
+    write("precision.ts", `import { Hson, type HsonAuthored, type HsonDataValue, type HsonDocument, type JsonFromSchema } from "hson-live";
 export const Refined = Hson.schema\`<type "data" content <age <number <int true min 0>>>>\`;
 export const Document = Hson.schema\`<type "document">\`;
 export const Text = Hson.schema\`<type "document" content "string">\`;
 const authoredText: HsonAuthored = Hson.document\`"hello"\`;
 const text: HsonDocument<typeof Text> = Text.certify(authoredText);
 Text.certify(text);
-const data: HsonData<typeof Refined> = Hson.data\`<age 4>\`;
+const data: HsonDataValue<typeof Refined> = Hson.data\`<age 4>\`;
 declare const value: JsonFromSchema<typeof Refined>;
 const changed: JsonFromSchema<typeof Refined>["age"] = value.age + 1;
 // @ts-expect-error wrong Schema mode
-const wrong: HsonData<typeof Document> = data;
+const wrong: HsonDataValue<typeof Document> = data;
 void changed; void wrong;
 `);
     current = await next();
     assert.equal(current.diagnostics.length, 1);
-    assert.match(current.diagnostics[0]!, /precision\.ts:\d+:\d+: Schema mode does not match HsonData\./);
+    assert.match(current.diagnostics[0]!, /precision\.ts:\d+:\d+: Schema mode does not match HsonDataValue\./);
     passes(); preserve();
     remove("precision.ts"); current = await next(); passes(); preserve();
   });
   await check("direct certification failures publish authored locations and recover in the next watch publication", async () => {
-    const candidate = (value: string) => `${imports}import { S } from "./schema.js"; import type { HsonData } from "hson-live";\nconst page: HsonData<typeof S> = Hson.data\`<value "${value}">\`;\nS.certify(page); S.certify(page);\n`;
+    const candidate = (value: string) => `${imports}import { S } from "./schema.js"; import type { HsonDataValue } from "hson-live";\nconst page: HsonDataValue<typeof S> = Hson.data\`<value "${value}">\`;\nS.certify(page); S.certify(page);\n`;
     write("candidate.ts", candidate("wrong"));
     current = await next();
     assert.equal(current.diagnostics.length, 1);

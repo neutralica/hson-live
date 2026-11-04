@@ -1,27 +1,27 @@
 import { AnyDataSchema, BlockSchema, InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
-import { type JsonFromSchema, HsonData, Hson, hsonCalc, hsonLiveMap, hsonTransform, type HsonNumber } from "hson-live";
+import { type JsonFromSchema, HsonDataValue, Hson, hsonCalc, hsonLiveMap, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
 
 const anyDataValue: JsonFromSchema<typeof AnyDataSchema> = { nested: ["text", 3, true, null] };
-const anyDataCertified: HsonData<typeof AnyDataSchema> = AnyDataSchema.certify(Hson.data`["text", 3, true, null]`);
+const anyDataCertified: HsonDataValue<typeof AnyDataSchema> = AnyDataSchema.certify(Hson.data`["text", 3, true, null]`);
 void anyDataValue;
 void anyDataCertified;
 
-const authored: HsonData<typeof UserSchema> = Hson.data`
+const authored: HsonDataValue<typeof UserSchema> = Hson.data`
   <name "Ada" score 37 age 37 percent 80 code "ID-7" key "abc" status "ready" phase "lobby" turn "player1" zero 0 negativeZero -0 signedZeroChoice -0 flags [true, false] pair ["x", 2] account <kind "user" handle "ada">>
 `;
 
 const dynamic: HsonCanonical = hsonTransform.fromJson({ name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", key: "abc", status: "ready", phase: "finished", turn: null, zero: 0, negativeZero: -0, signedZeroChoice: 0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } }).toHson().serialize();
-const certified: HsonData<typeof UserSchema> = UserSchema.certify(dynamic);
+const certified: HsonDataValue<typeof UserSchema> = UserSchema.certify(Hson.data.fromSource(dynamic));
 const numberEvidence: HsonNumber = hsonCalc(37);
-const recursiveAuthored: HsonData<typeof TreeSchema> = Hson.data`<value "root" age 2 children [<value "leaf" age 0 children []>]>`;
+const recursiveAuthored: HsonDataValue<typeof TreeSchema> = Hson.data`<value "root" age 2 children [<value "leaf" age 0 children []>]>`;
 const recursiveDynamic: HsonCanonical = hsonTransform.fromJson({ value: "root", age: 3, children: [{ value: "leaf", age: 1, children: [] }] }).toHson().serialize();
-const recursiveCertified: HsonData<typeof TreeSchema> = TreeSchema.certify(recursiveDynamic);
-const interactionFields: HsonData<typeof InteractionFieldsSchema> = Hson.data`<args <target "browser" options [null, true, -0, <nested []>]> payload <action "rename" values ["Ada", "Grace"]>>`;
+const recursiveCertified: HsonDataValue<typeof TreeSchema> = TreeSchema.certify(Hson.data.fromSource(recursiveDynamic));
+const interactionFields: HsonDataValue<typeof InteractionFieldsSchema> = Hson.data`<args <target "browser" options [null, true, -0, <nested []>]> payload <action "rename" values ["Ada", "Grace"]>>`;
 const dynamicInteractionFields: HsonCanonical = hsonTransform.fromJson({ args: [], payload: { arbitrary: { nested: [1, false, null] } } }).toHson().serialize();
-const certifiedInteractionFields: HsonData<typeof InteractionFieldsSchema> = InteractionFieldsSchema.certify(dynamicInteractionFields);
-const relationalUnique: HsonData<typeof RelationalUniqueSchema> = Hson.data`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
-const blocks: HsonData<typeof BlockSchema> = Hson.data`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" source "const x = 1">, <kind "list" items ["a"]>]>`;
+const certifiedInteractionFields: HsonDataValue<typeof InteractionFieldsSchema> = InteractionFieldsSchema.certify(Hson.data.fromSource(dynamicInteractionFields));
+const relationalUnique: HsonDataValue<typeof RelationalUniqueSchema> = Hson.data`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
+const blocks: HsonDataValue<typeof BlockSchema> = Hson.data`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" source "const x = 1">, <kind "list" items ["a"]>]>`;
 type Block = JsonFromSchema<typeof BlockSchema>["blocks"][number];
 function block_content(block: Block): string {
   if (block.kind === "paragraph" || block.kind === "heading") return block.text;

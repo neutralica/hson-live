@@ -57,7 +57,7 @@
         element: (_event, subject, args) => {
           calls.element += 1;
           exactArgs = subject.node.$_meta?.quid === treeButtonQuid
-            && treeButtonQuid !== QUID && Object.is(Hson.data.materialize(args), -0);
+            && treeButtonQuid !== QUID && Object.is(args.materialize(), -0);
         },
         document: () => { calls.document += 1; },
         window: () => { calls.window += 1; },

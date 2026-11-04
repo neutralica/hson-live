@@ -1,4 +1,4 @@
-import type { ExactDataCarrier } from "../data/hson-data.js";
+import type { HsonDataValue } from "../data/hson-data.js";
 import { encode_hson_data_internal } from "../data/hson-data.js";
 import { decode_locus_message } from "./locus.protocol.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "./locus.aggregate.protocol.js";
@@ -24,7 +24,7 @@ export function encode_downstream_message(message: unknown, limit: number): stri
     framed = Object.freeze({
       ...rest,
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as ExactDataCarrier) }),
+      ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as HsonDataValue) }),
     });
   } else if (semantic.type === "action-status" && is_record(semantic.outcome)
     && semantic.outcome.state === "succeeded" && Object.hasOwn(semantic.outcome, "result")) {
@@ -34,7 +34,7 @@ export function encode_downstream_message(message: unknown, limit: number): stri
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
       outcome: Object.freeze({
         ...outcome,
-        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as ExactDataCarrier) }),
+        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as HsonDataValue) }),
       }),
     });
   } else {

@@ -118,17 +118,9 @@ completion waiter settles only after Echo has processed every authority
 revision through `completionRev`, including progress-only revisions. It does not
 compare `completionRev` to `echo.rev`.
 
-Configured actions preserve full canonical Hson data fidelity in both
-directions. `Echo.action(name, payload)` accepts strictly admissible ordinary
-JavaScript data or an existing `HsonData`; absence remains distinct from present
-null. Echo admits the payload once and retains that immutable exact snapshot, so
-caller mutation cannot affect retries. Handlers and authorizers receive
-`HsonData` as the authoritative payload and may explicitly call
-`Hson.data.materialize(payload)` when an ordinary view is sufficient. A top-level
-string action argument is interpreted as canonical Hson data text; wrap an
-ordinary JavaScript string with `Hson.data.from(text)` first. Successful results are
-also `HsonData`, including retained status and cached retries; handlers may
-return ordinary admissible data or `HsonData`, while void remains no result.
+Configured actions preserve exact Data fidelity in both directions. `Echo.action(name, payload)` accepts supported ordinary JavaScript values or authenticated `HsonDataValue` carriers; absence remains distinct from present null. Ordinary strings are literal Data. Use `Hson.data.fromSource(source)` to admit serialized JSON/Hson explicitly.
+
+Echo retains an immutable carrier in `call.request.payload`, so caller mutation cannot affect retries. Handlers, validators, and authorizers receive carriers; `payload.materialize()` provides a detached JavaScript view. Successful acknowledgments, retained status, and cached retries carry `HsonDataValue` results. Handlers may return ordinary supported values or genuine carriers; void remains no result.
 
 The action fingerprint and transport use the same deterministic exact-data
 encoding. Therefore `0` differs from `-0`, object member order is semantic,
@@ -139,7 +131,7 @@ remains JSON-framed, but action data is carried as canonical structural text;
 the semantic contract is transport-neutral and does not depend on WebSocket.
 
 Custom schema decoders inspect the exact admitted value. Their successful output
-is strictly re-admitted, and that transformed `HsonData` is the single value
+is strictly re-admitted, and that transformed `HsonDataValue` is the single value
 seen by authorization and execution. Hson Schema action validators evaluate the
 underlying exact data carrier directly.
 
