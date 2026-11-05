@@ -119,12 +119,22 @@ locus.doc.must("page").q("button")?.attrs.setMany({ title: "governed" }) satisfi
 context.doc.must("page").q("button")?.flags.has("checked");
 // @ts-expect-error Identity selection cannot add write authority to a read-only context.
 context.doc.must("page").q("button")?.attrs.clear();
-// @ts-expect-error Chained scoped q selection is not part of P4.
-locus.doc.must("page").q("panel")?.q("button");
+locus.doc.must("page").q("panel")?.q("inner")?.q("button")?.attrs.setMany({ title: "child" }) satisfies Promise<void> | undefined;
+locus.doc.must("page").q("panel")?.at([999]).q("button")?.delete() satisfies Promise<void> | undefined;
+context.doc.must("page").q("panel")?.q("inner")?.q("button")?.attrs.get("title");
+// @ts-expect-error Recursive action-context selections retain read-only authority.
+context.doc.must("page").q("panel")?.at([999]).q("inner")?.q("button")?.attrs.set("title", "no");
 if (echo.mode === "document" && echo.source === "authority-projected") {
   echo.q("button")?.attrs.must.get("title");
   // @ts-expect-error Projected identity capabilities expose observations only.
   echo.q("button")?.delete();
+  echo.q("panel")?.q("inner")?.q("button")?.flags.has("checked");
+  // @ts-expect-error Recursive projected selections cannot gain write authority.
+  echo.q("panel")?.at([999]).q("inner")?.q("button")?.attrs.set("title", "no");
+}
+if (echo.mode === "document" && echo.source === "client-local") {
+  echo.q("panel")?.q("inner")?.q("button")?.attrs.set("title", "yes") satisfies import("hson-live/livemap").LiveMapCommit | undefined;
+  echo.q("panel")?.at([999]).q("button")?.delete() satisfies import("hson-live/livemap").LiveMapCommit | undefined;
 }
 
 

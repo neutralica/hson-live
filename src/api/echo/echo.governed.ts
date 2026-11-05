@@ -3,9 +3,10 @@ import { forward_part_write } from "../../internal/part-write.js";
 import { make_family_selectors } from "../../internal/library-selectors.js";
 import { require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
-import { capture_document_attrs_command } from "../livemap/livemap.document.mutation.js";
+import { capture_document_attrs, capture_document_attr_value, capture_document_content,
+  capture_document_attrs_command } from "../livemap/livemap.document.mutation.js";
 import { document_css_reads, document_css_commands, capture_document_css_command, lower_document_css_command } from "../../internal/document-css-commands.js";
-import { read_data_location, read_document_location, type DataLocationObservations } from "../../internal/library-observation.js";
+import { live_observation, read_data_location, read_document_location, type DataLocationObservations } from "../../internal/library-observation.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import type { LiveMap, LiveMapDocumentLibrary, LiveMapDataLibrary, LivePath,
   LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
@@ -18,6 +19,7 @@ import { read_document_quad, register_governed_document, governed_document_eleme
   governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
+import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 
 /** The selected map library stays private; source determines which writes exist. */
 export function make_echo_library_selector(
@@ -50,11 +52,47 @@ export function make_echo_library_selector(
       asElement: () => refine(raw.asElement()), asRoot: () => refine(raw.asRoot()), asText: () => refine(raw.asText()),
     }) as ReturnType<LiveMapDocumentLibrary["at"]>;
   };
-  const local_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): NonNullable<ReturnType<EchoLocalDocumentLibrary["q"]>> =>
-    Object.freeze({ get active() { return raw.active; }, get rev() { return raw.rev; },
-      path: () => raw.path(), dispose: () => raw.dispose(), attrs: raw.attrs, flags: raw.flags,
-      replace: raw.replace, delete: raw.delete, insert: raw.insert, move: raw.move,
-      ...representations(raw), at: (path: readonly number[]) => local_quad(raw.at(path)) });
+  const observe = live_observation(assertReadable);
+  const local_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): NonNullable<ReturnType<EchoLocalDocumentLibrary["q"]>> => {
+    const read = read_document_quad(raw, assertReadable);
+    // Own caller input between owner checks; the raw handle still fences subject
+    // identity and mutation authority during its ordinary synchronous write.
+    const edit = <T, TResult>(capture: () => T, apply: (owned: T) => TResult): TResult => {
+      assertReadable();
+      void raw.rev;
+      const assertCurrent = internal_livemap_aggregate_authority(map).captureFence();
+      const owned = capture();
+      assertReadable();
+      assertCurrent();
+      return apply(owned);
+    };
+    const names = (kind: "dropMany" | "setFlags" | "clearFlags", values: readonly string[]) => {
+      const command = capture_document_attrs_command({ kind, names: values });
+      if (command.kind === "setMany") throw new Error("Expected attribute or flag names.");
+      return command.names;
+    };
+    return Object.freeze({
+      ...read, get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
+      at: observe((path: readonly number[]) => local_quad(raw.at(path))),
+      q: observe((name: string) => { const child = raw.q(name); return child === undefined ? undefined : local_quad(child); }),
+      replace: (value: LiveMapDocumentContent) => edit(() => capture_document_content(value, "replace-content"), raw.replace),
+      delete: () => { assertReadable(); return raw.delete(); },
+      insert: (index: number, value: LiveMapDocumentContent) => edit(() => capture_document_content(value, "insert-content"), owned => raw.insert(index, owned)),
+      move: (from: number, to: number) => { assertReadable(); return raw.move(from, to); },
+      attrs: Object.freeze({ ...read.attrs,
+        set: (name: string, value: LiveMapDocumentAttributeValue) => edit(() => capture_document_attr_value(name, value, "set-attr"), owned => raw.attrs.set(name, owned)),
+        drop: (name: string) => { assertReadable(); return raw.attrs.drop(name); },
+        replace: (values: LiveMapDocumentAttrs) => edit(() => capture_document_attrs(values, "attrs"), raw.attrs.replace),
+        setMany: (values: LiveMapDocumentAttrs) => edit(() => capture_document_attrs(values), raw.attrs.setMany),
+        dropMany: (values: readonly string[]) => edit(() => names("dropMany", values), raw.attrs.dropMany),
+        clear: () => { assertReadable(); return raw.attrs.clear(); },
+      }),
+      flags: Object.freeze({ ...read.flags,
+        set: (...values: string[]) => edit(() => names("setFlags", values), owned => raw.flags.set(...owned)),
+        clear: (...values: string[]) => edit(() => names("clearFlags", values), owned => raw.flags.clear(...owned)),
+      }),
+    });
+  };
   const selected = new Map<string, Readonly<{ raw: LiveMapDataLibrary | LiveMapDocumentLibrary; handle: EchoLibrary }>>();
   const select = (name: string): EchoLibrary => {
     const raw = require_livemap_library_internal(map, name);
@@ -70,7 +108,7 @@ export function make_echo_library_selector(
           render: mark_browser_html_producer(() => raw.render()),
           document: Object.freeze({ root: raw.document.root.bind(raw.document), content: raw.document.content,
             attrs: raw.document.attrs, flags: raw.document.flags }),
-          q: (name: string) => { const subject = raw.q(name); return subject === undefined ? undefined : local_quad(subject); },
+          q: observe((name: string) => { const subject = raw.q(name); return subject === undefined ? undefined : local_quad(subject); }),
           css: raw.css, commits: raw.commits, schema: raw.schema })
         : Object.freeze({ source, mode: raw.mode, get rev() { return raw.rev; }, root: () => raw.root(),
           ...representations(raw), snap: (path?: LivePath) => { assertReadable(); return path === undefined ? raw.snap() : raw.snap(path); },

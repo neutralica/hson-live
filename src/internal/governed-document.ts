@@ -89,6 +89,10 @@ export function read_document_quad(
     get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
     path: observe(() => raw.path()), snap, hson, must: required_reads(snap, hson), dispose: () => raw.dispose(),
     at: observe((path: readonly number[]) => read_document_quad(raw.at(path), assertReadable)),
+    q: observe((name: string) => {
+      const child = raw.q(name);
+      return child === undefined ? undefined : read_document_quad(child, assertReadable);
+    }),
     attrs: Object.freeze({ get: observe(raw.attrs.get), has: observe(raw.attrs.has), keys: observe(raw.attrs.keys),
       must: Object.freeze({ get: observe(raw.attrs.must.get) }) }),
     flags: Object.freeze({ has: observe(raw.flags.has) }),
@@ -108,6 +112,10 @@ export function write_document_quad(
   return Object.freeze({
     ...read, ...commands, get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
     at: observe((path: readonly number[]) => write_document_quad(raw.at(path), edit, assertReadable)),
+    q: observe((name: string) => {
+      const child = raw.q(name);
+      return child === undefined ? undefined : write_document_quad(child, edit, assertReadable);
+    }),
     attrs: Object.freeze({ ...read.attrs, ...commands.attrs }),
     flags: Object.freeze({ ...read.flags, ...commands.flags }),
   });

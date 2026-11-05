@@ -59,7 +59,7 @@ root. Authored Library source and `Hson.document` use the authored QUAD scanner 
 rules. `Hson.document` returns `HsonAuthored`; ordinary Transform and canonical
 `HsonDocument` qualification do not accept those declarations. Shell declarations
 form one flat document namespace. Each realized Part occurrence retains a separate
-flat local namespace, including repeated and nested occurrences. Local names remain in their occurrence namespaces. LiveMap `page.q(name)`
+flat local namespace, including repeated and nested occurrences. Local names remain in their occurrence namespaces. Document `page.q(name)`
 resolves shell bindings first, then uniquely resolvable bindings through unnamed
 occurrences. Named occurrence boundaries stop that traversal. A Part selection
 supports `.q(name)` within its exact occurrence; ordinary element bindings do not.
@@ -67,6 +67,15 @@ Ambiguous unnamed matches return `undefined`; use authored connector names for
 disambiguation. See the [QUAD navigation contract](document-q-location.md). Structural Document locals can be inserted
 with `<hson-part ^{local}/>` as described below. CSS can demand a root
 QUID without an authored QUAD. Reads, capture and rendering allocate nothing.
+
+Recursive `.q()` preserves the selected occurrence through governed facades:
+Locus children submit managed writes, Echo-local children write synchronously,
+and action-context or projected Echo children remain read-only. Hosted continuation
+inherits projected navigation through `.map`. Each `.q()` child has independent
+selection disposal; `.at()` aliases share their anchor's family and namespace.
+Echo owner disposal fences every dependent local or projected selection. Replay
+may preserve authenticated occurrences; full reconciliation and fresh
+reconstruction retire occurrence evidence they cannot preserve, even with equal content.
 
 ## Whole definitions and deferred invocation
 

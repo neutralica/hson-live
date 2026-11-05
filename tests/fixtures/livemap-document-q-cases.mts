@@ -1,4 +1,5 @@
 import { make_echo_library_selector } from "../../src/api/echo/echo.governed.ts";
+import { quad_navigation_definitions, quad_invocation as invocation } from "../helpers/document-quad-navigation.mts";
 import { document_hson_value } from "../helpers/document-hson-value.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform, LiveMapDocumentMutationError } from "../../src/index.ts";
@@ -52,14 +53,7 @@ function shared_projection(map: LiveMap) {
 }
 
 const part = (document: string) => ({ kind: "document" as const, document });
-const navigation = (body: string) => hsonLiveMap.fromLibraries({ parts: { parts: {
-  leaf: part('<aside hson:part @:root <span @:label "Leaf"/>/>'),
-  nav: part('<nav hson:part @:root <div @:wrap <button @:buttonOne "One"/>/> <hson-part @:inner at="leaf"/>/>'),
-  outer: part('<section hson:part <hson-part @:nav at="nav"/>/>'),
-  anonymous: part('<section hson:part <hson-part at="nav"/>/>'),
-  shadow: part('<section hson:part <button @:buttonOne "Local"/> <hson-part at="nav"/>/>'),
-} }, page: { document: `<main @:page ${body}/>` } });
-const invocation = (name: string, member = "nav") => `<hson-part @:${name} lib="parts" at="${member}"/>`;
+const navigation = (body: string) => hsonLiveMap.fromLibraries(quad_navigation_definitions(body));
 
 export function document_q_cases(check: (name: string, run: () => void) => void): void {
   check("nested q selects named occurrences independently and never gives elements a namespace", () => {
@@ -236,7 +230,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     assert.equal(localEcho.mode, "document");
     if (localEcho.mode === "document") {
       const quad = localEcho.q("nextButton")!;
-      assert.equal("q" in quad, false); assert.equal("q" in quad.at([0]), false);
+      assert.equal(quad.q("absent"), undefined); assert.equal(quad.at([0]).q("absent"), undefined);
       quad.dispose();
     }
     const localFamily = local.q("nextButton")!, localChild = localFamily.at([0]), projectedFamily = page(client).q("nextButton")!;

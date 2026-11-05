@@ -14,6 +14,11 @@ try {
   assert_cut(JSON.parse(JSON.stringify(session.now({ html: "bare" }))), 0);
   const flat = session.now({ html: "flat" }); assert_cut(JSON.parse(JSON.stringify(flat))); assert.match(flat.html, /title="checkpoint"/);
   assert.equal(flat.libs.libraries.find(e => e.name === "flat")!.scopes, undefined);
+  const reconstructed = locus.doc.must("later").q("left")!, label = reconstructed.q("child")!.q("label")!;
+  reconstructed.dispose(); assert.equal(label.active, true);
+  await label.attrs.set("title", "fresh-process-child");
+  assert.match(session.now({ html: "later" }).html, /title="fresh-process-child"/);
+  label.at([]).dispose(); assert.equal(label.active, false);
   await locus.stage(w => { w.doc.must("page").at([]).asElement().attrs.set("title", "restart"); });
   assert.match(session.now({ html: "page" }).html, /title="restart"/);
   console.log("h2-restart-ok");

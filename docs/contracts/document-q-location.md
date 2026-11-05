@@ -2,7 +2,7 @@
 
 Every ordinary document Library facade, including composed and restored Libraries,
 exposes `.q(name)`. It observes an existing authored Library-local QUAD and returns
-`LiveMapDocumentQuadLocation`, or `undefined` for an unknown or retired name.
+an authority-specific QUAD location, or `undefined` for an unknown, ambiguous or retired name.
 Names such as `constructor`, `__proto__`, and `_subject` are ordinary names.
 A non-string argument rejects with `TypeError`. Lookup issues no identity, changes
 no revision, and publishes nothing. Data Libraries and uninstantiated Parts have
@@ -24,8 +24,15 @@ ambiguous invocations authored connector names to distinguish them.
 Every successful `.q()` acquisition owns an independent selection family. It
 retains its binding role, owning namespace and entered occurrence lifetime using
 existing installed evidence. No generated identifier or path is a public name.
-This navigation is a LiveMap capability; Locus and Echo retain their existing
-QUAD surfaces pending Q2.
+Recursive optional navigation is available through LiveMap, managed Locus,
+read-only Locus action contexts, Echo client-local and projected Documents,
+and the projected Echo Document returned as hosted continuation `.map`.
+Each facade wraps the actual selected child handle. Managed Locus children keep
+`Promise<void>` writes through the same authority queue, targeting that child.
+Echo-local children keep synchronous local commit results. Action-context and
+projected Echo children expose observations only at every depth, including after
+relative `.at()` navigation. The projected Library's ordinary `.at()` and Document
+commands retain their existing server-authorized submission pathways.
 
 Each returned capability captures one existing subject identity and its runtime
 epoch. Before every read or edit it checks that identity against the current
@@ -70,6 +77,11 @@ Schema, authority, capture, publication, and managed-CSS retirement rules. In
 particular a root element location remains ineligible for item replacement/deletion,
 and a text location has no element attributes. No hosted write pathway is added.
 Projected or managed facades remain guarded by their existing mutation owner.
+Echo-local acquisition, observations, navigation and mutations reject after Echo
+owner disposal with the existing owner error, including `active` and `rev` reads.
+Mutation input is captured between owner checks so reentrant disposal cannot
+publish the pending write. Selection `dispose()` remains available and idempotent
+after owner disposal. Independent child families still share that Echo owner lifetime.
 Edit admission also checks the subject again before the existing controller
 accepts a candidate, using the existing aggregate `captureFence()` to cover
 revision, identity generation, registry, authority and incomplete identity
@@ -93,6 +105,15 @@ Missing child snapshots return
 other reads/edits and `.q()`/`.at()` navigation reject with the existing
 `DOCUMENT_TARGET_NOT_FOUND` mutation error. Required reads retain their existing
 absent-endpoint error. Ordinary Library `.at(path)` keeps its fixed-coordinate semantics.
+Owner disposal fences facade observations before these raw selection results.
+
+Disconnect alone does not retire a selection: `active` describes its lifetime,
+separately from connection readiness. Authenticated replay can preserve surviving
+occurrences. Full projected reconciliation can retain the composed map epoch and
+local state while retiring old projected occurrence evidence, even for equal
+content. Fresh receiving or hosted reconstruction establishes fresh occurrence
+identity and requires newly acquired selections. Disposing a hosted continuation
+does not dispose its returned Echo; disposing that Echo separately fences its selections.
 
 This cut exposes no watch, ID discovery, raw mutable node, allocator, public
 template API, or lowercase configuration `q`. The public nameable type references

@@ -1,5 +1,6 @@
 import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import assert from "node:assert/strict";
+import { read_document_quad } from "../../src/internal/governed-document.ts";
 import { hsonLiveMap, hsonTransform, enable_interactions, add_interaction } from "../../src/index.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
@@ -110,14 +111,29 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
         assert.match(JSON.stringify(r.a.systemRoot(r.a.systemState("@hson/canonical-interactions")!)), /shared-footer/);
         const data = r.map.data.must("data"); if (String(data.mode) === "document") throw Error(); assert.equal(data.snap(["n"]), 0);
       }
+      // Exercise the same recursive read wrapper used by projected Echo over
+      // the authenticated, receiver-local handles at this receiving seam.
+      const selections = [first, second].map(cap => {
+        const parent = read_document_quad(view(cap).map.doc.must("page").q("left")!);
+        const alias = parent.at([999]), child = alias.q("child")!, label = child.q("label")!;
+        assert.equal(alias.snap(), undefined); assert.equal("set" in label.attrs, false);
+        alias.dispose(); assert.equal(parent.active, false); assert.equal(child.active, true);
+        assert.match(label.snap()!, /Visible/);
+        return { child, label };
+      });
       const before = [view(first).scopes(), view(second).scopes()];
       const one = await f.stage(w => { page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "next"); const d = w.data.must("data"); if (String(d.mode) === "document") throw Error(); d.at(["n"]).set(1); });
-      for (const [i, cap] of [first, second].entries()) { cap.replayScopedHosted(one); assert.deepEqual(view(cap).scopes().map(s => s.lifetime), before[i]!.map(s => s.lifetime)); }
+      for (const [i, cap] of [first, second].entries()) {
+        cap.replayScopedHosted(one); assert.deepEqual(view(cap).scopes().map(s => s.lifetime), before[i]!.map(s => s.lifetime));
+        assert.equal(selections[i]!.label.active, true); assert.equal(selections[i]!.child.active, true);
+      }
       const priorGraph = f.a.root(f.pageId);
       const two = await f.stage(w => page(w).content.replace({ kind: "path", path: path([0,0,1,0,0, 0]) }, 0, node('<hson-part lib="parts" at="panel"/>')));
       assert.deepEqual(f.a.root(f.pageId), priorGraph);
       for (const [i, cap] of [first, second].entries()) {
         const r = view(cap); cap.replayScopedHosted(two); assert.ok(equal(f.a.scopedDocumentState(f.pageId), r.state()));
+        assert.equal(selections[i]!.label.active, false); assert.equal(selections[i]!.child.active, false);
+        assert.equal(selections[i]!.label.snap(), undefined, "Equal-content occurrence replacement retires recursive projected handles");
         assert.equal(r.a.clientProjection()!.revision, snapshot.revision + 2);
         const data = r.map.data.must("data"); if (String(data.mode) === "document") throw Error(); assert.equal(data.snap(["n"]), 1);
         assert.notEqual(r.scopes()[0]!.lifetime, before[i]![0]!.lifetime); assert.notEqual(r.scopes()[1]!.lifetime, before[i]![1]!.lifetime);
@@ -133,14 +149,21 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
       const local = r.map.data.must("local"); if (String(local.mode) === "document") throw Error(); local.at(["n"]).set(19);
       add_interaction(r.map, { id: "local-nav", subject: { library: "localPage", path: [0] }, listener, kind: "browser", key: "nav", args: null });
       const localId = r.a.libraries()[r.a.hostedRegistry().libraries.filter(e => e.scope === undefined).findIndex(e => e.name === "local")]!, localRoot = r.a.root(localId), old = r.scopes();
+      const epoch = r.a.identityEpoch().current();
+      const selected = () => read_document_quad(r.map.doc.must("page").q("left")!).q("child")!.q("label")!;
+      const stale = selected(), localQuad = r.map.doc.must("localPage").q("local")!;
       await f.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "restored"));
       let observed = 0;
       const stop = r.a.observeAuthorityPosition(() => { observed++; assert.equal(r.a.clientProjection()!.revision, f.l.rev); assert.ok(equal(f.a.scopedDocumentState(f.pageId), r.state())); }, "installed");
       cap.restoreScopedProjection(f.state()); stop(); assert.equal(observed, 1);
+      assert.equal(stale.active, false); assert.equal(stale.snap(), undefined);
+      assert.equal(r.a.identityEpoch().current(), epoch); assert.equal(localQuad.active, true);
       assert.equal(local.snap(["n"]), 19); assert.equal(r.a.root(localId), localRoot);
       assert.match(JSON.stringify(r.a.systemRoot(r.a.systemState("@hson/canonical-interactions")!)), /local-nav/);
       for (const scope of r.scopes()) assert.ok(!old.some(previous => previous.lifetime === scope.lifetime));
-      const next = r.scopes(); cap.restoreScopedProjection(f.state());
+      const next = r.scopes(), equalContent = selected(), content = equalContent.snap(); cap.restoreScopedProjection(f.state());
+      assert.equal(equalContent.active, false); assert.equal(selected().snap(), content);
+      assert.equal(stale.active, false); assert.equal(localQuad.active, true);
       for (const scope of r.scopes()) assert.ok(!next.some(previous => previous.lifetime === scope.lifetime), "equal graphs never prove occurrence continuity");
     } finally { cap.dispose(); f.l.dispose(); }
   });

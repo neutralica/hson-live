@@ -14,6 +14,11 @@ import { document_css_state_internal } from '../../src/api/livemap/livemap.libra
 import { render_portable_document_stylesheet_carriers } from '../../src/internal/css/portable-document-stylesheet.ts';
 
 const assert = (value, message) => { if (!value) throw Error(message); };
+const readOnlyQuad = subject => {
+  for (const key of ['replace', 'delete', 'insert', 'move']) assert(!(key in subject), `Projected QUAD omits ${key}`);
+  for (const key of ['set', 'drop', 'replace', 'setMany', 'dropMany', 'clear']) assert(!(key in subject.attrs), `Projected QUAD attrs omit ${key}`);
+  for (const key of ['set', 'clear']) assert(!(key in subject.flags), `Projected QUAD flags omit ${key}`);
+};
 const managedSelector = 'style[data-hson-managed-document-css]';
 function checkCarriers(c, doc, previous) {
   // Derive the target from accepted receiver authority, independently of native styles.
@@ -108,6 +113,18 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
     receiver.cssRule = c.tree.css.global.sel('.cut3a');
     receiver.asyncCssRule = c.tree.async.css.global.sel('.cut3a');
     receivers.push(receiver);
+    if (scoped) {
+      const parent = c.map.q('left'), alias = parent.at([999]), child = alias.q('child');
+      const label = child.q('label'), right = c.map.q('right').q('child').q('label');
+      [parent, alias, child, label, right].forEach(readOnlyQuad);
+      assert(alias.snap() === undefined && alias.active, 'Absent relative coordinate retains occurrence navigation');
+      assert(c.map.q('label') === undefined && parent.q('label') === undefined, 'Named boundaries remain closed');
+      assert(parent.q('root').q('child') === undefined, 'Element role grants no child namespace');
+      parent.dispose(); assert(!alias.active && child.active && label.active, 'q child acquisition has independent disposal');
+      child.at([]).dispose(); assert(!child.active && label.active, 'at aliases share only their own selection family');
+      assert(label.snap().includes('Visible') && right.snap().includes('Visible'), 'Repeated local names select independent occurrences');
+      receiver.quads = { left: label, right, initialPath: label.path() };
+    }
     assert(c.mirror.status === 'active', 'Mirror active');
     assert(c.tree.dom.el() === root, 'Original root adopted');
     assert(nodes.every((n, index) => [root, ...root.querySelectorAll('*')][index] === n), 'Every original Element retained');
@@ -140,7 +157,14 @@ globalThis.hostedContinuationStart = async ({ sessions, endpoint, url, scoped })
   return { receivers: receivers.length, elements: receivers[0].nodes.length, identities: ids[0].length };
 };
 globalThis.hostedContinuationDispose = () => {
-  for (const r of receivers.splice(0)) { r.c.dispose(); r.c.echo.dispose(); r.transport.dispose(); r.host.remove(); }
+  for (const r of receivers.splice(0)) {
+    const selected = r.scoped ? r.quads.right : r.right;
+    r.c.dispose();
+    r.c.echo.dispose();
+    let rejected = false; try { selected.snap(); } catch { rejected = true; }
+    assert(rejected, 'Echo owner disposal separately fences dependent selections'); selected.dispose(); selected.dispose();
+    r.transport.dispose(); r.host.remove();
+  }
 };
 globalThis.hostedCssMap = async (writable = true) => {
   const receiver = receivers[0], tree = receiver.c.tree;
@@ -226,6 +250,7 @@ globalThis.hostedCheckLive = phase => {
       r.inserted = doc.querySelector('#inserted');
       assert(r.inserted?.textContent === 'Inserted', 'Structural insert');
       assert(a === r.a && b === r.b, 'Surviving Elements retained through content edit');
+      if (scoped) assert(r.quads.left.active && r.quads.left.snap().includes('Changed') && r.quads.right.active, 'Recursive projected children observe replay');
       assert(doc.defaultView.getComputedStyle(a).color === 'rgb(21, 43, 65)', 'Subject CSS update');
     } else if (phase === 'demand') {
       assert(doc.querySelector('#inserted') === r.inserted, 'First CSS demand retains original Element');
@@ -235,9 +260,11 @@ globalThis.hostedCheckLive = phase => {
     } else if (phase === 'move') {
       assert(a === r.a && b === r.b && a.previousElementSibling === b, 'Move preserves Elements');
       assert(a.getAttribute('hson:quid') === r.oldId, 'Move preserves receiving identity'); r.listenerCheck();
+      if (scoped) assert(r.quads.left.active && JSON.stringify(r.quads.left.path()) !== JSON.stringify(r.quads.initialPath), 'Surviving move preserves acquired recursive child');
     } else if (phase === 'remove') {
       assert(!r.a.isConnected && r.b.isConnected, 'Only removed occurrence detached');
       assert(!r.left.active && r.right.active, 'Removed handle retired; sibling active');
+      if (scoped) assert(!r.quads.left.active && r.quads.right.active && r.quads.left.snap() === undefined, 'Occurrence removal terminally retires recursive children');
       assert(!c.map.css.snapshot().includes(r.oldId), 'Retired subject CSS removed');
       assert(r.oldIds.every(id => !c.map.css.snapshot().includes(id)), 'Nested occurrence-owned CSS retired');
       assert(c.tree.find.byQuid(r.oldId) === undefined, 'Retired identity absent');
@@ -252,6 +279,8 @@ globalThis.hostedCheckLive = phase => {
       assert(!c.map.css.snapshot().includes(r.oldId), 'Replacement never restores retired CSS');
       assert(r.oldIds.every(id => !c.map.css.snapshot().includes(id)), 'Replacement never restores retired nested CSS');
       if (scoped) {
+        const freshQuad = c.map.q('child').q('label'); readOnlyQuad(freshQuad);
+        assert(freshQuad.active && !r.quads.left.active, 'Fresh occurrence never resurrects an old child lifetime');
         assert(doc.defaultView.getComputedStyle(fresh).borderTopWidth === '3px', 'Fresh occurrence CSS installed');
         assert(doc.defaultView.getComputedStyle(fresh.querySelector('span')).color === 'rgb(10, 20, 30)', 'Fresh nested occurrence CSS installed');
       }
@@ -273,7 +302,10 @@ globalThis.hostedReduced = () => {
 };
 globalThis.hostedRefresh = async () => { for (const r of receivers) { r.pause(); r.resume(); await r.c.echo.session.reattach(); } };
 
-globalThis.hostedPause = () => { for (const r of receivers) r.pause(); };
+globalThis.hostedPause = () => { for (const r of receivers) {
+  r.reconnectQuad = r.scoped ? r.c.map.q('right').q('child').q('label') : r.c.map.q('b');
+  r.pause(); assert(r.reconnectQuad.active, 'Disconnect preserves selection lifetime independently of readiness');
+} };
 globalThis.hostedResume = async rev => {
   receivers[0].reconcile();
   for (const r of receivers) { r.resume(); await r.c.echo.session.reattach();
@@ -284,6 +316,12 @@ globalThis.hostedResume = async rev => {
   }
   assert(receivers[0].c.echo.sync.strategy === 'reconcile', 'Forced full reconciliation exercised');
   assert(receivers[1].c.echo.sync.strategy === 'replay', 'Missed revision replay exercised');
+  if (receivers[0].scoped) {
+    assert(!receivers[0].reconnectQuad.active, 'Full reconciliation retires old projected occurrence evidence');
+    assert(receivers[1].reconnectQuad.active, 'Authenticated replay preserves the surviving projected selection');
+    const fresh = receivers[0].c.map.q('right').q('child').q('label'); readOnlyQuad(fresh);
+    assert(fresh.active && !receivers[0].quads.right.active, 'Reconstruction establishes fresh recursive selection lifetime');
+  }
 };
 
 globalThis.hostedTopologies = async ({ variants, endpoint }) => {

@@ -1,4 +1,5 @@
 import { replace_structured_fixture } from "../helpers/structured-css-fixture.mts";
+import { read_document_quad } from "../../src/internal/governed-document.ts";
 import assert from "node:assert/strict";
 import { hsonLiveMap, hsonTransform, enable_interactions, add_interaction } from "../../src/index.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
@@ -124,6 +125,23 @@ function delivered(f: Awaited<ReturnType<typeof fixture>>, r: Receiver, batch: P
 }
 
 export async function echo_scoped_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await check("recursive projected handles follow authenticated replay and retire on equal-content occurrence replacement", async () => {
+    const f = await fixture(), r = f.receive();
+    try {
+      delivered(f, r, (await f.stage(w => insert(w))).batch);
+      const parent = read_document_quad(doc(r.map).q("child")!), alias = parent.at([999]), child = alias.q("label")!;
+      assert.equal(alias.snap(), undefined); assert.equal("set" in child.attrs, false);
+      const pathBefore = child.path(); alias.dispose(); assert.equal(parent.active, false); assert.equal(child.active, true);
+      delivered(f, r, (await f.stage(w => page(w).content.insert(target, 0, node('<i/>')))).batch);
+      assert.equal(child.active, true); assert.notDeepEqual(child.path(), pathBefore);
+      const before = doc(r.map).snap();
+      delivered(f, r, (await f.stage(w => replace(w, 1))).batch);
+      assert.equal(doc(r.map).snap(), before); assert.equal(child.active, false); assert.equal(child.snap(), undefined);
+      const fresh = read_document_quad(doc(r.map).q("child")!).q("label")!;
+      assert.equal(fresh.active, true); assert.equal(child.active, false);
+      fresh.at([]).dispose(); assert.equal(fresh.active, false);
+    } finally { r.cap.dispose(); f.locus.dispose(); }
+  });
   await check("two real Echo replicas converge through nested repeated Parts and successive graph-identical authoritative replacements", async () => {
     const f = await fixture(), first = f.receive(), second = f.receive();
     try {

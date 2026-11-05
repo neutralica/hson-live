@@ -169,9 +169,9 @@ export type EchoProjectedDocumentLibrary<TEvidence = unknown, TSchema extends Hs
     flags: Pick<LocusDocumentLibrary["document"]["flags"], "has" | "set">;
   }>;
 }>;
-// Q1 navigation belongs to LiveMap; retain Echo's explicit pre-Q2 surface.
 type EchoLocalDocumentQuadLocation = Omit<import("./livemap.types.js").LiveMapDocumentQuadLocation, "q" | "at"> & Readonly<{
   at: (path: readonly number[]) => EchoLocalDocumentQuadLocation;
+  q: (name: string) => EchoLocalDocumentQuadLocation | undefined;
 }>;
 export type EchoLocalDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDocumentLibrary<TEvidence, string, TSchema>, "mode" | "rev" | "root" | "at" | "snap" | "hson" | "must" | "watch" | "render" | "css" | "commits" | "schema"> & {
   source: "client-local";

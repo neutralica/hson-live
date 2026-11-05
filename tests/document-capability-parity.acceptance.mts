@@ -5,7 +5,7 @@ import { document_capability_parity_cases, document_css_parity_cases, document_r
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "document-capability-parity", title: "Governed document capability parity", category: "LiveMap", runtime: "node",
-  tags: Object.freeze(["public-api", "document", "attributes", "css", "worker", "authority"]),
+  tags: Object.freeze(["public-api", "document", "attributes", "css", "worker", "authority", "quad", "disposal"]),
 });
 for (const exact of ["false", "true"]) execFileSync(process.execPath, [fileURLToPath(new URL("../node_modules/typescript/bin/tsc", import.meta.url)),
   "--noEmit", "--strict", "--noUncheckedIndexedAccess", "--target", "ESNext", "--module", "NodeNext", "--exactOptionalPropertyTypes", exact,

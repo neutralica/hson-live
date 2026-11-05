@@ -14,10 +14,8 @@ function permissions(echo: Echo<LiveMap>) {
     const local = library.q("left");
     if (local) {
       local.attrs.set("title", "local write");
-      // @ts-expect-error LiveMap Q1 does not expose Echo-local Q2 navigation.
-      local.q("child");
-      // @ts-expect-error Relative aliases retain the same bounded Echo surface.
-      local.at([0]).q("child");
+      local.q("child")?.q("label")?.attrs.set("title", "local child") satisfies import("hson-live/livemap").LiveMapCommit | undefined;
+      local.at([999]).q("child")?.flags.set("checked") satisfies import("hson-live/livemap").LiveMapCommit | undefined;
     }
   }
   if (library.source !== "authority-projected") return;
@@ -28,8 +26,9 @@ function permissions(echo: Echo<LiveMap>) {
     if (subject) {
       const active: boolean = subject.active;
       void active;
-      // @ts-expect-error H1 does not add chained scoped lookup.
-      subject.q("child");
+      subject.q("child")?.q("label")?.attrs.get("title");
+      // @ts-expect-error Recursive projected selections retain observation authority.
+      subject.at([999]).q("child")?.q("label")?.attrs.set("title", "unauthorized");
       // @ts-expect-error Existing QUAD observations do not grant mutation.
       subject.attrs.set("title", "unauthorized");
     }

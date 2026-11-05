@@ -167,6 +167,30 @@ Hosted SSR continuation accepts the session current-state materialization, crede
 existing DOM root. It prepares the managed replica, binds Mirror to the
 adopted DOM, then completes synchronization through the same engine.
 
+Document QUAD selections support recursive optional `.q(name)`, such as
+`echo.doc.must("page").q("left")?.q("child")?.q("label")`. Client-local
+children retain synchronous local writes. Projected children expose observations
+only, recursively; the projected Library's ordinary `.at()` and Document commands
+retain their existing server-authorized submission behavior. Lookup preserves
+local precedence, named boundaries and unique unnamed transparency, returning
+`undefined` for absence or ambiguity.
+
+Each successful `.q()` child has an independent selection lifetime. Disposing a
+parent leaves that child usable; `.at()` aliases share their anchor's disposal
+family and navigation namespace. Echo owner disposal rejects dependent QUAD
+observations (including `active` and `rev`), navigation and writes. Echo-local
+root QUAD acquisition is fenced as well.
+Local mutation capture checks the owner both before capture and before writing,
+so reentrant owner disposal cannot publish the pending mutation. Selection
+`dispose()` remains available for idempotent cleanup.
+
+Disconnect changes readiness without automatically retiring selections. Authenticated
+replay may preserve surviving occurrences. Full projected reconciliation can
+retain the composed map epoch and local state while retiring projected selections
+whose occurrence evidence is replaced, even with equal content. Fresh receiving
+or reconstruction establishes fresh lifetimes. See the
+[QUAD navigation contract](../contracts/document-q-location.md).
+
 Shared libraries remain managed by Locus. Local libraries are initialized only
 when absent and are thereafter client-owned: local root, Schema, and document
 CSS changes stay local and survive replay, reconcile, scope removal, and re-add.

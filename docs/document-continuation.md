@@ -233,7 +233,22 @@ topology, local names, and owned CSS with the realized graph. Echo verifies this
 evidence before continuation; disposal, recovery, scope changes, and retirement
 retain their authority and lifetime fences. Disposable SSR subject labels never
 become receiving QUID claims or authored names. Authored document and occurrence
-names remain separate flat namespaces; public chained scoped `.q()` is unavailable.
+names remain separate occurrence namespaces. Hosted `continuation.map` inherits
+projected Echo's recursive optional navigation, for example
+`continuation.map.q("left")?.q("child")?.q("label")`. Each child remains
+read-only at every depth; ordinary projected Document commands keep their
+existing server-authorized pathways. A `.q()` child owns independent selection
+disposal, while `.at()` aliases share their anchor's family and namespace.
+
+Disconnect alone does not retire these selections: `active` describes selection
+lifetime, separately from readiness. Authenticated replay can preserve surviving
+occurrences through movement. Full reconciliation can retain the composed map
+epoch and local state while retiring replaced projected occurrence evidence,
+including equal content. Fresh hosted reconstruction establishes fresh selection
+lifetimes; old selections never revive through restored paths or names.
+`continuation.dispose()` leaves its returned Echo owner alive. Separate Echo
+disposal fences dependent QUAD reads, accessors, navigation and writes; selection
+`dispose()` remains available for cleanup.
 
 Public local `map.capture()`/`map.cut()` and full-authority `locus.cut()` still
 reject scoped documents. Internal portable handoff facilities are not public local

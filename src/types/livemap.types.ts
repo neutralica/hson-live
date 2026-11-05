@@ -1814,7 +1814,10 @@ export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
   & ([TResult] extends [never] ? {} : Readonly<{
     replace: (value: LiveMapDocumentContent) => TResult;
     delete: () => TResult;
-  }>) & Readonly<{ at: (path: readonly number[]) => AuthorityDocumentQuadLocation<TResult> }>;
+  }>) & Readonly<{
+    at: (path: readonly number[]) => AuthorityDocumentQuadLocation<TResult>;
+    q: (name: string) => AuthorityDocumentQuadLocation<TResult> | undefined;
+  }>;
 
 export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear"> =
   <const TPath extends readonly number[]>(path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never] ? never : unknown)) =>

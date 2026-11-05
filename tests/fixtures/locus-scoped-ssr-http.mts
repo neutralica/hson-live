@@ -13,6 +13,10 @@ import { deferred } from "../helpers/memory-checkpoint-adapter.mts";
 export async function scoped_ssr_http() {
   const locus = hsonLiveMap.locus.create(definition[0], definition[1]);
   const session = await locus.session.create({ libraries: ["page", "flat"] });
+  const parent = locus.doc.must("page").q("left")!, child = parent.q("child")!.q("label")!;
+  await child.attrs.set("title", "scoped-http-child");
+  assert.equal(locus.doc.must("page").q("right")!.q("child")!.q("label")!.attrs.get("title"), undefined);
+  parent.dispose(); assert.equal(child.active, true);
   const cut = session.now({ html: "page" });
   const tls = { key: await readFile(new URL("./livehost-tls/key.pem", import.meta.url)),
     cert: await readFile(new URL("./livehost-tls/cert.pem", import.meta.url)) };
@@ -56,6 +60,7 @@ export async function scoped_ssr_http() {
     for (const get of [h1get, h2get]) {
       const result = await get("/"); assert.equal(result.status, 200);
       assert.equal(result.type, "text/html; charset=utf-8"); assert.equal(result.body, cut.html);
+      assert.equal(result.body.split('title="scoped-http-child"').length, 2, "Managed child write reaches exactly one SSR subject");
       assert.doesNotMatch(result.body, /hson-part|<script|PRIVATE_/);
       assert.equal((await get("/flat")).body, session.now({ html: "flat" }).html);
       const forbidden = await get("/forbidden"); assert.equal(forbidden.status, 500); assert.doesNotMatch(forbidden.body, /PRIVATE_|<html/);

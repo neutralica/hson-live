@@ -81,12 +81,18 @@ export async function hosted_h3b_cases(check: (name: string, run: () => Promise<
         assert.equal(continuation.echo.rev, locus.rev);
         assert.throws(() => echo_receiving_document_handoff_internal(continuation.echo).prepare("page"), /expired|changed during capture/);
         assert.equal(continuation.map.q("left")?.active, true);
+        const parent = continuation.map.q("left")!, quadChild = parent.at([999]).q("label")!;
+        assert.equal(quadChild.active, true); assert.match(quadChild.snap()!, /Changed/);
+        assert.equal("set" in parent.attrs, false); assert.equal("replace" in quadChild, false);
+        parent.dispose(); assert.equal(quadChild.active, true);
         assert.equal(continuation.map.q("right"), undefined);
         const currentMain = body.childNodes[0]; assert.ok(currentMain instanceof FakeElement);
         const inserted = currentMain.childNodes[1]; assert.ok(inserted instanceof FakeElement);
         assert.ok(inserted.getAttribute("hson:quid"));
         assert.equal(continuation.tree.find.byQuid(inserted.getAttribute("hson:quid")!)?.dom.el(), inserted as unknown as Element);
-        continuation.dispose(); continuation.echo.dispose(); assert.equal(subscriptions, 0);
+        continuation.dispose(); assert.equal(quadChild.active, true, "Continuation disposal leaves its Echo owner alive");
+        continuation.echo.dispose(); assert.throws(() => quadChild.snap(), /Disposed Echo authority/);
+        quadChild.dispose(); quadChild.dispose(); assert.equal(subscriptions, 0);
         // A selected flat document remains flat in a projection also containing scoped state.
         const flat = new FakeElement("html"), flatHead = new FakeElement("head"), flatBody = new FakeElement("body"), main = new FakeElement("main"), child = new FakeElement("i");
         flat.appendChild(flatHead); flat.appendChild(flatBody); flatBody.appendChild(main); main.appendChild(child);

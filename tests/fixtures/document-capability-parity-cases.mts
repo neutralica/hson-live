@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { document_recursive_authority_cases, echo_local_quad_owner_cases } from "./document-recursive-authority-cases.mts";
 import { hsonLiveMap, hsonTransform, Hson, type LocusWebSocketLike } from "hson-live";
 import { bind_locus_websocket } from "hson-live/locus";
 import { test_echo_transport } from "../helpers/public-echo-websocket-transport.mts";
@@ -330,13 +331,15 @@ export async function document_schema_atomicity_cases() {
 }
 
 export async function document_identity_authority_cases() {
+  await document_recursive_authority_cases();
+  await echo_local_quad_owner_cases();
   const definition = { document: '<main @:page <button @:button title="initial"/> <aside/>/>' };
   const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } }, { authorizeProjection: () => ({ libraries: ["page"] }), actions: { inspect(context) {
       const page = context.doc.must("page"); if (page.mode !== "document") throw Error("Expected document");
       const selected = page.q("button")!;
       assert.equal(selected.attrs.must.get("title"), "moved");
       assert.equal("set" in selected.attrs, false); assert.equal("set" in selected.flags, false);
-      assert.equal("delete" in selected, false); assert.equal("q" in selected, false);
+      assert.equal("delete" in selected, false); assert.equal(selected.q("absent"), undefined);
     } } });
   try {
     const page = locus.doc.must("page"), selected = page.q("button")!;

@@ -56,6 +56,18 @@ session grace rules.
 
 `locus.data`, `locus.doc`, and `locus.parts` select authoritative Libraries by family. For example, `locus.doc.must("page")` provides synchronous document reads, rendering, observations, and governed writes. Callable selection such as `locus.doc("missing")` returns `undefined` for absence or a wrong family; `.must(name)` throws. Known safe names also support property access, such as `locus.doc.page`. These are the same family selectors used by local maps, Echo replicas, staged writers, and read-only action contexts, with each owner's capabilities. A terminal Locus write returns `Promise<void>` and enters its authority queue. `await locus.stage(writer => { ... })` collects synchronous writes into one atomic decision; its writer has `writer.doc`, `writer.data`, and `writer.parts`. Async stage callbacks are rejected. `locus.commits.observe(...)` observes map commits; activity and session events remain separate.
 
+Document QUAD selections support recursive optional lookup, for example
+`locus.doc.must("page").q("left")?.q("child")?.q("label")`. Successful
+children retain managed `Promise<void>` writes targeting their own selected
+subjects through the existing queue and capture fences. The same navigation
+in an action context provides live observations with no mutation methods at
+any depth. Each `.q()` child owns an independent disposal family; relative
+`.at()` aliases share their anchor's disposal and occurrence namespace, including
+absent relative coordinates. Surviving moves preserve selections; occurrence
+loss or replacement retires them terminally. Lookup remains unique-only and
+returns `undefined` for absence or ambiguity. See the
+[QUAD navigation contract](../contracts/document-q-location.md).
+
 The first argument to `locus.create(definitions, configuration?)` and `locus.resume(definitions, configuration)` is the flat keyed Library definition inventory. Initial canonical interactions belong in the second argument's Locus configuration: `{ interactions: [descriptor, ...] }`. Locus enables the interaction system before descriptor transitions and before it claims the map. The same configuration placement applies to durable resume.
 
 `await session.update({ libraries: ["page", "newPage"] })` reauthorizes a retained scope against current topology with the ordinary `authorizeProjection` callback. A connected session uses its attachment's current trusted context. A server-created session can use its creation context; an ordinary disconnected connection-created session requires current trusted context as the second argument, for example `{ principalId: "alice" }`. Principal continuity is enforced. Requests select libraries and system features; read and write grants come from the authorizer. Successful changes advance the session contract sequence and digest without creating an authority revision. Removed library handles become stale; a later grant produces new handles.
