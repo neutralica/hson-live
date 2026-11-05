@@ -3,6 +3,7 @@ import {
   is_ordered_projected_object,
   ordered_projected_array,
   ordered_projected_object,
+  ordered_projected_value_equal,
   type OrderedProjectedObject,
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
@@ -107,6 +108,11 @@ export function encode_livemap_replay_transport(
   ops: readonly LiveMapProjectedDataOp[],
 ): LiveMapStructuralJsonEnvelope {
   return encode_projected_value_transport(ordered_projected_array(ops.map(projected_op_to_carrier)));
+}
+
+/** Compare complete operation evidence in exact carrier space. @internal */
+export function livemap_projected_operation_equal(left: LiveMapProjectedDataOp, right: LiveMapProjectedDataOp): boolean {
+  return ordered_projected_value_equal(projected_op_to_carrier(left), projected_op_to_carrier(right));
 }
 
 /** Parse and validate one exact operation sequence entirely in carrier space. */

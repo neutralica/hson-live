@@ -61,6 +61,7 @@ import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ing
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import { canonical_portable_document_css_op, assert_subject_free_portable_css_operation } from "../../internal/css/portable-document-operations.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
+import { with_livemap_replay_operation_index } from "./livemap.error.js";
 export { HOSTED_MAX_SNAPSHOT_BYTES } from "./livemap.hosted-limits.internal.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
@@ -195,6 +196,8 @@ export type PrivateScopedAggregateCommit = Readonly<{
 }>;
 
 export type DecodedHostedOperation = Readonly<{
+  /** Original submitted position, retained when one effect expands. @internal */
+  operationIndex: number;
   library: HostedRegistryBinding;
   semantic: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
   projected?: LiveMapProjectedDataOp;
@@ -458,7 +461,7 @@ export function decode_hosted_commit(
         || evidence.payload !== expected.payload || !hosted_semantic_equal(operation, css)) {
         throw new HostedAggregateRepresentationError("Hosted CSS operation and evidence disagree.", index);
       }
-      return Object.freeze({ library: binding, semantic: css, css });
+      return Object.freeze({ operationIndex: index, library: binding, semantic: css, css });
     }
     if (evidence.domain === "data") {
       if (binding.mode === "document" || evidence.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) {
@@ -469,14 +472,14 @@ export function decode_hosted_commit(
         || !hosted_semantic_equal(operation, materialize_livemap_projected_op(projected))) {
         throw new HostedAggregateRepresentationError("Hosted semantic operation and exact replay evidence disagree.", index);
       }
-      return Object.freeze({ library: binding, semantic: operation, projected });
+      return Object.freeze({ operationIndex: index, library: binding, semantic: operation, projected });
     }
     const expected = encode_hosted_operation(binding.name, binding.mode, operation);
     if (evidence.domain !== expected.domain || evidence.kind !== expected.kind
       || evidence.format !== expected.format || evidence.payload !== expected.payload) {
       throw new HostedAggregateRepresentationError("Hosted semantic operation and exact replay evidence disagree.", index);
     }
-    return Object.freeze({ library: binding, semantic: operation, graph: decode_hosted_graph_operation(expected.payload, binding.mode) });
+    return Object.freeze({ operationIndex: index, library: binding, semantic: operation, graph: decode_hosted_graph_operation(expected.payload, binding.mode) });
   }));
 }
 
@@ -629,6 +632,7 @@ export function decode_portable_aggregate_commit(
   input: PortableAggregateCommit,
   registry: HostedRegistry,
   bindingsByName: ReadonlyMap<string, HostedRegistryBinding>,
+  submittedIndices?: readonly number[],
 ): readonly DecodedHostedOperation[] {
   const record = exact_record(input, "Hosted client commit");
   exact_keys(record, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"], "Hosted client commit");
@@ -643,40 +647,43 @@ export function decode_portable_aggregate_commit(
     throw new HostedAggregateRepresentationError("Hosted client commit envelope is malformed.");
   }
   assert_encoded_bound(input, HOSTED_MAX_COMMIT_BYTES, "Hosted client commit");
-  return Object.freeze(record.operations.map((raw, index): DecodedHostedOperation => {
-    const evidence = exact_record(raw, "Hosted client operation", index);
-    exact_keys(evidence, ["library", "domain", "kind", "format", "payload"], "Hosted client operation", index);
-    if (typeof evidence.library !== "string" || typeof evidence.payload !== "string" || typeof evidence.kind !== "string") {
-      throw new HostedAggregateRepresentationError("Hosted client operation fields are malformed.", index);
-    }
-    const binding = bindingsByName.get(evidence.library);
-    if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted client operation references an unknown Library.", index);
-    if (evidence.domain === "data") {
-      if (binding.mode === "document" || evidence.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) throw incompatible_graph();
-      const projected = require_single_projected_operation(evidence.payload, index);
-      if (projected.kind !== evidence.kind || encode_livemap_replay_transport([projected]).payload !== evidence.payload) {
-        throw new HostedAggregateRepresentationError("Hosted client data operation is noncanonical.", index);
+  return Object.freeze(record.operations.map((raw, position): DecodedHostedOperation => {
+    const index = submittedIndices?.[position] ?? position;
+    return with_livemap_replay_operation_index(index, () => {
+      const evidence = exact_record(raw, "Hosted client operation", index);
+      exact_keys(evidence, ["library", "domain", "kind", "format", "payload"], "Hosted client operation", index);
+      if (typeof evidence.library !== "string" || typeof evidence.payload !== "string" || typeof evidence.kind !== "string") {
+        throw new HostedAggregateRepresentationError("Hosted client operation fields are malformed.", index);
       }
-      return Object.freeze({ library: binding, semantic: materialize_livemap_projected_op(projected), projected });
-    }
-    if (evidence.domain === "css") {
-      if (evidence.format !== "hson-document-css-op" || binding.mode !== "document") throw incompatible_graph();
-      const css = decode_hosted_css_operation(evidence.payload, binding.mode);
-      assert_subject_free_portable_css_operation(css);
-      if (css.kind !== evidence.kind || JSON.stringify(css) !== evidence.payload) {
-        throw new HostedAggregateRepresentationError("Hosted client CSS operation is noncanonical.", index);
+      const binding = bindingsByName.get(evidence.library);
+      if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted client operation references an unknown Library.", index);
+      if (evidence.domain === "data") {
+        if (binding.mode === "document" || evidence.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) throw incompatible_graph();
+        const projected = require_single_projected_operation(evidence.payload, index);
+        if (projected.kind !== evidence.kind || encode_livemap_replay_transport([projected]).payload !== evidence.payload) {
+          throw new HostedAggregateRepresentationError("Hosted client data operation is noncanonical.", index);
+        }
+        return Object.freeze({ operationIndex: index, library: binding, semantic: materialize_livemap_projected_op(projected), projected });
       }
-      return Object.freeze({ library: binding, semantic: css, css });
-    }
-    if (evidence.domain !== "graph" || evidence.format !== HOSTED_CLIENT_GRAPH_OP_FORMAT || binding.mode !== "document") {
-      throw incompatible_graph();
-    }
-    const graph = decode_hosted_graph_operation(evidence.payload, binding.mode, true);
-    if (graph.op === "ensure-quid" || graph.op !== evidence.kind
-      || encode_hosted_graph_operation(graph, true) !== evidence.payload) {
-      throw new HostedAggregateRepresentationError("Hosted client graph operation is noncanonical.", index);
-    }
-    return Object.freeze({ library: binding, semantic: graph, graph });
+      if (evidence.domain === "css") {
+        if (evidence.format !== "hson-document-css-op" || binding.mode !== "document") throw incompatible_graph();
+        const css = decode_hosted_css_operation(evidence.payload, binding.mode);
+        assert_subject_free_portable_css_operation(css);
+        if (css.kind !== evidence.kind || JSON.stringify(css) !== evidence.payload) {
+          throw new HostedAggregateRepresentationError("Hosted client CSS operation is noncanonical.", index);
+        }
+        return Object.freeze({ operationIndex: index, library: binding, semantic: css, css });
+      }
+      if (evidence.domain !== "graph" || evidence.format !== HOSTED_CLIENT_GRAPH_OP_FORMAT || binding.mode !== "document") {
+        throw incompatible_graph();
+      }
+      const graph = decode_hosted_graph_operation(evidence.payload, binding.mode, true);
+      if (graph.op === "ensure-quid" || graph.op !== evidence.kind
+        || encode_hosted_graph_operation(graph, true) !== evidence.payload) {
+        throw new HostedAggregateRepresentationError("Hosted client graph operation is noncanonical.", index);
+      }
+      return Object.freeze({ operationIndex: index, library: binding, semantic: graph, graph });
+    });
   }));
 }
 
@@ -701,8 +708,9 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
   const effects = new Map<string, DocumentScopedEffect[]>();
   const flat = new Map<string, DocumentFlatEffect>();
   const ordinary: PortableAggregateOperation[] = [];
-  for (const operation of input.operations) {
-    const entry = exact_record(operation, "Private scoped operation");
+  const ordinaryIndices: number[] = [];
+  input.operations.forEach((operation, index) => with_livemap_replay_operation_index(index, () => {
+    const entry = exact_record(operation, "Private scoped operation", index);
     if (entry.domain !== "document") {
       // Flat Libraries retain ordinary effects. Once this Library gains scopes,
       // every subsequent document effect must retain that evidence.
@@ -711,9 +719,10 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
       }
       if (operation.domain === "document") throw incompatible_graph();
       ordinary.push(operation);
-      continue;
+      ordinaryIndices.push(index);
+      return;
     }
-    exact_keys(entry, ["library", "domain", "effect"], "Private scoped operation");
+    exact_keys(entry, ["library", "domain", "effect"], "Private scoped operation", index);
     const binding = typeof entry.library === "string" ? bindings.get(entry.library) : undefined;
     if (binding === undefined || binding.mode !== "document" || binding.scope !== undefined) {
       throw new HostedAggregateRepresentationError("Scoped effect references an unauthorized document Library.");
@@ -723,21 +732,20 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
     if (is_flat_document_effect(operation.effect)) {
       if (flat.has(binding.name) || batch.length || ordinary.some(item => item.library === binding.name)) throw incompatible_graph();
       flat.set(binding.name, validate_flat_document_effect(operation.effect));
-      continue;
+      return;
     }
     if (flat.has(binding.name)) throw incompatible_graph();
-    batch.push(operation.effect);
+    const effect = validate_document_scoped_effects(encode_document_scoped_effects([operation.effect]), batch.length)[0]!;
+    batch.push(effect);
     effects.set(binding.name, batch);
-  }
-  const validated = new Map([...effects].map(([name, batch]) =>
-    [name, validate_document_scoped_effects(encode_document_scoped_effects(batch))]));
+  }));
   const decoded = ordinary.length === 0 ? [] : decode_portable_aggregate_commit({
     format: PORTABLE_AGGREGATE_COMMIT_FORMAT, authority: input.authority, registryDigest: input.registryDigest,
     prevRev: input.prevRev, rev: input.rev, operations: ordinary,
-  }, registry, bindings);
+  }, registry, bindings, ordinaryIndices);
   let ordinaryIndex = 0;
   const ordinals = new Map<string, number>();
-  return Object.freeze(input.operations.flatMap((operation): (DecodedHostedOperation & { scoped?: DocumentScopedEffect; flat?: DocumentFlatEffect })[] => {
+  return Object.freeze(input.operations.flatMap((operation, operationIndex): (DecodedHostedOperation & { scoped?: DocumentScopedEffect; flat?: DocumentFlatEffect })[] => {
     if (operation.domain !== "document") return [decoded[ordinaryIndex++]!];
     const flatEffect = flat.get(operation.library);
     if (flatEffect !== undefined) {
@@ -745,14 +753,14 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
       const css: import("../../types/livemap.types.js").LiveMapCssOp = { domain: "css", kind: "replace", stylesheet: flatEffect.css };
       return [...flatEffect.graphs.map(payload => {
         const graph = decode_scoped_effect_graph_operation(payload);
-        return { library, semantic: graph, graph };
-      }), { library, semantic: css, css, flat: flatEffect }];
+        return { operationIndex, library, semantic: graph, graph };
+      }), { operationIndex, library, semantic: css, css, flat: flatEffect }];
     }
     const ordinal = ordinals.get(operation.library) ?? 0;
     ordinals.set(operation.library, ordinal + 1);
-    const scoped = validated.get(operation.library)![ordinal]!;
+    const scoped = effects.get(operation.library)![ordinal]!;
     const effectOperation = decode_document_scoped_operation(scoped.graph);
-    return [Object.freeze({ library: bindings.get(operation.library)!, semantic: effectOperation,
+    return [Object.freeze({ operationIndex, library: bindings.get(operation.library)!, semantic: effectOperation,
       ...(effectOperation.domain === "css" ? { css: effectOperation } : { graph: effectOperation }), scoped })];
   }));
 }

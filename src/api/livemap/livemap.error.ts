@@ -98,6 +98,8 @@ export type HsonSchemaIssue = Readonly<{
 
 export class HsonSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;
+  /** Submitted replay position, only when final validation has unique provenance. */
+  declare readonly opIndex?: number;
   readonly path: LivePath;
   readonly issues: readonly HsonSchemaIssue[];
 
@@ -275,11 +277,13 @@ export class LiveMapReplayError extends Error {
   readonly actual: JsonValue | undefined;
   readonly expectedPayload: string | undefined;
   readonly actualPayload: string | undefined;
+  readonly opIndex: number | undefined;
 
   constructor(
     path: LivePath,
     expected: OrderedProjectedValue | undefined,
     actual: OrderedProjectedValue | undefined,
+    opIndex?: number,
   ) {
     const expectedPayload = expected === undefined ? undefined : emit_ordered_json(expected);
     const actualPayload = actual === undefined ? undefined : emit_ordered_json(actual);
@@ -293,6 +297,7 @@ export class LiveMapReplayError extends Error {
     this.actual = actual === undefined ? undefined : materialize_projected_value(actual);
     this.expectedPayload = expectedPayload;
     this.actualPayload = actualPayload;
+    this.opIndex = opIndex;
   }
 }
 
@@ -306,6 +311,20 @@ export class LiveMapProjectedTransportError extends TypeError {
     this.name = "LiveMapProjectedTransportError";
     this.context = context;
     this.reason = reason;
+  }
+}
+
+/** Attach receiving provenance without replacing an error or its cause chain. @internal */
+export function with_livemap_replay_operation_index<T>(opIndex: number | undefined, run: () => T): T {
+  try { return run(); }
+  catch (cause) {
+    if (cause instanceof Error && opIndex !== undefined) {
+      // Representation errors already expose operationIndex. Retain that
+      // contract without adding a second public alias to the same error.
+      const field = Object.hasOwn(cause, "operationIndex") ? "operationIndex" : "opIndex";
+      Object.defineProperty(cause, field, { value: opIndex, enumerable: true, configurable: true });
+    }
+    throw cause;
   }
 }
 

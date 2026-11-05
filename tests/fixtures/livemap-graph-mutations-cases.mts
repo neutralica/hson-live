@@ -17,10 +17,12 @@ import { HSON_MAX_NESTING, ROOT_TAG, ARR_TAG } from "../../src/core/constants.js
 import type { JsonValue } from "../../src/core/types.js";
 import type { LiveMapAggregateCommit } from "../../src/api/livemap/livemap.library.js";
 import { livemap_equal_effect_replay_cases } from "./livemap-equal-effect-replay-cases.mts";
+import { livemap_replay_evidence_cases } from "./livemap-replay-evidence-cases.mts";
 
 type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
 export async function livemap_graph_mutation_cases(check: Check): Promise<void> {
   await livemap_equal_effect_replay_cases(check);
+  await livemap_replay_evidence_cases(check);
   await check("preparation edits one evolving private graph and keeps an independent stale witness", () => {
     const map = hsonLiveMap.fromLibraries({state:{data:{nested:{n:0,keep:true},rows:[0,1]}}});
     const engine = internal_livemap_aggregate_authority(map), id = engine.libraries()[0]!;

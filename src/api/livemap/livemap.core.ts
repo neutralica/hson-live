@@ -88,7 +88,7 @@ import {
   prepare_document_graph_operation,
   type PreparedDocumentMutation
 } from "./livemap.document.mutation.js";
-import { document_path_equal, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
+import { LiveMapDocumentPathError, document_path_equal, resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import { preflight_livemap_document_identity_replay, livemap_document_identity_quid_unavailable, register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   clone_live_root,
@@ -104,7 +104,7 @@ import {
   length_live_path,
   resolve_value_node
 } from "./livemap.editor.js";
-import { LiveMapDocumentMutationError, LiveMapProjectedMutationError, LiveMapReplayError, LiveMapReplayInputError, LiveMapRevError } from "./livemap.error.js";
+import { HsonSchemaError, LiveMapDocumentMutationError, LiveMapProjectedMutationError, LiveMapReplayError, LiveMapReplayInputError, LiveMapRevError, with_livemap_replay_operation_index } from "./livemap.error.js";
 import { deliver_livemap_observers, report_livemap_observer_failure } from "./livemap.observer-delivery.js";
 import { must_live_path, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import {
@@ -159,7 +159,7 @@ import {
   type LiveMapLibraryState,
   type LiveMapStructuralTarget,
 } from "./livemap.library.js";
-import { append_live_path, clone_live_path, format_live_path, live_path_key, paths_overlap } from "./livemap.path.js";
+import { append_live_path, clone_live_path, format_live_path, live_path_key, path_is_prefix, paths_overlap } from "./livemap.path.js";
 import {
   type LiveMapProjectedDeleteWrite,
   type LiveMapProjectedMoveWrite,
@@ -185,6 +185,7 @@ import {
 } from "./livemap.system.js";
 import {
   materialize_livemap_projected_op,
+  livemap_projected_operation_equal,
   type LiveMapProjectedDataOp
 } from "./livemap.transport.js";
 
@@ -227,6 +228,13 @@ type LiveMapCoreWriteOp =
   | LiveMapProjectedRenameWriteOp
   | LiveMapProjectedMoveWriteOp
   | LiveMapConstructiveSetWriteOp;
+
+/** Receiving-only evidence; never installed, published, or persisted. */
+type ReceivingReplayProvenance = Readonly<{
+  operationIndex: number;
+  /** Authenticated submitted contribution, before any synthetic composition. */
+  projected?: LiveMapProjectedDataOp;
+}>;
 
 export type RegistryRoot = Readonly<{
   root: HsonNode;
@@ -994,6 +1002,7 @@ function make_livemap_registry_engine(
     receivingRevision?: number,
     entryManagementFence?: () => void,
     receivingFlat: ReadonlyMap<LiveMapLibraryIdentity, DocumentFlatEffect> = new Map(),
+    receivingProvenance?: ReadonlyMap<LiveMapAggregateWrite | DocumentFlatEffect, ReceivingReplayProvenance>,
   ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
     const managementOwner = transitionController.managedExecutionOwner();
     // Replay must retain the grant captured before caller-controlled decoding.
@@ -1070,10 +1079,12 @@ function make_livemap_registry_engine(
       return candidate;
     };
     for (const [identity, effect] of receivingFlat) {
-      const state = require_library(identity);
-      if (state.mode !== "document" || state.documentScopes !== undefined) throw new Error("Flat replay requires never-scoped document ownership.");
-      const before = portable_quads(state);
-      if (flat_document_fingerprint(state.root, before.css!, before.quads) !== effect.before) throw new Error("Stale flat document correspondence.");
+      with_livemap_replay_operation_index(receivingProvenance?.get(effect)?.operationIndex, () => {
+        const state = require_library(identity);
+        if (state.mode !== "document" || state.documentScopes !== undefined) throw new Error("Flat replay requires never-scoped document ownership.");
+        const before = portable_quads(state);
+        if (flat_document_fingerprint(state.root, before.css!, before.quads) !== effect.before) throw new Error("Stale flat document correspondence.");
+      });
     }
     // Plan Parts once against the installed baseline, so earlier Document
     // operations can consume the completed batch. Retain per-step replay evidence
@@ -1085,39 +1096,43 @@ function make_livemap_registry_engine(
       replay?: Readonly<{ before: OrderedProjectedValue | undefined; after: OrderedProjectedValue | undefined }>;
     }>>();
     for (const [index, write] of writes.entries()) {
-      if (write.target.domain !== "application") continue;
-      const library = require_library(write.target.library);
-      if (library.validation !== PART_COLLECTION_VALIDATION) continue;
-      const operation = write.kind === "collection" ? `${write.command.collection}.${write.command.method}`
-        : write.kind === "replay-data" ? `replay ${write.operation.kind}` : write.kind;
-      if (write.kind === "graph" || write.kind === "css" || write.kind === "ensure-quid") {
-        throw immutable_part_error(part_library_name(library), String(write.target.path[0] ?? "*"), operation);
+      try {
+        if (write.target.domain !== "application") continue;
+        const library = require_library(write.target.library);
+        if (library.validation !== PART_COLLECTION_VALIDATION) continue;
+        const operation = write.kind === "collection" ? `${write.command.collection}.${write.command.method}`
+          : write.kind === "replay-data" ? `replay ${write.operation.kind}` : write.kind;
+        if (write.kind === "graph" || write.kind === "css" || write.kind === "ensure-quid") {
+          throw immutable_part_error(part_library_name(library), String(write.target.path[0] ?? "*"), operation);
+        }
+        // Scalar equal sets can disappear during normalization. An explicit request
+        // against an admitted member still cannot become replacement authority.
+        if (write.kind === "replace" || write.kind === "delete"
+          || write.kind === "set" && write.target.path.length > 0) {
+          assert_part_write(library, write.target.path, operation);
+        }
+        let candidate = partCandidates.get(library.identity);
+        if (candidate === undefined) {
+          candidate = make_aggregate_data_candidate(library);
+          partCandidates.set(library.identity, candidate);
+          pendingPartAdmissions.add(library.identity);
+        }
+        const before = write.kind === "replay-data" ? project_live_path(candidate.root, write.operation.path) : undefined;
+        const localWrites = write.kind === "replay-data" ? [projected_write_op_from_transport(write.operation)]
+          : aggregate_write_ops(write, candidate.root);
+        for (const local of localWrites) {
+          if (local.kind === "constructive-set") {
+            for (const [key] of local.value.entries) assert_part_write(library, [...local.path, key], operation);
+          } else assert_part_write(library, local.path, operation, local.kind === "rename" ? local : undefined);
+        }
+        // Governed Parts cannot own runtime identities; the same graph planner
+        // produces their exact installation and transport evidence.
+        const planned = plan_write_ops(candidate.root, localWrites);
+        partPlans.set(index, { candidate, ops: planned.ops, transportOps: planned.transportOps,
+          ...(write.kind === "replay-data" ? { replay: { before, after: project_live_path(candidate.root, write.operation.path) } } : {}) });
+      } catch (cause) {
+        with_livemap_replay_operation_index(receivingProvenance?.get(write)?.operationIndex, () => { throw cause; });
       }
-      // Scalar equal sets can disappear during normalization. An explicit request
-      // against an admitted member still cannot become replacement authority.
-      if (write.kind === "replace" || write.kind === "delete"
-        || write.kind === "set" && write.target.path.length > 0) {
-        assert_part_write(library, write.target.path, operation);
-      }
-      let candidate = partCandidates.get(library.identity);
-      if (candidate === undefined) {
-        candidate = make_aggregate_data_candidate(library);
-        partCandidates.set(library.identity, candidate);
-        pendingPartAdmissions.add(library.identity);
-      }
-      const before = write.kind === "replay-data" ? project_live_path(candidate.root, write.operation.path) : undefined;
-      const localWrites = write.kind === "replay-data" ? [projected_write_op_from_transport(write.operation)]
-        : aggregate_write_ops(write, candidate.root);
-      for (const local of localWrites) {
-        if (local.kind === "constructive-set") {
-          for (const [key] of local.value.entries) assert_part_write(library, [...local.path, key], operation);
-        } else assert_part_write(library, local.path, operation, local.kind === "rename" ? local : undefined);
-      }
-      // Governed Parts cannot own runtime identities; the same graph planner
-      // produces their exact installation and transport evidence.
-      const planned = plan_write_ops(candidate.root, localWrites);
-      partPlans.set(index, { candidate, ops: planned.ops, transportOps: planned.transportOps,
-        ...(write.kind === "replay-data" ? { replay: { before, after: project_live_path(candidate.root, write.operation.path) } } : {}) });
     }
     const admitPendingParts = (identity: LiveMapLibraryIdentity) => {
       if (!pendingPartAdmissions.has(identity)) return;
@@ -1261,28 +1276,321 @@ function make_livemap_registry_engine(
       candidates.set(library.identity, candidate);
     }
 
-    for (const [writeIndex, submittedWrite] of writes.entries()) {
+    for (const [expandedWriteIndex, submittedWrite] of writes.entries()) {
       let write = submittedWrite;
-      if (write.target.domain === "system") {
-        const system = require_system(write.target.system);
-        systemCandidate ??= {
-          system,
-          baseRoot: clone_live_root(system.root),
-          root: clone_live_root(system.root),
-        };
-        const candidate = systemCandidate;
-        const target = aggregate_system_target(system.identity, write.target.path);
-        if (write.kind === "graph" || write.kind === "ensure-quid" || write.kind === "css") {
-          throw new Error("Transactional Hson system state cannot own graph identity.");
+      const operationIndex = receivingProvenance?.get(submittedWrite)?.operationIndex ?? expandedWriteIndex;
+      try {
+        if (write.target.domain === "system") {
+          const system = require_system(write.target.system);
+          systemCandidate ??= {
+            system,
+            baseRoot: clone_live_root(system.root),
+            root: clone_live_root(system.root),
+          };
+          const candidate = systemCandidate;
+          const target = aggregate_system_target(system.identity, write.target.path);
+          if (write.kind === "graph" || write.kind === "ensure-quid" || write.kind === "css") {
+            throw new Error("Transactional Hson system state cannot own graph identity.");
+          }
+          if (write.kind === "replay-data") {
+            const currentValue = project_live_path(candidate.root, write.operation.path);
+            must_replay_value(write.operation.path, write.operation.prev, currentValue, operationIndex);
+            const localWrite = projected_write_op_from_transport(write.operation);
+            const planned = plan_write_ops(candidate.root, [localWrite]);
+            const nextValue = project_live_path(candidate.root, write.operation.path);
+            must_replay_value(write.operation.path, write.operation.next, nextValue, operationIndex);
+            must_replay_operation(write.operation, planned.transportOps, operationIndex, true);
+
+            operations.push(Object.freeze({
+              target,
+              operation: materialize_livemap_projected_op(write.operation),
+              projected: write.operation,
+            }));
+            continue;
+          }
+          const localWrites = aggregate_write_ops(write, candidate.root);
+          const planned = plan_write_ops(candidate.root, localWrites);
+          for (let index = 0; index < planned.ops.length; index += 1) {
+            const operation = planned.ops[index];
+            const projected = planned.transportOps[index];
+            if (operation === undefined || projected === undefined) {
+              throw new Error("System-state operation evidence is incomplete.");
+            }
+            operations.push(Object.freeze({
+              target: aggregate_system_target(system.identity, operation.path),
+              operation,
+              projected,
+            }));
+          }
+          continue;
+        }
+        const library = require_library(write.target.library);
+        const partPlan = partPlans.get(expandedWriteIndex);
+        if (partPlan !== undefined) {
+          const { candidate, ops, transportOps, replay } = partPlan;
+          candidates.set(library.identity, candidate);
+          if (write.kind === "replay-data") {
+            if (replay === undefined) throw new Error("Part replay evidence is incomplete.");
+            must_replay_value(write.operation.path, write.operation.prev, replay.before, operationIndex);
+            must_replay_value(write.operation.path, write.operation.next, replay.after, operationIndex);
+            must_replay_operation(write.operation, transportOps, operationIndex);
+            operations.push(Object.freeze({ target: aggregate_target(library.identity, write.target.path),
+              operation: materialize_livemap_projected_op(write.operation), projected: write.operation }));
+          } else for (let index = 0; index < ops.length; index++) {
+            const operation = ops[index]!, projected = transportOps[index]!;
+            operations.push(Object.freeze({ target: aggregate_target(library.identity, operation.path), operation, projected }));
+          }
+          continue;
+        }
+        if (write.kind === "graph" && write.assertDocumentShape !== undefined) {
+          const candidate = candidate_for(library.identity);
+          if (!is_aggregate_document_candidate(candidate) || write.logicalLocation === undefined) throw new Error("Document refinement requires logical coordinates.");
+          const value = read_livemap_document_logical_location(candidate.root, "document", write.logicalLocation);
+          const shape = value === undefined ? "missing" : is_ordinary_element_node(value) ? "element" : is_Node(value) ? "root" : "text";
+          if (shape !== write.assertDocumentShape) throw new Error(`Document location is not ${write.assertDocumentShape}.`);
+          continue;
+        }
+        if (write.kind === "graph" && write.logicalLocation !== undefined) {
+          const candidate = candidate_for(library.identity);
+          if (!is_aggregate_document_candidate(candidate)) throw new Error("Logical document commands require a document Library.");
+          const document = { mode: "document" as const, root: () => candidate.root };
+          const path = write.logicalLocation;
+          const operation = write.operation;
+          let lowered: LiveMapGraphOp;
+          switch (operation.op) {
+            case "set-attr": case "remove-attr": case "replace-attrs":
+              lowered = { ...operation, target: governed_document_element_target(document, path) }; break;
+            case "replace-content":
+              lowered = { ...operation, ...governed_document_slot(document, path) }; break;
+            case "remove-content":
+              lowered = { ...operation, ...governed_document_remove_slot(document, path) }; break;
+            case "insert-content":
+              lowered = { ...operation, ...governed_document_insert_slot(document, path, operation.index, operation.content) }; break;
+            case "move-content":
+              lowered = { ...operation, target: governed_document_move_target(document, path) }; break;
+            default: throw new Error("Unsupported logical document command.");
+          }
+          write = { ...write, operation: lowered, target: aggregate_target(library.identity, document_operation_path(lowered)) };
+        }
+        if (write.kind === "graph" && write.attrsCommand !== undefined) {
+          const candidate = candidate_for(library.identity);
+          if (!is_aggregate_document_candidate(candidate) || write.operation.op !== "replace-attrs") {
+            throw new Error("Bulk attribute commands require a document element.");
+          }
+          write = { ...write, operation: lower_document_attrs_command(candidate.root, candidate.overlay,
+            write.operation.target, write.attrsCommand) };
+        }
+        const target = aggregate_target(library.identity, write.target.path);
+        const incoming = write.kind !== "graph" ? undefined : write.operation.op === "insert-content" ? write.operation.content
+          : write.operation.op === "replace-content" ? write.operation.replacement
+          : write.operation.op === "replace-root" ? write.operation.root : undefined;
+        // Local writes retain complete Part construction evidence. Managed callers
+        // still opt into scoped preparation explicitly; replay supplies its own evidence.
+        // Installed empty scopes and earlier operations in this batch retain provenance.
+        const scoped = receivingScoped?.has(write) || scopedDocuments && (library.documentScopes !== undefined
+          || scopedCandidates.has(library.identity) || write.kind === "graph" && write.operation.op === "replace-root"
+          || is_Node(incoming) && has_part_connector(incoming));
+        if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined || scopedCandidates.has(library.identity))) {
+          throw new Error("Scoped document effects require private Locus/Echo preparation.");
+        }
+        if (write.kind === "css" && write.cssCommand !== undefined) {
+          if (scoped) {
+            assertScopedCurrent();
+          }
+          if (library.mode !== "document" || target.path.length !== 0) throw new Error("CSS commands require a document Library root.");
+          const operation = lower_document_css_command(cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity), write.cssCommand, name => {
+            const candidate = candidate_for(library.identity);
+            if (!is_aggregate_document_candidate(candidate)) return undefined;
+            const subject = resolve_document_quad(candidate.root, candidate.overlay, library.documentQuads, name, undefined);
+            return subject === undefined ? undefined : selector_for_quid(subject.quid);
+          });
+          if (operation === undefined) continue;
+          write = { ...write, operation };
+        }
+        if (scoped && library.mode === "document" && write.kind !== "graph" && write.kind !== "css") {
+          throw new Error("Missing scoped evidence for non-graph document operation.");
+        }
+        if ((write.kind === "graph" || write.kind === "css") && scoped) {
+          if (write.kind === "css" && target.path.length !== 0) throw new Error("CSS operations require a document Library root.");
+          const candidate = candidate_for(library.identity);
+          if (!is_aggregate_document_candidate(candidate)) throw new Error("Scoped operations require a document Library.");
+          assertScopedCurrent();
+          const context = { owner: library.identity, root: candidate.root, overlay: candidate.overlay, issued: stagedIssuedLedger };
+          const previous = scopedCandidates.get(library.identity);
+          const before: PreparedDocumentScopedLibrary = previous === undefined ? {
+            ...context,
+            scopes: library.documentScopes ?? make_document_scoped_quads(context,
+              [...(retain_document_quad_bindings(library.documentQuads, candidate.overlay)?.byName ?? [])]
+                .map(([name, quid]) => ({ name, quid, kind: "element" })), []),
+            stylesheet: cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity),
+            effects: undefined, identityEffects: [], initialStyles: [], steps: [],
+            changed: false, assertCurrent: assertScopedCurrent,
+          } : { ...previous, issued: stagedIssuedLedger };
+          const receiving = receivingScoped?.get(write);
+          const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: assertScopedCurrent, readPart: readPartCandidate };
+          const ordinal = scopedOrdinals.get(library.identity) ?? 0;
+          const next = receiving === undefined
+            ? write.kind === "css" ? prepare_document_scoped_css_operation(before, canonical_portable_document_css_op(write.operation), ordinal)
+            : prepare_document_scoped_library_styles(prepare_document_scoped_operations(before, before.scopes, [write.operation],
+              scopedAuthority), before.stylesheet, before, true)
+            : replay_document_scoped_effects(before, encode_document_scoped_effects([receiving]), scopedAuthority,
+              () => {}, ordinal); // Schema validates the complete transaction below.
+          if (!next.changed && receiving === undefined) {
+            // An omitted insertion must not promote a flat document merely because
+            // another Library changes in the same aggregate operation.
+            if (next.steps.length !== 0 || previous !== undefined || library.documentScopes !== undefined) scopedCandidates.set(library.identity, before);
+            continue;
+          }
+          const step = next.steps[0], effect = next.effects?.[0];
+          if (write.kind === "graph" && step === undefined || effect === undefined || next.effects?.length !== 1) throw new Error("Missing scoped document operation evidence.");
+          // Receiving CSS references have already been resolved and recaptured locally.
+          const operation = write.kind === "graph" ? step!.operation : local_scoped_css_operation(effect);
+          operations.push(Object.freeze({ target: aggregate_target(library.identity, write.kind === "css" ? [] : document_operation_path(step!.operation)),
+            operation, scoped: Object.freeze({ ...effect, ordinal }) }));
+          let installed = next;
+          let nextOrdinal = ordinal + 1;
+          if (write.kind === "graph" && receiving === undefined && managementOwner === undefined
+            && !portable_document_stylesheet_equal(before.stylesheet, next.stylesheet)) {
+            const cssOperation = { domain: "css" as const, kind: "replace" as const,
+              stylesheet: encode_portable_document_stylesheet(next.stylesheet) };
+            installed = prepare_document_scoped_css_operation(next, cssOperation, nextOrdinal);
+            const cssEffect = installed.effects?.[0];
+            if (cssEffect === undefined) throw new Error("Missing scoped stylesheet replacement evidence.");
+            operations.push(Object.freeze({ target: aggregate_target(library.identity, []), operation: cssOperation,
+              scoped: Object.freeze(cssEffect) }));
+            nextOrdinal += 1;
+          }
+          scopedOrdinals.set(library.identity, nextOrdinal);
+          if (step !== undefined) stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation);
+          for (const quid of livemap_document_identity_quids(next.overlay)) {
+            if (candidate.overlay.pathForQuid(quid) === undefined) constructionClaims.push({ library: library.identity, quid });
+          }
+          stage_candidate_identity(livemap_document_identity_quids(candidate.overlay), livemap_document_identity_quids(next.overlay));
+          stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, next.issued);
+          candidate.root = next.root;
+          candidate.overlay = next.overlay;
+          if (step !== undefined) {
+            candidate.operations.push(step.operation);
+            if (step.operation.op === "replace-root") candidate.continuity = "same-epoch";
+          }
+          candidate.identityEffects.push(...next.identityEffects);
+          scopedCandidates.set(library.identity, installed);
+          cssCandidates.set(library.identity, { before: cssCandidates.get(library.identity)?.before ?? stylesheet(library.identity), after: installed.stylesheet });
+          continue;
+        }
+        if (write.kind === "css" && receivingFlat.has(library.identity)) {
+          // Keep the accepted cross-Library position while deferring correspondence
+          // translation until the complete graph candidate has been authenticated.
+          receivingFlatCssPositions.set(library.identity, operations.length);
+          operations.push({ target, operation: write.operation });
+          continue;
+        }
+        if (write.kind === "css") {
+          if (library.mode !== "document" || target.path.length !== 0) {
+            throw new Error("CSS operations require a document Library root.");
+          }
+          const operation = canonical_portable_document_css_op(write.operation);
+          const current = cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity);
+          const next = apply_portable_document_css_op(current, operation);
+          if (!portable_document_stylesheet_equal(current, next)) {
+            cssCandidates.set(library.identity, Object.freeze({
+              before: cssCandidates.get(library.identity)?.before ?? current, after: next,
+            }));
+            operations.push(Object.freeze({ target, operation }));
+          }
+          continue;
+        }
+        const candidate = candidate_for(library.identity);
+        if (write.kind === "graph") {
+          if (!is_aggregate_document_candidate(candidate)) {
+            throw new Error("Aggregate graph operations require a document library.");
+          }
+          const admittedOperation = write.publicStaged === true
+            ? admit_public_document_graph_operation(write.operation)
+            : write.operation;
+          const incoming = admittedOperation.op === "insert-content" ? admittedOperation.content
+            : admittedOperation.op === "replace-content" ? admittedOperation.replacement
+            : admittedOperation.op === "replace-root" ? admittedOperation.root : undefined;
+          if (is_Node(incoming) && has_part_connector(incoming)) {
+            throw new Error("Scoped Part construction requires complete scoped evidence and Echo support.");
+          }
+          const priorRoot = candidate.root;
+          const priorOverlay = candidate.overlay;
+          const planned = prepare_document_graph_operation(candidate.root, "document", admittedOperation, candidate.overlay);
+          if (!canonical_graph_equal(candidate.root, planned.root)
+            || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)) {
+            if (planned.operation.op !== "replace-root") {
+              stage_candidate_identity(
+                livemap_document_identity_quids(candidate.overlay),
+                livemap_document_identity_quids(planned.overlay),
+              );
+            }
+            candidate.root = planned.root;
+            candidate.overlay = planned.overlay;
+            candidate.operations.push(planned.operation);
+            candidate.identityEffects.push(...planned.identityEffects);
+            operations.push(Object.freeze({
+              target: aggregate_target(library.identity, document_operation_path(planned.operation)),
+              operation: planned.operation,
+            }));
+            stage_interaction_paths(library, priorRoot, priorOverlay, planned.overlay, planned.operation);
+          }
+          continue;
+        }
+        if (is_aggregate_document_candidate(candidate)) {
+          throw new Error("Aggregate projected operations require a data library.");
+        }
+        if (write.kind === "ensure-quid") {
+          if (!is_persisted_quid(write.quid)) {
+            throw new Error("Aggregate QUID registration requires a persisted QUID.");
+          }
+          const candidateRoot = candidate.root;
+          apply_livemap_projected_identity_overlay(candidateRoot, candidate.overlay);
+          const endpoint = resolve_value_node(candidateRoot, target.path);
+          if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
+            throw new Error("Aggregate QUID registration target is ineligible.");
+          }
+          const existing = candidate.overlay.quidAtPath(target.path);
+          if (existing === write.quid) continue;
+          if (existing !== undefined || candidate.overlay.pathForQuid(write.quid) !== undefined) {
+            throw new Error("Aggregate QUID registration collides with an active library claim.");
+          }
+          const nextOverlay = register_livemap_projected_identity_at_path(candidate.overlay, write.quid, target.path);
+          stage_candidate_identity(
+            livemap_projected_identity_quids(candidate.overlay),
+            livemap_projected_identity_quids(nextOverlay),
+          );
+          candidate.overlay = nextOverlay;
+          operations.push(Object.freeze({
+            target,
+            operation: Object.freeze({
+              domain: "graph" as const,
+              op: "ensure-quid" as const,
+              target: Object.freeze({ kind: "path" as const, path: target.path, projected: true as const }),
+              quid: write.quid,
+            }),
+          }));
+          continue;
         }
         if (write.kind === "replay-data") {
           const currentValue = project_live_path(candidate.root, write.operation.path);
-          must_replay_value(write.operation.path, write.operation.prev, currentValue);
+          must_replay_value(write.operation.path, write.operation.prev, currentValue, operationIndex);
           const localWrite = projected_write_op_from_transport(write.operation);
-          plan_write_ops(candidate.root, [localWrite]);
+          // Accepted identity retirement remains a semantic operation in a fresh receiver,
+          // even when that runtime has never issued the source subtree's identities.
+          const planned = plan_write_ops(candidate.root, [localWrite], candidate.overlay, true);
           const nextValue = project_live_path(candidate.root, write.operation.path);
-          must_replay_value(write.operation.path, write.operation.next, nextValue);
+          must_replay_value(write.operation.path, write.operation.next, nextValue, operationIndex);
+          must_replay_operation(write.operation, planned.transportOps, operationIndex);
+          const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
+          if (!(localWrite.kind === "replace" && localWrite.path.length === 0)) {
+            stage_candidate_identity(
+              livemap_projected_identity_quids(candidate.overlay),
+              livemap_projected_identity_quids(nextOverlay),
+            );
+          }
 
+          candidate.overlay = nextOverlay;
           operations.push(Object.freeze({
             target,
             operation: materialize_livemap_projected_op(write.operation),
@@ -1291,284 +1599,9 @@ function make_livemap_registry_engine(
           continue;
         }
         const localWrites = aggregate_write_ops(write, candidate.root);
-        const planned = plan_write_ops(candidate.root, localWrites);
-        for (let index = 0; index < planned.ops.length; index += 1) {
-          const operation = planned.ops[index];
-          const projected = planned.transportOps[index];
-          if (operation === undefined || projected === undefined) {
-            throw new Error("System-state operation evidence is incomplete.");
-          }
-          operations.push(Object.freeze({
-            target: aggregate_system_target(system.identity, operation.path),
-            operation,
-            projected,
-          }));
-        }
-        continue;
-      }
-      const library = require_library(write.target.library);
-      const partPlan = partPlans.get(writeIndex);
-      if (partPlan !== undefined) {
-        const { candidate, ops, transportOps, replay } = partPlan;
-        candidates.set(library.identity, candidate);
-        if (write.kind === "replay-data") {
-          if (replay === undefined) throw new Error("Part replay evidence is incomplete.");
-          must_replay_value(write.operation.path, write.operation.prev, replay.before);
-          must_replay_value(write.operation.path, write.operation.next, replay.after);
-          if (transportOps.length !== 1) throw new Error("Hosted replay operation did not produce one exact authority operation.");
-          operations.push(Object.freeze({ target: aggregate_target(library.identity, write.target.path),
-            operation: materialize_livemap_projected_op(write.operation), projected: write.operation }));
-        } else for (let index = 0; index < ops.length; index++) {
-          const operation = ops[index]!, projected = transportOps[index]!;
-          operations.push(Object.freeze({ target: aggregate_target(library.identity, operation.path), operation, projected }));
-        }
-        continue;
-      }
-      if (write.kind === "graph" && write.assertDocumentShape !== undefined) {
-        const candidate = candidate_for(library.identity);
-        if (!is_aggregate_document_candidate(candidate) || write.logicalLocation === undefined) throw new Error("Document refinement requires logical coordinates.");
-        const value = read_livemap_document_logical_location(candidate.root, "document", write.logicalLocation);
-        const shape = value === undefined ? "missing" : is_ordinary_element_node(value) ? "element" : is_Node(value) ? "root" : "text";
-        if (shape !== write.assertDocumentShape) throw new Error(`Document location is not ${write.assertDocumentShape}.`);
-        continue;
-      }
-      if (write.kind === "graph" && write.logicalLocation !== undefined) {
-        const candidate = candidate_for(library.identity);
-        if (!is_aggregate_document_candidate(candidate)) throw new Error("Logical document commands require a document Library.");
-        const document = { mode: "document" as const, root: () => candidate.root };
-        const path = write.logicalLocation;
-        const operation = write.operation;
-        let lowered: LiveMapGraphOp;
-        switch (operation.op) {
-          case "set-attr": case "remove-attr": case "replace-attrs":
-            lowered = { ...operation, target: governed_document_element_target(document, path) }; break;
-          case "replace-content":
-            lowered = { ...operation, ...governed_document_slot(document, path) }; break;
-          case "remove-content":
-            lowered = { ...operation, ...governed_document_remove_slot(document, path) }; break;
-          case "insert-content":
-            lowered = { ...operation, ...governed_document_insert_slot(document, path, operation.index, operation.content) }; break;
-          case "move-content":
-            lowered = { ...operation, target: governed_document_move_target(document, path) }; break;
-          default: throw new Error("Unsupported logical document command.");
-        }
-        write = { ...write, operation: lowered, target: aggregate_target(library.identity, document_operation_path(lowered)) };
-      }
-      if (write.kind === "graph" && write.attrsCommand !== undefined) {
-        const candidate = candidate_for(library.identity);
-        if (!is_aggregate_document_candidate(candidate) || write.operation.op !== "replace-attrs") {
-          throw new Error("Bulk attribute commands require a document element.");
-        }
-        write = { ...write, operation: lower_document_attrs_command(candidate.root, candidate.overlay,
-          write.operation.target, write.attrsCommand) };
-      }
-      const target = aggregate_target(library.identity, write.target.path);
-      const incoming = write.kind !== "graph" ? undefined : write.operation.op === "insert-content" ? write.operation.content
-        : write.operation.op === "replace-content" ? write.operation.replacement
-        : write.operation.op === "replace-root" ? write.operation.root : undefined;
-      // Local writes retain complete Part construction evidence. Managed callers
-      // still opt into scoped preparation explicitly; replay supplies its own evidence.
-      // Installed empty scopes and earlier operations in this batch retain provenance.
-      const scoped = receivingScoped?.has(write) || scopedDocuments && (library.documentScopes !== undefined
-        || scopedCandidates.has(library.identity) || write.kind === "graph" && write.operation.op === "replace-root"
-        || is_Node(incoming) && has_part_connector(incoming));
-      if (!scopedDocuments && !receivingScoped?.has(write) && (library.documentScopes !== undefined || scopedCandidates.has(library.identity))) {
-        throw new Error("Scoped document effects require private Locus/Echo preparation.");
-      }
-      if (write.kind === "css" && write.cssCommand !== undefined) {
-        if (scoped) {
-          assertScopedCurrent();
-        }
-        if (library.mode !== "document" || target.path.length !== 0) throw new Error("CSS commands require a document Library root.");
-        const operation = lower_document_css_command(cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity), write.cssCommand, name => {
-          const candidate = candidate_for(library.identity);
-          if (!is_aggregate_document_candidate(candidate)) return undefined;
-          const subject = resolve_document_quad(candidate.root, candidate.overlay, library.documentQuads, name, undefined);
-          return subject === undefined ? undefined : selector_for_quid(subject.quid);
-        });
-        if (operation === undefined) continue;
-        write = { ...write, operation };
-      }
-      if (scoped && library.mode === "document" && write.kind !== "graph" && write.kind !== "css") {
-        throw new Error("Missing scoped evidence for non-graph document operation.");
-      }
-      if ((write.kind === "graph" || write.kind === "css") && scoped) {
-        if (write.kind === "css" && target.path.length !== 0) throw new Error("CSS operations require a document Library root.");
-        const candidate = candidate_for(library.identity);
-        if (!is_aggregate_document_candidate(candidate)) throw new Error("Scoped operations require a document Library.");
-        assertScopedCurrent();
-        const context = { owner: library.identity, root: candidate.root, overlay: candidate.overlay, issued: stagedIssuedLedger };
-        const previous = scopedCandidates.get(library.identity);
-        const before: PreparedDocumentScopedLibrary = previous === undefined ? {
-          ...context,
-          scopes: library.documentScopes ?? make_document_scoped_quads(context,
-            [...(retain_document_quad_bindings(library.documentQuads, candidate.overlay)?.byName ?? [])]
-              .map(([name, quid]) => ({ name, quid, kind: "element" })), []),
-          stylesheet: cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity),
-          effects: undefined, identityEffects: [], initialStyles: [], steps: [],
-          changed: false, assertCurrent: assertScopedCurrent,
-        } : { ...previous, issued: stagedIssuedLedger };
-        const receiving = receivingScoped?.get(write);
-        const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: assertScopedCurrent, readPart: readPartCandidate };
-        const ordinal = scopedOrdinals.get(library.identity) ?? 0;
-        const next = receiving === undefined
-          ? write.kind === "css" ? prepare_document_scoped_css_operation(before, canonical_portable_document_css_op(write.operation), ordinal)
-          : prepare_document_scoped_library_styles(prepare_document_scoped_operations(before, before.scopes, [write.operation],
-            scopedAuthority), before.stylesheet, before, true)
-          : replay_document_scoped_effects(before, encode_document_scoped_effects([receiving]), scopedAuthority,
-            () => {}, ordinal); // Schema validates the complete transaction below.
-        if (!next.changed && receiving === undefined) {
-          // An omitted insertion must not promote a flat document merely because
-          // another Library changes in the same aggregate operation.
-          if (next.steps.length !== 0 || previous !== undefined || library.documentScopes !== undefined) scopedCandidates.set(library.identity, before);
-          continue;
-        }
-        const step = next.steps[0], effect = next.effects?.[0];
-        if (write.kind === "graph" && step === undefined || effect === undefined || next.effects?.length !== 1) throw new Error("Missing scoped document operation evidence.");
-        // Receiving CSS references have already been resolved and recaptured locally.
-        const operation = write.kind === "graph" ? step!.operation : local_scoped_css_operation(effect);
-        operations.push(Object.freeze({ target: aggregate_target(library.identity, write.kind === "css" ? [] : document_operation_path(step!.operation)),
-          operation, scoped: Object.freeze({ ...effect, ordinal }) }));
-        let installed = next;
-        let nextOrdinal = ordinal + 1;
-        if (write.kind === "graph" && receiving === undefined && managementOwner === undefined
-          && !portable_document_stylesheet_equal(before.stylesheet, next.stylesheet)) {
-          const cssOperation = { domain: "css" as const, kind: "replace" as const,
-            stylesheet: encode_portable_document_stylesheet(next.stylesheet) };
-          installed = prepare_document_scoped_css_operation(next, cssOperation, nextOrdinal);
-          const cssEffect = installed.effects?.[0];
-          if (cssEffect === undefined) throw new Error("Missing scoped stylesheet replacement evidence.");
-          operations.push(Object.freeze({ target: aggregate_target(library.identity, []), operation: cssOperation,
-            scoped: Object.freeze(cssEffect) }));
-          nextOrdinal += 1;
-        }
-        scopedOrdinals.set(library.identity, nextOrdinal);
-        if (step !== undefined) stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation);
-        for (const quid of livemap_document_identity_quids(next.overlay)) {
-          if (candidate.overlay.pathForQuid(quid) === undefined) constructionClaims.push({ library: library.identity, quid });
-        }
-        stage_candidate_identity(livemap_document_identity_quids(candidate.overlay), livemap_document_identity_quids(next.overlay));
-        stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, next.issued);
-        candidate.root = next.root;
-        candidate.overlay = next.overlay;
-        if (step !== undefined) {
-          candidate.operations.push(step.operation);
-          if (step.operation.op === "replace-root") candidate.continuity = "same-epoch";
-        }
-        candidate.identityEffects.push(...next.identityEffects);
-        scopedCandidates.set(library.identity, installed);
-        cssCandidates.set(library.identity, { before: cssCandidates.get(library.identity)?.before ?? stylesheet(library.identity), after: installed.stylesheet });
-        continue;
-      }
-      if (write.kind === "css" && receivingFlat.has(library.identity)) {
-        // Keep the accepted cross-Library position while deferring correspondence
-        // translation until the complete graph candidate has been authenticated.
-        receivingFlatCssPositions.set(library.identity, operations.length);
-        operations.push({ target, operation: write.operation });
-        continue;
-      }
-      if (write.kind === "css") {
-        if (library.mode !== "document" || target.path.length !== 0) {
-          throw new Error("CSS operations require a document Library root.");
-        }
-        const operation = canonical_portable_document_css_op(write.operation);
-        const current = cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity);
-        const next = apply_portable_document_css_op(current, operation);
-        if (!portable_document_stylesheet_equal(current, next)) {
-          cssCandidates.set(library.identity, Object.freeze({
-            before: cssCandidates.get(library.identity)?.before ?? current, after: next,
-          }));
-          operations.push(Object.freeze({ target, operation }));
-        }
-        continue;
-      }
-      const candidate = candidate_for(library.identity);
-      if (write.kind === "graph") {
-        if (!is_aggregate_document_candidate(candidate)) {
-          throw new Error("Aggregate graph operations require a document library.");
-        }
-        const admittedOperation = write.publicStaged === true
-          ? admit_public_document_graph_operation(write.operation)
-          : write.operation;
-        const incoming = admittedOperation.op === "insert-content" ? admittedOperation.content
-          : admittedOperation.op === "replace-content" ? admittedOperation.replacement
-          : admittedOperation.op === "replace-root" ? admittedOperation.root : undefined;
-        if (is_Node(incoming) && has_part_connector(incoming)) {
-          throw new Error("Scoped Part construction requires complete scoped evidence and Echo support.");
-        }
-        const priorRoot = candidate.root;
-        const priorOverlay = candidate.overlay;
-        const planned = prepare_document_graph_operation(candidate.root, "document", admittedOperation, candidate.overlay);
-        if (!canonical_graph_equal(candidate.root, planned.root)
-          || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)) {
-          if (planned.operation.op !== "replace-root") {
-            stage_candidate_identity(
-              livemap_document_identity_quids(candidate.overlay),
-              livemap_document_identity_quids(planned.overlay),
-            );
-          }
-          candidate.root = planned.root;
-          candidate.overlay = planned.overlay;
-          candidate.operations.push(planned.operation);
-          candidate.identityEffects.push(...planned.identityEffects);
-          operations.push(Object.freeze({
-            target: aggregate_target(library.identity, document_operation_path(planned.operation)),
-            operation: planned.operation,
-          }));
-          stage_interaction_paths(library, priorRoot, priorOverlay, planned.overlay, planned.operation);
-        }
-        continue;
-      }
-      if (is_aggregate_document_candidate(candidate)) {
-        throw new Error("Aggregate projected operations require a data library.");
-      }
-      if (write.kind === "ensure-quid") {
-        if (!is_persisted_quid(write.quid)) {
-          throw new Error("Aggregate QUID registration requires a persisted QUID.");
-        }
-        const candidateRoot = candidate.root;
-        apply_livemap_projected_identity_overlay(candidateRoot, candidate.overlay);
-        const endpoint = resolve_value_node(candidateRoot, target.path);
-        if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
-          throw new Error("Aggregate QUID registration target is ineligible.");
-        }
-        const existing = candidate.overlay.quidAtPath(target.path);
-        if (existing === write.quid) continue;
-        if (existing !== undefined || candidate.overlay.pathForQuid(write.quid) !== undefined) {
-          throw new Error("Aggregate QUID registration collides with an active library claim.");
-        }
-        const nextOverlay = register_livemap_projected_identity_at_path(candidate.overlay, write.quid, target.path);
-        stage_candidate_identity(
-          livemap_projected_identity_quids(candidate.overlay),
-          livemap_projected_identity_quids(nextOverlay),
-        );
-        candidate.overlay = nextOverlay;
-        operations.push(Object.freeze({
-          target,
-          operation: Object.freeze({
-            domain: "graph" as const,
-            op: "ensure-quid" as const,
-            target: Object.freeze({ kind: "path" as const, path: target.path, projected: true as const }),
-            quid: write.quid,
-          }),
-        }));
-        continue;
-      }
-      if (write.kind === "replay-data") {
-        const currentValue = project_live_path(candidate.root, write.operation.path);
-        must_replay_value(write.operation.path, write.operation.prev, currentValue);
-        const localWrite = projected_write_op_from_transport(write.operation);
-        // Accepted identity retirement remains a semantic operation in a fresh receiver,
-        // even when that runtime has never issued the source subtree's identities.
-        const planned = plan_write_ops(candidate.root, [localWrite], candidate.overlay, true);
-        const nextValue = project_live_path(candidate.root, write.operation.path);
-        must_replay_value(write.operation.path, write.operation.next, nextValue);
-        if (planned.transportOps.length !== 1) {
-          throw new LiveMapReplayInputError("Hosted replay operation did not produce one exact authority operation.",
-            writeIndex, "UNCHANGED_STAGED_OPERATION");
-        }
+        const planned = plan_write_ops(candidate.root, localWrites, candidate.overlay);
         const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
-        if (!(localWrite.kind === "replace" && localWrite.path.length === 0)) {
+        if (!localWrites.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
           stage_candidate_identity(
             livemap_projected_identity_quids(candidate.overlay),
             livemap_projected_identity_quids(nextOverlay),
@@ -1576,78 +1609,127 @@ function make_livemap_registry_engine(
         }
 
         candidate.overlay = nextOverlay;
-        operations.push(Object.freeze({
-          target,
-          operation: materialize_livemap_projected_op(write.operation),
-          projected: write.operation,
-        }));
-        continue;
-      }
-      const localWrites = aggregate_write_ops(write, candidate.root);
-      const planned = plan_write_ops(candidate.root, localWrites, candidate.overlay);
-      const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
-      if (!localWrites.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
-        stage_candidate_identity(
-          livemap_projected_identity_quids(candidate.overlay),
-          livemap_projected_identity_quids(nextOverlay),
-        );
-      }
-
-      candidate.overlay = nextOverlay;
-      for (let index = 0; index < planned.ops.length; index += 1) {
-        const operation = planned.ops[index];
-        const projected = planned.transportOps[index];
-        if (operation === undefined || projected === undefined) {
-          throw new Error("Aggregate projected operation evidence is incomplete.");
+        for (let index = 0; index < planned.ops.length; index += 1) {
+          const operation = planned.ops[index];
+          const projected = planned.transportOps[index];
+          if (operation === undefined || projected === undefined) {
+            throw new Error("Aggregate projected operation evidence is incomplete.");
+          }
+          operations.push(Object.freeze({
+            target: aggregate_target(library.identity, operation.path),
+            operation,
+            projected,
+          }));
         }
-        operations.push(Object.freeze({
-          target: aggregate_target(library.identity, operation.path),
-          operation,
-          projected,
-        }));
+      } catch (cause) {
+        with_livemap_replay_operation_index(receivingProvenance?.get(submittedWrite)?.operationIndex, () => { throw cause; });
       }
     }
 
     // Authenticate every completed flat candidate before any receiving identity demand.
     for (const [identity, effect] of receivingFlat) {
-      const candidate = candidate_for(identity);
-      if (!is_aggregate_document_candidate(candidate)) throw new Error("Flat effect requires a document.");
-      const final = canonical_flat_correspondence(candidate.root, effect.css, effect.subjects);
-      if (JSON.stringify(final) !== JSON.stringify({ css: effect.css, subjects: effect.subjects })
-        || flat_document_fingerprint(candidate.root, effect.css, effect.subjects) !== effect.after) throw new Error("Invalid final flat correspondence.");
-      const authored = [...(retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)?.byName ?? [])]
-        .map(([name, quid]) => ({ name, path: candidate.overlay.pathForQuid(quid)! })).sort((a,b) => a.name < b.name ? -1 : 1);
-      if (JSON.stringify(authored) !== JSON.stringify(effect.subjects.filter(s => document_quad_disposition(s) === "authored"))) throw new Error("Flat replay cannot introduce or reassign authored QUADs.");
-      if (candidate.library.hsonSchema !== undefined) must_hson_schema_root(candidate.library.hsonSchema, candidate.root);
+      with_livemap_replay_operation_index(receivingProvenance?.get(effect)?.operationIndex, () => {
+        const candidate = candidate_for(identity);
+        if (!is_aggregate_document_candidate(candidate)) throw new Error("Flat effect requires a document.");
+        const final = canonical_flat_correspondence(candidate.root, effect.css, effect.subjects);
+        if (JSON.stringify(final) !== JSON.stringify({ css: effect.css, subjects: effect.subjects })
+          || flat_document_fingerprint(candidate.root, effect.css, effect.subjects) !== effect.after) throw new Error("Invalid final flat correspondence.");
+        const authored = [...(retain_document_quad_bindings(candidate.library.documentQuads, candidate.overlay)?.byName ?? [])]
+          .map(([name, quid]) => ({ name, path: candidate.overlay.pathForQuid(quid)! })).sort((a,b) => a.name < b.name ? -1 : 1);
+        if (JSON.stringify(authored) !== JSON.stringify(effect.subjects.filter(s => document_quad_disposition(s) === "authored"))) throw new Error("Flat replay cannot introduce or reassign authored QUADs.");
+        if (candidate.library.hsonSchema !== undefined) must_hson_schema_root(candidate.library.hsonSchema, candidate.root);
+      });
     }
     for (const [identity, effect] of receivingFlat) {
-      const candidate = candidate_for(identity);
-      if (!is_aggregate_document_candidate(candidate)) throw new Error("Flat effect requires a document.");
-      const foreign = new Set(effect.subjects.filter(s => document_quad_disposition(s) === "disposable").map(s => s.name.slice(1)));
-      const associations = effect.subjects.map(subject => {
-        let quid = candidate.overlay.quidAtPath(subject.path);
-        if (quid === undefined) {
-          quid = allocate_livemap_quid(mapIdentityEpoch.owner,
-            value => stagedIssuedLedger.has(value) || foreign.has(value) || livemap_document_identity_quid_unavailable(identity, value),
-            value => ({ claimed: true, value }));
-          if (quid === undefined) throw new Error("No available receiving flat subject identity.");
-          const registered = register_livemap_document_identity_at_path(candidate.overlay, quid, subject.path);
-          candidate.overlay = registered.overlay;
-          candidate.identityEffects.push(...registered.effects);
-          candidate.operations.push({ domain: "graph", op: "ensure-quid", target: { kind: "path", path: subject.path }, quid });
-          stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, make_livemap_issued_quid_ledger([quid]));
-          constructionClaims.push({ library: identity, quid });
-        } else if (!stagedIssuedLedger.has(quid)) throw new Error("Flat correspondence requires active receiving issuance.");
-        return { ...subject, quid, disposition: document_quad_disposition(subject) };
+      with_livemap_replay_operation_index(receivingProvenance?.get(effect)?.operationIndex, () => {
+        const candidate = candidate_for(identity);
+        if (!is_aggregate_document_candidate(candidate)) throw new Error("Flat effect requires a document.");
+        const foreign = new Set(effect.subjects.filter(s => document_quad_disposition(s) === "disposable").map(s => s.name.slice(1)));
+        const associations = effect.subjects.map(subject => {
+          let quid = candidate.overlay.quidAtPath(subject.path);
+          if (quid === undefined) {
+            quid = allocate_livemap_quid(mapIdentityEpoch.owner,
+              value => stagedIssuedLedger.has(value) || foreign.has(value) || livemap_document_identity_quid_unavailable(identity, value),
+              value => ({ claimed: true, value }));
+            if (quid === undefined) throw new Error("No available receiving flat subject identity.");
+            const registered = register_livemap_document_identity_at_path(candidate.overlay, quid, subject.path);
+            candidate.overlay = registered.overlay;
+            candidate.identityEffects.push(...registered.effects);
+            candidate.operations.push({ domain: "graph", op: "ensure-quid", target: { kind: "path", path: subject.path }, quid });
+            stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, make_livemap_issued_quid_ledger([quid]));
+            constructionClaims.push({ library: identity, quid });
+          } else if (!stagedIssuedLedger.has(quid)) throw new Error("Flat correspondence requires active receiving issuance.");
+          return { ...subject, quid, disposition: document_quad_disposition(subject) };
+        });
+        const translated = translate_document_css_identities(effect.css, "inbound", { associations, assertCurrent: assertPreparationCurrent }, true);
+        const after = decode_portable_document_stylesheet(translated);
+        cssCandidates.set(identity, { before: stylesheet(identity), after });
+        const position = receivingFlatCssPositions.get(identity);
+        if (position === undefined) throw new Error("Flat correspondence requires its accepted CSS operation.");
+        operations[position] = { target: aggregate_target(identity, []), operation: { domain: "css", kind: "replace", stylesheet: translated } };
       });
-      const translated = translate_document_css_identities(effect.css, "inbound", { associations, assertCurrent: assertPreparationCurrent }, true);
-      const after = decode_portable_document_stylesheet(translated);
-      cssCandidates.set(identity, { before: stylesheet(identity), after });
-      const position = receivingFlatCssPositions.get(identity);
-      if (position === undefined) throw new Error("Flat correspondence requires its accepted CSS operation.");
-      operations[position] = { target: aggregate_target(identity, []), operation: { domain: "css", kind: "replace", stylesheet: translated } };
     }
 
+    // Final validation still observes only the complete proposed candidate.
+    // Attribution reads the authenticated writes and their existing P2 mapping;
+    // it never validates or accepts intermediate operation states.
+    const candidate_source = (target: LiveMapAggregateWrite["target"], dependency: LivePath): number | undefined => {
+      if (receivingProvenance === undefined) return undefined;
+      const sources = new Set<number>();
+      let uncertain = false;
+      for (const write of writes) {
+        const sameCandidate = target.domain === "system"
+          ? write.target.domain === "system" && write.target.system === target.system
+          : write.target.domain !== "system" && write.target.library === target.library;
+        if (!sameCandidate) continue;
+        if (write.kind !== "replay-data") return undefined;
+        const provenance = receivingProvenance.get(write);
+        if (provenance === undefined) return undefined;
+        // Echo's complete-descriptor replacement carries inherited fields.
+        // Attribute from its submitted contribution, never that synthetic value.
+        const operation = provenance.projected;
+        if (operation === undefined) return undefined;
+        const source = provenance.operationIndex;
+        // Overlap is with a governing contract's dependency, not an arbitrary
+        // prefix of the diagnostic path (unions and refinements may read siblings).
+        if (!path_is_prefix(operation.path, dependency) && !path_is_prefix(dependency, operation.path)) continue;
+        if (path_is_prefix(operation.path, dependency) && operation.path.length < dependency.length) {
+          const coordinate = dependency[operation.path.length];
+          // Only authenticated ranges/keys prove a structural edit cannot
+          // affect this descendant. Leaf equality proves no continuity.
+          if (operation.kind === "move" && typeof coordinate === "number"
+            && (coordinate < Math.min(operation.from, operation.to) || coordinate > Math.max(operation.from, operation.to))) continue;
+          if (operation.kind === "splice" && typeof coordinate === "number"
+            && (coordinate < operation.start || operation.removed.length === operation.inserted.length
+              && coordinate >= operation.start + operation.removed.length)) continue;
+          if (operation.kind === "rename" && coordinate !== operation.from && coordinate !== operation.to) continue;
+        }
+        // Authorship comes only from a submitted scalar assignment at or
+        // inside the dependency. Containers of every shape remain opaque.
+        if ((operation.kind === "set" || operation.kind === "replace")
+          && !Array.isArray(operation.next) && !is_ordered_projected_object(operation.next)
+          && path_is_prefix(dependency, operation.path)) {
+          if (operation.path.length === dependency.length) {
+            sources.clear();
+            uncertain = false;
+          }
+          sources.add(source);
+        } else uncertain = true;
+      }
+      return !uncertain && sources.size === 1 ? sources.values().next().value : undefined;
+    };
+    const validate_final_schema = (schema: HsonSchema, root: HsonNode, target: LiveMapAggregateWrite["target"]): void => {
+      try { must_hson_schema_root(schema, root); }
+      catch (cause) {
+        let source: number | undefined;
+        if (cause instanceof HsonSchemaError && cause.issues.length !== 0) {
+          const sources = cause.issues.flatMap(issue => [issue.path, ...(issue.relatedPath === undefined ? [] : [issue.relatedPath])])
+            .map(path => candidate_source(target, schema_validation_dependency(schema, path)));
+          if (sources.every(index => index !== undefined && index === sources[0])) source = sources[0];
+        }
+        with_livemap_replay_operation_index(source, () => { throw cause; });
+      }
+    };
     for (const candidate of candidates.values()) {
       aggregateSchemaValidations += 1;
       if (is_aggregate_document_candidate(candidate)) {
@@ -1663,7 +1745,7 @@ function make_livemap_registry_engine(
         }
         const root = candidate.root;
         qualify_livemap_data(root, "LiveMap Data candidate");
-        must_hson_schema_root(candidate.library.hsonSchema ?? ANY_DATA, root);
+        validate_final_schema(candidate.library.hsonSchema ?? ANY_DATA, root, aggregate_target(candidate.library.identity, []));
         const nextMode = classify_live_root_mode(root, "data");
         if (nextMode !== candidate.library.mode) {
           throw new Error(`LiveMap data root mode is fixed at construction: expected ${candidate.library.mode}; observed ${nextMode}.`);
@@ -1674,7 +1756,27 @@ function make_livemap_registry_engine(
     if (systemCandidate !== undefined) {
       if (systemCandidate.system.key === INTERACTION_RESERVED_LIBRARY_KEY) {
         const descriptors = project_live_path(systemCandidate.root, ["descriptors"]);
-        validate_interaction_subjects(descriptors, (name) => hostedBindingsByName?.get(name)?.mode === "document");
+        const target = aggregate_system_target(systemCandidate.system.identity, []);
+        with_livemap_replay_operation_index(candidate_source(target, ["descriptors"]),
+          () => validate_interaction_descriptor_ids(descriptors));
+        // IDs are checked globally first, just as in validate_interaction_subjects.
+        // Each subject contract then reads only its final descriptor's subject.
+        if (Array.isArray(descriptors)) for (const [index, descriptor] of descriptors.entries()) {
+          let dependency: LivePath = ["descriptors", index, "subject"];
+          try {
+            validate_interaction_subjects(ordered_projected_array([descriptor]), name => {
+              const valid = hostedBindingsByName?.get(name)?.mode === "document";
+              if (!valid) dependency = [...dependency, "library"];
+              return valid;
+            });
+          } catch (cause) {
+            if (cause instanceof LiveMapDocumentPathError) {
+              dependency = ["descriptors", index, "subject", "path",
+                ...(cause.segmentIndex === undefined ? [] : [cause.segmentIndex])];
+            }
+            with_livemap_replay_operation_index(candidate_source(target, dependency), () => { throw cause; });
+          }
+        }
         if (descriptors === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
         if (clientComposition !== undefined) {
           const classify = (name: string): "shared" | "local" | undefined => {
@@ -1700,7 +1802,7 @@ function make_livemap_registry_engine(
       aggregateSchemaValidations += 1;
       const root = systemCandidate.root;
       qualify_livemap_data(root, "LiveMap system candidate");
-      must_hson_schema_root(systemCandidate.system.hsonSchema, root);
+      validate_final_schema(systemCandidate.system.hsonSchema, root, aggregate_system_target(systemCandidate.system.identity, []));
       const preparedSystem = prepare_livemap_root(root);
       if (preparedSystem.mode === "document" || (preparedSystem.projectedOverlay?.size ?? 0) !== 0) {
         throw new Error("Transactional Hson system state cannot own QUID identity.");
@@ -1798,7 +1900,9 @@ function make_livemap_registry_engine(
           after: flat_document_fingerprint(state.root, final.css!, final.quads), graphs,
           ...canonical_flat_correspondence(state.root, final.css!, final.quads) };
         const received = receivingFlat.get(state.identity);
-        if (received !== undefined && JSON.stringify(effect) !== JSON.stringify(received)) throw new Error("Flat replay does not reproduce accepted transaction effects.");
+        if (received !== undefined) with_livemap_replay_operation_index(receivingProvenance?.get(received)?.operationIndex, () => {
+          if (JSON.stringify(effect) !== JSON.stringify(received)) throw new Error("Flat replay does not reproduce accepted transaction effects.");
+        });
         if (index < 0) throw new Error("Flat correspondence requires an accepted document operation.");
         operations[index] = { ...operations[index]!, flat: effect };
       }
@@ -3492,59 +3596,73 @@ function make_livemap_registry_engine(
     let replayComposedDescriptors: OrderedProjectedValue | undefined;
     const receivingEffects = new Map<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>();
     const receivingFlat = new Map<LiveMapLibraryIdentity, DocumentFlatEffect>();
-    const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
-      if (entry.flat !== undefined) receivingFlat.set(entry.library.identity as LiveMapLibraryIdentity, entry.flat);
-      if (entry.css !== undefined) {
-        const write: LiveMapAggregateWrite = Object.freeze({ target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
-          kind: "css", operation: entry.css });
+    const receivingProvenance = new Map<LiveMapAggregateWrite | DocumentFlatEffect, ReceivingReplayProvenance>();
+    const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite =>
+      with_livemap_replay_operation_index(entry.operationIndex, () => {
+        const operationIndex = entry.operationIndex;
+        if (entry.flat !== undefined) {
+          receivingFlat.set(entry.library.identity as LiveMapLibraryIdentity, entry.flat);
+          receivingProvenance.set(entry.flat, Object.freeze({ operationIndex }));
+        }
+        if (entry.css !== undefined) {
+          const write: LiveMapAggregateWrite = Object.freeze({ target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
+            kind: "css", operation: entry.css });
+          if (entry.scoped !== undefined) receivingEffects.set(write, entry.scoped);
+          return write;
+        }
+        const path = "path" in entry.semantic ? entry.semantic.path : (
+          "target" in entry.semantic ? entry.semantic.target.path : []
+        );
+        const target = entry.library.scope === "hson-internal"
+          ? aggregate_system_target(entry.library.identity as LiveMapSystemIdentity, path)
+          : aggregate_target(entry.library.identity as LiveMapLibraryIdentity, path);
+        if (composition !== undefined && entry.library.scope === "hson-internal" && entry.projected !== undefined) {
+          if (systemState === undefined) throw new Error("Client interaction system state is unavailable.");
+          const current = replayComposedDescriptors ?? project_live_path(systemState.root, ["descriptors"]);
+          if (current === undefined) throw new Error("Client interaction descriptors are unavailable.");
+          const classify = (name: string): "shared" | "local" | undefined => {
+            const binding = hosted.byName.get(name);
+            if (binding?.mode !== "document" || binding.scope !== undefined) return undefined;
+            return composition.bindings.has(name) ? "shared" : "local";
+          };
+          const partitions = partition_interaction_descriptors(current, classify);
+          replaySharedRoot ??= projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(partitions.shared)]]));
+          const sharedValue = project_live_path(replaySharedRoot, entry.projected.path);
+          must_replay_value(entry.projected.path, entry.projected.prev, sharedValue, operationIndex);
+          const planned = plan_write_ops(replaySharedRoot, [projected_write_op_from_transport(entry.projected)]);
+          must_replay_value(entry.projected.path, entry.projected.next,
+            project_live_path(replaySharedRoot, entry.projected.path), operationIndex);
+          // Authenticate the authority's shared operation before composing local descriptors.
+          must_replay_operation(entry.projected, planned.transportOps, operationIndex, true);
+          const incoming = project_live_path(replaySharedRoot, ["descriptors"]);
+          if (incoming === undefined) throw new Error("Authority interaction descriptors are unavailable.");
+          const incomingPartition = partition_interaction_descriptors(incoming, classify);
+          if (incomingPartition.local.length > 0) throw new Error("Authority interaction replay contains a local subject.");
+          const merged = merge_interaction_descriptors(incomingPartition.shared, partitions.local);
+          const transformed: LiveMapProjectedDataOp = Object.freeze({
+            kind: "replace", path: ["descriptors"], prev: current, next: merged,
+          });
+          replayComposedDescriptors = merged;
+          return Object.freeze({ target: aggregate_system_target(systemState.identity, ["descriptors"]),
+            kind: "replay-data", operation: transformed });
+        }
+        if (entry.projected !== undefined) return Object.freeze({ target, kind: "replay-data", operation: entry.projected });
+        if (entry.graph === undefined || entry.graph.op === "ensure-quid") {
+          throw new Error("Hosted client event contains an identity-only operation.");
+        }
+        const write: LiveMapAggregateWrite = Object.freeze({ target, kind: "graph", operation: entry.graph });
         if (entry.scoped !== undefined) receivingEffects.set(write, entry.scoped);
         return write;
-      }
-      const path = "path" in entry.semantic ? entry.semantic.path : (
-        "target" in entry.semantic ? entry.semantic.target.path : []
-      );
-      const target = entry.library.scope === "hson-internal"
-        ? aggregate_system_target(entry.library.identity as LiveMapSystemIdentity, path)
-        : aggregate_target(entry.library.identity as LiveMapLibraryIdentity, path);
-      if (composition !== undefined && entry.library.scope === "hson-internal" && entry.projected !== undefined) {
-        if (systemState === undefined) throw new Error("Client interaction system state is unavailable.");
-        const current = replayComposedDescriptors ?? project_live_path(systemState.root, ["descriptors"]);
-        if (current === undefined) throw new Error("Client interaction descriptors are unavailable.");
-        const classify = (name: string): "shared" | "local" | undefined => {
-          const binding = hosted.byName.get(name);
-          if (binding?.mode !== "document" || binding.scope !== undefined) return undefined;
-          return composition.bindings.has(name) ? "shared" : "local";
-        };
-        const partitions = partition_interaction_descriptors(current, classify);
-        replaySharedRoot ??= projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(partitions.shared)]]));
-        const sharedValue = project_live_path(replaySharedRoot, entry.projected.path);
-        must_replay_value(entry.projected.path, entry.projected.prev, sharedValue);
-        plan_write_ops(replaySharedRoot, [projected_write_op_from_transport(entry.projected)]);
-        must_replay_value(entry.projected.path, entry.projected.next,
-          project_live_path(replaySharedRoot, entry.projected.path));
-        const incoming = project_live_path(replaySharedRoot, ["descriptors"]);
-        if (incoming === undefined) throw new Error("Authority interaction descriptors are unavailable.");
-        const incomingPartition = partition_interaction_descriptors(incoming, classify);
-        if (incomingPartition.local.length > 0) throw new Error("Authority interaction replay contains a local subject.");
-        const merged = merge_interaction_descriptors(incomingPartition.shared, partitions.local);
-        const transformed: LiveMapProjectedDataOp = Object.freeze({
-          kind: "replace", path: ["descriptors"], prev: current, next: merged,
-        });
-        replayComposedDescriptors = merged;
-        return Object.freeze({ target: aggregate_system_target(systemState.identity, ["descriptors"]),
-          kind: "replay-data", operation: transformed });
-      }
-      if (entry.projected !== undefined) return Object.freeze({ target, kind: "replay-data", operation: entry.projected });
-      if (entry.graph === undefined || entry.graph.op === "ensure-quid") {
-        throw new Error("Hosted client event contains an identity-only operation.");
-      }
-      const write: LiveMapAggregateWrite = Object.freeze({ target, kind: "graph", operation: entry.graph });
-      if (entry.scoped !== undefined) receivingEffects.set(write, entry.scoped);
-      return write;
+      }));
+    writes.forEach((write, index) => {
+      const { operationIndex, projected } = decoded[index]!;
+      // Composition changes the prepared instruction, not the submitted
+      // contribution. Keep both bound to the same authenticated source record.
+      receivingProvenance.set(write, Object.freeze({ operationIndex, projected }));
     });
     if (composition !== clientComposition) throw new Error("Echo receiving projection changed during decoding.");
     const transition = prepare_authority_transition(writes, [], true, false, receivingEffects,
-      composition === undefined ? undefined : input.rev, assertManagementCurrent, receivingFlat);
+      composition === undefined ? undefined : input.rev, assertManagementCurrent, receivingFlat, receivingProvenance);
     if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate").commit;
     const local = transition.commit.hosted;
     if (durable && scoped) {
@@ -4282,6 +4400,7 @@ function must_replay_value(
   path: LivePath,
   expected: OrderedProjectedValue | undefined,
   actual: OrderedProjectedValue | undefined,
+  opIndex?: number,
 ): void {
   if (optional_ordered_projected_value_equal(expected, actual)) return;
 
@@ -4289,7 +4408,27 @@ function must_replay_value(
     path,
     expected,
     actual,
+    opIndex,
   );
+}
+
+/** Require the existing planner's accepted effect to match every submitted field. */
+function must_replay_operation(
+  submitted: LiveMapProjectedDataOp,
+  planned: readonly LiveMapProjectedDataOp[],
+  opIndex: number,
+  system = false,
+): void {
+  const actual = planned[0];
+  // Systems have no identity retirement: emitted move evidence alone is not a change.
+  if (planned.length !== 1 || actual === undefined
+    || system && optional_ordered_projected_value_equal(actual.prev, actual.next)) {
+    throw new LiveMapReplayInputError("Hosted replay operation did not produce one exact authority operation.",
+      opIndex, "UNCHANGED_STAGED_OPERATION");
+  }
+  if (!livemap_projected_operation_equal(submitted, actual)) {
+    throw new LiveMapReplayInputError("Hosted replay operation disagrees with its complete planned evidence.", opIndex);
+  }
 }
 
 function must_core_array_value(value: OrderedProjectedValue | undefined, path: LivePath): readonly OrderedProjectedValue[] {
@@ -4323,6 +4462,36 @@ function must_hson_schema_family(schema: HsonSchema, family: "data" | "document"
   const kind = compiled_hson_schema_of(schema).semantic.kind;
   const schemaFamily = kind === "document" || kind === "document-element" ? "document" : "data";
   if (schemaFamily !== family) throw new Error(`LiveMap ${family} Library requires a ${family} Schema.`);
+}
+
+/** Small conservative dependency rule for final Data Schema diagnostics.
+ * Plain structural contracts validate children independently. A union, literal,
+ * or refinement may govern several children, so retain that whole subtree.
+ * In particular, a configured unique issue's relatedPath is not a local scalar
+ * constraint, even though its reported path ends at one conflicting selector.
+ */
+function schema_validation_dependency(schema: HsonSchema, path: LivePath): LivePath {
+  const graph = compiled_hson_schema_of(schema).graph;
+  let ref = graph.capabilities.projectedRoot;
+  let depth = 0;
+  const visited = new Set<string>();
+  while (ref !== undefined && depth < path.length) {
+    const key = `${ref}:${depth}`;
+    if (visited.has(key)) break;
+    visited.add(key);
+    const node = graph.nodes[ref], part = path[depth];
+    if (node?.kind === "projected-ref") { ref = node.target; continue; }
+    if (node?.kind === "projected-optional" || node?.kind === "projected-nullable") { ref = node.base; continue; }
+    const child = node?.kind === "projected-object" && typeof part === "string"
+      ? node.properties.find(([name]) => name === part)?.[1]
+      : node?.kind === "projected-record" && typeof part === "string" ? node.value
+      : node?.kind === "projected-array" && typeof part === "number" ? node.item
+      : node?.kind === "projected-tuple" && typeof part === "number" ? node.items[part] : undefined;
+    if (child === undefined) break;
+    ref = child;
+    depth += 1;
+  }
+  return path.slice(0, depth);
 }
 
 function must_hson_schema_root(schema: HsonSchema, root: HsonNode): void {
