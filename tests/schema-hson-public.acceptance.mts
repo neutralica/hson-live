@@ -48,7 +48,7 @@ check("published LiveMap facade has no builder or duplicate validation namespace
   assert.doesNotMatch(declaration, /LiveMapSchema/);
 });
 
-check("named library Schemas retain construction evidence and expose tightening", () => {
+check("named Library Schemas retain admission evidence and equal no-op confirmation", () => {
   const declaration = readFileSync(new URL("../dist/types/livemap.types.d.ts", import.meta.url), "utf8");
   assert.match(declaration, /export type LiveMapDataLibraryInput<.*schema: TSchema;/s);
   assert.match(declaration, /export type LiveMapDocumentLibraryInput<.*schema: TSchema;/s);
@@ -58,6 +58,8 @@ check("named library Schemas retain construction evidence and expose tightening"
   const registry = root.hsonLiveMap.fromLibraries({ state: { data: { age: 37 }, schema } });
   assert.equal(registry.data.must("state").schema.get(), schema);
   assert.equal(typeof registry.data.must("state").schema.use, "function");
+  assert.equal(Reflect.apply(registry.data.must("state").schema.use, undefined, [schema]).changed, false);
+  assert.throws(() => Reflect.apply(registry.data.must("state").schema.use, undefined, [root.ANY_DATA]), /immutable after admission/);
 });
 
 check("Schema object owns certification and portable Schema data", () => {

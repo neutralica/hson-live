@@ -104,6 +104,8 @@ import {
   assert_hosted_libraries_snapshot_shape,
   assert_portable_aggregate_snapshot_shape,
   portable_aggregate_snapshot_as_local,
+  own_libraries_snapshot,
+  own_portable_aggregate_snapshot,
   make_portable_aggregate_snapshot,
   make_hosted_registry,
   registry_from_entries,
@@ -925,7 +927,7 @@ function make_livemap_library_receiver(
           schema,
           operation.operation.previousSchemaDigest,
         ));
-        if (!replayed.changed) throw new Error("LiveMap Schema replay requires a semantic tightening transition.");
+        if (!replayed.changed) throw new Error("LiveMap Schema replay cannot advance an unchanged governing binding.");
         return replayed;
       }
       if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
@@ -936,10 +938,7 @@ function make_livemap_library_receiver(
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {
-      if (snapshot.registry.digest !== aggregate.hostedRegistry().digest) {
-        throw new Error("LiveMap restore requires the current Library topology; install a different capture in a fresh map.");
-      }
-      aggregate.restoreLibraries(snapshot);
+      aggregate.restoreLibraries(snapshot, undefined, true);
     },
     // Surplus JavaScript callback arguments have no public cut semantics.
     cut: (options: LiveMapCutOptions = {}) => cut(options),
@@ -1082,6 +1081,8 @@ function make_livemap_library_receiver(
   });
   if (clientSnapshot !== undefined) CLIENT_PROJECTION_RECONCILE.set(libraries, (owner, snapshot, scoped, assertAcceptance) => {
     const assertCurrent = aggregate.captureManagedRestorationFence(owner);
+    snapshot = own_portable_aggregate_snapshot(snapshot, scoped);
+    assertCurrent();
     const prior = aggregate.clientProjection();
     if (prior === undefined) throw new Error("Client projection is unavailable.");
     const previousNames = prior.registry.libraries.filter((entry) => entry.scope === undefined)
@@ -1226,6 +1227,7 @@ export function make_livemap_mirror_from_snapshot_internal(
 export function restore_portable_document_receiver_internal(snapshot: LiveMapSnapshot): Readonly<{
   map: LiveMap; correspondence: import("./livemap.internal.js").PortableQuadRestoration;
 }> {
+  snapshot = own_libraries_snapshot(snapshot);
   assert_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
   if (snapshot.registryDigest !== snapshot.registry.digest

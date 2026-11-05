@@ -32,6 +32,10 @@ export const PageSchema = Hson.schema`
 <type "document" tag "main" attrs <props <id "string" hidden <optional "flag">>> content <sequence [<tag "section" content "string">]>>
 `;
 
+export const CompletedPageSchema = Hson.schema`
+<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" hidden <optional "flag">>> content <sequence [<tag "section" content "string">]>>]>>]>>
+`;
+
 // These have no value-level refinement classes; only Schema identity distinguishes them.
 export const PlainA = Hson.schema`<type "data">`;
 export const PlainB = Hson.schema`<type "data">`;

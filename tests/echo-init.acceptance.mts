@@ -556,8 +556,12 @@ for (const stage of ["message", "close"] as const) {
   ui.at(["value"]).set(12);
   panel.css.stylesheet("aside { color: blue; }");
   assert.equal(locus.rev, authorityRevBeforeLocal, "local mutation never enters authority history");
-  assert.doesNotThrow(() => ui.schema.use(LocalSchema as never));
-  assert.equal(ui.schema.get().toHson(), LocalSchema.toHson());
+  const localSchema = ui.schema.get();
+  assert.throws(() => ui.schema.use(LocalSchema as never), /immutable after admission/);
+  assert.equal(ui.schema.get(), localSchema);
+  assert.doesNotThrow(() => ui.schema.use(localSchema as never));
+  ui.at(["value"]).set(13);
+  ui.at(["value"]).set(12);
   const projectedState = echo.data.must("state");
   assert.equal(projectedState.source, "authority-projected");
   assert.equal("use" in projectedState.schema, false);
@@ -568,7 +572,7 @@ for (const stage of ["message", "close"] as const) {
   await session.update({ libraries: ["state", "ui", "panel"] });
   assert.equal(echo.data.must("ui"), ui);
   assert.equal(ui.snap(["value"]), 12, "remove/re-add does not reapply the seed");
-  assert.equal(ui.schema.get().toHson(), LocalSchema.toHson(), "re-add preserves the evolved local Schema");
+  assert.equal(ui.schema.get(), localSchema, "re-add preserves the admitted local Schema binding");
 
   echo.disconnect();
   detach();

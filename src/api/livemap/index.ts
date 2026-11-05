@@ -103,7 +103,6 @@ export type {
   LiveMapDocumentQuadLocation,
   LiveMapRegistryCommitObserverApi,
   LiveMap,
-  LiveMapWithLibrarySchema,
   LiveMapKnownNames,
   LiveMapDataOp,
   LiveMapGraphOp,

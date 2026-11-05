@@ -2,8 +2,7 @@ import type ts from "typescript";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
-import { library_schema_attachment_plan, schema_source_plan, type PreciseSchemaFact } from "../../../src/internal/hson-schema/source-transformation.js";
-import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
+import { schema_source_plan } from "../../../src/internal/hson-schema/source-transformation.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { static_part_reference_diagnostics, static_schema_candidate_diagnostics, type StaticSchemaDiagnostic } from "../../../src/internal/hson-schema/candidate-diagnostics.js";
@@ -65,21 +64,13 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const nextDeclarations = new Map<string, string>();
     const nextLabels = new Map<string, string>();
     const checker = program.getTypeChecker();
-    const schemaFacts: PreciseSchemaFact[] = [];
     const discoveries = new Map<string, ReturnType<typeof discover_hson_schema_declarations>>();
     for (const candidate of program.getSourceFiles()) {
       if (candidate.isDeclarationFile || program.isSourceFileFromExternalLibrary(candidate)
         || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.split(sep).includes(".hson")) continue;
       const found = discover_hson_schema_declarations(typescript, candidate, checker);
       discoveries.set(canonical(candidate.fileName), found);
-      for (const { declaration, source, eligible } of found) {
-        if (!eligible || source === undefined) continue;
-        const compiled = compile_hson_schema(source);
-        if (!compiled.ok) continue;
-        const mode = compiled.value.semantic.kind === "document" || compiled.value.semantic.kind === "document-element"
-          ? "document" as const : "data" as const;
-        schemaFacts.push(Object.freeze({ declaration, mode }));
-      }
+
     }
     for (const source of program.getSourceFiles()) {
       if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)
@@ -111,14 +102,13 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
           }
         }
       }
-      const attachments = library_schema_attachment_plan(source, checker, schemaFacts, typescript);
-      if (schemas.length === 0 && attachments.edits.length === 0) continue;
+      if (schemas.length === 0) continue;
       const plan = schema_source_plan(source, schemas, typescript);
-      const edits = [...plan.edits, ...attachments.edits];
+      const edits = plan.edits;
       const mapping = new SchemaSourceMapping(source.text, edits);
       const key = canonical(source.fileName);
       nextSources.set(key, { ...snapshot(mapping.text, sources.get(key)), mapping, source,
-        generatedNames: [...plan.generatedNames, ...attachments.generatedNames] });
+        generatedNames: plan.generatedNames });
     }
     // tsserver's shared document registry requires a ScriptInfo for virtual modules.
     for (const [file, value] of nextEvidence) if (evidence.get(file) !== value) registerEvidence?.(file, value.text);

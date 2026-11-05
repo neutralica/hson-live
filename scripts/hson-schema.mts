@@ -11,7 +11,6 @@ const packagedRuntime = import.meta.url.endsWith(".mjs") && existsSync(new URL("
 const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
-const { library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { discover_hson_schema_declarations } = await import(`${runtimeBase}/internal/hson-schema/schema-discovery.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/schema-discovery.ts");
 const { admit_hson_tagged_template } = await import(`${runtimeBase}/internal/embedded-hson/hson-tagged-source-admission.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/hson-tagged-source-admission.ts");
 const { static_schema_candidate_diagnostics } = await import(`${runtimeBase}/internal/hson-schema/candidate-diagnostics.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/candidate-diagnostics.ts");
@@ -65,17 +64,11 @@ async function run_project(watch: boolean): Promise<void> {
     if (configDiagnostics.length) schemas = [];
     const analysis = analyze_static_hson(program, checker, schemas, diagnostics);
     diagnostics.push(...static_schema_candidate_diagnostics(ts, program));
-    const attachmentFacts = schemas.map(schema => Object.freeze({ declaration: schema.declaration, mode: schema_mode(schema) }));
-    const attachments: Overlay[] = [];
-    for (const source of program.getSourceFiles()) {
-      if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)) continue;
-      attachments.push(...library_schema_attachment_plan(source, checker, attachmentFacts).edits.map(edit => ({ file: source.fileName, ...edit })));
-    }
     // Generated precision replaces ordinary broad-tag diagnostics; missing
     // imports and TypeScript's optional-chain tag grammar errors remain errors.
     const sourceErrors = program.getSemanticDiagnostics().filter(d => [1358, 2307, 2792, 7016].includes(d.code));
     diagnostics.push(...sourceErrors.map(d => ({ message: format_ts_diagnostic(d) })));
-    return { schemas, overlays: [...analysis.overlays, ...attachments], diagnostics: diagnostics.map(d => {
+    return { schemas, overlays: analysis.overlays, diagnostics: diagnostics.map(d => {
       const source = d.file === undefined ? undefined : program.getSourceFile(d.file);
       const position = source === undefined || d.start === undefined ? undefined : source.getLineAndCharacterOfPosition(d.start);
       return `${d.file ?? ""}${d.file === undefined ? "" : position === undefined ? ": " : `:${position.line + 1}:${position.character + 1}: `}${d.message}`;

@@ -1,7 +1,7 @@
 import { dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { hson_package_declaration_path } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { apply_source_edits, direct_family_selection, library_schema_attachment_plan, type PreciseSchemaFact, type SchemaSourceEdit } from "./source-transformation.js";
+import { apply_source_edits, direct_family_selection, type PreciseSchemaFact, type SchemaSourceEdit } from "./source-transformation.js";
 import { library_source_selection, literal_member, official_library_source } from "./library-source.js";
 
 type EvidenceOrigin = Readonly<{ source: string; name: string; evidence: string }>;
@@ -71,7 +71,6 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
     if (rootMap !== undefined) publicNames.set(rootMap.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(rootMap) : rootMap,
       { specifier: "hson-live/livemap", name: "LiveMap" });
     const edits: SchemaSourceEdit[] = [];
-    const attachments = library_schema_attachment_plan(source, checker, preciseSchemas).attachments;
     const module = checker.getSymbolAtLocation(source);
     const exported = new Set<ts.Declaration>();
     if (module !== undefined) for (let symbol of checker.getExportsOfModule(module)) {
@@ -193,41 +192,6 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       if (rendered.changed) edits.push({ start: position, end: position, text: `: ${printer.printNode(ts.EmitHint.Unspecified, rendered.node, source)}` });
     };
     const selectedLibrary = (expression: ts.Expression) => direct_family_selection(expression, checker);
-    const matchingAttachment = (
-      selected: Readonly<{ map: ts.Identifier; library: ts.StringLiteral; facade: ts.Expression }>,
-      container: ts.Node,
-      before: number,
-    ): Readonly<{ schema: ts.Identifier; mode?: "data" | "document" }> | undefined => {
-      for (let index = attachments.length - 1; index >= 0; index -= 1) {
-        const fact = attachments[index];
-        if (fact !== undefined && fact.statement.parent === container && fact.statement.getEnd() < before
-          && checker.getSymbolAtLocation(fact.map) === checker.getSymbolAtLocation(selected.map)
-          && fact.library.text === selected.library.text) return fact;
-      }
-      const statements = ts.isSourceFile(container) || ts.isBlock(container) ? container.statements : undefined;
-      if (statements !== undefined) for (let index = statements.length - 1; index >= 0; index -= 1) {
-        const statement = statements[index];
-        if (statement === undefined || statement.getEnd() >= before || !ts.isExpressionStatement(statement)
-          || !ts.isCallExpression(statement.expression) || !ts.isIdentifier(statement.expression.expression)
-          || !statement.expression.expression.text.startsWith("__hson_assert_library_schema")
-          || statement.expression.arguments.length !== 3) continue;
-        const [map, library, schema] = statement.expression.arguments;
-        if (map === undefined || !ts.isIdentifier(map)
-          || checker.getSymbolAtLocation(map) !== checker.getSymbolAtLocation(selected.map)
-          || library === undefined || !ts.isStringLiteral(library) || library.text !== selected.library.text
-          || schema === undefined || !ts.isIdentifier(schema)) continue;
-        return { schema };
-      }
-      return undefined;
-    };
-    const selectedMode = (selected: Readonly<{ facade: ts.Expression }>): "data" | "document" | undefined => {
-      const property = checker.getPropertyOfType(checker.getTypeAtLocation(selected.facade), "mode");
-      if (property === undefined) return undefined;
-      const mode = checker.getTypeOfSymbolAtLocation(property, selected.facade);
-      return (mode.flags & ts.TypeFlags.StringLiteral) !== 0
-        && ((mode as ts.StringLiteralType).value === "data" || (mode as ts.StringLiteralType).value === "document")
-        ? (mode as ts.StringLiteralType).value as "data" | "document" : undefined;
-    };
     const selectedSchema = (selected: Readonly<{ facade: ts.Expression }>): ts.Type | undefined => {
       const facade = checker.getNonNullableType(checker.getTypeAtLocation(selected.facade));
       const schemaProperty = checker.getPropertyOfType(facade, "schema");
@@ -238,26 +202,16 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const signature = checker.getSignaturesOfType(checker.getTypeOfSymbolAtLocation(getProperty, selected.facade), ts.SignatureKind.Call)[0];
       return signature === undefined ? undefined : checker.getReturnTypeOfSignature(signature);
     };
-    const selectionCarriesSchema = (selected: Readonly<{ facade: ts.Expression }>, schema: ts.Identifier): boolean => {
-      const current = selectedSchema(selected);
-      if (current === undefined) return false;
-      const requested = checker.getTypeAtLocation(schema);
-      return checker.isTypeAssignableTo(current, requested) && checker.isTypeAssignableTo(requested, current);
-    };
     const refinedLibraryType = (expression: ts.Expression, container: ts.Node, before: number): string | undefined => {
       const selected = library_source_selection(expression, checker);
       if (selected === undefined || selected.family === "parts") return undefined;
-      const attachment = selected.checked || selected.library === undefined ? undefined
-        : matchingAttachment({ ...selected, library: selected.library }, container, before);
       const current = selectedSchema(selected) ?? (selected.checked && ts.isCallExpression(expression)
         && expression.arguments[1] !== undefined ? checker.getTypeAtLocation(expression.arguments[1]) : undefined);
       const knownSchema = current === undefined || (current.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 ? undefined : [...names].find(([type, origin]) => origin.field === undefined
         && checker.isTypeAssignableTo(current, type) && checker.isTypeAssignableTo(type, current))?.[0];
-      if (attachment === undefined && knownSchema === undefined) return undefined;
-      if (attachment !== undefined && !selectionCarriesSchema(selected, attachment.schema)) return undefined;
-      const schemaMode = attachment?.mode ?? preciseSchemas.find(fact => checker.getTypeAtLocation(fact.declaration) === knownSchema)?.mode;
-      const schema = attachment !== undefined ? `typeof ${attachment.schema.getText(source)}`
-        : knownSchema === undefined ? undefined : printer.printNode(ts.EmitHint.Unspecified, render(knownSchema, expression).node, source);
+      if (knownSchema === undefined) return undefined;
+      const schemaMode = preciseSchemas.find(fact => checker.getTypeAtLocation(fact.declaration) === knownSchema)?.mode;
+      const schema = printer.printNode(ts.EmitHint.Unspecified, render(knownSchema, expression).node, source);
       if (schema === undefined) return undefined;
       const projection = selected.family === "data" && schemaMode === "data" ? `import("hson-live/hson").JsonFromSchema<${schema}>`
         : `(${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "data" | "document"> ? TGraph : never)`;
@@ -291,15 +245,17 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         || expression.expression.name.text !== "at" || expression.arguments.length !== 1) return undefined;
       const selected = selectedLibrary(expression.expression.expression);
       if (selected === undefined) return undefined;
-      const attachment = matchingAttachment(selected, container, before);
+      const current = selectedSchema(selected);
+      const knownSchema = current === undefined ? undefined : [...names].find(([type, origin]) => origin.field === undefined
+        && checker.isTypeAssignableTo(current, type) && checker.isTypeAssignableTo(type, current))?.[0];
       const path = expression.arguments[0];
-      if (attachment === undefined || !selectionCarriesSchema(selected, attachment.schema)
-        || (attachment.mode ?? selectedMode(selected)) !== "document" || path === undefined) return undefined;
+      if (knownSchema === undefined || path === undefined
+        || preciseSchemas.find(fact => checker.getTypeAtLocation(fact.declaration) === knownSchema)?.mode !== "document") return undefined;
       const pathNode = checker.typeToTypeNode(checker.getTypeAtLocation(path), path,
         ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
       if (pathNode === undefined) return undefined;
-      const schema = attachment.schema.getText(source);
-      return `import("hson-live/livemap").LiveMapDocumentLocation<(typeof ${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never), ${JSON.stringify(selected.library.text)}, ${printer.printNode(ts.EmitHint.Unspecified, pathNode, source)}>`;
+      const schema = printer.printNode(ts.EmitHint.Unspecified, render(knownSchema, expression).node, source);
+      return `import("hson-live/livemap").LiveMapDocumentLocation<(${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never), ${JSON.stringify(selected.library.text)}, ${printer.printNode(ts.EmitHint.Unspecified, pathNode, source)}>`;
     };
     const namedOwners = new Set<ts.VariableDeclaration>();
     const preserveOwner = (identifier: ts.Identifier, container: ts.Node, before: number): void => {
@@ -382,57 +338,10 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       if (origins.length === 0) return namedPartType(expression, body, returned.getStart(source));
       const targeted = targetedExpressionType(expression, body, returned.getStart(source));
       if (targeted !== undefined) return targeted;
-      const selected = selectedLibrary(expression);
-      if (selected === undefined) return undefined;
-      const { map, library } = selected;
-      const attachment = attachments.find(fact => fact.statement.parent === body && fact.statement.getEnd() < returned.getStart(source)
-        && checker.getSymbolAtLocation(fact.map) === checker.getSymbolAtLocation(map)
-        && fact.library.text === library.text);
-      const proof = body.statements.find((statement): statement is ts.ExpressionStatement => {
-        if (!ts.isExpressionStatement(statement) || statement.getEnd() >= returned.getStart(source)
-          || !ts.isCallExpression(statement.expression) || !ts.isIdentifier(statement.expression.expression)
-          || !statement.expression.expression.text.startsWith("__hson_assert_library_schema")
-          || statement.expression.arguments.length !== 3) return false;
-        const [provedMap, provedLibrary, provedSchema] = statement.expression.arguments;
-        return provedMap !== undefined && ts.isIdentifier(provedMap)
-          && checker.getSymbolAtLocation(provedMap) === checker.getSymbolAtLocation(map)
-          && provedLibrary !== undefined && ts.isStringLiteral(provedLibrary) && provedLibrary.text === library.text
-          && provedSchema !== undefined && ts.isIdentifier(provedSchema);
-      });
-      const schemaNode = attachment?.schema ?? (proof !== undefined && ts.isCallExpression(proof.expression)
-        ? proof.expression.arguments[2] : undefined);
-      if (schemaNode === undefined || !ts.isIdentifier(schemaNode)) return undefined;
-      const modeProperty = checker.getPropertyOfType(checker.getTypeAtLocation(expression), "mode");
-      const mode = attachment?.mode ?? (modeProperty === undefined ? undefined
-        : checker.getTypeOfSymbolAtLocation(modeProperty, expression));
-      const modeName = typeof mode === "string" ? mode
-        : mode !== undefined && (mode.flags & ts.TypeFlags.StringLiteral) !== 0
-          ? (mode as ts.StringLiteralType).value : undefined;
-      if (modeName !== "document" && modeName !== "data") return undefined;
-      const facade = modeName === "document" ? "LiveMapDocumentLibrary" : "LiveMapDataLibrary";
-      const schema = schemaNode.getText(source);
-      const projection = modeName === "data" ? `import("hson-live/hson").JsonFromSchema<typeof ${schema}>`
-        : `(typeof ${schema} extends import("hson-live/hson").HsonSchema<infer TGraph, "document"> ? TGraph : never)`;
-      return `import("hson-live/livemap").${facade}<${projection}, ${JSON.stringify(library.text)}, typeof ${schema}>`;
-    };
-    const flowRefinedExportedMap = (node: ts.VariableDeclaration): boolean => {
-      if (!ts.isIdentifier(node.name) || node.parent.parent.parent !== source) return false;
-      const symbol = checker.getSymbolAtLocation(node.name);
-      if (attachments.some(fact => fact.statement.parent === source && fact.statement.getStart(source) > node.getEnd()
-        && checker.getSymbolAtLocation(fact.map) === symbol)) return true;
-      return source.statements.some(statement => statement.getStart(source) > node.getEnd()
-        && ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)
-        && ts.isIdentifier(statement.expression.expression)
-        && statement.expression.expression.text.startsWith("__hson_assert_library_schema")
-        && statement.expression.arguments[0] !== undefined
-        && ts.isIdentifier(statement.expression.arguments[0])
-        && checker.getSymbolAtLocation(statement.expression.arguments[0]) === symbol);
+      return undefined;
     };
     const visit = (node: ts.Node): void => {
       if ((ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)) && node.type === undefined && node.initializer !== undefined && publicDeclaration(node)) {
-        if (ts.isVariableDeclaration(node) && flowRefinedExportedMap(node)) {
-          throw new Error(`HSON_SCHEMA_FLOW_REFINED_EXPORTED_MAP_UNSUPPORTED: exported map ${node.name.getText(source)} is tightened after initialization; export a refined Library or endpoint facade instead.`);
-        }
         const statement = ts.isVariableDeclaration(node) && ts.isVariableStatement(node.parent.parent) ? node.parent.parent : undefined;
         const targeted = statement === undefined ? undefined
           : (origins.length === 0 ? namedPartType : targetedExpressionType)(node.initializer, statement.parent, statement.getStart(source));

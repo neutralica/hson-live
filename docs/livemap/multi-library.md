@@ -15,19 +15,21 @@ map.data.must("state").at([]).object.setKey("count", 1);
 
 Each entry has exactly one family discriminator:
 
-- `data` accepts a JSON value or JSON source text.
+- `data` accepts a literal Data value or an explicit Data carrier. Ordinary JavaScript strings are literal Data: use `data: "hello"` for a string value. To interpret JSON or Hson source, use `data: Hson.data.fromSource('"hello"')`.
 - `document` accepts authored Hson source text or a canonical Hson node, with optional textual `stylesheet`.
 - `parts` accepts keyed Part definitions governed intrinsically; it forbids a supplemental `schema` and a Library-level `stylesheet`.
 
 `schema` may be omitted. A data library then uses `ANY_DATA`; a document library uses `ANY_DOCUMENT`. Initial material is validated during construction or runtime admission. An explicit Schema retains its generated type evidence, so `JsonFromSchema<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
-An unmanaged local family-top library may be tightened later with
-`map.data.must("name").schema.use(Schema)` or `map.doc.must("name").schema.use(Schema)`. The complete existing root is validated
-before installation. One real attachment advances the map once and emits one
-portable `library-schema-use` operation; the same canonical Schema is a no-op,
-and a different specific contract cannot replace the installed contract.
-Direct calls are deliberately fenced on Locus-managed and projected client
-maps until hosted authority support is added.
+The governing Schema is selected during Library construction or admission.
+Omitting `schema` establishes the real family-top binding, which is immutable
+for the Library's lifetime. Post-admission `.schema.use(...)` cannot tighten,
+loosen, or replace that binding. On an unmanaged local Library, a canonically
+equal Schema is permitted as an unchanged no-op: it preserves the original
+governing Schema object without revision or authority changes and does not
+strengthen TypeScript proof. Different Libraries may be admitted with different
+governing Schemas. Locus-managed Libraries and projected Echo clients continue
+to fence direct `.schema.use(...)` calls.
 
 The `map.data`, `map.doc`, and `map.parts` selectors preserve construction-time family evidence. `map.doc(name)` returns `undefined` for absence or a wrong family; `map.doc.must(name)` requires a match. An optional second Schema argument checks the installed Schema digest. Safe known names also support property access; use callable lookup for Function/Object names such as `must` or `constructor`. Runtime admission leaves the existing map and selectors intact. A selected data Library has `root()`, `snap()`,
 `at(path)`, and `schema.get()`; a selected document Library has document-wide
@@ -49,7 +51,7 @@ text/content locations do not expose those element-only capabilities.
 `hsonMirror(map.doc.must("page"))` binds one named document Library and stays
 attached across unrelated global revisions and reconcile replacement.
 
-A `LiveMapCommit` holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Ordinary content/CSS entries are `{ library, operation }`; topology and Schema entries use their tagged shapes. The library name is public and the engine's opaque library identity is never exposed.
+A `LiveMapCommit` holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Ordinary content/CSS entries are `{ library, operation }`; topology admission uses the tagged `library-add` shape. The library name is public and the engine's opaque library identity is never exposed.
 
 Local `map.addLibraries(definitions)` synchronously returns a `LiveMapLibraryAdmission<D>` receipt: `{ commit, libraries }`. For a nonempty batch, `receipt.commit` is one `LiveMapCommit` containing one `library-add` operation and advancing revision once. `receipt.libraries` carries typed handles for the admitted literal names. An empty local batch returns a receipt with an unchanged commit and no admitted handles, and publishes nothing.
 

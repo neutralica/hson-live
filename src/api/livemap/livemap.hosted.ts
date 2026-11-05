@@ -784,7 +784,7 @@ export function make_portable_aggregate_snapshot(authority: HostedLiveMapSnapsho
 }
 
 /** Reject all identity claims in a remote client snapshot before runtime installation. */
-export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggregateSnapshot, scoped = false): void {
+export function assert_portable_aggregate_snapshot_shape(snapshot: unknown, scoped = false): asserts snapshot is PortableAggregateSnapshot {
   const record = exact_record(snapshot, "Hosted client snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "authority"], "Hosted client snapshot");
   const authority = exact_record(record.authority, "Hosted client snapshot authority");
@@ -795,11 +795,13 @@ export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggre
     throw new HostedAggregateRepresentationError("Hosted client snapshot envelope is malformed.");
   }
   assert_libraries_snapshot_entries(record, scoped);
-  if (snapshot.registryDigest !== snapshot.registry.digest
-    || snapshot.libraries.length !== snapshot.registry.libraries.length) {
+  const registry = exact_record(record.registry, "Hosted client registry");
+  if (record.registryDigest !== registry.digest
+    || !Array.isArray(record.libraries) || !Array.isArray(registry.libraries)
+    || record.libraries.length !== registry.libraries.length) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot registry is malformed.");
   }
-  for (const entry of snapshot.libraries) admit_portable_hson_node(
+  for (const entry of record.libraries) admit_portable_hson_node(
     decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), "hosted client snapshot");
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted client snapshot");
 }
@@ -862,7 +864,7 @@ export function assert_libraries_snapshot_bound(snapshot: LiveMapSnapshot): void
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted aggregate snapshot");
 }
 
-export function assert_libraries_snapshot_shape(snapshot: LiveMapSnapshot): void {
+export function assert_libraries_snapshot_shape(snapshot: unknown): asserts snapshot is LiveMapSnapshot {
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries"], "Hosted aggregate snapshot");
   assert_libraries_snapshot_entries(record);
@@ -915,7 +917,7 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
 
 }
 
-export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapSnapshot): void {
+export function assert_hosted_libraries_snapshot_shape(snapshot: unknown): asserts snapshot is HostedLiveMapSnapshot {
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity", "authority"], "Hosted aggregate snapshot");
   const authority = exact_record(record.authority, "Hosted snapshot authority");
@@ -923,13 +925,41 @@ export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapSn
   const identity = exact_record(record.identity, "Hosted snapshot identity");
   exact_keys(identity, ["epoch", "issuedQuids"], "Hosted snapshot identity");
   const semantic = Object.freeze({
-    format: snapshot.format,
-    revision: snapshot.revision,
-    registry: snapshot.registry,
-    registryDigest: snapshot.registryDigest,
-    libraries: snapshot.libraries,
+    format: record.format,
+    revision: record.revision,
+    registry: record.registry,
+    registryDigest: record.registryDigest,
+    libraries: record.libraries,
   });
   assert_libraries_snapshot_shape(semantic);
+}
+
+/** Capture every own Data field once, without invoking getters or retaining caller storage. */
+function capture_snapshot(input: unknown): unknown {
+  try {
+    return materialize_projected_value(admit_projected_value(input));
+  } catch (cause) {
+    throw new HostedAggregateRepresentationError("Hosted snapshot requires exact own data fields.", undefined, { cause });
+  }
+}
+
+/** Qualify one detached restoration candidate before any compatibility decision. @internal */
+export function own_libraries_snapshot(input: LiveMapSnapshot | HostedLiveMapSnapshot): LiveMapSnapshot | HostedLiveMapSnapshot {
+  const candidate = capture_snapshot(input);
+  if (typeof candidate === "object" && candidate !== null && "identity" in candidate) {
+    assert_hosted_libraries_snapshot_shape(candidate);
+  } else {
+    assert_libraries_snapshot_shape(candidate);
+  }
+  assert_libraries_snapshot_bound(candidate);
+  return own_commit_description(candidate);
+}
+
+/** The same descriptor capture for an authorized portable receiving candidate. @internal */
+export function own_portable_aggregate_snapshot(input: PortableAggregateSnapshot, scoped = false): PortableAggregateSnapshot {
+  const candidate = capture_snapshot(input);
+  assert_portable_aggregate_snapshot_shape(candidate, scoped);
+  return own_commit_description(candidate);
 }
 
 function encode_hosted_operation(name: string, mode: LiveMapRootMode, operation: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp): HostedReplayOperation {

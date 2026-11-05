@@ -90,7 +90,8 @@ export const snapshot = map.data.must("main").snap();
 export const treeValue = map.data.must("tree").at(["children", 0, "value"]).snap();
 export const alias = S;
 export const pageAlias = Page;
-const attached = hsonLiveMap.fromLibraries({ main: { data: { name: "Ada", format: "hson" } }, page: { document: '<main "body"/>' } });
+// Precise published reads come from admission; subsequent equal use is a no-op.
+const attached = hsonLiveMap.fromLibraries({ main: { data: { name: "Ada", format: "hson" }, schema: S }, page: { document: '<main "body"/>', schema: Page } });
 attached.data["main"].schema.use(S);
 attached["doc"].page.schema.use(Page);
 export const library = attached.data["main"];

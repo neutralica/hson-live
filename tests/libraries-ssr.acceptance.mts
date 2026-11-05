@@ -299,14 +299,14 @@ await check("interaction storage follows selected documents and preserves enable
   assert.equal(empty.libs.revision, map.rev);
 });
 
-await check("subset contracts retain the current governing Schema after tightening", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { count: 3 } }, page: { document: "<main/>" } });
+await check("subset contracts retain the Schema fixed at admission", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { count: 3 }, schema: StateSchema }, page: { document: "<main/>" } });
   const before = map.cut({ documents: [] });
-  data(map, "state").schema.use(StateSchema);
+  data(map, "state").at(["count"]).set(4);
   const { libs } = map.cut({ documents: [] });
   assert.equal(libs.revision, map.rev);
   assert.equal(libs.libraries[0]?.schema, StateSchema.toHson());
-  assert.notEqual(libs.registryDigest, before.libs.registryDigest);
+  assert.equal(libs.registryDigest, before.libs.registryDigest);
   assert.equal(libs.libraries[0]?.schemaDigest, libs.registry.libraries[0]?.schemaDigest);
   const installed = install_libraries_snapshot(libs).map;
   assert.equal(data(installed, "state").schema.get().toHson(), StateSchema.toHson());

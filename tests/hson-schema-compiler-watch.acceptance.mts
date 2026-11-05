@@ -7,7 +7,6 @@ import ts from "typescript";
 import { capture_schema_compiler_project, create_schema_compiler_project_watch, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
 import { check_schema_project } from "../src/internal/hson-schema/compiler-project-build.ts";
 import { discover_hson_schema_declarations } from "../src/internal/hson-schema/schema-discovery.ts";
-import { library_schema_attachment_plan } from "../src/internal/hson-schema/source-transformation.ts";
 import { schema_tooling_fingerprint } from "../src/internal/hson-schema/tooling-fingerprint.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
 import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
@@ -67,7 +66,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
   const invalid = producer.replace("// ok", "// \\8");
   const badPath = join(directory, "bad.ts"), consumerPath = join(directory, "consumer.ts");
   writeFileSync(join(directory, "good.ts"), producer); writeFileSync(badPath, invalid);
-  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.data.must("state").schema.use(S);\r\nexport const name: string = map.data.must("state").at(["name"]).snap();\r\n';
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: S } });\r\nexport const name: string = map.data.must("state").at(["name"]).snap();\r\n';
   writeFileSync(consumerPath, consumer);
   const states: string[] = [];
   let fabricate = true;
@@ -82,11 +81,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
       sourceFile: found.sourceFile, declaration: found.declaration, name: found.name, source: found.source,
     }] : []);
     const schemas = fabricate ? [{ sourceFile: bad.sourceFile, declaration: good.declaration, name: good.name, source: good.source! }] : admitted;
-    // Reproduce the original callback's downstream attachment assertion too.
-    const facts = (fabricate ? [bad] : [good, bad].filter(found => found.eligible)).map(found => ({ declaration: found.declaration, mode: "data" as const }));
-    const source = program.getSourceFile(consumerPath)!;
-    const overlays = library_schema_attachment_plan(source, checker, facts).edits.map(edit => ({ file: source.fileName, ...edit }));
-    return { schemas, overlays, diagnostics: fabricate || bad.eligible ? [] : [bad.admissionError!] };
+    return { schemas, overlays: [], diagnostics: fabricate || bad.eligible ? [] : [bad.admissionError!] };
   }, event => states.push(event.state));
   const output = join(directory, ".hson/compiler-input/tsconfig.json");
   const manifestPath = join(output, "manifest.json");
@@ -110,7 +105,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
     writeFileSync(badPath, producer); await watch.poll();
     const corrected = verify_schema_compiler_project(config);
     assert.equal(corrected.manifest.sources.flatMap(source => source.schemas).length, 2);
-    assert.match(corrected.files.get(join(output, "sources/consumer.ts"))!.toString(), /__hson_assert_library_schema\(map, "state", S\)/);
+    assert.doesNotMatch(corrected.files.get(join(output, "sources/consumer.ts"))!.toString(), /__hson_assert_library_schema/);
     check_schema_project(config, corrected, false); check_schema_project(config, corrected, true);
     assert.match(readFileSync(join(directory, "out/consumer.d.ts"), "utf8"), /name: string/);
     rmSync(join(directory, "out"), { recursive: true });

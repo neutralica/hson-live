@@ -5,7 +5,6 @@ import { is_official_hson_package_binding, read_supported_hson_import_symbols } 
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
-import { library_schema_attachment_plan, type PreciseSchemaFact } from "./source-transformation.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_definitions, library_source_fields } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
@@ -296,30 +295,15 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     const construction = (node: ts.Expression) => sourceCandidates.eligible(node)
       ? library_source_definitions(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible) : undefined;
     const inventory = (definitions: ts.ObjectLiteralExpression) => static_part_inventory(typescript, checker, definitions, sourceCandidates);
-    const validateDefinition = (definition: ts.Expression, attached?: Schema, parts?: ReadonlyMap<string, unknown>): void => {
+    const validateDefinition = (definition: ts.Expression, parts?: ReadonlyMap<string, unknown>): void => {
       if (!typescript.isObjectLiteralExpression(definition)) return;
       const fields = library_source_fields(definition, typescript);
       if (fields === undefined) return;
       const document = fields.get("document"), data = fields.get("data");
-      const contract = attached ?? (fields.get("schema") === undefined ? undefined : schema(fields.get("schema")!));
+      const contract = fields.get("schema") === undefined ? undefined : schema(fields.get("schema")!);
       if (document !== undefined && data === undefined) report(contract, document, "document", parts);
       if (data !== undefined && document === undefined) report(contract, data, "data");
     };
-    const facts: PreciseSchemaFact[] = [...schemas].map(([declaration, contract]) => ({ declaration,
-      mode: contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "data" }));
-    for (const attachment of library_schema_attachment_plan(source, checker, facts, typescript).attachments) {
-      const found = declaration(attachment.map);
-      const owner = attachment.statement.parent;
-      if (found === undefined || found.initializer === undefined || !typescript.isVariableDeclarationList(found.parent)
-        || !typescript.isVariableStatement(found.parent.parent) || found.parent.declarations.length !== 1
-        || (!typescript.isSourceFile(owner) && !typescript.isBlock(owner))) continue;
-      const index = owner.statements.indexOf(attachment.statement);
-      // No intervening statement, alias, mutation, callback or control-flow crossing.
-      if (index < 1 || owner.statements[index - 1] !== found.parent.parent) continue;
-      const initial = construction(found.initializer);
-      const definition = initial === undefined ? undefined : library_source_fields(initial, typescript)?.get(attachment.library.text);
-      if (definition !== undefined && initial !== undefined) validateDefinition(definition, schema(attachment.schema), inventory(initial));
-    }
     // Annotation relationships retain the direct, official, substitution-free
     // initializer boundary used to establish compiler/editor assignment proof.
     for (const statement of source.statements) {
@@ -357,7 +341,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
         const definitions = construction(node);
         if (definitions !== undefined) {
           const parts = inventory(definitions);
-          for (const definition of library_source_fields(definitions, typescript)?.values() ?? []) validateDefinition(definition, undefined, parts);
+          for (const definition of library_source_fields(definitions, typescript)?.values() ?? []) validateDefinition(definition, parts);
         }
       }
       typescript.forEachChild(node, visit);

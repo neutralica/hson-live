@@ -11,7 +11,6 @@ import { library_source_definitions } from "../src/internal/hson-schema/library-
 import { read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { verified_schema_assignment_ranges } from "../editors/vscode-hson/src/schema-editor-proof.ts";
 import { HsonEditorCompletionCache } from "../editors/vscode-hson/src/editor-completion.ts";
-import { library_schema_attachment_plan } from "../src/internal/hson-schema/source-transformation.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "schema-type-query-provenance", title: "Schema type-query import provenance", category: "Tooling", runtime: "node", tags: Object.freeze(["schema", "typescript", "provenance", "public-api"]) });
@@ -198,12 +197,8 @@ for (const mode of ["source", "public-package"] as const) {
     }
     cache.clear();
   });
-  check(`${mode}: runtime Schema attachment wrappers retain value provenance`, () => {
-    const plan = library_schema_attachment_plan(source("attachments.ts"), checker, [{ declaration: canonical, mode: "data" }], ts);
-    assert.deepEqual(plan.attachments.map(attachment => attachment.schema.text), ["Value"]);
-    assert.deepEqual(issues("attachments.ts").map(issue => issue.code), ["TYPE_MISMATCH"]);
-    const issue = issues("attachments.ts")[0]!;
-    assert.ok(issue.start > files["attachments.ts"]!.indexOf("const valueTarget"));
+  check(`${mode}: post-admission Schema use never validates Data under a replacement contract`, () => {
+    assert.deepEqual(issues("attachments.ts"), []);
   });
 }
 events.terminal("pass");

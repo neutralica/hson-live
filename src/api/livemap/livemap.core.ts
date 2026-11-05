@@ -128,6 +128,8 @@ import {
   make_hosted_topology_commit,
   make_portable_aggregate_commit,
   portable_aggregate_snapshot_as_local,
+  own_libraries_snapshot,
+  own_portable_aggregate_snapshot,
   type HostedAggregateCommit,
   type HostedAuthorityFence,
   type HostedRegistry,
@@ -2614,56 +2616,14 @@ function make_livemap_registry_engine(
       throw new Error("LiveMap Library Schema replay prior-contract digest is incompatible.");
     }
     const currentDigest = hson_schema_digest(current);
-    const requestedSource = schema.toHson();
     const prevRev = mapRevision;
     if (currentDigest === hson_schema_digest(schema)) {
       return Object.freeze({ kind: "aggregate", changed: false, prevRev, rev: prevRev,
         operations: Object.freeze([]) });
     }
-    const familyTop = hson_schema_digest(family === "document" ? ANY_DOCUMENT : ANY_DATA);
-    if (currentDigest !== familyTop) {
-      throw new Error("LiveMap Library governing Schema is already fixed to a different specific contract.");
-    }
-    must_hson_schema_root(schema, state.root);
-
-    const nextBindings = hosted.registry.libraries.map((entry): HostedRegistryBinding => {
-      const binding = hosted.byName.get(entry.name);
-      if (binding === undefined) throw new Error("LiveMap hosted registry binding is incomplete.");
-      return binding.identity === libraryIdentity ? Object.freeze({ ...binding, schema }) : binding;
-    });
-    const nextRegistry = make_hosted_registry(nextBindings);
-    const nextByIdentity = new Map(nextBindings.map((binding) => [binding.identity, binding]));
-    const nextByName = new Map(nextBindings.map((binding) => [binding.name, binding]));
-    const operation = Object.freeze({
-      kind: "library-schema-use" as const,
-      previousSchemaDigest: currentEntry.schemaDigest,
-      schema: requestedSource,
-    });
-    const commit: LiveMapAggregateCommit = Object.freeze({
-      kind: "aggregate", changed: true, prevRev, rev: prevRev + 1,
-      operations: Object.freeze([]),
-      schemaUse: Object.freeze({ library: libraryIdentity, operation }),
-    });
-    const prepared = transitionController.prepareAuthority({
-      commit,
-      libraryModes: Object.freeze([state.mode]),
-      baseStillCurrent: () => mapRevision === prevRev && state.hsonSchema === current
-        && hostedRegistry === hosted.registry,
-      install: () => {
-        state.hsonSchema = schema;
-        hostedRegistry = nextRegistry;
-        hostedBindingsByIdentity = nextByIdentity;
-        hostedBindingsByName = nextByName;
-        mapRevision = commit.rev;
-      },
-      notify: (accepted) => enqueuePublication(() => {
-        aggregateAcceptedTransitions += 1;
-        aggregatePublications += 1;
-        deliver_livemap_observers(aggregateObservers, observer => observer(accepted), "commit");
-        publishAuthorityPosition(accepted.rev);
-      }),
-    });
-    return transitionController.acceptAuthority(prepared).commit;
+    // Admission fixes even a family-top binding for this Library's lifetime.
+    // Reject before preparing a transition or touching graph/identity evidence.
+    throw new Error("LiveMap Library governing Schema is immutable after admission.");
   }
 
   function stylesheet(libraryIdentity: LiveMapLibraryIdentity) {
@@ -2960,8 +2920,8 @@ function make_livemap_registry_engine(
   function restore_local_topology(
     snapshot: LiveMapSnapshot,
     afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+    checkRestore = capture_fence(),
   ): PortableQuadRestoration {
-    const checkRestore = capture_fence();
     if (clientComposition !== undefined) {
       throw new Error("Client projection topology requires hosted synchronization.");
     }
@@ -3024,6 +2984,9 @@ function make_livemap_registry_engine(
         }
         const compatible = old !== undefined && old.scope === undefined
           && old.mode === entry.mode && old.validation === own_data_library_validation(entry) && hson_schema_digest(old.schema) === hson_schema_source_digest(entry.schema);
+        if (old !== undefined && !compatible) {
+          throw new Error("Restoration cannot replace an established Library contract; its governing Schema is immutable after admission.");
+        }
         const state = compatible
           ? require_library(old.identity as LiveMapLibraryIdentity)
           : make_livemap_library(prepared, schema, own_data_library_validation(entry));
@@ -3032,7 +2995,7 @@ function make_livemap_registry_engine(
         const addressState = reconstruct_document(prepared, own_document_quads(encoded), portableCss, reserved, undefined, correspondence, foreignPayloads);
         if (portableCss !== undefined) portableStylesheets.set(state.identity, portableCss);
         associations.push(...correspondence.map(subject => Object.freeze({ ...subject, library: state.identity, libraryName: entry.name })));
-        candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
+        candidates.push(Object.freeze({ name: entry.name, state, prepared, schema: state.hsonSchema!, newlyInstalled: !compatible,
           addressState,
           ...(entry.mode === "document" ? { css: addressState.stylesheet } : {}) }));
       }
@@ -3107,12 +3070,31 @@ function make_livemap_registry_engine(
     snapshot: LiveMapSnapshot | HostedLiveMapSnapshot,
     authority?: HostedAuthorityFence,
     afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+    currentTopologyOnly = false,
+    snapshotKind?: "portable" | "exact",
   ): PortableQuadRestoration {
-    const checkRestore = capture_fence();
-    transitionController.assertPublicMutationAllowed();
+    const position = capture_fence(), generation = transitionController.generation;
+    const owner = transitionController.managedExecutionOwner();
+    const grant = owner === undefined ? undefined : transitionController.captureManagementFence(owner);
+    const checkRestore = () => {
+      position(); grant?.();
+      transitionController.assertPublicMutationAllowed();
+      transitionController.assertLocalIdentityAllowed();
+      if (generation !== transitionController.generation) throw new Error("Restoration authority changed during preparation.");
+    };
+    checkRestore();
     const hosted = require_hosted_state();
+    // Exact identity provenance belongs to the original living capture, never a transported clone.
+    const proof = hostedSnapshotProvenance.get(snapshot);
+    snapshot = own_libraries_snapshot(snapshot);
+    checkRestore();
+    if (snapshotKind === "exact") assert_hosted_libraries_snapshot_shape(snapshot);
+    else if (snapshotKind === "portable") assert_libraries_snapshot_shape(snapshot);
     const identity = "identity" in snapshot ? snapshot.identity : undefined;
-    const proof = identity === undefined ? undefined : hostedSnapshotProvenance.get(snapshot);
+    if ("authority" in snapshot && (typeof snapshot.authority.logicalMapId !== "string" || !snapshot.authority.logicalMapId
+      || typeof snapshot.authority.incarnationId !== "string" || !snapshot.authority.incarnationId)) {
+      throw new Error("Hosted aggregate snapshot authority is malformed.");
+    }
     if (identity !== undefined && (proof === undefined || proof.owner !== mapIdentityEpoch.owner
       || proof.epoch !== mapIdentityEpoch.current() || proof.bytes !== JSON.stringify(snapshot))) {
       throw new Error("Exact hosted snapshot requires its original living runtime owner and epoch.");
@@ -3120,9 +3102,23 @@ function make_livemap_registry_engine(
     if ("identity" in snapshot) assert_hosted_libraries_snapshot_shape(snapshot);
     else assert_libraries_snapshot_shape(snapshot);
     assert_libraries_snapshot_bound(snapshot);
+    for (const entry of snapshot.registry.libraries) {
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined || binding.scope === "hson-internal") continue;
+      // Topology restoration checks immutable Part members before binding compatibility.
+      if (binding.validation === PART_COLLECTION_VALIDATION) continue;
+      const established = require_library(binding.identity).hsonSchema;
+      if (established === undefined || hson_schema_digest(established) !== hson_schema_source_digest(entry.schema)) {
+        throw new Error("Restoration cannot replace an established Library contract; its governing Schema is immutable after admission.");
+      }
+    }
+    if (currentTopologyOnly && snapshot.registry.digest !== hosted.registry.digest) {
+      throw new Error("LiveMap restore requires the current Library topology; install a different capture in a fresh map.");
+    }
+    if (identity !== undefined && "authority" in snapshot) authority ??= snapshot.authority;
     if (identity === undefined && authority === undefined
       && snapshot.registry.digest !== hosted.registry.digest) {
-      return restore_local_topology(snapshot, afterTopologyInstall);
+      return restore_local_topology(snapshot, afterTopologyInstall, checkRestore);
     }
     if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
@@ -3291,19 +3287,7 @@ function make_livemap_registry_engine(
   }
 
   function restore_hosted_aggregate(snapshot: HostedLiveMapSnapshot, authorityOverride?: HostedAuthorityFence): void {
-    assert_hosted_libraries_snapshot_shape(snapshot);
-    const proof = hostedSnapshotProvenance.get(snapshot);
-    if (proof === undefined || proof.owner !== mapIdentityEpoch.owner
-      || proof.epoch !== mapIdentityEpoch.current() || proof.bytes !== JSON.stringify(snapshot)) {
-      throw new Error("Exact hosted snapshot requires its original living runtime owner and epoch.");
-    }
-    if (typeof snapshot.authority.logicalMapId !== "string"
-      || snapshot.authority.logicalMapId.length === 0
-      || typeof snapshot.authority.incarnationId !== "string"
-      || snapshot.authority.incarnationId.length === 0) {
-      throw new Error("Hosted aggregate snapshot authority is malformed.");
-    }
-    restore_libraries_aggregate(snapshot, authorityOverride ?? snapshot.authority);
+    restore_libraries_aggregate(snapshot, authorityOverride, undefined, false, "exact");
   }
 
   function restore_client_hosted_aggregate(snapshot: PortableAggregateSnapshot): void {
@@ -3311,6 +3295,10 @@ function make_livemap_registry_engine(
       restore_client_projection(snapshot);
       return;
     }
+    const owner = transitionController.managedExecutionOwner();
+    const check = owner === undefined ? capture_fence() : capture_managed_restoration_fence(owner);
+    snapshot = own_portable_aggregate_snapshot(snapshot);
+    check();
     const portable = portable_aggregate_snapshot_as_local(snapshot);
     // An internal complete-registry mirror has no client-local partition.
     // Restoring it starts a fresh local identity epoch and fences prior handles.
@@ -3339,6 +3327,8 @@ function make_livemap_registry_engine(
       || transitionController.managedExecutionOwner() !== clientManagementOwner) {
       throw new Error("Client projection restore requires Echo management.");
     }
+    snapshot = own_portable_aggregate_snapshot(snapshot, scoped);
+    checkRestore();
     assert_portable_aggregate_snapshot_shape(snapshot, scoped);
     // Echo validates projection/registry changes against the authorized session plan.
     // Within an incarnation, restoration still cannot move its authority cursor back.
@@ -3389,10 +3379,17 @@ function make_livemap_registry_engine(
       if (oldBinding?.validation !== undefined && oldBinding.validation !== own_data_library_validation(entry)) {
         throw new Error("Reconciliation cannot remove an existing Part collection validation contract.");
       }
+      const established = entry.scope === "hson-internal" ? systemState?.hsonSchema
+        : oldBinding === undefined ? undefined : require_library(oldBinding.identity).hsonSchema;
+      if (oldBinding !== undefined && (oldBinding.scope !== entry.scope || oldBinding.mode !== entry.mode
+        || oldBinding.validation !== own_data_library_validation(entry))
+        || established !== undefined && hson_schema_digest(established) !== hson_schema_source_digest(entry.schema)) {
+        throw new Error("Restoration cannot replace an established Library contract; its governing Schema is immutable after admission.");
+      }
       if (entry.scope !== "hson-internal" && oldBinding === undefined && hosted.byName.has(entry.name)) {
         throw new Error("Client-local Library collides with the authority projection.");
       }
-      const schema = HsonSchemaHandle.fromHson(entry.schema);
+      const schema = established ?? HsonSchemaHandle.fromHson(entry.schema);
       const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       admit_portable_hson_node(root, "Client projection snapshot");
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
@@ -3440,7 +3437,7 @@ function make_livemap_registry_engine(
         const changed = graphChanged
           || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(state.identity), css));
         const binding: HostedRegistryBinding = Object.freeze({ name: entry.name, identity: state.identity,
-          mode: entry.mode, schema, ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }) });
+          mode: entry.mode, schema: state.hsonSchema!, ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }) });
         candidates.push(Object.freeze({
           name: entry.name, state, binding, retained, graphChanged, changed,
           root: scopedCandidate?.root ?? (graphChanged ? prepared.root : state.root),
@@ -4110,14 +4107,10 @@ function make_livemap_registry_engine(
     captureHosted: capture_hosted_aggregate,
     captureSemanticCheckpoint: capture_semantic_checkpoint,
     installSemanticCheckpoint: install_semantic_checkpoint,
-    restoreLibraries: (snapshot, afterTopologyInstall) => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall),
+    restoreLibraries: (snapshot, afterTopologyInstall, currentTopologyOnly) => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall, currentTopologyOnly),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restorePortableLibrariesWithCorrespondence: (snapshot) => {
-      const check = capture_fence();
-      transitionController.assertPublicMutationAllowed();
-      assert_libraries_snapshot_shape(snapshot);
-      check();
-      return restore_libraries_aggregate(snapshot);
+      return restore_libraries_aggregate(snapshot, undefined, undefined, false, "portable");
     },
     assertPortableDocumentHandoff: (candidate) => {
       if (!portableHandoffs.has(candidate)) throw new Error("Portable handoff candidate belongs to another Library authority.");

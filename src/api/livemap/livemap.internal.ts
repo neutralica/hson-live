@@ -234,7 +234,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     & Readonly<{ part?: import("./livemap.parts.js").PartLibraryCandidate }>)[], assertEntryCurrent?: () => void) => Readonly<{
     transition: PreparedLiveMapAuthorityTransition; identities: readonly LiveMapLibraryIdentity[];
   }>;
-  /** Tighten one unmanaged local Library from its family-top Schema. @internal */
+  /** Confirm an unmanaged Library's admitted Schema; different bindings reject. @internal */
   useLibrarySchema: (
     library: LiveMapLibraryIdentity,
     schema: HsonSchema,
@@ -284,7 +284,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureHosted: () => HostedLiveMapSnapshot;
   captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
   installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;
-  restoreLibraries: (snapshot: LiveMapSnapshot, afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => void;
+  restoreLibraries: (snapshot: LiveMapSnapshot, afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+    currentTopologyOnly?: boolean) => void;
   restorePortableLibraries: (snapshot: LiveMapSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */

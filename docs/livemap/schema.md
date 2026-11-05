@@ -14,15 +14,29 @@ const same = UserSchema.certify(user);
 
 The Schema object's `certify` method validates one canonical candidate in its
 own mode and returns a Schema-proven Data carrier or Document text, according to its mode. LiveMap's distinct
-operation is establishing a governing library contract: either at admission with `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` / `map.addLibraries({ state: { data, schema: UserSchema } })`, or afterward on an unmanaged local map with `map.data.must("state").schema.use(UserSchema)`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. Data certification treats every ordinary string as literal Data. Serialized JSON/Hson enters through `Hson.data.fromSource()`. Document certification retains explicit source admission.
+operation establishes a governing Library contract at admission with
+`hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` or
+`map.addLibraries({ state: { data, schema: UserSchema } })`. Omitting `schema`
+selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. These family
+tops are actual admitted bindings, not pre-admission placeholders. Data
+certification treats every ordinary string as literal Data. Serialized JSON/Hson
+enters through `Hson.data.fromSource()`. Document certification retains explicit
+source admission.
 
-Post-hoc `schema.use` is tightening-only. A family-top contract may acquire one
-same-family specific Schema after the complete current root validates. The
-attachment is one ordinary revisioned map commit; canonical equality is an
-unchanged no-op, while a wrong family or a different fixed Schema rejects
-atomically. Capture and local replay retain the tightened contract, and a
-pre-tightening capture cannot restore over it. Locus-managed authorities and
-projected Echo clients reject direct attachment in this phase.
+An admitted Library's governing Schema binding is immutable for its lifetime,
+including a family-top binding. Different Libraries may select different Schemas
+at admission; their Data can evolve as each fixed Schema permits. On an unmanaged
+Library, `schema.use(schema)` only confirms the established contract: canonical
+equality returns an unchanged no-op and preserves the original Schema object.
+Its successful return has `changed: false`; it does not refine the Library type.
+Static governing proof comes from initial construction/admission with `schema`,
+while `certify()` proves a candidate without changing an admitted binding.
+Every different binding rejects before transition preparation, without changing
+Data, revision, identity, observers or publications. Capture, cut and restoration
+retain the governing contract. Restoration captures exact own Data fields before
+checking compatibility and rejects a different Schema for an established Library;
+a different contract requires a fresh map. Schema-use replay cannot replace an admitted binding. Managed Locus
+Libraries and projected Echo clients continue to fence direct `schema.use`.
 
 Schema construction eagerly compiles the definition: an invalid definition rejects
 with `TypeError`, while malformed notation can fail earlier with a Transform error.
@@ -204,7 +218,7 @@ Supported static Data analysis uses `HsonFromSchema<typeof DataSchema>` or
 editor analysis does not establish `HsonDocument<S>` proof for that source.
 Use `schema.certify(candidate)` for canonical Document admission and Schema
 proof. Dynamic ingress uses `schema.certify`. Map-owned state is validated during
-library admission, before post-hoc attachment, and before mutation commits.
+Library admission and before mutation commits.
 
 ## Runtime Schema identity
 

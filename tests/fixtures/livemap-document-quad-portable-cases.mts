@@ -359,10 +359,19 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const candidate = bindingSnapshot(map.capture(), [{ name: "_123456789", path: [0, 0, 1, 0, 0, 0, 1], disposition: "disposable" }]);
     const manager = {}; aggregate.claimManagement(manager);
     try {
+      const grant = aggregate.captureManagementFence(manager), managed = aggregate.prepareManaged(manager, []);
       atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(candidate));
+      grant(); aggregate.assertPrepared(managed); aggregate.discard(managed);
       assert.deepEqual(aggregate.projectDocumentCorrespondence(id, [subject(map).quid]), map.capture().libraries[0]?.quads);
     } finally { aggregate.releaseManagement(manager); }
-    atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(aggregate.captureHosted()));
+    const retained = doc(map), retainedSubject = subject(map), portable = map.capture(), exact = aggregate.captureHosted();
+    const epoch = aggregate.identityEpoch().current();
+    const prepared = aggregate.prepare([]);
+    atomic(map, () => assert.throws(() => aggregate.restorePortableLibrariesWithCorrespondence(exact), /unexpected fields/), false);
+    assert.equal(aggregate.identityEpoch().current(), epoch);
+    aggregate.assertPrepared(prepared);
+    aggregate.accept(prepared);
+    assert.equal(doc(map), retained); assert.equal(subject(map).quid, retainedSubject.quid);
     set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, () => "123456789");
     try { atomic(map, () => aggregate.restorePortableLibrariesWithCorrespondence(candidate)); }
     finally { set_livemap_quid_candidate_source_for_tests(aggregate.identityEpoch().owner, undefined); }
@@ -391,6 +400,12 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       rollbackRealization() {},
     }));
     assert.equal(plainOwner.projectDocumentCorrespondence(plainId, []), undefined);
+    const restored = aggregate.restorePortableLibrariesWithCorrespondence(portable);
+    restored.assertCurrent();
+    assert.equal(doc(map), retained);
+    assert.notEqual(subject(map).quid, retainedSubject.quid);
+    retained.document.attrs.set(target(...subject(map).path), "title", "after valid restoration");
+    assert.equal(doc(map).document.attrs.get(target(...subject(map).path), "title"), "after valid restoration");
   });
   await check("raw SSR bootstrap retains portable addresses and rejects malformed or runtime authority", () => {
     const map = fixture(), snapshot = map.cut().libs;

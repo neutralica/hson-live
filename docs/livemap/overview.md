@@ -43,13 +43,14 @@ Paths are portable coordinates: data paths contain object keys and array indexes
 
 ## Construction
 
-`hsonLiveMap.fromLibraries({ name: { data, schema? } })` admits data from a JSON value or JSON source text. `hsonLiveMap.fromLibraries({ name: { document, schema? } })` admits document Hson source text or a canonical Hson node. `map.addLibraries(...)` accepts the same definition shape after construction. Omitting Schema uses `ANY_DATA` or `ANY_DOCUMENT`. Exactly one `data`, `document`, or `parts` field is required. Parts forbid a supplemental Schema; document definitions may include textual `stylesheet`.
+`hsonLiveMap.fromLibraries({ name: { data, schema? } })` admits a literal Data value or an explicit Data carrier. `hsonLiveMap.fromLibraries({ name: { document, schema? } })` admits document Hson source text or a canonical Hson node. `map.addLibraries(...)` accepts the same definition shape after construction. Omitting Schema uses `ANY_DATA` or `ANY_DOCUMENT`. Exactly one `data`, `document`, or `parts` field is required. Parts forbid a supplemental Schema; document definitions may include textual `stylesheet`.
 
-Data roots may be objects, arrays, strings, numbers, booleans, or null. For a string root, pass JSON source text such as `data: '"hello"'`. `ANY_DATA` and `ANY_DOCUMENT` are reusable broad Schemas for the complete valid data and document families.
+Data roots may be objects, arrays, strings, numbers, booleans, or null. For a string root, use `data: "hello"`. For encoded JSON or Hson source, use an explicit carrier such as `data: Hson.data.fromSource('"hello"')`. `ANY_DATA` and `ANY_DOCUMENT` are reusable broad Schemas for the complete valid data and document families.
 
-An unmanaged local Library admitted with a family-top Schema can later acquire
-one same-family specific Schema through `.schema.use(...)`. See [Schema attachment](schema.md)
-for validation, revision, and authority constraints. A Document Schema must describe
+Admission fixes a Library's governing Schema for its lifetime, including a
+family-top Schema. Unmanaged `.schema.use(...)` only accepts a canonically equal
+Schema as an unchanged no-op; it does not establish stronger TypeScript proof. See [Schema bindings](schema.md) for admission and
+authority constraints. A Document Schema must describe
 the [completed page](api-livemap.md#complete-governed-documents), not only its authored
 body content; the API reference includes a complete-page Schema example.
 

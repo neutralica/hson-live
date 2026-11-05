@@ -128,7 +128,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const definitions = { collection: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, state: { data: 1 } } as const;
     const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
     const ordinary = hsonLiveMap.fromLibraries({ collection: { data: definitions.collection.parts }, state: { data: 1 } });
-    const replay = data(ordinary).schema.use(schema);
+    const replay = { kind: "map" as const, changed: true, prevRev: 0, rev: 1,
+      operations: [{ library: "collection", operation: { kind: "library-schema-use" as const,
+        previousSchemaDigest: ordinary.capture().registry.libraries[0]!.schemaDigest, schema: schema.toHson() } }] };
     const initial = hsonLiveMap.fromLibraries(definitions);
     const reconstructed = install_libraries_snapshot(initial.capture()).map;
     const dynamic = hsonLiveMap.create(); dynamic.addLibraries(definitions);
@@ -199,12 +201,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.throws(() => install_libraries_snapshot(forged), /Part collections|registry/i);
   });
 
-  await check("ordinary data and document post-admission Schemas retain governance", () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } }, page: { document: "<main/>" } });
+  await check("ordinary data and document Schemas fixed at admission retain governance", () => {
+    const dataSchema = Hson.schema`<type "data" content <count "number">>`;
+    const pageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
+    const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: dataSchema }, page: { document: "<main/>", schema: pageSchema } });
     const state = map.data.must("state"), page = map.doc.must("page");
-    assert.equal(state.schema.get(), ANY_DATA); assert.equal(page.schema.get(), ANY_DOCUMENT);
-    assert.equal(data(map, "state").schema.use(Hson.schema`<type "data" content <count "number">>` as HsonSchema<unknown, "data">).changed, true);
-    assert.equal(map.doc.must(String("page")).schema.use(Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`).changed, true);
+    assert.equal(state.schema.get(), dataSchema); assert.equal(page.schema.get(), pageSchema);
+    assert.equal(Reflect.apply(state.schema.use, undefined, [dataSchema]).changed, false);
+    assert.equal(Reflect.apply(page.schema.use, undefined, [pageSchema]).changed, false);
     atomic(map, () => state.at(["count"]).set("bad" as never));
     atomic(map, () => page.at([0]).replace("<aside/>"));
     state.at(["count"]).set(2);

@@ -1,7 +1,7 @@
 /// <reference path="./support/ambient.d.ts" />
 import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDataValue, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
-import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
+import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, CompletedPageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
 import { slideSchema as sameSlide } from "./schema.js";
 import { Same as TsSchema } from "./names/foo.js";
 import { Same as MtsSchema } from "./names/foo.mjs";
@@ -62,108 +62,49 @@ map.data.must("state").at(["age"]).set("four");
 // @ts-expect-error Mutation candidates retain literal types.
 map.data.must("state").at(["status"]).set("waiting");
 
-const attachedDocument = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-// @ts-expect-error Before attachment the getter is only family-correct.
-const broadDocumentGetter: typeof PageSchema = attachedDocument.doc.must("home").schema.get();
-attachedDocument.doc.must("home").schema.use(PageSchema);
-const exactDocumentGetter: typeof PageSchema = attachedDocument.doc.must("home").schema.get();
-const attachedText: string = attachedDocument.doc.must("home").at([0, 0]).snap();
-attachedDocument.doc.must("home").at([]).attrs.set("id", "next");
-// @ts-expect-error Attached document paths retain tuple bounds.
-attachedDocument.doc.must("home").at([1]);
-// @ts-expect-error Attached text endpoints do not expose element attributes.
-attachedDocument.doc.must("home").at([0, 0]).attrs;
+// Admission fixes the governing proof, including through later equal no-op use.
+const admittedDocument = hsonLiveMap.fromLibraries({ home: { document: '<html <head/> <body <main id="hero" <section "body"/>/>/>/>', schema: CompletedPageSchema } });
+admittedDocument.doc.must("home").schema.use(CompletedPageSchema);
+const exactDocumentGetter: typeof CompletedPageSchema = admittedDocument.doc.must("home").schema.get();
+const admittedText: string = admittedDocument.doc.must("home").at([1, 0, 0, 0]).snap();
+// @ts-expect-error Admitted document paths retain tuple bounds.
+admittedDocument.doc.must("home").at([2]);
+// @ts-expect-error Admitted text endpoints do not expose element attributes.
+admittedDocument.doc.must("home").at([1, 0, 0, 0]).attrs;
+const admittedData = hsonLiveMap.fromLibraries({ record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] }, schema: RecordSchema } });
+const exactDataGetter: typeof RecordSchema = admittedData.data.must("record").schema.get();
+admittedData.data.must("record").schema.use(RecordSchema);
+// @ts-expect-error Admitted Data mutations retain member types.
+admittedData.data.must("record").at(["age"]).set("four");
+// @ts-expect-error Admitted Data paths reject undeclared members.
+admittedData.data.must("record").at(["missing"]);
 
-const explicitAnyDocument = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>', schema: ANY_DOCUMENT } });
-explicitAnyDocument.doc.must("home").schema.use(PageSchema);
-const explicitDocumentGetter: typeof PageSchema = explicitAnyDocument.doc.must("home").schema.get();
+const broad = hsonLiveMap.fromLibraries({ home: { document: '<main/>', schema: ANY_DOCUMENT }, record: { data: { name: "Ada" }, schema: ANY_DATA } });
+broad.doc.must("home").schema.use(CompletedPageSchema);
+broad.data.must("record").schema.use(RecordSchema);
+// @ts-expect-error Prohibited post-admission use cannot prove a different governing Schema.
+const afterUse: typeof CompletedPageSchema = broad.doc.must("home").schema.get();
+// @ts-expect-error Data family tops remain family tops after use.
+const afterDataUse: typeof RecordSchema = broad.data.must("record").schema.get();
+if (checking) broad.doc.must("home").schema.use(CompletedPageSchema);
+else broad.doc.must("home").schema.use(CompletedPageSchema);
+// @ts-expect-error Even matching control-flow branches cannot mint replacement proof.
+const afterBranches: typeof CompletedPageSchema = broad.doc.must("home").schema.get();
+try { broad.data.must("record").schema.use(RecordSchema); } catch {}
+// @ts-expect-error Swallowed failure cannot refine a binding.
+const afterCatch: typeof RecordSchema = broad.data.must("record").schema.get();
+// @ts-expect-error A fixed Schema cannot change nominal contracts.
+admittedDocument.doc.must("home").schema.use(twinSchema);
 
-const attachedData = hsonLiveMap.fromLibraries({ record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } } });
-attachedData.data.must("record").schema.use(RecordSchema);
-const exactDataGetter: typeof RecordSchema = attachedData.data.must("record").schema.get();
-attachedData.data.must("record").at(["age"]).set(4);
-// @ts-expect-error Attached data mutation candidates retain member types.
-attachedData.data.must("record").at(["age"]).set("four");
-// @ts-expect-error Attached data paths reject undeclared members.
-attachedData.data.must("record").at(["missing"]);
-
-const explicitAnyData = hsonLiveMap.fromLibraries({ record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] }, schema: ANY_DATA } });
-explicitAnyData.data.must("record").schema.use(RecordSchema);
-const explicitDataGetter: typeof RecordSchema = explicitAnyData.data.must("record").schema.get();
-
-const sequential = hsonLiveMap.fromLibraries({
-  home: { document: '<main id="hero" <section "body"/>/>' },
-  record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } },
-});
-sequential.doc.must("home").schema.use(PageSchema);
-sequential.data.must("record").schema.use(RecordSchema);
-const sequentialDocument: typeof PageSchema = sequential.doc.must("home").schema.get();
-const sequentialData: typeof RecordSchema = sequential.data.must("record").schema.get();
-
-const conditional = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-if (checking) {
-  conditional.doc.must("home").schema.use(PageSchema);
-  const branchSchema: typeof PageSchema = conditional.doc.must("home").schema.get();
-  void branchSchema;
-}
-// @ts-expect-error A one-branch attachment is broad after the join.
-const afterConditional: typeof PageSchema = conditional.doc.must("home").schema.get();
-
-const bothBranches = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-if (checking) {
-  bothBranches.doc.must("home").schema.use(PageSchema);
-} else {
-  bothBranches.doc.must("home").schema.use(PageSchema);
-}
-const afterBothBranches: typeof PageSchema = bothBranches.doc.must("home").schema.get();
-
-let reassigned = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-reassigned.doc.must("home").schema.use(PageSchema);
-const beforeReassignment: typeof PageSchema = reassigned.doc.must("home").schema.get();
-reassigned = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-// @ts-expect-error Assignment drops the proof attached to the prior map value.
-const afterReassignment: typeof PageSchema = reassigned.doc.must("home").schema.get();
-
-const caught = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-try { caught.doc.must("home").schema.use(PageSchema); } catch {}
-// @ts-expect-error A swallowed attachment failure cannot refine after catch.
-const afterCatch: typeof PageSchema = caught.doc.must("home").schema.get();
-
-declare const dynamicLibrary: string;
-const dynamicAttachment = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-dynamicAttachment.doc.must(dynamicLibrary).schema.use(PageSchema);
-// @ts-expect-error Dynamic names do not receive targeted refinement.
-const afterDynamic: typeof PageSchema = dynamicAttachment.doc.must("home").schema.get();
-
-const broadPageSchema: HsonSchema<unknown, "document"> = PageSchema;
-const broadAttachment = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-broadAttachment.doc.must("home").schema.use(broadPageSchema);
-// @ts-expect-error Broad Schema variables do not receive exact refinement.
-const afterBroad: typeof PageSchema = broadAttachment.doc.must("home").schema.get();
-
-const alreadySpecific = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>', schema: PageSchema } });
-// @ts-expect-error A statically specific governing Schema cannot change nominal contracts.
-alreadySpecific.doc.must("home").schema.use(twinSchema);
-
-export function refinedHomeLibrary() {
-  const refined = hsonLiveMap.fromLibraries({ home: { document: '<main id="hero" <section "body"/>/>' } });
-  refined.doc.must("home").schema.use(PageSchema);
-  return refined.doc.must("home");
-}
-
+export function refinedHomeLibrary() { return admittedDocument.doc.must("home"); }
 const publicRefined = hsonLiveMap.fromLibraries({
-  home: { document: '<main id="hero" <section "body"/>/>' },
-  second: { document: '<main id="hero" <section "other"/>/>' },
+  home: { document: '<html <head/> <body <main id="hero" <section "body"/>/>/>/>', schema: CompletedPageSchema },
+  second: { document: '<html <head/> <body <main id="hero" <section "other"/>/>/>/>', schema: CompletedPageSchema },
 });
-publicRefined.doc.must("home").schema.use(PageSchema);
-publicRefined.doc.must("second").schema.use(PageSchema);
 export const refinedHome = publicRefined.doc.must("home");
 export const refinedSecond = publicRefined.doc.must("second");
-export const refinedTitle = publicRefined.doc.must("home").at([0, 0]);
-export function getRefinedTitle() {
-  publicRefined.doc.must("home").schema.use(PageSchema);
-  return publicRefined.doc.must("home").at([0, 0]);
-}
+export const refinedTitle = publicRefined.doc.must("home").at([1, 0, 0, 0]);
+export function getRefinedTitle() { return publicRefined.doc.must("home").at([1, 0, 0, 0]); }
 
 // Existing static-literal validation is reused for generated inputs as well.
 const authored: HsonDataValue<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
@@ -183,9 +124,7 @@ void sameDocument; void otherDocument; void otherPlain; void status; void choice
 void requiredNickname; void wrongStatus; void unprovedAge; void unprovedFlags; void unprovedObject;
 void child; void mainTag; void sectionTag; void hidden; void authored; void authoredDocument; void broadData;
 void wrongMts; void wrongCts; void wrongFolder; void options; void ambient;
-void broadDocumentGetter; void exactDocumentGetter; void attachedText; void explicitDocumentGetter;
-void exactDataGetter; void explicitDataGetter; void sequentialDocument; void sequentialData;
-void afterConditional; void afterBothBranches; void beforeReassignment; void afterReassignment;
-void afterCatch; void afterDynamic; void afterBroad;
+void exactDocumentGetter; void admittedText; void exactDataGetter;
+void afterUse; void afterDataUse; void afterBranches; void afterCatch;
 
 type DocumentSchemaGraph<S extends import("hson-live").HsonSchema<unknown, "document">> = S extends import("hson-live").HsonSchema<infer TGraph, "document"> ? TGraph : never;

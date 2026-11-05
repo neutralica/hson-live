@@ -63,7 +63,7 @@ export type LiveMapAggregateCommit = Readonly<{
   css?: Readonly<{ library: LiveMapLibraryIdentity; operation: LiveMapCssOp }>;
   /** The shared portable topology effect for local and hosted admission. */
   topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
-  /** One local-only portable Schema contract tightening. */
+  /** Rejected Schema-use replay envelope; admitted bindings cannot change. */
   schemaUse?: Readonly<{
     library: LiveMapLibraryIdentity;
     operation: import("../../types/livemap.types.js").LiveMapLibrarySchemaUseOperation["operation"];
@@ -155,7 +155,7 @@ export type LiveMapLibraryState = {
   /** Library-local authored names bound only to legitimate runtime subjects. */
   documentQuads?: import("./livemap.document.quad.js").DocumentQuadBindings;
   projectedOverlay?: LiveMapProjectedIdentityOverlay;
-  hsonSchema?: HsonSchema;
+  readonly hsonSchema?: HsonSchema;
   readonly validation?: import("./livemap.parts.js").DataLibraryValidation;
   stylesheet?: PortableDocumentStylesheet;
 };

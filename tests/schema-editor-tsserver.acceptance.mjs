@@ -98,11 +98,29 @@ async function editConsumer(text) {
   liveConsumer = text;
 }
 const diagnostics = name => request("semanticDiagnosticsSync", { file: file(name) });
+function assertConsumerDiagnostics(errors, source = consumer, { numericName = false, admitted = false } = {}) {
+  const expected = [
+    ...numericName ? [] : [{ anchor: "wrong:", length: 5, code: 2322, message: /string.*number/s }],
+    { anchor: "wrongIdentity:", length: 13, code: 2322, message: /HsonDocument.*__TwinRootDocumentProof/s },
+    { anchor: "typeof Slide>;\nconst map", length: 12, code: 2344, message: /"document".*"data"/s },
+    ...admitted ? [] : [
+      { anchor: "exactPage:", length: 9, code: 2322, message: /HsonSchema<unknown, "document".*unknown.*not assignable/s },
+      { anchor: "pageText:", length: 8, code: 2322, message: /undefined.*not assignable.*string/s },
+    ],
+  ];
+  const identity = error => ({ start: error.start, end: error.end, code: error.code, category: error.category });
+  assert.deepEqual(errors.map(identity), expected.map(({ anchor, length, code }) => {
+    const offset = source.indexOf(anchor);
+    assert.ok(offset >= 0, anchor);
+    return { start: location(source, offset), end: location(source, offset + length), code, category: "error" };
+  }), JSON.stringify(errors));
+  expected.forEach(({ message }, index) => assert.match(errors[index].text, message));
+}
 try {
   await check("contributed plugin activates in stock tsserver and supplies precise cross-module types", async () => {
     await request("open", { file: file("consumer.ts") }); await request("open", { file: file("schema.ts") });
     assert.match(readFileSync(file("server.log"), "utf8"), /Plugin validation succeeded/);
-    const errors = await diagnostics("consumer.ts"); assert.equal(errors.length, 3, JSON.stringify(errors));
+    const errors = await diagnostics("consumer.ts"); assertConsumerDiagnostics(errors);
     assert.deepEqual(errors[0].start, location(consumer, consumer.indexOf("wrong:")));
     assert.equal(errors[0].code, 2322); assert.match(errors[0].text, /string.*number/);
     assert.equal((await diagnostics("second.ts")).length, 0);
@@ -302,13 +320,13 @@ try {
   });
   await check("unsaved edits refresh evidence, invalid text withdraws proof, and repair restores it", async () => {
     await edit(schema.replace('name "string"', 'name "number"'));
-    const valid = await diagnostics("consumer.ts"); assert.equal(valid.length, 2, JSON.stringify(valid));
+    const valid = await diagnostics("consumer.ts"); assertConsumerDiagnostics(valid, consumer, { numericName: true });
     assert.equal((await diagnostics("second.ts")).length, 0);
     await edit(schema.replace('name "string"', 'name "broken"'));
     const invalid = await diagnostics("consumer.ts"); assert.ok(invalid.some(error => error.code === 2344 && error.text.includes("HsonSchemaMode")), JSON.stringify(invalid));
     await edit(schema.slice(0, schema.indexOf('content <name')) + 'content <');
     assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 2344 && error.text.includes("HsonSchemaMode")));
-    await edit(schema); assert.equal((await diagnostics("consumer.ts")).length, 3);
+    await edit(schema); assertConsumerDiagnostics(await diagnostics("consumer.ts"));
     const shifted = schema.replace("const before", "// inserted before\nconst before").replace("const between", "// inserted between\nconst between");
     await edit(shifted);
     const definitions = await request("definition", { file: file("consumer.ts"), ...location(consumer, consumer.indexOf("typeof Slide") + 7) });
@@ -320,17 +338,23 @@ try {
     assert.ok((await diagnostics("schema.ts")).some(error => error.code === 2451));
     assert.ok((await diagnostics("consumer.ts")).some(error => error.code === 2344 && error.text.includes("HsonSchemaMode")));
     await edit(schema);
-    assert.equal((await diagnostics("consumer.ts")).length, 3);
+    assertConsumerDiagnostics(await diagnostics("consumer.ts"));
   });
-  await check("unsaved Schema attachment refines immediately and removal withdraws the proof", async () => {
+  await check("unsaved Schema use preserves broad reads while admission supplies precise reads", async () => {
     const withoutAttachment = consumer.replace('map.doc.must("home").schema.use(Page);\n', "");
     await editConsumer(withoutAttachment);
-    const broad = await diagnostics("consumer.ts");
-    assert.ok(broad.some(error => JSON.stringify(error.start) === JSON.stringify(location(withoutAttachment, withoutAttachment.indexOf("exactPage:")))), JSON.stringify(broad));
+    assertConsumerDiagnostics(await diagnostics("consumer.ts"), withoutAttachment);
     await editConsumer(consumer);
-    assert.equal((await diagnostics("consumer.ts")).length, 3);
-    await editConsumer(consumer.replaceAll('doc.must("home")', 'doc["home"]'));
-    assert.equal((await diagnostics("consumer.ts")).length, 3);
+    assertConsumerDiagnostics(await diagnostics("consumer.ts"));
+    const bracketSelection = consumer.replaceAll('doc.must("home")', 'doc["home"]');
+    await editConsumer(bracketSelection);
+    assertConsumerDiagnostics(await diagnostics("consumer.ts"), bracketSelection);
+    const admitted = consumer.replace('document: `<main "hello"/>`', 'document: `<main "hello"/>`, schema: Page');
+    await editConsumer(admitted);
+    assertConsumerDiagnostics(await diagnostics("consumer.ts"), admitted, { admitted: true });
+    const admittedWithoutUse = admitted.replace('map.doc.must("home").schema.use(Page);\n', "");
+    await editConsumer(admittedWithoutUse);
+    assertConsumerDiagnostics(await diagnostics("consumer.ts"), admittedWithoutUse, { admitted: true });
     await editConsumer(consumer);
   });
   await check("bundled tsserver completes final Library families, members and required reads", async () => {
@@ -459,9 +483,9 @@ const loc = hsonLiveMap.locus.create({
     assert.deepEqual(repairedErrors[0].start, location(repaired, repaired.indexOf("unrelated:")));
     await editConsumer(consumer);
   });
-  await check("upstream Schema producer rejection withdraws attachment precision and recovers unsaved", async () => {
+  await check("upstream Schema producer rejection withdraws admission precision and recovers unsaved", async () => {
     const body = '<type "data" content <name "string">>';
-    const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" } } });\r\nmap.data.must("state").schema.use(Bad);\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
+    const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: Bad } });\r\nmap.data.must("state").schema.use(Bad);\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
     const assertValid = async () => {
       const errors = await diagnostics("consumer.ts");
       assert.equal(errors.length, 1, JSON.stringify(errors));

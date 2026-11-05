@@ -1283,7 +1283,7 @@ export type LiveMapLibraryAddOperation = Readonly<{
   }>;
 }>;
 
-/** Portable tightening of one existing Library's governing Schema contract. */
+/** Schema-use replay envelope; replacing an admitted governing binding rejects. */
 export type LiveMapLibrarySchemaUseOperation<TLibrary extends string = string> = Readonly<{
   library: TLibrary;
   operation: Readonly<{
@@ -1400,6 +1400,7 @@ type LiveMapCurrentDataSchema<TSchema extends HsonSchema> =
 type LiveMapDataSchemaUse<TSchema extends HsonSchema> =
   JsonValue extends DataSchemaValue<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
 type LiveMapSchemaUse<TSchema extends HsonSchema, TLibrary extends string> = {
+  /** Canonically equal Schema is a no-op; replacing the admitted binding throws. */
   bivarianceHack(schema: TSchema): LiveMapCommit<TLibrary>;
 }["bivarianceHack"];
 
@@ -1671,6 +1672,7 @@ type LiveMapDynamicSchemaFacade<TLibrary> = TLibrary extends unknown
         : TLibrary extends Readonly<{ mode: LiveMapDocumentMode }>
           ? HsonSchema<unknown, "document">
           : HsonSchema;
+      /** Confirms only a canonically equal admitted binding. */
       use: (schema: HsonSchema) => LiveMapCommit;
     }>;
   }>
@@ -1686,41 +1688,13 @@ export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> =
 }>;
 
 declare const liveMapLibrariesType: unique symbol;
-declare const liveMapLibrarySchemaRefinementsType: unique symbol;
 
 type LiveMapReceiverDefinitions<TMap> = TMap extends Readonly<{
   [liveMapLibrariesType]: infer TLibraries extends LiveMapDefinitions;
 }> ? TLibraries : never;
 
-type LiveMapDefinitionWithSchema<TInput, TSchema extends HsonSchema> =
-  TInput extends Readonly<{ parts: unknown }> ? TInput
-    : TInput extends Readonly<{ data: unknown }>
-      ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "data">> }>
-      : TInput extends Readonly<{ document: unknown }>
-        ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "document">> }>
-        : never;
-
-type LiveMapSchemaRefinements<TMap> = TMap extends Readonly<{
-  [liveMapLibrarySchemaRefinementsType]: infer TRefinements;
-}> ? TRefinements : Readonly<Record<never, never>>;
-
-export type LiveMapEffectiveDefinitions<TMap> = {
-  readonly [TName in keyof LiveMapReceiverDefinitions<TMap>]: TName extends keyof LiveMapSchemaRefinements<TMap>
-    ? LiveMapDefinitionWithSchema<
-      LiveMapReceiverDefinitions<TMap>[TName],
-      Extract<LiveMapSchemaRefinements<TMap>[TName], HsonSchema>
-    >
-    : LiveMapReceiverDefinitions<TMap>[TName];
-};
-
-/** Compiler-view result after one direct, successful Library Schema tightening. */
-export type LiveMapWithLibrarySchema<
-  TMap extends object,
-  TLibrary extends LiveMapKnownNames<TMap>,
-  TSchema extends HsonSchema,
-> = TMap & Readonly<{
-  [liveMapLibrarySchemaRefinementsType]: LiveMapSchemaRefinements<TMap> & Readonly<Record<TLibrary, TSchema>>;
-}>;
+/** Static Library contracts come exclusively from construction and admission. */
+export type LiveMapEffectiveDefinitions<TMap> = LiveMapReceiverDefinitions<TMap>;
 
 /** Static topology already established on a LiveMap binding. */
 export type LiveMapKnownNames<TMap extends object> = Extract<
