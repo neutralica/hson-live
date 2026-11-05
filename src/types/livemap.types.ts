@@ -1577,6 +1577,10 @@ export type LiveMapDocumentQuadLocation<TLibrary extends string = string> = Read
     "rev" | "path" | "snap" | "hson" | "must" | "attrs" | "flags" | "replace" | "delete" | "insert" | "move">
   & {
     readonly active: boolean;
+    /** Enter a selected Part namespace; element bindings have no child namespace.
+     * Each successful lookup owns an independent lifetime/disposal family. */
+    q: (name: string) => LiveMapDocumentQuadLocation<TLibrary> | undefined;
+    /** Fixed relative coordinates retaining this anchor's navigation context and disposal. */
     at: (path: readonly number[]) => LiveMapDocumentQuadLocation<TLibrary>;
     dispose: () => void;
   }
@@ -1596,7 +1600,8 @@ export type LiveMapDocumentLibrary<
   readonly must: RequiredReads<string, HsonDocument>;
   watch: (listener: (value: string) => void) => LiveMapDisposer;
   root: () => HsonNode;
-  /** Observe an existing authored QUAD; unknown/retired names return undefined without issuing identity. */
+  /** Observe an authored binding with local precedence and unique unnamed-occurrence traversal.
+   * Missing, retired or ambiguous names return undefined without issuing identity. */
   q: (name: string) => LiveMapDocumentQuadLocation<TLibrary> | undefined;
   at<const TPath extends readonly number[]>(
     path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]

@@ -59,9 +59,12 @@ root. Authored Library source and `Hson.document` use the authored QUAD scanner 
 rules. `Hson.document` returns `HsonAuthored`; ordinary Transform and canonical
 `HsonDocument` qualification do not accept those declarations. Shell declarations
 form one flat document namespace. Each realized Part occurrence retains a separate
-flat local namespace, including repeated and nested occurrences. Local names never
-become implicit shell names. Public `page.q(name)` selects shell bindings; chained
-scoped `.q()` navigation is not implemented. Structural Document locals can be inserted
+flat local namespace, including repeated and nested occurrences. Local names remain in their occurrence namespaces. LiveMap `page.q(name)`
+resolves shell bindings first, then uniquely resolvable bindings through unnamed
+occurrences. Named occurrence boundaries stop that traversal. A Part selection
+supports `.q(name)` within its exact occurrence; ordinary element bindings do not.
+Ambiguous unnamed matches return `undefined`; use authored connector names for
+disambiguation. See the [QUAD navigation contract](document-q-location.md). Structural Document locals can be inserted
 with `<hson-part ^{local}/>` as described below. CSS can demand a root
 QUID without an authored QUAD. Reads, capture and rendering allocate nothing.
 

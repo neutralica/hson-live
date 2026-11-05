@@ -4,6 +4,9 @@ import type { LiveMapDocumentQuadLocation as QuadLocation } from "hson-live/live
 
 function consume_document_quad(location: LiveMapDocumentQuadLocation<"page">): QuadLocation<"page"> {
   const active: boolean = location.active;
+  const child: LiveMapDocumentQuadLocation<"page"> | undefined = location.q("child");
+  child?.q("nested")?.at([0]).snap();
+  location.at([0]).q("child");
   const path: readonly number[] = location.path();
   location.attrs.set("title", "ready"); location.flags.set("disabled");
   location.at([0]).replace("Next"); location.insert(0, "Text"); location.move(0, 1);

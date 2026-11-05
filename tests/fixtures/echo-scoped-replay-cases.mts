@@ -298,7 +298,8 @@ export async function echo_scoped_cases(check: (name: string, run: () => Promise
       delivered(f, r, renamed);
       assert.deepEqual(r.a.documentQuad(r.library, "_abcdefghj", undefined)?.path, [0, 0, 1, 0, 0, 0, 1]);
       assert.equal(r.a.documentQuad(r.library, "_kmnpqrstv", undefined), undefined);
-      assert.equal(doc(r.map).q("root"), undefined);
+      assert.match(doc(r.map).q("root")!.snap()!, /section/);
+      assert.equal(doc(r.map).q("_kmnpqrstv"), undefined, "disposable labels never become authored navigation names");
     } finally { r.cap.dispose(); f.locus.dispose(); }
   });
   await check("receiving never accepts a sender QUID claim or uses a DOM attribute as local identity authority", async () => {

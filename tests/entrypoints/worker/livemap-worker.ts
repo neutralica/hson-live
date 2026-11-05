@@ -26,6 +26,9 @@ const quadDocument = hsonLiveMap.fromLibraries({ page: { document: Hson.document
 const quad: LiveMapDocumentQuadLocation<"page"> | undefined = quadDocument.q("unknown");
 if (quad !== undefined) {
   const active: boolean = quad.active;
+  const child: LiveMapDocumentQuadLocation<"page"> | undefined = quad.q("child");
+  child?.q("nested")?.at([0]).snap();
+  quad.at([0]).q("child");
   const path: readonly number[] = quad.path();
   quad.attrs.set("title", "ready"); quad.at([0]).replace("Next"); quad.insert(0, "text");
   quad.flags.set("disabled"); quad.move(0, 1); quad.snap(); quad.delete(); quad.dispose();

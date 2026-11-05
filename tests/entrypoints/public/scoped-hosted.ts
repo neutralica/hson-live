@@ -10,6 +10,16 @@ async function receive(session: LocusSession, transport: EchoReplicaTransport): 
 }
 function permissions(echo: Echo<LiveMap>) {
   const library = echo.doc.must("scoped");
+  if (library.source === "client-local" && library.mode === "document") {
+    const local = library.q("left");
+    if (local) {
+      local.attrs.set("title", "local write");
+      // @ts-expect-error LiveMap Q1 does not expose Echo-local Q2 navigation.
+      local.q("child");
+      // @ts-expect-error Relative aliases retain the same bounded Echo surface.
+      local.at([0]).q("child");
+    }
+  }
   if (library.source !== "authority-projected") return;
   if (library.mode === "document") {
     const command: Promise<void> = library.at([]).asElement()!.attrs.set("title", "authorized on server");

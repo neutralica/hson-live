@@ -33,6 +33,72 @@ export type DocumentScopedQuads = Readonly<{
   document: readonly DocumentScopedQuadBinding[];
   occurrences: readonly DocumentQuadOccurrenceScope[];
 }>;
+/** Captured navigation evidence, never a path or a second installed registry. @internal */
+export type DocumentScopedQuadSelection = Readonly<{
+  namespace: DocumentQuadOccurrenceLifetime | null;
+  binding: DocumentScopedQuadBinding;
+  enter: DocumentQuadOccurrenceLifetime | undefined;
+}>;
+
+// Installed bindings are canonically sorted. Rechecking many live selections
+// must not rescan every binding in their shared namespace.
+function named_binding(bindings: readonly DocumentScopedQuadBinding[], name: string): DocumentScopedQuadBinding | undefined {
+  let low = 0, high = bindings.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2), binding = bindings[middle]!;
+    if (binding.name === name) return binding;
+    if (binding.name < name) low = middle + 1;
+    else high = middle;
+  }
+  return undefined;
+}
+
+/** Validate captured binding/occurrence survival against one installed position.
+ * Membership is borrowed from the notification, never retained as authority. @internal */
+export function document_scoped_quad_selection_is_live(selected: DocumentScopedQuadSelection,
+  document: readonly DocumentScopedQuadBinding[],
+  scopes: ReadonlyMap<DocumentQuadOccurrenceLifetime, DocumentQuadOccurrenceScope>): boolean {
+  const bindings = selected.namespace === null ? document : scopes.get(selected.namespace)?.bindings;
+  const binding = bindings === undefined ? undefined : named_binding(bindings, selected.binding.name);
+  if (binding === undefined || binding.kind !== selected.binding.kind || binding.quid !== selected.binding.quid) return false;
+  if (selected.enter === undefined) return selected.binding.kind === "element";
+  const entered = scopes.get(selected.enter);
+  return entered !== undefined && entered.parent === selected.namespace && entered.rootQuid === selected.binding.quid;
+}
+
+/** Resolve only registered namespaces. Each namespace's own binding shadows its
+ * unnamed children; matches in independent branches remain ambiguous. @internal */
+export function resolve_document_scoped_quad(state: DocumentScopedQuads,
+  namespace: DocumentQuadOccurrenceLifetime | null, name: string): DocumentScopedQuadSelection | undefined {
+  const own = namespace === null ? state.document : state.occurrences.find(scope => scope.lifetime === namespace)?.bindings;
+  if (own === undefined) return undefined;
+  const direct = named_binding(own, name);
+  if (direct !== undefined) return { namespace, binding: direct, enter: direct.kind === "part"
+    ? state.occurrences.find(scope => scope.parent === namespace && scope.rootQuid === direct.quid)?.lifetime : undefined };
+  const scopes = new Map(state.occurrences.map(scope => [scope.lifetime, scope]));
+  const children = new Map<DocumentQuadOccurrenceLifetime | null, DocumentQuadOccurrenceScope[]>();
+  for (const scope of state.occurrences) {
+    const siblings = children.get(scope.parent) ?? [];
+    siblings.push(scope); children.set(scope.parent, siblings);
+  }
+  const pending = [namespace];
+  let selected: DocumentScopedQuadSelection | undefined;
+  while (pending.length) {
+    const current = pending.pop()!;
+    const bindings = current === null ? state.document : scopes.get(current)!.bindings;
+    const binding = named_binding(bindings, name);
+    const nested = children.get(current) ?? [];
+    if (binding !== undefined) {
+      if (selected !== undefined) return undefined;
+      selected = { namespace: current, binding,
+        enter: binding.kind === "part" ? nested.find(scope => scope.rootQuid === binding.quid)?.lifetime : undefined };
+      continue;
+    }
+    const named = new Set(bindings.filter(entry => entry.kind === "part").map(entry => entry.quid));
+    for (const child of nested) if (!named.has(child.rootQuid)) pending.push(child.lifetime);
+  }
+  return selected;
+}
 /** Existing owner evidence, borrowed only while preparing/validating a candidate. @internal */
 export type DocumentScopedQuadContext = Readonly<{
   owner: LiveMapLibraryIdentity;

@@ -49,6 +49,19 @@ function unchanged(map: LiveMap, run: () => unknown, pattern?: RegExp): void {
 }
 
 export function document_quad_cases(check: (name: string, run: () => void) => void): void {
+  check("Document and Part admission reject deep duplicates while independent definitions reuse names", () => {
+    const duplicate = '<div @:same <section <button @:same/>/>/>';
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: duplicate } }), /duplicate.*QUAD/i);
+    assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: {
+      invalid: { kind: "document", document: '<div hson:part @:same <section <button @:same/>/>/>' },
+    } } }), /duplicate.*QUAD/i);
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: {
+      first: { kind: "document", document: '<div hson:part <button @:same "First"/>/>' },
+      second: { kind: "document", document: '<div hson:part <button @:same "Second"/>/>' },
+    } }, page: { document: '<main <hson-part @:a lib="parts" at="first"/><hson-part @:b lib="parts" at="second"/>/>' } });
+    assert.match(map.doc.must("page").q("a")!.q("same")!.snap()!, /First/);
+    assert.match(map.doc.must("page").q("b")!.q("same")!.snap()!, /Second/);
+  });
   check("public authored fragments preserve declarations and issue identity only at governed admission", () => {
     const crypto = globalThis.crypto;
     const descriptor = Object.getOwnPropertyDescriptor(crypto, "getRandomValues");

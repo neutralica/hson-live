@@ -1,3 +1,4 @@
+import { document_scoped_quad_selection_is_live, resolve_document_scoped_quad, type DocumentScopedQuadSelection, type DocumentQuadOccurrenceLifetime, type DocumentQuadOccurrenceScope } from "./livemap.document.scoped-quad.js";
 import { normalize_css_map, type NormalizedCssMap } from "../../core/css-map.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { live_subscription } from "../../internal/library-observation.js";
@@ -1751,6 +1752,86 @@ function make_document_library(
     reconcile_document_css(facade);
     aggregate.commitStylesheet(library.identity, operation);
   };
+  // Selection families own their guards. The installed observer must not keep
+  // discarded intermediates in page.q("nav").q("button") alive. These weak
+  // subscriptions carry no identity authority; live handles are checked on every
+  // installation, independently of GC, before public callbacks can reenter.
+  type QuadGuard = {
+    retire: () => void;
+    path: () => readonly number[] | undefined;
+    check: (scopes: ReadonlyMap<DocumentQuadOccurrenceLifetime, DocumentQuadOccurrenceScope>) => void;
+  };
+  const quadGuards = new Set<WeakRef<QuadGuard>>();
+  let stopQuads: (() => void) | undefined;
+  const remove_quad_guard = (reference: WeakRef<QuadGuard>) => {
+    quadGuards.delete(reference);
+    if (quadGuards.size === 0) { stopQuads?.(); stopQuads = undefined; }
+  };
+  const abandonedQuads = new FinalizationRegistry(remove_quad_guard);
+  // Define the observer outside acquisition so it cannot capture a family guard.
+  const check_quads = () => {
+    // Transient membership evidence shared by this notification, not a cache.
+    const present = aggregate.libraries().includes(library.identity);
+    const scopes = new Map(present ? aggregate.documentScopes(library.identity)?.occurrences.map(scope => [scope.lifetime, scope]) : []);
+    for (const reference of quadGuards) {
+      const current = reference.deref();
+      if (current === undefined) remove_quad_guard(reference);
+      else if (present) current.check(scopes);
+      else current.retire();
+    }
+  };
+  const observe_quad = (guard: QuadGuard) => {
+    const reference = new WeakRef(guard);
+    quadGuards.add(reference);
+    abandonedQuads.register(guard, reference, reference);
+    stopQuads ??= aggregate.observeAuthorityPosition(check_quads, "installed");
+    return () => { abandonedQuads.unregister(reference); remove_quad_guard(reference); };
+  };
+  const select_quad = (name: string, namespace: DocumentQuadOccurrenceLifetime | null): ReturnType<LiveMapDocumentLibrary["q"]> => {
+    if (typeof name !== "string") throw new TypeError("LiveMap document QUAD name is not a string");
+    const scopes = aggregate.documentScopes(library.identity);
+    if (scopes !== undefined) {
+      const selected = resolve_document_scoped_quad(scopes, namespace, name);
+      return selected === undefined ? undefined : acquire_quad(selected);
+    }
+    if (namespace !== null) return undefined;
+    const subject = aggregate.documentQuad(library.identity, name, undefined);
+    return subject === undefined ? undefined : acquire_quad({ namespace: null,
+      binding: { name, kind: "element", quid: subject.quid }, enter: undefined });
+  };
+  const acquire_quad = (selected: DocumentScopedQuadSelection): NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>> => {
+    const handle = make_livemap_document_identity_handle(controller, selected.binding.quid);
+    const authority = aggregate.documentAuthority(library.identity);
+    const same_authority = () => {
+      const current = aggregate.documentAuthority(library.identity);
+      return current?.logicalMapId === authority?.logicalMapId && current?.incarnationId === authority?.incarnationId;
+    };
+    let terminal = false;
+    let stopLifetime = () => {};
+    const retire = () => {
+      if (terminal) return;
+      terminal = true; handle.dispose(); stopLifetime();
+    };
+    const guard: QuadGuard = { retire, path: () => {
+      const path = handle.path();
+      if (path === undefined || !same_authority()) { retire(); return undefined; }
+      return internal_document_subject_logical_path(root(), "document", path);
+    }, check: scopes => {
+      const installed = aggregate.documentScopes(library.identity);
+      const bindingAlive = installed === undefined
+        ? selected.namespace === null && selected.enter === undefined
+          && aggregate.documentQuad(library.identity, selected.binding.name, selected.binding.quid) !== undefined
+        : document_scoped_quad_selection_is_live(selected, installed.document, scopes);
+      if (!bindingAlive || handle.path() === undefined || !same_authority()) retire();
+    } };
+    stopLifetime = observe_quad(guard);
+    return make_livemap_document_quad_location(
+      () => guard.path(),
+      retire, quad_at, multi_commit, () => aggregate.hostedPosition().revision, quad_edit,
+      path => ({ snap: () => document_markup(root(), path), hson: () => document_hson(quad_at(path).snap()) }),
+      name => selected.enter === undefined ? undefined : select_quad(name, selected.enter),
+    );
+  };
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,
     snap, hson, must: required_reads(snap, hson),
@@ -1766,40 +1847,7 @@ function make_document_library(
     ),
     root: () => clone_node(root()),
     at: (path) => wrap_location(raw_at(path)),
-    q: (name) => {
-      if (typeof name !== "string") throw new TypeError("LiveMap document QUAD name is not a string");
-      const subject = aggregate.documentQuad(library.identity, name, undefined);
-      if (subject === undefined) return undefined;
-      const handle = make_livemap_document_identity_handle(controller, subject.quid);
-      const authority = aggregate.documentAuthority(library.identity);
-      const same_authority = () => {
-        const current = aggregate.documentAuthority(library.identity);
-        return current?.logicalMapId === authority?.logicalMapId && current?.incarnationId === authority?.incarnationId;
-      };
-      let terminal = false;
-      let stopLifetime = () => {};
-      const retire = () => {
-        if (terminal) return;
-        terminal = true;
-        handle.dispose();
-        stopLifetime();
-      };
-      // q has strict terminal lifetimes; generic exact-restoration handles keep
-      // their existing semantics. Inspect coherent owner state at installation,
-      // before an earlier public observer can restore an absent subject.
-      stopLifetime = aggregate.observeAuthorityPosition(() => {
-        if (handle.path() === undefined || !same_authority()) retire();
-      }, "installed");
-      return make_livemap_document_quad_location(
-        () => {
-          const path = handle.path();
-          if (path === undefined || !same_authority()) { retire(); return undefined; }
-          return internal_document_subject_logical_path(root(), "document", path);
-        },
-        retire, quad_at, multi_commit, () => aggregate.hostedPosition().revision, quad_edit,
-        path => ({ snap: () => document_markup(root(), path), hson: () => document_hson(quad_at(path).snap()) }),
-      );
-    },
+    q: (name) => select_quad(name, null),
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
     render: mark_browser_html_producer(() => {
       // Legacy flat captures stay flat; explicit empty scope state remains scoped.

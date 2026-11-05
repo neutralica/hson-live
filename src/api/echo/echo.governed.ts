@@ -10,7 +10,7 @@ import { mark_browser_html_producer } from "../../internal/browser-html-producer
 import type { LiveMap, LiveMapDocumentLibrary, LiveMapDataLibrary, LivePath,
   LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
   LiveMapDocumentRequestTarget } from "../../types/livemap.types.js";
-import type { EchoLibrary } from "../../types/governor.types.js";
+import type { EchoLibrary, EchoLocalDocumentLibrary } from "../../types/governor.types.js";
 import { client_library_source_internal } from "../livemap/livemap.libraries.js";
 import { echo_document_authority_for, type EchoDocumentAuthority } from "./echo.document-authority.js";
 import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
@@ -50,8 +50,10 @@ export function make_echo_library_selector(
       asElement: () => refine(raw.asElement()), asRoot: () => refine(raw.asRoot()), asText: () => refine(raw.asText()),
     }) as ReturnType<LiveMapDocumentLibrary["at"]>;
   };
-  const local_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>> =>
-    Object.freeze({ ...raw, get active() { return raw.active; }, get rev() { return raw.rev; },
+  const local_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): NonNullable<ReturnType<EchoLocalDocumentLibrary["q"]>> =>
+    Object.freeze({ get active() { return raw.active; }, get rev() { return raw.rev; },
+      path: () => raw.path(), dispose: () => raw.dispose(), attrs: raw.attrs, flags: raw.flags,
+      replace: raw.replace, delete: raw.delete, insert: raw.insert, move: raw.move,
       ...representations(raw), at: (path: readonly number[]) => local_quad(raw.at(path)) });
   const selected = new Map<string, Readonly<{ raw: LiveMapDataLibrary | LiveMapDocumentLibrary; handle: EchoLibrary }>>();
   const select = (name: string): EchoLibrary => {

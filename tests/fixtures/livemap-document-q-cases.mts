@@ -1,3 +1,4 @@
+import { make_echo_library_selector } from "../../src/api/echo/echo.governed.ts";
 import { document_hson_value } from "../helpers/document-hson-value.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform, LiveMapDocumentMutationError } from "../../src/index.ts";
@@ -50,7 +51,119 @@ function shared_projection(map: LiveMap) {
   return capture_selected_authority_projection_snapshot(map, effective);
 }
 
+const part = (document: string) => ({ kind: "document" as const, document });
+const navigation = (body: string) => hsonLiveMap.fromLibraries({ parts: { parts: {
+  leaf: part('<aside hson:part @:root <span @:label "Leaf"/>/>'),
+  nav: part('<nav hson:part @:root <div @:wrap <button @:buttonOne "One"/>/> <hson-part @:inner at="leaf"/>/>'),
+  outer: part('<section hson:part <hson-part @:nav at="nav"/>/>'),
+  anonymous: part('<section hson:part <hson-part at="nav"/>/>'),
+  shadow: part('<section hson:part <button @:buttonOne "Local"/> <hson-part at="nav"/>/>'),
+} }, page: { document: `<main @:page ${body}/>` } });
+const invocation = (name: string, member = "nav") => `<hson-part @:${name} lib="parts" at="${member}"/>`;
+
 export function document_q_cases(check: (name: string, run: () => void) => void): void {
+  check("nested q selects named occurrences independently and never gives elements a namespace", () => {
+    const map = navigation(invocation("navA") + invocation("navB") + invocation("outer", "outer")), doc = page(map);
+    const left = doc.q("navA")!, right = doc.q("navB")!;
+    const first = left.q("buttonOne")!, second = right.q("buttonOne")!;
+    first.attrs.set("title", "left"); second.flags.set("disabled");
+    assert.equal(second.attrs.get("title"), undefined); assert.equal(first.flags.has("disabled"), false);
+    assert.match(doc.q("outer")!.q("nav")!.q("inner")!.q("label")!.snap()!, /Leaf/);
+    assert.equal(doc.q("buttonOne"), undefined); assert.equal(left.q("label"), undefined);
+    assert.equal(left.q("wrap")!.q("buttonOne"), undefined);
+    // A Part's own root element and its incoming Part binding address one node,
+    // but only the latter grants entry into the occurrence namespace.
+    const root = left.q("root")!;
+    assert.deepEqual(root.path(), left.path()); assert.equal(root.q("buttonOne"), undefined);
+    assert.equal(left.q("missing"), undefined);
+    assert.throws(() => Reflect.apply(left.q, left, [null]), TypeError);
+  });
+  check("unnamed q is transparent only for a unique eligible occurrence with local precedence", () => {
+    const unique = page(navigation('<hson-part lib="parts" at="anonymous"/>'));
+    assert.match(unique.q("buttonOne")!.snap()!, /One/);
+    assert.match(unique.q("inner")!.q("label")!.snap()!, /Leaf/);
+    assert.equal(unique.q("label"), undefined, "named inner occurrence is a boundary");
+    const repeated = page(navigation('<hson-part lib="parts" at="nav"/><hson-part lib="parts" at="nav"/>'));
+    assert.equal(repeated.q("buttonOne"), undefined); assert.equal(repeated.q("inner"), undefined);
+    repeated.q("page")!.move(0, 1); assert.equal(repeated.q("buttonOne"), undefined);
+    const local = page(navigation('<button @:buttonOne "Shell"/><hson-part lib="parts" at="nav"/>'));
+    assert.match(local.q("buttonOne")!.snap()!, /Shell/);
+    const nested = page(navigation('<hson-part lib="parts" at="shadow"/>'));
+    assert.match(nested.q("buttonOne")!.snap()!, /Local/);
+    const mixed = page(navigation(invocation("named") + '<hson-part lib="parts" at="nav"/>'));
+    mixed.q("buttonOne")!.attrs.set("title", "unnamed");
+    assert.equal(mixed.q("named")!.q("buttonOne")!.attrs.get("title"), undefined);
+  });
+  check("q children survive parent disposal while at retains its anchor namespace and disposal", () => {
+    const doc = page(navigation(invocation("nav"))), nav = doc.q("nav")!;
+    const relative = nav.at([999]), child = relative.q("buttonOne")!, text = child.at([0]);
+    assert.equal(relative.snap(), undefined); assert.equal(relative.active, true);
+    assert.deepEqual(child.path(), nav.q("buttonOne")!.path());
+    relative.dispose(); assert.equal(nav.active, false); assert.equal(child.active, true);
+    assert.throws(() => nav.q("buttonOne"), retired_subject);
+    text.replace("Changed"); assert.match(child.snap()!, /Changed/);
+    text.dispose(); assert.equal(child.active, false);
+    assert.equal(doc.q("nav")!.q("buttonOne")!.active, true);
+  });
+  check("scoped q follows movement and terminally retires subjects and entire replaced occurrences", () => {
+    const map = navigation(invocation("navA") + invocation("navB")), doc = page(map);
+    const nav = doc.q("navA")!, child = nav.q("buttonOne")!, deep = nav.q("inner")!.q("label")!;
+    const oldPath = child.path(); doc.q("page")!.move(0, 1);
+    assert.notDeepEqual(child.path(), oldPath); child.attrs.set("title", "moved");
+    child.delete(); assert.equal(child.active, false); assert.equal(nav.active, true);
+    assert.equal(nav.q("buttonOne"), undefined); assert.equal(deep.active, true);
+    nav.replace(hsonTransform.fromHson('<hson-part lib="parts" at="nav"/>').toNode().$_content[0]!);
+    assert.equal(nav.active, false); assert.equal(deep.active, false);
+    assert.throws(() => deep.attrs.set("title", "stale"), retired_subject);
+    assert.equal(doc.q("navA"), undefined);
+    assert.equal(doc.q("buttonOne")!.active, true, "replacement is a fresh unnamed occurrence");
+    assert.equal(child.snap(), undefined);
+    const survivor = doc.q("navB")!.q("buttonOne")!; survivor.attrs.set("title", "survivor");
+    assert.equal(survivor.attrs.get("title"), "survivor");
+  });
+  check("equal Part replacement and reentrant reinsertion never resurrect old unnamed selections", () => {
+    const map = navigation('<hson-part lib="parts" at="nav"/>'), doc = page(map);
+    const old = doc.q("buttonOne")!, oldRoot = doc.q("root")!;
+    const replacement = hsonTransform.fromHson('<hson-part lib="parts" at="nav"/>').toNode().$_content[0]!;
+    oldRoot.replace(replacement);
+    assert.equal(old.active, false); assert.equal(oldRoot.active, false);
+    const current = doc.q("buttonOne")!;
+    let restored = false;
+    const off = map.commits.observe(() => {
+      if (restored) return;
+      restored = true; doc.q("page")!.insert(0, replacement);
+    });
+    try { doc.q("root")!.delete(); } finally { off(); }
+    assert.equal(current.active, false); assert.equal(current.snap(), undefined);
+    assert.equal(doc.q("buttonOne")!.active, true);
+  });
+  check("nested q writes obey the immutable governing Document Schema", () => {
+    const schema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "nav" content <repeat <tag "button" content "empty">>>>>]>>]>>`;
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { nav: part('<nav hson:part <button @:buttonOne/>/>') } },
+      page: { document: '<main <hson-part @:nav lib="parts" at="nav"/>/>', schema } });
+    const doc = page(map), child = doc.q("nav")!.q("buttonOne")!, before = doc.snap(), rev = map.rev;
+    assert.throws(() => child.replace(hsonTransform.fromHson('<aside/>').toNode().$_content[0]!));
+    assert.equal(doc.snap(), before); assert.equal(map.rev, rev); assert.equal(child.active, true);
+  });
+  check("nested lookup is observational and scoped writes retain authority and argument fences", () => {
+    const map = navigation(invocation("nav")), doc = page(map), aggregate = owner(map);
+    const rev = map.rev, ledger = aggregate.identityEpoch().issued(), before = doc.snap();
+    let commits = 0; const off = map.commits.observe(() => commits++);
+    allocator(aggregate.identityEpoch().owner, () => { throw Error("lookup allocated"); });
+    try {
+      const nav = doc.q("nav")!, child = nav.q("buttonOne")!;
+      assert.ok(child.hson()); assert.equal(nav.q("absent"), undefined); assert.equal(child.q("anything"), undefined);
+      nav.dispose(); child.dispose();
+    } finally { allocator(aggregate.identityEpoch().owner, undefined); off(); }
+    assert.equal(map.rev, rev); assert.equal(commits, 0); assert.equal(aggregate.identityEpoch().issued(), ledger);
+    const child = doc.q("nav")!.q("buttonOne")!, manager = {};
+    aggregate.claimManagement(manager);
+    try { assert.throws(() => child.attrs.set("title", "forbidden")); } finally { aggregate.releaseManagement(manager); }
+    assert.throws(() => child.at([0]).attrs.set("title", "text"));
+    const names = ["title"];
+    Object.defineProperty(names, "0", { get: () => { child.dispose(); return "title"; } });
+    assert.throws(() => child.attrs.dropMany(names)); assert.equal(doc.snap(), before);
+  });
   check("public q retires on installed hosted incarnation replacement with retained epoch and QUID", () => {
     const map = fixture(), aggregate = owner(map), selected = page(map);
     selected.q("nextButton")!.attrs.set("title", "revision one"); assert.equal(map.rev, 1);
@@ -118,6 +231,14 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     add_client_local_libraries_internal(client, [{ name: "local", family: "document",
       root: decode_hosted_root(localCapture.root), schema: localOwner.librarySchema(localOwner.libraries()[0]!), quads: localCapture.quads }], {});
     const local = client.doc.must("local"); if (String(local.mode) !== "document") throw new Error("Expected local document");
+    const echo = make_echo_library_selector(client, () => { throw Error("unexpected projected selection"); }, () => {});
+    const localEcho = echo.doc.must("local");
+    assert.equal(localEcho.mode, "document");
+    if (localEcho.mode === "document") {
+      const quad = localEcho.q("nextButton")!;
+      assert.equal("q" in quad, false); assert.equal("q" in quad.at([0]), false);
+      quad.dispose();
+    }
     const localFamily = local.q("nextButton")!, localChild = localFamily.at([0]), projectedFamily = page(client).q("nextButton")!;
     const clientOwner = owner(client), localIdentity = clientOwner.libraries().find(identity =>
       clientOwner.documentOverlay(identity).quidAtPath(lookup(local, "nextButton")!.path) === lookup(local, "nextButton")!.quid)!;

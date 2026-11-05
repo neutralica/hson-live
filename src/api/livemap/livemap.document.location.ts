@@ -109,6 +109,7 @@ export function make_livemap_document_quad_location(
   revision: () => number,
   guardedEdit: <T>(run: () => T, assertSubject: () => void) => T,
   representations: (path: readonly number[]) => Pick<LiveMapDocumentQuadLocation, "snap" | "hson">,
+  select: LiveMapDocumentQuadLocation["q"],
 ): LiveMapDocumentQuadLocation {
   const relative = (offset: readonly number[]): LiveMapDocumentQuadLocation => {
     const path = (): readonly number[] | undefined => {
@@ -134,6 +135,11 @@ export function make_livemap_document_quad_location(
       path: () => current("get-attr").path(),
       snap, hson, must: required_reads(snap, hson),
       at: (child) => { current("get-attr"); return relative([...offset, ...must_document_logical_path(child)]); },
+      q: (name) => {
+        if (typeof name !== "string") throw new TypeError("LiveMap document QUAD name is not a string");
+        current("get-attr");
+        return select(name);
+      },
       dispose,
       replace: (value) => edit(() => commit(current("replace-content").replace(value))),
       delete: () => edit(() => commit(current("remove-content").delete())),

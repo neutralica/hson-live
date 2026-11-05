@@ -9,6 +9,7 @@ import { set_livemap_quid_candidate_source_for_tests } from "../../src/api/livem
 import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
 import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
 import {
+  document_scoped_quad_selection_is_live as selection_live, resolve_document_scoped_quad as select,
   make_document_scoped_quads as make, encode_document_scoped_quads as encode,
   new_document_quad_occurrence as occurrence, retire_document_quad_occurrences as retire,
   type DocumentScopedQuadBinding, type DocumentScopedQuadContext, type DocumentQuadOccurrenceScope,
@@ -177,10 +178,17 @@ export function scoped_quad_foundation_cases(check: (name: string, run: () => vo
     assert.deepEqual(remaining.occurrences.map(scope => scope.lifetime), [f.right]);
     assert.equal(remaining.document.some(binding => binding.name === "left"), false);
     assert.equal(f.context().overlay.quidAtPath(validate_document_path([0, 0, 1, 0, 0, 0, 0])), f.id("left"));
+    const selected = select(f.state, null, "left")!, child = select(f.state, f.left, "next")!;
+    assert.equal(selection_live(selected, f.state.document, new Map(f.state.occurrences.map(s => [s.lifetime, s]))), true);
     const replacement = occurrence(f.owner);
     const state = make(f.context(), [...remaining.document, f.binding("left", "left", "part")],
       [...remaining.occurrences, { lifetime: replacement, rootQuid: f.id("left"), parent: null, bindings: [f.binding("fresh", "left")] }]);
     assert.notEqual(replacement, f.left);
+    const live = new Map(state.occurrences.map(scope => [scope.lifetime, scope]));
+    assert.equal(selection_live(selected, state.document, live), false, "surviving QUID and incoming name cannot revive a retired occurrence selection");
+    assert.equal(selection_live(child, state.document, live), false, "child keeps occurrence ownership independently of its parent handle");
+    assert.equal(selection_live(select(state, null, "left")!, state.document, live), true);
+
     assert.equal(state.occurrences.find(scope => scope.rootQuid === f.id("left"))!.bindings[0]!.name, "fresh");
     assert.equal(state.occurrences.find(scope => scope.lifetime === f.inner), undefined);
     assert.deepEqual(encode(state, f.context(), []).occurrences.at(-1), encode(f.state, f.context(), []).occurrences.at(-1));

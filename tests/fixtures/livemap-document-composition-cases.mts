@@ -874,7 +874,7 @@ export function document_composition_cases(check: (name: string, run: () => void
     const page = doc(map), first = page.q("first")!;
     assert.deepEqual(leaves(page.root()), ["one", "two"]); assert.equal(first.path().at(-1), 0);
     assert.doesNotMatch(JSON.stringify(page.root()), /hson-part/);
-    assert.equal(page.q("local"), undefined); assert.ok(page.q("page")); assert.equal("source" in page, false);
+    assert.match(page.q("local")!.snap()!, /two/); assert.ok(page.q("page")); assert.equal("source" in page, false);
     assert.equal("template" in map, false); assert.equal("compose" in map, false);
     const before = page.root(), ledger = owner(map).identityEpoch().issued();
     const parts = map.parts.must(lib);
