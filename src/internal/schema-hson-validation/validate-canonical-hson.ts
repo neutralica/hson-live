@@ -29,6 +29,7 @@ export function validate_hson_schema_graph(schema: HsonSchema, graph: import("..
     let projected;
     try { projected = projected_value_from_hson_node(graph); }
     catch { throw new HsonSchemaError("Hson Schema validation failed.", [], [Object.freeze({ code: "TYPE_MISMATCH" as const, path: [], message: "Expected data Hson; received document Hson." })]); }
+    assert_canonical_hson_data_value(projected);
     result = evaluate_canonical_projected_schema(compiled.graph, projected);
   }
   require_schema_match(result);

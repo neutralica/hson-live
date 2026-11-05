@@ -129,7 +129,7 @@ check("existing handles survive unrelated admission and explicit Schema governs"
 check("primitive data families remain scalar under runtime admission", () => {
   const map = hsonLiveMap.create();
   const commit = map.addLibraries({
-    text: { data: '"hello"' }, number: { data: 3 }, flag: { data: true }, empty: { data: null },
+    text: { data: "hello" }, number: { data: 3 }, flag: { data: true }, empty: { data: null },
   }).commit;
   assert.equal(commit.rev, 1);
   for (const [name, value, mode] of [
@@ -283,7 +283,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
     const beforeIdentity = engine.inspect().libraries[0]!.identity;
     const beforeRoot = control.root();
     const beforeAccounting = livemap_identity_epoch_accounting(control);
-    const commit = source.addLibraries({ ordered: { data: fixture.expectedJson } }).commit;
+    const commit = source.addLibraries({ ordered: { data: Hson.data.fromSource(fixture.expectedJson) } }).commit;
     const stop = forbid_structural_js_enumeration();
     try {
       const replayed = receiver.replay(commit);

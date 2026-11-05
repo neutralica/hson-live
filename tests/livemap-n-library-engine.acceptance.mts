@@ -151,7 +151,7 @@ check("each affected candidate uses its own HsonSchema and one invalid library r
     { target: aggregate.target(view, ["value"]), kind: "set", value: true },
   ]);
   const afterValid = aggregate.telemetry();
-  assert.equal(afterValid.candidateRootsCloned - before.candidateRootsCloned, 3);
+  assert.equal(afterValid.candidateRootsCloned - before.candidateRootsCloned, 6);
   assert.equal(afterValid.schemaValidations - before.schemaValidations, 3);
   assert.equal(afterValid.aggregatePublications - before.aggregatePublications, 1);
   assert.throws(() => aggregate.commit([
@@ -288,15 +288,15 @@ check("performance telemetry clones and validates only touched libraries", () =>
   ]);
   const threeMs = performance.now() - threeStart;
   const afterThree = aggregate.telemetry();
-  assert.equal(afterOne.candidateRootsCloned - before.candidateRootsCloned, 1);
+  assert.equal(afterOne.candidateRootsCloned - before.candidateRootsCloned, 2);
   assert.equal(afterOne.schemaValidations - before.schemaValidations, 1);
-  assert.equal(afterTwo.candidateRootsCloned - afterOne.candidateRootsCloned, 2);
+  assert.equal(afterTwo.candidateRootsCloned - afterOne.candidateRootsCloned, 4);
   assert.equal(afterTwo.schemaValidations - afterOne.schemaValidations, 2);
-  assert.equal(afterThree.candidateRootsCloned - afterTwo.candidateRootsCloned, 3);
+  assert.equal(afterThree.candidateRootsCloned - afterTwo.candidateRootsCloned, 6);
   assert.equal(afterThree.schemaValidations - afterTwo.schemaValidations, 3);
   assert.equal(afterThree.aggregatePublications - before.aggregatePublications, 3);
   assert.equal(map.rev, 3);
-  process.stdout.write(`telemetry single=${singleMs.toFixed(3)}ms one=${oneMs.toFixed(3)}ms two=${twoMs.toFixed(3)}ms three=${threeMs.toFixed(3)}ms candidates=1/2/3 schemas=1/2/3 revisions=3 publications=3\n`);
+  process.stdout.write(`telemetry single=${singleMs.toFixed(3)}ms one=${oneMs.toFixed(3)}ms two=${twoMs.toFixed(3)}ms three=${threeMs.toFixed(3)}ms graph-clones=2/4/6 schemas=1/2/3 revisions=3 publications=3\n`);
 });
 
 process.stdout.write(`1..${checks}\n`);

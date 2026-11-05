@@ -155,7 +155,6 @@ export type LiveMapLibraryState = {
   /** Library-local authored names bound only to legitimate runtime subjects. */
   documentQuads?: import("./livemap.document.quad.js").DocumentQuadBindings;
   projectedOverlay?: LiveMapProjectedIdentityOverlay;
-  projectedValue?: OrderedProjectedValue;
   hsonSchema?: HsonSchema;
   readonly validation?: import("./livemap.parts.js").DataLibraryValidation;
   stylesheet?: PortableDocumentStylesheet;

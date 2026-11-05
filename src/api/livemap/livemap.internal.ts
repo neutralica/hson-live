@@ -320,10 +320,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   /** Temporary canonical projection of the selected installed graph; never retained. */
-  projectedValue: {
-    (library: LiveMapLibraryIdentity): import("../../core/ordered-projected-value.js").OrderedProjectedValue;
-    (library: LiveMapLibraryIdentity, path: LivePath): import("../../core/ordered-projected-value.js").OrderedProjectedValue | undefined;
-  };
+  projectData: (library: LiveMapLibraryIdentity, path: LivePath) => import("../../core/ordered-projected-value.js").OrderedProjectedValue | undefined;
   dataKind: (library: LiveMapLibraryIdentity, path: LivePath) => import("../../types/livemap.types.js").LiveMapPathKind;
   dataKeys: (library: LiveMapLibraryIdentity, path: LivePath) => readonly string[] | undefined;
   dataArrayRange: (library: LiveMapLibraryIdentity, path: LivePath,

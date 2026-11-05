@@ -1,0 +1,209 @@
+Hson D4d Boundary B: Echo packaging gate triage and temporary size policy
+
+Scope and preservation
+
+The owner initially requested read-only triage, then explicitly authorized a
+temporary 90,000-byte initial Echo gzip ceiling and a narrow test/documentation
+update if dependency ownership remained correct. This report records that
+condition's verification. No production code change is justified by this gate.
+No staging, commit, push, worktree creation or complete frozen-tree rerun occurred.
+
+HEAD: d2d66f93b57b5575818b44b359ab369fc6a9da12 (committed Boundary A).
+Preserved index tree: e2c1685886e5ae03288223cafbd7d25679ae91af (Boundary B).
+A read-only comparison of every index path/mode/blob against this tree matched
+all 1,441 entries. Exactly 35 Boundary B paths were staged. Five unrelated
+VS Code appearance paths were unstaged. This update leaves the index unchanged;
+only this new report and the dependency-boundary test are added as unstaged work.
+README, existing reports, Deck, Scout and tracked artifacts are untouched.
+
+Frozen-tree evidence
+
+The preserved candidate report is:
+  .git/validation-reports/2026-11-05T01-25-10.453Z-croJFa/candidate.json
+Its gate report is:
+  2026-11-05T01-25-13.160Z-62260-Z8SG95/report.json
+The failed stage log is 35.log in that gate-report directory.
+
+The report records the expected HEAD/tree, candidateUnchanged=true, failed status,
+exitStatus=1 and checkoutRemoved=true. Of 138 gate stages, only
+test:production-dependency-boundary failed. Its diagnostic is exactly:
+  endpoint Echo drifted to 43310 gzip bytes
+The suite stops at this assertion; later cases in that suite were not certified
+by the failed run. Their focused rerun is recorded below.
+
+Original assertion and policy
+
+tests/production-dependency-boundary.acceptance.mts, originally line 249:
+  assert.ok(echo.gzip < 42 * 1024,
+    `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
+
+This is a strict upper bound of 43,008 bytes, not an exact-size equality.
+The candidate exceeded the bound by 302 bytes. Separate preceding assertions
+enforce emitted dependency ownership, including actual Part implementation
+owners, CSS/document decoding exclusions, LiveMap/Locus families and Node
+adapters. Size and dependency correctness are independent properties.
+
+History: 735e4f1c introduced graph checks plus a 24 KiB size guard; 7abd25fa
+changed it to 32 KiB; 7a1f482d changed it to 40 KiB with the explicit rationale
+that Data admission shares the Hson parser rather than a second codec;
+e96558b1 changed it to 42 KiB with authored-attribute changes. Current release
+notes also call the earlier 40 KiB bound a budget and document a Part-processing
+repair that respected it. Thus the size guard had policy significance, even
+though it also detects accidental growth. Repository evidence does not establish
+a separate measured product requirement or explicit performance approval for
+the precise 42 KiB value. Passing owner checks alone did not waive this guard.
+
+The owner has now explicitly approved the temporary replacement:
+  echo.gzip < 90_000
+43,008 -> 90,000 bytes; increase in the exclusive ceiling: 46,992 bytes.
+This is decimal bytes, not 90 KiB. Equality at 90,000 still fails. It is a
+temporary ceiling, not a target. Unexplained growth must still be investigated.
+No dependency assertion, hook, separate authoring budget or other size policy
+is changed or bypassed.
+
+Controlled methodology and measurements
+
+Git archive copies of the exact A commit and B tree were built independently
+with npm run build under /private/tmp/hson-echo-triage-cvajobnp/{a,b}.
+No build ran in the repository. The maintained browser_graph procedure from the
+dependency-boundary test was reproduced unchanged: native namespace import
+  import * as hsonLiveMap from "hson-live/livemap";
+with its exact endpoint transport fixture; browser ESM/es2022; minification,
+tree shaking, splitting, legalComments=none, metafile=true and write=false.
+The entry plus its transitive static output imports are included; dynamic
+imports are excluded. Positive bytesInOutput determines retained modules.
+Output contents are concatenated in closure order with a newline per output.
+gzipSync uses its default compression level, exactly as the gate does.
+
+Node v22.20.0; TypeScript 5.9.3; zlib 1.3.1-470d3a2.
+The gate's actual createRequire resolves editor esbuild 0.25.9, pinned by the
+editor lockfile. The frozen report's general environment esbuild 0.28.2 is the
+root installation and does not identify this test's bundler.
+
+                             Boundary A       Boundary B       Change
+Initial minified bytes          150,634          153,440        +2,806
+Initial gzip, gate default       42,655           43,310          +655 (1.5356%)
+Same gate fixture, gzip level 9   42,508           43,162          +654 (1.5385%)
+Retained initial modules             58               58             0
+Initial outputs                       4                4             0
+
+Copied local dependency trees reproduce the frozen failure exactly. An initial
+run with dependencies symlinked outside the archive measured 42,654/43,309:
+real-path resolution changed deferred chunk hashes referenced by the initial
+entry, shifting gzip by one byte without changing retained modules or raw size.
+Do not mix these environments when comparing compressed bytes.
+
+The separate maintained scripts/measure-echo-browser-packaging.mjs was also
+examined and run. It uses the named aggregate hsonLiveMap export rather than
+the gate's native ESM namespace selection and gzip level 9. In that fixture it
+retains 267 initial modules on BOTH A and B (369,215 -> 369,298 gzip bytes in
+the preliminary symlink environment). It measures the broader aggregate export,
+not this 43 KB lightweight namespace fixture. These numbers are not evidence
+of a new Boundary B endpoint leak and are not compared to the endpoint gate.
+The script remains untouched; its fixture distinction is explicit here.
+
+Complete module-level initial contribution difference
+
+Newly retained modules: none. Removed modules: none.
+Of the same 58 modules, only these minified bytesInOutput values differ:
+
+Emitted module                                   A        B       Delta
+dist/api/livemap/livemap.editor.js             4,020    6,487      +2,467
+dist/api/livemap/livemap.error.js              2,510    2,806        +296
+dist/api/transform/parsers/tokenize-hson.js   43,103   43,107          +4
+dist/core/projected-value-graph.js            3,647    3,649          +2
+dist/core/projected-value-admission.js        3,575    3,577          +2
+dist/core/constants.js                         369      370          +1
+dist/api/livemap/livemap.path.js                278      277          -1
+
+The remaining 51 module contributions are identical. The contributions total
++2,771 bytes; generated shared-chunk export/import wiring accounts for the
+remaining 35 raw bytes. Contributions are minified bytes, not independently
+additive gzip attribution. gzip compresses the whole initial closure together.
+Readable companion builds show that the small unchanged-source deltas are
+minifier identifier changes, not new parser/admission behavior.
+
+Source causes and shared-chunk placement
+
+Boundary B's livemap.core.ts imports and calls the existing graph editor's
+set_live_path_from_projected, replace_live_path_from_projected and delete_live_path
+instead of reconstructing mutation candidates through the removed retained
+projected-value planner. This retains their helpers: resolve_parent_node,
+replace_live_root_from_projected, write_child_value, write_object_property,
+write_array_index, delete_child_value and delete_object_property.
+The replacement routines now support root-shape preservation and reuse of an
+already-selected previous projection. clone_hson_node's metadata copy also
+changes from clone_node to a fresh spread record. All are visible in the
+readable emitted-module comparison.
+
+Boundary B's replay correction imports and throws the existing
+LiveMapReplayInputError in livemap.core.ts when hosted replay does not produce
+one exact authority operation. The class definition itself is unchanged;
+its new retained use accounts for the error module's additional 296 bytes.
+
+These are used imports implementing graph authority and exact replay checks,
+not redundant imports or a second implementation engine. livemap.editor and
+livemap.error were already emitted in the initial shared utility chunk on A.
+The public /livemap barrel reexports editor/error bindings while deferred replica
+code uses their implementations. esbuild retains the newly used functions in
+that existing shared chunk; the endpoint consequently downloads them even
+though its finite-operation path does not call those mutation routines.
+This packaging consequence is real and explained, not a claim that endpoint
+execution intrinsically requires graph mutation. Splitting the existing utility
+owners could be a separate packaging optimization, but this gate supplies no
+reason to restructure correct production code merely to fit the old ceiling.
+
+Architectural assessment
+
+Both initial closures contain exactly four LiveMap modules: document.path,
+path, editor and error; and two Locus modules: error and aggregate.protocol.
+No new full LiveMap construction, Locus authority/session/persistence, Schema
+compiler/evaluator, Part definition/write/contract processing, DOM/CSS parser,
+Mirror, LiveTree or Node adapter owner enters the initial closure.
+The existing small part-placeholder vocabulary/scanner is unchanged and is
+distinct from the forbidden Part-processing implementation owners.
+
+Metafile output contributions confirm these remain deferred on both trees:
+livemap.core, livemap.libraries, livemap.node-admission, exact-node-qualification,
+part-definition, part-write, part-contract, validate-canonical-hson,
+locus.local-initializer, echo.replica-preparation,
+echo.aggregate-semantic-codec.internal and echo.registry.
+The unused livemap.facade is not retained. Other implementation owners were
+checked against the complete positive-contribution initial module inventory,
+not merely the loose module-count limits.
+
+Public Echo still captures options.now synchronously through the dependency-free
+capture_plain_instruction helper before its promise returns. Full semantic
+session/local-initializer admission remains inside the dynamic replica-preparation
+path before composition/attachment. That path still verifies schema evidence,
+QUAD/scoped correspondence, CSS, fingerprints and initializer/session digests.
+Endpoint finite operations still admit and own action payloads through
+admit_echo_action_payload/admit_data_input. None of these source owners changed
+in Boundary B or this size-policy update.
+
+Focused validation and review
+
+Fresh A build and the original complete dependency-boundary suite pass.
+Fresh B build and original suite reproduce the size failure; preceding
+ownership assertions pass. After only the authorized threshold update, the
+complete B dependency-boundary suite passes, including its later cases.
+Focused B echo-init, echo-endpoint-core, locus-submission-ownership (Node/Worker),
+and interaction-initialization suites pass. echo-init includes mutation/revocation
+of nested QUAD/CSS submission evidence, async admission failure/transport reuse,
+and scoped evidence capture before asynchronous attachment.
+
+Before another commit attempt: independently review this two-file unstaged
+policy/documentation change together with the preserved candidate; verify its
+90,000-byte ceiling and unchanged dependency assertions. Validate the final
+reviewed candidate's emitted graphs and focused suite with the same pinned
+tools. The normal commit hook remains required for that final staged tree;
+this triage does not replace it and does not claim the old frozen tree passed.
+
+Temporary evidence includes comparison.json, a-meta.json, b-meta.json,
+a-bundles/, b-bundles/, readable companion builds, comparison scripts and focused
+test logs under /private/tmp/hson-echo-triage-cvajobnp. These are diagnostic
+outputs, not tracked distribution or replacements for preserved gate reports.
+
+VERDICT: SIZE POLICY DECISION REQUIRED
+The owner supplied that decision during triage; its narrow implementation is
+ready for independent review. No production source correction is required.

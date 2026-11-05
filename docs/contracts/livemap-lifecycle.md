@@ -292,3 +292,26 @@ Tests must continue to prove:
 * repeated create/dispose cycles do not grow registries without bound.
 
 These four establish the lifecycle contracts used by Locus-backed test execution.
+
+## Prepared aggregate transitions
+
+A pending token owns its detached stale witness, private mutable candidates,
+installation checks, and installation/publication callbacks. The controller
+retains these through reservation and a pending durable decision. The installed
+graph remains unchanged until acceptance.
+
+Acceptance (including no-op acceptance), explicit discard, detected stale
+preparation, and failed installation release planning-only state. Terminal
+commit evidence and terminal error behavior remain available on held tokens.
+The controller uses weak token ownership; it has no strong token registry.
+A competing durable reservation is a temporary fence, not terminal rejection.
+
+Locus discards a preparation after a known or uncertain append failure, while
+its uncertain-outcome authority fence remains active. Disposal during a reserved
+decision retains what settlement requires. Session projection, queued observer
+publication, Echo recovery, and retained history own their evidence separately;
+terminal planning cleanup does not release it.
+
+Staged writers release their command scratch after handoff and closure, or on
+explicit internal discard after failed authoring. Closing alone still permits
+`close()` followed by `writes()`, as required by Locus authoring.

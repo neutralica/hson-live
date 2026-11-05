@@ -45,6 +45,11 @@ export function qualify_livemap_document(root: HsonNode, operation: string): voi
   qualify_exact_hson_graph(root, operation, "document-root", true);
 }
 
+/** Qualify the complete private Data candidate without recapturing its storage. */
+export function qualify_livemap_data(root: HsonNode, operation: string): void {
+  qualify_exact_hson_graph(root, operation, "data-root", false);
+}
+
 /** Primitive slot construction is explicit, never a node relationship repair. */
 export function is_livemap_primitive_slot(endpoint: HsonNode, value: unknown): boolean {
   if (endpoint.$_tag === STR_TAG) return typeof value === "string";

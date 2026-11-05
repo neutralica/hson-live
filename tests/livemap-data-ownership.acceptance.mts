@@ -225,8 +225,9 @@ await check("captured collection commands own arguments before deferred planning
   }]);
   const installed = replacement.operations[0]!.projected;
   if (installed?.kind !== "replace") throw new Error("Expected carrier-native replacement evidence.");
-  // The next mutation reads the exact carrier installed by the earlier commit.
-  assert.equal(installed.prev, evidence.next);
+  // The graph supplies fresh exact evidence; submission ownership is retained
+  // by the earlier immutable commit, not by a second installed value store.
+  assert.deepEqual(installed.prev, evidence.next);
   assert.deepEqual(materialize_projected_value(installed.prev), [{ value: 1 }]);
   assert.deepEqual(materialize_projected_value(installed.next), state.snap(["items"]));
   assert.deepEqual(canonical(state), { items: [3], other: 1, nested: { value: [] } });

@@ -36,7 +36,7 @@ const Wide = Hson.schema`<type "data" content <
   kept <optional "any"> copy <optional "any"> other <optional "any">
 >>`;
 export function registry(initial: string | JsonValue) {
-  return hsonLiveMap.fromLibraries({ state: { data: initial, schema: Wide } });
+  return hsonLiveMap.fromLibraries({ state: { data: typeof initial === "string" ? Hson.data.fromSource(initial) : initial, schema: Wide } });
 }
 export function state(initial: string | JsonValue): State {
   return registry(initial).data.must("state");

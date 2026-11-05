@@ -179,7 +179,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
       assert.ok(objectApi.hasKey("other")); assert.equal(objectApi.size(), 4);
       assert.equal(library.at([]).kind(), "object"); assert.equal(arrayApi.length(), 2);
       assert.deepEqual(arrayApi.at(1), {leaf: 2}); assert.deepEqual(objectApi.getKey("selected"), {leaf:3});
-      assert.equal(owner.projectedValue(identity, ["scalar"]), -0);
+      assert.equal(owner.projectData(identity, ["scalar"]), -0);
     } finally { Object.defineProperty(sibling, "$_content", content); }
   });
 
@@ -238,9 +238,10 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
     const map = hsonLiveMap.fromLibraries({ state: { data: { value: {} } } }), owner = internal_livemap_aggregate_authority(map);
     const staged = make_livemap_staged_writer(owner);
     staged.writer.data.must("state").at(["value"]).replace(source); staged.close();
-    const queued = staged.writes()[0]; assert.ok(queued && queued.kind === "replace");
+    const writes = staged.writes();
+    const queued = writes[0]; assert.ok(queued && queued.kind === "replace");
     assert.equal(queued.value, hson_data_value(source), "authenticated carrier identity survives submission handoff");
-    owner.commit(staged.writes());
+    owner.commit(writes);
     assert.equal(map.data.must("state").at(["value"]).hson(), source.toHson());
     assert.equal(hson_data_value(source), queued.value);
   });
@@ -283,7 +284,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
     assert.equal(map.parts.components.button.kind(), "object");
     assert.equal(typeof map.parts.components.button.write({title:"Read"}), "string");
     const owner = internal_livemap_aggregate_authority(map), parts = owner.libraries()[0]!;
-    assert.equal(map.parts.components.button.hson(), hson_data_text_from_value(owner.projectedValue(parts, ["button"])!));
+    assert.equal(map.parts.components.button.hson(), hson_data_text_from_value(owner.projectData(parts, ["button"])!));
     enable_interactions(map);
     const descriptor = {
       id:"read",subject:{library:"page",path:[0,0,0]},

@@ -46,10 +46,6 @@ import {
   ordered_projected_array_move,
   ordered_projected_array_splice,
   ordered_projected_object_rename,
-  ordered_projected_value_at,
-  ordered_projected_value_delete,
-  ordered_projected_value_replace,
-  ordered_projected_value_set,
 } from "../../core/ordered-projected-value-mutation.js";
 import {
   is_ordered_projected_object,
@@ -85,7 +81,7 @@ import {
 import { clone_livemap_document_exact_view, livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
 import { classify_live_root_mode, normalize_document_root, prepare_livemap_root } from "./livemap.document.js";
-import { admit_owned_livemap_root, admit_public_livemap_root } from "./livemap.node-admission.js";
+import { admit_owned_livemap_root, admit_public_livemap_root, qualify_livemap_data } from "./livemap.node-admission.js";
 import {
   admit_public_document_graph_operation,
   lower_document_attrs_command,
@@ -96,6 +92,9 @@ import { document_path_equal, resolve_document_path, validate_document_path } fr
 import { preflight_livemap_document_identity_replay, livemap_document_identity_quid_unavailable, register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   clone_live_root,
+  set_live_path_from_projected,
+  replace_live_path_from_projected,
+  delete_live_path,
   overwrite_hson_node,
   project_live_path,
   snap_live_path,
@@ -105,7 +104,7 @@ import {
   length_live_path,
   resolve_value_node
 } from "./livemap.editor.js";
-import { LiveMapDocumentMutationError, LiveMapProjectedMutationError, LiveMapReplayError, LiveMapRevError } from "./livemap.error.js";
+import { LiveMapDocumentMutationError, LiveMapProjectedMutationError, LiveMapReplayError, LiveMapReplayInputError, LiveMapRevError } from "./livemap.error.js";
 import { deliver_livemap_observers, report_livemap_observer_failure } from "./livemap.observer-delivery.js";
 import { must_live_path, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import {
@@ -291,7 +290,7 @@ function build_registry_authority(roots: readonly RegistryRoot[], systems: reado
       root: graph.root, scopes: scopeInput, css: css === undefined ? undefined : encode_portable_document_stylesheet(css),
     }).scopes;
     const compositionScopes = definition.compositionScopes === undefined ? undefined : decode_document_scoped_quads(definition.compositionScopes, graph.root);
-    return { graph, projectedValue: part?.value, hsonSchema, css, validation, scopes, compositionScopes, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
+    return { graph, hsonSchema, css, validation, scopes, compositionScopes, compositionStyles: definition.compositionStyles, quads: decode_document_quads(quads, graph.root, graph.mode) };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
   return Object.freeze({ aggregate, identities: aggregate.libraries() });
@@ -303,7 +302,6 @@ function build_registry_authority(roots: readonly RegistryRoot[], systems: reado
 function make_livemap_registry_engine(
   registry: readonly Readonly<{
     graph: ReturnType<typeof prepare_livemap_root>;
-    projectedValue?: OrderedProjectedValue;
     hsonSchema?: HsonSchema;
     validation?: DataLibraryValidation;
     quads?: PortableDocumentQuads;
@@ -314,9 +312,8 @@ function make_livemap_registry_engine(
   }>[],
   systems: readonly InitialSystemState[] = [],
 ): InternalLiveMapAggregateAuthority {
-  const states = registry.map(({ graph, projectedValue, hsonSchema, css, validation }) => {
+  const states = registry.map(({ graph, hsonSchema, css, validation }) => {
     const state = make_livemap_library(graph, hsonSchema, validation);
-    if (graph.mode !== "document") state.projectedValue = projectedValue ?? must_projected_root_value(graph.root);
     if (css !== undefined) state.stylesheet = css;
     return state;
   });
@@ -366,11 +363,8 @@ function make_livemap_registry_engine(
   type AggregateDataCandidate = {
     readonly library: LiveMapLibraryState;
     readonly baseRoot: HsonNode;
-    readonly detachedRoot: HsonNode;
-    value: OrderedProjectedValue;
+    readonly root: HsonNode;
     overlay: LiveMapProjectedIdentityOverlay;
-    writes: LiveMapCoreWriteOp[];
-    nextRoot: HsonNode;
   };
   type AggregateDocumentCandidate = {
     readonly library: LiveMapLibraryState;
@@ -385,10 +379,7 @@ function make_livemap_registry_engine(
   type AggregateSystemCandidate = {
     readonly system: LiveMapSystemState;
     readonly baseRoot: HsonNode;
-    readonly detachedRoot: HsonNode;
-    value: OrderedProjectedValue;
-    writes: LiveMapCoreWriteOp[];
-    nextRoot: HsonNode;
+    readonly root: HsonNode;
   };
   type AggregateCandidate = AggregateDataCandidate | AggregateDocumentCandidate;
   type AggregateWatch = Readonly<{
@@ -477,16 +468,14 @@ function make_livemap_registry_engine(
       throw new Error("Transactional Hson system state cannot own QUID identity.");
     }
     must_hson_schema_root(input.hsonSchema, preparedSystem.root);
-    const projectedValue = must_projected_root_value(preparedSystem.root);
     if (input.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_descriptor_ids(ordered_projected_value_at(projectedValue, ["descriptors"]));
+      validate_interaction_descriptor_ids(project_live_path(preparedSystem.root, ["descriptors"]));
     }
     return {
       identity: systemIdentity,
       key: input.key,
       transportName: input.transportName,
       root: preparedSystem.root,
-      projectedValue,
       hsonSchema: input.hsonSchema,
     };
   }
@@ -650,7 +639,7 @@ function make_livemap_registry_engine(
           throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
         }
         const library = require_library(binding.identity);
-        const part = read_admitted_part_member(installed_projected_value(library.identity, [member]), member);
+        const part = read_admitted_part_member(project_installed_data(library.identity, [member]), member);
         if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
         return part;
       },
@@ -725,11 +714,8 @@ function make_livemap_registry_engine(
     return library.root;
   }
 
-  function installed_projected_value(identity: LiveMapLibraryIdentity): OrderedProjectedValue;
-  function installed_projected_value(identity: LiveMapLibraryIdentity, path: LivePath): OrderedProjectedValue | undefined;
-  function installed_projected_value(identity: LiveMapLibraryIdentity, path?: LivePath): OrderedProjectedValue | undefined {
-    const root = installed_data_root(identity);
-    return path === undefined ? must_projected_root_value(root) : project_live_path(root, must_live_path(path));
+  function project_installed_data(identity: LiveMapLibraryIdentity, path: LivePath): OrderedProjectedValue | undefined {
+    return project_live_path(installed_data_root(identity), must_live_path(path));
   }
 
   function part_library_name(library: LiveMapLibraryState): string {
@@ -742,20 +728,19 @@ function make_livemap_registry_engine(
       assert_part_write(library, [], operation);
       return;
     }
-    assert_part_members_preserved(part_library_name(library), library.projectedValue ?? must_projected_root_value(library.root),
+    assert_part_members_preserved(part_library_name(library), must_projected_root_value(library.root),
       must_projected_root_value(prepared.root), operation);
   }
 
   /** Check intent against the installed baseline, never the progressively built batch. */
   function assert_part_write(library: LiveMapLibraryState, path: LivePath, operation: string,
     rename?: Readonly<{ from: string; to: string }>): void {
-    const baseline = library.projectedValue ?? must_projected_root_value(library.root);
-    if (!is_ordered_projected_object(baseline)) throw new Error("Invalid installed Part collection.");
-    const first = baseline.entries[0];
+    const keys = keys_live_path(library.root, []);
+    if (keys === undefined) throw new Error("Invalid installed Part collection.");
     const names = path.length > 0 ? [path[0]] : rename === undefined
-      ? first === undefined ? [] : [first[0]] : rename.from === rename.to ? [] : [rename.from, rename.to];
+      ? keys.slice(0, 1) : rename.from === rename.to ? [] : [rename.from, rename.to];
     for (const name of names) {
-      if (typeof name === "string" && ordered_projected_value_at(baseline, [name]) !== undefined) {
+      if (typeof name === "string" && kind_live_path(library.root, [name]) !== "missing") {
         throw immutable_part_error(part_library_name(library), name, operation);
       }
     }
@@ -765,7 +750,7 @@ function make_livemap_registry_engine(
     if (library.mode === "document") {
       throw new Error("Aggregate projected operations require a data library.");
     }
-    if (library.projectedValue === undefined || library.projectedOverlay === undefined) {
+    if (library.projectedOverlay === undefined) {
       throw new Error("Data library has no projected state.");
     }
     return library.projectedOverlay;
@@ -922,19 +907,9 @@ function make_livemap_registry_engine(
 
   function make_aggregate_data_candidate(library: LiveMapLibraryState): AggregateDataCandidate {
     const overlay = require_projected_library(library);
-    const value = library.projectedValue;
-    if (value === undefined) throw new Error("Data library has no projected value.");
-    aggregateCandidateRootsCloned += 1;
-    const detachedRoot = clone_live_root(library.root);
-    return {
-      library,
-      baseRoot: detachedRoot,
-      detachedRoot,
-      value,
-      overlay,
-      writes: [],
-      nextRoot: detachedRoot,
-    };
+    aggregateCandidateRootsCloned += 2;
+    // The immutable stale witness and mutable candidate never share graph nodes.
+    return { library, baseRoot: clone_live_root(library.root), root: clone_live_root(library.root), overlay };
   }
 
   function make_aggregate_document_candidate(library: LiveMapLibraryState): AggregateDocumentCandidate {
@@ -961,21 +936,20 @@ function make_livemap_registry_engine(
 
   function aggregate_write_ops(
     write: Extract<LiveMapAggregateWrite, { kind: "set" | "set-key" | "replace" | "delete" | "splice" | "rename" | "move" | "collection" }>,
-    value: OrderedProjectedValue,
+    root: HsonNode,
   ): readonly LiveMapCoreWriteOp[] {
     const path = clone_live_path(must_live_path(write.target.path));
     if (write.kind === "collection") {
-      return plan_collection_command(value, path, write.command).flatMap(op => aggregate_write_ops({
+      return plan_collection_command(root, path, write.command).flatMap(op => aggregate_write_ops({
         ...op, target: { ...write.target, path: op.path },
-      }, value));
+      }, root));
     }
     if (write.kind === "set-key") {
-      const parent = ordered_projected_value_at(value, path);
-      if (!is_ordered_projected_object(parent)) throw new Error(`LiveMap set-key path is not an object: ${format_live_path(path)}`);
+      if (kind_live_path(root, path) !== "object") throw new Error(`LiveMap set-key path is not an object: ${format_live_path(path)}`);
       return [Object.freeze({ kind: "set" as const, path: [...path, write.key], value: write.value })];
     }
     if (write.kind === "set") {
-      return write_ops_from_set(path, write.value, ordered_projected_value_at(value, path));
+      return write_ops_from_set(path, write.value, root);
     }
     if (write.kind === "replace") {
       return [Object.freeze({
@@ -1108,7 +1082,7 @@ function make_livemap_registry_engine(
     const pendingPartAdmissions = new Set<LiveMapLibraryIdentity>();
     const partPlans = new Map<number, Readonly<{
       candidate: AggregateDataCandidate; ops: LiveMapPlannedOps["ops"]; transportOps: LiveMapPlannedOps["transportOps"];
-      replay?: Readonly<{ before: OrderedProjectedValue; after: OrderedProjectedValue }>;
+      replay?: Readonly<{ before: OrderedProjectedValue | undefined; after: OrderedProjectedValue | undefined }>;
     }>>();
     for (const [index, write] of writes.entries()) {
       if (write.target.domain !== "application") continue;
@@ -1131,26 +1105,24 @@ function make_livemap_registry_engine(
         partCandidates.set(library.identity, candidate);
         pendingPartAdmissions.add(library.identity);
       }
-      const before = candidate.value;
+      const before = write.kind === "replay-data" ? project_live_path(candidate.root, write.operation.path) : undefined;
       const localWrites = write.kind === "replay-data" ? [projected_write_op_from_transport(write.operation)]
-        : aggregate_write_ops(write, before);
+        : aggregate_write_ops(write, candidate.root);
       for (const local of localWrites) {
         if (local.kind === "constructive-set") {
           for (const [key] of local.value.entries) assert_part_write(library, [...local.path, key], operation);
         } else assert_part_write(library, local.path, operation, local.kind === "rename" ? local : undefined);
       }
-      // Governed Parts cannot own runtime identities, so the ordinary value
-      // planner is also the exact installation/transport planner here.
-      const planned = plan_write_ops(before, localWrites);
-      candidate.value = planned.value;
-      candidate.writes.push(...localWrites);
+      // Governed Parts cannot own runtime identities; the same graph planner
+      // produces their exact installation and transport evidence.
+      const planned = plan_write_ops(candidate.root, localWrites);
       partPlans.set(index, { candidate, ops: planned.ops, transportOps: planned.transportOps,
-        ...(write.kind === "replay-data" ? { replay: { before, after: planned.value } } : {}) });
+        ...(write.kind === "replay-data" ? { replay: { before, after: project_live_path(candidate.root, write.operation.path) } } : {}) });
     }
     const admitPendingParts = (identity: LiveMapLibraryIdentity) => {
       if (!pendingPartAdmissions.has(identity)) return;
       const candidate = partCandidates.get(identity)!;
-      validate_part_additions(candidate.library.projectedValue!, candidate.value);
+      validate_part_additions(must_projected_root_value(candidate.baseRoot), must_projected_root_value(candidate.root));
       pendingPartAdmissions.delete(identity);
     };
     const readPartCandidate = (collection: string, member: string) => {
@@ -1163,8 +1135,8 @@ function make_livemap_registry_engine(
       admitPendingParts(library.identity);
       const candidate = partCandidates.get(library.identity);
       const selected = candidate === undefined
-        ? read_admitted_part_member(installed_projected_value(library.identity, [member]), member)
-        : read_admitted_part(candidate.value, member);
+        ? read_admitted_part_member(project_installed_data(library.identity, [member]), member)
+        : read_admitted_part_member(project_live_path(candidate.root, [member]), member);
       if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return selected;
     };
@@ -1173,10 +1145,7 @@ function make_livemap_registry_engine(
       systemCandidate ??= {
         system: systemState,
         baseRoot: clone_live_root(systemState.root),
-        detachedRoot: clone_live_root(systemState.root),
-        value: systemState.projectedValue,
-        writes: [],
-        nextRoot: clone_live_root(systemState.root),
+        root: clone_live_root(systemState.root),
       };
       return systemCandidate;
     };
@@ -1190,8 +1159,7 @@ function make_livemap_registry_engine(
       if (replayingSystem || systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) return;
       const name = hostedBindingsByIdentity?.get(library.identity)?.name;
       if (name === undefined) throw new Error("Interaction document Library name is unavailable.");
-      const current = systemCandidate?.value ?? systemState.projectedValue;
-      const descriptors = ordered_projected_value_at(current, ["descriptors"]);
+      const descriptors = project_live_path(systemCandidate?.root ?? systemState.root, ["descriptors"]);
       if (descriptors === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
       const rewritten = rewrite_interaction_subjects(
         descriptors, name, beforeRoot, beforeOverlay, afterOverlay, operation,
@@ -1200,9 +1168,7 @@ function make_livemap_registry_engine(
       const candidate = system_candidate();
       if (candidate === undefined) return;
       const localWrite: LiveMapCoreWriteOp = { kind: "replace", path: ["descriptors"], value: rewritten };
-      const planned = plan_write_ops(candidate.value, [localWrite]);
-      candidate.value = planned.value;
-      candidate.writes.push(localWrite);
+      const planned = plan_write_ops(candidate.root, [localWrite]);
       for (let index = 0; index < planned.ops.length; index += 1) {
         const projected = planned.transportOps[index];
         const operation = planned.ops[index];
@@ -1302,10 +1268,7 @@ function make_livemap_registry_engine(
         systemCandidate ??= {
           system,
           baseRoot: clone_live_root(system.root),
-          detachedRoot: clone_live_root(system.root),
-          value: system.projectedValue,
-          writes: [],
-          nextRoot: clone_live_root(system.root),
+          root: clone_live_root(system.root),
         };
         const candidate = systemCandidate;
         const target = aggregate_system_target(system.identity, write.target.path);
@@ -1313,14 +1276,13 @@ function make_livemap_registry_engine(
           throw new Error("Transactional Hson system state cannot own graph identity.");
         }
         if (write.kind === "replay-data") {
-          const currentValue = ordered_projected_value_at(candidate.value, write.operation.path);
+          const currentValue = project_live_path(candidate.root, write.operation.path);
           must_replay_value(write.operation.path, write.operation.prev, currentValue);
           const localWrite = projected_write_op_from_transport(write.operation);
-          const planned = plan_write_ops(candidate.value, [localWrite]);
-          const nextValue = ordered_projected_value_at(planned.value, write.operation.path);
+          plan_write_ops(candidate.root, [localWrite]);
+          const nextValue = project_live_path(candidate.root, write.operation.path);
           must_replay_value(write.operation.path, write.operation.next, nextValue);
-          candidate.value = planned.value;
-          candidate.writes.push(localWrite);
+
           operations.push(Object.freeze({
             target,
             operation: materialize_livemap_projected_op(write.operation),
@@ -1328,10 +1290,8 @@ function make_livemap_registry_engine(
           }));
           continue;
         }
-        const localWrites = aggregate_write_ops(write, candidate.value);
-        const planned = plan_write_ops(candidate.value, localWrites);
-        candidate.value = planned.value;
-        candidate.writes.push(...localWrites);
+        const localWrites = aggregate_write_ops(write, candidate.root);
+        const planned = plan_write_ops(candidate.root, localWrites);
         for (let index = 0; index < planned.ops.length; index += 1) {
           const operation = planned.ops[index];
           const projected = planned.transportOps[index];
@@ -1353,8 +1313,8 @@ function make_livemap_registry_engine(
         candidates.set(library.identity, candidate);
         if (write.kind === "replay-data") {
           if (replay === undefined) throw new Error("Part replay evidence is incomplete.");
-          must_replay_value(write.operation.path, write.operation.prev, ordered_projected_value_at(replay.before, write.operation.path));
-          must_replay_value(write.operation.path, write.operation.next, ordered_projected_value_at(replay.after, write.operation.path));
+          must_replay_value(write.operation.path, write.operation.prev, replay.before);
+          must_replay_value(write.operation.path, write.operation.next, replay.after);
           if (transportOps.length !== 1) throw new Error("Hosted replay operation did not produce one exact authority operation.");
           operations.push(Object.freeze({ target: aggregate_target(library.identity, write.target.path),
             operation: materialize_livemap_projected_op(write.operation), projected: write.operation }));
@@ -1566,7 +1526,7 @@ function make_livemap_registry_engine(
         if (!is_persisted_quid(write.quid)) {
           throw new Error("Aggregate QUID registration requires a persisted QUID.");
         }
-        const candidateRoot = projected_candidate_graph(candidate.detachedRoot, candidate.value, candidate.writes);
+        const candidateRoot = candidate.root;
         apply_livemap_projected_identity_overlay(candidateRoot, candidate.overlay);
         const endpoint = resolve_value_node(candidateRoot, target.path);
         if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
@@ -1595,14 +1555,17 @@ function make_livemap_registry_engine(
         continue;
       }
       if (write.kind === "replay-data") {
-        const currentValue = ordered_projected_value_at(candidate.value, write.operation.path);
+        const currentValue = project_live_path(candidate.root, write.operation.path);
         must_replay_value(write.operation.path, write.operation.prev, currentValue);
         const localWrite = projected_write_op_from_transport(write.operation);
-        const planned = plan_write_ops_with_identity(candidate.value, [localWrite], candidate.overlay);
-        const nextValue = ordered_projected_value_at(planned.value, write.operation.path);
+        // Accepted identity retirement remains a semantic operation in a fresh receiver,
+        // even when that runtime has never issued the source subtree's identities.
+        const planned = plan_write_ops(candidate.root, [localWrite], candidate.overlay, true);
+        const nextValue = project_live_path(candidate.root, write.operation.path);
         must_replay_value(write.operation.path, write.operation.next, nextValue);
         if (planned.transportOps.length !== 1) {
-          throw new Error("Hosted replay operation did not produce one exact authority operation.");
+          throw new LiveMapReplayInputError("Hosted replay operation did not produce one exact authority operation.",
+            writeIndex, "UNCHANGED_STAGED_OPERATION");
         }
         const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
         if (!(localWrite.kind === "replace" && localWrite.path.length === 0)) {
@@ -1611,8 +1574,7 @@ function make_livemap_registry_engine(
             livemap_projected_identity_quids(nextOverlay),
           );
         }
-        candidate.value = planned.value;
-        candidate.writes.push(localWrite);
+
         candidate.overlay = nextOverlay;
         operations.push(Object.freeze({
           target,
@@ -1621,8 +1583,8 @@ function make_livemap_registry_engine(
         }));
         continue;
       }
-      const localWrites = aggregate_write_ops(write, candidate.value);
-      const planned = plan_write_ops_with_identity(candidate.value, localWrites, candidate.overlay);
+      const localWrites = aggregate_write_ops(write, candidate.root);
+      const planned = plan_write_ops(candidate.root, localWrites, candidate.overlay);
       const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
       if (!localWrites.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
         stage_candidate_identity(
@@ -1630,8 +1592,7 @@ function make_livemap_registry_engine(
           livemap_projected_identity_quids(nextOverlay),
         );
       }
-      candidate.value = planned.value;
-      candidate.writes.push(...localWrites);
+
       candidate.overlay = nextOverlay;
       for (let index = 0; index < planned.ops.length; index += 1) {
         const operation = planned.ops[index];
@@ -1698,21 +1659,21 @@ function make_livemap_registry_engine(
       } else {
         if (candidate.library.validation === PART_COLLECTION_VALIDATION) {
           assert_part_members_preserved(part_library_name(candidate.library),
-            candidate.library.projectedValue ?? must_projected_root_value(candidate.library.root), candidate.value, "transition");
+            must_projected_root_value(candidate.baseRoot), must_projected_root_value(candidate.root), "transition");
         }
-        must_hson_schema_projected_candidate(candidate.library.hsonSchema, candidate.value);
-        const root = projected_candidate_graph(candidate.detachedRoot, candidate.value, candidate.writes);
+        const root = candidate.root;
+        qualify_livemap_data(root, "LiveMap Data candidate");
+        must_hson_schema_root(candidate.library.hsonSchema ?? ANY_DATA, root);
         const nextMode = classify_live_root_mode(root, "data");
         if (nextMode !== candidate.library.mode) {
           throw new Error(`LiveMap data root mode is fixed at construction: expected ${candidate.library.mode}; observed ${nextMode}.`);
         }
         apply_livemap_projected_identity_overlay(root, candidate.overlay);
-        candidate.nextRoot = root;
       }
     }
     if (systemCandidate !== undefined) {
       if (systemCandidate.system.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-        const descriptors = ordered_projected_value_at(systemCandidate.value, ["descriptors"]);
+        const descriptors = project_live_path(systemCandidate.root, ["descriptors"]);
         validate_interaction_subjects(descriptors, (name) => hostedBindingsByName?.get(name)?.mode === "document");
         if (descriptors === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
         if (clientComposition !== undefined) {
@@ -1722,7 +1683,7 @@ function make_livemap_registry_engine(
             return clientComposition?.bindings.has(name) ? "shared" : "local";
           };
           const before = partition_interaction_descriptors(
-            ordered_projected_array(interaction_descriptors_from_root(systemCandidate.system.projectedValue)), classify);
+            ordered_projected_array(interaction_descriptors_from_graph(systemCandidate.system.root)), classify);
           const after = partition_interaction_descriptors(descriptors, classify);
           const managed = transitionController.managedExecutionOwner() !== undefined;
           if (!ordered_projected_value_equal(ordered_projected_array(before.shared), ordered_projected_array(after.shared)) && !managed) {
@@ -1737,17 +1698,13 @@ function make_livemap_registry_engine(
         }
       }
       aggregateSchemaValidations += 1;
-      must_hson_schema_projected_candidate(systemCandidate.system.hsonSchema, systemCandidate.value);
-      const root = projected_candidate_graph(
-        systemCandidate.detachedRoot,
-        systemCandidate.value,
-        systemCandidate.writes,
-      );
+      const root = systemCandidate.root;
+      qualify_livemap_data(root, "LiveMap system candidate");
+      must_hson_schema_root(systemCandidate.system.hsonSchema, root);
       const preparedSystem = prepare_livemap_root(root);
       if (preparedSystem.mode === "document" || (preparedSystem.projectedOverlay?.size ?? 0) !== 0) {
         throw new Error("Transactional Hson system state cannot own QUID identity.");
       }
-      systemCandidate.nextRoot = preparedSystem.root;
     }
 
     const beforeActive = initialActiveQuids;
@@ -1758,8 +1715,8 @@ function make_livemap_registry_engine(
         ...(candidate === undefined ? {} : is_aggregate_document_candidate(candidate)
           ? { root: candidate.root, documentOverlay: candidate.overlay,
             documentQuads: retain_document_quad_bindings(library.documentQuads, candidate.overlay),
-            projectedOverlay: undefined, projectedValue: undefined }
-          : { root: candidate.nextRoot, documentOverlay: undefined, projectedOverlay: candidate.overlay, projectedValue: candidate.value }),
+            projectedOverlay: undefined }
+          : { root: candidate.root, documentOverlay: undefined, projectedOverlay: candidate.overlay }),
         ...(cssCandidates.has(library.identity) ? { stylesheet: cssCandidates.get(library.identity)!.after } : {}),
       };
     });
@@ -1911,6 +1868,13 @@ function make_livemap_registry_engine(
       commit,
       assertManagementCurrent,
       libraryModes: Object.freeze([...candidates.values()].map((candidate) => candidate.library.mode)),
+      release: () => {
+        preparedSystemRoots.delete(prepared);
+        candidates.clear(); partCandidates.clear(); partPlans.clear(); pendingPartAdmissions.clear();
+        cssCandidates.clear(); scopedCandidates.clear(); scopedOrdinals.clear();
+        constructionClaims.length = 0;
+        systemCandidate = undefined;
+      },
       baseStillCurrent: () => {
         try { assertPreparationCurrent(); } catch { return false; }
         return mapRevision === prevRev
@@ -1944,22 +1908,19 @@ function make_livemap_registry_engine(
               documentQuads: nextQuadBindings.get(candidate.library.identity),
               ...(scopedCandidates.has(candidate.library.identity) ? { documentScopes: scopedCandidates.get(candidate.library.identity)!.scopes } : {}),
               projectedOverlay: undefined,
-              projectedValue: undefined,
             });
             mark_quad_document_root(candidate.root, candidate.library.documentQuads);
           } else {
-            overwrite_hson_node(candidate.library.root, candidate.nextRoot);
+            overwrite_hson_node(candidate.library.root, candidate.root);
             Object.assign(candidate.library, {
               documentOverlay: undefined,
               projectedOverlay: candidate.overlay,
-              projectedValue: candidate.value,
             });
           }
         }
         for (const [identity, candidate] of cssCandidates) require_library(identity).stylesheet = candidate.after;
         if (systemCandidate !== undefined) {
-          overwrite_hson_node(systemCandidate.system.root, systemCandidate.nextRoot);
-          systemCandidate.system.projectedValue = systemCandidate.value;
+          overwrite_hson_node(systemCandidate.system.root, systemCandidate.root);
         }
         mapRevision = commit.rev;
         if (receivingRevision !== undefined && clientComposition !== undefined) {
@@ -2001,7 +1962,7 @@ function make_livemap_registry_engine(
         });
       },
     });
-    preparedSystemRoots.set(prepared, systemCandidate === undefined ? systemState?.root : systemCandidate.nextRoot);
+    preparedSystemRoots.set(prepared, systemCandidate === undefined ? systemState?.root : systemCandidate.root);
     assertPreparationCurrent();
     return prepared;
   }
@@ -2339,7 +2300,7 @@ function make_livemap_registry_engine(
         throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
       }
       const part = pending?.part !== undefined ? read_admitted_part(pending.part.value, member)
-        : definition === undefined && binding !== undefined ? read_admitted_part_member(installed_projected_value(binding.identity, [member]), member)
+        : definition === undefined && binding !== undefined ? read_admitted_part_member(project_installed_data(binding.identity, [member]), member)
         : validate_data_library(source.root, mode, source.validation)?.find(part => part.key === member);
       if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return part;
@@ -2407,7 +2368,6 @@ function make_livemap_registry_engine(
       }
       if (state.mode === "document") assert_complete_document(state.root, render_portable_document_stylesheet_carriers(state.stylesheet!));
       candidateAuthority.assertCurrent();
-      if (state.mode !== "document") state.projectedValue = part?.value ?? must_projected_root_value(state.root);
       return Object.freeze({ name, state, hsonSchema, css });
     });
     const existingBindings = libraryRegistry.all().map((state) => {
@@ -2834,8 +2794,7 @@ function make_livemap_registry_engine(
         if (systemState === undefined || binding.identity !== systemState.identity || prepared.mode === "document") {
           throw new Error("Checkpoint system state is incompatible.");
         }
-        return Object.freeze({ kind: "system" as const, state: systemState, prepared,
-          projectedValue: must_projected_root_value(prepared.root) });
+        return Object.freeze({ kind: "system" as const, state: systemState, prepared });
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
       const scopedCandidate = item.scopes === undefined ? undefined : reconstruct_scoped_library(state,
@@ -2852,9 +2811,7 @@ function make_livemap_registry_engine(
         css: addressState.stylesheet,
         changed: scopedCandidate !== undefined || state.documentScopes !== undefined || !canonical_graph_equal(state.root, prepared.root)
           || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
-            addressState.stylesheet!)),
-        projectedValue: prepared.projectedOverlay === undefined
-          ? undefined : must_projected_root_value(prepared.root) });
+            addressState.stylesheet!)) });
     });
     if (systemState !== undefined && !candidates.some((candidate) => candidate.kind === "system")) {
       throw new Error("Checkpoint omitted system state.");
@@ -2866,14 +2823,12 @@ function make_livemap_registry_engine(
     for (const candidate of candidates) {
       if (candidate.kind === "system") {
         candidate.state.root = candidate.prepared.root;
-        candidate.state.projectedValue = candidate.projectedValue;
       } else {
         Object.assign(candidate.state, {
           root: candidate.root,
           documentScopes: candidate.documentScopes,
           ...candidate.addressState,
           projectedOverlay: candidate.prepared.projectedOverlay,
-          projectedValue: candidate.projectedValue,
           ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
         });
       }
@@ -2923,7 +2878,6 @@ function make_livemap_registry_engine(
       prepared: ReturnType<typeof prepare_livemap_root>;
       addressState: ReturnType<typeof reconstruct_quads>;
       css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
-      projectedValue?: OrderedProjectedValue;
       newlyInstalled: boolean;
       schema: HsonSchema;
       name: string;
@@ -2933,7 +2887,6 @@ function make_livemap_registry_engine(
     const associations: PortableQuadRestoration["associations"][number][] = [];
     const portableStylesheets = new Map<LiveMapLibraryIdentity, import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheetRecord>();
     let systemRoot: HsonNode | undefined;
-    let systemValue: OrderedProjectedValue | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
       const entry = snapshot.registry.libraries[index];
       const encoded = snapshot.libraries[index];
@@ -2960,7 +2913,6 @@ function make_livemap_registry_engine(
           throw new Error("LiveMap topology snapshot system state is incompatible.");
         }
         systemRoot = prepared.root;
-        systemValue = must_projected_root_value(prepared.root);
       } else {
         const old = hosted.byName.get(entry.name);
         if (old?.validation !== undefined && old.validation !== own_data_library_validation(entry)) {
@@ -2978,15 +2930,14 @@ function make_livemap_registry_engine(
         associations.push(...correspondence.map(subject => Object.freeze({ ...subject, library: state.identity, libraryName: entry.name })));
         candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
           addressState,
-          ...(entry.mode === "document" ? { css: addressState.stylesheet } : {}),
-          projectedValue: prepared.mode === "document" ? undefined : must_projected_root_value(prepared.root) }));
+          ...(entry.mode === "document" ? { css: addressState.stylesheet } : {}) }));
       }
     }
     if (systemState !== undefined && systemRoot === undefined) {
       throw new Error("LiveMap topology snapshot omitted configured system state.");
     }
-    if (systemValue !== undefined && systemState?.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_subjects(ordered_projected_value_at(systemValue, ["descriptors"]),
+    if (systemRoot !== undefined && systemState?.key === INTERACTION_RESERVED_LIBRARY_KEY) {
+      validate_interaction_subjects(project_live_path(systemRoot, ["descriptors"]),
         (name) => snapshot.registry.libraries.some((entry) => entry.name === name && entry.mode === "document"
           && entry.scope === undefined));
     }
@@ -3016,19 +2967,17 @@ function make_livemap_registry_engine(
     checkRestore();
     mapIdentityEpoch.replace(reserved);
     identityGeneration += 1;
-    for (const { state, prepared, projectedValue, css, addressState } of candidates) {
+    for (const { state, prepared, css, addressState } of candidates) {
       Object.assign(state, {
         root: prepared.root,
         ...addressState,
         projectedOverlay: prepared.projectedOverlay,
-        projectedValue,
         ...(css === undefined ? {} : { stylesheet: css }),
       });
     }
     libraryRegistry.replace(candidates.map(({ state }) => state));
-    if (systemState !== undefined && systemRoot !== undefined && systemValue !== undefined) {
+    if (systemState !== undefined && systemRoot !== undefined) {
       systemState.root = systemRoot;
-      systemState.projectedValue = systemValue;
     }
     hostedRegistry = registry;
     hostedBindingsByIdentity = new Map(bindings.map((binding) => [binding.identity, binding]));
@@ -3098,7 +3047,6 @@ function make_livemap_registry_engine(
       documentQuads?: DocumentQuadBindings;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
-      projectedValue?: OrderedProjectedValue;
     }>> = [];
     const reserved = new Set<string>();
     const foreignPayloads = disposable_document_quad_payloads(snapshot.libraries.map(entry => own_document_quads(entry)));
@@ -3107,7 +3055,6 @@ function make_livemap_registry_engine(
     let systemCandidate: Readonly<{
       state: LiveMapSystemState;
       root: HsonNode;
-      projectedValue: OrderedProjectedValue;
     }> | undefined;
     for (let index = 0; index < snapshot.libraries.length; index += 1) {
       const encoded = snapshot.libraries[index];
@@ -3135,7 +3082,6 @@ function make_livemap_registry_engine(
         systemCandidate = Object.freeze({
           state: systemState,
           root: prepared.root,
-          projectedValue: must_projected_root_value(prepared.root),
         });
         continue;
       }
@@ -3153,7 +3099,6 @@ function make_livemap_registry_engine(
         ...addressState,
         ...((proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay) === undefined ? {} : {
           projectedOverlay: proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay,
-          projectedValue: must_projected_root_value(prepared.root),
         }),
       }));
     }
@@ -3164,11 +3109,10 @@ function make_livemap_registry_engine(
       documentOverlay: candidate.documentOverlay,
       documentQuads: candidate.documentQuads,
       projectedOverlay: candidate.projectedOverlay,
-      projectedValue: candidate.projectedValue,
       ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
     }));
     if (systemCandidate !== undefined && systemCandidate.state.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_subjects(ordered_projected_value_at(systemCandidate.projectedValue, ["descriptors"]),
+      validate_interaction_subjects(project_live_path(systemCandidate.root, ["descriptors"]),
         (name) => hosted.registry.libraries.some((entry) => entry.name === name && entry.mode === "document"
           && entry.scope === undefined));
     }
@@ -3203,13 +3147,11 @@ function make_livemap_registry_engine(
         documentOverlay: candidate.documentOverlay,
         documentQuads: candidate.documentQuads,
         projectedOverlay: candidate.projectedOverlay,
-        projectedValue: candidate.projectedValue,
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
     }
     if (systemCandidate !== undefined) {
       systemCandidate.state.root = systemCandidate.root;
-      systemCandidate.state.projectedValue = systemCandidate.projectedValue;
     }
     if (identity === undefined) mapIdentityEpoch.replace(reserved);
     else if (issuedLedger !== undefined) mapIdentityEpoch.install(make_livemap_issued_quid_ledger([
@@ -3318,7 +3260,6 @@ function make_livemap_registry_engine(
       documentScopes?: import("./livemap.document.scoped-quad.js").DocumentScopedQuads;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
-      projectedValue?: OrderedProjectedValue;
       css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       retained: boolean;
       graphChanged: boolean;
@@ -3402,8 +3343,6 @@ function make_livemap_registry_engine(
           documentOverlay: addressState.documentOverlay, documentQuads: addressState.documentQuads,
           documentScopes: scopedCandidate?.scopes,
           projectedOverlay: graphChanged ? prepared.projectedOverlay : state.projectedOverlay,
-          projectedValue: entry.mode === "document" ? undefined
-            : graphChanged ? must_projected_root_value(prepared.root) : state.projectedValue,
           css,
         }));
       }
@@ -3419,8 +3358,8 @@ function make_livemap_registry_engine(
       return composition.bindings.has(name) ? "shared" : "local";
     };
     const localDescriptors = systemState === undefined ? [] : partition_interaction_descriptors(
-      interaction_descriptors_from_root(systemState.projectedValue), currentClassify).local;
-    const incomingDescriptors = nextSystem === undefined ? [] : interaction_descriptors_from_root(nextSystem.projectedValue);
+      interaction_descriptors_from_graph(systemState.root), currentClassify).local;
+    const incomingDescriptors = nextSystem === undefined ? [] : interaction_descriptors_from_graph(nextSystem.root);
     const incoming = partition_interaction_descriptors(ordered_projected_array(incomingDescriptors), (name) =>
       projectedDocumentNames.has(name) ? "shared" : localDocumentNames.has(name) ? "local" : undefined);
     if (incoming.local.length > 0) throw new Error("Authority interaction snapshot contains a local subject.");
@@ -3451,7 +3390,6 @@ function make_livemap_registry_engine(
     const afterStates = [...localStates, ...candidates.map((candidate) => Object.freeze({
       ...candidate.state, root: candidate.root,
       documentOverlay: candidate.documentOverlay, projectedOverlay: candidate.projectedOverlay,
-      projectedValue: candidate.projectedValue,
       ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
     }))];
     const afterActive = aggregate_quid_locations(afterStates);
@@ -3478,7 +3416,7 @@ function make_livemap_registry_engine(
       if (candidate.changed) Object.assign(candidate.state, {
         root: candidate.root, documentOverlay: candidate.documentOverlay, documentQuads: candidate.documentQuads,
         documentScopes: candidate.documentScopes,
-        projectedOverlay: candidate.projectedOverlay, projectedValue: candidate.projectedValue,
+        projectedOverlay: candidate.projectedOverlay,
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
       projectedCaptureContinuity.set(candidate.state.identity, Object.freeze({}));
@@ -3550,7 +3488,7 @@ function make_livemap_registry_engine(
         throw new LiveMapRevError(input.prevRev, authorityRev ?? -1);
       }
     } else if (input.prevRev !== mapRevision) throw new LiveMapRevError(input.prevRev, mapRevision);
-    let replaySharedRoot: OrderedProjectedValue | undefined;
+    let replaySharedRoot: HsonNode | undefined;
     let replayComposedDescriptors: OrderedProjectedValue | undefined;
     const receivingEffects = new Map<LiveMapAggregateWrite, import("./livemap.document.scoped-effects.js").DocumentScopedEffect>();
     const receivingFlat = new Map<LiveMapLibraryIdentity, DocumentFlatEffect>();
@@ -3570,7 +3508,7 @@ function make_livemap_registry_engine(
         : aggregate_target(entry.library.identity as LiveMapLibraryIdentity, path);
       if (composition !== undefined && entry.library.scope === "hson-internal" && entry.projected !== undefined) {
         if (systemState === undefined) throw new Error("Client interaction system state is unavailable.");
-        const current = replayComposedDescriptors ?? ordered_projected_value_at(systemState.projectedValue, ["descriptors"]);
+        const current = replayComposedDescriptors ?? project_live_path(systemState.root, ["descriptors"]);
         if (current === undefined) throw new Error("Client interaction descriptors are unavailable.");
         const classify = (name: string): "shared" | "local" | undefined => {
           const binding = hosted.byName.get(name);
@@ -3578,13 +3516,13 @@ function make_livemap_registry_engine(
           return composition.bindings.has(name) ? "shared" : "local";
         };
         const partitions = partition_interaction_descriptors(current, classify);
-        replaySharedRoot ??= ordered_projected_object([["descriptors", ordered_projected_array(partitions.shared)]]);
-        const sharedValue = ordered_projected_value_at(replaySharedRoot, entry.projected.path);
+        replaySharedRoot ??= projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(partitions.shared)]]));
+        const sharedValue = project_live_path(replaySharedRoot, entry.projected.path);
         must_replay_value(entry.projected.path, entry.projected.prev, sharedValue);
-        const planned = plan_write_ops(replaySharedRoot, [projected_write_op_from_transport(entry.projected)]);
+        plan_write_ops(replaySharedRoot, [projected_write_op_from_transport(entry.projected)]);
         must_replay_value(entry.projected.path, entry.projected.next,
-          ordered_projected_value_at(planned.value, entry.projected.path));
-        const incoming = ordered_projected_value_at(planned.value, ["descriptors"]);
+          project_live_path(replaySharedRoot, entry.projected.path));
+        const incoming = project_live_path(replaySharedRoot, ["descriptors"]);
         if (incoming === undefined) throw new Error("Authority interaction descriptors are unavailable.");
         const incomingPartition = partition_interaction_descriptors(incoming, classify);
         if (incomingPartition.local.length > 0) throw new Error("Authority interaction replay contains a local subject.");
@@ -3592,7 +3530,6 @@ function make_livemap_registry_engine(
         const transformed: LiveMapProjectedDataOp = Object.freeze({
           kind: "replace", path: ["descriptors"], prev: current, next: merged,
         });
-        replaySharedRoot = planned.value;
         replayComposedDescriptors = merged;
         return Object.freeze({ target: aggregate_system_target(systemState.identity, ["descriptors"]),
           kind: "replay-data", operation: transformed });
@@ -4033,7 +3970,7 @@ function make_livemap_registry_engine(
         return clientComposition?.bindings.has(name) ? "shared" : "local";
       };
       const local = partition_interaction_descriptors(
-        interaction_descriptors_from_root(systemState.projectedValue), classify).local;
+        interaction_descriptors_from_graph(systemState.root), classify).local;
       const projectedDocuments = new Set([...clientComposition.bindings.values()]
         .filter((binding) => binding.mode === "document").map((binding) => binding.name));
       for (const name of newSharedDocuments) projectedDocuments.add(name);
@@ -4046,7 +3983,6 @@ function make_livemap_registry_engine(
       return () => {
         if (systemState !== undefined) {
           systemState.root = composedRoot;
-          systemState.projectedValue = composedValue;
         }
       };
     }),
@@ -4208,7 +4144,7 @@ function make_livemap_registry_engine(
       assertCurrent();
       return root;
     },
-    projectedValue: installed_projected_value,
+    projectData: project_installed_data,
     dataKind: (identity, path) => kind_live_path(installed_data_root(identity), must_live_path(path)),
     dataKeys: (identity, path) => keys_live_path(installed_data_root(identity), must_live_path(path)),
     dataArrayRange: (identity, path, bounds) => snap_live_array_range(installed_data_root(identity), must_live_path(path), bounds),
@@ -4393,34 +4329,14 @@ function must_hson_schema_root(schema: HsonSchema, root: HsonNode): void {
   validate_hson_schema_graph(schema, root);
 }
 
-function must_hson_schema_projected_candidate(
-  schema: HsonSchema | undefined,
-  candidate: OrderedProjectedValue,
-): void {
-  if (schema === undefined) return;
-  must_hson_schema_root(schema, projected_value_to_hson_root(candidate));
+function interaction_descriptors_from_graph(root: HsonNode): readonly OrderedProjectedValue[] {
+  return must_core_array_value(project_live_path(root, ["descriptors"]), ["descriptors"]);
 }
-
 
 function must_projected_root_value(root: HsonNode): OrderedProjectedValue {
   const value = project_live_path(root, []);
   if (value !== undefined) return value;
   throw new Error("LiveMap data root does not resolve.");
-}
-
-/** Preserve direct data roots unless an explicit whole-root replacement owns the change. */
-function projected_candidate_graph(
-  currentRoot: HsonNode,
-  value: OrderedProjectedValue,
-  writeOps: readonly LiveMapCoreWriteOp[],
-): HsonNode {
-  const root = projected_value_to_hson_root(value);
-  const replacesRoot = writeOps.some((op) => op.kind === "root-assignment"
-    || (op.kind === "replace" && op.path.length === 0));
-  if (currentRoot.$_tag === ROOT_TAG || replacesRoot) return root;
-  const candidate = root.$_content[0];
-  if (is_Node(candidate)) return candidate;
-  throw new Error("LiveMap data constructor did not produce a value node.");
 }
 
 /**
@@ -4430,237 +4346,130 @@ function projected_candidate_graph(
  * writes, including at the root. Other values stay as direct endpoint writes:
  * root assignments use a same-epoch intent, while child assignments use `set`.
  */
-function write_ops_from_set(path: LivePath, value: unknown, currentValue: OrderedProjectedValue | undefined): readonly LiveMapCoreWriteOp[] {
+function write_ops_from_set(path: LivePath, value: unknown, root: HsonNode): readonly LiveMapCoreWriteOp[] {
   const projectedValue = must_ordered_projected_value(value, path);
-
-  must_resolved_path("set", path, currentValue);
-
-  if (!is_ordered_projected_object(projectedValue) || !is_ordered_projected_object(currentValue)) {
-    // Equal assignments preserve identity; explicit replacement can retire it.
-    if (optional_ordered_projected_value_equal(currentValue, projectedValue)) return [];
-    if (path.length === 0) return [{ kind: "root-assignment", path: [], value: projectedValue }];
-    return [{ kind: "set", path, value: projectedValue }];
+  const kind = kind_live_path(root, path);
+  if (kind === "missing") throw new Error(`LiveMap set path does not resolve: ${format_live_path(path)}`);
+  if (is_ordered_projected_object(projectedValue) && kind === "object") {
+    return [{ kind: "constructive-set", path, value: projectedValue }];
   }
-
-  return [
-    {
-      kind: "constructive-set",
-      path,
-      value: projectedValue,
-    },
-  ];
+  // Equal ordinary assignment is an identity no-op; explicit replace retains its intent.
+  if (optional_ordered_projected_value_equal(project_live_path(root, path), projectedValue)) return [];
+  return path.length === 0 ? [{ kind: "root-assignment", path: [], value: projectedValue }]
+    : [{ kind: "set", path, value: projectedValue }];
 }
 
 type LiveMapPlannedOps = Readonly<{
   changed: boolean;
-  value: OrderedProjectedValue;
   ops: readonly LiveMapDataOp[];
   transportOps: readonly LiveMapProjectedDataOp[];
 }>;
-function plan_write_ops(
-  root: OrderedProjectedValue,
-  writeOps: readonly LiveMapCoreWriteOp[],
-): LiveMapPlannedOps {
-  let candidate = root;
-  const transportOps: LiveMapProjectedDataOp[] = [];
 
+/**
+ * The existing aggregate planner edits its caller-owned private graph in place.
+ * Only selected endpoints/containers become ordered scratch or immutable evidence.
+ * Physical container replacement never changes the authored semantic operation.
+ */
+function plan_write_ops(
+  candidate: HsonNode,
+  writeOps: readonly LiveMapCoreWriteOp[],
+  overlay?: LiveMapProjectedIdentityOverlay,
+  retainAcceptedIdentityIntent = false,
+): LiveMapPlannedOps {
+  const transportOps: LiveMapProjectedDataOp[] = [];
   for (const op of writeOps) {
     if (op.kind === "constructive-set") {
-      const planned = plan_constructive_set_write_op(candidate, op);
-      candidate = planned.value;
-      transportOps.push(...planned.ops);
+      transportOps.push(...plan_constructive_set_write_op(candidate, op));
       continue;
     }
-
     if (op.kind === "splice") {
-      const prev = must_resolved_projected_value("set", op.path, ordered_projected_value_at(candidate, op.path));
-      const result = ordered_projected_array_splice(candidate, op.path, op.start, op.deleteCount, op.items);
-      const next = must_resolved_projected_value("set", op.path, ordered_projected_value_at(result.value, op.path));
-      candidate = result.value;
-      if (ordered_projected_value_equal(prev, next)) continue;
-      transportOps.push(Object.freeze({
-        kind: "splice",
-        path: clone_live_path(op.path),
-        start: op.start,
-        removed: result.removed,
-        inserted: op.items,
-        prev: must_core_array_value(prev, op.path),
-        next: must_core_array_value(next, op.path),
-      }));
+      const current = must_resolved_projected_value("set", op.path, project_live_path(candidate, op.path));
+      const result = ordered_projected_array_splice(current, [], op.start, op.deleteCount, op.items);
+      const next = must_core_array_value(result.value, op.path);
+      // Splice retains its array identity; only removed eligible children can retire.
+      const acceptedIdentityIntent = retainAcceptedIdentityIntent && result.removed.some((_item, index) => {
+        const endpoint = resolve_value_node(candidate, [...op.path, op.start + index]);
+        return endpoint !== undefined && is_livemap_projected_identity_target(endpoint);
+      });
+      replace_live_path_from_projected(candidate, op.path, next, true, current);
+      if (ordered_projected_value_equal(current, next)
+        && !acceptedIdentityIntent
+        && !(op.deleteCount > 0 && overlay !== undefined
+          && result.removed.some((_item, index) => livemap_projected_identity_has_at_or_below(overlay, [...op.path, op.start + index])))) continue;
+      transportOps.push(Object.freeze({ kind: "splice", path: clone_live_path(op.path),
+        start: op.start, removed: result.removed, inserted: op.items,
+        prev: must_core_array_value(current, op.path), next }));
       continue;
     }
-
     if (op.kind === "rename") {
-      const prev = must_core_object_value(ordered_projected_value_at(candidate, op.path), op.path);
-      if (!prev.entries.some(([key]) => key === op.from)) {
-        throw new LiveMapProjectedMutationError(
-          "OBJECT_RENAME_SOURCE_NOT_FOUND",
-          "rename",
-          op.path,
-          `source key ${JSON.stringify(op.from)} is not an own entry`,
-        );
+      const current = must_core_object_value(project_live_path(candidate, op.path), op.path);
+      if (!current.entries.some(([key]) => key === op.from)) {
+        throw new LiveMapProjectedMutationError("OBJECT_RENAME_SOURCE_NOT_FOUND", "rename", op.path,
+          `source key ${JSON.stringify(op.from)} is not an own entry`);
       }
       if (op.from === op.to) continue;
-      candidate = ordered_projected_object_rename(candidate, op.path, op.from, op.to);
-      const next = must_core_object_value(ordered_projected_value_at(candidate, op.path), op.path);
-      transportOps.push(Object.freeze({
-        kind: "rename",
-        path: clone_live_path(op.path),
-        from: op.from,
-        to: op.to,
-        prev,
-        next,
-      }));
+      const next = must_core_object_value(ordered_projected_object_rename(current, [], op.from, op.to), op.path);
+      replace_live_path_from_projected(candidate, op.path, next, true, current);
+      transportOps.push(Object.freeze({ kind: "rename", path: clone_live_path(op.path),
+        from: op.from, to: op.to, prev: current, next }));
       continue;
     }
-
     if (op.kind === "move") {
-      const prev = must_core_array_value(ordered_projected_value_at(candidate, op.path), op.path);
-      must_core_move_index(prev, op.path, op.from, "source");
-      must_core_move_index(prev, op.path, op.to, "destination");
+      const current = must_core_array_value(project_live_path(candidate, op.path), op.path);
+      must_core_move_index(current, op.path, op.from, "source");
+      must_core_move_index(current, op.path, op.to, "destination");
       if (op.from === op.to) continue;
-      candidate = ordered_projected_array_move(candidate, op.path, op.from, op.to);
-      const next = must_core_array_value(ordered_projected_value_at(candidate, op.path), op.path);
-      transportOps.push(Object.freeze({
-        kind: "move",
-        path: clone_live_path(op.path),
-        from: op.from,
-        to: op.to,
-        prev,
-        next,
-      }));
+      const next = must_core_array_value(ordered_projected_array_move(current, [], op.from, op.to), op.path);
+      replace_live_path_from_projected(candidate, op.path, next, true, current);
+      transportOps.push(Object.freeze({ kind: "move", path: clone_live_path(op.path),
+        from: op.from, to: op.to, prev: current, next }));
       continue;
     }
-
-    if (op.kind === "root-assignment") {
-      const prev = must_resolved_projected_value("set", op.path, ordered_projected_value_at(candidate, op.path));
-      candidate = ordered_projected_value_replace(candidate, op.path, op.value);
-      if (ordered_projected_value_equal(prev, op.value)) continue;
-      transportOps.push(Object.freeze({
-        kind: "set",
-        path: clone_live_path(op.path),
-        prev,
-        next: op.value,
-      }));
+    if (op.kind === "root-assignment" || op.kind === "replace") {
+      const endpoint = retainAcceptedIdentityIntent && op.kind === "replace"
+        ? resolve_value_node(candidate, op.path) : undefined;
+      const acceptedIdentityIntent = endpoint !== undefined && is_livemap_projected_identity_target(endpoint);
+      const edit = replace_live_path_from_projected(candidate, op.path, op.value);
+      const current = must_resolved_projected_value(op.kind === "replace" ? "replace" : "set", op.path, edit.prev);
+      if (ordered_projected_value_equal(current, op.value)
+        && !acceptedIdentityIntent
+        && !(op.kind === "replace" && overlay !== undefined
+          && livemap_projected_identity_has_at_or_below(overlay, op.path))) continue;
+      transportOps.push(Object.freeze({ kind: op.kind === "root-assignment" ? "set" : "replace",
+        path: clone_live_path(op.path), prev: current, next: op.value }));
       continue;
     }
-
     if (op.kind === "set") {
-      const prev = ordered_projected_value_at(candidate, op.path);
-      candidate = ordered_projected_value_set(candidate, op.path, op.value);
-      if (optional_ordered_projected_value_equal(prev, op.value)) continue;
-
-      transportOps.push(Object.freeze({
-        kind: "set",
-        path: clone_live_path(op.path),
-        prev,
-        next: op.value,
-      }));
+      const edit = set_live_path_from_projected(candidate, op.path, op.value);
+      if (!edit.changed) continue;
+      transportOps.push(Object.freeze({ kind: "set", path: clone_live_path(op.path), prev: edit.prev, next: op.value }));
       continue;
     }
-
-    if (op.kind === "replace") {
-      const prev = must_resolved_projected_value("replace", op.path, ordered_projected_value_at(candidate, op.path));
-      candidate = ordered_projected_value_replace(candidate, op.path, op.value);
-      if (ordered_projected_value_equal(prev, op.value)) continue;
-
-      transportOps.push(Object.freeze({
-        kind: "replace",
-        path: clone_live_path(op.path),
-        prev,
-        next: op.value,
-      }));
-      continue;
-    }
-
-    const prev = must_resolved_projected_value("delete", op.path, ordered_projected_value_at(candidate, op.path));
-    must_plan_projected_delete(candidate, op.path);
-    candidate = ordered_projected_value_delete(candidate, op.path);
-
-    transportOps.push(Object.freeze({
-      kind: "delete",
-      path: clone_live_path(op.path),
-      prev,
-      next: undefined,
-    }));
+    const current = must_resolved_projected_value("delete", op.path, project_live_path(candidate, op.path));
+    delete_live_path(candidate, op.path);
+    transportOps.push(Object.freeze({ kind: "delete", path: clone_live_path(op.path), prev: current, next: undefined }));
   }
-
   const frozenTransportOps = Object.freeze(transportOps);
-  return {
-    changed: frozenTransportOps.length > 0,
-    value: candidate,
-    ops: Object.freeze(frozenTransportOps.map(materialize_livemap_projected_op)),
-    transportOps: frozenTransportOps,
-  };
-}
-
-/** Treat equal explicit replacement of an identified subtree as metadata retirement. */
-function plan_write_ops_with_identity(
-  root: OrderedProjectedValue,
-  writeOps: readonly LiveMapCoreWriteOp[],
-  overlay: LiveMapProjectedIdentityOverlay,
-): LiveMapPlannedOps {
-  const planned = plan_write_ops(root, writeOps);
-  if (planned.changed) return planned;
-  const replacementOps: LiveMapProjectedDataOp[] = [];
-  for (const operation of writeOps) {
-    if (operation.kind !== "replace"
-      || !livemap_projected_identity_has_at_or_below(overlay, operation.path)) continue;
-    const previous = ordered_projected_value_at(root, operation.path);
-    if (previous === undefined || !ordered_projected_value_equal(previous, operation.value)) continue;
-    replacementOps.push(Object.freeze({
-      kind: "replace",
-      path: clone_live_path(operation.path),
-      prev: previous,
-      next: operation.value,
-    }));
-  }
-  if (replacementOps.length === 0) return planned;
-  const transportOps = Object.freeze(replacementOps);
-  return Object.freeze({
-    changed: true,
-    value: planned.value,
-    ops: Object.freeze(transportOps.map(materialize_livemap_projected_op)),
-    transportOps,
-  });
+  return Object.freeze({ changed: frozenTransportOps.length > 0,
+    ops: Object.freeze(frozenTransportOps.map(materialize_livemap_projected_op)), transportOps: frozenTransportOps });
 }
 
 function plan_constructive_set_write_op(
-  root: OrderedProjectedValue,
+  root: HsonNode,
   op: LiveMapConstructiveSetWriteOp,
-): Readonly<{ value: OrderedProjectedValue; ops: readonly LiveMapProjectedDataOp[] }> {
-  const currentValue = ordered_projected_value_at(root, op.path);
-  if (currentValue === undefined) {
-    throw new Error(`LiveMap set path does not resolve: ${format_live_path(op.path)}`);
-  }
-  if (!is_ordered_projected_object(currentValue)) {
+): readonly LiveMapProjectedDataOp[] {
+  if (kind_live_path(root, op.path) !== "object") {
     throw new Error(`LiveMap set path is not an object: ${format_live_path(op.path)}`);
   }
-
   const ops: LiveMapProjectedDataOp[] = [];
-  let candidate = root;
+  // Shallow assignment, in submitted order; nested objects are endpoints.
   for (const [key, value] of op.value.entries) {
     const childPath = append_live_path(op.path, key);
-    const prev = ordered_projected_value_at(candidate, childPath);
-    candidate = ordered_projected_value_set(candidate, childPath, value);
-    if (optional_ordered_projected_value_equal(prev, value)) continue;
-
-    ops.push(Object.freeze({
-      kind: "set",
-      path: childPath,
-      prev,
-      next: value,
-    }));
+    const edit = set_live_path_from_projected(root, childPath, value);
+    if (!edit.changed) continue;
+    ops.push(Object.freeze({ kind: "set", path: childPath, prev: edit.prev, next: value }));
   }
-
-  return Object.freeze({ value: candidate, ops: Object.freeze(ops) });
-}
-
-/** Enforce strict resolved-path semantics for endpoint operations. */
-function must_resolved_path(action: "delete" | "replace" | "set", path: LivePath, value: OrderedProjectedValue | undefined): void {
-  if (path.length === 0 || value !== undefined) return;
-
-  throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);
+  return Object.freeze(ops);
 }
 
 function must_resolved_projected_value(
@@ -4670,17 +4479,6 @@ function must_resolved_projected_value(
 ): OrderedProjectedValue {
   if (value !== undefined) return value;
   throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);
-}
-
-function must_plan_projected_delete(root: OrderedProjectedValue, path: LivePath): void {
-  if (path.length === 0) {
-    throw new Error("LiveMap editor cannot delete the root node yet.");
-  }
-  const leaf = path[path.length - 1];
-  const parent = ordered_projected_value_at(root, path.slice(0, -1));
-  if (typeof leaf === "number" && Array.isArray(parent)) {
-    throw new Error(`LiveMap editor cannot delete array indexes yet: ${format_live_path(path)}`);
-  }
 }
 
 /** Compile one already-admitted replay operation into carrier-native planning. */

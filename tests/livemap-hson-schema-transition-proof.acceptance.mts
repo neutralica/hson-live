@@ -66,7 +66,7 @@ check("one invalid aggregate candidate rejects every library before QUID ledger 
   assert.equal(aggregate.identityEpoch().issued().size, issuedBefore);
   assert.equal(observed.length, 0);
   assert.equal(aggregate.telemetry().schemaValidations - telemetry.schemaValidations, 2);
-  assert.equal(aggregate.telemetry().candidateRootsCloned - telemetry.candidateRootsCloned, 2);
+  assert.equal(aggregate.telemetry().candidateRootsCloned - telemetry.candidateRootsCloned, 4);
 });
 
 check("refined leaf rejection is atomic across a valid peer library", () => {

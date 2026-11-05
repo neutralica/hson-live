@@ -1,0 +1,4575 @@
+{
+  "boundary": "D4d Boundary B",
+  "baselineCommit": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+  "environment": {
+    "node": "v22.20.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4"
+  },
+  "baseline": {
+    "mode": "committed",
+    "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+    "node": "v22.20.0",
+    "samples": 7,
+    "allocation": "V8 statistical allocation sampling includes collected objects; estimated bytes, not exact counts",
+    "memoryMethod": "Forced GC deltas, five trials. Heap growth is observed between completed operations, a lower bound on peak live heap. Held uses the real Locus asynchronous acceptance gate; persistence I/O excluded.",
+    "results": [
+      {
+        "size": 64,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 5.792016600000079,
+        "medianMs": 5.985075000000052,
+        "maxMs": 6.74032500000003,
+        "sampledBytesPerOperation": {
+          "min": 16065921.6,
+          "median": 16563803.2,
+          "max": 16794926.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 5963728,
+          "median": 7319336,
+          "max": 16647616
+        }
+      },
+      {
+        "size": 64,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 9.337808200000017,
+        "medianMs": 9.567166799999995,
+        "maxMs": 9.903583400000025,
+        "sampledBytesPerOperation": {
+          "min": 22928416,
+          "median": 23389772.8,
+          "max": 23574883.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 17780992,
+          "median": 18027248,
+          "max": 18610600
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 22.76677499999987,
+        "medianMs": 22.83277499999995,
+        "maxMs": 23.037741600000118,
+        "sampledBytesPerOperation": {
+          "min": 65358185.6,
+          "median": 65381211.2,
+          "max": 65599444.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 23256752,
+          "median": 23616792,
+          "max": 23726224
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 6.010266800000136,
+        "medianMs": 6.105191600000035,
+        "maxMs": 6.195916600000055,
+        "sampledBytesPerOperation": {
+          "min": 16179062.4,
+          "median": 16708148.8,
+          "max": 16885308.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 6492912,
+          "median": 6844856,
+          "max": 16684016
+        }
+      },
+      {
+        "size": 64,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 5.876324999999997,
+        "medianMs": 5.977316600000085,
+        "maxMs": 6.09154180000005,
+        "sampledBytesPerOperation": {
+          "min": 15659864,
+          "median": 16481385.6,
+          "max": 16738366.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16477816,
+          "median": 16669104,
+          "max": 16715984
+        }
+      },
+      {
+        "size": 64,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 5.842024999999921,
+        "medianMs": 5.959925000000112,
+        "maxMs": 6.0645916000001305,
+        "sampledBytesPerOperation": {
+          "min": 15707819.2,
+          "median": 16965548.8,
+          "max": 17268664
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16476232,
+          "median": 16659912,
+          "max": 16709384
+        }
+      },
+      {
+        "size": 64,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 8.783358200000112,
+        "medianMs": 8.927224999999998,
+        "maxMs": 8.983691799999907,
+        "sampledBytesPerOperation": {
+          "min": 21249552,
+          "median": 21473449.6,
+          "max": 21805731.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16889616,
+          "median": 17311904,
+          "max": 17465136
+        }
+      },
+      {
+        "size": 64,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 8.601291599999968,
+        "medianMs": 9.030049999999937,
+        "maxMs": 9.091891599999872,
+        "sampledBytesPerOperation": {
+          "min": 20927416,
+          "median": 22267464,
+          "max": 22284203.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 17426832,
+          "median": 17732600,
+          "max": 17918424
+        }
+      },
+      {
+        "size": 64,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 0.49777500000000147,
+        "medianMs": 0.5173249999999825,
+        "maxMs": 0.5764250000000175,
+        "sampledBytesPerOperation": {
+          "min": 1024419.2,
+          "median": 1240755.2,
+          "max": 1241907.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 6022672,
+          "median": 6047832,
+          "max": 6093048
+        }
+      },
+      {
+        "size": 64,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 5.844141599999967,
+        "medianMs": 5.9343415999999705,
+        "maxMs": 5.968641600000046,
+        "sampledBytesPerOperation": {
+          "min": 15838096,
+          "median": 16142904,
+          "max": 16305003.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16475552,
+          "median": 16634152,
+          "max": 16659136
+        }
+      },
+      {
+        "size": 64,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 11.80134999999973,
+        "medianMs": 12.011924999999973,
+        "maxMs": 12.5885667999999,
+        "sampledBytesPerOperation": {
+          "min": 32573947.2,
+          "median": 32691024,
+          "max": 33191536
+        },
+        "observedHeapGrowthBytes": {
+          "min": 11479792,
+          "median": 11861008,
+          "max": 12054392
+        }
+      },
+      {
+        "size": 512,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 49.83729160000003,
+        "medianMs": 50.19977500000023,
+        "maxMs": 50.36253340000003,
+        "sampledBytesPerOperation": {
+          "min": 128917600,
+          "median": 129983824,
+          "max": 130163467.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 63549016,
+          "median": 63645960,
+          "max": 77016808
+        }
+      },
+      {
+        "size": 512,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 77.3693668,
+        "medianMs": 77.62530000000042,
+        "maxMs": 77.8990165999996,
+        "sampledBytesPerOperation": {
+          "min": 184159721.6,
+          "median": 184691528,
+          "max": 185138020.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 84904032,
+          "median": 85190664,
+          "max": 86824640
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 199.90425820000019,
+        "medianMs": 201.13589159999975,
+        "maxMs": 204.76084160000028,
+        "sampledBytesPerOperation": {
+          "min": 515326035.2,
+          "median": 516286377.6,
+          "max": 517760016
+        },
+        "observedHeapGrowthBytes": {
+          "min": 112260448,
+          "median": 115989248,
+          "max": 120016408
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 50.439974999999684,
+        "medianMs": 50.61582499999931,
+        "maxMs": 50.91459180000093,
+        "sampledBytesPerOperation": {
+          "min": 128267384,
+          "median": 128456105.6,
+          "max": 130670432
+        },
+        "observedHeapGrowthBytes": {
+          "min": 63795848,
+          "median": 63871320,
+          "max": 64367144
+        }
+      },
+      {
+        "size": 512,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 50.057658400000946,
+        "medianMs": 50.397258399998826,
+        "maxMs": 50.67743320000009,
+        "sampledBytesPerOperation": {
+          "min": 128232032,
+          "median": 128264638.4,
+          "max": 130008334.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 63461304,
+          "median": 63632944,
+          "max": 76955472
+        }
+      },
+      {
+        "size": 512,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 50.38464160000003,
+        "medianMs": 50.56905839999963,
+        "maxMs": 53.25605839999916,
+        "sampledBytesPerOperation": {
+          "min": 129701000,
+          "median": 129920558.4,
+          "max": 130023777.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 63394568,
+          "median": 66681448,
+          "max": 76964280
+        }
+      },
+      {
+        "size": 512,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 72.11447499999922,
+        "medianMs": 72.21617499999994,
+        "maxMs": 73.39412500000034,
+        "sampledBytesPerOperation": {
+          "min": 170408905.6,
+          "median": 170516672,
+          "max": 170521236.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 72831656,
+          "median": 81819712,
+          "max": 94212440
+        }
+      },
+      {
+        "size": 512,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 72.00060840000079,
+        "medianMs": 72.4392915999997,
+        "maxMs": 73.57430000000022,
+        "sampledBytesPerOperation": {
+          "min": 169618915.2,
+          "median": 171441523.2,
+          "max": 171638140.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 77708360,
+          "median": 77834832,
+          "max": 86245744
+        }
+      },
+      {
+        "size": 512,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 3.383316800001194,
+        "medianMs": 3.4495083999994676,
+        "maxMs": 3.508199999999488,
+        "sampledBytesPerOperation": {
+          "min": 8782916.8,
+          "median": 8961622.4,
+          "max": 9030425.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 14296424,
+          "median": 14335176,
+          "max": 14360080
+        }
+      },
+      {
+        "size": 512,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 50.08272500000021,
+        "medianMs": 50.4282583999986,
+        "maxMs": 50.71725000000006,
+        "sampledBytesPerOperation": {
+          "min": 128712817.6,
+          "median": 128745732.8,
+          "max": 130154430.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 64359400,
+          "median": 74271048,
+          "max": 76972264
+        }
+      },
+      {
+        "size": 512,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 101.43820820000255,
+        "medianMs": 101.74758340000116,
+        "maxMs": 102.83931659999944,
+        "sampledBytesPerOperation": {
+          "min": 255440928,
+          "median": 257976726.4,
+          "max": 258235369.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 135595544,
+          "median": 140868232,
+          "max": 150890360
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "leaf",
+        "iterations": 3,
+        "minMs": 212.2817776666634,
+        "medianMs": 213.49727800000014,
+        "maxMs": 223.24162499999997,
+        "sampledBytesPerOperation": {
+          "min": 511972666.6666667,
+          "median": 516406360,
+          "max": 516869072
+        },
+        "observedHeapGrowthBytes": {
+          "min": 147975888,
+          "median": 149628984,
+          "max": 149779536
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "root",
+        "iterations": 3,
+        "minMs": 326.51945833333593,
+        "medianMs": 326.96647233333596,
+        "maxMs": 329.1400276666682,
+        "sampledBytesPerOperation": {
+          "min": 736134682.6666666,
+          "median": 737925800,
+          "max": 742181613.3333334
+        },
+        "observedHeapGrowthBytes": {
+          "min": 134694792,
+          "median": 188806744,
+          "max": 189540472
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-independent",
+        "iterations": 3,
+        "minMs": 845.4067499999995,
+        "medianMs": 846.4507916666674,
+        "maxMs": 849.0884026666705,
+        "sampledBytesPerOperation": {
+          "min": 2053103496,
+          "median": 2062069786.6666667,
+          "max": 2062359733.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 179186272,
+          "median": 221099496,
+          "max": 233785552
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-batch",
+        "iterations": 3,
+        "minMs": 213.15509733333602,
+        "medianMs": 213.67681966666714,
+        "maxMs": 215.69983333332735,
+        "sampledBytesPerOperation": {
+          "min": 514479488,
+          "median": 515294416,
+          "max": 520566682.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 149685696,
+          "median": 149829128,
+          "max": 156418424
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "constructive",
+        "iterations": 3,
+        "minMs": 212.8685973333389,
+        "medianMs": 213.58136099999925,
+        "maxMs": 216.99338900000052,
+        "sampledBytesPerOperation": {
+          "min": 511381157.3333333,
+          "median": 513234778.6666667,
+          "max": 514823208
+        },
+        "observedHeapGrowthBytes": {
+          "min": 149584800,
+          "median": 149820352,
+          "max": 156241328
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "rename",
+        "iterations": 3,
+        "minMs": 211.9543053333376,
+        "medianMs": 213.49894433332761,
+        "maxMs": 220.18811100000553,
+        "sampledBytesPerOperation": {
+          "min": 512973568,
+          "median": 515303624,
+          "max": 518178333.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 149652680,
+          "median": 149728384,
+          "max": 156201648
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "move",
+        "iterations": 3,
+        "minMs": 305.71655566667323,
+        "medianMs": 306.561652666666,
+        "maxMs": 308.02091666667064,
+        "sampledBytesPerOperation": {
+          "min": 675083712,
+          "median": 679188536,
+          "max": 681103733.3333334
+        },
+        "observedHeapGrowthBytes": {
+          "min": 184670104,
+          "median": 184811536,
+          "max": 187396672
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "splice",
+        "iterations": 3,
+        "minMs": 305.5752363333304,
+        "medianMs": 305.7188333333373,
+        "maxMs": 306.9035696666688,
+        "sampledBytesPerOperation": {
+          "min": 675345170.6666666,
+          "median": 680385786.6666666,
+          "max": 681558280
+        },
+        "observedHeapGrowthBytes": {
+          "min": 187632432,
+          "median": 187789216,
+          "max": 188926904
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "schema",
+        "iterations": 3,
+        "minMs": 13.520930333334642,
+        "medianMs": 13.626930333334409,
+        "maxMs": 13.80816666666457,
+        "sampledBytesPerOperation": {
+          "min": 35396765.333333336,
+          "median": 35844445.333333336,
+          "max": 36053264
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16494688,
+          "median": 17536544,
+          "max": 17681520
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "locus",
+        "iterations": 3,
+        "minMs": 211.79740300000412,
+        "medianMs": 212.50855566666965,
+        "maxMs": 213.47499999999613,
+        "sampledBytesPerOperation": {
+          "min": 513216496,
+          "median": 515060698.6666667,
+          "max": 517465872
+        },
+        "observedHeapGrowthBytes": {
+          "min": 149667144,
+          "median": 149847760,
+          "max": 156733328
+        }
+      },
+      {
+        "size": 1,
+        "operation": "interaction",
+        "iterations": 10,
+        "minMs": 0.5836750000016764,
+        "medianMs": 0.6184625000023516,
+        "maxMs": 0.6564458999986528,
+        "sampledBytesPerOperation": {
+          "min": 1191936,
+          "median": 1216184,
+          "max": 1291779.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 12052032,
+          "median": 12109448,
+          "max": 12165104
+        }
+      }
+    ],
+    "memory": [
+      {
+        "trial": 0,
+        "installedBytes": 47507032,
+        "preparedAdditionalBytes": 12595952,
+        "discardedAdditionalBytesWithTokenHeld": 12599336,
+        "heldMapAndCandidateBytes": 59938512,
+        "settledMapBytes": 43538768
+      },
+      {
+        "trial": 1,
+        "installedBytes": 47506640,
+        "preparedAdditionalBytes": 12577960,
+        "discardedAdditionalBytesWithTokenHeld": 12577392,
+        "heldMapAndCandidateBytes": 60055856,
+        "settledMapBytes": 43665448
+      },
+      {
+        "trial": 2,
+        "installedBytes": 47519072,
+        "preparedAdditionalBytes": 12576096,
+        "discardedAdditionalBytesWithTokenHeld": 12579952,
+        "heldMapAndCandidateBytes": 60058600,
+        "settledMapBytes": 43668416
+      },
+      {
+        "trial": 3,
+        "installedBytes": 47517664,
+        "preparedAdditionalBytes": 12598192,
+        "discardedAdditionalBytesWithTokenHeld": 12597672,
+        "heldMapAndCandidateBytes": 60058600,
+        "settledMapBytes": 43668192
+      },
+      {
+        "trial": 4,
+        "installedBytes": 47518192,
+        "preparedAdditionalBytes": 12576600,
+        "discardedAdditionalBytesWithTokenHeld": 12577320,
+        "heldMapAndCandidateBytes": 60059696,
+        "settledMapBytes": 43669464
+      }
+    ],
+    "peakTrials": [
+      {
+        "operation": "leaf",
+        "trial": 0,
+        "retainedBytes": 34151408,
+        "peakRssBytes": 375046144
+      },
+      {
+        "operation": "leaf",
+        "trial": 1,
+        "retainedBytes": 34149664,
+        "peakRssBytes": 372850688
+      },
+      {
+        "operation": "leaf",
+        "trial": 2,
+        "retainedBytes": 34152848,
+        "peakRssBytes": 379764736
+      },
+      {
+        "operation": "root",
+        "trial": 0,
+        "retainedBytes": 38537696,
+        "peakRssBytes": 525910016
+      },
+      {
+        "operation": "root",
+        "trial": 1,
+        "retainedBytes": 38536976,
+        "peakRssBytes": 523288576
+      },
+      {
+        "operation": "root",
+        "trial": 2,
+        "retainedBytes": 38533896,
+        "peakRssBytes": 540491776
+      },
+      {
+        "operation": "four-batch",
+        "trial": 0,
+        "retainedBytes": 34227936,
+        "peakRssBytes": 381583360
+      },
+      {
+        "operation": "four-batch",
+        "trial": 1,
+        "retainedBytes": 34227904,
+        "peakRssBytes": 363839488
+      },
+      {
+        "operation": "four-batch",
+        "trial": 2,
+        "retainedBytes": 33702424,
+        "peakRssBytes": 378290176
+      },
+      {
+        "operation": "held",
+        "trial": 0,
+        "heldBytes": 61908896,
+        "settledBytes": 45522048,
+        "peakRssBytes": 347652096
+      },
+      {
+        "operation": "held",
+        "trial": 1,
+        "heldBytes": 61913136,
+        "settledBytes": 45526496,
+        "peakRssBytes": 352878592
+      },
+      {
+        "operation": "held",
+        "trial": 2,
+        "heldBytes": 61911920,
+        "settledBytes": 45525280,
+        "peakRssBytes": 357498880
+      }
+    ],
+    "peakProcessRssBytes": 1078853632
+  },
+  "current": {
+    "mode": "working-tree",
+    "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+    "node": "v22.20.0",
+    "samples": 7,
+    "allocation": "V8 statistical allocation sampling includes collected objects; estimated bytes, not exact counts",
+    "memoryMethod": "Forced GC deltas, five trials. Heap growth is observed between completed operations, a lower bound on peak live heap. Held uses the real Locus asynchronous acceptance gate; persistence I/O excluded.",
+    "results": [
+      {
+        "size": 64,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 5.538425000000006,
+        "medianMs": 5.937475000000006,
+        "maxMs": 6.283058199999994,
+        "sampledBytesPerOperation": {
+          "min": 15366164.8,
+          "median": 15859142.4,
+          "max": 15947697.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4158360,
+          "median": 18025032,
+          "max": 18286808
+        }
+      },
+      {
+        "size": 64,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 10.14592500000001,
+        "medianMs": 10.381708400000003,
+        "maxMs": 10.758508400000006,
+        "sampledBytesPerOperation": {
+          "min": 23622350.4,
+          "median": 23726688,
+          "max": 24222107.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 14508688,
+          "median": 15030224,
+          "max": 16247208
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 21.81352499999998,
+        "medianMs": 22.249066600000013,
+        "maxMs": 22.59940819999997,
+        "sampledBytesPerOperation": {
+          "min": 62953872,
+          "median": 64103512,
+          "max": 64123670.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 15269736,
+          "median": 26598952,
+          "max": 26668344
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 5.72124160000003,
+        "medianMs": 6.051333399999931,
+        "maxMs": 6.156275000000005,
+        "sampledBytesPerOperation": {
+          "min": 15913180.8,
+          "median": 16313688,
+          "max": 16912192
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4352088,
+          "median": 16972744,
+          "max": 17385984
+        }
+      },
+      {
+        "size": 64,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 5.582091600000058,
+        "medianMs": 5.938450000000012,
+        "maxMs": 6.048124999999982,
+        "sampledBytesPerOperation": {
+          "min": 15638462.4,
+          "median": 15893678.4,
+          "max": 16029366.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 3038880,
+          "median": 18096528,
+          "max": 18430120
+        }
+      },
+      {
+        "size": 64,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 5.611899999999968,
+        "medianMs": 6.006324999999924,
+        "maxMs": 6.164800000000014,
+        "sampledBytesPerOperation": {
+          "min": 15867355.2,
+          "median": 15877851.2,
+          "max": 15942054.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4531832,
+          "median": 18010968,
+          "max": 18350672
+        }
+      },
+      {
+        "size": 64,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 8.988324999999985,
+        "medianMs": 9.2809831999999,
+        "maxMs": 9.84375,
+        "sampledBytesPerOperation": {
+          "min": 21605507.2,
+          "median": 22456358.4,
+          "max": 22945806.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13977080,
+          "median": 19860856,
+          "max": 20089704
+        }
+      },
+      {
+        "size": 64,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 9.210233399999925,
+        "medianMs": 9.5683665999999,
+        "maxMs": 10.152233399999933,
+        "sampledBytesPerOperation": {
+          "min": 21771851.2,
+          "median": 22111440,
+          "max": 22255070.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 14197424,
+          "median": 20092696,
+          "max": 20280296
+        }
+      },
+      {
+        "size": 64,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 0.4912749999999505,
+        "medianMs": 0.5140165999999227,
+        "maxMs": 0.5953749999998763,
+        "sampledBytesPerOperation": {
+          "min": 1110744,
+          "median": 1156121.6,
+          "max": 1195745.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 5917328,
+          "median": 6047768,
+          "max": 6515952
+        }
+      },
+      {
+        "size": 64,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 5.627266599999894,
+        "medianMs": 5.77172499999997,
+        "maxMs": 6.226833199999964,
+        "sampledBytesPerOperation": {
+          "min": 15838011.2,
+          "median": 15976150.4,
+          "max": 16526916.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4523912,
+          "median": 18228056,
+          "max": 18295464
+        }
+      },
+      {
+        "size": 64,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 11.447866600000271,
+        "medianMs": 11.659324999999807,
+        "maxMs": 12.593724999999903,
+        "sampledBytesPerOperation": {
+          "min": 31558665.6,
+          "median": 31649060.8,
+          "max": 31961470.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 5540640,
+          "median": 20596520,
+          "max": 21301264
+        }
+      },
+      {
+        "size": 512,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 48.60138320000006,
+        "medianMs": 49.63477500000008,
+        "maxMs": 57.131066599999755,
+        "sampledBytesPerOperation": {
+          "min": 126900438.4,
+          "median": 127195680,
+          "max": 128052147.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74675984,
+          "median": 75597584,
+          "max": 75668992
+        }
+      },
+      {
+        "size": 512,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 84.33485,
+        "medianMs": 86.20504999999976,
+        "maxMs": 88.37922499999986,
+        "sampledBytesPerOperation": {
+          "min": 188132649.6,
+          "median": 189768760,
+          "max": 191370947.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 76780848,
+          "median": 84531696,
+          "max": 85250368
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 200.81910000000062,
+        "medianMs": 202.14381680000005,
+        "maxMs": 204.37649180000008,
+        "sampledBytesPerOperation": {
+          "min": 504109536,
+          "median": 505536955.2,
+          "max": 506045755.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 86198528,
+          "median": 90197496,
+          "max": 111158928
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 48.73009999999995,
+        "medianMs": 49.57406659999979,
+        "maxMs": 49.998674999999636,
+        "sampledBytesPerOperation": {
+          "min": 126028196.8,
+          "median": 127099171.2,
+          "max": 127832696
+        },
+        "observedHeapGrowthBytes": {
+          "min": 75256088,
+          "median": 76275448,
+          "max": 76652000
+        }
+      },
+      {
+        "size": 512,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 49.05899999999965,
+        "medianMs": 49.67909999999974,
+        "maxMs": 49.99409159999923,
+        "sampledBytesPerOperation": {
+          "min": 124625652.8,
+          "median": 125448644.8,
+          "max": 126430265.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74805528,
+          "median": 75997552,
+          "max": 76043496
+        }
+      },
+      {
+        "size": 512,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 48.995341600000394,
+        "medianMs": 49.637374999999885,
+        "maxMs": 49.948841599999284,
+        "sampledBytesPerOperation": {
+          "min": 125922180.8,
+          "median": 127748998.4,
+          "max": 127859264
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74767744,
+          "median": 75963416,
+          "max": 76042072
+        }
+      },
+      {
+        "size": 512,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 77.97762499999953,
+        "medianMs": 78.25999180000072,
+        "maxMs": 78.89466660000035,
+        "sampledBytesPerOperation": {
+          "min": 173841883.2,
+          "median": 174677584,
+          "max": 174848596.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 83051544,
+          "median": 87418168,
+          "max": 89422864
+        }
+      },
+      {
+        "size": 512,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 76.69648339999985,
+        "medianMs": 78.24836660000001,
+        "maxMs": 79.86547500000015,
+        "sampledBytesPerOperation": {
+          "min": 175582465.6,
+          "median": 175738648,
+          "max": 175799499.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 80756136,
+          "median": 84138080,
+          "max": 88266416
+        }
+      },
+      {
+        "size": 512,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 3.0897168000010424,
+        "medianMs": 3.181900000000314,
+        "maxMs": 3.6302418000006584,
+        "sampledBytesPerOperation": {
+          "min": 8708294.4,
+          "median": 8898195.2,
+          "max": 9025403.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13075552,
+          "median": 13174392,
+          "max": 14327496
+        }
+      },
+      {
+        "size": 512,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 48.8257666000005,
+        "medianMs": 49.69560839999904,
+        "maxMs": 51.84258320000081,
+        "sampledBytesPerOperation": {
+          "min": 125798462.4,
+          "median": 126087707.2,
+          "max": 126514710.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74703216,
+          "median": 75531128,
+          "max": 75936440
+        }
+      },
+      {
+        "size": 512,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 103.70579180000058,
+        "medianMs": 103.99935839999816,
+        "maxMs": 107.13923319999886,
+        "sampledBytesPerOperation": {
+          "min": 252607160,
+          "median": 253476060.8,
+          "max": 255284388.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 112509720,
+          "median": 112916464,
+          "max": 113010264
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "leaf",
+        "iterations": 3,
+        "minMs": 221.97566666666535,
+        "medianMs": 223.0735556666623,
+        "maxMs": 223.58326399999592,
+        "sampledBytesPerOperation": {
+          "min": 506228728,
+          "median": 508120709.3333333,
+          "max": 509238280
+        },
+        "observedHeapGrowthBytes": {
+          "min": 151364536,
+          "median": 151581256,
+          "max": 152348448
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "root",
+        "iterations": 3,
+        "minMs": 352.7990693333316,
+        "medianMs": 355.00056933333207,
+        "maxMs": 360.5379583333367,
+        "sampledBytesPerOperation": {
+          "min": 756682080,
+          "median": 757872122.6666666,
+          "max": 759751698.6666666
+        },
+        "observedHeapGrowthBytes": {
+          "min": 119184400,
+          "median": 119805928,
+          "max": 120542288
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-independent",
+        "iterations": 3,
+        "minMs": 884.210500000001,
+        "medianMs": 885.429680666668,
+        "maxMs": 899.2173196666699,
+        "sampledBytesPerOperation": {
+          "min": 2020715021.3333333,
+          "median": 2024407338.6666667,
+          "max": 2028139221.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 70830368,
+          "median": 87567912,
+          "max": 88154952
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-batch",
+        "iterations": 3,
+        "minMs": 219.76359733332842,
+        "medianMs": 223.2289026666646,
+        "maxMs": 225.48256933333082,
+        "sampledBytesPerOperation": {
+          "min": 504048848,
+          "median": 506073856,
+          "max": 506252397.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 151288752,
+          "median": 151641656,
+          "max": 152234928
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "constructive",
+        "iterations": 3,
+        "minMs": 219.73576400000215,
+        "medianMs": 223.74247233332912,
+        "maxMs": 225.1285696666649,
+        "sampledBytesPerOperation": {
+          "min": 507468658.6666667,
+          "median": 508297746.6666667,
+          "max": 511725744
+        },
+        "observedHeapGrowthBytes": {
+          "min": 151167896,
+          "median": 151503152,
+          "max": 160169808
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "rename",
+        "iterations": 3,
+        "minMs": 219.65366666666037,
+        "medianMs": 223.2397639999981,
+        "maxMs": 223.90681933333204,
+        "sampledBytesPerOperation": {
+          "min": 504854512,
+          "median": 506888853.3333333,
+          "max": 509516314.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 151484944,
+          "median": 152190608,
+          "max": 159808576
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "move",
+        "iterations": 3,
+        "minMs": 336.745291666671,
+        "medianMs": 338.68909733333084,
+        "maxMs": 349.76073599999654,
+        "sampledBytesPerOperation": {
+          "min": 691372000,
+          "median": 694790226.6666666,
+          "max": 697201048
+        },
+        "observedHeapGrowthBytes": {
+          "min": 112133352,
+          "median": 115704224,
+          "max": 117271264
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "splice",
+        "iterations": 3,
+        "minMs": 336.33844466666534,
+        "medianMs": 338.8997223333281,
+        "maxMs": 379.6001806666706,
+        "sampledBytesPerOperation": {
+          "min": 693362141.3333334,
+          "median": 699424434.6666666,
+          "max": 700020480
+        },
+        "observedHeapGrowthBytes": {
+          "min": 112303560,
+          "median": 117018920,
+          "max": 117807328
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "schema",
+        "iterations": 3,
+        "minMs": 12.550847333332058,
+        "medianMs": 13.637847000005422,
+        "maxMs": 13.821125000007063,
+        "sampledBytesPerOperation": {
+          "min": 35020669.333333336,
+          "median": 35730970.666666664,
+          "max": 35850517.333333336
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13971848,
+          "median": 15501744,
+          "max": 16272320
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "locus",
+        "iterations": 3,
+        "minMs": 220.68783333332976,
+        "medianMs": 224.03244433333748,
+        "maxMs": 224.9906946666597,
+        "sampledBytesPerOperation": {
+          "min": 503624336,
+          "median": 506326357.3333333,
+          "max": 508251482.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 151152744,
+          "median": 151520064,
+          "max": 151586192
+        }
+      },
+      {
+        "size": 1,
+        "operation": "interaction",
+        "iterations": 10,
+        "minMs": 0.6198042000003625,
+        "medianMs": 0.6845582999987527,
+        "maxMs": 0.7260957999998936,
+        "sampledBytesPerOperation": {
+          "min": 1120582.4,
+          "median": 1188896.8,
+          "max": 1205596.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 12217688,
+          "median": 12266280,
+          "max": 12305728
+        }
+      }
+    ],
+    "memory": [
+      {
+        "trial": 0,
+        "installedBytes": 22805528,
+        "preparedAdditionalBytes": 12492176,
+        "discardedAdditionalBytesWithTokenHeld": 3576,
+        "heldMapAndCandidateBytes": 35262096,
+        "settledMapBytes": 6043008
+      },
+      {
+        "trial": 1,
+        "installedBytes": 22798392,
+        "preparedAdditionalBytes": 12494536,
+        "discardedAdditionalBytesWithTokenHeld": -848,
+        "heldMapAndCandidateBytes": 35315176,
+        "settledMapBytes": 6070368
+      },
+      {
+        "trial": 2,
+        "installedBytes": 22808704,
+        "preparedAdditionalBytes": 12501360,
+        "discardedAdditionalBytesWithTokenHeld": 13000,
+        "heldMapAndCandidateBytes": 35315240,
+        "settledMapBytes": 6071536
+      },
+      {
+        "trial": 3,
+        "installedBytes": 22807848,
+        "preparedAdditionalBytes": 12516064,
+        "discardedAdditionalBytesWithTokenHeld": 20352,
+        "heldMapAndCandidateBytes": 35315232,
+        "settledMapBytes": 6077232
+      },
+      {
+        "trial": 4,
+        "installedBytes": 22807864,
+        "preparedAdditionalBytes": 12495328,
+        "discardedAdditionalBytesWithTokenHeld": 6016,
+        "heldMapAndCandidateBytes": 35316128,
+        "settledMapBytes": 6080848
+      }
+    ],
+    "peakTrials": [
+      {
+        "operation": "leaf",
+        "trial": 0,
+        "retainedBytes": 8268864,
+        "peakRssBytes": 376209408
+      },
+      {
+        "operation": "leaf",
+        "trial": 1,
+        "retainedBytes": 8270784,
+        "peakRssBytes": 370393088
+      },
+      {
+        "operation": "leaf",
+        "trial": 2,
+        "retainedBytes": 8273656,
+        "peakRssBytes": 378634240
+      },
+      {
+        "operation": "root",
+        "trial": 0,
+        "retainedBytes": 11417056,
+        "peakRssBytes": 425771008
+      },
+      {
+        "operation": "root",
+        "trial": 1,
+        "retainedBytes": 11412816,
+        "peakRssBytes": 414875648
+      },
+      {
+        "operation": "root",
+        "trial": 2,
+        "retainedBytes": 11406400,
+        "peakRssBytes": 420216832
+      },
+      {
+        "operation": "four-batch",
+        "trial": 0,
+        "retainedBytes": 8362624,
+        "peakRssBytes": 388005888
+      },
+      {
+        "operation": "four-batch",
+        "trial": 1,
+        "retainedBytes": 8360608,
+        "peakRssBytes": 375029760
+      },
+      {
+        "operation": "four-batch",
+        "trial": 2,
+        "retainedBytes": 8364216,
+        "peakRssBytes": 363954176
+      },
+      {
+        "operation": "held",
+        "trial": 0,
+        "heldBytes": 36811544,
+        "settledBytes": 7570808,
+        "peakRssBytes": 364085248
+      },
+      {
+        "operation": "held",
+        "trial": 1,
+        "heldBytes": 36810312,
+        "settledBytes": 7571816,
+        "peakRssBytes": 362233856
+      },
+      {
+        "operation": "held",
+        "trial": 2,
+        "heldBytes": 36812336,
+        "settledBytes": 7572248,
+        "peakRssBytes": 363986944
+      }
+    ],
+    "peakProcessRssBytes": 1040203776
+  },
+  "originalInvestigationFixture": {
+    "historicalCommit": "dc0fd0b11ac518f6a7322b3f820882c96660c447",
+    "historicalMethod": "Small single-process source probe during concurrent triage; no GC control, isolated warmups, or hosted workloads. Existing D4b components only.",
+    "historicalLeaf": [
+      {
+        "size": 64,
+        "graphNodes": 711,
+        "name": "public-leaf-write",
+        "count": 1,
+        "samples": 3,
+        "medianMs": 2.721584000000007,
+        "minMs": 2.380790999999988,
+        "maxMs": 3.296042,
+        "rawMs": [
+          2.721584000000007,
+          3.296042,
+          2.380790999999988
+        ]
+      },
+      {
+        "size": 512,
+        "graphNodes": 5639,
+        "name": "public-leaf-write",
+        "count": 1,
+        "samples": 3,
+        "medianMs": 18.43445799999995,
+        "minMs": 18.014290999999957,
+        "maxMs": 19.667958,
+        "rawMs": [
+          19.667958,
+          18.014290999999957,
+          18.43445799999995
+        ]
+      },
+      {
+        "size": 2048,
+        "graphNodes": 22535,
+        "name": "public-leaf-write",
+        "count": 1,
+        "samples": 3,
+        "medianMs": 75.76937499999985,
+        "minMs": 71.97649999999976,
+        "maxMs": 78.85474999999997,
+        "rawMs": [
+          78.85474999999997,
+          71.97649999999976,
+          75.76937499999985
+        ]
+      }
+    ],
+    "committedBoundaryA": {
+      "mode": "committed",
+      "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+      "node": "v22.20.0",
+      "samples": 7,
+      "allocation": "V8 statistical allocation sampling includes collected objects; estimated bytes, not exact counts",
+      "memoryMethod": "Forced GC deltas, five trials. Heap growth is observed between completed operations, a lower bound on peak live heap. Held uses the real Locus asynchronous acceptance gate; persistence I/O excluded.",
+      "results": [
+        {
+          "size": 64,
+          "operation": "investigation-leaf",
+          "iterations": 5,
+          "minMs": 1.91030839999994,
+          "medianMs": 2.0583999999999834,
+          "maxMs": 2.5640249999999467,
+          "sampledBytesPerOperation": {
+            "min": 5037716.8,
+            "median": 5162040,
+            "max": 5296601.6
+          },
+          "observedHeapGrowthBytes": {
+            "min": 8622720,
+            "median": 15307232,
+            "max": 15702768
+          }
+        },
+        {
+          "size": 512,
+          "operation": "investigation-leaf",
+          "iterations": 5,
+          "minMs": 14.558783199999926,
+          "medianMs": 14.89495820000002,
+          "maxMs": 14.996666600000026,
+          "sampledBytesPerOperation": {
+            "min": 38640238.4,
+            "median": 40048200,
+            "max": 40870923.2
+          },
+          "observedHeapGrowthBytes": {
+            "min": 22380624,
+            "median": 22396296,
+            "max": 23457824
+          }
+        },
+        {
+          "size": 2048,
+          "operation": "investigation-leaf",
+          "iterations": 3,
+          "minMs": 62.62440266666666,
+          "medianMs": 63.10347233333323,
+          "maxMs": 63.441499999999905,
+          "sampledBytesPerOperation": {
+            "min": 157204061.33333334,
+            "median": 158025533.33333334,
+            "max": 159386498.66666666
+          },
+          "observedHeapGrowthBytes": {
+            "min": 61107256,
+            "median": 61701976,
+            "max": 61800744
+          }
+        }
+      ],
+      "memory": [],
+      "peakTrials": [],
+      "peakProcessRssBytes": 243564544
+    },
+    "current": {
+      "mode": "working-tree",
+      "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+      "node": "v22.20.0",
+      "samples": 7,
+      "allocation": "V8 statistical allocation sampling includes collected objects; estimated bytes, not exact counts",
+      "memoryMethod": "Forced GC deltas, five trials. Heap growth is observed between completed operations, a lower bound on peak live heap. Held uses the real Locus asynchronous acceptance gate; persistence I/O excluded.",
+      "results": [
+        {
+          "size": 64,
+          "operation": "investigation-leaf",
+          "iterations": 5,
+          "minMs": 2.050675000000001,
+          "medianMs": 2.2021000000000015,
+          "maxMs": 2.9583665999999993,
+          "sampledBytesPerOperation": {
+            "min": 4923201.6,
+            "median": 4939177.6,
+            "max": 5207683.2
+          },
+          "observedHeapGrowthBytes": {
+            "min": 6219648,
+            "median": 7473704,
+            "max": 7956776
+          }
+        },
+        {
+          "size": 512,
+          "operation": "investigation-leaf",
+          "iterations": 5,
+          "minMs": 16.230925000000003,
+          "medianMs": 16.53789999999999,
+          "maxMs": 16.863391800000024,
+          "sampledBytesPerOperation": {
+            "min": 39542817.6,
+            "median": 39927350.4,
+            "max": 40389585.6
+          },
+          "observedHeapGrowthBytes": {
+            "min": 20134408,
+            "median": 21661072,
+            "max": 22383328
+          }
+        },
+        {
+          "size": 2048,
+          "operation": "investigation-leaf",
+          "iterations": 3,
+          "minMs": 74.997,
+          "medianMs": 75.74666666666667,
+          "maxMs": 76.08754166666661,
+          "sampledBytesPerOperation": {
+            "min": 159154181.33333334,
+            "median": 161111277.33333334,
+            "max": 161332400
+          },
+          "observedHeapGrowthBytes": {
+            "min": 58580960,
+            "median": 58762232,
+            "max": 59362424
+          }
+        }
+      ],
+      "memory": [],
+      "peakTrials": [],
+      "peakProcessRssBytes": 248152064
+    }
+  },
+  "initialGraphCandidateRun": {
+    "mode": "working-tree",
+    "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+    "node": "v22.20.0",
+    "samples": 7,
+    "allocation": "V8 statistical allocation sampling includes collected objects; estimated bytes, not exact counts",
+    "memoryMethod": "Forced GC deltas, five trials. Heap growth is observed between completed operations, a lower bound on peak live heap. Held uses the real Locus asynchronous acceptance gate; persistence I/O excluded.",
+    "results": [
+      {
+        "size": 64,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 6.264058199999999,
+        "medianMs": 6.612925000000007,
+        "maxMs": 7.5475165999999945,
+        "sampledBytesPerOperation": {
+          "min": 16681124.8,
+          "median": 16822198.4,
+          "max": 16977406.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 6616952,
+          "median": 7397064,
+          "max": 8253064
+        }
+      },
+      {
+        "size": 64,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 10.85864160000001,
+        "medianMs": 11.103224999999998,
+        "maxMs": 11.719783399999983,
+        "sampledBytesPerOperation": {
+          "min": 24147915.2,
+          "median": 24935793.6,
+          "max": 25597572.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16497096,
+          "median": 16603680,
+          "max": 17211528
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 24.567908400000032,
+        "medianMs": 24.90097499999997,
+        "maxMs": 26.25906679999998,
+        "sampledBytesPerOperation": {
+          "min": 66980254.4,
+          "median": 67577241.6,
+          "max": 68134064
+        },
+        "observedHeapGrowthBytes": {
+          "min": 23403128,
+          "median": 23710776,
+          "max": 24307912
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 6.356816600000002,
+        "medianMs": 6.643791599999986,
+        "maxMs": 6.712591799999973,
+        "sampledBytesPerOperation": {
+          "min": 16833368,
+          "median": 17174704,
+          "max": 17264558.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 7659560,
+          "median": 7978688,
+          "max": 8101920
+        }
+      },
+      {
+        "size": 64,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 6.248591800000031,
+        "medianMs": 6.287075000000004,
+        "maxMs": 6.608500000000004,
+        "sampledBytesPerOperation": {
+          "min": 16567720,
+          "median": 16602713.6,
+          "max": 16835027.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 7138560,
+          "median": 7306168,
+          "max": 7700656
+        }
+      },
+      {
+        "size": 64,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 6.275208399999974,
+        "medianMs": 6.610399999999936,
+        "maxMs": 6.644983400000001,
+        "sampledBytesPerOperation": {
+          "min": 16359371.2,
+          "median": 17046243.2,
+          "max": 17360224
+        },
+        "observedHeapGrowthBytes": {
+          "min": 7220208,
+          "median": 7701920,
+          "max": 7976656
+        }
+      },
+      {
+        "size": 64,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 10.001783400000022,
+        "medianMs": 10.301641599999858,
+        "maxMs": 10.5371000000001,
+        "sampledBytesPerOperation": {
+          "min": 23245689.6,
+          "median": 23251124.8,
+          "max": 23642134.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16491480,
+          "median": 16698696,
+          "max": 17023240
+        }
+      },
+      {
+        "size": 64,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 10.129149999999935,
+        "medianMs": 10.398599999999897,
+        "maxMs": 10.808091600000079,
+        "sampledBytesPerOperation": {
+          "min": 22839369.6,
+          "median": 22919464,
+          "max": 23526070.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16960344,
+          "median": 17155392,
+          "max": 17237928
+        }
+      },
+      {
+        "size": 64,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 0.5757250000000568,
+        "medianMs": 0.5992415999999139,
+        "maxMs": 0.6638584000000265,
+        "sampledBytesPerOperation": {
+          "min": 1188699.2,
+          "median": 1287716.8,
+          "max": 1320081.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 6576792,
+          "median": 6652440,
+          "max": 6773240
+        }
+      },
+      {
+        "size": 64,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 6.206416600000011,
+        "medianMs": 6.29986659999995,
+        "maxMs": 6.735824999999932,
+        "sampledBytesPerOperation": {
+          "min": 16493083.2,
+          "median": 16756972.8,
+          "max": 17038830.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 7019368,
+          "median": 7234384,
+          "max": 7426680
+        }
+      },
+      {
+        "size": 64,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 12.759858199999872,
+        "medianMs": 13.167016800000056,
+        "maxMs": 13.889666600000055,
+        "sampledBytesPerOperation": {
+          "min": 33295590.4,
+          "median": 33754699.2,
+          "max": 33789227.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 14838448,
+          "median": 15580672,
+          "max": 15907872
+        }
+      },
+      {
+        "size": 512,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 54.56961660000015,
+        "medianMs": 55.913433400000216,
+        "maxMs": 59.43323339999988,
+        "sampledBytesPerOperation": {
+          "min": 131944868.8,
+          "median": 132114464,
+          "max": 132416030.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 77252568,
+          "median": 79424528,
+          "max": 84891168
+        }
+      },
+      {
+        "size": 512,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 89.33190820000019,
+        "medianMs": 90.69279160000042,
+        "maxMs": 92.85,
+        "sampledBytesPerOperation": {
+          "min": 199852497.6,
+          "median": 199978294.4,
+          "max": 199981116.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 66869592,
+          "median": 88326328,
+          "max": 104470424
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 218.5239999999998,
+        "medianMs": 220.90808340000004,
+        "maxMs": 223.59429999999992,
+        "sampledBytesPerOperation": {
+          "min": 526450796.8,
+          "median": 529235292.8,
+          "max": 530671323.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 71632544,
+          "median": 82823984,
+          "max": 83781800
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 54.6474000000002,
+        "medianMs": 54.76918319999968,
+        "maxMs": 55.13279159999947,
+        "sampledBytesPerOperation": {
+          "min": 133647160,
+          "median": 133695152,
+          "max": 133898184
+        },
+        "observedHeapGrowthBytes": {
+          "min": 70630168,
+          "median": 70814128,
+          "max": 83922888
+        }
+      },
+      {
+        "size": 512,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 54.48150000000023,
+        "medianMs": 54.84211660000001,
+        "maxMs": 55.05413339999941,
+        "sampledBytesPerOperation": {
+          "min": 131698411.2,
+          "median": 133400014.4,
+          "max": 135171432
+        },
+        "observedHeapGrowthBytes": {
+          "min": 70170224,
+          "median": 70598056,
+          "max": 83443320
+        }
+      },
+      {
+        "size": 512,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 54.67153339999932,
+        "medianMs": 54.77219999999943,
+        "maxMs": 54.96761659999902,
+        "sampledBytesPerOperation": {
+          "min": 131012161.6,
+          "median": 132778209.6,
+          "max": 134466438.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 70102568,
+          "median": 70553632,
+          "max": 82851016
+        }
+      },
+      {
+        "size": 512,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 83.16113320000004,
+        "medianMs": 84.12598339999968,
+        "maxMs": 85.25619999999908,
+        "sampledBytesPerOperation": {
+          "min": 181147276.8,
+          "median": 181202080,
+          "max": 182695420.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 92994720,
+          "median": 100155440,
+          "max": 102420824
+        }
+      },
+      {
+        "size": 512,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 82.90262499999953,
+        "medianMs": 84.72854179999995,
+        "maxMs": 84.9458999999988,
+        "sampledBytesPerOperation": {
+          "min": 183140492.8,
+          "median": 183998104,
+          "max": 184229560
+        },
+        "observedHeapGrowthBytes": {
+          "min": 97974304,
+          "median": 99113792,
+          "max": 102874064
+        }
+      },
+      {
+        "size": 512,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 3.932499999999709,
+        "medianMs": 4.177366600000823,
+        "maxMs": 4.326841800000693,
+        "sampledBytesPerOperation": {
+          "min": 10005636.8,
+          "median": 10080841.6,
+          "max": 10356963.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13996536,
+          "median": 14475552,
+          "max": 14490008
+        }
+      },
+      {
+        "size": 512,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 55.21298340000067,
+        "medianMs": 55.627933399999165,
+        "maxMs": 56.02311679999984,
+        "sampledBytesPerOperation": {
+          "min": 132271476.8,
+          "median": 132955011.2,
+          "max": 133901304
+        },
+        "observedHeapGrowthBytes": {
+          "min": 77489400,
+          "median": 79533624,
+          "max": 84926328
+        }
+      },
+      {
+        "size": 512,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 113.56247500000173,
+        "medianMs": 114.23643340000126,
+        "maxMs": 114.97536660000041,
+        "sampledBytesPerOperation": {
+          "min": 262517305.6,
+          "median": 263590248,
+          "max": 265816748.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 120480216,
+          "median": 120896560,
+          "max": 121920616
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "leaf",
+        "iterations": 3,
+        "minMs": 233.44143066666342,
+        "medianMs": 236.76644466666525,
+        "maxMs": 237.89477799999682,
+        "sampledBytesPerOperation": {
+          "min": 529255776,
+          "median": 531706266.6666667,
+          "max": 533357330.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 176371744,
+          "median": 177018448,
+          "max": 177072016
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "root",
+        "iterations": 3,
+        "minMs": 381.93624999999884,
+        "medianMs": 382.39400000000023,
+        "maxMs": 385.31066666666203,
+        "sampledBytesPerOperation": {
+          "min": 796791024,
+          "median": 798203546.6666666,
+          "max": 801678621.3333334
+        },
+        "observedHeapGrowthBytes": {
+          "min": 123657320,
+          "median": 214813144,
+          "max": 215420528
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-independent",
+        "iterations": 3,
+        "minMs": 934.0817776666663,
+        "medianMs": 941.6625416666697,
+        "maxMs": 942.8712360000014,
+        "sampledBytesPerOperation": {
+          "min": 2118341064,
+          "median": 2119696346.6666667,
+          "max": 2125648320
+        },
+        "observedHeapGrowthBytes": {
+          "min": 176665032,
+          "median": 211166376,
+          "max": 212367240
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-batch",
+        "iterations": 3,
+        "minMs": 235.98398633333272,
+        "medianMs": 238.4253333333278,
+        "maxMs": 241.37104166666782,
+        "sampledBytesPerOperation": {
+          "min": 528872408,
+          "median": 533382346.6666667,
+          "max": 534965384
+        },
+        "observedHeapGrowthBytes": {
+          "min": 174893552,
+          "median": 177145072,
+          "max": 177298536
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "constructive",
+        "iterations": 3,
+        "minMs": 235.6343053333403,
+        "medianMs": 238.2763196666589,
+        "maxMs": 239.34679166667047,
+        "sampledBytesPerOperation": {
+          "min": 530903037.3333333,
+          "median": 531219858.6666667,
+          "max": 532691973.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 176470288,
+          "median": 177084160,
+          "max": 177214360
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "rename",
+        "iterations": 3,
+        "minMs": 235.30393066666633,
+        "medianMs": 238.1225276666713,
+        "maxMs": 240.22718066666857,
+        "sampledBytesPerOperation": {
+          "min": 529619648,
+          "median": 530212885.3333333,
+          "max": 531328293.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 174871664,
+          "median": 177032832,
+          "max": 177124392
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "move",
+        "iterations": 3,
+        "minMs": 361.53345833333634,
+        "medianMs": 363.48406966667,
+        "maxMs": 365.917458333337,
+        "sampledBytesPerOperation": {
+          "min": 727554760,
+          "median": 733263066.6666666,
+          "max": 738147653.3333334
+        },
+        "observedHeapGrowthBytes": {
+          "min": 174967048,
+          "median": 187274256,
+          "max": 193968152
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "splice",
+        "iterations": 3,
+        "minMs": 362.1106803333387,
+        "medianMs": 363.72455533333897,
+        "maxMs": 371.32150000000064,
+        "sampledBytesPerOperation": {
+          "min": 730181066.6666666,
+          "median": 730695354.6666666,
+          "max": 737708066.6666666
+        },
+        "observedHeapGrowthBytes": {
+          "min": 175057080,
+          "median": 190236544,
+          "max": 191646568
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "schema",
+        "iterations": 3,
+        "minMs": 15.946833333330384,
+        "medianMs": 16.577527666668175,
+        "maxMs": 16.91829166666139,
+        "sampledBytesPerOperation": {
+          "min": 38464440,
+          "median": 39288528,
+          "max": 39315554.666666664
+        },
+        "observedHeapGrowthBytes": {
+          "min": 18286376,
+          "median": 19160936,
+          "max": 19175568
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "locus",
+        "iterations": 3,
+        "minMs": 234.91238866666876,
+        "medianMs": 236.05662499999744,
+        "maxMs": 238.52444466666202,
+        "sampledBytesPerOperation": {
+          "min": 527940653.3333333,
+          "median": 529185173.3333333,
+          "max": 531120754.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 176162992,
+          "median": 176956160,
+          "max": 177158232
+        }
+      },
+      {
+        "size": 1,
+        "operation": "interaction",
+        "iterations": 10,
+        "minMs": 0.6146959000005154,
+        "medianMs": 0.6792208999977447,
+        "maxMs": 0.7168375000008382,
+        "sampledBytesPerOperation": {
+          "min": 1179388.8,
+          "median": 1277788.8,
+          "max": 1299007.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 12233304,
+          "median": 12335312,
+          "max": 12366912
+        }
+      }
+    ],
+    "memory": [
+      {
+        "trial": 0,
+        "installedBytes": 45516840,
+        "preparedAdditionalBytes": 12577720,
+        "discardedAdditionalBytesWithTokenHeld": -12296,
+        "heldMapAndCandidateBytes": 57983584,
+        "settledMapBytes": 29043816
+      },
+      {
+        "trial": 1,
+        "installedBytes": 45470296,
+        "preparedAdditionalBytes": 12592136,
+        "discardedAdditionalBytesWithTokenHeld": -1072,
+        "heldMapAndCandidateBytes": 58050600,
+        "settledMapBytes": 29085112
+      },
+      {
+        "trial": 2,
+        "installedBytes": 45453064,
+        "preparedAdditionalBytes": 12592424,
+        "discardedAdditionalBytesWithTokenHeld": 12800,
+        "heldMapAndCandidateBytes": 58057328,
+        "settledMapBytes": 29092976
+      },
+      {
+        "trial": 3,
+        "installedBytes": 45452200,
+        "preparedAdditionalBytes": 12613688,
+        "discardedAdditionalBytesWithTokenHeld": 20152,
+        "heldMapAndCandidateBytes": 58057336,
+        "settledMapBytes": 29098680
+      },
+      {
+        "trial": 4,
+        "installedBytes": 45452232,
+        "preparedAdditionalBytes": 12592128,
+        "discardedAdditionalBytesWithTokenHeld": -168,
+        "heldMapAndCandidateBytes": 58061776,
+        "settledMapBytes": 29105816
+      }
+    ],
+    "peakTrials": [
+      {
+        "operation": "leaf",
+        "trial": 0,
+        "retainedBytes": 31311496,
+        "peakRssBytes": 380796928
+      },
+      {
+        "operation": "leaf",
+        "trial": 1,
+        "retainedBytes": 31313224,
+        "peakRssBytes": 373899264
+      },
+      {
+        "operation": "leaf",
+        "trial": 2,
+        "retainedBytes": 31573280,
+        "peakRssBytes": 381222912
+      },
+      {
+        "operation": "root",
+        "trial": 0,
+        "retainedBytes": 36521144,
+        "peakRssBytes": 525287424
+      },
+      {
+        "operation": "root",
+        "trial": 1,
+        "retainedBytes": 36522104,
+        "peakRssBytes": 514211840
+      },
+      {
+        "operation": "root",
+        "trial": 2,
+        "retainedBytes": 36518648,
+        "peakRssBytes": 520667136
+      },
+      {
+        "operation": "four-batch",
+        "trial": 0,
+        "retainedBytes": 31398104,
+        "peakRssBytes": 378912768
+      },
+      {
+        "operation": "four-batch",
+        "trial": 1,
+        "retainedBytes": 31398032,
+        "peakRssBytes": 380600320
+      },
+      {
+        "operation": "four-batch",
+        "trial": 2,
+        "retainedBytes": 31400704,
+        "peakRssBytes": 374882304
+      },
+      {
+        "operation": "held",
+        "trial": 0,
+        "heldBytes": 59568080,
+        "settledBytes": 30612544,
+        "peakRssBytes": 364380160
+      },
+      {
+        "operation": "held",
+        "trial": 1,
+        "heldBytes": 59565624,
+        "settledBytes": 30610104,
+        "peakRssBytes": 362414080
+      },
+      {
+        "operation": "held",
+        "trial": 2,
+        "heldBytes": 59567240,
+        "settledBytes": 30612080,
+        "peakRssBytes": 360955904
+      }
+    ],
+    "peakProcessRssBytes": 1031569408
+  },
+  "afterMetadataAndContainerReuse": {
+    "mode": "working-tree",
+    "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+    "node": "v22.20.0",
+    "samples": 7,
+    "allocation": "V8 statistical allocation sampling includes collected objects; estimated bytes, not exact counts",
+    "memoryMethod": "Forced GC deltas, five trials. Heap growth is observed between completed operations, a lower bound on peak live heap. Held uses the real Locus asynchronous acceptance gate; persistence I/O excluded.",
+    "results": [
+      {
+        "size": 64,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 5.299508400000002,
+        "medianMs": 5.655016599999999,
+        "maxMs": 6.048849999999993,
+        "sampledBytesPerOperation": {
+          "min": 15645851.2,
+          "median": 15665000,
+          "max": 16026144
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4229568,
+          "median": 18032896,
+          "max": 18291056
+        }
+      },
+      {
+        "size": 64,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 10.0912916,
+        "medianMs": 10.276441599999998,
+        "maxMs": 11.450375000000008,
+        "sampledBytesPerOperation": {
+          "min": 24080233.6,
+          "median": 24314132.8,
+          "max": 24712726.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 16964264,
+          "median": 17411872,
+          "max": 18639640
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 21.07510000000002,
+        "medianMs": 21.414824999999972,
+        "maxMs": 21.941775000000007,
+        "sampledBytesPerOperation": {
+          "min": 63137262.4,
+          "median": 63864936,
+          "max": 65522268.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 15281056,
+          "median": 26418600,
+          "max": 26690416
+        }
+      },
+      {
+        "size": 64,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 5.577750000000014,
+        "medianMs": 5.901716599999963,
+        "maxMs": 6.057958400000007,
+        "sampledBytesPerOperation": {
+          "min": 15329848,
+          "median": 16140577.6,
+          "max": 16881459.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4437040,
+          "median": 16966008,
+          "max": 17386224
+        }
+      },
+      {
+        "size": 64,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 5.5245665999999805,
+        "medianMs": 5.749091800000042,
+        "maxMs": 5.984216600000036,
+        "sampledBytesPerOperation": {
+          "min": 15899776,
+          "median": 15970916.8,
+          "max": 16002182.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 3015968,
+          "median": 18101080,
+          "max": 18418200
+        }
+      },
+      {
+        "size": 64,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 5.52524999999996,
+        "medianMs": 5.851841599999989,
+        "maxMs": 6.301291599999968,
+        "sampledBytesPerOperation": {
+          "min": 15867212.8,
+          "median": 15870638.4,
+          "max": 16086851.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 3072880,
+          "median": 18001936,
+          "max": 18340416
+        }
+      },
+      {
+        "size": 64,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 9.086325000000034,
+        "medianMs": 9.438024999999925,
+        "maxMs": 9.665549999999985,
+        "sampledBytesPerOperation": {
+          "min": 22069108.8,
+          "median": 22192233.6,
+          "max": 22404873.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13989880,
+          "median": 19917600,
+          "max": 20234192
+        }
+      },
+      {
+        "size": 64,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 9.193841600000088,
+        "medianMs": 9.539483200000177,
+        "maxMs": 10.175608399999874,
+        "sampledBytesPerOperation": {
+          "min": 21747632,
+          "median": 22477233.6,
+          "max": 22565128
+        },
+        "observedHeapGrowthBytes": {
+          "min": 14331440,
+          "median": 20087232,
+          "max": 20315064
+        }
+      },
+      {
+        "size": 64,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 0.45782499999986614,
+        "medianMs": 0.511449999999968,
+        "maxMs": 0.60354180000013,
+        "sampledBytesPerOperation": {
+          "min": 1169481.6,
+          "median": 1188718.4,
+          "max": 1202344
+        },
+        "observedHeapGrowthBytes": {
+          "min": 5902328,
+          "median": 6043200,
+          "max": 6496864
+        }
+      },
+      {
+        "size": 64,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 5.504324999999881,
+        "medianMs": 5.569933200000014,
+        "maxMs": 6.111991599999965,
+        "sampledBytesPerOperation": {
+          "min": 15642878.4,
+          "median": 15918465.6,
+          "max": 16359390.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 4360240,
+          "median": 18236680,
+          "max": 18327752
+        }
+      },
+      {
+        "size": 64,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 11.290500000000247,
+        "medianMs": 11.59585819999993,
+        "maxMs": 12.557549999999901,
+        "sampledBytesPerOperation": {
+          "min": 31711931.2,
+          "median": 31725275.2,
+          "max": 32895788.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 6270952,
+          "median": 20727544,
+          "max": 21357960
+        }
+      },
+      {
+        "size": 512,
+        "operation": "leaf",
+        "iterations": 5,
+        "minMs": 48.234375,
+        "medianMs": 48.45392500000016,
+        "maxMs": 48.82541659999988,
+        "sampledBytesPerOperation": {
+          "min": 126205704,
+          "median": 126380392,
+          "max": 126693995.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74937008,
+          "median": 75014192,
+          "max": 75954808
+        }
+      },
+      {
+        "size": 512,
+        "operation": "root",
+        "iterations": 5,
+        "minMs": 82.3925167999998,
+        "medianMs": 82.58477499999972,
+        "maxMs": 82.75439159999988,
+        "sampledBytesPerOperation": {
+          "min": 189994484.8,
+          "median": 191640504,
+          "max": 192633892.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 103631064,
+          "median": 103822984,
+          "max": 108895792
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-independent",
+        "iterations": 5,
+        "minMs": 199.5398165999999,
+        "medianMs": 201.87242499999994,
+        "maxMs": 202.36757500000022,
+        "sampledBytesPerOperation": {
+          "min": 505130220.8,
+          "median": 506052918.4,
+          "max": 507631796.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 70034384,
+          "median": 71181016,
+          "max": 72550080
+        }
+      },
+      {
+        "size": 512,
+        "operation": "four-batch",
+        "iterations": 5,
+        "minMs": 48.72360840000037,
+        "medianMs": 49.43427500000034,
+        "maxMs": 50.96412500000006,
+        "sampledBytesPerOperation": {
+          "min": 127300492.8,
+          "median": 128018345.6,
+          "max": 128223644.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 75224688,
+          "median": 76276000,
+          "max": 76645568
+        }
+      },
+      {
+        "size": 512,
+        "operation": "constructive",
+        "iterations": 5,
+        "minMs": 48.974008199998934,
+        "medianMs": 49.79125820000045,
+        "maxMs": 50.13402499999938,
+        "sampledBytesPerOperation": {
+          "min": 124887008,
+          "median": 126494297.6,
+          "max": 127393886.4
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74816184,
+          "median": 75679912,
+          "max": 76070536
+        }
+      },
+      {
+        "size": 512,
+        "operation": "rename",
+        "iterations": 5,
+        "minMs": 49.05844999999972,
+        "medianMs": 49.580474999999566,
+        "maxMs": 49.73424159999995,
+        "sampledBytesPerOperation": {
+          "min": 126066694.4,
+          "median": 126361088,
+          "max": 128416193.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74807696,
+          "median": 76033256,
+          "max": 76060648
+        }
+      },
+      {
+        "size": 512,
+        "operation": "move",
+        "iterations": 5,
+        "minMs": 76.4117333999995,
+        "medianMs": 77.1161917999998,
+        "maxMs": 84.64921659999963,
+        "sampledBytesPerOperation": {
+          "min": 172655480,
+          "median": 174799648,
+          "max": 174854528
+        },
+        "observedHeapGrowthBytes": {
+          "min": 105438752,
+          "median": 106550400,
+          "max": 111146864
+        }
+      },
+      {
+        "size": 512,
+        "operation": "splice",
+        "iterations": 5,
+        "minMs": 76.19328319999913,
+        "medianMs": 76.93624160000036,
+        "maxMs": 77.53898339999868,
+        "sampledBytesPerOperation": {
+          "min": 175074568,
+          "median": 175204728,
+          "max": 175996153.6
+        },
+        "observedHeapGrowthBytes": {
+          "min": 103998808,
+          "median": 106717152,
+          "max": 111766496
+        }
+      },
+      {
+        "size": 512,
+        "operation": "schema",
+        "iterations": 5,
+        "minMs": 3.1202584000013305,
+        "medianMs": 3.400483199999144,
+        "maxMs": 3.6115918000010425,
+        "sampledBytesPerOperation": {
+          "min": 9009750.4,
+          "median": 9013920,
+          "max": 9147632
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13076088,
+          "median": 13591008,
+          "max": 14174792
+        }
+      },
+      {
+        "size": 512,
+        "operation": "locus",
+        "iterations": 5,
+        "minMs": 49.027208199999585,
+        "medianMs": 49.18700840000092,
+        "maxMs": 49.89409159999923,
+        "sampledBytesPerOperation": {
+          "min": 125579048,
+          "median": 126811934.4,
+          "max": 128142619.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 74479248,
+          "median": 74710120,
+          "max": 76430928
+        }
+      },
+      {
+        "size": 512,
+        "operation": "echo",
+        "iterations": 5,
+        "minMs": 99.96467500000145,
+        "medianMs": 100.95032500000089,
+        "maxMs": 101.92237500000047,
+        "sampledBytesPerOperation": {
+          "min": 252051265.6,
+          "median": 252188347.2,
+          "max": 253254268.8
+        },
+        "observedHeapGrowthBytes": {
+          "min": 128985544,
+          "median": 137884704,
+          "max": 138506192
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "leaf",
+        "iterations": 3,
+        "minMs": 218.30245833333174,
+        "medianMs": 220.88537499999802,
+        "maxMs": 221.83895833333372,
+        "sampledBytesPerOperation": {
+          "min": 501290274.6666667,
+          "median": 504116861.3333333,
+          "max": 504506018.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 169971288,
+          "median": 170027704,
+          "max": 170588520
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "root",
+        "iterations": 3,
+        "minMs": 362.6086386666672,
+        "medianMs": 368.0526666666653,
+        "maxMs": 376.7112916666665,
+        "sampledBytesPerOperation": {
+          "min": 758477517.3333334,
+          "median": 762538197.3333334,
+          "max": 768597122.6666666
+        },
+        "observedHeapGrowthBytes": {
+          "min": 199039640,
+          "median": 199468544,
+          "max": 201886616
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-independent",
+        "iterations": 3,
+        "minMs": 877.4698333333314,
+        "medianMs": 884.7523886666701,
+        "maxMs": 902.7639583333366,
+        "sampledBytesPerOperation": {
+          "min": 2014053085.3333333,
+          "median": 2016061829.3333333,
+          "max": 2022099392
+        },
+        "observedHeapGrowthBytes": {
+          "min": 224568328,
+          "median": 226952488,
+          "max": 240392088
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "four-batch",
+        "iterations": 3,
+        "minMs": 219.76061100000516,
+        "medianMs": 220.1424166666693,
+        "maxMs": 221.18018033334133,
+        "sampledBytesPerOperation": {
+          "min": 499928088,
+          "median": 506249114.6666667,
+          "max": 507019146.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 170049552,
+          "median": 170162656,
+          "max": 170712680
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "constructive",
+        "iterations": 3,
+        "minMs": 219.61975000000288,
+        "medianMs": 220.2546526666653,
+        "maxMs": 222.80630566666755,
+        "sampledBytesPerOperation": {
+          "min": 504520032,
+          "median": 505476488,
+          "max": 505777037.3333333
+        },
+        "observedHeapGrowthBytes": {
+          "min": 170008976,
+          "median": 170051592,
+          "max": 170654864
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "rename",
+        "iterations": 3,
+        "minMs": 219.37529166666596,
+        "medianMs": 220.66224999999395,
+        "maxMs": 222.48773633333622,
+        "sampledBytesPerOperation": {
+          "min": 503357504,
+          "median": 503885842.6666667,
+          "max": 503980506.6666667
+        },
+        "observedHeapGrowthBytes": {
+          "min": 169991104,
+          "median": 170057632,
+          "max": 170578064
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "move",
+        "iterations": 3,
+        "minMs": 336.2216803333334,
+        "medianMs": 338.75276366665884,
+        "maxMs": 340.57479166666354,
+        "sampledBytesPerOperation": {
+          "min": 697191224,
+          "median": 700251973.3333334,
+          "max": 700313741.3333334
+        },
+        "observedHeapGrowthBytes": {
+          "min": 160688664,
+          "median": 163686896,
+          "max": 167945624
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "splice",
+        "iterations": 3,
+        "minMs": 339.5754859999967,
+        "medianMs": 342.2620969999989,
+        "maxMs": 354.21466666666674,
+        "sampledBytesPerOperation": {
+          "min": 696209154.6666666,
+          "median": 699376378.6666666,
+          "max": 700699093.3333334
+        },
+        "observedHeapGrowthBytes": {
+          "min": 164143056,
+          "median": 167704408,
+          "max": 168428728
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "schema",
+        "iterations": 3,
+        "minMs": 12.691833333325727,
+        "medianMs": 13.615778000006685,
+        "maxMs": 13.916875000005044,
+        "sampledBytesPerOperation": {
+          "min": 34212509.333333336,
+          "median": 35594040,
+          "max": 36152968
+        },
+        "observedHeapGrowthBytes": {
+          "min": 13868960,
+          "median": 15500896,
+          "max": 16442848
+        }
+      },
+      {
+        "size": 2048,
+        "operation": "locus",
+        "iterations": 3,
+        "minMs": 220.40347233334128,
+        "medianMs": 220.56309733333183,
+        "maxMs": 221.01411133333264,
+        "sampledBytesPerOperation": {
+          "min": 503646797.3333333,
+          "median": 505719330.6666667,
+          "max": 507971648
+        },
+        "observedHeapGrowthBytes": {
+          "min": 169985104,
+          "median": 170032704,
+          "max": 170080440
+        }
+      },
+      {
+        "size": 1,
+        "operation": "interaction",
+        "iterations": 10,
+        "minMs": 0.6384041999990586,
+        "medianMs": 0.6917749999993248,
+        "maxMs": 0.7080667000001994,
+        "sampledBytesPerOperation": {
+          "min": 1129951.2,
+          "median": 1243700,
+          "max": 1255003.2
+        },
+        "observedHeapGrowthBytes": {
+          "min": 12209544,
+          "median": 12260896,
+          "max": 12323528
+        }
+      }
+    ],
+    "memory": [
+      {
+        "trial": 0,
+        "installedBytes": 45463736,
+        "preparedAdditionalBytes": 12482552,
+        "discardedAdditionalBytesWithTokenHeld": -6048,
+        "heldMapAndCandidateBytes": 57841776,
+        "settledMapBytes": 28655424
+      },
+      {
+        "trial": 1,
+        "installedBytes": 45472640,
+        "preparedAdditionalBytes": 12494536,
+        "discardedAdditionalBytesWithTokenHeld": -848,
+        "heldMapAndCandidateBytes": 57952760,
+        "settledMapBytes": 28740728
+      },
+      {
+        "trial": 2,
+        "installedBytes": 45453040,
+        "preparedAdditionalBytes": 12493976,
+        "discardedAdditionalBytesWithTokenHeld": 12176,
+        "heldMapAndCandidateBytes": 57959560,
+        "settledMapBytes": 28748624
+      },
+      {
+        "trial": 3,
+        "installedBytes": 45452208,
+        "preparedAdditionalBytes": 12516064,
+        "discardedAdditionalBytesWithTokenHeld": 20352,
+        "heldMapAndCandidateBytes": 57956168,
+        "settledMapBytes": 28750936
+      },
+      {
+        "trial": 4,
+        "installedBytes": 45455568,
+        "preparedAdditionalBytes": 12494496,
+        "discardedAdditionalBytesWithTokenHeld": 24,
+        "heldMapAndCandidateBytes": 57959568,
+        "settledMapBytes": 28757024
+      }
+    ],
+    "peakTrials": [
+      {
+        "operation": "leaf",
+        "trial": 0,
+        "retainedBytes": 30951840,
+        "peakRssBytes": 391364608
+      },
+      {
+        "operation": "leaf",
+        "trial": 1,
+        "retainedBytes": 30953520,
+        "peakRssBytes": 388907008
+      },
+      {
+        "operation": "leaf",
+        "trial": 2,
+        "retainedBytes": 30950400,
+        "peakRssBytes": 381714432
+      },
+      {
+        "operation": "root",
+        "trial": 0,
+        "retainedBytes": 36201200,
+        "peakRssBytes": 517259264
+      },
+      {
+        "operation": "root",
+        "trial": 1,
+        "retainedBytes": 36162848,
+        "peakRssBytes": 531529728
+      },
+      {
+        "operation": "root",
+        "trial": 2,
+        "retainedBytes": 36184808,
+        "peakRssBytes": 538329088
+      },
+      {
+        "operation": "four-batch",
+        "trial": 0,
+        "retainedBytes": 31038136,
+        "peakRssBytes": 386744320
+      },
+      {
+        "operation": "four-batch",
+        "trial": 1,
+        "retainedBytes": 31038840,
+        "peakRssBytes": 366592000
+      },
+      {
+        "operation": "four-batch",
+        "trial": 2,
+        "retainedBytes": 31043544,
+        "peakRssBytes": 380436480
+      },
+      {
+        "operation": "held",
+        "trial": 0,
+        "heldBytes": 59450000,
+        "settledBytes": 30243184,
+        "peakRssBytes": 361791488
+      },
+      {
+        "operation": "held",
+        "trial": 1,
+        "heldBytes": 59454696,
+        "settledBytes": 30247904,
+        "peakRssBytes": 363184128
+      },
+      {
+        "operation": "held",
+        "trial": 2,
+        "heldBytes": 59453616,
+        "settledBytes": 30247792,
+        "peakRssBytes": 360087552
+      }
+    ],
+    "peakProcessRssBytes": 1052753920
+  },
+  "validation": {
+    "baseline": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+    "suites": [
+      {
+        "suite": "tests/canonical-interactions-worker.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.86,
+        "finalFocusedSeconds": 1.119026875000003
+      },
+      {
+        "suite": "tests/canonical-interactions.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.501,
+        "finalFocusedSeconds": 3.60058191600001
+      },
+      {
+        "suite": "tests/canonical-schema-refinement.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.14240679200000272
+      },
+      {
+        "suite": "tests/canonical-schema-resource-semantics.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.247
+      },
+      {
+        "suite": "tests/canonical-schema-verifier.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.185
+      },
+      {
+        "suite": "tests/data-source-admission.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.24
+      },
+      {
+        "suite": "tests/data-source-consumers.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.647
+      },
+      {
+        "suite": "tests/echo-authority-progress.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.299
+      },
+      {
+        "suite": "tests/echo-endpoint-core.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.359
+      },
+      {
+        "suite": "tests/echo-http-binder-lifecycle.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.309
+      },
+      {
+        "suite": "tests/echo-http-completion.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.352,
+        "resolution": "Loopback listener denied by sandbox; passed with local loopback permission."
+      },
+      {
+        "suite": "tests/echo-http-framing.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.135
+      },
+      {
+        "suite": "tests/echo-http-lifecycle.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.345
+      },
+      {
+        "suite": "tests/echo-http-redirect.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.312,
+        "resolution": "Loopback listener denied by sandbox; passed with local loopback permission."
+      },
+      {
+        "suite": "tests/echo-http-retry.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 8.801
+      },
+      {
+        "suite": "tests/echo-http-submission.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.305
+      },
+      {
+        "suite": "tests/echo-http.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.306,
+        "resolution": "Loopback listener denied by sandbox; passed with local loopback permission."
+      },
+      {
+        "suite": "tests/echo-http2.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.309,
+        "resolution": "Loopback listener denied by sandbox; passed with local loopback permission."
+      },
+      {
+        "suite": "tests/echo-init.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.739
+      },
+      {
+        "suite": "tests/echo-receiving-handoff.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 18.588
+      },
+      {
+        "suite": "tests/echo-replica-capability.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.304
+      },
+      {
+        "suite": "tests/echo-scoped-initial-state.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 46.38
+      },
+      {
+        "suite": "tests/echo-scoped-reconciliation.acceptance.mts",
+        "initialExit": 124,
+        "finalExit": 0,
+        "initialSeconds": 180.009,
+        "resolution": "Initial harness timeout at 180 seconds; unrestricted-duration rerun passed 126 Node and 126 Worker groups."
+      },
+      {
+        "suite": "tests/echo-scoped-replay.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 65.35,
+        "finalFocusedSeconds": 85.01550925000001
+      },
+      {
+        "suite": "tests/echo-transport-capabilities.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.358
+      },
+      {
+        "suite": "tests/hson-data.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.653
+      },
+      {
+        "suite": "tests/hson-definition-identity.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.8104135409999742
+      },
+      {
+        "suite": "tests/hson-node-quid-egress.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.42028225000001385
+      },
+      {
+        "suite": "tests/hson-node-quid-ingress.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.5016945419999956
+      },
+      {
+        "suite": "tests/hson-schema-any-worker.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.5361769170000059
+      },
+      {
+        "suite": "tests/hson-schema-composition-recursion.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.8248439160000203
+      },
+      {
+        "suite": "tests/hson-schema-livemap-convergence.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.319
+      },
+      {
+        "suite": "tests/hson-schema-relational-unique.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.714
+      },
+      {
+        "suite": "tests/interaction-initialization.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.425
+      },
+      {
+        "suite": "tests/interaction-ownership.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 3.384
+      },
+      {
+        "suite": "tests/interaction-subject-paths.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.719
+      },
+      {
+        "suite": "tests/livemap-aggregate-library-transitions.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.356
+      },
+      {
+        "suite": "tests/livemap-capture-categories.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.354
+      },
+      {
+        "suite": "tests/livemap-capture-provenance.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.438
+      },
+      {
+        "suite": "tests/livemap-commit-publication-ownership.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.496
+      },
+      {
+        "suite": "tests/livemap-data-ownership.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.548,
+        "finalFocusedSeconds": 0.7838342090000001,
+        "resolution": "Removed assertion of installed ordered-carrier pointer identity; exact content and immutable submission identity assertions retained."
+      },
+      {
+        "suite": "tests/livemap-deterministic-admission-schema-operators.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.475
+      },
+      {
+        "suite": "tests/livemap-deterministic-mutation-operators.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.364,
+        "resolution": "Pre-existing D4c source-string fixture mismatch reproduced on committed A; use Hson.data.fromSource."
+      },
+      {
+        "suite": "tests/livemap-deterministic-transport-propagation-operators.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.298,
+        "resolution": "Pre-existing D4c source-string fixture mismatch reproduced on committed A; use Hson.data.fromSource."
+      },
+      {
+        "suite": "tests/livemap-document-atomic-reconciliation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.357
+      },
+      {
+        "suite": "tests/livemap-document-attrs-read.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.37
+      },
+      {
+        "suite": "tests/livemap-document-composition.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 9.629
+      },
+      {
+        "suite": "tests/livemap-document-css.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.721
+      },
+      {
+        "suite": "tests/livemap-document-id-discovery.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.358
+      },
+      {
+        "suite": "tests/livemap-document-id-public.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.361
+      },
+      {
+        "suite": "tests/livemap-document-identity-acquisition.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.371
+      },
+      {
+        "suite": "tests/livemap-document-identity-compatibility.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.495,
+        "finalFocusedSeconds": 0.6571643750000007
+      },
+      {
+        "suite": "tests/livemap-document-identity-handle.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.355
+      },
+      {
+        "suite": "tests/livemap-document-identity-overlay-construction.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.362
+      },
+      {
+        "suite": "tests/livemap-document-identity-overlay-lifecycle.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.366,
+        "finalFocusedSeconds": 0.48703279199999905
+      },
+      {
+        "suite": "tests/livemap-document-identity-overlay-lookup.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.379
+      },
+      {
+        "suite": "tests/livemap-document-install.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.435
+      },
+      {
+        "suite": "tests/livemap-document-location-attrs.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.415
+      },
+      {
+        "suite": "tests/livemap-document-location-content.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.362
+      },
+      {
+        "suite": "tests/livemap-document-location-mutation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.359
+      },
+      {
+        "suite": "tests/livemap-document-location.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.359
+      },
+      {
+        "suite": "tests/livemap-document-logical-traversal.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.362
+      },
+      {
+        "suite": "tests/livemap-document-mutation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.372
+      },
+      {
+        "suite": "tests/livemap-document-operation-identity-effects.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.36
+      },
+      {
+        "suite": "tests/livemap-document-path-contract.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.144
+      },
+      {
+        "suite": "tests/livemap-document-quad-portable.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 9.177,
+        "finalFocusedSeconds": 8.610651084,
+        "rerun": "Plain source loader: 52 Node and 52 Worker groups passed; prior subprocess exited without a status under redundant global test loaders."
+      },
+      {
+        "suite": "tests/livemap-document-quad.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.68
+      },
+      {
+        "suite": "tests/livemap-document-replay.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.424
+      },
+      {
+        "suite": "tests/livemap-document-request-lowering.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.362
+      },
+      {
+        "suite": "tests/livemap-document-staged-reconciliation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.303
+      },
+      {
+        "suite": "tests/livemap-document-staged-request-lowering.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.352
+      },
+      {
+        "suite": "tests/livemap-document-staging.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.368
+      },
+      {
+        "suite": "tests/livemap-document-target-boundary.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.347
+      },
+      {
+        "suite": "tests/livemap-document.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.354
+      },
+      {
+        "suite": "tests/livemap-exact-propagation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.305
+      },
+      {
+        "suite": "tests/livemap-exact-route-closure.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.525
+      },
+      {
+        "suite": "tests/livemap-graph-mutations.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.707,
+        "finalFocusedSeconds": 0.710662
+      },
+      {
+        "suite": "tests/livemap-graph-reads.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.524,
+        "finalFocusedSeconds": 1.2989860420000001,
+        "resolution": "Internal staged queue now transfers commands once; test retains returned command list."
+      },
+      {
+        "suite": "tests/livemap-hosted-multi-library-h1.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.664
+      },
+      {
+        "suite": "tests/livemap-hson-schema-mutation-proof.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.482,
+        "publicSourceExecution": true
+      },
+      {
+        "suite": "tests/livemap-hson-schema-transition-proof.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.31
+      },
+      {
+        "suite": "tests/livemap-identity-aba-prevention.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.362,
+        "finalFocusedSeconds": 0.5309727090000003
+      },
+      {
+        "suite": "tests/livemap-identity-replay-provenance.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.366,
+        "finalFocusedSeconds": 0.4722992500000007
+      },
+      {
+        "suite": "tests/livemap-issued-quid-ledger.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.317,
+        "finalFocusedSeconds": 0.5006855409999993
+      },
+      {
+        "suite": "tests/livemap-library-ownership.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.314
+      },
+      {
+        "suite": "tests/livemap-linked-identity-atomicity.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.373,
+        "finalFocusedSeconds": 0.47943008300000045
+      },
+      {
+        "suite": "tests/livemap-linked-identity-closure.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.418
+      },
+      {
+        "suite": "tests/livemap-linked-identity-registration.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.309
+      },
+      {
+        "suite": "tests/livemap-n-library-engine.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.37
+      },
+      {
+        "suite": "tests/livemap-node-exact.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.592
+      },
+      {
+        "suite": "tests/livemap-part-collections.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 7.838,
+        "publicSourceExecution": true
+      },
+      {
+        "suite": "tests/livemap-phase-1a.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.665
+      },
+      {
+        "suite": "tests/livemap-phase-1b.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.379,
+        "resolution": "Pre-existing D4c source-string fixture mismatch reproduced on committed A; literal text and explicit source admission corrected."
+      },
+      {
+        "suite": "tests/livemap-projected-array-move-intent.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.316
+      },
+      {
+        "suite": "tests/livemap-projected-identity-acquisition.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.296
+      },
+      {
+        "suite": "tests/livemap-projected-identity-lifecycle.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.363,
+        "finalFocusedSeconds": 0.48116345899999935
+      },
+      {
+        "suite": "tests/livemap-projected-intent-propagation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.365
+      },
+      {
+        "suite": "tests/livemap-projected-rename-intent.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.306
+      },
+      {
+        "suite": "tests/livemap-projected-value-equivalence.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.31
+      },
+      {
+        "suite": "tests/livemap-public-libraries.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.481,
+        "resolution": "Pre-existing unawaited async test reproduced on committed A; await cases and handle disposed selection via rejection thunk."
+      },
+      {
+        "suite": "tests/livemap-quid-canonical-state.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.355
+      },
+      {
+        "suite": "tests/livemap-quid-non-minting.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.379
+      },
+      {
+        "suite": "tests/livemap-reflection-publication-order.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.419
+      },
+      {
+        "suite": "tests/livemap-render.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.942
+      },
+      {
+        "suite": "tests/livemap-root-mutation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.361,
+        "finalFocusedSeconds": 0.4349622919999998
+      },
+      {
+        "suite": "tests/livemap-runtime-local-identity.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.368
+      },
+      {
+        "suite": "tests/livemap-schema-use.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.429
+      },
+      {
+        "suite": "tests/livemap-scoped-composition.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 4.314
+      },
+      {
+        "suite": "tests/livemap-scoped-effects.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 11.406,
+        "finalFocusedSeconds": 15.361331167
+      },
+      {
+        "suite": "tests/livemap-scoped-quad-foundation.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.109
+      },
+      {
+        "suite": "tests/livemap-setter-exact-order.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 127.7,
+        "finalFocusedSeconds": 5.044140875,
+        "resolution": "Internal staged queue now transfers commands once; test retains returned command list."
+      },
+      {
+        "suite": "tests/livemap-shape-handles.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.319
+      },
+      {
+        "suite": "tests/livemap-stylesheet-ingress.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.347
+      },
+      {
+        "suite": "tests/livemap-transform-accepted-closure.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.311,
+        "resolution": "Pre-existing D4c source-string fixture mismatch reproduced on committed A; use Hson.data.fromSource."
+      },
+      {
+        "suite": "tests/locus-authority-acceptance-z1z2.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.539,
+        "finalFocusedSeconds": 0.6572694999999982
+      },
+      {
+        "suite": "tests/locus-authority-projection-snapshot-6b.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.358
+      },
+      {
+        "suite": "tests/locus-bootstrap-recovery-6d.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 3.931
+      },
+      {
+        "suite": "tests/locus-checkpoint-z3b.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 51.726
+      },
+      {
+        "suite": "tests/locus-construction.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.831
+      },
+      {
+        "suite": "tests/locus-endpoint-session-settlement.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.302
+      },
+      {
+        "suite": "tests/locus-final-model.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.883
+      },
+      {
+        "suite": "tests/locus-graph-content-codec.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.361
+      },
+      {
+        "suite": "tests/locus-hosted-cut-6e.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 3.071
+      },
+      {
+        "suite": "tests/locus-hosted-cut-worker-6e.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.644
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-action-pipeline.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.552
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-admission.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.37
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-h3.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.787
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-h4.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.77
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-h5.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.159
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-recovery-fencing.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.378
+      },
+      {
+        "suite": "tests/locus-hosted-multi-library-session-activity.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.316
+      },
+      {
+        "suite": "tests/locus-hosted-noop.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.473
+      },
+      {
+        "suite": "tests/locus-hosted-runtime-admission.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.012
+      },
+      {
+        "suite": "tests/locus-hosted-runtime-fallback.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.366
+      },
+      {
+        "suite": "tests/locus-hosted-runtime-replay.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.94
+      },
+      {
+        "suite": "tests/locus-hosted-topology-durability.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.426
+      },
+      {
+        "suite": "tests/locus-live-lineage-6c.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.396
+      },
+      {
+        "suite": "tests/locus-live-projection-6c.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.663
+      },
+      {
+        "suite": "tests/locus-live-wire-6c.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.342
+      },
+      {
+        "suite": "tests/locus-projected-registry-reuse.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.855,
+        "finalFocusedSeconds": 1.093816624999988
+      },
+      {
+        "suite": "tests/locus-projection-6a.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.479
+      },
+      {
+        "suite": "tests/locus-retained-session.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 20.297
+      },
+      {
+        "suite": "tests/locus-scoped-checkpoint.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 41.016
+      },
+      {
+        "suite": "tests/locus-scoped-hosted.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.529,
+        "publicSourceExecution": true,
+        "resolution": "Original package import used protected stale distribution; current-source resolver rerun passed Node, Worker and fresh-process restart."
+      },
+      {
+        "suite": "tests/locus-scoped-preparation.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 0.78,
+        "finalFocusedSeconds": 3.671298499999999,
+        "resolution": "Fixed retained management error precedence after reservation ends and revision/generation changes. Existing assertions unchanged."
+      },
+      {
+        "suite": "tests/locus-scoped-ssr.acceptance.mts",
+        "initialExit": 1,
+        "finalExit": 0,
+        "initialSeconds": 12.722,
+        "publicSourceExecution": true,
+        "resolution": "Loopback listener denied by sandbox; current-source public-entrypoint rerun passed with local loopback permission."
+      },
+      {
+        "suite": "tests/locus-scoped-topology.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 7.466
+      },
+      {
+        "suite": "tests/locus-selected-capture-z3a.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 4.745
+      },
+      {
+        "suite": "tests/locus-session-now.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.669
+      },
+      {
+        "suite": "tests/locus-session-reentrancy.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.412
+      },
+      {
+        "suite": "tests/locus-submission-ownership.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.617
+      },
+      {
+        "suite": "tests/part-optional-parameters.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 1.575
+      },
+      {
+        "suite": "tests/parts-members.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 15.291,
+        "publicSourceExecution": "Passed with source resolver and TSX propagated to generated JavaScript subprocess."
+      },
+      {
+        "suite": "tests/portable-node-ingress.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.301,
+        "finalFocusedSeconds": 0.37020612500000993
+      },
+      {
+        "suite": "tests/projected-value-admission.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.304
+      },
+      {
+        "suite": "tests/projected-value-equality.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.13
+      },
+      {
+        "suite": "tests/reserved-data-names.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 0.479
+      },
+      {
+        "suite": "tests/schema-diagnostic-correctness.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.8271837919999996
+      },
+      {
+        "suite": "tests/structured-part-css.acceptance.mts",
+        "initialExit": 0,
+        "finalExit": 0,
+        "initialSeconds": 2.84
+      },
+      {
+        "suite": "tests/transform-portable-quid.acceptance.mts",
+        "finalExit": 0,
+        "finalFocusedSeconds": 0.1995663749999892
+      }
+    ],
+    "totalDistinctSuites": 160,
+    "finalFailures": [],
+    "sourceTypeCheck": "pass",
+    "focusedTestTypeCheck": "pass",
+    "temporaryTypeScriptEmit": "pass",
+    "compiledNodeWorkerSmoke": "pass",
+    "wireComparison": "14 byte-exact accepted portable commits; authority IDs normalized; exact Hson and revision equal",
+    "inventory": {
+      "suites": 466,
+      "errors": []
+    },
+    "notes": [
+      "Results cover progressive focused runs, not a frozen-tree full gate. The final copy/projection changes were followed by 29 focused suites, including the final standalone rerun of portable QUAD.",
+      "All package-import suites were verified against source with a temporary resolver; tracked distribution was not rebuilt.",
+      "The final graph-mutation suite executes nine groups in Node and nine in an actual Worker.",
+      "After final root-field transfer and initial definition release, root mutation, exact setters, graph mutation lifetime, Parts member/collection, byte evidence, compiled smoke and focused types passed again."
+    ]
+  },
+  "changedFiles": [
+    "docs/contracts/d4d-boundary-b-measurements.json",
+    "docs/contracts/d4d-boundary-b-report.txt",
+    "docs/contracts/livemap-lifecycle.md",
+    "docs/contracts/livemap-mutation.md",
+    "package.json",
+    "scripts/compare-graph-mutation-evidence.mjs",
+    "scripts/measure-graph-mutations.mjs",
+    "scripts/validation-config.mjs",
+    "src/api/livemap/livemap.authority.ts",
+    "src/api/livemap/livemap.collection-command.ts",
+    "src/api/livemap/livemap.core.ts",
+    "src/api/livemap/livemap.editor.ts",
+    "src/api/livemap/livemap.internal.ts",
+    "src/api/livemap/livemap.libraries.ts",
+    "src/api/livemap/livemap.library.ts",
+    "src/api/livemap/livemap.node-admission.ts",
+    "src/api/livemap/livemap.projected-propagation.ts",
+    "src/api/livemap/livemap.staged.ts",
+    "src/api/livemap/livemap.system.ts",
+    "src/api/locus/locus.aggregate.ts",
+    "src/internal/schema-hson-validation/validate-canonical-hson.ts",
+    "tests/fixtures/livemap-equal-effect-replay-cases.mts",
+    "tests/fixtures/livemap-graph-mutations-cases.mts",
+    "tests/fixtures/livemap-graph-mutations.worker.mts",
+    "tests/fixtures/livemap-graph-reads-cases.mts",
+    "tests/fixtures/livemap-setter-exact-order-cases.mts",
+    "tests/livemap-aggregate-library-transitions.acceptance.mts",
+    "tests/livemap-data-ownership.acceptance.mts",
+    "tests/livemap-graph-mutations.acceptance.mts",
+    "tests/livemap-hson-schema-transition-proof.acceptance.mts",
+    "tests/livemap-n-library-engine.acceptance.mts",
+    "tests/livemap-operators/operator-catalog.mts",
+    "tests/livemap-phase-1b.acceptance.mts",
+    "tests/livemap-public-libraries.acceptance.mts",
+    "tests/livemap-transform-accepted-closure.acceptance.mts"
+  ],
+  "implementationFingerprints": {
+    "package.json": "9e62e822cdef95226991eac29c5066c0ce1a133be155c1805f08c6c718c61688",
+    "scripts/compare-graph-mutation-evidence.mjs": "6782fb4e445066f657b6ae44354af2f5d7fb7d66b7d148d6e3fa773f9b8c63cd",
+    "scripts/measure-graph-mutations.mjs": "e891799d1502ada3ff55c5b8ca26dfa9d44e59c5222da37330e4307e4c5641ed",
+    "scripts/validation-config.mjs": "1508fb1b2f43234c79b484abc8e78bc7ca4c6bd913f8927b087b102c4a501652",
+    "src/api/livemap/livemap.authority.ts": "81e234c9b9e58f379934751e8b744898de21276dcb7a6e8e4a46911ca90a786f",
+    "src/api/livemap/livemap.collection-command.ts": "a92cf143a0604bb4a3ce861339741b01d1864aa1046205b7ba105709c4956280",
+    "src/api/livemap/livemap.core.ts": "b32cf83d20d06fa19524de18e9f27238cefea8d0f7b2b8c2cf5f7f56fb2804ac",
+    "src/api/livemap/livemap.editor.ts": "27060365dff8cd1e284b01f6670335ab3c5e79b1eca10d3c87ef1870633861cd",
+    "src/api/livemap/livemap.internal.ts": "049574caa1ee8b6cacaa13b357c0fcff817c84090ff2b9b6ce0538ab931d09e4",
+    "src/api/livemap/livemap.libraries.ts": "387882ce431b161ea7eb851f500ccf6510a638e5f0c6df9e331d8e2d4f8b63d8",
+    "src/api/livemap/livemap.library.ts": "91229cd7a027c89199cdc114bf91bed5c4e38d354d2322da1825bec059791feb",
+    "src/api/livemap/livemap.node-admission.ts": "0d8de51ad303dcb2bf7c1ee0461c122e3eee8813085fe94cea61d9cbf56e4f0a",
+    "src/api/livemap/livemap.projected-propagation.ts": "d22a1b658f4b2508d18425a512b999c434720837ec40c090abf95c5cc0a9fc77",
+    "src/api/livemap/livemap.staged.ts": "9286bd0dae676c196f7d3b48c5da4f8f1ce7d29008e9797fbc70a8146da73c31",
+    "src/api/livemap/livemap.system.ts": "4841325b9fbc52e1be7f8f6019f1eb33cb236753f3b4a518ae3d158a1883b14c",
+    "src/api/locus/locus.aggregate.ts": "c52699dc8d496c58cdb366e6ac9135a96349aece18e9edbfc7984a877a493d2a",
+    "src/internal/schema-hson-validation/validate-canonical-hson.ts": "04af288570688f576aebc0590d9fb575053623e29c48117ad5b8f1c4678ebc0c",
+    "tests/fixtures/livemap-graph-mutations-cases.mts": "713edd2985660ba20319a0514aaa2e925567f40af873223837fad32fb0b288e9",
+    "tests/fixtures/livemap-graph-mutations.worker.mts": "4eda2cc059aeddfa3e50a62eca73a5577b123644399908d4ecf4e2abd85b7388",
+    "tests/fixtures/livemap-graph-reads-cases.mts": "4d3880b5e2173d290d3b48f93aaea0410973deb733c0a664abe297bf6ce8e991",
+    "tests/fixtures/livemap-setter-exact-order-cases.mts": "0a3212c4d98663524f92a82e0f30d25d6814aef543f60a1c9efb97d87014e348",
+    "tests/livemap-aggregate-library-transitions.acceptance.mts": "554565578c1c1ac87277eaab75ac07ea60333d700f1e4701c5e9ca627401b24c",
+    "tests/livemap-data-ownership.acceptance.mts": "d28db4cf51431a8c341e63eabce3d2cb68a20a788d6575df2f7e9b2b1f6842d4",
+    "tests/livemap-graph-mutations.acceptance.mts": "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341",
+    "tests/livemap-hson-schema-transition-proof.acceptance.mts": "d59a9fe630aaa25bffb1e10043eab68dad454912696438046e7b1cdee296e44f",
+    "tests/livemap-n-library-engine.acceptance.mts": "68c371bc5b1dfa2d1fb5966495237e3c1c51f319335c92fb37640340426b2453",
+    "tests/livemap-operators/operator-catalog.mts": "f48bd666234178f2828f368b67d43daeb1e573de21d42eedd2726d221ff021d7",
+    "tests/livemap-phase-1b.acceptance.mts": "5af71cd45f68c15f0c829b424e042ada3229249ab49d9cc93c05273d0e1bab20",
+    "tests/livemap-public-libraries.acceptance.mts": "7bbdd021cbd60b1f53fc101ecabf23d0ba29bff840768920cf4fd052d9bf71a0",
+    "tests/livemap-transform-accepted-closure.acceptance.mts": "cc3e8ae410a7e703c7c768b4f76666c8acbf5d9a40090466da219481a4dc7743",
+    "tests/fixtures/livemap-equal-effect-replay-cases.mts": "ab52efddad24308c1dc5245c038ddc3c8fbaf5a6a3aab8def410374fea7a9559"
+  },
+  "protectedOwnerFiles": {
+    "editors/vscode-hson/package.json": "274f76fa909f84b10dd2aa2992cca80d97c706c5bd00f44bcca8d48c9763b08f",
+    "editors/vscode-hson/src/appearance-branding.generated.ts": "b836ad480ea3b24ab47902803744c407a196349511879e9b2d4038484e6d9381",
+    "editors/vscode-hson/src/appearance.ts": "ca1caabc2397b3cf95e5d52a94650d48d54a52f740c58a6198d94b03469e5798",
+    "editors/vscode-hson/themes/hson-house-dark-color-theme.json": "a5ced15f65899472b4684588ed9970387a742a7fcbf0158cc6fb080afa30da55",
+    "editors/vscode-hson/themes/hson-house-light-color-theme.json": "ea938219b603bbbec116d0a6cacd5bed899ef9fd741f50bff08fabfd25a6ab86"
+  },
+  "diagnosticComponents": {
+    "fixture": "Original 2,048-row investigation shape",
+    "method": "Three warmups, seven batches of five calls with GC before each batch; independent component timings are not additive attribution.",
+    "measurements": {
+      "clone": {
+        "minMs": 0.5433415999999994,
+        "medianMs": 0.6083915999999988,
+        "maxMs": 0.783408399999999
+      },
+      "qualification": {
+        "minMs": 6.0680416000000035,
+        "medianMs": 6.168999999999994,
+        "maxMs": 9.173191599999996
+      },
+      "projection": {
+        "minMs": 2.9354918,
+        "medianMs": 2.9696915999999987,
+        "maxMs": 3.093025
+      },
+      "schema": {
+        "minMs": 3.099425000000019,
+        "medianMs": 3.1363415999999917,
+        "maxMs": 3.1651082000000086
+      },
+      "staleEquality": {
+        "minMs": 23.73924999999999,
+        "medianMs": 23.91465820000003,
+        "maxMs": 24.398258200000008
+      },
+      "rebuild": {
+        "minMs": 1.4847581999999875,
+        "medianMs": 1.543000000000029,
+        "maxMs": 1.6631583999999748
+      }
+    }
+  },
+  "measurementProvenance": {
+    "status": "Historical pre-correction Boundary B measurements; no corrected-implementation performance remeasurement.",
+    "scope": "All baseline/current/initialGraphCandidateRun/afterMetadataAndContainerReuse/originalInvestigationFixture/diagnosticComponents numbers and the original validation record are preserved unchanged.",
+    "reviewedMeasurementsSha256": "c5976cbd2200810c398cb6f9396f1db4e92a6b5cd6f06902a2be6b0c726643c8",
+    "measuredImplementationFingerprints": {
+      "package.json": "9e62e822cdef95226991eac29c5066c0ce1a133be155c1805f08c6c718c61688",
+      "scripts/compare-graph-mutation-evidence.mjs": "6782fb4e445066f657b6ae44354af2f5d7fb7d66b7d148d6e3fa773f9b8c63cd",
+      "scripts/measure-graph-mutations.mjs": "e891799d1502ada3ff55c5b8ca26dfa9d44e59c5222da37330e4307e4c5641ed",
+      "scripts/validation-config.mjs": "1508fb1b2f43234c79b484abc8e78bc7ca4c6bd913f8927b087b102c4a501652",
+      "src/api/livemap/livemap.authority.ts": "81e234c9b9e58f379934751e8b744898de21276dcb7a6e8e4a46911ca90a786f",
+      "src/api/livemap/livemap.collection-command.ts": "a92cf143a0604bb4a3ce861339741b01d1864aa1046205b7ba105709c4956280",
+      "src/api/livemap/livemap.core.ts": "badc77b4c780e54e8fa17abf45f52b8c5dc9ddba9f30c284fc751826441cf085",
+      "src/api/livemap/livemap.editor.ts": "27060365dff8cd1e284b01f6670335ab3c5e79b1eca10d3c87ef1870633861cd",
+      "src/api/livemap/livemap.internal.ts": "049574caa1ee8b6cacaa13b357c0fcff817c84090ff2b9b6ce0538ab931d09e4",
+      "src/api/livemap/livemap.libraries.ts": "387882ce431b161ea7eb851f500ccf6510a638e5f0c6df9e331d8e2d4f8b63d8",
+      "src/api/livemap/livemap.library.ts": "91229cd7a027c89199cdc114bf91bed5c4e38d354d2322da1825bec059791feb",
+      "src/api/livemap/livemap.node-admission.ts": "0d8de51ad303dcb2bf7c1ee0461c122e3eee8813085fe94cea61d9cbf56e4f0a",
+      "src/api/livemap/livemap.projected-propagation.ts": "d22a1b658f4b2508d18425a512b999c434720837ec40c090abf95c5cc0a9fc77",
+      "src/api/livemap/livemap.staged.ts": "9286bd0dae676c196f7d3b48c5da4f8f1ce7d29008e9797fbc70a8146da73c31",
+      "src/api/livemap/livemap.system.ts": "4841325b9fbc52e1be7f8f6019f1eb33cb236753f3b4a518ae3d158a1883b14c",
+      "src/api/locus/locus.aggregate.ts": "c52699dc8d496c58cdb366e6ac9135a96349aece18e9edbfc7984a877a493d2a",
+      "src/internal/schema-hson-validation/validate-canonical-hson.ts": "04af288570688f576aebc0590d9fb575053623e29c48117ad5b8f1c4678ebc0c",
+      "tests/fixtures/livemap-graph-mutations-cases.mts": "551963d02b3d61ec620bdede9708d0e7e07487ce4fff29e72c5ae65a71cf9153",
+      "tests/fixtures/livemap-graph-mutations.worker.mts": "4eda2cc059aeddfa3e50a62eca73a5577b123644399908d4ecf4e2abd85b7388",
+      "tests/fixtures/livemap-graph-reads-cases.mts": "4d3880b5e2173d290d3b48f93aaea0410973deb733c0a664abe297bf6ce8e991",
+      "tests/fixtures/livemap-setter-exact-order-cases.mts": "0a3212c4d98663524f92a82e0f30d25d6814aef543f60a1c9efb97d87014e348",
+      "tests/livemap-aggregate-library-transitions.acceptance.mts": "554565578c1c1ac87277eaab75ac07ea60333d700f1e4701c5e9ca627401b24c",
+      "tests/livemap-data-ownership.acceptance.mts": "d28db4cf51431a8c341e63eabce3d2cb68a20a788d6575df2f7e9b2b1f6842d4",
+      "tests/livemap-graph-mutations.acceptance.mts": "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341",
+      "tests/livemap-hson-schema-transition-proof.acceptance.mts": "d59a9fe630aaa25bffb1e10043eab68dad454912696438046e7b1cdee296e44f",
+      "tests/livemap-n-library-engine.acceptance.mts": "68c371bc5b1dfa2d1fb5966495237e3c1c51f319335c92fb37640340426b2453",
+      "tests/livemap-operators/operator-catalog.mts": "f48bd666234178f2828f368b67d43daeb1e573de21d42eedd2726d221ff021d7",
+      "tests/livemap-phase-1b.acceptance.mts": "5af71cd45f68c15f0c829b424e042ada3229249ab49d9cc93c05273d0e1bab20",
+      "tests/livemap-public-libraries.acceptance.mts": "7bbdd021cbd60b1f53fc101ecabf23d0ba29bff840768920cf4fd052d9bf71a0",
+      "tests/livemap-transform-accepted-closure.acceptance.mts": "cc3e8ae410a7e703c7c768b4f76666c8acbf5d9a40090466da219481a4dc7743"
+    }
+  },
+  "replayAdmissionCorrection": {
+    "baseline": {
+      "branch": "main",
+      "commit": "d2d66f93b57b5575818b44b359ab369fc6a9da12",
+      "inheritedBoundaryBPaths": 34,
+      "ownerAppearancePaths": 5,
+      "allRecordedFingerprintsMatched": true,
+      "indexUnstaged": true,
+      "conflictingWriterFound": false
+    },
+    "inventory": [
+      "src/api/livemap/livemap.core.ts",
+      "tests/fixtures/livemap-graph-mutations-cases.mts",
+      "tests/fixtures/livemap-equal-effect-replay-cases.mts",
+      "docs/contracts/d4d-boundary-b-report.txt",
+      "docs/contracts/d4d-boundary-b-measurements.json"
+    ],
+    "originalInvalidReplay": {
+      "data": {
+        "rows": [
+          1
+        ],
+        "n": 0
+      },
+      "operations": [
+        {
+          "kind": "splice",
+          "path": [
+            "rows"
+          ],
+          "start": 0,
+          "removed": [],
+          "inserted": []
+        },
+        {
+          "kind": "replace",
+          "path": [
+            "n"
+          ],
+          "prev": 0,
+          "next": 0
+        },
+        {
+          "kind": "splice",
+          "path": [
+            "rows"
+          ],
+          "start": 0,
+          "removed": [
+            1
+          ],
+          "inserted": [
+            1
+          ]
+        }
+      ],
+      "routes": [
+        "durable portable hosted",
+        "Echo receiving"
+      ],
+      "runtimes": [
+        "Node",
+        "real worker_threads Worker"
+      ],
+      "committedBoundaryA": "All 12 route/runtime cases reject; revision remains 0; Data unchanged; original aggregate rejection is a generic Error.",
+      "originalBoundaryB": "All 12 route/runtime cases falsely accept; revision advances to 1; Data unchanged.",
+      "correctedBoundaryB": "All 12 route/runtime cases reject with INVALID_REPLAY / UNCHANGED_STAGED_OPERATION / opIndex 0; revision remains 0.",
+      "maintainedRegressionAgainstOriginalCore": "Fails with Missing expected exception."
+    },
+    "exemption": "Replay retains equal replacement intent only at an existing identity-eligible semantic container; equal splice requires an actually removed identity-eligible child at its qualified path. Existing local overlay reconciliation remains authoritative for receiver claims. Exact prev/next and single-operation checks remain.",
+    "rejection": {
+      "code": "INVALID_REPLAY",
+      "reasonCode": "UNCHANGED_STAGED_OPERATION",
+      "operationContext": "zero-based opIndex in the complete submitted transaction"
+    },
+    "validation": {
+      "suites": [
+        {
+          "suite": "tests/livemap-graph-mutations.acceptance.mts",
+          "exit": 0,
+          "seconds": 2.114
+        },
+        {
+          "suite": "tests/livemap-graph-reads.acceptance.mts",
+          "exit": 0,
+          "seconds": 1.196
+        },
+        {
+          "suite": "tests/livemap-deterministic-mutation-operators.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.599
+        },
+        {
+          "suite": "tests/livemap-deterministic-transport-propagation-operators.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.729
+        },
+        {
+          "suite": "tests/livemap-deterministic-admission-schema-operators.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.408
+        },
+        {
+          "suite": "tests/livemap-projected-intent-propagation.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.318
+        },
+        {
+          "suite": "tests/livemap-projected-array-move-intent.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.28
+        },
+        {
+          "suite": "tests/livemap-projected-rename-intent.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.286
+        },
+        {
+          "suite": "tests/livemap-projected-identity-acquisition.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.263
+        },
+        {
+          "suite": "tests/livemap-projected-identity-lifecycle.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.316
+        },
+        {
+          "suite": "tests/livemap-identity-aba-prevention.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.307
+        },
+        {
+          "suite": "tests/livemap-issued-quid-ledger.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.298
+        },
+        {
+          "suite": "tests/livemap-runtime-local-identity.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.305
+        },
+        {
+          "suite": "tests/livemap-root-mutation.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.299
+        },
+        {
+          "suite": "tests/livemap-hosted-multi-library-h1.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.617
+        },
+        {
+          "suite": "tests/locus-hosted-runtime-replay.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.877
+        },
+        {
+          "suite": "tests/locus-hosted-runtime-fallback.acceptance.mts",
+          "exit": 0,
+          "seconds": 1.27
+        },
+        {
+          "suite": "tests/locus-bootstrap-recovery-6d.acceptance.mts",
+          "exit": 0,
+          "seconds": 3.716
+        },
+        {
+          "suite": "tests/locus-hosted-multi-library-h4.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.703
+        },
+        {
+          "suite": "tests/locus-hosted-multi-library-recovery-fencing.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.309
+        },
+        {
+          "suite": "tests/locus-authority-acceptance-z1z2.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.481
+        },
+        {
+          "suite": "tests/livemap-commit-publication-ownership.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.468
+        },
+        {
+          "suite": "tests/livemap-data-ownership.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.536
+        },
+        {
+          "suite": "tests/livemap-setter-exact-order.acceptance.mts",
+          "exit": 0,
+          "seconds": 3.438
+        },
+        {
+          "suite": "tests/locus-projected-registry-reuse.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.718
+        },
+        {
+          "suite": "tests/locus-submission-ownership.acceptance.mts",
+          "exit": 0,
+          "seconds": 1.945
+        },
+        {
+          "suite": "tests/echo-scoped-replay.acceptance.mts",
+          "exit": 0,
+          "seconds": 65.135
+        },
+        {
+          "suite": "tests/echo-receiving-handoff.acceptance.mts",
+          "exit": 0,
+          "seconds": 18.822
+        },
+        {
+          "suite": "tests/canonical-interactions.acceptance.mts",
+          "exit": 0,
+          "seconds": 2.373
+        },
+        {
+          "suite": "tests/canonical-interactions-worker.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.767
+        },
+        {
+          "suite": "tests/interaction-ownership.acceptance.mts",
+          "exit": 0,
+          "seconds": 3.331
+        },
+        {
+          "suite": "tests/interaction-initialization.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.441
+        },
+        {
+          "suite": "tests/livemap-hson-schema-transition-proof.acceptance.mts",
+          "exit": 0,
+          "seconds": 0.271
+        }
+      ],
+      "representativeSuites": 33,
+      "finalFailures": [],
+      "finalFocusedSuiteGroupsPerRuntime": 27,
+      "realWorkerParity": true,
+      "maintainedReplayRoutes": [
+        "direct portable hosted",
+        "durable portable hosted",
+        "Echo receiving"
+      ],
+      "maintainedNegativeScenariosPerRuntime": 36,
+      "maintainedPositiveCombinationsPerRuntime": 18,
+      "maintainedNegativeCoverage": [
+        "empty splice",
+        "equal scalar property replacement",
+        "identical primitive splice",
+        "equal scalar array-item replacement"
+      ],
+      "rejectionPrefixes": [
+        "alone",
+        "after changed operation",
+        "after planned eligible-container retirement"
+      ],
+      "atomicity": [
+        "installed graph object and canonical contents",
+        "Data",
+        "map revision",
+        "hosted authority position",
+        "receiving projection position",
+        "registry",
+        "identity controller and epoch",
+        "issued ledger object and contents",
+        "sparse identity overlay",
+        "hosted capture and submitted evidence",
+        "authority fence",
+        "accepted/publication counters",
+        "commit/watch/restore observers",
+        "installed and published authority callbacks",
+        "subsequent valid replay at the same position"
+      ],
+      "positives": [
+        "ordinary equal assignment remains a no-op",
+        "eligible empty objects and arrays",
+        "ordered equal object replacement and nested array splice",
+        "fresh identity-free receiving runtime",
+        "independent local receiver claims",
+        "ancestor/container continuity",
+        "child and descendant retirement",
+        "issued-QUID ABA rejection",
+        "no source QUID propagation or receiver identity minting",
+        "accepted equal Data advances authority",
+        "subsequent valid transition"
+      ],
+      "sourceTypeScript": "pass",
+      "focusedTestAndWorkerTypeScript": "pass",
+      "broaderTestTypeScript": {
+        "status": "34 inherited diagnostics; identical pre-correction/current compiler-host diagnostic comparison; no new diagnostics",
+        "distributionRebuilt": false
+      },
+      "inventory": {
+        "suites": 466,
+        "errors": [],
+        "existingRegistrationAndWorkerPinsUnchanged": true,
+        "newFixtureReachable": true
+      },
+      "wireComparison": "14 byte-exact A/current portable commits, with authority IDs normalized; final exact Hson and revision match",
+      "diffCheck": "pass",
+      "fullFrozenTreeGate": false,
+      "trackedDistributionGenerated": false,
+      "logs": "/private/tmp/hson-d4d-replay-correction/"
+    },
+    "graphOnlyInstalledAuthorityPreserved": true,
+    "deferredP3": "Temporary interaction-system prepare_livemap_root recapture is untouched; potential final-cleanup subtraction only while preserving qualification and mode checks.",
+    "remainingCorrection": "None identified for P2; independent re-review pending. Existing broader test-project diagnostics are unchanged and outside this correction."
+  }
+}

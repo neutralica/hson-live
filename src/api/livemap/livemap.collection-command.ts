@@ -1,12 +1,11 @@
+import { project_live_path, snap_live_path, kind_live_path, keys_live_path, length_live_path, snap_live_array_range } from "./livemap.editor.js";
 import { part_object_arguments } from "../../core/part-css-authoring.js";
 import { must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
-import type { JsonValue } from "../../core/types.js";
-import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
+import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LivePath, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayMutationName, LiveMapObjectMutationName } from "../../types/livemap.types.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
-import { ordered_candidate_reads, type LiveMapProjectedPropagation, type LiveMapProjectedPropagationWrite } from "./livemap.projected-propagation.js";
+import { type LiveMapProjectedPropagation, type LiveMapProjectedPropagationWrite } from "./livemap.projected-propagation.js";
 
 export const ARRAY_COMMANDS = ["push", "pushMany", "unshift", "unshiftMany", "pop", "shift", "clear", "reverse", "sortNumbers", "sortStrings", "splice", "insert", "remove", "replace", "move", "unique", "removeValue", "removeAll"] as const satisfies readonly LiveMapArrayMutationName[];
 export const OBJECT_COMMANDS = ["setKey", "setMany", "clear", "deleteKey", "deleteMany", "renameKey"] as const satisfies readonly LiveMapObjectMutationName[];
@@ -43,10 +42,15 @@ export function collection_commands<TResult>(send: (command: CollectionCommand) 
 }
 
 /** Run the established helpers over the progressively updated candidate. */
-export function plan_collection_command(value: OrderedProjectedValue, path: LivePath, command: CollectionCommand): readonly LiveMapProjectedPropagationWrite[] {
+export function plan_collection_command(root: HsonNode, path: LivePath, command: CollectionCommand): readonly LiveMapProjectedPropagationWrite[] {
   let writes: readonly LiveMapProjectedPropagationWrite[] = [];
   const authority: LiveMapProjectedPropagation<void> = {
-    ...ordered_candidate_reads(target => ordered_projected_value_at(value, target)),
+    read: path => project_live_path(root, path),
+    snap: path => snap_live_path(root, path),
+    kind: path => kind_live_path(root, path),
+    keys: path => keys_live_path(root, path),
+    length: path => length_live_path(root, path),
+    arrayRange: (path, bounds) => snap_live_array_range(root, path, bounds),
     feed: () => { throw Error("Collection command planners cannot subscribe."); },
     commit: ops => { writes = ops; },
   };

@@ -28,11 +28,11 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const testEvents = create_test_event_emitter("livemap.public-libraries");
 let checks = 0;
 
-function check(name: string, run: () => void): void {
+async function check(name: string, run: () => void | Promise<void>): Promise<void> {
 
   testEvents.case_begin(name, name);
   try {
-    run();
+    await run();
     testEvents.case_end(name, "pass");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Check failed.";
@@ -58,7 +58,7 @@ function node(value: unknown) {
   return value;
 }
 
-check("batch groups ordered cross-library writes into one public commit", () => {
+await check("batch groups ordered cross-library writes into one public commit", () => {
   const map = create_map();
   const observed: LiveMapCommit[] = [];
   map.commits.observe(commit => { observed.push(commit); });
@@ -79,7 +79,7 @@ check("batch groups ordered cross-library writes into one public commit", () => 
   assert.equal(map.data.must("state").at(["count"]).snap(), 3);
 });
 
-check("batch validates the final Schema candidate and installs nothing on failure", () => {
+await check("batch validates the final Schema candidate and installs nothing on failure", () => {
   const map = create_map();
   const repaired = map.batch(batch => {
     batch.data.must("state").at(["count"]).set("temporarily invalid" as never);
@@ -97,7 +97,7 @@ check("batch validates the final Schema candidate and installs nothing on failur
   assert.equal(map.rev, 1);
 });
 
-check("batch rejects async, nested, direct, and escaped writes", () => {
+await check("batch rejects async, nested, direct, and escaped writes", () => {
   const map = create_map();
   let escaped: { set(value: number): void } | undefined;
   assert.throws(() => map.batch(batch => {
@@ -121,7 +121,7 @@ check("batch rejects async, nested, direct, and escaped writes", () => {
   assert.equal(map.rev, 0);
 });
 
-check("batch captures public graph commands and rejects direct identity claims", () => {
+await check("batch captures public graph commands and rejects direct identity claims", () => {
   const map = create_map();
   const target = { kind: "path", path: validate_document_path([0, 0, 1, 0, 0]) } as const;
   const command: Record<string, unknown> = { domain: "graph", op: "set-attr", target,
@@ -151,7 +151,7 @@ check("batch captures public graph commands and rejects direct identity claims",
   assert.equal(map.rev, rev);
 });
 
-check("batch detaches nested graph targets and CSS definitions", () => {
+await check("batch detaches nested graph targets and CSS definitions", () => {
   const map = create_map();
   const path = [0, 0, 1, 0, 0];
   const graph = { domain: "graph", op: "set-attr", target: { kind: "path", path },
@@ -170,7 +170,7 @@ check("batch detaches nested graph targets and CSS definitions", () => {
   assert.equal(map.doc.must("page").css.snapshot().includes("--changed"), false);
 });
 
-check("fromLibraries establishes fixed named data and document Libraries", () => {
+await check("fromLibraries establishes fixed named data and document Libraries", () => {
   const map = create_map();
   assert.equal(map.rev, 0);
   assert.equal(map.data.must("state").mode, "data-object");
@@ -185,7 +185,7 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal("library" in map, false);
 });
 
-check("addLibraries admits runtime libraries while lib remains a selector", () => {
+await check("addLibraries admits runtime libraries while lib remains a selector", () => {
   const map = create_map();
   const page = map.doc.must("page");
   const commit = map.addLibraries({ extra: { data: { primary: "green" }, schema: ColorsSchema } }).commit;
@@ -200,7 +200,7 @@ check("addLibraries admits runtime libraries while lib remains a selector", () =
   assert.equal("add" in map.data, false);
 });
 
-check("public aggregate snapshot transfers state and revision without generated identity", () => {
+await check("public aggregate snapshot transfers state and revision without generated identity", () => {
   const source = create_map();
   const sourceAuthority = internal_livemap_aggregate_authority(source);
   const page = sourceAuthority.libraries()[2];
@@ -234,7 +234,7 @@ check("public aggregate snapshot transfers state and revision without generated 
   assert.throws(() => install_libraries_snapshot(tampered), /runtime QUID metadata is invalid/);
 });
 
-check("named registry construction preserves selection and atomic commits in either declaration order", () => {
+await check("named registry construction preserves selection and atomic commits in either declaration order", () => {
   for (const order of [["left", "right"], ["right", "left"]] as const) {
     const inputs = Object.fromEntries(order.map((name) => [name, {
       data: { count: name === "left" ? 1 : 2, nested: { value: 0 } },
@@ -265,7 +265,7 @@ check("named registry construction preserves selection and atomic commits in eit
   }
 });
 
-check("one named library seeds the ordinary registry authority", () => {
+await check("one named library seeds the ordinary registry authority", () => {
   const data = hsonLiveMap.fromLibraries({ state: { data: { count: 1, nested: { value: 2 } }, schema: StateSchema } });
   const document = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   for (const [map, mode] of [[data, "data-object"], [document, "document"]] as const) {
@@ -276,7 +276,7 @@ check("one named library seeds the ordinary registry authority", () => {
   }
 });
 
-check("document Libraries reject empty sources and admit explicit empty html", () => {
+await check("document Libraries reject empty sources and admit explicit empty html", () => {
   const map = hsonLiveMap.fromLibraries({
     empty: { document: "<html/>" },
   });
@@ -296,7 +296,7 @@ check("document Libraries reject empty sources and admit explicit empty html", (
   assert.deepEqual(replica.doc.must("empty").root(), map.doc.must("empty").root());
 });
 
-check("named document Library mutations retain their selected authority and global commit envelope", () => {
+await check("named document Library mutations retain their selected authority and global commit envelope", () => {
   const map = create_map();
   const page = map.doc.must("page");
   const commit = page.at([1, 0]).asElement()!.attrs.set("title", "selected");
@@ -307,7 +307,7 @@ check("named document Library mutations retain their selected authority and glob
   assert.equal(map.data.must("state").snap(["count"]), 1);
 });
 
-check("named document locations keep relative content operations in their selected Library", () => {
+await check("named document locations keep relative content operations in their selected Library", () => {
   const map = admit_exact_runtime_livemap_libraries({
     page: { document: parse_hson_exact_runtime("<html <head/> <body <main <item @000009111/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
     modal: { document: "<html <head/> <body <main <item/>/>/>/>", schema: ItemDocumentSchema },
@@ -323,7 +323,7 @@ check("named document locations keep relative content operations in their select
   assert.deepEqual([page.rev, page.root().$_tag], [1, "_hson_root"]);
 });
 
-check("Mirror binds one selected document Library and advances through unrelated global revisions", () => {
+await check("Mirror binds one selected document Library and advances through unrelated global revisions", () => {
   const map = create_map();
   const page = map.doc.must("page");
   const binding = hsonMirror(page);
@@ -340,7 +340,7 @@ check("Mirror binds one selected document Library and advances through unrelated
   binding.dispose();
 });
 
-check("one aggregate page plus data commit advances Mirror once and applies only page structure", () => {
+await check("one aggregate page plus data commit advances Mirror once and applies only page structure", () => {
   const map = create_map();
   const page = map.doc.must("page");
   const binding = hsonMirror(page);
@@ -369,7 +369,7 @@ check("one aggregate page plus data commit advances Mirror once and applies only
   binding.dispose();
 });
 
-check("tree-originated selected-document mutation crosses the same Schema boundary", () => {
+await check("tree-originated selected-document mutation crosses the same Schema boundary", () => {
   const map = create_map();
   const page = map.doc.must("page");
   const binding = hsonMirror(page);
@@ -390,7 +390,7 @@ check("tree-originated selected-document mutation crosses the same Schema bounda
   binding.dispose();
 });
 
-check("named document QUID lookup remains library-local while active QUIDs remain map-wide", () => {
+await check("named document QUID lookup remains library-local while active QUIDs remain map-wide", () => {
   const Q1 = "000009001";
   const Q2 = "000009002";
   const map = admit_exact_runtime_livemap_libraries({
@@ -411,7 +411,7 @@ check("named document QUID lookup remains library-local while active QUIDs remai
   }), /collision/i);
 });
 
-check("one selected document binding is exclusive while separate named documents bind independently", () => {
+await check("one selected document binding is exclusive while separate named documents bind independently", () => {
   const map = hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: PageSchema },
     modal: { document: "<main/>", schema: PageSchema },
@@ -429,7 +429,7 @@ check("one selected document binding is exclusive while separate named documents
   modalBinding.dispose();
 });
 
-check("aggregate document writes reject accidental cross-library QUID transfer", () => {
+await check("aggregate document writes reject accidental cross-library QUID transfer", () => {
   const Q1 = "000009101";
   const Q2 = "000009102";
   const Q3 = "000009103";
@@ -470,7 +470,7 @@ check("aggregate document writes reject accidental cross-library QUID transfer",
   assert.equal(map.rev, 0);
 });
 
-check("named Handles stay library-relative and return one truthful global commit", () => {
+await check("named Handles stay library-relative and return one truthful global commit", () => {
   const map = create_map();
   const seen: LiveMapCommit[] = [];
   map.commits.observe((commit) => seen.push(commit));
@@ -487,14 +487,14 @@ check("named Handles stay library-relative and return one truthful global commit
   assert.deepEqual(seen, [commit]);
 });
 
-check("each named Library validates its initial graph before the registry is returned", () => {
+await check("each named Library validates its initial graph before the registry is returned", () => {
   assert.throws(() => hsonLiveMap.fromLibraries({
     state: { data: { count: 1, nested: { value: 2 } }, schema: StateSchema },
     colors: { data: { primary: 3 }, schema: ColorsSchema },
   }), /schema/i);
 });
 
-check("the public commit family preserves future cross-library operation order", () => {
+await check("the public commit family preserves future cross-library operation order", () => {
   const proof: LiveMapCommit<"state" | "colors"> = {
     kind: "map",
     changed: true,
@@ -509,14 +509,14 @@ check("the public commit family preserves future cross-library operation order",
   assert.deepEqual(proof.operations.map((entry) => entry.library), ["state", "colors", "state"]);
 });
 
-check("ordinary Locus constructs and exclusively manages its authority map", async () => {
+await check("ordinary Locus constructs and exclusively manages its authority map", async () => {
   const map = create_map();
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, test_application_catalog(map)) });
   assert.notEqual(locus_map_internal(locus), map);
   await locus.data.must("state").at(["count"]).set(2);
   assert.equal(map.data.must("state").at(["count"]).set(2).rev, 1);
   locus.dispose();
-  await assert.rejects(locus.data.must("state").at(["count"]).set(2), /unavailable|disposed|closed/i);
+  await assert.rejects(async () => locus.data.must("state").at(["count"]).set(2), /unavailable|disposed|closed/i);
 });
 
 if (false) {

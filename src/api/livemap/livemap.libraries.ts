@@ -692,6 +692,10 @@ function make_livemap_library_receiver(
     });
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot, scoped);
+  // Admission has transferred graph ownership. This receiver's long-lived
+  // closures must not retain complete Part admission values through the initial
+  // definitions binding (which is also captured by the setup callbacks above).
+  definitions = [];
 
   function cut(options: LiveMapCutOptions = {}, demanded?: readonly string[]): LiveMapCut | LiveMapHtmlCut {
     const checkCapture = aggregate.captureFence();
@@ -879,6 +883,9 @@ function make_livemap_library_receiver(
           throw new TypeError("LiveMap batch callback must be synchronous.");
         }
         writes = staged.writes();
+      } catch (cause) {
+        staged.discard();
+        throw cause;
       } finally {
         staged.close();
       }
@@ -967,7 +974,7 @@ function make_livemap_library_receiver(
     if (entry.family !== "data" || contract?.validation !== PART_COLLECTION_VALIDATION) {
       throw new Error(`Library ${JSON.stringify(collection)} is not a governed Part collection; register it with definition: { parts }.`);
     }
-    const part = read_admitted_part_member(aggregate.projectedValue(entry.identity, [member]), member);
+    const part = read_admitted_part_member(aggregate.projectData(entry.identity, [member]), member);
     if (part === undefined) throw new Error(`Unknown Part member ${JSON.stringify(`${collection}/${member}`)}.`);
     checkCapture();
     return part;
@@ -1272,7 +1279,7 @@ function make_data_library(
   }
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
   const canonical = (path: LivePath = []) => {
-    const value = aggregate.projectedValue(library.identity, path);
+    const value = aggregate.projectData(library.identity, path);
     return value === undefined ? undefined : hson_data_text_from_value(value);
   };
   const public_data_commit = (commit: LiveMapAggregateCommit): LiveMapCommit<string, LiveMapDataOp> =>
@@ -1286,7 +1293,7 @@ function make_data_library(
       const actual = currentKind();
       return kind === "present" ? actual !== "missing" : actual === kind;
     });
-    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => check?.() === false ? undefined : aggregate.projectedValue(library.identity, targetPath);
+    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => check?.() === false ? undefined : aggregate.projectData(library.identity, targetPath);
     const projectedAuthority: LiveMapProjectedPropagation<DataCommit> = {
       read: projectedRead,
       snap: path => check?.() === false ? undefined : snap(path),
@@ -1368,7 +1375,7 @@ function make_data_library(
         const assertCurrent = aggregate.captureFence();
         const readMember = () => {
           require_data_location(check);
-          const value = aggregate.projectedValue(library.identity, [...stablePath, "document"]);
+          const value = aggregate.projectData(library.identity, [...stablePath, "document"]);
           if (value === undefined) throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
           return value;
         };

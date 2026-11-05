@@ -7,7 +7,7 @@ import { internal_livemap_aggregate_authority } from "../../src/api/livemap/live
 import { decode_hosted_root } from "../../src/api/livemap/livemap.hosted.js";
 import { make_livemap_staged_writer } from "../../src/api/livemap/livemap.staged.js";
 import { make_livemap_path_handle } from "../../src/api/livemap/livemap.handle.js";
-import { register_livemap_projected_propagation, ordered_candidate_reads, type LiveMapProjectedPropagationWrite } from "../../src/api/livemap/livemap.projected-propagation.js";
+import { register_livemap_projected_propagation, type LiveMapProjectedPropagationWrite } from "../../src/api/livemap/livemap.projected-propagation.js";
 import { bind_locus_websocket } from "../../src/api/locus/locus.websocket.js";
 import { create_echo_aggregate_client_internal } from "../../src/api/echo/echo.aggregate-replica.js";
 import type { LocusWebSocketLike } from "../../src/types/locus.types.js";
@@ -59,7 +59,7 @@ function exact(map: LiveMap, path: LivePath, expected: OrderedProjectedValue): v
   assert.notEqual(snapshotGraph, undefined);
   assert.equal(emit_ordered_json(snapshotGraph!), json);
   const identity = internal_livemap_aggregate_authority(map).libraries()[0]!;
-  const owned = ordered_projected_value_at(internal_livemap_aggregate_authority(map).projectedValue(identity), path);
+  const owned = internal_livemap_aggregate_authority(map).projectData(identity, path);
   assert.notEqual(owned, undefined); deeply_frozen(owned!);
 }
 
@@ -140,7 +140,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
       else Reflect.apply(state(map).at(["value"]).replace, undefined, [value]);
       // Installed reads now project the graph; authentic input identity remains a carrier contract.
       assert.equal(must_ordered_projected_value(value, []), value);
-      assert.equal(emit_ordered_json(owner.projectedValue(identity, ["value"])!), emit_ordered_json(value));
+      assert.equal(emit_ordered_json(owner.projectData(identity, ["value"])!), emit_ordered_json(value));
       exact(map, ["value"], value);
     }
   });
@@ -159,11 +159,12 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
     source["10"] = 99; source["2"] = null; revoke();
     await Promise.resolve();
     staged.close();
-    owner.commit(staged.writes());
+    const writes = staged.writes();
+    owner.commit(writes);
     assert.equal(descriptors, count); assert.equal(gets, 0);
     exact(map, ["value"], expected);
-    const read = ordered_projected_value_at(owner.projectedValue(owner.libraries()[0]!), ["value"]);
-    const queued = staged.writes().find(write => write.kind === "replace");
+    const read = owner.projectData(owner.libraries()[0]!, ["value"]);
+    const queued = writes.find(write => write.kind === "replace");
     assert.ok(queued && queued.kind === "replace");
     assert.equal(emit_ordered_json(read!), emit_ordered_json(must_ordered_projected_value(queued.value, [])));
   });
@@ -177,7 +178,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
       setMany: unexpected, delete: unexpected, feed: unexpected, splice: unexpected, capture: unexpected,
     };
     let captured: readonly LiveMapProjectedPropagationWrite[] = [];
-    register_livemap_projected_propagation(core, { ...ordered_candidate_reads(() => empty), feed: () => () => {}, commit(writes) { captured = writes; throw sentinel; } });
+    register_livemap_projected_propagation(core, { read: () => empty, snap: () => ({}), kind: () => "object", keys: () => [], length: () => undefined, arrayRange: () => undefined, feed: () => () => {}, commit(writes) { captured = writes; throw sentinel; } });
     const handle = make_livemap_path_handle(core, ["value"], () => () => {});
     for (const method of ["set", "replace", "update"] as const) {
       const input = ordered_input(), expected = admit_projected_value(input);

@@ -8,8 +8,8 @@ import { document_css_commands, capture_document_css_command } from "../../inter
 import { collection_commands, normalize_part_collection_command } from "./livemap.collection-command.js";
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapDocumentRequestTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
-import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { project_live_path } from "./livemap.editor.js";
+import { type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal, register_disabled_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { capture_document_attrs_command, type DocumentAttrsCommand, admit_public_document_graph_operation } from "./livemap.document.mutation.js";
@@ -81,6 +81,7 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   writer: LiveMapStagedWriter<TMap, void>;
   writes: () => readonly LiveMapAggregateWrite[];
   close: () => void;
+  discard: () => void;
 }> {
   const registry = aggregate.hostedRegistry();
   const identities = aggregate.libraries();
@@ -94,6 +95,8 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   }
   const writes: LiveMapAggregateWrite[] = [];
   let open = true;
+  let consumed = false;
+  let releaseInteraction: (() => void) | undefined;
   const assert_open = (): void => {
     if (!open) throw new Error("Expired staged authoring scope.");
   };
@@ -273,12 +276,15 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   }));
   const interactionSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
   if (interactionSystem !== undefined) {
-    const interactionRoot = projected_value_from_hson_node(aggregate.systemRoot(interactionSystem));
-    if (!is_ordered_projected_object(interactionRoot)) throw new Error("Canonical interaction Library root is malformed.");
-    const initial = interactionRoot.entries.find(([name]) => name === "descriptors")?.[1];
+    const initial = project_live_path(aggregate.systemRoot(interactionSystem), ["descriptors"]);
     if (initial === undefined) throw new Error("Canonical interaction descriptor collection is missing.");
-    let interactionValue: OrderedProjectedValue = initial;
-    register_interaction_draft_internal(writer, interactionSystem, () => interactionValue, (value) => {
+    let interactionValue: OrderedProjectedValue | undefined = initial;
+    releaseInteraction = () => { interactionValue = undefined; };
+    register_interaction_draft_internal(writer, interactionSystem, () => {
+      assert_open();
+      if (interactionValue === undefined) throw new Error("Expired interaction draft.");
+      return interactionValue;
+    }, (value) => {
       assert_open();
       interactionValue = value;
       writes.push(Object.freeze({ target: aggregate.systemTarget(interactionSystem, ["descriptors"]), kind: "replace", value }));
@@ -286,10 +292,23 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   } else {
     register_disabled_interaction_draft_internal(writer, assert_open);
   }
+  const close = (): void => {
+    open = false;
+    if (consumed) writes.length = 0;
+    selectedFacades.clear();
+    releaseInteraction?.();
+    releaseInteraction = undefined;
+  };
   return Object.freeze({
     writer: writer as unknown as LiveMapStagedWriter<TMap, void>,
-    writes: () => Object.freeze([...writes]),
-    close: () => { open = false; },
+    writes: () => {
+      const owned = Object.freeze([...writes]);
+      consumed = true;
+      if (!open) writes.length = 0;
+      return owned;
+    },
+    close,
+    discard: () => { close(); writes.length = 0; },
   });
 }
 

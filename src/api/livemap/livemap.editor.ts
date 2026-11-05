@@ -317,12 +317,25 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
 export function replace_live_root_from_projected(
   root: HsonNode,
   nextCarrier: OrderedProjectedValue,
+  preserveRootShape = false,
+  previous?: OrderedProjectedValue,
 ): LiveMapProjectedEditResult {
   const prevNode = resolve_value_node(root, []);
-  const prevCarrier = prevNode === undefined ? undefined : projected_value_from_hson_node(prevNode);
+  const prevCarrier = previous === undefined
+    ? prevNode === undefined ? undefined : projected_value_from_hson_node(prevNode)
+    : previous;
   const nextRoot = projected_value_to_hson_root(nextCarrier);
 
-  overwrite_hson_node(root, nextRoot);
+  const direct = nextRoot.$_content[0];
+  const replacement = preserveRootShape && root.$_tag !== ROOT_TAG && is_Node(direct) ? direct : nextRoot;
+  // This graph was just constructed here and has no other owner. Transfer its
+  // fields into the private root without cloning the entire replacement again.
+  root.$_tag = replacement.$_tag;
+  if (replacement.$_attrs === undefined) delete root.$_attrs;
+  else root.$_attrs = replacement.$_attrs;
+  if (replacement.$_meta === undefined) delete root.$_meta;
+  else root.$_meta = replacement.$_meta;
+  root.$_content = replacement.$_content;
 
   return {
     changed: !optional_ordered_projected_value_equal(prevCarrier, nextCarrier),
@@ -343,14 +356,18 @@ export function replace_live_path_from_projected(
   root: HsonNode,
   path: LivePath,
   nextCarrier: OrderedProjectedValue,
+  preserveRootShape = false,
+  previous?: OrderedProjectedValue,
 ): LiveMapProjectedEditResult {
-  if (path.length === 0) return replace_live_root_from_projected(root, nextCarrier);
+  if (path.length === 0) return replace_live_root_from_projected(root, nextCarrier, preserveRootShape, previous);
 
   const prevNode = resolve_value_node(root, path);
   if (prevNode === undefined) {
     throw new Error(`LiveMap replace path does not resolve: ${format_live_path(path)}`);
   }
-  const prevCarrier = projected_value_from_hson_node(prevNode);
+  // Container planning already owns this exact selected projection. Reuse it
+  // while the private graph has not changed instead of traversing it twice.
+  const prevCarrier = previous === undefined ? projected_value_from_hson_node(prevNode) : previous;
 
   const resolved = resolve_parent_node(root, path);
 
@@ -680,7 +697,9 @@ function clone_hson_node(node: HsonNode): HsonNode {
   };
 
   if (node.$_attrs !== undefined) partial.$_attrs = clone_node(node.$_attrs);
-  if (node.$_meta !== undefined) partial.$_meta = clone_node(node.$_meta);
+  // Admitted metadata contains only scalar index/QUID strings. Its record needs
+  // independent ownership, but no structured clone of each array item's index.
+  if (node.$_meta !== undefined) partial.$_meta = { ...node.$_meta };
 
   return CREATE_NODE(partial);
 }

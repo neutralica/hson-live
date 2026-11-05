@@ -246,7 +246,9 @@ check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs s
   assert.ok(plain.gzip < 320 * 1024, `plain LiveMap drifted to ${plain.gzip} gzip bytes`);
   assert.ok(libraries.gzip < 320 * 1024, `LiveMap fromLibraries drifted to ${libraries.gzip} gzip bytes`);
   // Endpoint data admission now retains the shared Hson parser rather than a second codec.
-  assert.ok(echo.gzip < 42 * 1024, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
+  // Owner-authorized temporary ceiling; dependency ownership is enforced independently above.
+  // Continue investigating unexplained growth below this ceiling (see the D4d Echo packaging report).
+  assert.ok(echo.gzip < 90_000, `endpoint Echo drifted to ${echo.gzip} gzip bytes`);
   assert.ok(locus.gzip < 360 * 1024, `Locus drifted to ${locus.gzip} gzip bytes`);
   console.log(JSON.stringify({ livemapNamespaceBundles: {
     create: { raw: plain.raw, gzip: plain.gzip },

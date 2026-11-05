@@ -1,7 +1,6 @@
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { LiveMapCoreCommit, LiveMapDisposer, LiveMapPathKind, LivePath } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
-import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { LiveMapProjectedDataOp } from "./livemap.transport.js";
 
 export type LiveMapProjectedSetWrite = Readonly<{
@@ -75,23 +74,6 @@ export type LiveMapDataReads = Readonly<{
   arrayRange: (path: LivePath, bounds: (length: number) => readonly [number, number]) => JsonValue[] | undefined;
   length: (path: LivePath) => number | undefined;
 }>;
-
-/** Candidate-only adapter: installed readers supply graph-local implementations. */
-export function ordered_candidate_reads(read: LiveMapDataReads["read"]): LiveMapDataReads {
-  return {
-    read,
-    snap: path => { const value = read(path); return value === undefined ? undefined : materialize_projected_value(value); },
-    kind: path => { const value = read(path); return value === undefined ? "missing" : is_ordered_projected_object(value) ? "object" : Array.isArray(value) ? "array" : "scalar"; },
-    keys: path => { const value = read(path); return is_ordered_projected_object(value) ? value.entries.map(([key]) => key) : undefined; },
-    arrayRange: (path, bounds) => {
-      const value = read(path);
-      if (!Array.isArray(value)) return undefined;
-      const [start, end] = bounds(value.length);
-      return value.slice(start, end).map(materialize_projected_value);
-    },
-    length: path => { const value = read(path); return Array.isArray(value) ? value.length : undefined; },
-  };
-}
 
 export type LiveMapProjectedPropagation<TCommit = LiveMapCoreCommit> = LiveMapDataReads & Readonly<{
   feed: (

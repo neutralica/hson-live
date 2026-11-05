@@ -1,5 +1,4 @@
 import type { HsonNode } from "../../core/types.js";
-import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 
 /** Opaque identity for one Hson-owned transactional state domain. */
@@ -11,7 +10,6 @@ export type LiveMapSystemState = {
   readonly key: string;
   readonly transportName: string;
   root: HsonNode;
-  projectedValue: OrderedProjectedValue;
   readonly hsonSchema: HsonSchema;
 };
 

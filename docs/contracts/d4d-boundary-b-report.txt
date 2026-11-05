@@ -1,0 +1,589 @@
+Hson D4d Boundary B: single graph authority and graph-native mutation planning
+
+Correction evidence is recorded in section 14. The independently reviewed memory,
+performance and original validation findings below describe the pre-correction
+implementation. They are retained as historical evidence, not remeasurements of
+the corrected replay admission. Current source fingerprints and correction
+validation are recorded separately in d4d-boundary-b-measurements.json.
+
+1. Verified baseline and protection
+
+Boundary A is committed on main at d2d66f93b57b5575818b44b359ab369fc6a9da12,
+"Move installed Data reads onto the canonical Hson graph". Before implementation,
+HEAD/main, commit metadata, Git operation markers/locks, working-tree inventory,
+and the process list were checked. No commit, hook or conflicting writer was
+active. The only existing modifications were the five permitted VS Code
+appearance files. Their SHA-256 hashes were captured before editing.
+
+The owner confirmed the preceding architectural investigation was delivered in
+conversation; this task prompt and the actual source are the implementation
+basis. No missing design document blocks this implementation.
+
+No staging, commit, push, amend, reset, worktree creation or frozen-tree gate.
+README, tracked distribution, Deck, Scout and owner appearance content remain
+untouched. The public Data contract is unchanged; internal architecture evidence
+is updated in the maintained contracts and this report.
+Builds, runtime bundles and raw logs use /private/tmp/hson-d4d-boundary-b.
+
+2. Changed-file inventory (35 Boundary B paths after the correction)
+
+  docs/contracts/d4d-boundary-b-measurements.json
+  docs/contracts/d4d-boundary-b-report.txt
+  docs/contracts/livemap-lifecycle.md
+  docs/contracts/livemap-mutation.md
+  package.json
+  scripts/compare-graph-mutation-evidence.mjs
+  scripts/measure-graph-mutations.mjs
+  scripts/validation-config.mjs
+  src/api/livemap/livemap.authority.ts
+  src/api/livemap/livemap.collection-command.ts
+  src/api/livemap/livemap.core.ts
+  src/api/livemap/livemap.editor.ts
+  src/api/livemap/livemap.internal.ts
+  src/api/livemap/livemap.libraries.ts
+  src/api/livemap/livemap.library.ts
+  src/api/livemap/livemap.node-admission.ts
+  src/api/livemap/livemap.projected-propagation.ts
+  src/api/livemap/livemap.staged.ts
+  src/api/livemap/livemap.system.ts
+  src/api/locus/locus.aggregate.ts
+  src/internal/schema-hson-validation/validate-canonical-hson.ts
+  tests/fixtures/livemap-equal-effect-replay-cases.mts
+  tests/fixtures/livemap-graph-mutations-cases.mts
+  tests/fixtures/livemap-graph-mutations.worker.mts
+  tests/fixtures/livemap-graph-reads-cases.mts
+  tests/fixtures/livemap-setter-exact-order-cases.mts
+  tests/livemap-aggregate-library-transitions.acceptance.mts
+  tests/livemap-data-ownership.acceptance.mts
+  tests/livemap-graph-mutations.acceptance.mts
+  tests/livemap-hson-schema-transition-proof.acceptance.mts
+  tests/livemap-n-library-engine.acceptance.mts
+  tests/livemap-operators/operator-catalog.mts
+  tests/livemap-phase-1b.acceptance.mts
+  tests/livemap-public-libraries.acceptance.mts
+  tests/livemap-transform-accepted-closure.acceptance.mts
+
+The five pre-existing appearance modifications are excluded from this inventory
+and remain byte-for-byte equal to the preflight hashes.
+
+3. Removed storage and obsolete pathways
+
+LiveMapLibraryState.projectedValue and LiveMapSystemState.projectedValue are
+removed. No hidden compatibility field or complete retained projection cache
+replaces them. installed_projected_value and the optional-path complete-value
+projectedValue capability are removed; the remaining projectData capability
+requires an explicit selected path and projects the graph on demand.
+
+The old value-bearing AggregateDataCandidate and AggregateSystemCandidate,
+projected_candidate_graph reconstruction, must_hson_schema_projected_candidate
+reconstruction, plan_write_ops_with_identity wrapper, and ordered_candidate_reads
+adapter are removed. The existing plan_write_ops is refactored in place, not
+joined by another mutation engine. Its result carries immutable operation
+evidence, not a second complete candidate value. Full graph/value installation
+assignments and field-presence guards for ordered storage are gone.
+
+4. Candidate ownership and editing
+
+Each ordinary touched Data Library has two independent deep graph clones:
+baseRoot is the detached stale witness; root is the private mutable candidate.
+Neither aliases the installed graph or each other. Scalar metadata records are
+independently copied; structured style attributes still receive deep copies.
+One evolving candidate serves
+all ordered operations on that Library in a transaction. Existing endpoint
+editors perform root, nested and indexed writes. Constructive set applies each
+submitted member in its existing order, as shallow endpoint assignments.
+
+Rename, move and splice project only their selected container, use the existing
+ordered mutation functions, then write the result into the private graph. A
+physical container replacement remains a semantic rename, move or splice in
+transport evidence and QUID reconciliation. Collections use the same candidate
+through the existing array/object helpers. No per-operation whole-Library
+projection is used to implement a narrow write.
+
+Installed Data retains its stable root object and receives copied candidate
+content only during accepted installation. Candidate graphs and stale witnesses
+remain independent during preparation/reservation/rejection. Canonical graph
+comparison, revision/generation checks and identity fences all remain; pointer
+identity or value equality does not replace those checks.
+
+5. Operation and root-shape evidence
+
+Focused Node/Worker cases cover ordinary equal set versus explicit equal replace,
+identity retirement and issued-ledger ABA rejection, moves between equal objects,
+rename source/destination identity, equal-content splice removal, numeric-looking
+member order, shallow constructive assignment, signed zero and finite extremes,
+missing paths, forbidden root deletion and complete-Library depth rejection.
+Existing root, wrapper, rename, move, splice and ordering suites remain active.
+
+Root shape is applied from normalized authored intent. An equal explicit root
+replace followed by a changed operation produces the intended wrapped root even
+when the equal operation itself has no semantic change. Ordinary equal root set
+keeps its established normalization. Internal root container edits preserve a
+direct Data root. Root-mode restrictions and multi-Library epoch reset restrictions
+remain intact.
+
+Accepted equal replacement/splice evidence is replayed in a fresh runtime even
+when the receiver has none of the source runtime's QUIDs. Replacement must target
+an identity-eligible semantic container; splice must remove at least one eligible
+child. The replay path checks exact prev/next values and exactly one accepted
+semantic operation. Empty splices and equal primitive effects reject. Section 14
+records the narrowing of the originally overbroad replay exemption.
+
+The maintained byte-evidence comparison bundles committed HEAD and current source
+in temporary directories. Fourteen representative commits compare byte-exactly
+after substituting only nondeterministic authority IDs. Final exact Hson and
+revision also match. Equal identified splice retirement is separately asserted;
+it is intentionally a semantic operation even when replacement content is equal.
+
+6. Parts, interactions, installation and restoration
+
+Parts retain the established preplanning and Parts-before-Document composition
+order. Baseline immutability checks use installed graph keys/shapes; exact catalog
+preservation/addition validation uses bounded temporary catalog projections.
+Composition reads pending members from the same evolving private candidate.
+Part admission values are transient authored/validation input, not installed Data.
+The receiver clears its initial definitions binding after setup so its long-lived
+closures cannot accidentally retain complete Part admission values.
+
+Interaction state now owns only a graph. Its baseline and candidate are detached
+independent clones, and descriptor rewrites, collection planning and client/shared
+partitioning use temporary selected descriptor values. System candidate validation
+rejects QUID claims and never issues system Data identities.
+
+Initial and dynamic Library admission, prepared installation, semantic checkpoints,
+local topology restoration, aggregate restoration, client projection restoration,
+portable hosted replay and managed client projection preparation have all lost
+their retained-value synchronization assignments. Existing topology, checkpoint,
+Part, scoped identity and interaction replay suites exercise these branches.
+
+7. Qualification, Schema, identity and authority
+
+Every final candidate is qualified as a complete canonical Data graph and checked
+against its genuine governing Schema. The existing D4b ordered Schema evaluator
+receives a temporary final graph projection. No new evaluator or mutable Schema
+contract is added. Canonical validation checks the total Library nesting depth,
+reserved names, exact member order, finite numbers, wrappers and relationships.
+Portable generated-QUID rejection and Schema diagnostic/certification identity
+remain in the established admission/evaluation boundaries.
+
+The single aggregate transition controller still governs mixed Data/Document/CSS
+installation. Exact management grants, revisions, preparation generations, identity
+generations, reserved durable decisions and current-state fences remain. Existing
+QUID overlays/issued ledgers, retirement/ABA protection, scoped QUAD lifetimes,
+same-runtime restoration provenance and fresh portable restoration are retained.
+No authority is moved into Locus or Echo.
+
+8. Prepared-token and scratch lifetimes
+
+WeakMap authority records retain expensive checking/installation/publication
+callbacks only while pending. Success, genuine no-op acceptance, discard, detected
+staleness and failed installation release pending callbacks and planning-only
+candidate/baseline maps. Core also removes preparedSystemRoots entries. Terminal
+commit evidence remains available; accepted/discarded/stale terminal errors keep
+their established behavior. A revoked reserved management grant preserves its
+immediate management error; a later changed revision/generation produces the
+established stale error. A competing reservation is a temporary fence, not a
+reason to discard another still-valid preparation.
+
+No global strong token registry is introduced. Locus clean/uncertain append
+failures discard planning state while uncertain-outcome authority fencing remains.
+Disposal during reservation defers ownership release until settlement. Session
+projection, queued publication, replay reservations and retained history own
+separate evidence and are not cleared with planner maps. Reentrant publication
+keeps its original order. Staged writers clear commands after consumption plus
+closure, or explicit authoring failure; close() then writes() still hands off the
+captured commands. Tests retain that returned immutable command list for later
+inspection rather than relying on a consumed scratch queue.
+
+Forced-GC heap deltas at 2,048 rich rows, five trials; MiB min/median/max.
+The discarded token is deliberately held. Pending and discarded rows are
+additional heap above that trial's installed map. Held/settled rows include
+the map; the real Locus gate captures the token, which remains held after settlement.
+Small negative post-discard deltas are measurement/GC noise, not negative storage.
+
+Measurement                          Boundary A                     Boundary B
+Installed map                        45.306/45.316/45.318           21.742/21.751/21.752
+Pending preparation extra            11.993/11.995/12.015           11.913/11.916/11.936
+Discarded token extra                11.995/11.997/12.016           -0.001/0.006/0.019
+Held map plus preparation            57.162/57.276/57.277           33.629/33.679/33.680
+Settled map with held token          41.522/41.645/41.646           5.763/5.790/5.799
+
+Fresh-process peak RSS, three trials per scenario, MiB min/median/max.
+These include module load/setup and five mutations (or one held decision); they
+are process peaks, not exact live-JavaScript peaks. Raw per-batch observed heap
+growth is also retained in JSON and is a lower bound measured between operations.
+
+Scenario                             Boundary A                     Boundary B
+leaf                                 355.578/357.672/362.172        353.234/358.781/361.094
+root                                 499.047/501.547/515.453        395.656/400.750/406.047
+four-batch                           346.984/360.766/363.906        347.094/357.656/370.031
+held                                 331.547/336.531/340.938        345.453/347.125/347.219
+
+9. Locus/Echo and durable acceptance
+
+Focused tests cover clean failed append, write-then-uncertain failure and recovery,
+reservation/current-state fences, disposal while reserved, postinstall failure,
+projection preparation, deduplication, checkpoint/durable-tail restart, local/shared
+projection restoration and observer reentrancy. The maintained scoped hosted
+suite runs against current public source entrypoints in Node and Worker and
+includes a fresh process checkpoint plus durable scoped tail replay. The scoped
+preparation suite passes 50 Node/50 Worker groups; full Echo reconciliation passes
+126 Node/126 Worker groups. No Locus R2-R13 optimization is introduced.
+
+10. Node/Worker, TypeScript and repository checks
+
+160 distinct maintained suites passed across the focused source/runtime runs.
+The final copy/projection changes were followed by 29 focused suites covering
+identity, ordering, authority, replay, portable ingress and Schema; the subsequent
+root-copy and initial-definition lifetime changes were followed by the affected
+root, setter, graph-mutation, Parts, emitted-type and transport comparisons.
+The detailed per-suite outcomes and resolutions are included in the measurement
+JSON. This is deliberately not a full frozen-tree gate.
+
+Source TypeScript checks and a focused test TypeScript project pass. A temporary
+TypeScript emit under /private/tmp passes actual Node and Worker mutation smoke
+checks; root/subpath LiveTree constructors are reference-identical, and id and
+classlist remain prototype getters. The maintained graph-mutation suite executes
+nine groups in Node and nine in an actual Worker; the graph-read suite executes
+11 in each; exact setter ownership/order executes 29 in each. Part collections
+execute 97 Node/97 Worker groups, and portable QUAD executes 52 in each.
+
+Inventory preflight passes with 466 suites and no errors. The new graph-mutation
+suite and its awaited Worker route are registered with a reviewed launcher pin.
+git diff --check passes. No tracked build output was generated.
+
+Five inherited test failures were reproduced by bundling committed Boundary A
+source and its original tests: the deterministic mutation/transport fixture,
+phase-1b, Transform accepted closure, and public Libraries async harness. The
+source-string fixtures now explicitly use Hson.data.fromSource where source was
+intended; ordinary text remains literal. The async harness now awaits its cases
+and tests disposed access inside the rejection thunk. Existing assertions remain.
+Storage-specific ordered-value pointer assertions now compare exact contents;
+authenticated submitted carrier identity assertions remain. Staged queue tests
+retain the one handed-off immutable command list for later inspection.
+
+Four HTTP suites needed permitted local loopback access. Scoped SSR was also
+rerun with local listeners. Five public-package suites were resolved to current
+source using a temporary loader instead of protected, stale dist files; generated
+Parts subprocesses inherited TSX as well. An early Echo reconciliation harness
+limit of 180 seconds was removed for the successful complete rerun. A portable
+QUAD subprocess exited without a status under redundant global test loaders;
+its standalone source rerun passed all Node/Worker cases. These harness issues
+were not hidden by weakening test assertions.
+
+11. Performance and allocation evidence
+
+Reproduce separately with no competing test/benchmark processes:
+  node --expose-gc scripts/measure-graph-mutations.mjs --baseline
+  node --expose-gc scripts/measure-graph-mutations.mjs
+  node --expose-gc scripts/measure-graph-mutations.mjs --baseline --investigation-only
+  node --expose-gc scripts/measure-graph-mutations.mjs --investigation-only
+  node scripts/compare-graph-mutation-evidence.mjs
+
+--baseline bundles committed HEAD via git show, without a worktree. For this
+report HEAD is the Boundary A hash above. After a future commit, use that recorded
+commit as the baseline source when reproducing this historical comparison.
+Node v22.20.0, macOS arm64, Apple M4. Each case has three warm-up actions and seven
+timing batches (five actions at 64/512 rows, three at 2,048). Schema uses numeric
+rows under an explicit number-array Schema. Other rows contain id, score,
+detail(label, flags), and tags, plus small object/rename targets. Interaction
+updates replace one descriptor. Locus measures its real stage/accept path; Echo
+adds portable encoding and actual replica replay. Persistence/network I/O is
+excluded from these timings and is exercised by the separate regressions.
+
+Allocation estimates use V8 HeapProfiler statistical sampling at 32,768 bytes,
+including collected objects, in three samples per case. They are estimated
+allocated bytes, not exact allocation counts or retained heap. No thresholds or
+performance gate is introduced. All absolute min/median/max values and raw memory
+trials are preserved in d4d-boundary-b-measurements.json.
+
+The 2,048-row rich Echo snapshot exceeds the existing hosted snapshot byte bound.
+Echo is measured at 64/512 rows; the remaining scenarios include 2,048. This is an
+explicit fixture limitation, not a changed protocol limit.
+
+Timing milliseconds/operation and sampled allocation MiB/operation:
+Rows Operation         A time min/med/max        B time min/med/max        A alloc min/med/max       B alloc min/med/max
+  64 leaf              5.792/5.985/6.740         5.538/5.937/6.283         15.322/15.796/16.017      14.654/15.124/15.209
+  64 root              9.338/9.567/9.904         10.146/10.382/10.759      21.866/22.306/22.483      22.528/22.628/23.100
+  64 four-independent  22.767/22.833/23.038      21.814/22.249/22.599      62.330/62.352/62.561      60.037/61.134/61.153
+  64 four-batch        6.010/6.105/6.196         5.721/6.051/6.156         15.430/15.934/16.103      15.176/15.558/16.129
+  64 constructive      5.876/5.977/6.092         5.582/5.938/6.048         14.934/15.718/15.963      14.914/15.157/15.287
+  64 rename            5.842/5.960/6.065         5.612/6.006/6.165         14.980/16.180/16.469      15.132/15.142/15.204
+  64 move              8.783/8.927/8.984         8.988/9.281/9.844         20.265/20.479/20.796      20.605/21.416/21.883
+  64 splice            8.601/9.030/9.092         9.210/9.568/10.152        19.958/21.236/21.252      20.763/21.087/21.224
+  64 schema            0.498/0.517/0.576         0.491/0.514/0.595         0.977/1.183/1.184         1.059/1.103/1.140
+  64 locus             5.844/5.934/5.969         5.627/5.772/6.227         15.104/15.395/15.550      15.104/15.236/15.761
+  64 echo              11.801/12.012/12.589      11.448/11.659/12.594      31.065/31.177/31.654      30.097/30.183/30.481
+ 512 leaf              49.837/50.200/50.363      48.601/49.635/57.131      122.945/123.962/124.134   121.022/121.303/122.120
+ 512 root              77.369/77.625/77.899      84.335/86.205/88.379      175.628/176.136/176.561   179.417/180.978/182.506
+ 512 four-independent  199.904/201.136/204.761   200.819/202.144/204.376   491.453/492.369/493.774   480.756/482.118/482.603
+ 512 four-batch        50.440/50.616/50.915      48.730/49.574/49.999      122.325/122.505/124.617   120.190/121.211/121.911
+ 512 constructive      50.058/50.397/50.677      49.059/49.679/49.994      122.292/122.323/123.986   118.852/119.637/120.573
+ 512 rename            50.385/50.569/53.256      48.995/49.637/49.949      123.693/123.902/124.000   120.089/121.831/121.936
+ 512 move              72.114/72.216/73.394      77.978/78.260/78.895      162.515/162.617/162.622   165.789/166.586/166.749
+ 512 splice            72.001/72.439/73.574      76.696/78.248/79.865      161.761/163.499/163.687   167.448/167.597/167.655
+ 512 schema            3.383/3.450/3.508         3.090/3.182/3.630         8.376/8.546/8.612         8.305/8.486/8.607
+ 512 locus             50.083/50.428/50.717      48.826/49.696/51.843      122.750/122.781/124.125   119.971/120.247/120.654
+ 512 echo              101.438/101.748/102.839   103.706/103.999/107.139   243.607/246.026/246.272   240.905/241.734/243.458
+2048 leaf              212.282/213.497/223.242   221.976/223.074/223.583   488.255/492.483/492.925   482.777/484.582/485.647
+2048 root              326.519/326.966/329.140   352.799/355.001/360.538   702.033/703.741/707.800   721.628/722.763/724.556
+2048 four-independent  845.407/846.451/849.088   884.211/885.430/899.217   1957.992/1966.543/1966.820 1927.104/1930.625/1934.184
+2048 four-batch        213.155/213.677/215.700   219.764/223.229/225.483   490.646/491.423/496.451   480.698/482.630/482.800
+2048 constructive      212.869/213.581/216.993   219.736/223.742/225.129   487.691/489.459/490.974   483.960/484.751/488.020
+2048 rename            211.954/213.499/220.188   219.654/223.240/223.907   489.210/491.432/494.173   481.467/483.407/485.913
+2048 move              305.717/306.562/308.021   336.745/338.689/349.761   643.810/647.725/649.551   659.344/662.604/664.903
+2048 splice            305.575/305.719/306.904   336.338/338.900/379.600   644.059/648.866/649.985   661.242/667.023/667.592
+2048 schema            13.521/13.627/13.808      12.551/13.638/13.821      33.757/34.184/34.383      33.398/34.076/34.190
+2048 locus             211.797/212.509/213.475   220.688/224.032/224.991   489.441/491.200/493.494   480.294/482.870/484.706
+   1 interaction       0.584/0.618/0.656         0.620/0.685/0.726         1.137/1.160/1.232         1.069/1.134/1.150
+
+The original investigation fixture is also reproduced: rows are only
+{id, label: rowN, score}, plus a flag; the final row's score uses replace(). The
+historical D4b probe (dc0fd0b11ac518f6a7322b3f820882c96660c447) reported
+71.976/75.769/78.855 ms at 2,048 rows. Its original note explicitly says concurrent
+triage, three samples, and no GC control/isolated warm-up. The controlled
+committed-A/current results on that same shape are:
+    64 rows: A 1.910/2.058/2.564 ms; B 2.051/2.202/2.958 ms.
+   512 rows: A 14.559/14.895/14.997 ms; B 16.231/16.538/16.863 ms.
+  2048 rows: A 62.624/63.103/63.441 ms; B 74.997/75.747/76.088 ms.
+
+The first graph-candidate run showed about 11% slower rich leaf writes, 17-19%
+slower root/container mutations, and 22% slower numeric Schema writes. A V8 CPU
+profile of eight rich leaf writes attributed 139.7 ms of sampled self time to
+structuredClone. Repeated cloning of scalar index metadata was removed while
+keeping independently owned records and deep structured-style copies. Selected
+container evidence is reused by the editor instead of projected twice. Freshly
+constructed root replacement content transfers directly into the private
+candidate; installation still copies it. Initial admission definitions are also
+released after the receiver setup so long-lived closures cannot retain Part
+admission scratch. Intermediate measurements are retained with the final results.
+
+Residual costs remain visible. At 2,048 rich rows, median leaf time is
+213.497 -> 223.074 ms (+4.5%), with estimated allocation 492.48 -> 484.58 MiB.
+Root replacement is 326.966 -> 355.001 ms (+8.6%); move/splice are about 10.5/10.9%
+slower. Four independent writes take 885.430 ms versus 223.229 ms for one batch,
+confirming one evolving candidate rather than four whole-Library planning passes.
+The lighter original investigation fixture is 63.103 -> 75.747 ms (+20.0%) against
+committed A; matching the old roughly 76 ms D4b result does not erase that regression.
+
+The remaining tradeoff is complete graph qualification plus independent witnesses
+and graph-derived exact evidence instead of retained ordered values. A separate
+2,048-row light-fixture component probe measured min/median/max milliseconds:
+  one graph clone:             0.543 / 0.608 / 0.783
+  complete graph qualification:6.068 / 6.169 / 9.173
+  complete ordered projection: 2.935 / 2.970 / 3.093
+  graph Schema validation:     3.099 / 3.136 / 3.165
+  exact stale graph comparison:23.739 /23.915 /24.398
+  ordered-to-graph construction:1.485 / 1.543 / 1.663
+These independently timed components are diagnostic, not an additive attribution
+of the end-to-end difference. Full qualification and exact stale comparison are
+retained. Large root/container operations necessarily create complete endpoint
+prev/next evidence where A could reuse retained ordered carriers. Redundant
+container projection, scalar metadata structured cloning, replacement-root copying,
+and initial-definition retention were corrected; the remaining regressions are
+reported for review rather than hidden or dismissed as noise.
+
+Numeric Schema validation at 2,048 rows is essentially unchanged (13.627 -> 13.638
+ms). One-descriptor interaction updates are 0.618 -> 0.685 ms (+0.067 ms, +10.7%).
+Locus at 2,048 rich rows is 212.509 -> 224.032 ms; Echo at 512 is 101.748 -> 103.999
+ms. These are representative in-memory transitions, not network latency results.
+
+Median observed installed heap falls from 45.316 to 21.751 MiB; a held discarded
+token adds 11.997 MiB on A versus 0.006 MiB on B. Held map/preparation deltas fall
+57.276 -> 33.679 MiB, and settled maps with held tokens 41.645 -> 5.790 MiB.
+These are the controlled GC-boundary deltas described above, not exact object-size
+accounting. Fresh-process root-replacement peak RSS falls 501.547 -> 400.750 MiB;
+leaf and batch peaks are similar, while the held-decision peak rises 336.531 ->
+347.125 MiB. Retained-memory savings are not presented as universal peak savings.
+
+These measurements include R1 on both sides: its immutable projected-registry
+digest reuse was committed before A and is not attributed to B. The R1 regression
+suite still passes; no further Locus optimization is implemented. Boundary A's
+read tradeoffs are separately documented in d4d-boundary-a-report.txt: its large
+root snap was about 1.56x the retained-value baseline time with about 50% fewer
+sampled bytes. B does not reintroduce a retained read cache, and these mutation
+measurements do not claim to reverse that earlier read tradeoff.
+
+
+12. Defects and dependencies
+
+The independently confirmed P2 replay-admission defect is corrected as recorded
+in section 14; independent re-review is pending. The P3 temporary interaction
+recapture remains deferred. No architectural checkpoint is reopened.
+Private baseline/candidate cloning, complete canonical/Schema validation and stale
+graph comparison remain proportional to Library size. Removing those costs would
+require a separate design; no copy-on-write, persistent sharing, new Schema engine,
+parallel mutation engine, public API, further Locus campaign or performance policy
+is introduced here. The rich 2,048-row Echo timing limitation and the memory
+measurement limits above remain explicit. Independent review is still required;
+no full frozen-tree gate or commit has been performed.
+
+13. Internal checkpoints
+
+Checkpoint 1 — COMPLETE: independent witnesses/candidates, exact endpoint graph
+edits, detached metadata and stale-content/identity fences.
+Checkpoint 2 — COMPLETE: shallow constructive set, rename/move/splice semantic
+identity, collections, Parts-before-Document composition and interactions.
+Checkpoint 3 — COMPLETE: both retained projectedValue fields and installation/
+restoration/replay synchronization pathways removed, including initial Part scratch.
+Checkpoint 4 — COMPLETE: obsolete planner reconstruction removed, terminal cleanup
+and durable/publication lifetimes verified, controlled A/current measurements,
+Node/Worker/types/inventory checks and maintained architecture evidence updated.
+
+14. Targeted replay-admission correction (no commit)
+
+Preflight reverified main/HEAD at Boundary A
+  d2d66f93b57b5575818b44b359ab369fc6a9da12.
+The exact inherited inventory was 34 unstaged Boundary B paths plus five permitted
+owner appearance paths. All implementation and owner SHA-256 fingerprints matched
+the reviewed measurements. The index was empty. No conflicting commit, hook or
+repository writer command, Git operation marker or lock was found.
+
+Exact correction inventory (five paths; one new path):
+  src/api/livemap/livemap.core.ts
+  tests/fixtures/livemap-graph-mutations-cases.mts
+  tests/fixtures/livemap-equal-effect-replay-cases.mts (new)
+  docs/contracts/d4d-boundary-b-report.txt
+  docs/contracts/d4d-boundary-b-measurements.json
+
+All other inherited Boundary B files and all five owner appearance files remain
+byte-for-byte unchanged. The complete Boundary B inventory is now the 35 paths
+in section 2; the five owner paths and their hashes remain in the measurement
+file's protectedOwnerFiles. README, Deck, Scout and tracked distribution remain
+untouched. No staging, commit, push, reset, worktree or frozen-tree gate occurred.
+
+Original reproduction and cause
+
+Starting with {rows:[1],n:0}, canonical portable evidence was constructed for:
+  1. splice rows at 0, remove [], insert [];
+  2. replace n, prev 0, next 0;
+  3. splice rows at 0, remove [1], insert [1].
+An esbuild source-only harness bundled committed Boundary A and the exact
+pre-correction Boundary B source without checkout or distribution generation.
+Each operation ran independently through durable portable replay and Echo
+receiving replay, in Node and an actual worker_threads Worker (12 route/runtime
+cases for each implementation). Boundary A rejected every operation, retaining
+revision 0 and Data. Original Boundary B accepted every operation, advancing to
+revision 1 with identical Data. The maintained negative fixture also fails on
+the saved original Boundary B core with "Missing expected exception".
+
+The cause was the unconditional retainAcceptedIdentityIntent argument on replay,
+combined with unconditional replacement/splice equality exemptions in the planner.
+Replay status alone admitted intrinsically empty effects. Boundary A's rejection
+at this aggregate check was a generic Error. The corrected check uses the existing
+LiveMapReplayInputError contract: code INVALID_REPLAY, reasonCode
+UNCHANGED_STAGED_OPERATION, and the rejected operation's zero-based opIndex.
+No new error family or public transport field is introduced.
+
+Narrowed exemption
+
+Before editing the private candidate, explicit replacement resolves its target
+using resolve_value_node and the established is_livemap_projected_identity_target
+predicate. Only an eligible container retains accepted identity intent. Splice
+checks actual removed children at their qualified array paths with the same
+resolver/predicate; the array itself retains identity, so its eligibility or QUID
+cannot authorize an empty or primitive-only equal splice. Scalar property/array
+wrappers are not mistaken for semantic containers. No identity is minted or
+serialized to establish correspondence.
+
+Ordinary equal assignment remains a no-op. Actual receiver overlay effects still
+use the existing at-or-below checks and the existing reconciliation/issued-ledger
+machinery. Fresh receivers with no source identities continue to accept eligible
+equal replacement/splice evidence. Exact prev/next verification and the single
+operation check remain. Structural equality is not the universal no-op rule.
+No identity engine, interpreter, retained semantic representation or admission
+protocol is added.
+
+Maintained negative evidence and atomicity
+
+The registered graph-mutation suite imports the new fixture from its existing
+shared case body, so the identical cases execute in Node and its awaited real
+Worker. Its existing launcher pin and registration are unchanged. Tests cover
+all three reproduced failures plus explicit equal scalar array-item replacement,
+through direct portable hosted replay, durable portable replay and Echo receiving
+replay. Each rejects alone, after an earlier changed operation, and after an
+earlier planned equal-container retirement: 36 rejection scenarios per runtime.
+
+Every rejection asserts INVALID_REPLAY/UNCHANGED_STAGED_OPERATION and exact
+opIndex. Tests preserve the installed root object and canonical graph, Data,
+map and hosted authority revisions, client projection position, registry,
+identity controller/epoch, issued ledger identity and contents, sparse overlay,
+exact hosted capture and submitted replay evidence. The captured authority fence
+remains current; accepted-transition and publication counters do not advance.
+Commit/watch/restore observers and installed/published authority callbacks remain
+silent. The same position then accepts a valid set, with exactly one coherent
+publication and no delayed rejected evidence. The earlier planned retirement
+cannot retire an installed identity or change its ABA ledger.
+
+Maintained positive evidence
+
+Each of the three replay routes independently accepts equal explicit replacement
+and splice of eligible empty object/array children in a fresh receiving runtime.
+A separate ordered two-operation transition replaces an object child and splices
+a nested array child with equal content. It advances authority once despite equal
+Data, preserving replacement/splice operation identity and order. Source and
+receiving ancestor/array identities continue; replaced/removed child and descendant
+identities retire. Retired IDs remain issued and cannot be reused.
+
+That ordered transition runs with both an identity-free fresh receiver and a
+fresh receiver holding independent local identities. Source QUIDs never enter
+portable evidence or receiver ledgers. The identity-free receiver issues none;
+local claims retire/continue according to the same paths, without epoch reset.
+Installed/published callbacks and accepted operations advance coherently. A
+subsequent ordinary transition succeeds. Existing equal object splice/replacement,
+root-shape and operation-intent regressions remain active.
+
+Validation and historical measurements
+
+The final graph-mutation suite passes 27 groups in Node and the same 27 groups in
+a real Worker, plus parity (1..28). This includes 36 negative scenarios and 18
+positive fixture combinations per runtime across the three replay routes.
+All 33 representative suites listed in replayAdmissionCorrection.validation pass:
+graph reads/mutations, deterministic operation and transport intent, identity
+acquisition/lifecycle/ABA/issued ledgers, equal replacement/splice, root mutation,
+hosted replay/restoration/recovery fencing, Echo scoped replay and receiving
+handoff, acceptance/publication atomicity, D4b submission ownership, R1 reuse,
+Schema transition proof and canonical interaction Node/Worker regressions.
+The final focused suite was rerun after adding the direct hosted route.
+
+Source TypeScript and the representative test/Worker TypeScript project pass.
+A broader tests/tsconfig.json check has 34 inherited diagnostics involving stale
+public distribution declarations and unrelated type fixtures. A TypeScript
+compiler-host comparison against the saved pre-correction core and original
+shared graph fixture produced exactly the same 34 diagnostics; the correction
+adds none. No distribution rebuild or unrelated test/type repair was attempted.
+The exact diagnostic comparison and focused logs are in
+  /private/tmp/hson-d4d-replay-correction.
+
+Inventory preflight still passes with 466 suites and no errors; the new shared
+fixture is reachable through test:livemap-graph-mutations and belongs to the test
+TypeScript project. The existing reviewed Worker launch source/pins are intact.
+The source-only A/current comparison still matches 14 byte-exact portable commits
+with only authority IDs normalized, final Hson and revision included. The separate
+compiled negative reproduction rejects all 12 Echo/durable Node/Worker cases at
+revision 0. git diff --check passes.
+
+Installed semantic authority remains graph-only. Neither retained projectedValue
+field, baseline/candidate isolation, aggregate coordinator, endpoint editor,
+ordered mutation function, root shape, Parts/interaction architecture, Schema or
+canonical limits, D4a-D4c boundaries, R1 reuse, graph-backed reads, durable fencing,
+nor public transport changed. The production correction is confined to the
+replay equality guard and its established rejection error context.
+
+The independently reviewed memory, timing, allocation, peak RSS and diagnostic
+component numbers are unchanged historical pre-correction measurements. No
+performance claim is made for the corrected implementation. measurementProvenance
+preserves the measured source fingerprints; implementationFingerprints now marks
+the corrected source/test tree, and replayAdmissionCorrection holds its separate
+validation. The original 160-suite validation record is retained as historical
+rather than relabeled as this correction's run.
+
+Deferred P3: the redundant temporary interaction-system prepare_livemap_root
+recapture near the former line 1701 remains untouched. It is not installed
+semantic authority or a commit blocker. It is a potential final-cleanup
+subtraction only if all current qualification and mode checks remain preserved.
+
+No further P2 correction or owner semantic decision is identified. Independent
+re-review remains necessary before commit. This task performs no commit.
+
+VERDICT: READY FOR INDEPENDENT RE-REVIEW

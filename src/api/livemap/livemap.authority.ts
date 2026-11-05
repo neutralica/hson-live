@@ -38,17 +38,21 @@ export class LiveMapTransitionError extends Error {
   }
 }
 
-type TransitionState = "pending" | "accepted" | "discarded";
+type TransitionState = "pending" | "accepted" | "discarded" | "stale";
 
 type AuthorityTransitionRecord<TCommit> = {
   state: TransitionState;
   baseRevision: number;
   generation: number;
   commit: TCommit;
-  baseStillCurrent: () => boolean;
-  assertManagementCurrent?: () => void;
-  install: () => void;
-  notify: (commit: TCommit) => void;
+  terminalError?: unknown;
+  pending?: {
+    baseStillCurrent: () => boolean;
+    assertManagementCurrent?: () => void;
+    install: () => void;
+    notify: (commit: TCommit) => void;
+    release?: () => void;
+  };
 };
 
 type MapAuthorityTransitionRecord = AuthorityTransitionRecord<LiveMapAggregateCommit>;
@@ -62,6 +66,8 @@ export type LiveMapAuthorityTransitionPreparation = Readonly<{
   assertManagementCurrent?: () => void;
   install: () => void;
   notify: (commit: LiveMapAggregateCommit) => void;
+  /** Release planning-only state; publication/history evidence has its own owner. */
+  release?: () => void;
 }>;
 
 export type LiveMapTransitionController = Readonly<{
@@ -153,10 +159,9 @@ export function make_livemap_transition_controller(
       baseRevision,
       generation,
       commit,
-      baseStillCurrent: preparation.baseStillCurrent,
-      assertManagementCurrent: preparation.assertManagementCurrent,
-      install: preparation.install,
-      notify: preparation.notify,
+      pending: { baseStillCurrent: preparation.baseStillCurrent,
+        assertManagementCurrent: preparation.assertManagementCurrent,
+        install: preparation.install, notify: preparation.notify, release: preparation.release },
     });
     return token;
   }
@@ -170,14 +175,28 @@ export function make_livemap_transition_controller(
     return accept_record(record, "LiveMap authority", transition, afterInstall);
   }
 
+  function release_planning<T>(record: AuthorityTransitionRecord<T>): void {
+    const pending = record.pending;
+    record.pending = undefined;
+    pending?.release?.();
+  }
+
+  function stale<T>(record: AuthorityTransitionRecord<T>, cause?: unknown): never {
+    const error = cause ?? new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Prepared LiveMap authority transition is stale.");
+    record.state = "stale";
+    record.terminalError = error;
+    release_planning(record);
+    throw error;
+  }
+
   function assertPreparedAuthority(transition: PreparedLiveMapAuthorityTransition): void {
     const record = authority_record_for(transition);
-    if ((reserved !== undefined && reserved !== transition) || record.state !== "pending"
-      || record.baseRevision !== getRevision() || record.generation !== generation
-      || !record.baseStillCurrent()) {
+    if ((reserved !== undefined && reserved !== transition) || record.state !== "pending") {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Prepared LiveMap authority transition is stale.");
     }
-    record.assertManagementCurrent?.();
+    const pending = record.pending!;
+    if (record.baseRevision !== getRevision() || record.generation !== generation || !pending.baseStillCurrent()) stale(record);
+    try { pending.assertManagementCurrent?.(); } catch (cause) { stale(record, cause); }
   }
 
   function reserveAuthority(transition: PreparedLiveMapAuthorityTransition): () => void {
@@ -202,29 +221,41 @@ export function make_livemap_transition_controller(
     if (reserved !== undefined && reserved !== transition) {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is fenced by a durable decision.`);
     }
-    if (reserved !== transition && (record.baseRevision !== getRevision()
-      || record.generation !== generation || !record.baseStillCurrent())) {
-      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is stale.`);
+    if (record.state === "stale") {
+      // A revoked grant can fail inside its reservation. Once the reservation
+      // ends, the original revision/generation fence still determines the error.
+      if (reserved !== transition && (record.baseRevision !== getRevision() || record.generation !== generation)) {
+        throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is stale.`);
+      }
+      throw record.terminalError;
     }
+    const pending = record.pending!;
+    if (reserved !== transition && (record.baseRevision !== getRevision()
+      || record.generation !== generation || !pending.baseStillCurrent())) stale(record);
     // A durable reservation retains the candidate, never its revoked grant.
     // Unchanged acceptance has no installation callback to perform this check.
-    record.assertManagementCurrent?.();
+    try { pending.assertManagementCurrent?.(); } catch (cause) { stale(record, cause); }
     if (record.commit.changed) {
-      try { record.install(); }
+      try { pending.install(); }
       catch (cause) {
         record.state = "discarded";
+        release_planning(record);
         generation += 1;
         throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", `Prepared ${label} transition installation failed.`, { cause });
       }
       generation += 1;
     }
     record.state = "accepted";
-    if (record.commit.changed) afterInstall?.();
-    if (record.commit.changed) {
-      try { record.notify(record.commit); }
-      catch (cause) { report_livemap_observer_failure("transition", cause); }
+    try {
+      if (record.commit.changed) afterInstall?.();
+      if (record.commit.changed) {
+        try { pending.notify(record.commit); }
+        catch (cause) { report_livemap_observer_failure("transition", cause); }
+      }
+      return Object.freeze({ commit: record.commit });
+    } finally {
+      release_planning(record);
     }
-    return Object.freeze({ commit: record.commit });
   }
 
   function discardAuthority(transition: PreparedLiveMapAuthorityTransition): void {
@@ -236,6 +267,8 @@ export function make_livemap_transition_controller(
       );
     }
     if (record.state !== "discarded") record.state = "discarded";
+    record.terminalError = undefined;
+    release_planning(record);
   }
 
   const assertPublicMutationAllowed = (): void => {

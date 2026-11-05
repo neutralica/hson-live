@@ -12,18 +12,33 @@ Conceptual operations are not map-root convenience APIs.
 LiveMap exposes data JSON-like state backed by an Hson graph.
 A data mutation:
 1. receives a normalized path and operation;
-2. projects the complete candidate result;
-3. validates the candidate against any attached schema;
-4. preflights the operation against a detached graph;
-5. mutates the authoritative graph;
-6. emits one normalized commit;
-7. advances the map revision only when state changed.
+2. clones independent graphs for the immutable preparation baseline and private mutable candidate;
+3. applies ordered operations to that candidate, with later operations seeing earlier writes;
+4. qualifies the complete graph and validates it against its governing Schema;
+5. passes the single aggregate authority acceptance boundary, including any durable decision;
+6. installs the graph and identity state, advances the revision when changed, and publishes one normalized commit.
 A mutation either commits completely or has no observable effect.
 
 The canonical Hson graph is authoritative. An immutable ordered data value
 carrier is private transient machinery used for admission, planning, equality,
 schema validation, propagation, and exact transport; it is not stored as a
-second synchronized state model.
+second synchronized state model. Application Data and interaction system Data
+retain only their installed HsonNode graph as semantic storage.
+
+The aggregate planner uses existing graph editors for endpoint writes and shallow
+constructive sets. Rename, move, and splice project the selected container,
+apply the established ordered mutation, and write its result into the private
+graph. That physical replacement retains the original semantic operation in
+identity reconciliation and replay evidence. A whole-Library ordered projection
+is temporary final Schema input, never candidate or installed storage. Parts
+remain preplanned before Document composition.
+
+Ordinary equal assignments preserve identity. Equal explicit replacements can
+retire identified subtrees; equal-content moves still move occurrences; splices
+retire removed identified occurrences even when inserted content is equal.
+Explicit root replacement shape is applied from normalized write intent, even
+when the equal replacement produces no operation evidence and a later write
+changes the same candidate. Container edits preserve a direct Data root's shape.
 
 JavaScript values enter through one descriptor-aware snapshot pass. Supported
 values are strings, booleans, `null`, finite primitive numbers, ordinary plain

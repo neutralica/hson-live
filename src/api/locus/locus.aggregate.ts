@@ -214,6 +214,9 @@ export function create_locus_hosted_aggregate_internal(
           throw new TypeError("Locus stage callback must be synchronous.");
         }
         result = synchronous ? submitted as T : await submitted;
+      } catch (cause) {
+        accumulator.discard();
+        throw cause;
       } finally {
         accumulator.close();
       }

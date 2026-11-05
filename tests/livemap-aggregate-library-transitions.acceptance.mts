@@ -236,11 +236,11 @@ check("aggregate preparation clones only affected library candidates and publish
   const aggregateMs = performance.now() - aggregateStart;
   const after = aggregate.telemetry();
 
-  assert.equal(after.candidateRootsCloned - before.candidateRootsCloned, 2);
+  assert.equal(after.candidateRootsCloned - before.candidateRootsCloned, 4);
   assert.equal(after.acceptedTransitions - before.acceptedTransitions, 1);
   assert.equal(after.aggregatePublications - before.aggregatePublications, 1);
   assert.equal(map.rev, 1);
-  process.stdout.write(`telemetry single-library=${singleMs.toFixed(3)}ms aggregate-two-library=${aggregateMs.toFixed(3)}ms candidates=2 revisions=1 publications=1\n`);
+  process.stdout.write(`telemetry single-library=${singleMs.toFixed(3)}ms aggregate-two-library=${aggregateMs.toFixed(3)}ms graph-clones=4 revisions=1 publications=1\n`);
 });
 
 process.stdout.write(`1..${checks}\n`);
