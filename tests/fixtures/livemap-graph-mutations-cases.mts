@@ -18,9 +18,55 @@ import type { JsonValue } from "../../src/core/types.js";
 import type { LiveMapAggregateCommit } from "../../src/api/livemap/livemap.library.js";
 import { livemap_equal_effect_replay_cases } from "./livemap-equal-effect-replay-cases.mts";
 import { livemap_replay_evidence_cases } from "./livemap-replay-evidence-cases.mts";
+import { read_transform_error_details } from "../../src/core/errors.js";
+import { CompleteDocumentError } from "../../src/internal/complete-document.js";
 
 type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
 export async function livemap_graph_mutation_cases(check: Check): Promise<void> {
+  await check("broad system Schemas retain scalar-root rejection and atomicity without graph preparation", () => {
+    const { aggregate: engine, identities } = make_livemap_registry_authority([
+      { family: "data", root: projected_value_to_hson_node(ordered_projected_object([["n", 0]])), hsonSchema: ANY_DATA },
+    ], [{ key: "test-system", transportName: "test-system", hsonSchema: ANY_DATA,
+      root: projected_value_to_hson_node(ordered_projected_object([])) }]);
+    const library = identities[0], system = engine.systemState("test-system");
+    assert.ok(library); assert.ok(system);
+    const before = structuredClone(engine.root(library)), beforeSystem = structuredClone(engine.systemRoot(system));
+    const issued = engine.identityEpoch().issued();
+    let publications = 0;
+    engine.observe(() => { publications++; });
+    for (const value of [0, -0, 1, true, false, null, "text", ""]) {
+      assert.throws(() => engine.commit([
+        { target: engine.target(library, ["n"]), kind: "set", value: 1 },
+        { target: engine.systemTarget(system, []), kind: "replace", value },
+      ]), error => {
+        assert.ok(error instanceof Error);
+        if (typeof value === "string") {
+          assert.ok(error instanceof CompleteDocumentError);
+          assert.equal(error.code, "HSON_DOCUMENT_STRUCTURE");
+          assert.deepEqual(error.path, []);
+        } else {
+          assert.deepEqual(read_transform_error_details(error), {
+            operation: "prepare_livemap_root", code: "HSON_CANONICAL_INVARIANT_VIOLATION",
+            stage: "source-admission", path: '$["$_content"][0]',
+          });
+          assert.match(error.message, /element content requires a named element branch/);
+        }
+        assert.equal(error.cause, undefined);
+        return true;
+      });
+      assert.ok(canonical_graph_equal(engine.root(library), before));
+      assert.ok(canonical_graph_equal(engine.systemRoot(system), beforeSystem));
+      assert.equal(engine.identityEpoch().issued(), issued);
+      assert.equal(publications, 0);
+    }
+    for (const [index, value] of [[], { valid: [-0] }].entries()) {
+      const commit = engine.commit([{ target: engine.systemTarget(system, []), kind: "replace", value }]);
+      assert.equal(commit.changed, true);
+      assert.equal(commit.prevRev, index);
+      assert.equal(commit.rev, index + 1);
+    }
+    assert.equal(publications, 2);
+  });
   await livemap_equal_effect_replay_cases(check);
   await livemap_replay_evidence_cases(check);
   await check("preparation edits one evolving private graph and keeps an independent stale witness", () => {

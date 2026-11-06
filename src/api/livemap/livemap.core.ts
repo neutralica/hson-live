@@ -39,7 +39,8 @@ import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-sc
 // Registry LiveMap transition and aggregate authority.
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 
-import { ROOT_TAG } from "../../core/constants.js";
+import { ARR_TAG, OBJ_TAG, ROOT_TAG } from "../../core/constants.js";
+import { qualify_exact_hson_graph } from "../../internal/exact-node-qualification.js";
 import { is_persisted_quid } from "../../core/hson-node-quid.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import {
@@ -1804,8 +1805,12 @@ function make_livemap_registry_engine(
       const root = systemCandidate.root;
       qualify_livemap_data(root, "LiveMap system candidate");
       validate_final_schema(systemCandidate.system.hsonSchema, root, aggregate_system_target(systemCandidate.system.identity, []));
-      const preparedSystem = prepare_livemap_root(root);
-      if (preparedSystem.mode === "document" || (preparedSystem.projectedOverlay?.size ?? 0) !== 0) {
+      // Broad internal Schemas must still retain the established container-root
+      // boundary. Only scalar failures need the former document-role diagnostic.
+      const value = root.$_tag === ROOT_TAG ? root.$_content[0] : root;
+      if (is_Node(value) && value.$_tag !== OBJ_TAG && value.$_tag !== ARR_TAG) {
+        qualify_exact_hson_graph(root, "prepare_livemap_root", "document-source", true);
+        assert_complete_document(root);
         throw new Error("Transactional Hson system state cannot own QUID identity.");
       }
     }

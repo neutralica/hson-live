@@ -13,7 +13,14 @@ import {
   type OrderedProjectedValue,
 } from "../../src/core/ordered-projected-value.js";
 import { materialize_projected_value } from "../../src/core/projected-value-materialization.js";
-import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../src/core/projected-value-graph.js";
+import {
+  projected_array_item_to_hson_node,
+  projected_object_property_to_hson_node,
+  projected_value_from_hson_node,
+  projected_value_to_hson_node,
+  projected_value_to_hson_root,
+} from "../../src/core/projected-value-graph.js";
+import type { HsonNode } from "../../src/core/types.js";
 import { hson_data_from_value, hson_data_value } from "../../src/api/data/hson-data.js";
 import { admit_public_livemap_root } from "../../src/api/livemap/livemap.node-admission.js";
 
@@ -46,6 +53,53 @@ function rejected(source: string): Error {
 }
 
 export function data_source_admission_cases(check: Check): void {
+  check("every graph construction boundary authenticates and validates its complete input subtree", () => {
+    const boundaries: ReadonlyArray<(value: OrderedProjectedValue) => HsonNode> = [
+      projected_value_to_hson_node,
+      projected_value_to_hson_root,
+      value => projected_object_property_to_hson_node("member", value),
+      value => projected_array_item_to_hson_node(3, value),
+    ];
+    const owned = object([["nested", array([-0])]]);
+    let calls = 0;
+    const accessor = Object.freeze(Object.defineProperty([], "0", {
+      enumerable: true, get() { calls++; return owned; },
+    }));
+    const { proxy, revoke } = Proxy.revocable(owned, {
+      get() { calls++; throw new Error("caller get"); },
+      getOwnPropertyDescriptor() { calls++; throw new Error("caller descriptor"); },
+    });
+    const imitations = [Object.freeze({ ...owned }), Object.freeze([owned]), accessor, proxy];
+    for (const convert of boundaries) {
+      for (const imitation of imitations) {
+        assert.throws(() => Reflect.apply(convert, undefined, [imitation]), {
+          name: "TypeError", message: /owned by the ordered carrier factories/,
+        });
+      }
+      for (const invalid of [NaN, Infinity, -Infinity]) {
+        assert.throws(() => convert(invalid), /finite/);
+      }
+      // Ownership alone does not establish canonical names or nesting limits.
+      const reserved = object([["ok", array([object([["$_meta", 1]])])]]);
+      assert.throws(() => convert(reserved), { name: "TypeError", message: /Reserved Hson prefix/ });
+      let nested: OrderedProjectedValue = null;
+      for (let depth = 0; depth < HSON_MAX_NESTING - 1; depth++) nested = array([nested]);
+      assert.doesNotThrow(() => convert(nested));
+      assert.throws(() => convert(array([nested])), {
+        name: "TypeError", message: `Hson nesting depth must be less than ${HSON_MAX_NESTING}`,
+      });
+    }
+    revoke();
+    for (const convert of boundaries) {
+      assert.throws(() => Reflect.apply(convert, undefined, [proxy]), /owned by the ordered carrier factories/);
+    }
+    assert.equal(calls, 0);
+    assert.throws(() => projected_object_property_to_hson_node("$_meta", owned), /Reserved Hson prefix/);
+    for (const index of [-1, 0.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.throws(() => projected_array_item_to_hson_node(index, owned), /non-negative safe integer/);
+    }
+  });
+
   check("shared grammar has one exact primitive and array interpretation", () => {
     const cases: readonly (readonly [string, OrderedProjectedValue])[] = [
       ['"plain"', "plain"], ['""', ""], ["true", true], ["false", false], ["null", null],

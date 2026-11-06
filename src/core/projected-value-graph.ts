@@ -25,6 +25,13 @@ import type { HsonNode, JsonValue, Primitive } from "./types.js";
 /** Construct one canonical Hson value node from the neutral ordered carrier. */
 export function projected_value_to_hson_node(value: OrderedProjectedValue): HsonNode {
   assert_canonical_hson_data_value(value);
+  return build_projected_value_node(value);
+}
+
+// Canonical validation authenticates factory-owned, recursively frozen carriers.
+// Their descendants cannot change between validation and synchronous construction.
+// Only independently callable boundaries above/below validate complete subtrees.
+function build_projected_value_node(value: OrderedProjectedValue): HsonNode {
   if (typeof value === "string") return value_node(STR_TAG, [value]);
   if (value === null || typeof value === "number" || typeof value === "boolean") {
     const primitive = typeof value === "number" ? admit_hson_number(value) : value;
@@ -33,7 +40,7 @@ export function projected_value_to_hson_node(value: OrderedProjectedValue): Hson
   if (Array.isArray(value)) {
     return value_node(
       ARR_TAG,
-      value.map((child, index) => projected_array_item_to_hson_node(index, child)),
+      value.map((child, index) => build_projected_array_item(index, child)),
     );
   }
   if (!is_ordered_projected_object(value)) {
@@ -41,7 +48,7 @@ export function projected_value_to_hson_node(value: OrderedProjectedValue): Hson
   }
   return value_node(
     OBJ_TAG,
-    value.entries.map(([key, child]) => projected_object_property_to_hson_node(key, child)),
+    value.entries.map(([key, child]) => build_projected_object_property(key, child)),
   );
 }
 
@@ -59,7 +66,12 @@ export function projected_object_property_to_hson_node(
   value: OrderedProjectedValue,
 ): HsonNode {
   assert_projected_object_key(key);
-  const child = projected_value_to_hson_node(value);
+  assert_canonical_hson_data_value(value);
+  return build_projected_object_property(key, value);
+}
+
+function build_projected_object_property(key: string, value: OrderedProjectedValue): HsonNode {
+  const child = build_projected_value_node(value);
   const payload = child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG
     ? child
     : value_node(OBJ_TAG, [child]);
@@ -77,10 +89,15 @@ export function projected_array_item_to_hson_node(
   if (!Number.isSafeInteger(index) || index < 0) {
     throw new TypeError(`Data array index must be a non-negative safe integer; received ${String(index)}.`);
   }
+  assert_canonical_hson_data_value(value);
+  return build_projected_array_item(index, value);
+}
+
+function build_projected_array_item(index: number, value: OrderedProjectedValue): HsonNode {
   return CREATE_NODE({
     $_tag: II_TAG,
     $_meta: { [HSON_META_INDEX]: String(index) },
-    $_content: [projected_value_to_hson_node(value)],
+    $_content: [build_projected_value_node(value)],
   });
 }
 
