@@ -17,18 +17,6 @@ function is_schema_result<TValue>(value: unknown): value is LocusSchemaResult<TV
     && typeof (value as { ok?: unknown }).ok === "boolean";
 }
 
-/** Shared configured-payload decoder used after exact protocol admission. */
-export function decode_locus_schema_value<TValue>(
-  schema: LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
-  value: unknown,
-): LocusSchemaResult<TValue> {
-  if (!schema) return { ok: true, value: value as TValue };
-  const result = schema(value);
-  if (is_schema_result<TValue>(result)) return result;
-  if (result === true) return { ok: true, value: value as TValue };
-  return { ok: false, issues: ["Value failed Locus schema validation."] };
-}
-
 export function decode_locus_action_payload<TValue>(
   schema: HsonSchema | LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
   value: HsonDataValue | undefined,

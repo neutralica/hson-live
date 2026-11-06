@@ -74,14 +74,6 @@ export function register_locus_semantic_attachment_internal<TActions extends Loc
   publicationByteLimits.set(locus, maxWireBytes);
 }
 
-export function alias_locus_semantic_attachment_internal(target: object, source: object): void {
-  const factory = semanticAttachmentFactories.get(source);
-  const limit = publicationByteLimits.get(source);
-  if (factory === undefined || limit === undefined) throw new Error("Locus semantic attachment authority is unavailable.");
-  semanticAttachmentFactories.set(target, factory);
-  publicationByteLimits.set(target, limit);
-}
-
 export function locus_publication_byte_limit_internal(locus: object): number {
   const limit = publicationByteLimits.get(locus);
   if (limit === undefined) throw new Error("Locus publication limit is unavailable.");
@@ -95,26 +87,4 @@ export function attach_locus_semantic_transport_internal<TActions extends LocusA
   const factory = semanticAttachmentFactories.get(locus);
   if (factory === undefined) throw new Error("Locus semantic attachment authority is unavailable.");
   return factory(options) as LocusSemanticAttachment<TActions>;
-}
-
-export function inert_locus_semantic_attachment_internal<TActions extends LocusActionPayloads = LocusActionPayloads>(
-  logicalMapId: LocusLogicalMapId,
-  incarnationId: LocusIncarnationId,
-  principalId?: string,
-): LocusSemanticAttachment<TActions> {
-  const binding = Object.freeze({
-    principalId,
-    logicalMapId,
-    incarnationId,
-    get sessionId() { return undefined; },
-    get attachmentEpoch() { return undefined; },
-    get attached() { return false; },
-  });
-  return Object.freeze({
-    binding,
-    operations: Object.freeze({ submit: async () => { throw new Error("Locus attachment is unavailable."); } }),
-    synchronization: Object.freeze({ open: () => () => {} }),
-    emit_event: () => {},
-    close: () => {},
-  });
 }

@@ -51,35 +51,6 @@ export function ordered_projected_value_replace(
   return write_at(root, path, 0, value, false);
 }
 
-/** Delete one resolved object property while preserving all remaining positions. */
-export function ordered_projected_value_delete(
-  root: OrderedProjectedValue,
-  path: OrderedProjectedPath,
-): OrderedProjectedValue {
-  if (path.length === 0) {
-    throw new Error("Ordered projected delete cannot remove the root.");
-  }
-  return delete_at(root, path, 0);
-}
-
-/** Merge ordered entries into an existing object, retaining and appending positions. */
-export function ordered_projected_object_merge(
-  root: OrderedProjectedValue,
-  path: OrderedProjectedPath,
-  patch: OrderedProjectedObject,
-): OrderedProjectedValue {
-  const current = ordered_projected_value_at(root, path);
-  if (!is_ordered_projected_object(current)) {
-    throw new Error("Ordered projected merge endpoint is not an object.");
-  }
-
-  let candidate = root;
-  for (const [key, value] of patch.entries) {
-    candidate = ordered_projected_value_set(candidate, [...path, key], value);
-  }
-  return candidate;
-}
-
 /** Rename one own object entry in place and retire any existing destination entry. */
 export function ordered_projected_object_rename(
   root: OrderedProjectedValue,
@@ -204,43 +175,6 @@ function write_at(
   const nextChild = atLeaf ? value : write_at(entry[1], path, offset + 1, value, allowMissingLeaf);
   const entries = [...current.entries];
   entries[index] = [part, nextChild];
-  return ordered_projected_object(entries);
-}
-
-function delete_at(
-  current: OrderedProjectedValue,
-  path: OrderedProjectedPath,
-  offset: number,
-): OrderedProjectedValue {
-  const part = path[offset];
-  if (part === undefined) throw new Error("Ordered projected delete path does not resolve.");
-  const atLeaf = offset === path.length - 1;
-
-  if (typeof part === "number") {
-    if (!Array.isArray(current) || !Number.isInteger(part) || part < 0 || part >= current.length) {
-      throw new Error("Ordered data array path does not resolve.");
-    }
-    if (atLeaf) throw new Error("Ordered projected delete does not remove array indexes.");
-    const child = current[part];
-    if (child === undefined) throw new Error("Ordered data array path does not resolve.");
-    const items = [...current];
-    items[part] = delete_at(child, path, offset + 1);
-    return ordered_projected_array(items);
-  }
-
-  if (!is_ordered_projected_object(current)) {
-    throw new Error("Ordered data object path does not resolve.");
-  }
-  const index = object_entry_index(current, part);
-  if (index === -1) throw new Error("Ordered data object path does not resolve.");
-  if (atLeaf) {
-    return ordered_projected_object(current.entries.filter((_entry, entryIndex) => entryIndex !== index));
-  }
-
-  const entry = current.entries[index];
-  if (entry === undefined) throw new Error("Ordered data object path does not resolve.");
-  const entries = [...current.entries];
-  entries[index] = [part, delete_at(entry[1], path, offset + 1)];
   return ordered_projected_object(entries);
 }
 

@@ -20,8 +20,6 @@ export type LocusActivityController = Readonly<{
   dispose(): void;
 }>;
 
-const controllers = new WeakMap<object, LocusActivityController>();
-
 function make_snapshot(
   counts: ReadonlyMap<LocusActivityKind, number>,
   disposed: boolean,
@@ -105,19 +103,4 @@ export function make_locus_activity_controller(): LocusActivityController {
       listeners.clear();
     },
   });
-}
-
-export function register_locus_activity_controller(
-  locus: object,
-  controller: LocusActivityController,
-): void {
-  controllers.set(locus, controller);
-}
-
-/** @internal Claim work performed by a wrapper around an established authority. */
-export function acquire_locus_internal_activity(
-  locus: object,
-  kind: LocusActivityKind,
-): LocusDisposer {
-  return controllers.get(locus)?.acquire(kind) ?? (() => {});
 }

@@ -53,7 +53,6 @@ type CaptureProvenance = Readonly<{
 export type LiveMapDocumentIdentityEpochController = LiveMapIdentityEpochController;
 
 const captureProvenance = new WeakMap<LiveMapDocumentCapture, CaptureProvenance>();
-const commitContinuity = new WeakMap<object, "same-epoch" | "new-epoch">();
 const observationEvidence = new WeakMap<object, LiveMapDocumentObservationEvidence>();
 
 export type LiveMapDocumentObservationEvidence = Readonly<{
@@ -168,21 +167,6 @@ export function validate_livemap_document_admission(
     );
   }
   return policy;
-}
-
-/** Privately carry complete-root continuity through staged-authority acceptance. */
-export function register_livemap_document_commit_continuity(
-  commit: object,
-  continuity: "same-epoch" | "new-epoch",
-): void {
-  commitContinuity.set(commit, continuity);
-}
-
-/** Read complete-root continuity without adding canonical commit fields. */
-export function livemap_document_commit_continuity(
-  commit: object,
-): "same-epoch" | "new-epoch" | undefined {
-  return commitContinuity.get(commit);
 }
 
 /** Privately attach the exact accepted document state to one publication wave. */

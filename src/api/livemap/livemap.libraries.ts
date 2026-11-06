@@ -780,10 +780,6 @@ function make_livemap_library_receiver(
     rev: commit.rev,
     operations: Object.freeze([
       ...(commit.topology === undefined ? [] : [commit.topology]),
-      ...(commit.schemaUse === undefined ? [] : (() => {
-        const library = namesByIdentity.get(commit.schemaUse.library);
-        return library === undefined ? [] : [Object.freeze({ library, operation: commit.schemaUse.operation })];
-      })()),
       ...(commit.css === undefined ? [] : (() => {
         const library = namesByIdentity.get(commit.css.library);
         return library === undefined ? [] : [Object.freeze({ library, operation: commit.css.operation })];

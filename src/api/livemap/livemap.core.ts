@@ -76,7 +76,6 @@ import {
 } from "./livemap.authority.js";
 import {
   clone_hson_graph_without_quids,
-  register_livemap_document_commit_continuity
 } from "./livemap.document.capture.js";
 import { clone_livemap_document_exact_view, livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
@@ -1945,12 +1944,6 @@ function make_livemap_registry_engine(
         register_livemap_document_identity_candidate_commit(candidate.sourceCandidate, documentCommit);
       }
       register_livemap_document_identity_effects(documentCommit, candidate.identityEffects);
-      if (candidate.operations.some((operation) => operation.op === "replace-root")) {
-        register_livemap_document_commit_continuity(
-          documentCommit,
-          candidate.continuity ?? "new-epoch",
-        );
-      }
       documentCommits.set(candidate.library.identity, documentCommit);
       aggregateByDocumentCommit.set(documentCommit, commit);
     }
