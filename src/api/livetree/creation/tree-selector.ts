@@ -1,6 +1,7 @@
 // tree-selector.ts
 
 import { LiveTree } from "../livetree.js";
+import { build_selection_listener } from "./selection-listener.js";
 
 type LiveTreeStyle = LiveTree["style"];
 type LiveTreeCss = LiveTree["css"];
@@ -98,7 +99,7 @@ export class TreeSelector implements TreeSelectorType {
 
   }
   public get listen(): LiveTreeListen {
-    return this.listenInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.listen);
+    return this.listenInternal ??= build_selection_listener(this.contents);
   }
   public get style(): LiveTreeStyle {
     return this.styleInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.style);

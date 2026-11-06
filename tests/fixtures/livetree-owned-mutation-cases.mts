@@ -9,6 +9,7 @@ import { subject_for_tree, runtime_for_tree, runtime_for_node } from "../../src/
 import { parent_for_node } from "../../src/api/livetree/lifecycle/graph-ownership.ts";
 import { append_branches_atomic } from "../../src/api/livetree/methods/appends.ts";
 import { hsonTransform } from "../../src/api/transform/transform.facade.ts";
+import { find_all_in_tree_many } from "../../src/api/livetree/methods/find.ts";
 const n = (tag: string, ...children: HsonNode[]): HsonNode => ({ $_tag: tag, $_content: children });
 const str = (text: string): HsonNode => ({ $_tag: "_hson_str", $_content: [text] });
 const at = (node: HsonNode, ...path: number[]): HsonNode => {
@@ -18,6 +19,37 @@ const at = (node: HsonNode, ...path: number[]): HsonNode => {
 const state = (tree: LiveTree) => { const runtime = runtime_for_tree(tree); return { graph: tree.node,
   claims: [...runtime.quidToNode], issued: [...runtime.issuedQuids], pending: [...runtime.pendingQuidClaims] }; };
 export function owned_mutation_cases(check: (name: string, run: () => void) => void): void {
+  check("multi-query selection unions exact subjects in first-match order without extra identity issuance", () => {
+    const tree = hsonLiveTree.fromHson('<main <button id="first"/> <button id="second"/> <button id="third"/>/>', { isolated: true });
+    try {
+      const expected = tree.findAll.byTag("button").array().map(subject_for_tree);
+      const before = state(tree);
+      const queries = ['#second', 'button', '#first', 'button'];
+      for (const selection of [tree.findAll(queries), tree.findAll.must(queries), find_all_in_tree_many(tree, queries)]) {
+        assert.equal(selection.length, 3);
+        const subjects = selection.array().map(subject_for_tree);
+        [expected[1], expected[0], expected[2]].forEach((node, index) => assert.equal(subjects[index], node));
+      }
+      assert.equal(tree.findAll.byIds("second", "first", "second").length, 2);
+      assert.equal(tree.findAll([]).length, 0);
+      assert.equal(tree.findAll(['#first', '#first']).length, 1);
+      assert.deepEqual(state(tree), before);
+    } finally { tree.remove(); }
+  });
+  check("overlapping selection keeps equal-markup linked occurrences distinct without issuing QUIDs", () => {
+    const runtime = create_livetree_runtime();
+    const raw = n("main", n("_hson_elem", n("button"), n("button")));
+    const tree = create_linked_livetree_in_runtime(raw, runtime);
+    try {
+      const before = state(tree);
+      const selected = tree.findAll(["button", { tag: "button" }, "button"]);
+      assert.equal(selected.length, 2);
+      assert.equal(subject_for_tree(selected.at(0)!), at(raw, 0, 0));
+      assert.equal(subject_for_tree(selected.at(1)!), at(raw, 0, 1));
+      assert.deepEqual(state(tree), before);
+      assert.equal(runtime.issuedQuids.size, 0);
+    } finally { tree.remove(); }
+  });
   check("fresh source occurrences own independent subjects and all nested storage", () => {
     const empty = str(""), p = n("p", n("_hson_elem", empty, empty));
     p.$_attrs = { style: { width: { value: -0, unit: undefined } } };

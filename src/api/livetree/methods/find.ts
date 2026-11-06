@@ -212,9 +212,15 @@ export function find_all_in_tree_many(tree: LiveTree, q: FindQueryMany): TreeSel
   const qs = asManyQuery(q);
 
   const out: LiveTree[] = [];
+  const seen = new Set<HsonNode>();
   for (const one of qs) {
-    const sel = find_all_in_tree(tree, one);  // returns TreeSelector
-    out.push(...sel.array());              // use TreeSelector primitive
+    const query = normalizeOne(one);
+    const found = search_nodes_for_find([active_subject_for_tree(tree)], query, { findFirst: false });
+    for (const node of found) {
+      if (seen.has(node)) continue;
+      seen.add(node);
+      out.push(wrap_in_tree(tree, node));
+    }
   }
 
   return make_tree_selector(out);
@@ -385,18 +391,7 @@ export function make_find_for(tree: LiveTree): FindWithById {
  * @returns A `FindMany` helper bound to that tree.
  */
 export function make_find_all_for(tree: LiveTree): FindMany {
-  const base = ((q: FindQueryMany): TreeSelector => {
-    const qs = asManyQuery(q);
-
-    const out: LiveTree[] = [];
-    for (const one of qs) {
-      const query = normalizeOne(one);
-      const found = search_nodes_for_find([active_subject_for_tree(tree)], query, { findFirst: false });
-      for (const node of found) out.push(wrap_in_tree(tree, node));
-    }
-
-    return make_tree_selector(out);
-  }) as FindMany;
+  const base = ((q: FindQueryMany): TreeSelector => find_all_in_tree_many(tree, q)) as FindMany;
 
   const mustBase = ((q: FindQueryMany, label?: string): TreeSelector => {
     const sel = base(q);
