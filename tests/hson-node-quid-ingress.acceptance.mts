@@ -885,7 +885,7 @@ check("incompatible registry restore preserves topology and fresh installation o
   const before = target.capture();
   const portable = source.capture();
   assert.notEqual(before.registry.digest, portable.registry.digest);
-  assert.throws(() => target.restore(portable), /current Library topology/);
+  assert.throws(() => target.restore(portable), /Restoration cannot replace an established Library contract; its governing Schema is immutable after admission\./);
   assert.deepEqual(target.capture(), before);
   assert.equal(target.doc.must("page"), oldPage);
   assert.equal(oldPage.document.byQuid(Q1)?.$_tag, "main");
