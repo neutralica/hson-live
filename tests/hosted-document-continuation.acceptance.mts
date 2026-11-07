@@ -346,7 +346,7 @@ function socketPair(): Readonly<{
 
 {
   const makeMap = () => admit_exact_runtime_livemap_libraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime("<html <head/> <body <button/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   const descriptor: InteractionDescriptor = Object.freeze({
@@ -365,7 +365,7 @@ function socketPair(): Readonly<{
   add_interaction(authority, descriptor);
   let handled: HsonDataValue | undefined;
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
-      { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }), actions: { save: (_context, payload) => { handled = payload; } } });
+      { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }), actions: { save: (_context, payload) => { handled = payload; } } });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
   const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
@@ -454,7 +454,7 @@ function socketPair(): Readonly<{
   const emptySession = await emptyLocus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [
     ...test_application_catalog(authority),
-    { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
+    { name: "ui", ownership: "local", initializer: { json: { value: 0 } } },
   ]), authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }) });
   const session = await locus.session.create({ libraries: ["page", "ui"], systemFeatures: ["interactions"] });
   const cut = session.now();

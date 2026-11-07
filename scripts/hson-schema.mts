@@ -168,21 +168,21 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
       if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
       const schema = resolve_immutable_schema(ts, checker, annotation.schema, item => byDeclaration.get(item), new Set(), undefined, "type-query");
       if (schema === undefined) continue;
-      const mode = annotation.kind === "hson" ? schema_mode(schema) : annotation.kind;
-      const typeName = mode === "data" ? "HsonDataValue" : "HsonDocument";
-      if (schema_mode(schema) !== (typeName === "HsonDataValue" ? "data" : "document")) {
+      const mode = annotation.kind === "hson" ? schema_mode(schema) : annotation.kind === "value" ? "data" : annotation.kind;
+      const typeName = mode === "data" ? annotation.kind === "value" ? "HsonDataValue" : "HsonData" : "HsonDocument";
+      if (schema_mode(schema) !== (mode)) {
         diagnostics.push({ file: sourceFile.fileName, start: declaration.type.getStart(), message: `Schema mode does not match ${typeName}.` });
         continue;
       }
       if (ts.isTaggedTemplateExpression(declaration.initializer)) {
-        if (!is_official_hson_member_tag(declaration.initializer, typeName === "HsonDataValue" ? "data" : "document", checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
+        if (!is_official_hson_member_tag(declaration.initializer, annotation.kind === "value" ? "parse" : mode, checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
           diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Schema-bound ${typeName} requires a direct substitution-free official semantic Hson tag.` });
           continue;
         }
         let source: string;
-        try { source = admit_hson_tagged_template(ts, declaration.initializer, typeName === "HsonDataValue" ? "data" : "document"); }
+        try { source = admit_hson_tagged_template(ts, declaration.initializer, mode); }
         catch (error) { diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: error_message(error) }); continue; }
-        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: typeName === "HsonDataValue" ? "data" : "document" });
+        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: mode });
         if (evaluated.kind !== "valid") {
           // Semantic failures are reported once by shared relationship analysis.
           if (evaluated.kind === "unknown" && evaluated.error !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: evaluated.error });
@@ -209,10 +209,13 @@ function official_binding(identifier: ts.Identifier, expected: "Hson" | "HsonDat
 }
 
 function is_official_hson_member_tag(node: ts.TaggedTemplateExpression, member: string, checker: ts.TypeChecker): boolean {
-  return ts.isPropertyAccessExpression(node.tag)
-    && node.tag.name.text === member
-    && ts.isIdentifier(node.tag.expression)
-    && official_binding(node.tag.expression, "Hson", checker);
+  if (member === "parse" && (!ts.isPropertyAccessExpression(node.tag) || node.tag.name.text !== "parse")) return false;
+  const tag = member === "parse" && ts.isPropertyAccessExpression(node.tag) && node.tag.name.text === "parse" ? node.tag.expression : node.tag;
+  const expected = member === "parse" ? "data" : member;
+  return ts.isPropertyAccessExpression(tag)
+    && tag.name.text === expected
+    && ts.isIdentifier(tag.expression)
+    && official_binding(tag.expression, "Hson", checker);
 }
 
 function value_after(flag: string): string | undefined { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; }

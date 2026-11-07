@@ -86,7 +86,7 @@ export async function document_recursive_authority_cases() {
 /** Real local selector, actual Echo owner predicate, and detached raw-state evidence. */
 export async function echo_local_quad_owner_cases() {
   for (const reentrant of ["none", "attrs", "replaceAttrs", "names", "content", "insert", "style"] as const) {
-    const locus = hsonLiveMap.locus.create({ state: { data: 0, access: "shared" } }, {
+    const locus = hsonLiveMap.locus.create({ state: { json: 0, access: "shared" } }, {
       authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
       local: [{ name: "local", initializer: { document: '<main @:page <button @:button title="kept" "Original"/>/>' } }],
     });

@@ -8,7 +8,7 @@ import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-sche
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
 import type { HsonSchema, HsonSchemaMode } from "../api/transform/transform.types.js";
-import type { HsonData, HsonDocument } from "../api/transform/transform.types.js";
+import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
@@ -1135,9 +1135,15 @@ type InternalLocationFlagsApi<TDescriptor> =
 /** One explicit initial library input for a public multi-library LiveMap. */
 export type LiveMapDataLibraryInput<
   TSchema extends HsonSchema<unknown, HsonSchemaMode> = HsonSchema<unknown, HsonSchemaMode>,
-> = Readonly<{
-  /** A JavaScript Data value or an authenticated HsonDataValue. Strings are literal Data. */
-  data: HsonDataInput;
+> = Readonly<({
+  /** Native Data or an authenticated top-level carrier. Strings remain literal Data. */
+  json: HsonDataInput;
+  hson?: never;
+} | {
+  /** HSON source, admitted as Data at runtime regardless of its static brand. */
+  hson: string;
+  json?: never;
+}) & {
   schema: TSchema;
   document?: never;
   parts?: never;
@@ -1151,7 +1157,8 @@ export type LiveMapDocumentLibraryInput<
   /** Hson source text or a canonical node for this named document library. */
   document: string | HsonNode;
   schema: TSchema;
-  data?: never;
+  json?: never;
+  hson?: never;
   parts?: never;
   stylesheet?: string | import("../core/style.types.js").CssMap;
 }>;
@@ -1171,7 +1178,8 @@ export type LiveMapPartCollection = Readonly<Record<string, LiveMapDocumentPart>
 export type LiveMapPartsLibraryInput = Readonly<{
   parts: LiveMapPartCollection;
   schema?: never;
-  data?: never;
+  json?: never;
+  hson?: never;
   document?: never;
   stylesheet?: never;
 }>;
@@ -1179,14 +1187,17 @@ export type LiveMapPartsLibraryInput = Readonly<{
 /** Runtime and construction input; omitted Schema selects the family top. */
 export type LiveMapLibraryDefinition =
   | LiveMapPartsLibraryInput
-  | Readonly<Omit<LiveMapDataLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>
+  | OptionalLibrarySchema<LiveMapDataLibraryInput>
   | Readonly<Omit<LiveMapDocumentLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>;
+
+type OptionalLibrarySchema<T> = T extends unknown
+  ? Readonly<Omit<T, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }> : never;
 
 export type LiveMapDefinitions = Readonly<Record<string, LiveMapLibraryDefinition>>;
 /** Inference candidates are checked recursively at every public admission. */
 export type LiveMapDefinitionCandidates = Readonly<Record<string,
-  | Exclude<LiveMapLibraryDefinition, { data: unknown }>
-  | (Omit<Extract<LiveMapLibraryDefinition, { data: unknown }>, "data"> & { readonly data: unknown })>>;
+  | Exclude<LiveMapLibraryDefinition, { json: unknown }>
+  | (Omit<Extract<LiveMapLibraryDefinition, { json: unknown }>, "json"> & { readonly json: unknown })>>;
 
 /** Inferred required keys distinguish presence from optional-never annotations in either compiler mode. */
 type LiveMapPartSchemaCheck<TInput> = [Extract<TInput, { readonly schema: unknown }>] extends [never] ? unknown : never;
@@ -1210,14 +1221,17 @@ export type LiveMapDocumentStylesheetCheck<T> = T extends { readonly stylesheet:
 
 /** Reject required contradictory family fields even without exact optional properties. */
 type RequiredDefinitionKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? never : K }[keyof T];
+/** Library-only representation check. Widened strings and any retain runtime literal semantics. */
+type LibraryJsonRepresentationCheck<T> = T extends HsonCanonical | HsonAuthored ? never : T;
 type LiveMapDefinitionValidity<T, Metadata extends string> = T extends unknown
-  ? (Exclude<keyof T, "data" | "document" | "parts" | "schema" | "stylesheet" | Metadata> extends never ? unknown : never)
+  ? (Exclude<keyof T, "json" | "hson" | "document" | "parts" | "schema" | "stylesheet" | Metadata> extends never ? unknown : never)
     & ("access" extends Metadata ? T extends { access: infer A } ? [A] extends ["private" | "shared"] ? unknown : never : unknown : unknown)
-    & (T extends { data: infer V } ? { readonly data: import("../api/data/hson-data.js").HsonDataInputCheck<V> } : unknown)
+    & (T extends { json: infer V } ? { readonly json: import("../api/data/hson-data.js").HsonDataInputCheck<V> & LibraryJsonRepresentationCheck<V> } : unknown)
     & LiveMapPartsDefinitionCheck<T> & LiveMapDocumentStylesheetCheck<T> & (
-    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "document" | "schema" | "stylesheet"> extends never ? unknown : never
-    : T extends { data: unknown } ? Extract<RequiredDefinitionKeys<T>, "document" | "parts" | "stylesheet"> extends never ? unknown : never
-    : T extends { document: unknown } ? Extract<RequiredDefinitionKeys<T>, "data" | "parts"> extends never ? unknown : never
+    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "json" | "hson" | "document" | "schema" | "stylesheet"> extends never ? unknown : never
+    : T extends { json: unknown } ? Extract<RequiredDefinitionKeys<T>, "hson" | "document" | "parts" | "stylesheet"> extends never ? unknown : never
+    : T extends { hson: string } ? Extract<RequiredDefinitionKeys<T>, "json" | "document" | "parts" | "stylesheet"> extends never ? unknown : never
+    : T extends { document: unknown } ? Extract<RequiredDefinitionKeys<T>, "json" | "hson" | "parts"> extends never ? unknown : never
     : never)
   : never;
 type InvalidLiveMapDefinition<T, Metadata extends string> = T extends unknown
@@ -1229,7 +1243,7 @@ export type LiveMapDefinitionsCheck<T, Metadata extends string = never> = { read
 
 /** Only keys named by the type itself establish static topology. */
 type AdmittedDefinition<T> = T extends LiveMapLibraryDefinition ? T
-  : T extends { data: infer V } ? Omit<T, "data"> & { readonly data: V & HsonDataInput } : never;
+  : T extends { json: infer V } ? Omit<T, "json"> & { readonly json: V & HsonDataInput } : never;
 export type LiveMapAdmittedDefinitions<TLibraries extends LiveMapDefinitionCandidates> = {
   readonly [K in keyof TLibraries]: AdmittedDefinition<TLibraries[K]>;
 };
@@ -1864,8 +1878,8 @@ export type LiveMapSynchronousAuthoring<TWriter, TResult> = <TCallback extends (
 ) => TResult;
 
 type LiveMapKnownFamilyNames<TMap, TFamily extends "data" | "document"> = {
-  [TName in LiveMapEffectiveKnownNames<TMap>]: LiveMapEffectiveDefinitions<TMap>[TName] extends
-    Readonly<Record<TFamily, unknown>> | (TFamily extends "data" ? Readonly<{ parts: unknown }> : never) ? TName : never;
+  [TName in LiveMapEffectiveKnownNames<TMap>]: LibraryDefinitionEvidence<LiveMapEffectiveDefinitions<TMap>[TName]> extends
+    { family: TFamily | (TFamily extends "data" ? "parts" : never) } ? TName : never;
 }[LiveMapEffectiveKnownNames<TMap>];
 
 export type LiveMapCutOptions<TData extends string = string, TDocument extends string = string> = Readonly<{

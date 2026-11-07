@@ -6,7 +6,8 @@ import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
-import { library_source_definitions, library_source_fields } from "./library-source.js";
+import { library_source_admission, library_source_definitions, library_source_fields } from "./library-source.js";
+import { library_json_has_hson_source } from "./library-json-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
@@ -262,9 +263,19 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   const schema = (input: ts.Expression, use: "value" | "type-query" = "value"): Schema | undefined => resolve_immutable_schema(typescript, checker, input, found => schemas.get(found), new Set(), sourceCandidates.eligible, use);
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
-  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data", parts?: ReadonlyMap<string, unknown>): void => {
+  const representationReported = new Set<ts.Expression>();
+  const reportJsonSource = (json: ts.Expression): boolean => {
+    if (!library_json_has_hson_source(typescript, checker, json, sourceCandidates.eligible)) return false;
+    if (!representationReported.has(json)) {
+      representationReported.add(json);
+      output.push({ file: json.getSourceFile().fileName, start: json.getStart(), end: json.getEnd(),
+        code: "HSON_LIBRARY_JSON_SOURCE", message: "HSON source supplied to json. Use the hson channel for source, or supply semantic Data under json." });
+    }
+    return true;
+  };
+  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data" | "json", parts?: ReadonlyMap<string, unknown>): void => {
     if (contract === undefined) return;
-    const possible = candidates(input, family === "certify" ? contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "data" : family);
+    const possible = candidates(input, family === "certify" ? contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "json" : family);
     if (possible === undefined || possible.length === 0) return;
     const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate, parts));
     // A valid branch, opaque branch or malformed Hson belongs to runtime/authoring diagnostics.
@@ -295,14 +306,30 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     const construction = (node: ts.Expression) => sourceCandidates.eligible(node)
       ? library_source_definitions(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible) : undefined;
     const inventory = (definitions: ts.ObjectLiteralExpression) => static_part_inventory(typescript, checker, definitions, sourceCandidates);
+    const knownObject = (input: ts.Expression): ts.ObjectLiteralExpression | undefined => {
+      const alternatives = sourceCandidates.alternatives(input, "json");
+      const only = alternatives.complete && alternatives.nodes.length === 1 ? alternatives.nodes[0] : undefined;
+      return only !== undefined && typescript.isObjectLiteralExpression(only) ? only : undefined;
+    };
+    const checkRepresentation = (input: ts.Expression): void => {
+      const definition = knownObject(input);
+      const fields = definition === undefined ? undefined : library_source_fields(definition, typescript);
+      const json = fields?.get("json");
+      if (json !== undefined && !["hson", "document", "parts", "data"].some(key => fields?.has(key))) reportJsonSource(json);
+    };
     const validateDefinition = (definition: ts.Expression, parts?: ReadonlyMap<string, unknown>): void => {
       if (!typescript.isObjectLiteralExpression(definition)) return;
       const fields = library_source_fields(definition, typescript);
       if (fields === undefined) return;
-      const document = fields.get("document"), data = fields.get("data");
+      const document = fields.get("document"), json = fields.get("json"), hson = fields.get("hson");
       const contract = fields.get("schema") === undefined ? undefined : schema(fields.get("schema")!);
-      if (document !== undefined && data === undefined) report(contract, document, "document", parts);
-      if (data !== undefined && document === undefined) report(contract, data, "data");
+      if (fields.has("data") || fields.has("parts")) return;
+      if (Number(document !== undefined) + Number(json !== undefined) + Number(hson !== undefined) !== 1) return;
+      if (document !== undefined) report(contract, document, "document", parts);
+      if (json !== undefined) {
+        if (!reportJsonSource(json)) report(contract, json, "json");
+      }
+      if (hson !== undefined) report(contract, hson, "data");
     };
     // Annotation relationships retain the direct, official, substitution-free
     // initializer boundary used to establish compiler/editor assignment proof.
@@ -315,25 +342,32 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       const annotation = resolve_hson_schema_annotation(typescript, checker, annotationNode, sourceCandidates.eligible);
       if (annotation === undefined) continue;
       const initializer = found.initializer;
-      if (!typescript.isTaggedTemplateExpression(initializer) || !typescript.isPropertyAccessExpression(initializer.tag)
-        || !["data", "document"].includes(initializer.tag.name.text) || !typescript.isIdentifier(initializer.tag.expression)
-        || !is_official_hson_package_binding(initializer.tag.expression, "Hson", checker, true, typescript, sourceCandidates.eligible)
+      if (!typescript.isTaggedTemplateExpression(initializer)) continue;
+      const exact = typescript.isPropertyAccessExpression(initializer.tag) && initializer.tag.name.text === "parse";
+      const tag = exact && typescript.isPropertyAccessExpression(initializer.tag) ? initializer.tag.expression : initializer.tag;
+      if (!typescript.isPropertyAccessExpression(tag)
+        || !["data", "document"].includes(tag.name.text) || !typescript.isIdentifier(tag.expression)
+        || exact && tag.name.text !== "data"
+        || !is_official_hson_package_binding(tag.expression, "Hson", checker, true, typescript, sourceCandidates.eligible)
         || !typescript.isNoSubstitutionTemplateLiteral(initializer.template) || initializer.template.isUnterminated) continue;
       const contract = annotation.schema === undefined ? undefined : schema(annotation.schema, "type-query");
       const annotationDiagnostic = (code: string, message: string): void => {
         output.push({ file: source.fileName, start: annotationNode.getStart(), end: annotationNode.getEnd(), code, message });
       };
       if (annotation.kind === "projected") {
-        if (contract !== undefined && annotation.schema !== undefined && initializer.tag.name.text === "data") annotationDiagnostic("HSON_PROJECTED_VALUE_ANNOTATION",
-          `This Hson.data template produces the Hson representation governed by ${contract.name}, but the annotation describes its JSON/JS value representation. For Hson source, use HsonFromSchema<typeof ${annotation.schema.text}>.`);
+        if (contract !== undefined && annotation.schema !== undefined && tag.name.text === "data") annotationDiagnostic("HSON_PROJECTED_VALUE_ANNOTATION",
+          exact
+            ? `This Hson.data.parse template produces an exact HsonDataValue governed by ${contract.name}, but the annotation describes its JSON/JS value representation. For exact Data, use HsonDataValue<typeof ${annotation.schema.text}>.`
+            : `This Hson.data template produces the Hson representation governed by ${contract.name}, but the annotation describes its JSON/JS value representation. For Hson source, use HsonFromSchema<typeof ${annotation.schema.text}>.`);
         continue;
       }
-      if (annotation.kind !== "hson" && initializer.tag.name.text !== annotation.kind) continue;
+      if (exact ? annotation.kind !== "value" : annotation.kind === "value"
+        || annotation.kind !== "hson" && tag.name.text !== annotation.kind) continue;
       if (contract === undefined) {
-        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "data" ? "HsonDataValue" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
+        annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "value" ? "HsonDataValue" : annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
         continue;
       }
-      report(contract, initializer, "certify");
+      report(contract, initializer, exact ? "json" : tag.name.text === "data" ? "data" : "document");
     }
     const visit = (node: ts.Node): void => {
       if (typescript.isCallExpression(node)) {
@@ -342,6 +376,18 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
         if (definitions !== undefined) {
           const parts = inventory(definitions);
           for (const definition of library_source_fields(definitions, typescript)?.values() ?? []) validateDefinition(definition, parts);
+        }
+        const admission = library_source_admission(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible);
+        const representationDefinitions = admission?.eligible ? knownObject(admission.definitions) : undefined;
+        if (representationDefinitions !== undefined) for (const definition of library_source_fields(representationDefinitions, typescript)?.values() ?? []) checkRepresentation(definition);
+        if (admission?.eligible && (admission.operation === "create" || admission.operation === "resume")) {
+          const configuration = node.arguments[1];
+          const local = configuration !== undefined && typescript.isObjectLiteralExpression(configuration)
+            ? library_source_fields(configuration, typescript)?.get("local") : undefined;
+          if (local !== undefined && typescript.isArrayLiteralExpression(local)) for (const entry of local.elements) {
+            const initializer = typescript.isObjectLiteralExpression(entry) ? library_source_fields(entry, typescript)?.get("initializer") : undefined;
+            if (initializer !== undefined) validateDefinition(initializer);
+          }
         }
       }
       typescript.forEachChild(node, visit);

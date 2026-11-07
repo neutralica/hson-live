@@ -119,7 +119,7 @@ check("location acquisition does not mint QUIDs or widen data capabilities", () 
   const map = fixture();
   map.at([1, 0, 0]);
   assert.equal(JSON.stringify(map.root()).includes("quid"), false);
-  const data = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } });
+  const data = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } });
   assert.equal(typeof data.data.must("state").at(["value"]).replace, "function");
 });
 

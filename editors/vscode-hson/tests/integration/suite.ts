@@ -846,7 +846,7 @@ export async function run(): Promise<void> {
   const libraryPrefix = `import { Hson, hsonLiveMap } from "hson-live";
 import { UserSchema } from "./schema.js";
 const loc = hsonLiveMap.locus.create({
-  deck: { data: { user: { age: 37 } }, schema: UserSchema },
+  deck: { json: { user: { age: 37 } }, schema: UserSchema },
   page: { document: Hson.document\`<main/>\` },
   components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } },
 });
@@ -875,7 +875,7 @@ const loc = hsonLiveMap.locus.create({
     }, `Library completion ${expression}: missing ${present.join(", ")}`);
     for (const name of absent) assert.ok(!names.includes(name), `${expression}: unsupported completion ${name}`);
   }
-  const invalidAdmission = libraryPrefix + 'loc.admit({ incoming: { data: { user: { age: "wrong" } }, schema: UserSchema } });';
+  const invalidAdmission = libraryPrefix + 'loc.admit({ incoming: { json: { user: { age: "wrong" } }, schema: UserSchema } });';
   const replaceLibrary = async (text: string): Promise<void> => {
     const edit = new vscode.WorkspaceEdit();
     edit.replace(libraryUri, new vscode.Range(libraryDocument.positionAt(0), libraryDocument.positionAt(libraryDocument.getText().length)), text);

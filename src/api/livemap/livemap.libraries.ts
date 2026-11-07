@@ -38,7 +38,6 @@ import type {
   LiveMapInput,
   LiveMapDefinitions,
   LiveMapKnownDefinitions,
-  LiveMapDataLibraryInput,
   LiveMapDocumentLibraryInput,
   LiveMapLibraryOperation,
   LiveMapLibraryAddOperation,
@@ -66,7 +65,8 @@ import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSc
 import { type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { admit_data_input, hson_data_value } from "../data/hson-data.js";
+import { admit_data_input, hson_data_value, hson_data_from_value, type HsonDataInput } from "../data/hson-data.js";
+import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
 import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
@@ -1878,7 +1878,7 @@ function make_document_library(
   return selected;
 }
 
-type NormalizedLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput;
+type NormalizedLibraryInput = Readonly<{ data: HsonDataInput; schema: HsonSchemaHandle }> | LiveMapDocumentLibraryInput;
 type OwnedPartInput = Readonly<{ part: PartLibraryCandidate; schema: HsonSchemaHandle; validation?: DataLibraryValidation }>;
 
 function must_library_input(name: string, value: unknown, metadata?: {
@@ -1902,7 +1902,9 @@ function must_library_input(name: string, value: unknown, metadata?: {
   const validation = own_data_library_validation(value);
   // Configuration getters are supported. Select their values once before
   // classification, then retain only this stable envelope downstream.
-  const hasData = Object.hasOwn(value, "data");
+  const hasJson = Object.hasOwn(value, "json");
+  const hasHson = Object.hasOwn(value, "hson");
+  const hasData = hasJson || hasHson;
   const hasDocument = Object.hasOwn(value, "document");
   const hasParts = Object.hasOwn(value, "parts");
   // Inspect original own evidence too: a Proxy has trap can conceal a
@@ -1912,7 +1914,8 @@ function must_library_input(name: string, value: unknown, metadata?: {
   }
   const selected: Record<string, unknown> = Object.create(null);
   for (const key of Reflect.ownKeys(value)) {
-    if (metadata !== undefined && (typeof key !== "string" || !["data", "document", "parts", "schema", "stylesheet", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
+    if (key === "data") throw new TypeError("Data Library definitions require an explicit json or hson channel.");
+    if (metadata !== undefined && (typeof key !== "string" || !["json", "hson", "document", "parts", "schema", "stylesheet", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
       throw new TypeError("Library definition contains unsupported metadata.");
     }
     Object.defineProperty(selected, key, { value: Reflect.get(value, key), enumerable: true, configurable: true, writable: true });
@@ -1941,10 +1944,11 @@ function must_library_input(name: string, value: unknown, metadata?: {
   if (!(schema instanceof HsonSchemaHandle)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} requires an HsonSchema.`);
   }
-  if (Number(hasData) + Number(hasDocument) + Number(hasParts) !== 1 || hasData !== Object.hasOwn(selected, "data")
+  if (Number(hasJson) + Number(hasHson) + Number(hasDocument) + Number(hasParts) !== 1
+    || hasJson !== Object.hasOwn(selected, "json") || hasHson !== Object.hasOwn(selected, "hson")
     || hasDocument !== Object.hasOwn(selected, "document") || hasParts !== Object.hasOwn(selected, "parts")) {
     throw new TypeError(
-      `LiveMap Library ${JSON.stringify(name)} must specify exactly one of data, document, or parts.`,
+      `LiveMap Library ${JSON.stringify(name)} must specify exactly one of json, hson, document, or parts.`,
     );
   }
   if (hasParts) {
@@ -1958,7 +1962,13 @@ function must_library_input(name: string, value: unknown, metadata?: {
     return Object.freeze({ part, schema: ANY_DATA });
   }
   if (validation !== undefined && !hasData) throw new TypeError("Part validation requires a data Library.");
-  if (hasData) return Object.freeze(Object.assign(Object.create(null), { data: selected.data, schema },
+  let data = selected.json;
+  if (hasHson) {
+    if (typeof selected.hson !== "string") throw new TypeError("LiveMap hson Library requires HSON source text.");
+    data = hson_data_from_value(admit_canonical_hson_data_value(selected.hson));
+  }
+  if (hasData) return Object.freeze(Object.assign(Object.create(null), {
+    data, schema },
     validation === undefined ? {} : { validation })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   // Node fields are inspected only by exact admission, never by a getter-reading guard.
   if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), { document: selected.document, schema })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;

@@ -7,7 +7,7 @@ import { direct_data_part_cases } from "./direct-data-admission-cases.mts";
 
 const heading = { kind: "document", document: '<h1 hson:part "%{content}"/>' } as const;
 const blank = { kind: "document", document: "<hr hson:part/>" } as const;
-const definitions = { components: { parts: { heading, blank } }, ordinary: { data: { heading } } };
+const definitions = { components: { parts: { heading, blank } }, ordinary: { json: { heading } } };
 
 export async function parts_write_cases() {
   direct_data_part_cases();
@@ -43,7 +43,7 @@ export async function parts_write_cases() {
   const structured = hsonLiveMap.fromLibraries({ components: { parts: { nav: { kind: "document", document: '<nav hson:part data:slide="%{payload}" title="^{slide.title}" "^{slide.no}"/>' } } } });
   const structuredAuthority = internal_livemap_aggregate_authority(structured);
   const structuredBefore = structuredAuthority.captureSemanticCheckpoint(), structuredIssued = structuredAuthority.identityEpoch().issued();
-  const slide = Hson.data`<title "Navigation" no -0>`;
+  const slide = Hson.data.parse`<title "Navigation" no -0>`;
   const written: HsonAuthored = structured.parts.components.nav.write({ payload: slide });
   assert.equal(written, Hson.document`<hson-part lib="components" at="nav" payload:data="${(slide).toHson()}"/>`);
   const malformed = structured.parts.components.nav.write({ payload: "<broken" });

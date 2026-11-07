@@ -87,7 +87,7 @@ export async function verify_scoped_tail_restart(f: Pick<Awaited<ReturnType<type
   assert.ok(grant.ok);
   const projection = captureSession(l.map, sessions, "resumed", true);
   assert.doesNotMatch(JSON.stringify(projection), /UPDATED_PRIVATE_PART|PRIVATE_LIBRARY_SENTINEL|hidden-event|"name":"parts"/);
-  const cap = echo(projection, local_initializers({ local: { data: { n: 1 } } }));
+  const cap = echo(projection, local_initializers({ local: { json: { n: 1 } } }));
   assert.ok(cap.map); assert.throws(() => cap.map!.parts.must("parts"));
   try {
     const commit = await l.stage(w => page(w).attrs.set({ kind: "path", path: path([0,0,1,0,0]) }, "title", "after-resume"));

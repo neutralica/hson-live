@@ -437,13 +437,16 @@ export function discover_hson_tagged_templates(
   const sources: HsonTaggedTemplateSource[] = [];
   const interpolated: InterpolatedEmbeddedHsonTemplate[] = [];
   const visit = (node: ts.Node): void => {
+    const tag = ts.isTaggedTemplateExpression(node) && ts.isPropertyAccessExpression(node.tag)
+      && node.tag.name.text === "parse" && ts.isPropertyAccessExpression(node.tag.expression) && node.tag.expression.name.text === "data"
+      ? node.tag.expression : ts.isTaggedTemplateExpression(node) ? node.tag : undefined;
     if (ts.isTaggedTemplateExpression(node)
-      && ts.isPropertyAccessExpression(node.tag)
-      && ts.isIdentifier(node.tag.expression)
-      && is_hson_authoring_kind(node.tag.name.text)
+      && tag !== undefined && ts.isPropertyAccessExpression(tag)
+      && ts.isIdentifier(tag.expression)
+      && is_hson_authoring_kind(tag.name.text)
       && (node.flags & ts.NodeFlags.OptionalChain) === 0
       && node.typeArguments === undefined) {
-      const symbol = checker.getSymbolAtLocation(node.tag.expression);
+      const symbol = checker.getSymbolAtLocation(tag.expression);
       const relevantRange = nodeRange(node, sourceFile);
       if (symbol !== undefined
         && importSymbols.has(symbol)
@@ -463,7 +466,7 @@ export function discover_hson_tagged_templates(
         );
         let discovered = false;
         if (validated !== undefined) {
-          const authoringKind = node.tag.name.text;
+          const authoringKind = tag.name.text;
           if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
             sources.push(Object.freeze({ ...validated, authoringKind }));
             discovered = true;
@@ -484,7 +487,7 @@ export function discover_hson_tagged_templates(
             }
           }
         }
-        if (!discovered && onDocumentQuadRecovery !== undefined && node.tag.name.text === "document"
+        if (!discovered && onDocumentQuadRecovery !== undefined && tag.name.text === "document"
           && ts.isTemplateExpression(node.template)) {
           const recovered = document_quad_recovery_source(fileName, hostText, sourceFile, node, node.template);
           if (recovered !== undefined) onDocumentQuadRecovery(recovered);

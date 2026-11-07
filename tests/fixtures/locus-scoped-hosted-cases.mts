@@ -18,7 +18,7 @@ const authorizeProjection: LocusProjectionAuthorizer = ({ requested, connection 
   libraries: connection?.principalId === "denied" ? requested.libraries.filter(n => n === "data") : requested.libraries,
   writableDocuments: connection?.principalId === "writer" ? requested.libraries : [],
 });
-export const definition = [{ "parts": { ...parts, access: "private" }, "hidden": { data: { secret: "PRIVATE_DATA" }, access: "private" }, "page": { ...page, access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "flat": { document: '<html @:flat <head/> <body/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { local: [{ name: "local", initializer: { data: { n: 0 } } }], authorizeProjection }] as const;
+export const definition = [{ "parts": { ...parts, access: "private" }, "hidden": { json: { secret: "PRIVATE_DATA" }, access: "private" }, "page": { ...page, access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "flat": { document: '<html @:flat <head/> <body/>/>', access: "shared" }, "data": { json: { n: 0 }, access: "shared" } }, { local: [{ name: "local", initializer: { json: { n: 0 } } }], authorizeProjection }] as const;
 export const names = ["page", "bare", "flat", "data", "local", "parts", "hidden"];
 export type Replica = Echo<LiveMap>;
 export type Route = "http" | "websocket";
@@ -119,7 +119,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
     const input = (value: object) => node(Hson.document`<hson-part lib="parts" at="optional" payload:data="${Reflect.apply(Hson.data.from, Hson.data, [value]).toHson()}"/>`);
     const locus = hsonLiveMap.locus.create({ parts: { access: 'private', parts: {
       optional: { kind: 'document', document: '<article hson:part @:root part:optional data:d="%{payload}" <h1 "^{d.title}"/> <p @:note part:optional "^{d.note}"/>/>', stylesheet: ':scope{color:navy}[hson\\:quad="note"]{color:pink}' },
-    } }, count: { access: 'shared', data: { n: 0 } }, flat: { access: 'shared', document: '<main/>' }, page: { access: 'shared', document: '<html <head/> <body <hson-part @:gone lib="parts" at="optional" payload:data="<>"/> <hson-part @:left lib="parts" at="optional" payload:data="<title \\"Left\\">"/> <hson-part @:right lib="parts" at="optional" payload:data="<title \\"Right\\">"/>/>/>' } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    } }, count: { access: 'shared', json: { n: 0 } }, flat: { access: 'shared', document: '<main/>' }, page: { access: 'shared', document: '<html <head/> <body <hson-part @:gone lib="parts" at="optional" payload:data="<>"/> <hson-part @:left lib="parts" at="optional" payload:data="<title \\"Left\\">"/> <hson-part @:right lib="parts" at="optional" payload:data="<title \\"Right\\">"/>/>/>' } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const client = await receiver(locus, kind, ['page']);
     try {
       const audit = await locus.session.create({ libraries: ['flat', 'count'] });
@@ -170,7 +170,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
   });
 
   for (const kind of ["http", "websocket"] as const) await check(`structured Part ${kind}: source-free hosted capture and updates`, async () => {
-    const data = Hson.data`<title "Visible" extra "PRIVATE_ARGUMENT">`;
+    const data = Hson.data.parse`<title "Visible" extra "PRIVATE_ARGUMENT">`;
     const control = (data: string) => Hson.document`<hson-part lib="parts" at="y" payload:data="${data}"/>`;
     const locus = hsonLiveMap.locus.create({ parts: {access:'private',parts:{
       x:{kind:'document',document:'<section hson:part doc:control="%{control}" @:root <hson-part @:child ^{control}/>/>'},
@@ -182,7 +182,7 @@ export async function hosted_scoped_cases(check: (name: string, run: () => Promi
       assert.doesNotMatch(JSON.stringify(now), /PRIVATE_ARGUMENT|slide:data|hson-part|%\{slide/);
       assert.throws(() => client.echo.parts.must('parts'));
       assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
-      await locus.stage(w => w.doc.must('page').at([1, 0, 0]).replace(node(Hson.document`<hson-part lib="parts" at="x" control:doc="${control(Hson.data`<title "Updated">`.toHson())}"/>`)));
+      await locus.stage(w => w.doc.must('page').at([1, 0, 0]).replace(node(Hson.document`<hson-part lib="parts" at="x" control:doc="${control(Hson.data`<title "Updated">`)}"/>`)));
       await caught(client.echo, locus);
       assert.deepEqual(document(client.echo).root(), locus.doc.must('page').root());
       assert.match(JSON.stringify(document(client.echo).root()), /Updated/);

@@ -25,7 +25,7 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
 type Assert<T extends true> = T;
 type Root = Assert<Equal<JsonFromSchema<typeof DeckSchema>, Deck>>;
 export const example: JsonFromSchema<typeof DeckSchema> = { slides: [{ id: "one", column1: [{ kind: "code", language: "hson", source: "<p/>" }] }] };
-const map = hsonLiveMap.fromLibraries({ slides: { data: { slides: [] }, schema: DeckSchema } });
+const map = hsonLiveMap.fromLibraries({ slides: { json: { slides: [] }, schema: DeckSchema } });
 const lib = map.data.must("slides");
 export const rootSnapshot = lib.snap();
 export const slideSnapshot = lib.at(["slides", 0]).snap();
@@ -89,7 +89,7 @@ const stringCertificate: HsonDataValue<typeof DeckSchema> = "<slides []>";
 
 declare const tree: JsonFromSchema<typeof TreeSchema>;
 const recursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: 1, children: [tree] };
-const treeMap = hsonLiveMap.fromLibraries({ tree: { data: { value: "root", age: 1, children: [] }, schema: TreeSchema } });
+const treeMap = hsonLiveMap.fromLibraries({ tree: { json: { value: "root", age: 1, children: [] }, schema: TreeSchema } });
 export const recursiveSnapshot = treeMap.data.must("tree").snap();
 const deepAge: number | undefined = treeMap.data.must("tree").at(["children", 0, "children", 0, "age"]).snap();
 treeMap.data.must("tree").at([]).replace(tree);
@@ -97,7 +97,7 @@ treeMap.data.must("tree").at([]).update(current => current);
 // @ts-expect-error Recursive candidates retain primitive precision.
 treeMap.data.must("tree").at(["children", 0, "age"]).set("bad");
 const mutual: JsonFromSchema<typeof MutualSchema> = { kind: "a", children: [{ kind: "b", children: [] }] };
-const mutualMap = hsonLiveMap.fromLibraries({ mutual: { data: { kind: "a", children: [] }, schema: MutualSchema } });
+const mutualMap = hsonLiveMap.fromLibraries({ mutual: { json: { kind: "a", children: [] }, schema: MutualSchema } });
 export const mutualSnapshot = mutualMap.data.must("mutual").snap();
 const mutualKind: "a" | undefined = mutualMap.data.must("mutual").at(["children", 0, "children", 0, "kind"]).snap();
 mutualMap.data.must("mutual").at([]).replace(mutual);
@@ -105,14 +105,14 @@ mutualMap.data.must("mutual").at([]).replace(mutual);
 declare const one: JsonFromSchema<typeof SameShapeOneSchema>;
 const two: JsonFromSchema<typeof SameShapeTwoSchema> = one;
 declare const userInput: HsonDataValue<typeof UserSchema>;
-const users = hsonLiveMap.fromLibraries({ user: { data: userInput, schema: UserSchema } });
+const users = hsonLiveMap.fromLibraries({ user: { json: userInput, schema: UserSchema } });
 const user = users.data.must("user").snap();
 users.data.must("user").at(["pair"]).replace(user.pair);
 users.data.must("user").at(["flags"]).update(current => current);
 // @ts-expect-error Readonly tuple forwarding must not broaden position types.
 users.data.must("user").at(["pair"]).replace([true, "bad"]);
 
-const locus = hsonLiveMap.locus.create({ "slides": { data: { slides: [] }, schema: DeckSchema, access: "shared" } }, { actions: {
+const locus = hsonLiveMap.locus.create({ "slides": { json: { slides: [] }, schema: DeckSchema, access: "shared" } }, { actions: {
   read(context) {
     const snapshot = context.data.must("slides").snap();
     const root: Assert<Equal<typeof snapshot, Deck>> = true;
@@ -147,7 +147,7 @@ const ReservedRefsSchema = Hson.schema`<type "data" defs <
   'dash-name' <tuple []>
 > content <a <ref "Evidence"> b <ref "ReadonlyArray"> c <ref "string"> d <ref "$SchemaRef2"> e <ref "dash-name">>>`;
 const reservedRefs: JsonFromSchema<typeof ReservedRefsSchema> = { a: { name: "Ada" }, b: ["one"], c: 3, d: true, e: [] };
-const reservedMap = hsonLiveMap.fromLibraries({ refs: { data: { a: { name: "Ada" }, b: [], c: 3, d: true, e: [] }, schema: ReservedRefsSchema } });
+const reservedMap = hsonLiveMap.fromLibraries({ refs: { json: { a: { name: "Ada" }, b: [], c: 3, d: true, e: [] }, schema: ReservedRefsSchema } });
 reservedMap.data.must("refs").at(["e"]).replace(reservedRefs.e);
 const mutableEmpty: [] = [];
 const readonlyEmpty: readonly [] = [];

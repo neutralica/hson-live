@@ -6,7 +6,7 @@ import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.id
 
 export async function representation_required_cases() {
   const map = hsonLiveMap.fromLibraries({
-    state: { data: { value: [1], nullable: null } },
+    state: { json: { value: [1], nullable: null } },
     page: { document: '<main @:page <b @:subject "before"/>/>' },
     parts: { parts: { submit: { kind: "document", document: "<button hson:part/>" } } },
   });
@@ -113,7 +113,7 @@ export async function representation_required_cases() {
   }
 
   const locus = hsonLiveMap.locus.create({
-    page: { document: '<main <b "before"/>/>' }, state: { data: { value: [1] } },
+    page: { document: '<main <b "before"/>/>' }, state: { json: { value: [1] } },
   }, { actions: { inspect(context) {
     assert.equal(context.doc.page.must.snap(), "<html><head></head><body><main><b>before</b></main></body></html>");
     assert.equal(context.doc.page.at([1, 0, 0]).must.hson(), Hson.document`<b "before"/>`);

@@ -371,7 +371,7 @@ check("materialization returns fresh dense arrays, nested objects and repeated c
 });
 
 check("public LiveMap snapshots are prototype-safe, detached and truthful about integer-key enumeration", () => {
-  const registry = hson.liveMap.fromLibraries({ state: { data: Hson.data.fromSource('{"10":"ten","2":"two","1":"one","__proto__":{"nested":1}}'), schema: Hson.schema`<type "data" content <'10' "string" '2' "string" '1' "string" '__proto__' <content <nested "number">>>>` } });
+  const registry = hson.liveMap.fromLibraries({ state: { json: Hson.data.fromSource('{"10":"ten","2":"two","1":"one","__proto__":{"nested":1}}'), schema: Hson.schema`<type "data" content <'10' "string" '2' "string" '1' "string" '__proto__' <content <nested "number">>>>` } });
   const map = registry.data.must("state");
   const first = map.snap() as Record<string, JsonValue>;
   assert.equal(Object.getPrototypeOf(first), Object.prototype);
@@ -389,7 +389,7 @@ check("public LiveMap snapshots are prototype-safe, detached and truthful about 
 });
 
 check("accessor TOCTOU and throwing proxy admission failures are atomic", () => {
-  const registry = hson.liveMap.fromLibraries({ state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "any">>` } });
+  const registry = hson.liveMap.fromLibraries({ state: { json: { value: 0 }, schema: Hson.schema`<type "data" content <value "any">>` } });
   const map = registry.data.must("state");
   let getterCalls = 0;
   let feedCalls = 0;

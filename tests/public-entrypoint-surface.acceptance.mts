@@ -363,9 +363,9 @@ await check("packed consumer resolves only curated package entrypoints", () => {
     // and side-effect metadata rather than a source-relative import.
     for (const [name, call] of [
       ["create", "hsonLiveMap.create()"],
-      ["fromLibraries", "hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } })"],
+      ["fromLibraries", "hsonLiveMap.fromLibraries({ state: { json: { value: 1 } } })"],
       ["echo", "hsonLiveMap.echo.create({ transport: { operations: { async submit() { return { kind: 'not-submitted' }; } }, attachment: { observe() { return () => {}; } } } })"],
-      ["locus", "hsonLiveMap.locus.create({ state: { data: { value: 1 }, access: 'shared' } })"],
+      ["locus", "hsonLiveMap.locus.create({ state: { json: { value: 1 }, access: 'shared' } })"],
     ] as const) {
       const fixture = join(consumerRoot, `${name}.mjs`);
       writeFileSync(fixture, `import * as hsonLiveMap from "hson-live/livemap"; globalThis.result = ${call};`);

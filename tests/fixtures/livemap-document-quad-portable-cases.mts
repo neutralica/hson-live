@@ -511,8 +511,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   await check("actual Echo contraction retains addressed state retires excluded Libraries and continues commits", async () => {
     for (const addressed of [true, false]) {
       const map = addressed ? authored({ page: { document: '<main @:root <button @:confirm/>/>' },
-        extra: { data: { value: 1 } }, hidden: { document: '<aside @:private/>' } })
-        : hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' }, extra: { data: { value: 1 } }, hidden: { document: '<aside/>' } });
+        extra: { json: { value: 1 } }, hidden: { document: '<aside @:private/>' } })
+        : hsonLiveMap.fromLibraries({ page: { document: '<main <button/>/>' }, extra: { json: { value: 1 } }, hidden: { document: '<aside/>' } });
       const server = create_locus_hosted_aggregate_authority_internal({ map,
         libraries: [{ name: "page", ownership: "shared" }, { name: "extra", ownership: "shared" }, { name: "hidden", ownership: "private" }],
         defaultProjection: { libraries: ["page", "extra"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
@@ -586,7 +586,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     assert.equal(Object.hasOwn(received.capture().libraries[0]!, "quads"), false);
   });
   await check("QUAD-free exact graph snapshot cut and checkpoint shapes stay unchanged", () => {
-    const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, state: { data: { n: 1 } } });
+    const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, state: { json: { n: 1 } } });
     const snapshot = map.capture();
     assert.deepEqual(Object.keys(snapshot), ["format", "revision", "registry", "registryDigest", "libraries"]);
     assert.deepEqual(Object.keys(snapshot.libraries[0]!), ["name", "mode", "schema", "schemaDigest", "root", "css"]);
@@ -615,7 +615,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       atomic(map, () => map.restore(invalid));
       assert.throws(() => install_libraries_snapshot(invalid));
     }
-    const state = hsonLiveMap.fromLibraries({ state: { data: { x: 1 } } });
+    const state = hsonLiveMap.fromLibraries({ state: { json: { x: 1 } } });
     atomic(map, () => owner(map).restorePortableLibraries(bindingSnapshot(state.capture(), [{ name: "x", path: [0, 0, 1, 0, 0] }])));
   });
   await check("portable coordinates use own array storage despite hostile inherited iteration", () => {

@@ -10,7 +10,7 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.session-reentrancy", title: "Session lifecycle reentrancy",
   category: "Locus", runtime: "node", tags: Object.freeze(["locus", "session", "security"]) });
 
-const map = hsonLiveMap.fromLibraries({ state: { data: { value: "visible" } } });
+const map = hsonLiveMap.fromLibraries({ state: { json: { value: "visible" } } });
 const aggregate = internal_livemap_aggregate_authority(map);
 const effective = await normalize_locus_effective_projection(make_locus_hosted_projection_policy(
   aggregate.hostedRegistry(), aggregate.hostedPosition().authority,
@@ -99,7 +99,7 @@ for (const transition of ["revoke", "dispose-manager", "dispose-locus"] as const
 // Transport listener cleanup is externally callable before manager disposal.
 // Locus disposal must already fence every capability operation at that point.
 {
-  const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: {} } }), [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { json: {} } }), [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const retained = await host.session.create({ libraries: ["state"] });
   let revoked: boolean | undefined;
   bind_locus_websocket(host, { send() {}, close() {},

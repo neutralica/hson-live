@@ -13,7 +13,7 @@ import { set_livemap_quid_candidate_source_for_tests as allocator } from "../../
 
 const copy = (value: unknown) => JSON.parse(JSON.stringify(value));
 function receiver() {
-  const map = hsonLiveMap.fromLibraries({ page: { document: '<aside/>' }, other: { data: { n: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ page: { document: '<aside/>' }, other: { json: { n: 0 } } });
   const aggregate = authority(map), owner = aggregate.libraries()[0]!;
   return { map, aggregate, owner, restore: (input: unknown) => aggregate.prepareScopedDocumentRestoration(owner, input) };
 }
@@ -68,7 +68,7 @@ export function scoped_portable_cases(check: (name: string, run: () => void) => 
       leaf: {kind:'document', document:'<b hson:part data:x="%{x}" @:root title="^{x.title}" "^{x.no}"/>', stylesheet:':scope{color:red}'},
     }}, page:{document:'<main/>'} });
     const a = authority(map), owner = a.libraries()[a.hostedRegistry().libraries.findIndex(entry => entry.name === 'page')]!;
-    const data = Hson.data`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;
+    const data = Hson.data.parse`<details <title "%{literal}" no -0> private "PRIVATE_ARGUMENT">`;
     const parsed = parse_authored_document_library(Hson.document`<main <hson-part lib="parts" at="panel" slide:data="${(data).toHson()}"/> <hson-part lib="parts" at="panel" slide:data="${(data).toHson()}"/>/>`);
     const candidate = a.prepareScopedDocument(owner, {root:parsed.root, quads:parsed.declarations});
     const portable = a.captureScopedDocument(candidate);

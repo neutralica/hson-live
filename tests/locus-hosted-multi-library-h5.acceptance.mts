@@ -112,8 +112,8 @@ function socket_pair(): Readonly<{
 
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { theme: "light", count: 0 }, schema: StateSchema },
-    colors: { data: { theme: "light", accent: "#000" }, schema: ColorsSchema },
+    state: { json: { theme: "light", count: 0 }, schema: StateSchema },
+    colors: { json: { theme: "light", accent: "#000" }, schema: ColorsSchema },
     page: { document: "<main/>", schema: PageSchema },
   });
 }
@@ -648,9 +648,9 @@ draft.doc.must("page").graph(insert_item()); })();
 
   await assert.rejects(
     () => resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({
-        state: { data: { theme: "light", count: 0 }, schema: StateSchema },
+        state: { json: { theme: "light", count: 0 }, schema: StateSchema },
       }), test_application_catalog(hsonLiveMap.fromLibraries({
-        state: { data: { theme: "light", count: 0 }, schema: StateSchema },
+        state: { json: { theme: "light", count: 0 }, schema: StateSchema },
       }))), logicalMapId: "h5-persisted-map", persistence }),
     /registry.*topology/i,
   );

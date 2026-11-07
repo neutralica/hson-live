@@ -54,7 +54,7 @@ check("document mutation failures publish nothing", () => {
   assert.deepEqual(seen, []);
 });
 check("data feed and registry commit observation see one change", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Data } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: Data } });
   const feeds: unknown[] = [];
   const commits: unknown[] = [];
   map.data.must("state").at(["value"]).feed((event) => feeds.push(event));
@@ -65,10 +65,10 @@ check("data feed and registry commit observation see one change", () => {
   assert.equal(commit.operations[0]?.library, "state");
 });
 check("registry restore swaps state and exact revision", () => {
-  const source = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Data } });
+  const source = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: Data } });
   source.data.must("state").at(["value"]).set(2);
   source.data.must("state").at(["value"]).set(3);
-  const target = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: Data } });
+  const target = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: Data } });
   target.restore(source.capture());
   assert.deepEqual(target.data.must("state").snap(), { value: 3 });
   assert.equal(target.rev, 2);

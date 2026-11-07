@@ -28,7 +28,7 @@ const UnselectedSchema: HsonSchema = Hson.schema`<type "data" content <UNSELECTE
 const LocalSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 
 for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
-  const authority = hsonLiveMap.fromLibraries({ state: { data: { items: ["a", "b"] } } });
+  const authority = hsonLiveMap.fromLibraries({ state: { json: { items: ["a", "b"] } } });
   const server = create_locus_hosted_aggregate_authority_internal({ map: authority,
     libraries: [{ name: "state", ownership: "shared" }], defaultProjection: { libraries: ["state"] },
     authorizeProjection: () => ({ libraries: ["state"] }), maxHistoryBytes: 1 });
@@ -42,7 +42,7 @@ for (const kind of ["empty metadata", "nested empty metadata", "permuted array"]
   pair.transformServer(corrupt);
   let detach = bind_locus_websocket(server, pair.server);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } }) });
+    initializers: local_initializers({ local: { json: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } }) });
   await assert.rejects(client.connect());
   const rejectedInitialMap = client.map;
   assert.equal(rejectedInitialMap, undefined);
@@ -85,9 +85,9 @@ for (const kind of ["empty metadata", "nested empty metadata", "permuted array"]
 
 function fixture(maxHistoryBytes?: number, afterRecoveryCut?: () => void | Promise<void>) {
   const map = hsonLiveMap.fromLibraries({
-    visible: { data: { value: "VISIBLE_BOOTSTRAP_SENTINEL" }, schema: VisibleSchema },
-    PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
-    UNSELECTED_NAME_SENTINEL: { data: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: UnselectedSchema },
+    visible: { json: { value: "VISIBLE_BOOTSTRAP_SENTINEL" }, schema: VisibleSchema },
+    PRIVATE_NAME_SENTINEL: { json: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
+    UNSELECTED_NAME_SENTINEL: { json: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: UnselectedSchema },
   });
   const server = create_locus_hosted_aggregate_authority_internal({ map,
     libraries: [
@@ -191,7 +191,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   const pair = socket_pair();
   let detachServer = bind_locus_websocket(server, pair.server);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: "LOCAL_BOOTSTRAP" }, schema: LocalSchema } }) });
+    initializers: local_initializers({ local: { json: { value: "LOCAL_BOOTSTRAP" }, schema: LocalSchema } }) });
   const initial = await client.connect();
   assert.equal(initial.outcome, "reconcile");
   assert.equal(client.lastAppliedRev, 1);
@@ -248,7 +248,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   const pair = socket_pair();
   let detachServer = bind_locus_websocket(server, pair.server);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: "LOCAL_FALLBACK" }, schema: LocalSchema } }) });
+    initializers: local_initializers({ local: { json: { value: "LOCAL_FALLBACK" }, schema: LocalSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const local = data_library(client.map, "local");
@@ -283,7 +283,7 @@ function data_library(map: LiveMap | undefined, name: string) {
 
 {
   const map = hsonLiveMap.fromLibraries({
-    PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
+    PRIVATE_NAME_SENTINEL: { json: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
   });
   const server = create_locus_hosted_aggregate_authority_internal({ map,
     libraries: [{ name: "PRIVATE_NAME_SENTINEL", ownership: "private" }],
@@ -313,7 +313,7 @@ function data_library(map: LiveMap | undefined, name: string) {
 
 {
   const map = hsonLiveMap.fromLibraries({
-    PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
+    PRIVATE_NAME_SENTINEL: { json: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
   });
   const server = create_locus_hosted_aggregate_authority_internal({ map,
     libraries: [{ name: "PRIVATE_NAME_SENTINEL", ownership: "private" }],
@@ -321,7 +321,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   const pair = socket_pair();
   let detach = bind_locus_websocket(server, pair.server);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: "LOCAL_ONLY_INITIAL" }, schema: LocalSchema } }) });
+    initializers: local_initializers({ local: { json: { value: "LOCAL_ONLY_INITIAL" }, schema: LocalSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const handle = data_library(sameMap, "local").at(["value"]);
@@ -427,7 +427,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   let detach = pairs.map((pair) => bind_locus_websocket(server, pair.server));
   const clients = pairs.map((pair, index) => create_echo_aggregate_client_internal({
     transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: `LOCAL_${index}` }, schema: LocalSchema } }),
+    initializers: local_initializers({ local: { json: { value: `LOCAL_${index}` }, schema: LocalSchema } }),
   }));
   await Promise.all(clients.map((client) => client.connect()));
   const [live, replay, fallback] = clients;
@@ -466,7 +466,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   const map = hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: PageSchema },
     PRIVATE_NAME_SENTINEL: { document: "<main/>", schema: PageSchema },
-    privateData: { data: { value: "initial" }, schema: LocalSchema },
+    privateData: { json: { value: "initial" }, schema: LocalSchema },
   });
   enable_interactions(map);
   const server = create_locus_hosted_aggregate_authority_internal({ map,
@@ -543,7 +543,7 @@ for (const mode of ["reconcile", "replay"] as const) {
   const pair = socket_pair();
   let detachServer = bind_locus_websocket(server, pair.server);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(pair.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } }) });
+    initializers: local_initializers({ local: { json: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } }) });
   await client.connect();
   const sameMap = client.map;
   const original = data_library(client.map, "visible").snap(["value"]);

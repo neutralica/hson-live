@@ -50,7 +50,7 @@ try {
   const emptyCapture = emptyMap.capture();
   emptyMap.restore(emptyCapture);
   check("browser empty LiveMap captures and restores", emptyMap.rev === 0 && emptyCapture.libraries.length === 0);
-  const primitiveMap = hsonLiveMap.fromLibraries({ value: { data: 7, schema: ANY_DATA } });
+  const primitiveMap = hsonLiveMap.fromLibraries({ value: { json: 7, schema: ANY_DATA } });
   check("browser primitive data root admits and captures", primitiveMap.data.must("value").mode === "data-number"
     && primitiveMap.data.must("value").snap() === 7 && primitiveMap.capture().libraries.length === 1);
   const broadDocument = Hson.document`<main <p "browser"/>/>`;

@@ -57,6 +57,11 @@ export function parse_canonical_hson_data(source: string): OrderedProjectedValue
     if (raw.length !== 0) throw new TypeError("Hson data cannot carry attributes or authored metadata.");
     return { attrs: {}, meta: {} };
   }, {}, undefined, false);
+  return canonical_hson_data_from_node(root);
+}
+
+/** Validate a parser-produced Data graph directly, including composed template graphs. */
+export function canonical_hson_data_from_node(root: HsonNode): OrderedProjectedValue {
   const inspect = (node: HsonNode): void => {
     if (node.$_attrs !== undefined || node.$_meta !== undefined
       && (node.$_tag !== II_TAG || Object.keys(node.$_meta).some(key => key !== HSON_META_INDEX))) {
@@ -65,5 +70,7 @@ export function parse_canonical_hson_data(source: string): OrderedProjectedValue
     for (const child of node.$_content) if (is_Node(child)) inspect(child);
   };
   inspect(root);
-  return projected_value_from_hson_node(root);
+  const value = projected_value_from_hson_node(root);
+  assert_canonical_hson_data_value(value);
+  return value;
 }

@@ -43,7 +43,7 @@ async function fixture() {
     green: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', css: { color: "green" } },
     plain: { kind: "document", document: '<i hson:part/>' },
     secret: { kind: "document", document: '<strong hson:part "PRIVATE_DEFINITION_SENTINEL"/>' },
-  } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { data: { n: 0 } }, hidden: { document: '<aside/>' } });
+  } }, page: { document: '<main @:page <footer @:_abcdefghj/>/>' }, other: { json: { n: 0 } }, hidden: { document: '<aside/>' } });
   const a = authority(map), library = a.libraries()[1]!;
   const footer = a.documentOverlay(library).quidAtPath(path([0, 0, 1, 0, 0, 0, 0]))!;
   enable_interactions(map);
@@ -65,7 +65,7 @@ async function fixture() {
       system: { interactions: encode_hosted_root(project_interaction_state_internal(a.systemRoot(a.systemState("@hson/canonical-interactions")!), new Set(["page"]))) },
       libraries: projected.libraries.map(entry => entry.name !== "page" ? entry
       : { ...entry, root: encode_hosted_root(state.root), quads: state.scopes.document.filter(b => b.kind === "element").map(b => ({ name: b.name, path: b.path })), css: { rules: [], properties: [], keyframes: [], order: [] } }) };
-    const r = client_projection_map({ authority: libs, local: { local: { data: { n: 5 } }, localPage: { document: '<nav @:local/>' } } });
+    const r = client_projection_map({ authority: libs, local: { local: { json: { n: 5 } }, localPage: { document: '<nav @:local/>' } } });
     add_interaction(r, { id: "local-nav", subject: { library: "localPage", path: [0, 0, 1, 0, 0, 0] }, listener, kind: "browser", key: "local", args: null });
     const ra = authority(r);
     // Locate by authorized binding order rather than an effect-controlled name.

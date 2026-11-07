@@ -110,7 +110,7 @@ export async function queued_fixture(scoped = false, subjects = 1, native = fals
     parts: { parts: { panel: { kind: "document", document: '<section hson:part @:root <span @:label/>/>' } } },
     page: { document: scoped ? '<html <head/> <body <hson-part @:left lib="parts" at="panel"/> <hson-part @:right lib="parts" at="panel"/>/>/>'
       : `<html <head/> <body ${Array.from({ length: subjects }, (_, index) => `<p @:${index === 0 ? "label" : `subject${index}`}/>`).join(" ")}/>/>` },
-    state: { data: { n: 0 } },
+    state: { json: { n: 0 } },
   });
   let onAuthorize = () => {};
   let writable = true;

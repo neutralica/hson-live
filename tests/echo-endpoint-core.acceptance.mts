@@ -102,7 +102,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 await check("public endpoint-only Echo accepts the actual hosted Locus reply and can act", async () => {
   const map = hsonLiveMap.fromLibraries({
-    state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
+    state: { json: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
   });
   let actions = 0;
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, actions: { probe() { actions += 1; } } });
@@ -189,7 +189,7 @@ await check("public livemap endpoint admits exact data and rejects document payl
 });
 
 await check("endpoint-only Echo reattaches after attachment observation is interrupted", async () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
   const pair = socket_pair();
   let detach = bind_locus_websocket(locus, pair.server);
@@ -208,7 +208,7 @@ await check("endpoint-only Echo reattaches after attachment observation is inter
 });
 
 await check("terminal WebSocket transport disposal invalidates an attached endpoint Echo", async () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] } });
   const pair = socket_pair();
   const detach = bind_locus_websocket(locus, pair.server);

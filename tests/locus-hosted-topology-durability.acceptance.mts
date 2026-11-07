@@ -50,10 +50,10 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   const emptyDigest = locus.registryDigest;
   const emitted: number[] = [];
   const stop = locus.on_commit((commit) => emitted.push(commit.rev));
-  assert.throws(() => map.addLibraries({ bypass: { data: 0 } }), /Locus authority|controlled|managed/i);
+  assert.throws(() => map.addLibraries({ bypass: { json: 0 } }), /Locus authority|controlled|managed/i);
   assert.equal(map.rev, 0);
 
-  const addA = await add_private(locus, { A: { data: { count: 0 } } });
+  const addA = await add_private(locus, { A: { json: { count: 0 } } });
   assert.equal(addA.prevRev, 0);
   assert.equal(addA.rev, 1);
   assert.equal(addA.previousRegistryDigest, emptyDigest);
@@ -66,8 +66,8 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
 
   const beforeBatch = locus.registryDigest;
   const batch = await add_private(locus, {
-    B: { data: { value: "B0" } },
-    C: { data: { value: "C0" } },
+    B: { json: { value: "B0" } },
+    C: { json: { value: "C0" } },
   });
   assert.equal(batch.prevRev, 2);
   assert.equal(batch.rev, 3);
@@ -111,11 +111,11 @@ await case_("checkpoint-before-add tail and checkpoint-after-add restore the sam
   const adapter = new MemoryCheckpointAdapter();
   const id = "topology-checkpoint-tail";
   const locus = await create_persistent_locus_hosted_aggregate_internal({
-    map: hsonLiveMap.fromLibraries({ initial: { data: { value: 1 } } }),
+    map: hsonLiveMap.fromLibraries({ initial: { json: { value: 1 } } }),
     persistence: adapter, logicalMapId: id,
   });
   const initialDigest = locus.registryDigest;
-  await add_private(locus, { later: { data: { value: 2 } } });
+  await add_private(locus, { later: { json: { value: 2 } } });
   await locus.stage((draft) => { set_data(draft, "later", "value", 3); });
   const laterDigest = locus.registryDigest;
   assert.notEqual(laterDigest, initialDigest);
@@ -152,12 +152,12 @@ await case_("prepared topology stays invisible while the durable append is pendi
     map, persistence: adapter, logicalMapId: "topology-pending-append",
   });
   const digest = locus.registryDigest;
-  const pending = add_private(locus, { held: { data: { value: 1 } } });
+  const pending = add_private(locus, { held: { json: { value: 1 } } });
   await adapter.entered.promise;
   assert.equal(map.rev, 0);
   assert.equal(locus.registryDigest, digest);
   assert.throws(() => map.data.must("held"), /Unknown/);
-  assert.throws(() => map.addLibraries({ bypass: { data: 2 } }), /Locus authority|controlled|managed/i);
+  assert.throws(() => map.addLibraries({ bypass: { json: 2 } }), /Locus authority|controlled|managed/i);
   adapter.release.resolve();
   await pending;
   assert.equal(map.rev, 1);
@@ -175,7 +175,7 @@ await case_("failed durable topology append leaves authority and publication unt
   const published: number[] = [];
   const stop = locus.on_commit((commit) => published.push(commit.rev));
   adapter.failAppend = new Error("append failed");
-  await assert.rejects(add_private(locus, { rejected: { data: { value: 1 } } }), /append/i);
+  await assert.rejects(add_private(locus, { rejected: { json: { value: 1 } } }), /append/i);
   assert.equal(locus.rev, 0);
   assert.equal(map.rev, 0);
   assert.equal(locus.registryDigest, digest);
@@ -184,18 +184,18 @@ await case_("failed durable topology append leaves authority and publication unt
   assert.throws(() => map.data.must("rejected"), /Unknown/);
   const numberSchema = Hson.schema`<type "data" content <value "number">>`;
   await assert.rejects(add_private(locus, {
-    valid: { data: { value: 1 } },
-    invalid: { data: { value: "wrong" }, schema: numberSchema },
+    valid: { json: { value: 1 } },
+    invalid: { json: { value: "wrong" }, schema: numberSchema },
   }), /Schema|number/i);
   assert.equal(locus.rev, 0);
   assert.throws(() => map.data.must("valid"), /Unknown/);
-  await add_private(locus, { accepted: { data: { value: 2 } } });
+  await add_private(locus, { accepted: { json: { value: 2 } } });
   assert.deepEqual(published, [1]);
   assert.equal(locus.rev, 1);
   const identity = internal_livemap_aggregate_authority(map).libraries()[0];
   assert.ok(identity);
   internal_livemap_aggregate_authority(map).acquireLocalProjectedIdentity(identity, [], "0000ab123");
-  await add_private(locus, { later: { data: { value: 3 } } });
+  await add_private(locus, { later: { json: { value: 3 } } });
   assert.equal(JSON.stringify(adapter.state(locus.logicalMapId)).includes("0000ab123"), false);
   stop();
   locus.dispose();
@@ -208,7 +208,7 @@ await case_("failed checkpoint after an accepted addition preserves the old mani
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id,
   });
   const oldCheckpoint = adapter.state(id)?.checkpoint.checkpointId;
-  await add_private(locus, { A: { data: { value: 1 } } });
+  await add_private(locus, { A: { json: { value: 1 } } });
   adapter.failManifest = new Error("manifest failed");
   await assert.rejects(locus.checkpoint(), /checkpoint/i);
   assert.equal(adapter.state(id)?.checkpoint.checkpointId, oldCheckpoint);
@@ -227,7 +227,7 @@ await case_("tampered topology digest and reordered tail fail closed on restart"
   const locus = await create_persistent_locus_hosted_aggregate_internal({
     map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id,
   });
-  await add_private(locus, { A: { data: { value: 0 } } });
+  await add_private(locus, { A: { json: { value: 0 } } });
   await locus.stage((draft) => { set_data(draft, "A", "value", 1); });
   locus.dispose();
   const good = adapter.state(id);

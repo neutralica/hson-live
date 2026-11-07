@@ -34,13 +34,13 @@ function sender(text = '<main <hson-part @:left lib="parts" at="panel"/> <hson-p
     green: { kind: "document", document: '<section hson:part @:root <div @:body <hson-part @:child at="leaf"/>/>/>', stylesheet: ':scope{color:green}' },
     plain: { kind: "document", document: '<i hson:part/>' },
     globals: { kind: "document", document: '<em hson:part @:root/>', stylesheet: ':scope{animation:pulse 1s} @keyframes pulse{to{opacity:1}} @property --tone{syntax:"<color>";inherits:false;initial-value:red}' },
-  } }, page: { document: '<main/>' }, other: { data: { n: 0 } } });
+  } }, page: { document: '<main/>' }, other: { json: { n: 0 } } });
   const a = authority(map), owner = a.libraries()[1]!;
   map.doc.must("page").css.stylesheet('main{padding:7px}');
   return { map, a, owner, before: a.prepareScopedDocument(owner, source(text)) };
 }
 function receiver(initial: unknown) {
-  const map = hsonLiveMap.fromLibraries({ page: { document: '<aside/>' }, other: { data: { n: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ page: { document: '<aside/>' }, other: { json: { n: 0 } } });
   const a = authority(map), owner = a.libraries()[0]!;
   return { map, a, owner, before: a.prepareScopedDocumentRestoration(owner, initial) };
 }

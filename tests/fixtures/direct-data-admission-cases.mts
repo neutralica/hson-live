@@ -74,8 +74,8 @@ export function direct_data_part_cases(): void {
   const numericSource = parts.entries.write({ incoming: numericKeys });
   const numericConnector = parse_authored_document_library(numericSource).root.$_content[0];
   assert.ok(typeof numericConnector === "object" && numericConnector !== null);
-  assert.equal(numericConnector.$_attrs!["incoming:data"], (Hson.data`<'2' 42 '10' -0>`).toHson());
-  const exactSource = Hson.data`<'10' -0 '2' "42" tail false>`;
+  assert.equal(numericConnector.$_attrs!["incoming:data"], (Hson.data.parse`<'2' 42 '10' -0>`).toHson());
+  const exactSource = Hson.data.parse`<'10' -0 '2' "42" tail false>`;
   const exactInvocation = parts.entries.write({ incoming: exactSource });
   const exactConnector = parse_authored_document_library(exactInvocation).root.$_content[0];
   assert.ok(typeof exactConnector === "object" && exactConnector !== null);
@@ -103,7 +103,7 @@ export function direct_data_part_cases(): void {
   assert.deepEqual(owner.captureSemanticCheckpoint(), checkpoint);
   assert.equal(owner.identityEpoch().issued(), ledger);
   const hostile = new Proxy({}, { ownKeys() {
-    map.addLibraries({ duringCapture: { data: 1 } }); return [];
+    map.addLibraries({ duringCapture: { json: 1 } }); return [];
   } });
   assert.throws(() => parts.value.write({ incoming: hostile }), /changed during capture/);
 }
@@ -134,13 +134,13 @@ export function direct_data_schema_cases(): void {
   const input = { nested: [-0, "42", 42, "true", true, "null", null, "", [], {}] };
   const certificate = ANY_DATA.certify(input);
   input.nested.push("after");
-  assert.equal((certificate).toHson(), (Hson.data`<nested [-0,"42",42,"true",true,"null",null,"",[],<>]>`).toHson());
+  assert.equal((certificate).toHson(), (Hson.data.parse`<nested [-0,"42",42,"true",true,"null",null,"",[],<>]>`).toHson());
   const ordinary = Object.fromEntries([["z", -0], ["a", true], ["__proto__", { constructor: null }]]);
   const ordered = ANY_DATA.certify(ordinary);
   assert.deepEqual((ordered).entries()?.map(([name]) => name), ["z", "a", "__proto__"]);
   assert.ok(Object.is(((ordered).entries()![0]![1]).materialize(), -0));
-  assert.equal((ANY_DATA.certify(Object.fromEntries([["10", -0], ["2", 42]]))).toHson(), (Hson.data`<'2' 42 '10' -0>`).toHson());
-  const authored = Hson.data`<'10' -0 '2' "42" tail false>`;
+  assert.equal((ANY_DATA.certify(Object.fromEntries([["10", -0], ["2", 42]]))).toHson(), (Hson.data.parse`<'2' 42 '10' -0>`).toHson());
+  const authored = Hson.data.parse`<'10' -0 '2' "42" tail false>`;
   assert.equal((ANY_DATA.certify(authored)).toHson(), (authored).toHson());
   // D4c makes ordinary strings literal, and source admission explicit.
   assert.throws(() => Reflect.apply(number.certify, number, ["42"]), HsonSchemaError);

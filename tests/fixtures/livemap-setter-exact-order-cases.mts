@@ -23,7 +23,7 @@ import { is_ordered_projected_object, type OrderedProjectedValue } from "../../s
 type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
 type Route = Readonly<{ name: string; path: LivePath; write: (map: LiveMap, value: JsonValue) => unknown }>;
 const create = () => hsonLiveMap.fromLibraries({
-  state: { data: { value: {}, spare: 0, items: [{}] } },
+  state: { json: { value: {}, spare: 0, items: [{}] } },
   page: { document: '<main title="old"/>' },
 });
 const state = (map: LiveMap) => map.data.must("state");
@@ -92,7 +92,7 @@ const routes: readonly Route[] = [
 export async function livemap_setter_exact_order_cases(check: Check): Promise<void> {
   await check("initial Library admission retains descriptor order in graph and serialized capture", () => {
     const input = ordered_input(), expected = admit_projected_value(input);
-    const map = hsonLiveMap.fromLibraries({ state: { data: input } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: input } });
     assert.deepEqual(state(map).at([]).asObject()!.object.keys(), ["10", "2"]);
     exact(map, [], expected);
     assert.match(emit_ordered_json(expected), /^\{\s*"10": -0,\s*"2": \{\s*"10":/);
@@ -114,7 +114,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
   await check("root replacement preserves order while constructive set retains siblings", () => {
     const expected = admit_projected_value(ordered_input());
     for (const staged of [false, true]) {
-      const map = hsonLiveMap.fromLibraries({ state: { data: {} } });
+      const map = hsonLiveMap.fromLibraries({ state: { json: {} } });
       if (staged) map.batch(tx => tx.data.must("state").at([]).replace(ordered_input()));
       else state(map).at([]).replace(ordered_input());
       exact(map, [], expected);
@@ -195,7 +195,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
   await check("changing descriptors are read once and the captured candidate governs Schema", () => {
     const schema = Hson.schema`<type "data" content <value <array "number"> spare "number">>`;
     for (const staged of [false, true]) for (const first of [1, "invalid"]) {
-      const map = hsonLiveMap.fromLibraries({ state: { data: { value: [0], spare: 0 }, schema } });
+      const map = hsonLiveMap.fromLibraries({ state: { json: { value: [0], spare: 0 }, schema } });
       const before = map.capture(); let reads = 0, publications = 0;
       map.commits.observe(() => { publications++; });
       const input = new Proxy([0], { get() { throw new Error("No indexed reads."); }, getOwnPropertyDescriptor(target, key) {
@@ -246,7 +246,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
 
   await check("late staged Schema failure rolls back exact Data and Document candidates together", () => {
     const schema = Hson.schema`<type "data" content <value "any" spare "number">>`;
-    const map = hsonLiveMap.fromLibraries({ state: { data: { value: {}, spare: 0 }, schema }, page: { document: '<main title="old"/>' } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: {}, spare: 0 }, schema }, page: { document: '<main title="old"/>' } });
     const owner = internal_livemap_aggregate_authority(map), before = owner.captureSemanticCheckpoint(), ledger = owner.identityEpoch().issued();
     let publications = 0; map.commits.observe(() => { publications++; });
     assert.throws(() => map.batch(tx => {
@@ -259,7 +259,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
   });
 
   await check("Locus staged replacement and Echo replay retain exact captured order and reject atomically", async () => {
-    const locus = hsonLiveMap.locus.create({ state: { data: { value: {}, spare: 0 }, access: "shared" } }, {
+    const locus = hsonLiveMap.locus.create({ state: { json: { value: {}, spare: 0 }, access: "shared" } }, {
       defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }),
     });
     const toServer = new Set<(raw: string) => void>(), toClient = new Set<(raw: string) => void>();

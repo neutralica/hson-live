@@ -48,9 +48,9 @@ function check(name: string, run: () => void): void {
 
 function triple() {
   const map = hsonLiveMap.fromLibraries({
-    data: { data: { value: 1 }, schema: DataSchema },
-    colors: { data: { value: "blue" }, schema: ColorSchema },
-    view: { data: { value: false }, schema: ViewSchema },
+    data: { json: { value: 1 }, schema: DataSchema },
+    colors: { json: { value: "blue" }, schema: ColorSchema },
+    view: { json: { value: false }, schema: ViewSchema },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [data, colors, view] = aggregate.libraries();
@@ -81,8 +81,8 @@ check("the internal registry rejects duplicate opaque identities", () => {
 check("library equality is authority identity, not structural root equality", () => {
   const SameSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({
-    first: { data: { value: 1 }, schema: SameSchema },
-    second: { data: { value: 1 }, schema: SameSchema },
+    first: { json: { value: 1 }, schema: SameSchema },
+    second: { json: { value: 1 }, schema: SameSchema },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [first, second] = aggregate.libraries();
@@ -167,7 +167,7 @@ check("each affected candidate uses its own HsonSchema and one invalid library r
 
 check("data and document libraries coexist under one map authority with separate roots, modes, and schemas", () => {
   const map = hsonLiveMap.fromLibraries({
-    data: { data: { value: 1 }, schema: DataSchema },
+    data: { json: { value: 1 }, schema: DataSchema },
     document: { document: "<main/>", schema: DocumentSchema },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
@@ -189,8 +189,8 @@ check("data and document libraries coexist under one map authority with separate
 check("one global QUID ledger resolves library-qualified locations, rejects collision and ABA, and defers cross-library movement", () => {
   const AnyData = Hson.schema`<type "data" content <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any"> incoming <optional "any">>>`;
   const map = hsonLiveMap.fromLibraries({
-    data: { data: { active: {}, retired: {}, duplicate: {}, reuse: {}, incoming: {} }, schema: AnyData },
-    colors: { data: { active: {}, retired: {}, reuse: {}, duplicate: {}, incoming: {} }, schema: AnyData },
+    data: { json: { active: {}, retired: {}, duplicate: {}, reuse: {}, incoming: {} }, schema: AnyData },
+    colors: { json: { active: {}, retired: {}, reuse: {}, duplicate: {}, incoming: {} }, schema: AnyData },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [data, colors] = aggregate.libraries();
@@ -263,7 +263,7 @@ check("aggregate capture preserves the complete fixed application registry", () 
 });
 
 check("performance telemetry clones and validates only touched libraries", () => {
-  const single = hsonLiveMap.fromLibraries({ data: { data: { value: 1 }, schema: DataSchema } });
+  const single = hsonLiveMap.fromLibraries({ data: { json: { value: 1 }, schema: DataSchema } });
   const singleStart = performance.now();
   single.data.must("data").at(["value"]).set(2);
   const singleMs = performance.now() - singleStart;

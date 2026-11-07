@@ -113,7 +113,7 @@ check("HsonDataValue is the same nominal class across intended entrypoints", () 
     import { Hson as RootHson, HsonDataValue as RootValue } from "hson-live";
     import { Hson as NarrowHson, HsonDataValue as NarrowValue } from "hson-live/hson";
     if (RootHson !== NarrowHson) throw new Error("Hson identity diverged");
-    const exact = NarrowHson.data\`<'10' -0 '2' <__proto__ true>>\`;
+    const exact = NarrowHson.data.parse\`<'10' -0 '2' <__proto__ true>>\`;
     if (RootValue !== NarrowValue || !(exact instanceof NarrowValue)) throw new Error("Data carrier identity diverged");
     if (typeof exact.toHson() !== "string") throw new Error("HsonData text unavailable");
     const entries = exact.entries();
@@ -258,12 +258,12 @@ check("stale public terminology is absent from maintained declarations", () => {
 const directHsonDataSources = new Map<string, string>([
   ["root", `
     import { Hson } from "hson-live";
-    const value = Hson.data\`<'10' -0 '2' <__proto__ true>>\`;
+    const value = Hson.data.parse\`<'10' -0 '2' <__proto__ true>>\`;
     if (Hson.data.from(value) !== value) throw new Error("root round trip failed");
   `],
   ["hson", `
     import { Hson } from "hson-live/hson";
-    const value = Hson.data\`<'10' -0 '2' <__proto__ true>>\`;
+    const value = Hson.data.parse\`<'10' -0 '2' <__proto__ true>>\`;
     if (Hson.data.from(value) !== value) throw new Error("Hson round trip failed");
   `],
   ["transform", `
@@ -276,9 +276,9 @@ const directHsonDataSources = new Map<string, string>([
     import { Hson } from "hson-live/hson";
 
     const schema = Hson.schema\`<type "data" content <value "number">>\`;
-    const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: -0 }, schema } });
     const value = Hson.data.from(map.data.must("state").snap());
-    const roundTrip = hsonLiveMap.fromLibraries({ state: { data: value.materialize(), schema } });
+    const roundTrip = hsonLiveMap.fromLibraries({ state: { json: value.materialize(), schema } });
     if (!Object.is(roundTrip.data.must("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
   `],
   ["echo", `
@@ -311,7 +311,7 @@ for (const order of [
     if (modules.some((module) => Object.hasOwn(module, "HsonData"))) throw new Error("retired public constructor returned");
     const { hsonLiveMap } = await import("hson-live/livemap");
     const { Hson } = await import("hson-live/hson");
-    const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema: Hson.schema\`<type "data" content <value "number">>\` } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: -0 }, schema: Hson.schema\`<type "data" content <value "number">>\` } });
     if (!Object.is(map.data.must("state").snap(["value"]), -0)) throw new Error("conversion changed by import order");
   `);
 }

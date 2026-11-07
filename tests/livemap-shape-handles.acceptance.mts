@@ -16,18 +16,18 @@ const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<t
 
 const map = admit_exact_runtime_livemap_libraries({
   state: {
-    data: {
+    json: {
       count: 1,
       nested: { value: 1 },
     },
     schema: DataSchema,
   },
   sequence: {
-    data: { flags: [1] },
+    json: { flags: [1] },
     schema: ArraySchema,
   },
   dynamic: {
-    data: { choice: [1] },
+    json: { choice: [1] },
     schema: DynamicSchema,
   },
   page: {

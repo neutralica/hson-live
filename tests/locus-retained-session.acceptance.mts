@@ -24,9 +24,9 @@ let expiry: (() => void) | undefined;
 const requests: string[][] = [];
 const map = hsonLiveMap.fromLibraries({
   page: { document: '<html <head/> <body <main <p "SSR_FIRST"/>/>/>/>' },
-  state: { data: { value: "VISIBLE" } },
-  extra: { data: { value: "UNREQUESTED" } },
-  secret: { data: { value: "PRIVATE" } },
+  state: { json: { value: "VISIBLE" } },
+  extra: { json: { value: "UNREQUESTED" } },
+  secret: { json: { value: "PRIVATE" } },
 });
 map.doc.must("page").css.stylesheet("p { color: red; }");
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, ["page", "state", "extra", "secret"].map(library => ({ name: library, ownership: library === "secret" ? "private" : "shared" }))), authorizeProjection: ({ requested, connection }) => {
@@ -104,7 +104,7 @@ assert.equal(requests.length, 2);
   host.dispose();
 }
 {
-  const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: {} } }), [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
+  const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { json: {} } }), [{ name: "state", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["state"] }) });
   const retained = await host.session.create({ libraries: ["state"] }, { resumable: false });
   assert.equal(retained.credential, undefined);
   host.session.dispose();
@@ -120,7 +120,7 @@ assert.equal(requests.length, 2);
   let authorizing: (() => void) | undefined;
   let updating = false;
   const started = new Promise<void>(resolve => { authorizing = resolve; });
-  const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: {} }, other: { data: {} } }), ["state", "other"].map(library => ({ name: library, ownership: "shared" }))), authorizeProjection: async ({ requested }) => {
+  const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { json: {} }, other: { json: {} } }), ["state", "other"].map(library => ({ name: library, ownership: "shared" }))), authorizeProjection: async ({ requested }) => {
       if (updating) { authorizing?.(); await new Promise<void>(resolve => { release = resolve; }); }
       return { libraries: requested.libraries };
     } });
@@ -146,7 +146,7 @@ assert.equal(requests.length, 2);
   const { admit_locus_remote_action_internal } = await import("../src/api/locus/locus.remote-action.internal.ts");
   let recycledId: string | undefined;
   let released: import("../src/types/locus.types.ts").LocusSession | undefined;
-  const sessionMap = hsonLiveMap.fromLibraries({ state: { data: {} } });
+  const sessionMap = hsonLiveMap.fromLibraries({ state: { json: {} } });
   const host: import("../src/types/locus.types.ts").Locus<typeof sessionMap> = create_locus_fixture({ ...authority_definitions_from_map_fixture(sessionMap, [{ name: "state", ownership: "shared" }]), sessionId: () => recycledId ?? "unused", authorizeProjection: () => ({ libraries: ["state"] }), actions: { remember: context => {
       if (context.origin.kind !== "session") throw new Error("Expected an operation session.");
       recycledId = context.origin.sessionId;
@@ -178,9 +178,9 @@ assert.equal(requests.length, 2);
   let release: (() => void) | undefined;
   const seen: Readonly<{ principal: unknown; role: unknown }>[] = [];
   const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({
-    base: { data: { value: "base" } }, aliceOnly: { data: { value: "ALICE" } },
-    malloryOnly: { data: { value: "MALLORY" } }, privateValue: { data: { value: "PRIVATE" } },
-    unrequestedValue: { data: { value: "UNREQUESTED" } },
+    base: { json: { value: "base" } }, aliceOnly: { json: { value: "ALICE" } },
+    malloryOnly: { json: { value: "MALLORY" } }, privateValue: { json: { value: "PRIVATE" } },
+    unrequestedValue: { json: { value: "UNREQUESTED" } },
   }), ["base", "aliceOnly", "malloryOnly", "privateValue", "unrequestedValue"].map(library => ({
     name: library, ownership: library === "privateValue" ? "private" as const : "shared" as const,
   }))), authorizeProjection: async ({ connection }) => {
@@ -226,7 +226,7 @@ assert.equal(requests.length, 2);
 // CURRENT recovery must retain the admitted interaction-feature contract.
 {
   const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" },
-    state: { data: { value: "STATE" } }, added: { data: { value: "ADDED" } } });
+    state: { json: { value: "STATE" } }, added: { json: { value: "ADDED" } } });
   enable_interactions(map);
   const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, ["page", "state", "added"].map(library => ({
     name: library, ownership: "shared" as const,
@@ -260,7 +260,7 @@ assert.equal(requests.length, 2);
 {
   const text = "x".repeat(4 * 1024 * 1024 + 256);
   const map = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main "${text}"/>` },
-    extra: { data: { value: "REMOVE_ME" } } });
+    extra: { json: { value: "REMOVE_ME" } } });
   const host = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, ["page", "extra"].map(library => ({
     name: library, ownership: "shared" as const,
   }))), authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });

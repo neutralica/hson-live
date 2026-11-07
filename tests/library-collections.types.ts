@@ -2,8 +2,8 @@ import { hsonLiveMap, type HsonSchema } from "hson-live";
 import { DeckSchema, firstSchema } from "./fixtures/hson-schema-document/out/deck.js";
 import type { LocusActionContext } from "hson-live/locus";
 const deck = { slides: [{ id: "one", column1: [{ kind: "code", content: "source", language: "json" }] }] };
-const map = hsonLiveMap.fromLibraries({ deck: { data: deck, schema: DeckSchema }, page: { document: '<html <head/> <body/>/>', schema: firstSchema } });
-const locus = hsonLiveMap.locus.create({ "deck": { data: deck, schema: DeckSchema, access: "shared" }, "page": { document: '<html <head/> <body/>/>', schema: firstSchema, access: "shared" } });
+const map = hsonLiveMap.fromLibraries({ deck: { json: deck, schema: DeckSchema }, page: { document: '<html <head/> <body/>/>', schema: firstSchema } });
+const locus = hsonLiveMap.locus.create({ "deck": { json: deck, schema: DeckSchema, access: "shared" }, "page": { document: '<html <head/> <body/>/>', schema: firstSchema, access: "shared" } });
 locus.doc.must("page").render();
 locus.doc.must("page").at([1]).asElement()!.attrs.keys();
 // @ts-expect-error Deck document has exactly head and body.
@@ -48,7 +48,7 @@ map.data.must("deck").at(["slides"]).push({ id: "bad", column1: [] });
 locus.data.must("deck").at(["slides"]).update(() => []);
 
 declare const mixedSchema: HsonSchema<{ optional?: number[]; choice: number[] | { n: number }; tuple: readonly [string, number] }, "data">;
-const mixed = hsonLiveMap.locus.create({ "state": { data: { choice: [], tuple: ["one", 1] }, schema: mixedSchema, access: "shared" } });
+const mixed = hsonLiveMap.locus.create({ "state": { json: { choice: [], tuple: ["one", 1] }, schema: mixedSchema, access: "shared" } });
 const choice = mixed.data.must("state").at(["choice"]);
 if (choice.kind() === "array") {
   // @ts-expect-error kind() observation cannot certify a changing location.
@@ -121,7 +121,7 @@ mixed.stage(writer => {
   writer.data.must("state").at(["optional"]).asArray().array.push(1);
 });
 declare const unknownSchema: HsonSchema<{ value: unknown }, "data">;
-const uncertain = hsonLiveMap.fromLibraries({ state: { data: { value: [] }, schema: unknownSchema } });
+const uncertain = hsonLiveMap.fromLibraries({ state: { json: { value: [] }, schema: unknownSchema } });
 uncertain.batch(writer => {
   const value = writer.data.must("state").at(["value"]);
   // @ts-expect-error Unknown values cannot certify an array.

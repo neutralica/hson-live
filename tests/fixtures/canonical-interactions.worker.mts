@@ -30,7 +30,7 @@ const listener: InteractionListener = Object.freeze({
 
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: "<main <button/>/>", schema: PageSchema },
   });
 }

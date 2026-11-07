@@ -13,7 +13,7 @@ const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const authority = hsonLiveMap.fromLibraries({
   page: { document: "<main <item \"old\"/>/>", schema: PageSchema },
-  privateData: { data: { value: "PRIVATE_SENTINEL" }, schema: DataSchema },
+  privateData: { json: { value: "PRIVATE_SENTINEL" }, schema: DataSchema },
 });
 const engine = internal_livemap_aggregate_authority(authority);
 const pageId = engine.libraries()[0]!;

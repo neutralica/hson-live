@@ -145,12 +145,12 @@ check("Document structural carriers remain ineligible", () => {
 });
 
 check("data object maps expose no document identity surface", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } });
   assert.equal(Reflect.get(map.data.must("state"), "document"), undefined);
 });
 
 check("data libraries with arrays expose no document identity surface", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { values: [1, 2, 3] }, schema: Hson.schema`<type "data" content <values "any">>` } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { values: [1, 2, 3] }, schema: Hson.schema`<type "data" content <values "any">>` } });
   assert.equal(Reflect.get(map.data.must("state"), "document"), undefined);
 });
 

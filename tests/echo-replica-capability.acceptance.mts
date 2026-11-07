@@ -3,7 +3,7 @@ import { Hson, hsonLiveMap } from "../src/index.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 
 const StateSchema = Hson.schema`<type "data" content <value "number">>`;
-const registry = () => hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
+const registry = () => hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: StateSchema } });
 
 {
   const map = registry();

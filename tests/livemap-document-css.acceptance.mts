@@ -6,7 +6,7 @@ import { decode_portable_document_stylesheet, render_portable_document_styleshee
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 const document = '<html <head <title "CSS"/> <style "body{font-size:12px;}"/>/> <body <main id="home-screen" "Hello"/>/>/>';
-const map = hsonLiveMap.fromLibraries({ page: { document }, data: { data: { count: 1 } } });
+const map = hsonLiveMap.fromLibraries({ page: { document }, data: { json: { count: 1 } } });
 const page = map.doc.must("page");
 const data = map.data.must("data");
 if (false) {
@@ -32,7 +32,7 @@ assert.deepEqual(map.capture().libraries.find((item) => item.name === "page")?.c
   { rules: [], properties: [], keyframes: [], order: [] });
 assert.equal("css" in (map.capture().libraries.find((item) => item.name === "data") ?? {}), false);
 assert.doesNotMatch(document_html(map.doc.must("page")), /data-hson-managed-document-css/);
-assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: 1, stylesheet: {} } } as never), /Initial CSS requires a document/);
+assert.throws(() => hsonLiveMap.fromLibraries({ data: { json: 1, stylesheet: {} } } as never), /Initial CSS requires a document/);
 assert.equal(hsonLiveMap.fromLibraries({ page: { document, stylesheet: {} } }).doc.must("page").css.snapshot(), "");
 
 const empty = map.capture();
@@ -96,7 +96,7 @@ assert.deepEqual(cut.libs.libraries.find((item) => item.name === "page")?.css,
 map.restore(styled);
 assert.equal(page.css.snapshot(), css);
 assert.equal(document_html(map.doc.must("page")), html);
-const fresh = hsonLiveMap.fromLibraries({ page: { document }, data: { data: { count: 1 } } });
+const fresh = hsonLiveMap.fromLibraries({ page: { document }, data: { json: { count: 1 } } });
 for (const commit of commits) fresh.replay(commit);
 assert.deepEqual(fresh.capture(), styled);
 assert.equal(document_html(fresh.doc.must("page")), html);

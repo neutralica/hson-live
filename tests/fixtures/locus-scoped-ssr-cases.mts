@@ -23,7 +23,7 @@ export const definition = [{ "parts": { parts: {
     global: { kind: "document", document: '<aside hson:part "Bare"/>', stylesheet: '@keyframes pulse{from{opacity:0}to{opacity:1}}@property --tone{syntax:"<color>";inherits:true;initial-value:red}' },
     bare: { kind: "document", document: '<aside hson:part "Bare"/>' },
     unused: { kind: "document", document: '<i hson:part "PRIVATE_TEMPLATE"/>', stylesheet: 'i{--private:PRIVATE_CSS}' },
-  }, access: "private" }, "secret": { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>', stylesheet: 'body{--private:PRIVATE_LIBRARY_CSS}', access: "private" }, "page": { ...page, stylesheet: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', stylesheet: 'p{color:navy}', access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "data": { data: { n: 0 }, access: "shared" } }, { authorizeProjection }] as const;
+  }, access: "private" }, "secret": { document: '<html <head/> <body "PRIVATE_DOCUMENT"/>/>', stylesheet: 'body{--private:PRIVATE_LIBRARY_CSS}', access: "private" }, "page": { ...page, stylesheet: 'p{color:red}p{CoLoR:rgb(40,50,60)}#left{--own:11px}#right{--own:13px}section{margin-left:var(--own)}', access: "shared" }, "flat": { document: '<html <head/> <body <p "Flat"/>/>/>', stylesheet: 'p{color:navy}', access: "shared" }, "bare": { document: '<main <hson-part lib="parts" at="bare"/>/>', access: "shared" }, "data": { json: { n: 0 }, access: "shared" } }, { authorizeProjection }] as const;
 export function node(source: string) {
   const value = hsonTransform.fromHson(source).toNode().$_content[0];
   if (typeof value !== "object" || value === null) throw Error("Expected element");
@@ -54,7 +54,7 @@ export async function fixture() {
 
 export async function scoped_ssr_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
   await check("structured Part SSR and bootstrap expose only realized output at the captured revision", async () => {
-    const slide = Hson.data`<title "Visible" no -0 private "PRIVATE_ARGUMENT">`;
+    const slide = Hson.data.parse`<title "Visible" no -0 private "PRIVATE_ARGUMENT">`;
     const control = (data: string) => Hson.document`<hson-part lib="parts" at="leaf" slide:data="${data}"/>`;
     const locus = hsonLiveMap.locus.create({ parts: {access:'private', parts: {
       panel: {kind:'document', document:'<section hson:part doc:control="%{control}" @:root <hson-part @:child ^{control}/>/>', stylesheet:':scope{color:red}'},
@@ -70,7 +70,7 @@ export async function scoped_ssr_cases(check: (name: string, run: () => Promise<
         w.doc.must('page').at([1]).asElement().insert(1, node('<hson-part lib="parts" at="panel" control:doc="broken"/>'));
       }));
       assert.deepEqual(session.now({html:'page'}), cut);
-      await locus.stage(w => w.doc.must('page').at([1,0]).replace(node(Hson.document`<hson-part lib="parts" at="panel" control:doc="${control((Hson.data`<title "Next" no 3>`).toHson())}"/>`)));
+      await locus.stage(w => w.doc.must('page').at([1,0]).replace(node(Hson.document`<hson-part lib="parts" at="panel" control:doc="${control((Hson.data.parse`<title "Next" no 3>`).toHson())}"/>`)));
       const next = session.now({html:'page'}); assert_cut(next, 4);
       assert.equal(next.libs.revision, cut.libs.revision + 1); assert.match(next.html, /title="Next">3<\/b>/);
       assert.match(cut.html, /title="Visible">0<\/b>/);

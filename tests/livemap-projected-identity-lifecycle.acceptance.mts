@@ -31,7 +31,7 @@ const check = (name: string, run: () => void) => {
   } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const ObjectSchema = Hson.schema`<type "data" content <a <optional "any"> b <optional "any"> z <optional "any"> y <optional "any">>>`;
 const ArraySchema = Hson.schema`<type "data" defs <Root <array "any">> content <ref "Root">>`;
-const map = (value: JsonValue) => hson.liveMap.fromLibraries({ state: { data: value, schema: Array.isArray(value) ? ArraySchema : ObjectSchema } });
+const map = (value: JsonValue) => hson.liveMap.fromLibraries({ state: { json: value, schema: Array.isArray(value) ? ArraySchema : ObjectSchema } });
 
 check("nested scalar mutation preserves container identity", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m.data.must("state"), ["a"]); m.data.must("state").at(["a", "x"]).set(2); assert.deepEqual(h.snap(), { x: 2 }); });
 check("unrelated property insertion preserves identity", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.data.must("state"), ["a"]); m.data.must("state").at([]).asObject()!.object.setKey("b", 1); assert.deepEqual(h.path(), ["a"]); });
@@ -57,7 +57,7 @@ check("durable restore fences old handles", () => { const m = map({ a: {} }); co
 check("different registry capture cannot invalidate known topology", () => {
   const source = map({ a: { value: 1 } });
   acquire_projected_identity(source.data.must("state"), ["a"]);
-  const incompatible = hson.liveMap.fromLibraries({ other: { data: { a: { value: 1 } }, schema: ObjectSchema } }).capture();
+  const incompatible = hson.liveMap.fromLibraries({ other: { json: { a: { value: 1 } }, schema: ObjectSchema } }).capture();
   const target = map({ a: { value: 0 } });
   const oldState = target.data.must("state");
   const oldIdentity = acquire_projected_identity(oldState, ["a"]);

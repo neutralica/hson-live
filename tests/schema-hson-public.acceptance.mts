@@ -55,7 +55,7 @@ check("named Library Schemas retain admission evidence and equal no-op confirmat
   assert.match(declaration, /schema: Readonly<\{\s*get: \(\) => LiveMapCurrentDataSchema<TSchema>;\s*use: LiveMapSchemaUse<LiveMapDataSchemaUse<TSchema>, TLibrary>;\s*\}>;/);
   assert.match(declaration, /schema: Readonly<\{\s*get: \(\) => LiveMapCurrentDocumentSchema<TSchema>;\s*use: LiveMapSchemaUse<LiveMapDocumentSchemaUse<TSchema>, TLibrary>;\s*\}>;/);
   const schema = root.Hson.schema`<type "data" content <age "number">>`;
-  const registry = root.hsonLiveMap.fromLibraries({ state: { data: { age: 37 }, schema } });
+  const registry = root.hsonLiveMap.fromLibraries({ state: { json: { age: 37 }, schema } });
   assert.equal(registry.data.must("state").schema.get(), schema);
   assert.equal(typeof registry.data.must("state").schema.use, "function");
   assert.equal(Reflect.apply(registry.data.must("state").schema.use, undefined, [schema]).changed, false);
@@ -64,7 +64,7 @@ check("named Library Schemas retain admission evidence and equal no-op confirmat
 
 check("Schema object owns certification and portable Schema data", () => {
   const schema: root.HsonSchema = root.Hson.schema`<type "data" content <age "number">>`;
-  const canonical = root.Hson.data`<age 37>`;
+  const canonical = root.Hson.data.parse`<age 37>`;
   assert.equal(schema.certify(canonical), canonical);
   assert.throws(() => schema.certify(root.Hson.canonical`<age "37">`));
   assert.equal(typeof schema, "object");
@@ -88,7 +88,8 @@ check("Data uses authentic carriers while source remains text and Hson is noncal
   const declaration = readFileSync(new URL("../dist/hson-authoring.d.ts", import.meta.url), "utf8");
   assert.match(declaration, /export declare const Hson: Readonly/);
   assert.equal(typeof root.Hson.canonical`37`, "string");
-  assert.ok(root.Hson.data`37` instanceof root.HsonDataValue);
+  assert.equal(typeof root.Hson.data`37`, "string");
+  assert.ok(root.Hson.data.parse`37` instanceof root.HsonDataValue);
   assert.equal(typeof root.Hson.document`<main/>`, "string");
   assert.throws(() => (root.Hson as unknown as Function)(), TypeError);
   assert.equal(Object.hasOwn(String.prototype, "certify"), false);

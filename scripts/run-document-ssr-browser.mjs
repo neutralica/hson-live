@@ -87,8 +87,8 @@ try {
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>]>>]>>`;
   const localSelectionMap = admit_exact_runtime_livemap_libraries({
-    state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
-    omitted: { data: true },
+    state: { json: { count: 7 }, schema: LocalLibrariesStateSchema },
+    omitted: { json: true },
     page: { document: parse_hson_exact_runtime('<html <head/> <body <main id="local-libraries-ssr" <button @000005204/>/>/>/>', { allowTopLevelDocumentText: true }), schema: LocalLibrariesPageSchema },
   });
   const localSelection = localSelectionMap.cut({ data: ["state"], documents: ["page"], html: "page" });
@@ -114,7 +114,7 @@ try {
     key: "state.interaction",
     payload: Hson.data.from(null),
   });
-  librariesLocus = hsonLiveMap.locus.create({ "state": { data: { count: 0 }, schema: StateSchema, access: "shared" }, "page": { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema, access: "shared" }, "admin": { document: "<aside/>", schema: AdminSchema, access: "shared" } }, { sessions: {}, interactions: [browserInteraction, authorityInteraction], defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }), actions: {
+  librariesLocus = hsonLiveMap.locus.create({ "state": { json: { count: 0 }, schema: StateSchema, access: "shared" }, "page": { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema, access: "shared" }, "admin": { document: "<aside/>", schema: AdminSchema, access: "shared" } }, { sessions: {}, interactions: [browserInteraction, authorityInteraction], defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }), actions: {
       "state.increment": (context) => context.stage.data.must("state").at(["count"]).set(2),
       "state.interaction": (context) => context.stage.data.must("state").at(["count"]).set(5),
     } });
@@ -162,7 +162,7 @@ try {
   const cssSocketUrl = `ws://127.0.0.1:${cssSocketAddress.port}`;
 
   const quadMap = make_livemap_from_authored_libraries_internal({ page: { document:
-    '<html @:root <head/> <body <button @:target id="hosted-quad"/>/>/>' }, secret: { data: { sentinel: "PRIVATE_ROOT_RECOVERY" } }, side: { document: "<aside/>" } });
+    '<html @:root <head/> <body <button @:target id="hosted-quad"/>/>/>' }, secret: { json: { sentinel: "PRIVATE_ROOT_RECOVERY" } }, side: { document: "<aside/>" } });
   enable_interactions(quadMap);
   add_interaction(quadMap, { ...browserInteraction, id: "quad-root-click", subject: { library: "page", path: [0] }, key: "rootClick" });
   quadMap.doc.must("page").css.stylesheet('#hosted-quad{color:rgb(11,22,33)}');

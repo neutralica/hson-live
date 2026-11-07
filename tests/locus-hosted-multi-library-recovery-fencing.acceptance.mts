@@ -109,7 +109,7 @@ function socket_pair(): Readonly<{
 }
 
 function make_map() {
-  return hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
+  return hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: StateSchema } });
 }
 
 function make_projected_map() {

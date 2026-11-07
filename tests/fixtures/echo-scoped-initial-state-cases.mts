@@ -40,7 +40,7 @@ async function fixture(flat = false, structural = false) {
     panel: { kind: "document", document: structural ? '<section hson:part doc:control="%{control}" @:root <hson-part @:child ^{control}/>/>': '<section hson:part @:root <hson-part @:child at="leaf"/>/>', stylesheet: '@media screen{:scope{padding:3px}}' },
     secret: { kind: "document", document: '<strong hson:part "PRIVATE_PART_SENTINEL"/>' },
   }), page: { document: flat ? '<main @:page <footer @:footer/>/>' : '<main @:page ' + invocation.replace('<hson-part ', '<hson-part @:left ') + ' ' + invocation + ' <footer @:footer/>/>' },
-  data: { data: { n: 0 } }, zpage: { document: flat ? '<aside/>' : '<aside <hson-part lib="parts" at="leaf"/>/>' },
+  data: { json: { n: 0 } }, zpage: { document: flat ? '<aside/>' : '<aside <hson-part lib="parts" at="leaf"/>/>' },
   hidden: { document: '<p "PRIVATE_LIBRARY_SENTINEL"/>' } }, [], undefined,
   { page: structured_css_fixture(flat ? 'main{margin:7px}' : 'main{margin:7px} [hson\\:quad="footer"]{border:0}') });
   const a = authority(map);
@@ -57,7 +57,7 @@ async function fixture(flat = false, structural = false) {
   const batches: PrivateScopedAggregateCommit[] = [];
   const l = locus({ map, ...(flat ? {} : { scopedDocuments: true }), prepareGate: ({ transition }) => { batches.push(prepare_locus_scoped_commit_internal(map, transition, effective)); } });
   const state = () => capture(map, effective, true);
-  const fresh = (snapshot = state()) => receive(snapshot, local_initializers({ local: { data: { n: 5 } }, localPage: { document: '<nav @:local/>' } }));
+  const fresh = (snapshot = state()) => receive(snapshot, local_initializers({ local: { json: { n: 5 } }, localPage: { document: '<nav @:local/>' } }));
   const stage = async (write: (w: LocusHostedAggregateStageWriter) => void) => { await l.stage(write); return batches.at(-1)!; };
   return { map, a, pageId, effective, l, state, fresh, stage };
 }
@@ -344,7 +344,7 @@ export async function scoped_initial_cases(check: (name: string, run: () => Prom
   });
 
   await check("absent scopes retain flat continuity; explicit empty scopes reconstruct and remain private", async () => {
-    const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, data: { data: { n: 0 } } }), a = authority(map);
+    const map = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, data: { json: { n: 0 } } }), a = authority(map);
     const policy = make_locus_hosted_projection_policy(a.hostedRegistry(), a.hostedPosition().authority,
       [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" }], undefined, () => ({ libraries: ["page", "data"] }));
     const effective = await normalize_locus_effective_projection(policy, { libraries: ["page", "data"] });

@@ -94,7 +94,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   // Internal authority probes must share the source runtime that creates their maps.
   await check("public Parts final validation retains reentrancy and management fences", () => {
     for (const effect of ["edit", "management"] as const) {
-      const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+      const map = hsonLiveMap.fromLibraries({ state: { json: { count: 1 } } });
       const aggregate = owner(map), manager = {};
       let captured = false, reentered = false, observations = 0, expected = map.capture();
       const stop = map.commits.observe(() => observations++);
@@ -111,13 +111,13 @@ export async function part_collection_cases(check: (name: string, run: () => voi
         },
       });
       try {
-        assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition }),
+        assert.throws(() => map.addLibraries({ earlier: { json: 2 }, parts: definition }),
           effect === "edit" ? /changed during capture/ : /controlled by an exclusive Locus authority/);
         assert.equal(reentered, true); assert.deepEqual(map.capture(), expected);
         assert.equal(observations, effect === "edit" ? 1 : 0);
         assert.throws(() => map.data.must("earlier")); assert.throws(() => map.parts.must("parts"));
       } finally { if (effect === "management" && reentered) aggregate.releaseManagement(manager); stop(); }
-      map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} } });
+      map.addLibraries({ earlier: { json: 2 }, parts: { parts: {} } });
       const earlier = map.data.must("earlier");
       if (String(earlier.mode) === "document") throw Error("Expected data Library");
       assert.equal(earlier.snap(), 2);
@@ -125,9 +125,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
 
   await check("installed Parts reject direct, widened, replayed, and reconstructed Schema attachment atomically", () => {
-    const definitions = { collection: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, state: { data: 1 } } as const;
+    const definitions = { collection: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, state: { json: 1 } } as const;
     const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
-    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: definitions.collection.parts }, state: { data: 1 } });
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { json: definitions.collection.parts }, state: { json: 1 } });
     const replay = { kind: "map" as const, changed: true, prevRev: 0, rev: 1,
       operations: [{ library: "collection", operation: { kind: "library-schema-use" as const,
         previousSchemaDigest: ordinary.capture().registry.libraries[0]!.schemaDigest, schema: schema.toHson() } }] };
@@ -188,7 +188,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
 
   await check("reconstructed and hosted contracts cannot claim Parts plus a supplemental Schema", () => {
     const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
-    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: { p: { kind: "document", document: "<p hson:part/>" } }, schema } });
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { json: { p: { kind: "document", document: "<p hson:part/>" } }, schema } });
     const snapshot = ordinary.capture();
     const entries = snapshot.registry.libraries.map(entry => ({ ...entry, validation }));
     // The canonical registry owner rejects even internally reconstructed evidence.
@@ -204,7 +204,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("ordinary data and document Schemas fixed at admission retain governance", () => {
     const dataSchema = Hson.schema`<type "data" content <count "number">>`;
     const pageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
-    const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: dataSchema }, page: { document: "<main/>", schema: pageSchema } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { count: 1 }, schema: dataSchema }, page: { document: "<main/>", schema: pageSchema } });
     const state = map.data.must("state"), page = map.doc.must("page");
     assert.equal(state.schema.get(), dataSchema); assert.equal(page.schema.get(), pageSchema);
     assert.equal(Reflect.apply(state.schema.use, undefined, [dataSchema]).changed, false);
@@ -243,7 +243,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.throws(() => read(map, "collection", name), /Part name .*must not contain/);
       assert.throws(() => map.parts.must("collection").at([name]), /Part name .*must not contain/);
     }
-    const ordinary = hsonLiveMap.fromLibraries({ data: { data: { "a/b": "https://example.test/a/b" } } });
+    const ordinary = hsonLiveMap.fromLibraries({ data: { json: { "a/b": "https://example.test/a/b" } } });
     assert.equal(ordinary.data.must("data").snap(["a/b"]), "https://example.test/a/b");
     // Keep the connector valid so collection admission isolates the invalid Part key.
     assert.throws(() => hsonLiveMap.fromLibraries({ collection: { parts: {
@@ -276,7 +276,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.equal(read(map, "arbitrary library", "button").quads, undefined);
     assert.equal(owner(map).identityEpoch().issued().size, 0);
     const before = map.capture(); read(map, "arbitrary library", "controls"); assert.deepEqual(map.capture(), before);
-    const ordinary = hsonLiveMap.fromLibraries({ controls: { data: { button: { kind: "document", document: '<bad' } } } });
+    const ordinary = hsonLiveMap.fromLibraries({ controls: { json: { button: { kind: "document", document: '<bad' } } } });
     assert.equal(ordinary.capture().registry.libraries[0]!.validation, undefined);
     assert.throws(() => read(ordinary, "controls", "button"));
   });
@@ -320,9 +320,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     ];
     for (const bad of failures) {
       const candidate = { good: parts()["二"], late: bad };
-      assert.throws(() => hsonLiveMap.fromLibraries({ collection: { data: candidate, validation } } as never));
+      assert.throws(() => hsonLiveMap.fromLibraries({ collection: { json: candidate, validation } } as never));
       const map = fixture(); atomic(map, () => collect(map, "next", candidate));
-      atomic(map, () => map.addLibraries({ next: { data: candidate, validation } } as never).commit);
+      atomic(map, () => map.addLibraries({ next: { json: candidate, validation } } as never).commit);
       assert.throws(() => map.data.must("next"));
     }
   });
@@ -337,10 +337,10 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       const map = fixture(); atomic(map, () => collect(map, "next", input));
     }
     assert.equal(reads, 0);
-    for (const evidence of [undefined, "other", null]) assert.throws(() => hsonLiveMap.fromLibraries({ collection: { data: {}, validation: evidence } } as never));
+    for (const evidence of [undefined, "other", null]) assert.throws(() => hsonLiveMap.fromLibraries({ collection: { json: {}, validation: evidence } } as never));
     assert.throws(() => hsonLiveMap.fromLibraries({ collection: { document: '<p/>', validation } } as never));
-    assert.throws(() => hsonLiveMap.fromLibraries({ collection: { data: [], validation } } as never));
-    const accessor = Object.defineProperty({ data: {} }, "validation", { enumerable: true, get() { reads++; return validation; } });
+    assert.throws(() => hsonLiveMap.fromLibraries({ collection: { json: [], validation } } as never));
+    const accessor = Object.defineProperty({ json: {} }, "validation", { enumerable: true, get() { reads++; return validation; } });
     assert.throws(() => hsonLiveMap.fromLibraries({ collection: accessor })); assert.equal(reads, 0);
   });
   await check("all data field and object mutation helpers validate the complete final collection before publication", () => {
@@ -386,7 +386,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("ordinary Library uniqueness and aggregate authority fences apply uniformly", () => {
     const map = fixture(), aggregate = owner(map), manager = {};
     atomic(map, () => collect(map, "collection", parts()));
-    atomic(map, () => map.addLibraries({ collection: { data: {} } } as never).commit);
+    atomic(map, () => map.addLibraries({ collection: { json: {} } } as never).commit);
     aggregate.claimManagement(manager);
     try { atomic(map, () => collect(map, "next", parts())); atomic(map, () => data(map).at(["二", "document"]).set('<p hson:part/>')); }
     finally { aggregate.releaseManagement(manager); }
@@ -472,7 +472,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("detached cut bounds and realization preserve captured siblings and completed source edits", () => {
     for (const phase of ["state-size", "html-size", "html-realization"]) {
-      const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), state: { data: { count: 0 } },
+      const map = hsonLiveMap.fromLibraries({ collection: definition(parts()), state: { json: { count: 0 } },
         page: { document: '<html <head/> <body data-cut="before"/>/>' } });
       const library = data(map), page = map.doc.must("page");
       if (page.mode !== "document") throw Error("Expected document");
@@ -536,7 +536,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.deepEqual(map.capture(), capture); atomic(map, () => data(map).at(["二", "document"]).set('<p'));
     const fresh = install_libraries_snapshot(structuredClone(capture)).map;
     assert.deepEqual(fresh.capture(), capture); atomic(fresh, () => data(fresh).at(["二", "document"]).set('<p'));
-    const different = hsonLiveMap.fromLibraries({ ordinary: { data: {} } });
+    const different = hsonLiveMap.fromLibraries({ ordinary: { json: {} } });
     // This actual internal owner route admits a different complete topology;
     // the public restore intentionally requires its current registry digest.
     owner(different).restoreLibraries(capture);
@@ -551,7 +551,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("malformed portable collections fail at every snapshot checkpoint and receiving owner admission", async () => {
     const map = fixture(), invalid = invalidSnapshot(map.capture()), aggregate = owner(map);
     atomic(map, () => map.restore(invalid)); assert.throws(() => install_libraries_snapshot(invalid));
-    const other = hsonLiveMap.fromLibraries({ other: { data: {} } }); atomic(other, () => other.restore(invalid));
+    const other = hsonLiveMap.fromLibraries({ other: { json: {} } }); atomic(other, () => other.restore(invalid));
     const checkpoint = aggregate.captureSemanticCheckpoint();
     const badCheckpoint = { ...checkpoint, libraries: checkpoint.libraries.map(entry => ({ ...entry, root: decode_hosted_root(invalid.libraries[0]!.root) })) };
     atomic(map, () => aggregate.installSemanticCheckpoint(badCheckpoint));
@@ -569,7 +569,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("existing owners reject coherent ordinary-data restores that would remove their Part contract", () => {
     const map = fixture();
-    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: { bad: { kind: "document", document: '<p' } } } });
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { json: { bad: { kind: "document", document: '<p' } } } });
     atomic(map, () => owner(map).restoreLibraries(ordinary.capture()), /Immutable Part|validation contract/);
     const portable = make_portable_aggregate_snapshot(owner(map).captureHosted());
     const mirror = make_livemap_client_composition_from_portable_aggregate_internal(portable), manager = {};
@@ -605,7 +605,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     try {
       owner(mirror).replayClientHostedManaged(manager, replay, snapshot.revision);
       assert.deepEqual(data(mirror).snap(["added"]), parts()["二"]);
-      const badSource = hsonLiveMap.fromLibraries({ collection: { data: data(map).snap()! } });
+      const badSource = hsonLiveMap.fromLibraries({ collection: { json: data(map).snap()! } });
       owner(badSource).setInitialHostedAuthority(snapshot.authority);
       const badCommit = owner(badSource).commit([{ target: owner(badSource).target(owner(badSource).libraries()[0]!, ["二", "document"]), kind: "set", value: admit_projected_value('<p') }]);
       const bad = { ...make_portable_aggregate_commit(badCommit.hosted!)!, registryDigest: owner(mirror).clientProjection()!.registry.digest };
@@ -634,7 +634,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     assert.equal(switched, true);
     without_structured_clone(() => {
       const legacy = hsonLiveMap.fromLibraries({});
-      legacy.addLibraries({ ordinary: { data: { value: 1 } } });
+      legacy.addLibraries({ ordinary: { json: { value: 1 } } });
       collect(legacy, "collection", parts());
       assert.equal(read(legacy, "collection", "二").key, "二");
       assert.equal(legacy.capture().registry.libraries.length, 2);
@@ -711,7 +711,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     reconstructed!.dispose();
   });
   await check("client-local Part initializer and repeated installation preserve validation and reject malformed seeds", async () => {
-    const locus = hsonLiveMap.locus.create({ "base": { data: { value: 1 }, access: "shared" } }, { local: [{ name: "collection", initializer: definition(parts()) }], authorizeProjection: () => ({ libraries: ["base", "collection"] }) });
+    const locus = hsonLiveMap.locus.create({ "base": { json: { value: 1 }, access: "shared" } }, { local: [{ name: "collection", initializer: definition(parts()) }], authorizeProjection: () => ({ libraries: ["base", "collection"] }) });
     const session = await locus.session.create({ libraries: ["base", "collection"] }), pair = sockets();
     const now = session.now(); assert.equal(now.local[0]!.validation, validation);
     const bad = now.local.map(entry => ({ ...entry, root: encode_hosted_root(graph({ bad: { kind: "document", document: '<p' } })) }));
@@ -732,7 +732,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     } finally { echo.dispose(); detach(); locus.dispose(); }
   });
   await check("runtime hosted admission projects one data binding and durable reconstruction retains its contract", async () => {
-    const adapter = new MemoryCheckpointAdapter(), options = [{ "base": { data: { value: 1 }, access: "shared" } }, { logicalMapId: "runtime-part-collection", persistence: adapter, authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) => ({ libraries: requested.libraries }) }] as const;
+    const adapter = new MemoryCheckpointAdapter(), options = [{ "base": { json: { value: 1 }, access: "shared" } }, { logicalMapId: "runtime-part-collection", persistence: adapter, authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) => ({ libraries: requested.libraries }) }] as const;
     const locus = await hsonLiveMap.locus.resume(options[0], options[1]), map = locus_map_internal(locus), pair = sockets();
     const session = await locus.session.create({ libraries: ["base"] }), detach = bind_locus_websocket(locus, pair.server);
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
@@ -749,7 +749,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.equal(owner(echo_map_internal(echo)).libraries().length, 2);
       assert.equal(pair.wire.some(raw => raw.includes('hson-part-collection-v1')), true);
       const revision = map.rev;
-      await assert.rejects(locus.admit({ "collection": { data: {}, access: "shared" } }));
+      await assert.rejects(locus.admit({ "collection": { json: {}, access: "shared" } }));
       assert.equal(map.rev, revision);
     } finally { echo.dispose(); detach(); locus.dispose(); }
     const resumed = await hsonLiveMap.locus.resume(options[0], options[1]);
@@ -794,7 +794,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     await assert.rejects(() => load_persistent_locus_hosted_aggregate_internal(checkpoint.authority.logicalMapId, { persistence: adapter }));
   });
   await check("own contract evidence cannot be hidden by Proxy property reads in restore or SSR export", () => {
-    const ordinary = hsonLiveMap.fromLibraries({ collection: { data: parts() } }).capture();
+    const ordinary = hsonLiveMap.fromLibraries({ collection: { json: parts() } }).capture();
     const entry = ordinary.registry.libraries[0]!;
     const disguised = new Proxy({ ...entry, validation }, { get(target, key, receiver) {
       return key === "validation" ? undefined : Reflect.get(target, key, receiver);

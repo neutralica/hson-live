@@ -31,7 +31,7 @@ const check = (name: string, run: () => void): void => {
 };
 
 check("one named data library retains its state identity across graph changes", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada", age: 37 }, schema: DataSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { name: "Ada", age: 37 }, schema: DataSchema } });
   const state = map.data.must("state");
   const authority = internal_livemap_aggregate_authority(map);
   const before = authority.inspect().libraries[0]!;
@@ -47,7 +47,7 @@ check("one named data library retains its state identity across graph changes", 
 });
 
 check("one registry ledger survives library-local graph changes", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { item: {} }, schema: ItemSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { item: {} }, schema: ItemSchema } });
   const state = map.data.must("state");
   const authority = internal_livemap_aggregate_authority(map);
   const before = authority.inspect().libraries[0]!;

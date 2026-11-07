@@ -127,7 +127,7 @@ check("discovery neither mints QUIDs nor advances revision", () => {
 });
 check("data locations do not gain document ID discovery", () => {
   const Data = Hson.schema`<type "data" content <id "string">>`;
-  const data = hsonLiveMap.fromLibraries({ state: { data: { id: "x" }, schema: Data } }).data.must("state");
+  const data = hsonLiveMap.fromLibraries({ state: { json: { id: "x" }, schema: Data } }).data.must("state");
   const page = registry('<main id="x"/>', Root).doc.must("page");
   assert.equal("id" in data.at([]), false);
   assert.equal("id" in page.document, false);

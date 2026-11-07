@@ -52,7 +52,7 @@ with_program(documentConfig, new Map(), (document) => {
 const consumerText = readFileSync(mvpConsumer, "utf8");
 (() => {
   with_program(mvpConfig, new Map([[mvpConsumer,
-    consumerText.replace('const authored: HsonDataValue<typeof UserSchema> = Hson.data', 'const authored: HsonDataValue<typeof UserSchema> = BrokenHson.data')
+    consumerText.replace('const authored: HsonData<typeof UserSchema> = Hson.data', 'const authored: HsonData<typeof UserSchema> = BrokenHson.data')
     + '\nimport { Hson as BrokenHson } from "hson-live\n']]), (malformedProducerImport) => {
     assert.ok(malformedProducerImport.getSyntacticDiagnostics().length > 0);
     assert.equal(verified_schema_assignment_ranges(ts, malformedProducerImport, mvpConsumer).length, 4,
@@ -63,20 +63,20 @@ const consumerText = readFileSync(mvpConsumer, "utf8");
 })();
 const mvpProducer = resolve(repositoryRoot, "tests/fixtures/hson-schema-mvp/producer.ts");
 const aliases = `
-import type { HsonSchema, HsonFromSchema, HsonDataValue as Data } from "hson-live";
+import type { HsonSchema, HsonFromSchema, HsonData as Data } from "hson-live";
 import type { ImportedDeck } from "./producer.js";
 type HsonDeck = HsonFromSchema<typeof UserSchema>; type HsonChain = HsonDeck;
 type HsonWrapped<S extends HsonSchema> = HsonFromSchema<S>;
-type Deck = HsonDataValue<typeof UserSchema>;
+type Deck = HsonData<typeof UserSchema>;
 export type ExportedDeck = Deck;
 type Chain = ExportedDeck;
 type Wrapped<S extends HsonSchema<unknown, "data">> = Data<S>;
 type WrappedAgain<S extends HsonSchema<unknown, "data">> = Wrapped<S>;
 `;
 for (const annotation of ["Deck", "ExportedDeck", "Chain", "WrappedAgain<typeof UserSchema>", "ImportedDeck", "HsonFromSchema<typeof UserSchema>", "HsonDeck", "HsonChain", "HsonWrapped<typeof UserSchema>"]) {
-  const text = consumerText.replace("const authored: HsonDataValue<typeof UserSchema>", `const authored: ${annotation}`) + aliases;
+  const text = consumerText.replace("const authored: HsonData<typeof UserSchema>", `const authored: ${annotation}`) + aliases;
   with_program(mvpConfig, new Map([[mvpConsumer, text], [mvpProducer,
-    readFileSync(mvpProducer, "utf8") + '\nimport type { HsonDataValue } from "hson-live"; export type ImportedDeck = HsonDataValue<typeof UserSchema>;\n']]), (aliasProgram) => {
+    readFileSync(mvpProducer, "utf8") + '\nimport type { HsonData } from "hson-live"; export type ImportedDeck = HsonData<typeof UserSchema>;\n']]), (aliasProgram) => {
     assert.equal(verified_schema_assignment_ranges(ts, aliasProgram, mvpConsumer).length, 5, annotation);
     assert.equal(filtered_schema_assignment_errors(aliasProgram, mvpConsumer).length, 0, annotation);
   });
@@ -103,14 +103,14 @@ with_program(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"
   const failures = (program: ts.Program) => static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!)
     .filter(entry => entry.file === mvpConsumer).map(({ code, message }) => ({ code, message }));
   with_program(mvpConfig, new Map([[mvpConsumer,
-    consumerText.replace('<name "Ada"', "<name 37").replace("const authored: HsonDataValue<typeof UserSchema>", "const authored: Chain") + aliases]]), (aliasInvalid) => {
+    consumerText.replace('<name "Ada"', "<name 37").replace("const authored: HsonData<typeof UserSchema>", "const authored: Chain") + aliases]]), (aliasInvalid) => {
     assert.deepEqual(failures(aliasInvalid), failures(directInvalid));
     assert.equal(failures(aliasInvalid).length, 1);
     assert.equal(verified_schema_assignment_ranges(ts, aliasInvalid, mvpConsumer).length, 4);
   });
   for (const annotation of ["HsonFromSchema<typeof UserSchema>", "HsonChain"]) {
     with_program(mvpConfig, new Map([[mvpConsumer,
-      consumerText.replace('<name "Ada"', "<name 37").replace("const authored: HsonDataValue<typeof UserSchema>", `const authored: ${annotation}`) + aliases]]), (unifiedInvalid) => {
+      consumerText.replace('<name "Ada"', "<name 37").replace("const authored: HsonData<typeof UserSchema>", `const authored: ${annotation}`) + aliases]]), (unifiedInvalid) => {
       assert.deepEqual(failures(unifiedInvalid), failures(directInvalid), annotation);
       assert.equal(verified_schema_assignment_ranges(ts, unifiedInvalid, mvpConsumer).length, 4, annotation);
     });
@@ -132,12 +132,12 @@ with_program(documentConfig, new Map([[documentConsumer, invalidDocumentText]]),
 });
 
 
-const safetyText = consumerText.replace("const authored: HsonDataValue<typeof UserSchema>", "const authored: Unresolved") + `
-type Unresolved = HsonDataValue<typeof MissingSchema>;
+const safetyText = consumerText.replace("const authored: HsonData<typeof UserSchema>", "const authored: Unresolved") + `
+type Unresolved = HsonData<typeof MissingSchema>;
 type Unrelated = string;
 type CycleA = CycleB; type CycleB = CycleA;
-type Shadow = Fake.HsonDataValue<typeof UserSchema>;
-declare namespace Fake { type HsonDataValue<S> = string; }
+type Shadow = Fake.HsonData<typeof UserSchema>;
+declare namespace Fake { type HsonData<S> = string; }
 type Value = JsonFromSchema<typeof UserSchema>;
 const projected: Value = Hson.data\`<name "Ada">\`;
 const unrelated: Unrelated = Hson.data\`<name "Ada">\`;
@@ -185,7 +185,7 @@ with_program(mvpConfig, new Map([[mvpConsumer, consumerText.replace(
   assert.equal(filtered_schema_assignment_errors(documentAgainstAny, mvpConsumer).length, 1);
 });
 
-with_program(mvpConfig, new Map([[mvpConsumer, consumerText.replace("const authored: HsonDataValue<typeof UserSchema>", "const authored: HsonDataValue<typeof TreeSchema>")]]), (wrongAssociation) => {
+with_program(mvpConfig, new Map([[mvpConsumer, consumerText.replace("const authored: HsonData<typeof UserSchema>", "const authored: HsonData<typeof TreeSchema>")]]), (wrongAssociation) => {
   assert.equal(verified_schema_assignment_ranges(ts, wrongAssociation, mvpConsumer).length, 4);
   assert.equal(filtered_schema_assignment_errors(wrongAssociation, mvpConsumer).length, 1);
 });
@@ -206,20 +206,20 @@ with_program(mvpConfig, new Map([[mvpConsumer, consumerText.replace(
 
 const escapeSpellings = ["\\8", "\\9", "\\unicode", "\\xG0", "\\u{110000}"];
 const adversarialText = '\uFEFF' + [
-  'import { Hson, type HsonDataValue, type HsonDocument, type JsonFromSchema } from "hson-live";',
+  'import { Hson, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";',
   'const S = Hson.schema`<type "data" content <name "string">>`;',
   'const Doc = Hson.schema`<type "document" tag "main" content "empty">`;',
   'declare const dynamic: string;',
-  'const unused: HsonDataValue<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
-  'const nested: HsonDataValue<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;',
-  'const ownSyntax: HsonDataValue<typeof S> = Hson.data`+1 ${missing}`;',
-  ...escapeSpellings.map((escape, index) => `const escape${index}: HsonDataValue<typeof S> = Hson.data\`// ${escape}\r\n<name "Ada">\`;`),
+  'const unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
+  'const nested: HsonData<typeof S> = Hson.data`<name ${Hson.data.parse`+1`}>`;',
+  'const ownSyntax: HsonData<typeof S> = Hson.data`+1 ${missing}`;',
+  ...escapeSpellings.map((escape, index) => `const escape${index}: HsonData<typeof S> = Hson.data\`// ${escape}\r\n<name "Ada">\`;`),
   'const escapedDoc: HsonDocument<typeof Doc> = Hson.document`// \\9\r\n<main/>`;',
-  'const valid: HsonDataValue<typeof S> = Hson.data`<name "Ada">`;',
-  'const raw: HsonDataValue<typeof S> = Hson.data`<name "\\\\n">`;',
-  'const validComment: HsonDataValue<typeof S> = Hson.data`// \\n \\u0041 \\0\r\n<name "Ada">`;',
-  'const outer: HsonDataValue<typeof S> = Hson.data`<name ${dynamic}>`;',
-  'const partial: HsonDataValue<typeof S> = Hson.data`<name "A${dynamic}a">`;',
+  'const valid: HsonData<typeof S> = Hson.data`<name "Ada">`;',
+  'const raw: HsonData<typeof S> = Hson.data`<name "\\\\n">`;',
+  'const validComment: HsonData<typeof S> = Hson.data`// \\n \\u0041 \\0\r\n<name "Ada">`;',
+  'const outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;',
+  'const partial: HsonData<typeof S> = Hson.data`<name "A${dynamic}a">`;',
   'const unrelated: number = "wrong";',
   'const field: JsonFromSchema<typeof S> = { name: 37 };',
 ].join('\r\n');
@@ -253,9 +253,9 @@ for (const member of ["data", "schema"]) for (const tag of [`Hson?.${member}`, `
   const schema = '<type "data" content <name "string">>';
   const template = `${tag}\`${member === "schema" ? schema : '<name "Ada">'}\``;
   const initializer = parenthesized ? `(${template})` : template;
-  const source = 'import { Hson, type HsonDataValue } from "hson-live";\r\n'
-    + (member === "schema" ? `const S = ${initializer};\r\nconst value: HsonDataValue<typeof S> = Hson.data\`<name "Ada">\`;`
-      : `const S = Hson.schema\`${schema}\`;\r\nconst value: HsonDataValue<typeof S> = ${initializer};`);
+  const source = 'import { Hson, type HsonData } from "hson-live";\r\n'
+    + (member === "schema" ? `const S = ${initializer};\r\nconst value: HsonData<typeof S> = Hson.data\`<name "Ada">\`;`
+      : `const S = Hson.schema\`${schema}\`;\r\nconst value: HsonData<typeof S> = ${initializer};`);
   with_program(mvpConfig, new Map([[mvpConsumer, source]]), (program) => {
     assert.equal(assignment_ranges(ts, program, mvpConsumer, evidence.get(program)).length, 0, source);
     assert.equal(assignment_ranges(ts, program, mvpConsumer, evidence.get(program), true).length, 0, "Optional chains cannot establish filtering evidence either");
@@ -269,8 +269,8 @@ for (const member of ["data", "schema"]) for (const tag of [`Hson?.${member}`, `
   });
 }
 for (const parenthesizedTag of [
-  'import { Hson, type HsonDataValue } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst value: HsonDataValue<typeof S> = (Hson?.data)`<name "Ada">`;',
-  'import { Hson, type HsonDataValue } from "hson-live";\r\nconst S = (Hson?.schema)`<type "data" content <name "string">>`;\r\nconst value: HsonDataValue<typeof S> = Hson.data`<name "Ada">`;',
+  'import { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst value: HsonData<typeof S> = (Hson?.data)`<name "Ada">`;',
+  'import { Hson, type HsonData } from "hson-live";\r\nconst S = (Hson?.schema)`<type "data" content <name "string">>`;\r\nconst value: HsonData<typeof S> = Hson.data`<name "Ada">`;',
 ]) {
   with_program(mvpConfig, new Map([[mvpConsumer, parenthesizedTag]]), (validParenthesizedTag) => {
     assert.equal(validParenthesizedTag.getSemanticDiagnostics(validParenthesizedTag.getSourceFile(mvpConsumer)).filter(error => error.code === 1358).length, 0);
@@ -288,22 +288,96 @@ for (const parenthesizedTag of [
     'NumberValue.certify(Hson.data.from("42"));',
     'NumberValue.certify(Hson.data.fromSource("42"));',
     'NumberValue.certify(Hson.data`42`);',
+    'NumberValue.certify(Hson.data.parse`42`);',
+    'hsonLiveMap.fromLibraries({ literal: { json: Hson.data`42`, schema: NumberValue }, parsed: { hson: Hson.data`42`, schema: NumberValue } });',
     'NumberValue.certify(Hson.canonical`42`);',
     'const exact = Hson.data.fromSource("42");',
     'NumberValue.certify(exact);',
-    'hsonLiveMap.fromLibraries({ value: { data: exact, schema: NumberValue } });',
+    'hsonLiveMap.fromLibraries({ value: { json: exact, schema: NumberValue } });',
     'declare function unknownValue(): unknown;',
     'NumberValue.certify(unknownValue());',
     'function shadow(Hson: { data: { fromSource(source: string): unknown } }) { NumberValue.certify(Hson.data.fromSource("42")); }',
   ].join('\n');
   with_program(mvpConfig, new Map([[mvpConsumer, source]]), (program) => {
     const diagnostics = static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!).filter(entry => entry.file === mvpConsumer);
-    assert.deepEqual(diagnostics.map(entry => source.slice(entry.start, entry.end)), ['"42"', 'Hson.data.from("42")', 'Hson.canonical`42`']);
+    assert.deepEqual(diagnostics.map(entry => source.slice(entry.start, entry.end)), ['"42"', 'Hson.data.from("42")', 'Hson.data`42`', 'Hson.data`42`', 'Hson.canonical`42`']);
+    assert.deepEqual(diagnostics.map(entry => entry.code), ["TYPE_MISMATCH", "TYPE_MISMATCH", "TYPE_MISMATCH", "HSON_LIBRARY_JSON_SOURCE", "TYPE_MISMATCH"]);
+  });
+}
+
+// Native carrier conversion must use the same mutation boundary as direct Data.
+{
+  const source = [
+    'import { Hson } from "hson-live";',
+    'const S = Hson.schema`<type "data" content <n "number">>`;',
+    'const A = Hson.schema`<type "data" defs <Numbers <array "number">> content <ref "Numbers">>`;',
+    'const value: { n: string | number } = { n: "before" }; value.n = 1;',
+    'S.certify(Hson.data.from(value));',
+    'const array: (string | number)[] = ["before"]; array[0] = 1;',
+    'A.certify(Hson.data.from(array));',
+    'const appended: (string | number)[] = ["before"]; appended.splice(0, 1, 1);',
+    'A.certify(Hson.data.from(appended));',
+    'const unchanged = { n: "invalid" }; S.certify(Hson.data.from(unchanged));',
+    'const unchangedArray = ["invalid"]; A.certify(Hson.data.from(unchangedArray));',
+    'S.certify(Hson.data.from({ n: 1 })); A.certify(Hson.data.from([1]));',
+    'S.certify(Hson.data.parse`<n 1>`); S.certify(Hson.data.parse("<n 1>"));',
+    "S.certify(Hson.data.fromSource('{\"n\":1}'));",
+    'S.certify(Hson.data.parse`<n "invalid">`);',
+    "S.certify(Hson.data.parse('<n \"invalid\">'));",
+    "S.certify(Hson.data.fromSource('{\"n\":\"invalid\"}'));",
+    'S.certify(Hson.data.from("<n 1>"));',
+  ].join('\n');
+  with_program(mvpConfig, new Map([[mvpConsumer, source]]), (program) => {
+    const diagnostics = static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!).filter(entry => entry.file === mvpConsumer);
+    assert.deepEqual(diagnostics.map(entry => source.slice(entry.start, entry.end)), [
+      'Hson.data.from(unchanged)', 'Hson.data.from(unchangedArray)', '"invalid"',
+      "'<n \"invalid\">'", "Hson.data.fromSource('{\"n\":\"invalid\"}')", 'Hson.data.from("<n 1>")',
+    ]);
     assert.ok(diagnostics.every(entry => entry.code === "TYPE_MISMATCH"));
   });
 }
 
 const failedRange = [{ start: 10, end: 15, failed: true as const }];
+with_program(mvpConfig, new Map([[mvpConsumer, [
+  'import { Hson, type HsonData, type HsonDataValue } from "hson-live";',
+  'const S = Hson.schema`<type "data" content <name "string">>`;',
+  'const source: HsonData<typeof S> = Hson.data`<name "Ada">`;',
+  'const exact: HsonDataValue<typeof S> = Hson.data.parse`<name "Ada">`;',
+  'const wrongValue: HsonDataValue<typeof S> = Hson.data`<name "Ada">`;',
+  'const wrongSource: HsonData<typeof S> = Hson.data.parse`<name "Ada">`;',
+].join('\n')]]), (program) => {
+  assert.equal(verified_schema_assignment_ranges(ts, program, mvpConsumer).length, 2);
+  const retained = filtered_schema_assignment_errors(program, mvpConsumer);
+  assert.equal(retained.length, 2);
+  assert.ok(retained.every(error => error.code === 2322 || error.code === 2740));
+});
+
+with_program(mvpConfig, new Map([[mvpConsumer, [
+  'import { Hson, type JsonFromSchema } from "hson-live";',
+  'const S = Hson.schema`<type "data" content <name "string">>`;',
+  'const projected: JsonFromSchema<typeof S> = Hson.data.parse`<name "Ada">`;',
+].join('\n')]]), (program) => {
+  const diagnostics = static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!).filter(entry => entry.file === mvpConsumer);
+  assert.deepEqual(diagnostics.map(entry => entry.code), ["HSON_PROJECTED_VALUE_ANNOTATION"]);
+  assert.match(diagnostics[0]!.message, /Hson\.data\.parse.*exact HsonDataValue.*For exact Data, use HsonDataValue<typeof S>/);
+});
+
+with_program(mvpConfig, new Map([[mvpConsumer, [
+  'import { Hson, hsonLiveMap, type HsonData } from "hson-live";',
+  'const source = Hson.data`<a 1>`; const widened: string = source;',
+  'declare const branded: HsonData; declare const ordinary: string;',
+  'hsonLiveMap.fromLibraries({ direct: { json: Hson.data`<a 1>` }, variable: { json: source }, typed: { json: branded }, widened: { json: widened } });',
+  'const map = hsonLiveMap.fromLibraries({ literal: { json: "<a 1>" }, ordinary: { json: ordinary }, native: { json: { source } }, array: { json: [source] }, parsed: { hson: source }, exact: { json: Hson.data.parse(source) } });',
+  'map.addLibraries({ next: { json: source } });',
+  'const locus = hsonLiveMap.locus.create({ wrong: { json: source } }, { local: [{ name: "seed", initializer: { json: source } }] });',
+  'hsonLiveMap.locus.resume({ wrong: { json: source } }, {} as never);',
+  'const valid = hsonLiveMap.locus.create({ state: { json: true } }); valid.admit({ next: { json: source } });',
+].join('\n')]]), (program) => {
+  const diagnostics = static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!).filter(entry => entry.file === mvpConsumer);
+  assert.equal(diagnostics.length, 9);
+  assert.ok(diagnostics.every(entry => entry.code === "HSON_LIBRARY_JSON_SOURCE"));
+});
+
 const schemaProof: ts.DiagnosticMessageChain = { messageText: "Types of property '[HSON_SCHEMA_PROOF]' are incompatible.", category: ts.DiagnosticCategory.Error, code: 2326 };
 const assignment = (messageText: string | ts.DiagnosticMessageChain): ts.Diagnostic => ({ file: undefined, start: 10, length: 3, category: ts.DiagnosticCategory.Error, code: 2322, messageText });
 assert.equal(filter_verified_schema_assignment_diagnostics([assignment(schemaProof)], failedRange).length, 0);

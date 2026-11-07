@@ -22,8 +22,8 @@ const privateValue = `PRIVATE_ROOT_SENTINEL${"x".repeat(65 * 1024 * 1024)}`;
 assert.ok(privateValue.length > 64 * 1024 * 1024);
 const map = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PUBLIC_PAGE_SENTINEL"/>/>', schema: Page },
-  PRIVATE_NAME_SENTINEL: { data: { value: privateValue }, schema: Data },
-  privateSignal: { data: { value: "PRIVATE_SIGNAL_INITIAL" }, schema: Data },
+  PRIVATE_NAME_SENTINEL: { json: { value: privateValue }, schema: Data },
+  privateSignal: { json: { value: "PRIVATE_SIGNAL_INITIAL" }, schema: Data },
 });
 const aggregate = internal_livemap_aggregate_authority(map);
 const libraries = [{ name: "page", ownership: "shared" as const },
@@ -50,7 +50,7 @@ const serverSocket: LocusWebSocketLike = {
 };
 let detach = bind_locus_websocket(locus, serverSocket);
 const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(clientSocket), logicalMapId: locus.logicalMapId,
-  initializers: local_initializers({ local: { data: { value: "LOCAL_SENTINEL" }, schema: Data } }) });
+  initializers: local_initializers({ local: { json: { value: "LOCAL_SENTINEL" }, schema: Data } }) });
 const initial = await echo.connect();
 assert.equal(initial.outcome, "reconcile");
 const session = sent.map((raw) => JSON.parse(raw)).find((message) => message.type === "session-created");
@@ -123,7 +123,7 @@ zeroLocus.dispose();
 
 // A selected root may exceed the historical 4 MiB exact codec default, while
 // the actual projected artifact still has the existing 64 MiB ceiling.
-const medium = hsonLiveMap.fromLibraries({ selected: { data: { value: "m".repeat(5 * 1024 * 1024) }, schema: Data } });
+const medium = hsonLiveMap.fromLibraries({ selected: { json: { value: "m".repeat(5 * 1024 * 1024) }, schema: Data } });
 const mediumAuthority = internal_livemap_aggregate_authority(medium);
 const mediumPolicy = make_locus_hosted_projection_policy(mediumAuthority.hostedRegistry(),
   mediumAuthority.hostedPosition().authority, [{ name: "selected", ownership: "shared" }], undefined,
@@ -132,10 +132,10 @@ const mediumEffective = await normalize_locus_effective_projection(mediumPolicy,
 const mediumSnapshot = capture_selected_authority_projection_snapshot(medium, mediumEffective);
 assert.ok(JSON.stringify(mediumSnapshot).length > 4 * 1024 * 1024);
 const installed = client_projection_map({ authority: mediumSnapshot,
-  local: { local: { data: { value: "local" }, schema: Data } } });
+  local: { local: { json: { value: "local" }, schema: Data } } });
 assert.equal(installed.data.must("selected").mode, "data-object");
 
-const oversized = hsonLiveMap.fromLibraries({ selected: { data: { value: "o".repeat(65 * 1024 * 1024) }, schema: Data } });
+const oversized = hsonLiveMap.fromLibraries({ selected: { json: { value: "o".repeat(65 * 1024 * 1024) }, schema: Data } });
 const oversizedAuthority = internal_livemap_aggregate_authority(oversized);
 const oversizedPolicy = make_locus_hosted_projection_policy(oversizedAuthority.hostedRegistry(),
   oversizedAuthority.hostedPosition().authority, [{ name: "selected", ownership: "shared" }], undefined,
@@ -146,7 +146,7 @@ assert.throws(() => capture_selected_authority_projection_snapshot(oversized, ov
 const persistence = new MemoryCheckpointAdapter();
 const persistentMap = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PERSISTENT_PUBLIC"/>/>', schema: Page },
-  privateSignal: { data: { value: "small" }, schema: Data },
+  privateSignal: { json: { value: "small" }, schema: Data },
 });
 const persistent = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(persistentMap, [{ name: "page", ownership: "shared" }, { name: "privateSignal", ownership: "private" }]),
   logicalMapId: "selected-capture-z3a", persistence, defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });

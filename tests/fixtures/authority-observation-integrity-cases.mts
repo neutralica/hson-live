@@ -23,7 +23,7 @@ export async function locus_observation_lifetime_cases() {
   await data_watch_preparation_cases();
   const actionReads: (() => unknown)[] = [];
   const loc = hsonLiveMap.locus.create({ parts: { parts: { p: part } },
-    data: { data: { nested: { items: [{ n: 1 }, { n: 2 }] } } },
+    data: { json: { nested: { items: [{ n: 1 }, { n: 2 }] } } },
     page: { document: '<main title="Visible" <b "Text"/>/>', stylesheet: 'main{color:red}' },
   }, { actions: { inspect(context) {
     const library = context.parts.parts, member = library.p, object = member.asObject()!.object;
@@ -81,12 +81,12 @@ export async function locus_observation_lifetime_cases() {
     assert.equal(authority.identityEpoch().issued(), issued);
   } finally { loc.dispose(); }
 
-  const callbackOwner = hsonLiveMap.locus.create({ data: { data: [1, 2] } });
+  const callbackOwner = hsonLiveMap.locus.create({ data: { json: [1, 2] } });
   const array = callbackOwner.data.data.at([]).asArray()!.array;
   assert.throws(() => array.map(value => { callbackOwner.dispose(); return value; }), disposed,
     "a callback cannot return a successful live observation after disposal");
 
-  const source = hsonLiveMap.fromLibraries({ data: { data: [1] } });
+  const source = hsonLiveMap.fromLibraries({ data: { json: [1] } });
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(source).captureHosted());
   const client = make_livemap_client_composition_from_portable_aggregate_internal(snapshot);
   const authority = internal_livemap_aggregate_authority(client), manager = {};
@@ -119,11 +119,11 @@ export async function data_watch_preparation_cases() {
       else Reflect.deleteProperty(globalThis, "reportError");
       for (const withdrawal of ["before", "unrelated-listener", "affected-listener", "affected-regrant-listener"] as const) {
         const affected = withdrawal === "affected-listener" || withdrawal === "affected-regrant-listener";
-        const source = hsonLiveMap.fromLibraries({ data: { data: { n: 0 } } });
+        const source = hsonLiveMap.fromLibraries({ data: { json: { n: 0 } } });
         const sourceAuthority = internal_livemap_aggregate_authority(source);
         const snapshot = make_portable_aggregate_snapshot(sourceAuthority.captureHosted());
         const client = make_livemap_client_composition_from_portable_aggregate_internal(snapshot);
-        client.addLibraries({ local: { data: { n: 0 } }, page: { document: '<main @:kept title="unchanged"/>' } });
+        client.addLibraries({ local: { json: { n: 0 } }, page: { document: '<main @:kept title="unchanged"/>' } });
         const authority = internal_livemap_aggregate_authority(client), manager = {};
         const empty = hsonLiveMap.create();
         internal_livemap_aggregate_authority(empty).setInitialHostedAuthority(snapshot.authority);
@@ -217,7 +217,7 @@ export async function data_watch_preparation_cases() {
       for (const action of [false, true]) {
         let actionWatch: ((listener: (value: unknown) => void) => () => void) | undefined;
         const persistence = new MemoryCheckpointAdapter(), logicalMapId = "data-watch-preparation";
-        const definitions = { data: { data: { n: 0 } } };
+        const definitions = { data: { json: { n: 0 } } };
         const loc = await hsonLiveMap.locus.resume(definitions, {
           persistence, logicalMapId,
           actions: { inspect(ctx) { actionWatch = ctx.data.data.at(["n"]).watch; } },
@@ -251,7 +251,7 @@ export async function data_watch_preparation_cases() {
         } finally { for (const stop of stops) stop(); loc.dispose(); }
       }
       if (reporter) {
-        const map = hsonLiveMap.fromLibraries({ data: { data: { n: 0 } } });
+        const map = hsonLiveMap.fromLibraries({ data: { json: { n: 0 } } });
         const authority = internal_livemap_aggregate_authority(map), before = authority.telemetry();
         const location = map.data.must("data").at(["n"]), values: unknown[] = [];
         const watchError = new Error("watch callback"), feedError = new Error("feed callback");
@@ -359,7 +359,7 @@ export async function quad_subscription_lifetime_cases() {
   for (const action of [false, true]) for (const kind of ['data', 'document', 'location', 'commits', 'aggregate'] as const) {
     const delivered: unknown[] = [], cleanup: (() => void)[] = [];
     let register: (listener: (value: unknown) => void) => () => void = () => { throw Error('unselected'); };
-    const owner = hsonLiveMap.locus.create({ data: { data: { n: 0 } }, page: { document: '<main title="old"/>' } }, {
+    const owner = hsonLiveMap.locus.create({ data: { json: { n: 0 } }, page: { document: '<main title="old"/>' } }, {
       actions: { inspect(ctx) {
         register = kind === 'data' ? ctx.data.data.at(['n']).watch : kind === 'document' ? ctx.doc.page.watch
           : kind === 'location' ? ctx.doc.page.at([1, 0]).watch : ctx.doc.page.commits.observe;
@@ -392,7 +392,7 @@ export async function quad_subscription_lifetime_cases() {
   Object.defineProperty(globalThis, 'reportError', { configurable: true, value: (error: unknown) => reports.push(error) });
   try {
     for (const kind of ['data', 'document', 'commits'] as const) {
-      const errors = hsonLiveMap.locus.create({ data: { data: { n: 0 } }, page: { document: '<main/>' } });
+      const errors = hsonLiveMap.locus.create({ data: { json: { n: 0 } }, page: { document: '<main/>' } });
       const cause = new Error('listener identity'), delivered: unknown[] = [];
       const subscribe = kind === 'data' ? errors.data.data.at(['n']).watch : kind === 'document' ? errors.doc.page.watch : errors.doc.page.commits.observe;
       const stops = [subscribe(() => { throw cause; }), subscribe(value => delivered.push(value))];
@@ -403,7 +403,7 @@ export async function quad_subscription_lifetime_cases() {
       for (const stop of stops) stop(); errors.dispose();
     }
     for (const kind of ['data', 'document', 'commits'] as const) {
-      const source = hsonLiveMap.fromLibraries({ data: { data: { n: 0 } }, page: { document: '<main @:main title="private"/>' } });
+      const source = hsonLiveMap.fromLibraries({ data: { json: { n: 0 } }, page: { document: '<main @:main title="private"/>' } });
       const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(source).captureHosted());
       const client = make_livemap_client_composition_from_portable_aggregate_internal(snapshot);
       const authority = internal_livemap_aggregate_authority(client), manager = {};
@@ -441,7 +441,7 @@ export async function quad_subscription_lifetime_cases() {
     else Reflect.deleteProperty(globalThis, 'reportError');
   }
 
-  const nested = hsonLiveMap.locus.create({ data: { data: { n: 0 } } });
+  const nested = hsonLiveMap.locus.create({ data: { json: { n: 0 } } });
   const values: unknown[] = [], pending: Promise<void>[] = [];
   const n = nested.data.data.at(['n']);
   const stopFirst = n.watch(value => { if (value === 1) pending.push(n.set(2)); });

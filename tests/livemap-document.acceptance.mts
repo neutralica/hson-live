@@ -117,8 +117,8 @@ check("registry construction stays canonical and DOM-free", () => {
 });
 
 check("one-library registries classify data and document roots", () => {
-  const object = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
-  const array = hsonLiveMap.fromLibraries({ state: { data: [1, 2], schema: NumberArray } });
+  const object = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: NumberData } });
+  const array = hsonLiveMap.fromLibraries({ state: { json: [1, 2], schema: NumberArray } });
   const document = hsonLiveMap.fromLibraries({ page: { document: '<main "text"/>', schema: MainText } });
   assert.deepEqual([object.data.must("state").mode, array.data.must("state").mode, document.doc.must("page").mode], ["data-object", "data-array", "document"]);
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [] }, schema: EmptyDocument } }), /exactly one/);
@@ -168,7 +168,7 @@ check("document input and detached reads do not share graph ownership", () => {
 
 check("ordinary data input is detached and selected library reads remain exact", () => {
   const input = { value: 1 };
-  const map = hsonLiveMap.fromLibraries({ state: { data: input, schema: NumberData } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: input, schema: NumberData } });
   input.value = 2;
   assert.deepEqual(map.data.must("state").snap(), { value: 1 });
   assert.equal(map.data.must("state").at(["value"]).snap(), 1);
@@ -207,7 +207,7 @@ check("selected document library has document operations and no data writes", ()
 });
 
 check("first data and document writes advance one map revision", () => {
-  const data = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
+  const data = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: NumberData } });
   const dataCommit = data.data.must("state").at(["value"]).set(2);
   assert.deepEqual([dataCommit.prevRev, dataCommit.rev, data.rev], [0, 1, 1]);
   const document = hsonLiveMap.fromLibraries({ page: { document: '<main "new"/>', schema: MainText } });

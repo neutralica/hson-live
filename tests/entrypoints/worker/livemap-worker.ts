@@ -15,7 +15,7 @@ import {
 
 const map = hsonLiveMap.fromLibraries({
   state: {
-    data: { ready: true, items: [1, 2] },
+    json: { ready: true, items: [1, 2] },
     schema: Hson.schema`<type "data" content <ready "boolean" items <array "number">>>`,
   },
 });
@@ -43,12 +43,12 @@ void projectedAcquisitionIsPublic;
 void capture.libraries;
 const empty = hsonLiveMap.create();
 void empty.capture();
-const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { data: 1 } });
+const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { json: 1 } });
 void added.commit.operations;
 void added.libraries.runtimePage.render();
 const runtimePage = empty.doc.must("runtimePage");
 if (runtimePage.mode === "document") { void runtimePage.document.root(); void runtimePage.render(); }
-const scalar = hsonLiveMap.fromLibraries({ value: { data: 1, schema: ANY_DATA } });
+const scalar = hsonLiveMap.fromLibraries({ value: { json: 1, schema: ANY_DATA } });
 void scalar.data.must("value").at([]).asScalar();
 void ANY_DOCUMENT.toHson();
 
@@ -102,7 +102,7 @@ map.cut({ documents: ["state"] });
 state.render();
 
 const selections = hsonLiveMap.fromLibraries({
-  state: { data: 1 }, page: { document: "<main/>" }, admin: { document: "<aside/>" },
+  state: { json: 1 }, page: { document: "<main/>" }, admin: { document: "<aside/>" },
 });
 const known = selections.cut({ data: ["state"], documents: ["page"], html: "page" });
 const knownName: "page" = known.document;
@@ -117,7 +117,7 @@ selections.cut({ html: "state" });
 selections.cut({ documents: ["admin"], html: "page" });
 // @ts-expect-error Empty document selections cannot produce HTML.
 selections.cut({ documents: [], html: "page" });
-selections.addLibraries({ later: { document: "<section/>" }, laterState: { data: 2 } });
+selections.addLibraries({ later: { document: "<section/>" }, laterState: { json: 2 } });
 const later = selections.cut({ data: ["laterState"], documents: ["later"], html: "later" });
 const laterName: "later" = later.document;
 void laterName;
@@ -135,7 +135,7 @@ void optionalCut.libs;
 // @ts-expect-error Optional HTML does not guarantee an HTML result.
 void optionalCut.html;
 
-const optionalDefinitions: { state: { data: number }; optionalPage?: { document: string } } = { state: { data: 1 } };
+const optionalDefinitions: { state: { json: number }; optionalPage?: { document: string } } = { state: { json: 1 } };
 const optionalReceipt = hsonLiveMap.create().addLibraries(optionalDefinitions);
 optionalReceipt.libraries.state.snap();
 optionalReceipt.commit.operations;

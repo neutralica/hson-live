@@ -138,7 +138,7 @@ try {
 events.case_end("dispose", "pass");
 
 events.case_begin("pending-sync-dispose", "transport disposal interrupts a pending stream open");
-const pendingMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+const pendingMap = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
 const pendingLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(pendingMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const pendingBinder = bind_locus_http(pendingLocus, { endpoint: "/_hson" });
 let streamStarted: (() => void) | undefined;
@@ -168,7 +168,7 @@ try {
 events.case_end("pending-sync-dispose", "pass");
 
 events.case_begin("replica-dispose", "live replica loses readiness on transport disposal");
-const replicaMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+const replicaMap = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
 const replicaLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(replicaMap, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const retained = await replicaLocus.session.create({ libraries: ["state"] });
 const replicaBinder = bind_locus_http(replicaLocus, { endpoint: "/_hson" });

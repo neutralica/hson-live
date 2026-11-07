@@ -38,8 +38,8 @@ function check(name: string, run: () => void): void {
 
 function governed() {
   const map = hsonLiveMap.fromLibraries({
-    state: { data: { account: { id: "ada" }, age: 37 }, schema: StateSchema },
-    colors: { data: { value: "#blue" }, schema: ColorsSchema },
+    state: { json: { account: { id: "ada" }, age: 37 }, schema: StateSchema },
+    colors: { json: { value: "#blue" }, schema: ColorsSchema },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [state, colors] = aggregate.libraries();

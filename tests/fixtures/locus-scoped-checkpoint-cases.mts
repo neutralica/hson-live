@@ -153,7 +153,7 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
     } finally { f.l.dispose(); }
   });
   await check("B1 flat representation remains unchanged and absent/empty scopes stay distinct", async () => {
-    const flat = authority(hsonLiveMap.fromLibraries({ page: { document: '<main @:root/>' }, data: { data: { n: 1 } } })).captureSemanticCheckpoint();
+    const flat = authority(hsonLiveMap.fromLibraries({ page: { document: '<main @:root/>' }, data: { json: { n: 1 } } })).captureSemanticCheckpoint();
     assert.ok(flat.libraries[0]!.quads); assert.equal(Object.hasOwn(flat.libraries[0]!, "scopes"), false);
     const adapter = new MemoryCheckpointAdapter(); await write(flat, adapter);
     assert.deepEqual(active(adapter, flat).chunks.map(d => d.part), ["schema", "root", "css", "quads", "schema", "root"]);

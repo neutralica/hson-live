@@ -47,8 +47,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { value: 0 }, schema: StateSchema },
-    other: { data: { value: 0 }, schema: OtherSchema },
+    state: { json: { value: 0 }, schema: StateSchema },
+    other: { json: { value: 0 }, schema: OtherSchema },
     page: { document: "<main/>", schema: PageSchema },
   });
 }

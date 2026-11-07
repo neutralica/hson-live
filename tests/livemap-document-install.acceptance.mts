@@ -77,12 +77,23 @@ check("foreign registry Schema requires fresh installation", () => {
   });
   const oldPage = target.doc.must("page");
   const before = target.capture();
-  assert.throws(() => target.restore(other.capture()), /current Library topology/);
+  assert.throws(() => target.restore(other.capture()), /governing Schema is immutable after admission/);
   assert.deepEqual(target.capture(), before);
   assert.equal(target.doc.must("page"), oldPage);
   const installed = install_libraries_snapshot(other.capture()).map;
   assert.deepEqual(installed.capture(), other.capture());
   assert.match(document_html(installed.doc.must("page")), /other/);
+});
+
+check("compatible governing Schemas still reject a different Library topology atomically", () => {
+  const target = registry('<main <item "before"/>/>');
+  const oldPage = target.doc.must("page");
+  const before = target.capture();
+  const other = install_libraries_snapshot(before).map;
+  other.addLibraries({ extra: { json: 1 } });
+  assert.throws(() => target.restore(other.capture()), /current Library topology/);
+  assert.deepEqual(target.capture(), before);
+  assert.equal(target.doc.must("page"), oldPage);
 });
 
 check("portable capture excludes supplied runtime QUIDs", () => {
@@ -105,7 +116,7 @@ check("restored state is detached from later source changes", () => {
 
 check("data libraries have no document snapshot method", () => {
   const map = hsonLiveMap.fromLibraries({ state: {
-    data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`,
+    json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`,
   } });
   assert.equal(Reflect.get(map.data.must("state"), "install"), undefined);
   assert.equal(Reflect.get(map.data.must("state"), "restore"), undefined);

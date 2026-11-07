@@ -371,12 +371,20 @@ const invalidConfigurations = [
   ['branding.library.opacity', -0.01],
   ['branding.palette.green', 'green'],
 ];
+function mutateFixture(config, path, value) {
+  const keys = path.split('.');
+  let parent = config;
+  // Clone every ancestor separately: structuredClone preserves shared aliases.
+  for (const key of keys.slice(0, -1)) {
+    parent[key] = structuredClone(parent[key] ?? {});
+    parent = parent[key];
+  }
+  parent[keys.at(-1)] = value;
+}
 for (const [path, value, replacement] of invalidConfigurations) {
   const invalid = structuredClone(appearance);
   const keys = path.split('.');
-  let parent = invalid;
-  for (const key of keys.slice(0, -1)) parent = parent[key] ??= {};
-  parent[keys.at(-1)] = value;
+  mutateFixture(invalid, path, value);
   assert.throws(() => houseTheme(invalid, definitions, 'dark'), error => {
     const displayPath = path.replace('.examples.0', '.examples[0]');
     assert.ok(error.message.startsWith(displayPath + ':') || error.message.startsWith(displayPath.slice(0, displayPath.lastIndexOf('.')) + ':'), error.message);
@@ -387,6 +395,18 @@ for (const [path, value, replacement] of invalidConfigurations) {
     return true;
   }, path);
 }
+const sharedFixture = structuredClone(appearance);
+const sharedStyle = sharedFixture.syntax.hson.part.selector.member.house;
+sharedFixture.syntax.hson.part.selector.library.house = sharedStyle;
+assert.equal(sharedFixture.syntax.hson.part.selector.library.house, sharedStyle);
+mutateFixture(sharedFixture, 'syntax.hson.part.selector.member.house.dark.foregound', '#123456');
+assert.notEqual(sharedFixture.syntax.hson.part.selector.member.house, sharedFixture.syntax.hson.part.selector.library.house);
+assert.equal(Object.hasOwn(sharedFixture.syntax.hson.part.selector.library.house.dark, 'foregound'), false);
+assert.deepEqual(sharedFixture.syntax.hson.part.selector.library.house, sharedStyle);
+assert.throws(() => houseTheme(sharedFixture, definitions, 'dark'), {
+  message: 'syntax.hson.part.selector.member.house.dark.foregound: Unknown property "foregound". Did you mean "foreground"?',
+});
+
 const nativeUi = structuredClone(appearance);
 nativeUi.ui.workbench['terminal.ansiBrightMagenta'] = { inherits: 'ui.palette.accent' };
 nativeUi.ui.editor['editorOverviewRuler.wordHighlightStrongForeground'] = { house: { dark: { foreground: '#123456' }, light: { foreground: '#654321' } } };

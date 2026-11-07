@@ -17,7 +17,7 @@ export function annotated_data_schema_provenance(typescript: typeof ts, program:
   type: ts.TypeNode, eligible = hson_source_syntactic_eligibility(typescript, program),
   declarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>()) {
   const annotation = resolve_hson_schema_annotation(typescript, checker, type, eligible);
-  if (annotation?.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return undefined;
+  if (annotation?.schema === undefined || annotation.kind !== "data" && annotation.kind !== "value" && annotation.kind !== "hson") return undefined;
   return resolve_immutable_schema(typescript, checker, annotation.schema, producer => {
     const file = producer.getSourceFile();
     if (file.isDeclarationFile || program.isSourceFileFromExternalLibrary(file)
@@ -33,7 +33,7 @@ export function annotated_data_schema_provenance(typescript: typeof ts, program:
 }
 
 export type HsonSchemaAnnotation = Readonly<{
-  kind: "data" | "document" | "hson" | "projected";
+  kind: "data" | "value" | "document" | "hson" | "projected";
   schema: ts.Identifier | undefined;
 }>;
 type Argument = Readonly<{ node: ts.TypeNode; parameters: ReadonlyMap<ts.Symbol, Argument> }>;
@@ -64,7 +64,7 @@ export function resolve_hson_schema_annotation(
     if (current === undefined || !eligible(current.node) || !typescript.isTypeReferenceNode(current.node)) return undefined;
     const { node, parameters } = current;
     if (typescript.isIdentifier(node.typeName)) {
-      for (const [name, kind] of [["HsonDataValue", "data"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
+      for (const [name, kind] of [["HsonData", "data"], ["HsonDataValue", "value"], ["HsonDocument", "document"], ["HsonFromSchema", "hson"], ["JsonFromSchema", "projected"]] as const) {
         if (!is_official_hson_package_binding(node.typeName, name, checker, true, typescript, eligible)) continue;
         // Bare HsonDataValue/HsonDocument intentionally request no Schema proof.
         if (node.typeArguments?.length !== 1) return undefined;

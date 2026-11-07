@@ -16,7 +16,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 
 const Count = Hson.schema`<type "data" content <count "number">>`;
-const map = hsonLiveMap.fromLibraries({ a: { data: { count: 0 }, schema: Count }, b: { data: { count: 0 }, schema: Count },
+const map = hsonLiveMap.fromLibraries({ a: { json: { count: 0 }, schema: Count }, b: { json: { count: 0 }, schema: Count },
   page: { document: "<main/>" } });
 enable_interactions(map);
 const engine = internal_livemap_aggregate_authority(map);
@@ -77,7 +77,7 @@ try {
   const system = await normalize_locus_effective_projection(policy(), { libraries: ["a"], systemFeatures: ["interactions"] });
   assert.notEqual(projected_registry_digest(plain), projected_registry_digest(system));
   assert.equal(projected_registry_digest(system), uncached(system));
-  const other = hsonLiveMap.fromLibraries({ a: { data: "different root mode and Schema" } });
+  const other = hsonLiveMap.fromLibraries({ a: { json: "different root mode and Schema" } });
   const otherEngine = internal_livemap_aggregate_authority(other);
   const otherPolicy = make_locus_hosted_projection_policy(otherEngine.hostedRegistry(), otherEngine.hostedPosition().authority,
     [{ name: "a", ownership: "shared" }], undefined, () => ({ libraries: ["a"] }));
@@ -111,7 +111,7 @@ try {
 
   let topology: HostedAggregateCommit | undefined;
   const stop = engine.observe(commit => { topology = commit.hosted; });
-  map.addLibraries({ extra: { data: { count: 1 }, schema: Count } });
+  map.addLibraries({ extra: { json: { count: 1 }, schema: Count } });
   stop();
   assert.ok(topology?.topology);
   const expanded = await normalize_locus_effective_projection(policy(), { libraries: ["a", "extra"] });
@@ -135,8 +135,8 @@ try {
   checks++;
 
   let authorizations = 0;
-  const host = hsonLiveMap.locus.create({ a: { data: { count: 0 }, schema: Count, access: "shared" },
-    b: { data: { count: 0 }, schema: Count, access: "shared" } },
+  const host = hsonLiveMap.locus.create({ a: { json: { count: 0 }, schema: Count, access: "shared" },
+    b: { json: { count: 0 }, schema: Count, access: "shared" } },
   { authorizeProjection: () => { authorizations++; return { libraries: ["a", "b"] }; } });
   try {
     const session = await host.session.create({ libraries: ["a", "b"] });
@@ -174,7 +174,7 @@ try {
   checks++;
 
   const storage = new MemoryCheckpointAdapter();
-  const definitions = { a: { data: { count: 0 }, schema: Count, access: "shared" } } as const;
+  const definitions = { a: { json: { count: 0 }, schema: Count, access: "shared" } } as const;
   const configuration = { logicalMapId: "r1-restoration", persistence: storage,
     authorizeProjection: () => ({ libraries: ["a"] }) };
   for (let runtime = 0; runtime < 2; runtime++) {

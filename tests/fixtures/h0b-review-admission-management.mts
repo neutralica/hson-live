@@ -10,7 +10,7 @@ export function review_admission_management() {
   for (const replacementWork of [false, true]) {
     const map = hsonLiveMap.fromLibraries({
       parts: { parts: { leaf: { kind: 'document', document: '<button hson:part @:root/>' } } },
-      initial: { data: 0 },
+      initial: { json: 0 },
     });
     const a = authority(map), owner = {}, replacement = {};
     a.claimManagement(owner);
@@ -19,7 +19,7 @@ export function review_admission_management() {
         a.releaseManagement(owner);
         if (replacementWork) {
           a.claimManagement(replacement);
-          const inner = prepare(map, replacement, { inner: { data: 7 } });
+          const inner = prepare(map, replacement, { inner: { json: 7 } });
           a.accept(inner.transition, 'isolate', inner.afterInstall);
           a.releaseManagement(replacement);
         }

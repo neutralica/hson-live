@@ -18,7 +18,7 @@ try {
     import { materialize_projected_value } from './src/core/projected-value-materialization.ts';
     export function fixture(size) {
       const rows = Array.from({length:size}, (_,i)=>({id:i,score:i+.5,detail:{label:'row-'+i,flags:[true,false,null]},tags:['a','b']}));
-      const map = hsonLiveMap.fromLibraries({state:{data:{rows,catalog:Object.fromEntries(rows.map((r,i)=>['r'+i,r]))}}});
+      const map = hsonLiveMap.fromLibraries({state:{json:{rows,catalog:Object.fromEntries(rows.map((r,i)=>['r'+i,r]))}}});
       const library = map.data.must('state'), index = Math.floor(size/2);
       const row = library.at(['rows',index]), scalar = library.at(['rows',index,'score']);
       const object = library.at(['catalog']).asObject(), array = library.at(['rows']).asArray();

@@ -40,7 +40,7 @@ const at = (c: PreparedDocumentScopedLibrary, p: readonly number[]) => {
   const scope = c.scopes.occurrences.find(scope => scope.rootQuid === c.overlay.quidAtPath(path(p))); assert.ok(scope); return scope;
 };
 function fixture(initialParts = definitions) {
-  const map = hsonLiveMap.fromLibraries({ parts: { parts: initialParts }, page: { document: '<main/>' }, other: { data: { n: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: initialParts }, page: { document: '<main/>' }, other: { json: { n: 0 } } });
   const page = map.doc.must("page"); assert.equal(page.mode, "document"); if (page.mode !== "document") throw Error();
   page.css.stylesheet('main{padding:3px}');
   const aggregate = internal_livemap_aggregate_authority(map), owner = aggregate.libraries()[1]!;

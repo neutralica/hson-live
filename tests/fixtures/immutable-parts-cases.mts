@@ -18,9 +18,9 @@ const part = { kind: "document", document: '<p hson:part @:label "%{text}"/>',
   css: { "@:label": { color: "red" } }, stylesheet: "p{display:block}" } as const;
 const other = { kind: "document", document: '<aside hson:part "Other"/>' } as const;
 const graph = (value: unknown) => projected_value_to_hson_root(admit_projected_value(value));
-const snapshotFixture = () => hsonLiveMap.fromLibraries({ parts: { parts: { p: part } }, state: { data: { count: 1 } },
+const snapshotFixture = () => hsonLiveMap.fromLibraries({ parts: { parts: { p: part } }, state: { json: { count: 1 } },
   page: { document: "<main/>" } });
-const fixture = () => hsonLiveMap.fromLibraries({ parts: { parts: { p: part } }, state: { data: { count: 1 } },
+const fixture = () => hsonLiveMap.fromLibraries({ parts: { parts: { p: part } }, state: { json: { count: 1 } },
   page: { document: '<html <head/> <body <main <hson-part lib="parts" at="p" text="Existing"/>/>/>/>' } });
 
 /** Include identity, history, occurrence and notification effects in every rejection probe. */
@@ -126,7 +126,7 @@ export async function immutable_part_cases(check: (name: string, run: () => void
   });
 
   await check("queued Part admission owns source and structured CSS before returning to caller aliases", async () => {
-    const loc = hsonLiveMap.locus.create({ state: { data: { count: 0 } } });
+    const loc = hsonLiveMap.locus.create({ state: { json: { count: 0 } } });
     try {
       const source = { kind: "document" as const, document: '<p hson:part @:root "Captured"/>', css: { "@:root": { color: "red" } } };
       const admitted = structuredClone(source);
@@ -225,7 +225,7 @@ export async function immutable_part_cases(check: (name: string, run: () => void
     rejection(map, () => map.restore({ ...capture, libraries: changed }));
     rejection(map, () => authority.installSemanticCheckpoint({ ...checkpoint, libraries: checkpoint.libraries.map(item =>
       item.name === "parts" ? { ...item, root: graph({ p: other }) } : item) }));
-    const missing = hsonLiveMap.fromLibraries({ state: { data: {} } }).capture();
+    const missing = hsonLiveMap.fromLibraries({ state: { json: {} } }).capture();
     rejection(map, () => authority.restoreLibraries(missing));
     const changedFamily = hsonLiveMap.fromLibraries({ parts: { document: "<main/>" } }).capture();
     rejection(map, () => authority.restoreLibraries(changedFamily));
@@ -250,7 +250,7 @@ export async function immutable_part_cases(check: (name: string, run: () => void
       const stop = authority.observeRestore(() => events++);
       assert.throws(() => authority.restoreClientHostedManaged(manager, { ...snapshot, libraries: snapshot.libraries.map(item =>
         item.name === "parts" ? { ...item, root: encode_hosted_root(graph({ p: other })) } : item) }), /Immutable Part/);
-      const forgery = hsonLiveMap.fromLibraries({ parts: { data: { p: part } } }), sender = owner(forgery);
+      const forgery = hsonLiveMap.fromLibraries({ parts: { json: { p: part } } }), sender = owner(forgery);
       sender.setInitialHostedAuthority(snapshot.authority);
       const target = sender.target(sender.libraries()[0]!, ["p", "document"]);
       const transient = sender.commit([{ target, kind: "set", value: other.document }, { target, kind: "set", value: part.document }]);
@@ -275,7 +275,7 @@ export async function immutable_part_cases(check: (name: string, run: () => void
       assert.deepEqual(owner(map).captureSemanticCheckpoint(), before); assert.equal(owner(map).identityEpoch().issued(), ledger);
       assert.equal(persistence.appendCalls.length, records); assert.equal(notifications, 0); stop();
       await locus.parts.parts.at([]).object.setKey("new", other);
-      await locus.admit({ runtime: { data: { count: 1 }, access: "shared" } });
+      await locus.admit({ runtime: { json: { count: 1 }, access: "shared" } });
       await hsonLiveMap.locus.checkpoint(locus);
     } finally { locus.dispose(); }
     const restarted = await hsonLiveMap.locus.resume(definitions, options);

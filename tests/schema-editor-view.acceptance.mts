@@ -67,7 +67,7 @@ function project(name: string, files: Record<string, string>, extraOptions: ts.C
   };
 }
 const producer = '\uFEFFimport { Hson, type JsonFromSchema } from "hson-live";\r\n// before\r\nconst before: number = "wrong-before";\r\nexport const Thing = Hson.schema`<type "data" content <name "string" status <exact "ready">>>`;\r\n// between\r\nconst between: number = "wrong-between";\r\nexport const Slide = Hson.schema`<type "document">`;\r\nexport const Twin = Hson.schema`<type "document">`;\r\nconst after: number = "wrong-after";\r\ndeclare const local: JsonFromSchema<typeof Thing>;\r\nconst localName: string = local.name;\r\nlocal.na';
-const consumer = 'import { type JsonFromSchema, type HsonSchema, type HsonDataValue, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst name: string = value.name;\nconst status: "ready" = value.status;\nconst wrong: number = value.name;\ntype WrongMode = HsonDataValue<typeof Slide>;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\n';
+const consumer = 'import { type JsonFromSchema, type HsonSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst name: string = value.name;\nconst status: "ready" = value.status;\nconst wrong: number = value.name;\ntype WrongMode = HsonData<typeof Slide>;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\n';
 const app = project("live", { "schema.ts": producer, "consumer.ts": consumer, "second.ts": 'import { type HsonDocument } from "hson-live"; import { Slide } from "./schema.js"; export declare const imported: HsonDocument<typeof Slide>;\n' });
 const originalBytes = bytes(app.directory);
 const messages = (values: readonly ts.Diagnostic[]) => values.map(value => `${value.code}@${value.start}: ${ts.flattenDiagnosticMessageText(value.messageText, "\n")}`).join("\n");
@@ -76,7 +76,7 @@ check("verified proof diagnostics and correction work on each supplied TypeScrip
   const hostPath = process.env["HSON_TEST_HOST_TYPESCRIPT"];
   const hosts: readonly (typeof ts)[] = hostPath === undefined ? [ts] : [ts, createRequire(import.meta.url)(hostPath)];
   for (const host of hosts) {
-    const source = 'import { Hson, type HsonDataValue } from "hson-live";\nconst S = Hson.schema`\n  <type "data" content <name "string">>\n`;\nconst bad: HsonDataValue<typeof S> = Hson.data`<name 3>`;';
+    const source = 'import { Hson, type HsonData } from "hson-live";\nconst S = Hson.schema`\n  <type "data" content <name "string">>\n`;\nconst bad: HsonData<typeof S> = Hson.data`<name 3>`;';
     const app = project(`proof-host-${host.version}`, { 'app.ts': source }, {}, host);
     const errors = app.errors('app.ts');
     assert.deepEqual(errors.map(error => error.code), [95002], `${host.version}: ${messages(errors)}`);
@@ -85,11 +85,11 @@ check("verified proof diagnostics and correction work on each supplied TypeScrip
     assert.match(messages(errors), /expected string; received number/);
     app.edit('app.ts', source.replace('<name 3>', '<name "Ada">'));
     assert.deepEqual(app.errors('app.ts'), [], host.version);
-    const unsafe = source + '\nconst unrelated: number = "wrong";\nconst wrongFamily: HsonDataValue<typeof S> = Hson.document`<main/>`;\ndeclare const opaque: string;\nconst unverified: HsonDataValue<typeof S> = opaque;';
+    const unsafe = source + '\nconst unrelated: number = "wrong";\nconst wrongFamily: HsonData<typeof S> = Hson.document`<main/>`;\ndeclare const opaque: string;\nconst unverified: HsonData<typeof S> = opaque;';
     app.edit('app.ts', unsafe);
     const retained = app.errors('app.ts');
     assert.equal(retained.filter(error => error.code === 95002).length, 1, messages(retained));
-    for (const [name, code] of [['unrelated', 2322], ['wrongFamily', 2740], ['unverified', 2322]] as const) assert.ok(retained.some(error => error.code === code && error.start === unsafe.indexOf(`const ${name}:`) + 6), `${host.version} ${name}: ${messages(retained)}`);
+    for (const [name, code] of [['unrelated', 2322], ['wrongFamily', 2322], ['unverified', 2322]] as const) assert.ok(retained.some(error => error.code === code && error.start === unsafe.indexOf(`const ${name}:`) + 6), `${host.version} ${name}: ${messages(retained)}`);
     app.service.dispose();
     console.log(`ok - proof diagnostics and correction on TypeScript ${host.version}`);
   }
@@ -97,17 +97,17 @@ check("verified proof diagnostics and correction work on each supplied TypeScrip
 
 check("alias assignments and targeted Hson problems use the live editor view", () => {
   const aliases = project("annotation-aliases", {
-    "schema.ts": `import { Hson, type HsonFromSchema, type HsonDataValue, type HsonDocument } from "hson-live";
+    "schema.ts": `import { Hson, type HsonFromSchema, type HsonData, type HsonDocument } from "hson-live";
 export const DataSchema = Hson.schema\`<type "data" content <name "string">>\`;
 export const DocSchema = Hson.schema\`<type "document" tag "main" content "empty">\`;
-export type Imported = HsonDataValue<typeof DataSchema>;
+export type Imported = HsonData<typeof DataSchema>;
 export type ImportedDoc = HsonDocument<typeof DocSchema>;
 export type ImportedHsonDoc = HsonFromSchema<typeof DocSchema>;
 `,
-    "consumer.ts": `import { Hson, type HsonFromSchema, type HsonDataValue, type JsonFromSchema } from "hson-live";
+    "consumer.ts": `import { Hson, type HsonFromSchema, type HsonData, type JsonFromSchema } from "hson-live";
 import { DataSchema, DocSchema, type Imported, type ImportedDoc, type ImportedHsonDoc } from "./schema.js";
-type Local = HsonDataValue<typeof DataSchema>; export type Chain = Local;
-const direct: HsonDataValue<typeof DataSchema> = Hson.data\`<name "Ada">\`;
+type Local = HsonData<typeof DataSchema>; export type Chain = Local;
+const direct: HsonData<typeof DataSchema> = Hson.data\`<name "Ada">\`;
 const local: Chain = Hson.data\`<name "Ada">\`;
 const imported: Imported = Hson.data\`<name "Ada">\`;
 const document: ImportedDoc = DocSchema.certify(Hson.document\`<main/>\`);
@@ -121,12 +121,12 @@ const hsonDocumentInvalid: ImportedHsonDoc = DocSchema.certify(Hson.document\`<a
 const invalid: Chain = Hson.data\`<name 37>\`;
 type Value = JsonFromSchema<typeof DataSchema>;
 const projected: Value = Hson.data\`<name "Ada">\`;
-type Missing = HsonDataValue<typeof MissingSchema>;
+type Missing = HsonData<typeof MissingSchema>;
 const unresolved: Missing = Hson.data\`<name "Ada">\`;
 `,
     "lookalike.ts": `import { Hson } from "hson-live";
 import { DataSchema } from "./schema.js";
-type HsonDataValue<S> = string; type Alias = HsonDataValue<typeof DataSchema>;
+type HsonData<S> = string; type Alias = HsonData<typeof DataSchema>;
 const fake: Alias = Hson.data\`<name 37>\`;
 `,
     "binding.ts": `import { Hson } from "hson-live";
@@ -147,7 +147,7 @@ const incorrect: Imported = Hson.data\`<name 37>\`;
     const start = source.indexOf(`const ${name}:`) + 6;
     assert.ok(!errors.some(error => error.start === start), `${name}: ${messages(errors)}`);
   }
-  assert.deepEqual(aliases.errors("lookalike.ts").map(error => error.code), [2322], "Shadowed spelling retains the ordinary carrier-to-string error without establishing a Schema relationship");
+  assert.deepEqual(aliases.errors("lookalike.ts").map(error => error.code), [], "A source string satisfies a shadowed string alias without establishing a Schema relationship");
   const bindingErrors = aliases.errors("binding.ts");
   assert.equal(bindingErrors.length, 1, messages(bindingErrors));
   assert.match(messages(bindingErrors), /Static Hson does not satisfy DataSchema.*expected string/);
@@ -323,7 +323,7 @@ check("final Library authoring uses source and emitted entrypoints under both st
 const S = Hson.schema\`<type "data" content <name "string" values <array "number">>>\`;
 const P = Hson.schema\`<type "document" tag "main" content "string">\`;
 const loc = hsonLiveMap.locus.create({
-  deck: { data: { name: "Ada", values: [1] }, schema: S },
+  deck: { json: { name: "Ada", values: [1] }, schema: S },
   page: { document: Hson.document\`<main "body"/>\`, schema: P, access: "shared" },
   components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part "submit"/>\` }, snap: { kind: "document", document: Hson.document\`<span hson:part/>\` } } },
 });
@@ -359,7 +359,7 @@ loc.lib;
 // @ts-expect-error Removed admission batching stays removed.
 loc.admit.batch;
 async function admit() {
-  const receipt = await loc.admit({ incoming: { data: { name: "new", values: [] }, schema: S } });
+  const receipt = await loc.admit({ incoming: { json: { name: "new", values: [] }, schema: S } });
   // @ts-expect-error Admission does not return a selection receipt.
   receipt.libraries;
   // @ts-expect-error Runtime admission does not rewrite construction-time names.
@@ -402,19 +402,19 @@ const S = Hson.schema\`<type "data" content <name "string">>\`;
 const P = Hson.schema\`<type "document" tag "main" content "empty">\`;
 `;
   const cases: readonly (readonly [string, number])[] = [
-    ['hsonLiveMap.locus.create({ deck: { data: { name: 42 }, schema: S } });', 1],
+    ['hsonLiveMap.locus.create({ deck: { json: { name: 42 }, schema: S } });', 1],
     ['hsonLiveMap.locus.create({ page: { document: Hson.document`<aside/>`, schema: P } }, {});', 1],
-    ['hsonLiveMap.locus.resume({ deck: { data: { name: 42 }, schema: S } }, {});', 1],
-    ['const loc = hsonLiveMap.locus.create({}); loc.admit({ deck: { data: { name: 42 }, schema: S } });', 1],
-    ['const map = hsonLiveMap.create(); map.addLibraries({ deck: { data: { name: 42 }, schema: S } });', 1],
-    ['const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 } } }); map.data["deck"].schema.use(S);', 0],
-    ['const loc = hsonLiveMap.locus.create({ deck: { data: { name: 42 } } }); loc.data.must("deck", S);', 0],
-    ['const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 } } }); map.data("deck", S);', 0],
-    ['const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 } } }); map.data("deck")?.schema.use(S);', 0],
-    ['declare const rest: object; const map = hsonLiveMap.fromLibraries({ deck: { data: { name: 42 }, ...rest } }); map.data.deck.schema.use(S);', 0],
-    ['declare const value: unknown; hsonLiveMap.locus.create({ deck: { data: value, schema: S } });', 0],
-    ['const loc = { admit(defs: unknown) {} }; loc.admit({ deck: { data: { name: 42 }, schema: S } });', 0],
-    ['const other = { locus: { create(defs: unknown) {} } }; other.locus.create({ deck: { data: { name: 42 }, schema: S } });', 0],
+    ['hsonLiveMap.locus.resume({ deck: { json: { name: 42 }, schema: S } }, {});', 1],
+    ['const loc = hsonLiveMap.locus.create({}); loc.admit({ deck: { json: { name: 42 }, schema: S } });', 1],
+    ['const map = hsonLiveMap.create(); map.addLibraries({ deck: { json: { name: 42 }, schema: S } });', 1],
+    ['const map = hsonLiveMap.fromLibraries({ deck: { json: { name: 42 } } }); map.data["deck"].schema.use(S);', 0],
+    ['const loc = hsonLiveMap.locus.create({ deck: { json: { name: 42 } } }); loc.data.must("deck", S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ deck: { json: { name: 42 } } }); map.data("deck", S);', 0],
+    ['const map = hsonLiveMap.fromLibraries({ deck: { json: { name: 42 } } }); map.data("deck")?.schema.use(S);', 0],
+    ['declare const rest: object; const map = hsonLiveMap.fromLibraries({ deck: { json: { name: 42 }, ...rest } }); map.data.deck.schema.use(S);', 0],
+    ['declare const value: unknown; hsonLiveMap.locus.create({ deck: { json: value, schema: S } });', 0],
+    ['const loc = { admit(defs: unknown) {} }; loc.admit({ deck: { json: { name: 42 }, schema: S } });', 0],
+    ['const other = { locus: { create(defs: unknown) {} } }; other.locus.create({ deck: { json: { name: 42 }, schema: S } });', 0],
     ['const value = Hson.data`<name 42>`;', 0],
   ];
   for (const [index, [body, expected]] of cases.entries()) {
@@ -432,22 +432,22 @@ check("official candidates reject consumer filename collisions with the supplied
     const test = project(`host-ownership-${host.version}-${entrypoint.replaceAll("/", "-")}`, {
       "src/types/locus.core.types.ts": 'export interface Other { admit(definitions: unknown): void }',
       "dist/types/livemap.types.d.ts": 'export interface OtherMap { addLibraries(definitions: unknown): void }',
-      "index.ts": `import { Hson, type HsonDataValue } from "hson-live/hson";
+      "index.ts": `import { Hson, type HsonData } from "hson-live/hson";
 import { hsonLiveMap } from "${entrypoint}";
 import type { Other } from "./src/types/locus.core.types.js";
 import type { OtherMap } from "./dist/types/livemap.types.js";
 const S = Hson.schema\`<type "data" content <name "string">>\`;
 declare const other: Other;
 declare const otherMap: OtherMap;
-other.admit({ fake: { data: { name: 42 }, schema: S } });
-otherMap.addLibraries({ fake: { data: { name: 42 }, schema: S } });
+other.admit({ fake: { json: { name: 42 }, schema: S } });
+otherMap.addLibraries({ fake: { json: { name: 42 }, schema: S } });
 const loc = hsonLiveMap.locus.create({});
-loc.admit({ actual: { data: { name: 42 }, schema: S } });
-const map = hsonLiveMap.fromLibraries({ actual: { data: { name: 42 }, schema: S } });
+loc.admit({ actual: { json: { name: 42 }, schema: S } });
+const map = hsonLiveMap.fromLibraries({ actual: { json: { name: 42 }, schema: S } });
 map.data["actual"].schema.use(S);
 const exact: typeof S = map.data.actual.schema.get();
-const value: HsonDataValue<typeof S> = Hson.data\`<name 42>\`;
-S.certify(Hson.data\`<name 43>\`);
+const value: HsonData<typeof S> = Hson.data\`<name 42>\`;
+S.certify(Hson.data.parse\`<name 43>\`);
 `,
     }, {}, host);
     const diagnostics = test.errors("index.ts");
@@ -472,7 +472,7 @@ S.certify(Hson.data\`<name 43>\`);
     }
     test.edit("index.ts", test.text("index.ts").replaceAll('name: 42', 'name: "ok"').replace('<name 42>', '<name "ok">').replace('<name 43>', '<name "ok">'));
     assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
-    const completionSource = 'import { Hson, type HsonDataValue } from "hson-live"; const S = Hson.schema`<type "data" defs <Age "number" User <content <age <ref "Age">>>> content <ref "User">>`; const value: HsonDataValue<typeof S> = Hson.data`<ag`;';
+    const completionSource = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" defs <Age "number" User <content <age <ref "Age">>>> content <ref "User">>`; const value: HsonData<typeof S> = Hson.data`<ag`;';
     test.edit("index.ts", completionSource);
     const complete = (offset: number) => test.service.getCompletionsAtPosition(test.file("index.ts"), offset, {})?.entries.map(entry => entry.name) ?? [];
     assert.deepEqual(complete(completionSource.indexOf('<ref "Age"') + 6), ["Age", "User"], `${host.version}: Schema reference completion`);
@@ -487,19 +487,19 @@ check("constructor ownership uses official called declarations without instantia
   for (const host of hosts) for (const installation of ["source", "package", "symlink", "reexport", "lookalike", "typed-replacement", "dynamic"] as const) {
     const official = !["lookalike", "typed-replacement", "dynamic"].includes(installation);
     const calls: readonly (readonly [string, boolean])[] = [
-      ['api.locus.create({ bad: { data: { name: 42 }, schema: S } })', official],
-      ['api["locus"]["resume"]({ bad: { data: { name: 42 }, schema: S } }, {})', official],
-      ['api.fromLibraries({ bad: { data: { name: 42 }, schema: S } })', official],
-      ['namespace.locus.create({ bad: { data: { name: 42 }, schema: S } })', official],
-      ['namespace.fromLibraries({ bad: { data: { name: 42 }, schema: S } })', official],
-      ['rootApi.locus.create({ bad: { data: { name: 42 }, schema: S } })', true],
-      ['unrelated.locus.create({ bad: { data: { name: 42 }, schema: S } })', false],
-      ['unrelated.create({ bad: { data: { name: 42 }, schema: S } })', false],
-      ['collision.create({ bad: { data: { name: 42 }, schema: S } })', false],
-      ['collision.resume({ bad: { data: { name: 42 }, schema: S } }, {})', false],
-      ['collision.fromLibraries({ bad: { data: { name: 42 }, schema: S } })', false],
-      ['typed.locus.create({ bad: { data: { name: 42 }, schema: S } })', false],
-      ['api["locus"][key]({ bad: { data: { name: 42 }, schema: S } })', false],
+      ['api.locus.create({ bad: { json: { name: 42 }, schema: S } })', official],
+      ['api["locus"]["resume"]({ bad: { json: { name: 42 }, schema: S } }, {})', official],
+      ['api.fromLibraries({ bad: { json: { name: 42 }, schema: S } })', official],
+      ['namespace.locus.create({ bad: { json: { name: 42 }, schema: S } })', official],
+      ['namespace.fromLibraries({ bad: { json: { name: 42 }, schema: S } })', official],
+      ['rootApi.locus.create({ bad: { json: { name: 42 }, schema: S } })', true],
+      ['unrelated.locus.create({ bad: { json: { name: 42 }, schema: S } })', false],
+      ['unrelated.create({ bad: { json: { name: 42 }, schema: S } })', false],
+      ['collision.create({ bad: { json: { name: 42 }, schema: S } })', false],
+      ['collision.resume({ bad: { json: { name: 42 }, schema: S } }, {})', false],
+      ['collision.fromLibraries({ bad: { json: { name: 42 }, schema: S } })', false],
+      ['typed.locus.create({ bad: { json: { name: 42 }, schema: S } })', false],
+      ['api["locus"][key]({ bad: { json: { name: 42 }, schema: S } })', false],
     ];
     const test = project(`constructor-${host.version}-${installation}`, {
       "src/api/locus/locus.public.ts": `export const collision = {
@@ -532,12 +532,12 @@ declare const typed: typeof rootApi;
 declare const key: "create";
 ${calls.map(([call], index) => `const probe${index} = ${call};`).join("\n")}
 function shadow(rootApi: typeof import("hson-live").hsonLiveMap) {
-  const probeShadow = rootApi.locus.create({ bad: { data: { name: 42 }, schema: S } });
+  const probeShadow = rootApi.locus.create({ bad: { json: { name: 42 }, schema: S } });
 }
 const loc = rootApi.locus.create({});
-loc.admit({ bad: { data: { name: 42 }, schema: S } });
+loc.admit({ bad: { json: { name: 42 }, schema: S } });
 const local = rootApi.fromLibraries({});
-local.addLibraries({ bad: { data: { name: 42 }, schema: S } });
+local.addLibraries({ bad: { json: { name: 42 }, schema: S } });
 `,
     }, { paths: installation === "symlink" ? {} : {
       "hson-live": [join(root, installation === "source" ? "src/index.ts" : "dist/index.d.ts")],
@@ -600,10 +600,10 @@ local.addLibraries({ bad: { data: { name: 42 }, schema: S } });
 import { hsonLiveMap as api } from "hson-live/livemap";
 import * as namespace from "hson-live/livemap";
 const S = Hson.schema\`<type "data" content <name "string">>\`;
-api.locus.create({ bad: { data: { name: 42 }, schema: S } });
-namespace.locus.create({ bad: { data: { name: 42 }, schema: S } });
-api.fromLibraries({ bad: { data: { name: 42 }, schema: S } });
-namespace.fromLibraries({ bad: { data: { name: 42 }, schema: S } });
+api.locus.create({ bad: { json: { name: 42 }, schema: S } });
+namespace.locus.create({ bad: { json: { name: 42 }, schema: S } });
+api.fromLibraries({ bad: { json: { name: 42 }, schema: S } });
+namespace.fromLibraries({ bad: { json: { name: 42 }, schema: S } });
 `);
         const isolated = host.createProgram(test.host.getScriptFileNames(), test.options);
         assert.deepEqual(host.getPreEmitDiagnostics(isolated), [], "Replacement fixture is valid TypeScript");
@@ -741,12 +741,12 @@ const mutated = hsonLiveMap.fromLibraries({ page: { document: badOrder } });
 getPage();
 mutated.doc.must("page").schema.use(Schema);
 export const Data = Hson.schema\`<type "data" content <name "string">>\`;
-hsonLiveMap.fromLibraries({ state: { data: { name: 42 }, schema: Data } });
-hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: Data } });
+hsonLiveMap.fromLibraries({ state: { json: { name: 42 }, schema: Data } });
+hsonLiveMap.fromLibraries({ state: { json: { name: "Ada" }, schema: Data } });
 const knownData = { name: 42 };
-hsonLiveMap.fromLibraries({ state: { data: knownData, schema: Data } });
+hsonLiveMap.fromLibraries({ state: { json: knownData, schema: Data } });
 const escapedData = { name: 42 }; getPage(); void escapedData;
-hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
+hsonLiveMap.fromLibraries({ state: { json: escapedData, schema: Data } });
 `;
   const test = project("candidate-diagnostics", { "index.ts": source });
   const errors = test.errors("index.ts").filter(error => error.code === 95002);
@@ -787,9 +787,9 @@ hsonLiveMap.fromLibraries({ state: { data: escapedData, schema: Data } });
     ['const A = S; hsonLiveMap.fromLibraries({ page: { document: bad, schema: A } });', 1],
     ['const A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.doc.must("page").schema.use(A);', 0],
     ['let A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.doc.must("page").schema.use(A);', 0],
-    ['const D = Hson.schema`<type "data" content <name "string">>`; const A = D; const map = hsonLiveMap.fromLibraries({ state: { data: { name: 42 } } }); map.data.must("state").schema.use(A);', 0],
-    ['const D = Hson.schema`<type "data" content <name "string">>`; hsonLiveMap.fromLibraries({ data: { data: \'{"name":42}\', schema: D } });', 1],
-    ['const D = Hson.schema`<type "data" content <name "string">>`; const data = condition ? { name: 42 } : { name: 7 }; Reflect.set(data, "name", "Ada"); hsonLiveMap.fromLibraries({ state: { data, schema: D } });', 0],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; const A = D; const map = hsonLiveMap.fromLibraries({ state: { json: { name: 42 } } }); map.data.must("state").schema.use(A);', 0],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; hsonLiveMap.fromLibraries({ data: { json: \'{"name":42}\', schema: D } });', 1],
+    ['const D = Hson.schema`<type "data" content <name "string">>`; const data = condition ? { name: 42 } : { name: 7 }; Reflect.set(data, "name", "Ada"); hsonLiveMap.fromLibraries({ state: { json: data, schema: D } });', 0],
   ];
   for (const [body, expected] of cases) {
     test.edit("index.ts", prefix + body);
@@ -876,7 +876,7 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
   // Complete reference failures are now editor errors, while composition Schema
   // proof still withdraws rather than judging an unexpanded connector as markup.
   for (const { inventory, message } of [
-    { inventory: 'bits: { data: { title: { kind: "document", document: "<p hson:part/>" } } }', message: /Unknown Parts Library "bits"/ },
+    { inventory: 'bits: { json: { title: { kind: "document", document: "<p hson:part/>" } } }', message: /Unknown Parts Library "bits"/ },
     { inventory: 'bits: { parts: { other: { kind: "document", document: "<p hson:part/>" } } }', message: /Unknown Part member "title"/ },
   ]) {
     test.edit("index.ts", prefix + `hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page }, ${inventory} });`);
@@ -950,7 +950,7 @@ check("rejected Part producers retain source errors without receiving Schema con
 });
 
 check("annotation proof, certification, aliases and generated diagnostics converge", () => {
-  const source = `import { Hson, hsonLiveMap, type HsonAuthored, type HsonDataValue, type HsonDocument } from "hson-live";
+  const source = `import { Hson, hsonLiveMap, type HsonAuthored, type HsonData, type HsonDocument } from "hson-live";
 const Text = Hson.schema\`<type "document" content "string">\`;
 const authoredText: HsonAuthored = Hson.document\`"hello"\`;
 const text: HsonDocument<typeof Text> = Text.certify(authoredText);
@@ -960,8 +960,8 @@ const document: HsonDocument<typeof Page> = Page.certify(Hson.document\`<main "h
 Page.certify(document);
 const S = Hson.schema\`<type "data" content <name "string">>\`;
 const A = S;
-const bad: HsonDataValue<typeof A> = Hson.data\`<name 42>\`;
-S.certify(bad); A.certify(bad);
+const bad: HsonData<typeof A> = Hson.data\`<name 42>\`;
+S.certify(Hson.data.parse(bad)); A.certify(Hson.data.parse(bad));
 const PageAlias = Page;
 const invalidMap = hsonLiveMap.fromLibraries({ page: { document: '<aside "hello"/>', schema: PageAlias } });
 invalidMap.doc.must("page").schema.use(PageAlias);
@@ -997,7 +997,7 @@ const unrelated: number = "wrong";
   assert.equal(regenerated.status, 0, regenerated.stdout + regenerated.stderr);
   const checked = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "check", "--project", config], { cwd: root, encoding: "utf8" });
   assert.equal(checked.status, 0, checked.stdout + checked.stderr);
-  test.edit("index.ts", valid + '\nconst Wrong = Hson.schema`<type "data" content <name "number">>`; Wrong.certify(bad);');
+  test.edit("index.ts", valid + '\nconst Wrong = Hson.schema`<type "data" content <name "number">>`; Wrong.certify(Hson.data.parse(bad));');
   assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 1, "Distinct Schema identity must retain its own failure");
   test.edit("index.ts", valid.replace('Hson.document`"hello"`', 'Hson.data`"hello"`'));
   assert.ok(test.errors("index.ts").some(error => error.code === 2322), "Wrong-family assignment errors remain visible");
@@ -1024,14 +1024,14 @@ check("document issue ranges follow canonical candidate item paths", () => {
 
 check("canonical diagnostic details and collision provenance reach authored editor locations", () => {
   const source = '\uFEFF' + [
-    'import { Hson, type HsonDataValue } from "hson-live";',
+    'import { Hson, type HsonData } from "hson-live";',
     'const Union = Hson.schema`<type "data" content <value <union [<content <kind <exact "title">>>, <content <kind <exact "code"> language "string" body "string">>, <content <kind <exact "image"> url "string">>]>>>`;',
-    'const missing: HsonDataValue<typeof Union> = Hson.data`<value <kind "code">>`;',
+    'const missing: HsonData<typeof Union> = Hson.data`<value <kind "code">>`;',
     'const Doc = Hson.schema`<type "document" tag "main" attrs <props <lang <exact "en">>> content "empty">`;',
     'Doc.certify(Hson.document`<main\r\n lang="fr"/>`);',
     'const Unique = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["K"]], ["b", ["K"]]]>>>>>`;',
     'const collision = Hson.data`<items [\r\n <kind "a">,\r\n <kind "b">]>`;',
-    'Unique.certify(collision);',
+    'Unique.certify(Hson.data.parse(collision));',
   ].join('\r\n');
   const test = project("diagnostic-fidelity", { "index.ts": source });
   const all = test.errors("index.ts");
@@ -1056,7 +1056,7 @@ check("canonical diagnostic details and collision provenance reach authored edit
   test.service.dispose();
   const values = 'import { Hson } from "hson-live";\r\nexport const collision = Hson.data`<items [\r\n<kind "a">, <kind "b">]>`;\r\n';
   const consumer = 'import { Hson } from "hson-live";\r\nimport { collision } from "./values.js";\r\n'
-    + source.slice(source.indexOf('const Unique ='), source.indexOf('const collision =')) + 'Unique.certify(collision);';
+    + source.slice(source.indexOf('const Unique ='), source.indexOf('const collision =')) + 'Unique.certify(Hson.data.parse(collision));';
   const imported = project("imported-collision", { "index.ts": consumer, "values.ts": values });
   const importedErrors = imported.errors("index.ts").filter(error => error.code === 95002);
   assert.equal(importedErrors.length, 1, messages(imported.errors("index.ts")));
@@ -1068,7 +1068,7 @@ check("canonical diagnostic details and collision provenance reach authored edit
 
 check("malformed initializers suppress only redundant proof errors and recover on unsaved edits", () => {
   const initial = '\uFEFF' + [
-    'import { Hson, type HsonDataValue, type HsonDocument, type HsonFromSchema, type JsonFromSchema } from "hson-live";',
+    'import { Hson, type HsonData, type HsonDocument, type HsonFromSchema, type JsonFromSchema } from "hson-live";',
     'const S = Hson.schema`<type "data" content <name "string">>`;',
     'const D = Hson.schema`<type "document" tag "main" content "empty">`;',
     'type Alias = HsonFromSchema<typeof S>;',
@@ -1076,9 +1076,9 @@ check("malformed initializers suppress only redundant proof errors and recover o
     'const doc: HsonDocument<typeof D> = D.certify(Hson.document`\r\n <main`);',
     'const unrelated: number = "wrong";',
     'const field: JsonFromSchema<typeof S> = { name: 37 };',
-    'declare const dynamic: HsonDataValue;',
-    'const unproven: HsonDataValue<typeof S> = dynamic;',
-    'const wrongFamily: HsonDataValue<typeof S> = Hson.document`<main/>`;',
+    'declare const dynamic: HsonData;',
+    'const unproven: HsonData<typeof S> = dynamic;',
+    'const wrongFamily: HsonData<typeof S> = Hson.document`<main/>`;',
   ].join('\r\n');
   const test = project("malformed-proof", { "index.ts": initial });
   for (const source of [initial, initial.replace('<name "Ada"', '<name +1>'), initial.replace('<name "Ada"', '<name [')]) {
@@ -1092,14 +1092,15 @@ check("malformed initializers suppress only redundant proof errors and recover o
     const errors = test.errors("index.ts");
     assert.equal(errors.length, 4, messages(errors));
     for (const name of ["unrelated:", "name: 37", "unproven:", "wrongFamily:"]) {
-      assert.ok(errors.some(error => error.code === (name === "wrongFamily:" ? 2740 : 2322) && error.start === source.indexOf(name)), `${name}\n${messages(errors)}`);
+      assert.ok(errors.some(error => error.code === 2322 && error.start === source.indexOf(name)), `${name}\n${messages(errors)}`);
     }
     assert.ok(!errors.some(error => error.start === source.indexOf("malformed:") || error.start === source.indexOf("doc:")), messages(errors));
     const underlying = test.underlying.getSemanticDiagnostics(test.file("index.ts"));
     for (const name of ["malformed:", "unproven:"]) {
       assert.ok(underlying.some(error => error.start !== undefined
         && error.file?.text.slice(error.start, error.start + name.length) === name
-        && ts.flattenDiagnosticMessageText(error.messageText, "\n").includes('HsonDataValue<HsonSchema<unknown, "data"')),
+        && ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("'[HSON_SCHEMA_PROOF]'")
+        && ts.flattenDiagnosticMessageText(error.messageText, "\n").includes('HsonSchema<unknown, "data"')),
         `${name} must retain its underlying TypeScript proof diagnostic: ${messages(underlying)}`);
     }
   }
@@ -1127,15 +1128,15 @@ check("malformed initializers suppress only redundant proof errors and recover o
 
 check("proof filtering requires admission evidence owned by the exact assigned template", () => {
   const source = '\uFEFF' + [
-    'import { Hson, type HsonDataValue, type JsonFromSchema } from "hson-live";',
+    'import { Hson, type HsonData, type JsonFromSchema } from "hson-live";',
     'const S = Hson.schema`<type "data" content <name "string">>`;',
     'declare const dynamic: string;',
-    'const unused: HsonDataValue<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
-    'const nested: HsonDataValue<typeof S> = Hson.data`<name ${Hson.data`+1`}>`;',
-    'const own: HsonDataValue<typeof S> = Hson.data`+1 ${missing}`;',
-    'const escaped: HsonDataValue<typeof S> = Hson.data`// \\8\r\n<name "Ada">`;',
-    'const admitted: HsonDataValue<typeof S> = Hson.data`<name "\\\\n">`;',
-    'const outer: HsonDataValue<typeof S> = Hson.data`<name ${dynamic}>`;',
+    'const unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
+    'const nested: HsonData<typeof S> = Hson.data`<name ${Hson.data.parse`+1`}>`;',
+    'const own: HsonData<typeof S> = Hson.data`+1 ${missing}`;',
+    'const escaped: HsonData<typeof S> = Hson.data`// \\8\r\n<name "Ada">`;',
+    'const admitted: HsonData<typeof S> = Hson.data`<name "\\\\n">`;',
+    'const outer: HsonData<typeof S> = Hson.data`<name ${dynamic}>`;',
     'const unrelated: number = "wrong";',
     'const field: JsonFromSchema<typeof S> = { name: 37 };',
   ].join('\r\n');
@@ -1155,20 +1156,20 @@ check("proof filtering requires admission evidence owned by the exact assigned t
   assertErrors(source, false);
   // Removing the owner's syntax error restores its ordinary proof diagnostic;
   // repairing a nested error never changes the outer template's proof status.
-  const repaired = source.replace('Hson.data`+1`', 'Hson.data`<name "Ada">`').replace('+1 ${missing}', '<name ${missing}>').replace('\\8', '\\\\8');
+  const repaired = source.replace('Hson.data.parse`+1`', 'Hson.data.parse`<name "Ada">`').replace('+1 ${missing}', '<name ${missing}>').replace('\\8', '\\\\8');
   test.edit("index.ts", repaired);
   const repairedSyntax = produce_document_diagnostics({ fileName: test.file("index.ts"), text: repaired, languageId: "typescript" });
   assert.deepEqual(repairedSyntax.map(issue => issue.code), ["HSON_INTERPOLATION_DATA_STATIC_TYPE", "HSON_EXPECT_ERROR_UNUSED"]);
   const carrierSlot = repairedSyntax.find(issue => issue.code === "HSON_INTERPOLATION_DATA_STATIC_TYPE")!;
-  assert.equal(repaired.slice(carrierSlot.range.start, carrierSlot.range.end), 'Hson.data`<name "Ada">`');
+  assert.equal(repaired.slice(carrierSlot.range.start, carrierSlot.range.end), 'Hson.data.parse`<name "Ada">`');
   assertErrors(repaired, true);
   test.service.dispose();
 });
 
 check("optional-chain tags retain syntax errors and cannot establish candidate or producer proof", () => {
   const schema = '<type "data" content <name "string">>';
-  const lines = ['import { Hson, type HsonDataValue } from "hson-live";', `const S = Hson.schema\`${schema}\`;`,
-    'const valid: HsonDataValue<typeof S> = Hson.data`<name "Ada">`;'];
+  const lines = ['import { Hson, type HsonData } from "hson-live";', `const S = Hson.schema\`${schema}\`;`,
+    'const valid: HsonData<typeof S> = Hson.data`<name "Ada">`;'];
   const invalidNames: string[] = [];
   for (const parenthesized of [false, true]) for (const [index, tag] of ["Hson?.data", "Hson.data?.", "Hson?.schema", "Hson.schema?."].entries()) {
     const name = `value${parenthesized ? "Wrapped" : "Direct"}${index}`;
@@ -1176,8 +1177,8 @@ check("optional-chain tags retain syntax errors and cannot establish candidate o
     const producer = index >= 2;
     const template = `${tag}\`${producer ? schema : '<name "Ada">'}\``;
     const initializer = parenthesized ? `(${template})` : template;
-    if (producer) lines.push(`const ${name}Schema = ${initializer};`, `const ${name}: HsonDataValue<typeof ${name}Schema> = Hson.data\`<name "Ada">\`;`);
-    else lines.push(`const ${name}: HsonDataValue<typeof S> = ${initializer};`);
+    if (producer) lines.push(`const ${name}Schema = ${initializer};`, `const ${name}: HsonData<typeof ${name}Schema> = Hson.data\`<name "Ada">\`;`);
+    else lines.push(`const ${name}: HsonData<typeof S> = ${initializer};`);
   }
   lines.push('const unrelated: number = "wrong";');
   const source = '\uFEFF' + lines.join('\r\n');
@@ -1205,7 +1206,7 @@ check("optional-chain tags retain syntax errors and cannot establish candidate o
 check("rejected Schema producers withdraw initial governing evidence and reads", () => {
   const body = '<type "data" content <name "string">>';
   const valid = `import { Hson } from "hson-live";\r\nexport const Bad = Hson.schema\`${body}\`;\r\n`;
-  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { Bad } from "./schema.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: Bad } });\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n';
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { Bad } from "./schema.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { json: { name: "Ada" }, schema: Bad } });\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n';
   const test = project("producer-proof-eligibility", { "schema.ts": valid, "index.ts": consumer });
   const evidence = () => test.service.getProgram()!.getSourceFiles().filter(file => file.fileName.endsWith("/Bad.hson-schema.generated.ts"));
   const attachment = () => { const snapshot = test.host.getScriptSnapshot(test.file("index.ts"))!; return snapshot.getText(0, snapshot.getLength()).includes('__hson_assert_library_schema(map, "state", Bad)'); };
@@ -1303,13 +1304,13 @@ check("production reference completion uses compiler capabilities, decoded names
 });
 
 check("production Schema associations share annotations and imported source identity in every TS authoring extension", () => {
-  const producer = 'import { Hson, type HsonSchema, type HsonFromSchema, type HsonDataValue } from "hson-live"; export const S: HsonSchema = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; export const Alias = S; export type Imported = HsonFromSchema<typeof Alias>; export type Generic<T> = HsonDataValue<T>;';
-  const forms = ["HsonDataValue<typeof S>", "HsonFromSchema<typeof S>", "Chain", "Generic<typeof Alias>", "Imported"];
+  const producer = 'import { Hson, type HsonSchema, type HsonFromSchema, type HsonData } from "hson-live"; export const S: HsonSchema = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; export const Alias = S; export type Imported = HsonFromSchema<typeof Alias>; export type Generic<T> = HsonData<T>;';
+  const forms = ["HsonData<typeof S>", "HsonFromSchema<typeof S>", "Chain", "Generic<typeof Alias>", "Imported"];
   const files: Record<string, string> = { "schema.ts": producer,
     "binding.ts": 'import { Hson as H } from "hson-live"; import type { Imported } from "./schema.js"; const S = H.schema`<type "data" content <wrong "number">>`; const value: Imported = H.data`<co`;',
   };
   for (const ext of ["ts", "tsx", "mts", "cts"]) {
-    files[`app.${ext}`] = 'import { Hson, type HsonDataValue, type HsonFromSchema } from "hson-live"; import { S, Alias, type Generic, type Imported } from "./schema.js"; type Local<T> = HsonFromSchema<T>; type Chain = (Local<typeof Alias>);\n'
+    files[`app.${ext}`] = 'import { Hson, type HsonData, type HsonFromSchema } from "hson-live"; import { S, Alias, type Generic, type Imported } from "./schema.js"; type Local<T> = HsonFromSchema<T>; type Chain = (Local<typeof Alias>);\n'
       + forms.map((form, index) => `const value${index}: ${form} = Hson.data\`<co\`;`).join('\n');
   }
   const app = project("completion-associations", files);
@@ -1360,7 +1361,7 @@ check("production completion refreshes imported and local Schemas after unsaved 
 });
 
 check("production completion ignores comments, strings, expressions and unreliable associations", () => {
-  const prefix = 'import { Hson, type HsonFromSchema, type HsonDataValue, type JsonFromSchema } from "hson-live"; const S = Hson.schema`<type "data" content <color "string">>`; ';
+  const prefix = 'import { Hson, type HsonFromSchema, type HsonData, type JsonFromSchema } from "hson-live"; const S = Hson.schema`<type "data" content <color "string">>`; ';
   const sources = [
     '// Hson.data`<co|`', 'const plain = "Hson.data<co|";',
     'const x: HsonFromSchema<typeof S> = Hson.data`<color "co|">`;',
@@ -1487,7 +1488,7 @@ check("production contextual completions use collection positions, branch facts 
     }
   }
   const file = "app.ts";
-  const marked = 'import { Hson, type HsonDataValue } from "hson-live"; import { S } from "./schema.js"; declare const dynamic: string; const x: HsonDataValue<typeof S> = Hson.data`<blocks [<kind ${dynamic} | >]>`;';
+  const marked = 'import { Hson, type HsonData } from "hson-live"; import { S } from "./schema.js"; declare const dynamic: string; const x: HsonData<typeof S> = Hson.data`<blocks [<kind ${dynamic} | >]>`;';
   const source = marked.replace("|", "");
   app.edit(file, source);
   assert.deepEqual(app.service.getCompletionsAtPosition(app.file(file), marked.indexOf("|"), {})?.entries.map(entry => entry.name) ?? [], [], "An opaque authored discriminator cannot select a branch or be duplicated");
@@ -1509,7 +1510,7 @@ check("contextual literal edits preserve exact decoded identity and every surrou
   const values = ['tick`name', '${Math.random()}', 'quote"\\u0060\\Ω\n', 'e\u0301', '\u00e9', ''];
   const escaped = (value: string) => JSON.stringify(value).replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
   const schema = '<type "data" content <value <union [' + values.map(value => '<exact ' + escaped(value) + '>').join(', ') + ']>>>';
-  const prefix = '\uFEFFimport { Hson, type HsonDataValue } from "hson-live";\r\nconst S = Hson.schema`' + schema + '`;\r\nconst x: HsonDataValue<typeof S> = Hson.data`<value ';
+  const prefix = '\uFEFFimport { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`' + schema + '`;\r\nconst x: HsonData<typeof S> = Hson.data`<value ';
   const suffix = '`;\r\nconst untouched = "keep"; // keep\r\nconst adjacent = Hson.data`<value "keep">`;';
   const app = project("contextual-literal-insertion", { "app.ts": prefix + '>' + suffix });
   for (const [body, from, to] of [['|>', 0, 0], ['"|old">', 1, 4], ['"|', 1, 1]] as const) {
@@ -1541,7 +1542,7 @@ check("contextual literal edits preserve exact decoded identity and every surrou
 
 check("contextual completion refreshes branches and literals while reusing program evidence", () => {
   const producer = 'import { Hson } from "hson-live"; export const S = Hson.schema`' + contextual.schema + '`;';
-  const source = 'import { Hson, type HsonDataValue } from "hson-live"; import { S } from "./schema.js"; const x: HsonDataValue<typeof S> = Hson.data`<blocks [<kind "code" language >]>`;';
+  const source = 'import { Hson, type HsonData } from "hson-live"; import { S } from "./schema.js"; const x: HsonData<typeof S> = Hson.data`<blocks [<kind "code" language >]>`;';
   const app = project("contextual-refresh", { "schema.ts": producer, "app.ts": source });
   const cursor = source.indexOf('language >') + 9;
   const complete = () => app.service.getCompletionsAtPosition(app.file("app.ts"), cursor, {})?.entries.map(entry => entry.name) ?? [];

@@ -143,31 +143,36 @@ await check("JSON sidecar installation bypasses inherited setters", async () => 
     await assertDocument(source); assert.equal(selected.noBreak().serialize(), baseline.hson); assert.equal(calls, 0);
   });
 });
-await check("ordinary data materialization installs storage-name keys as own data", async () => {
-  const data = { $_attrs: "authored attrs", $_meta: "authored meta", $_tag: "authored tag", $_content: "authored content" };
+await check("ordinary data materialization installs prototype-sensitive keys as own data", async () => {
+  const data = { ["__proto__"]: "authored proto", constructor: "authored constructor", toString: "authored string", zero: -0 };
   const source = hsonTransform.fromJson(data); let calls = 0;
   await withInherited(Object.keys(data).map(key => [key, {
     get() { calls++; return "inherited"; }, set() { calls++; },
   }] as const), () => {
     const json = source.toJson(); assert.deepEqual(json.value(), data); assert.deepEqual(JSON.parse(json.serialize()), data);
     for (const key of Object.keys(data)) assert.equal(Object.hasOwn(json.value() as object, key), true);
+    assert.equal(Object.is(Reflect.get(json.value() as object, "zero"), -0), true);
     assert.equal(calls, 0);
   });
+});
+await check("ordinary Data rejects reserved storage names", () => {
+  for (const key of ["$_attrs", "$_meta", "$_tag", "$_content"])
+    assert.throws(() => hsonTransform.fromJson({ [key]: "forbidden" }), /reserved Hson prefix/);
 });
 await check("contextual object-member projection also bypasses inherited key setters", async () => {
   // This existing internal relationship projection reaches the converter's
   // OBJ fallback. It is deliberately not a portable complete-value positive.
   const member = node("record", [node("_hson_obj", [
-    node("$_attrs", [node("_hson_obj", [node("_hson_str", ["application"])])]),
+    node("__proto__", [node("_hson_obj", [node("_hson_str", ["application"])])]),
   ])]);
   assert.throws(() => hsonTransform.fromNode(member));
   const snapshot = own_transform_source(member); let calls = 0;
-  await withInherited([["$_attrs", { get() { calls++; return "inherited"; }, set() { calls++; } }]], () => {
-    const expected = { record: { $_attrs: "application" } };
+  await withInherited([["__proto__", { get() { calls++; return "inherited"; }, set() { calls++; } }]], () => {
+    const expected = { record: { ["__proto__"]: "application" } };
     assert.deepEqual(json_value_from_node(snapshot), expected);
     assert.deepEqual(JSON.parse(serialize_json(snapshot)), expected);
     const value = json_value_from_node(snapshot) as typeof expected;
-    assert.equal(Object.hasOwn(value.record, "$_attrs"), true); assert.equal(calls, 0);
+    assert.equal(Object.hasOwn(value.record, "__proto__"), true); assert.equal(calls, 0);
   });
 });
 

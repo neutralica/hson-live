@@ -148,7 +148,7 @@ parts.at([]).write();
 parts.at(["heading", "document"]).write();
 // @ts-expect-error Nested member fields have no authoring method.
 parts.heading.at(["document"]).write();
-const ordinary = hsonLiveMap.fromLibraries({ data: { data: { heading: { document: "<h1/>" } } } });
+const ordinary = hsonLiveMap.fromLibraries({ data: { json: { heading: { document: "<h1/>" } } } });
 // @ts-expect-error Ordinary data cannot gain Part authoring.
 ordinary.data.data.at(["heading"]).write();
 map.batch(writer => {
@@ -311,7 +311,7 @@ ANY_DATA.certify(mixed) satisfies HsonDataValue<typeof ANY_DATA>;
 ANY_DATA.certify(42) satisfies HsonDataValue<typeof ANY_DATA>;
 ANY_DATA.certify(false) satisfies HsonDataValue<typeof ANY_DATA>;
 ANY_DATA.certify(null) satisfies HsonDataValue<typeof ANY_DATA>;
-dataSchema.certify(Hson.data`<count 42 label "Example">`) satisfies HsonDataValue<typeof dataSchema>;
+dataSchema.certify(Hson.data.parse`<count 42 label "Example">`) satisfies HsonDataValue<typeof dataSchema>;
 documentSchema.certify(Hson.document`<main/>`);
 ANY_DOCUMENT.certify(Hson.document`<main/>`);
 // @ts-expect-error Certification keeps the exact Schema identity.
@@ -327,7 +327,7 @@ documentSchema.certify(values);
 // @ts-expect-error Document Schemas cannot certify ordinary primitives.
 documentSchema.certify(42);
 // @ts-expect-error Document Schemas still reject Data strings.
-documentSchema.certify(Hson.data`42`);
+documentSchema.certify(Hson.data.parse`42`);
 // @ts-expect-error Undefined is not Data.
 ANY_DATA.certify(undefined);
 

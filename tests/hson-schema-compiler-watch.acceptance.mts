@@ -66,7 +66,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
   const invalid = producer.replace("// ok", "// \\8");
   const badPath = join(directory, "bad.ts"), consumerPath = join(directory, "consumer.ts");
   writeFileSync(join(directory, "good.ts"), producer); writeFileSync(badPath, invalid);
-  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: S } });\r\nexport const name: string = map.data.must("state").at(["name"]).snap();\r\n';
+  const consumer = 'import { hsonLiveMap } from "hson-live";\r\nimport { S } from "./bad.js";\r\nconst map = hsonLiveMap.fromLibraries({ state: { json: { name: "Ada" }, schema: S } });\r\nexport const name: string = map.data.must("state").at(["name"]).snap();\r\n';
   writeFileSync(consumerPath, consumer);
   const states: string[] = [];
   let fabricate = true;
@@ -475,7 +475,7 @@ export const Text = Hson.schema\`<type "document" content "string">\`;
 const authoredText: HsonAuthored = Hson.document\`"hello"\`;
 const text: HsonDocument<typeof Text> = Text.certify(authoredText);
 Text.certify(text);
-const data: HsonDataValue<typeof Refined> = Hson.data\`<age 4>\`;
+const data: HsonDataValue<typeof Refined> = Hson.data.parse\`<age 4>\`;
 declare const value: JsonFromSchema<typeof Refined>;
 const changed: JsonFromSchema<typeof Refined>["age"] = value.age + 1;
 // @ts-expect-error wrong Schema mode
@@ -489,7 +489,7 @@ void changed; void wrong;
     remove("precision.ts"); current = await next(); passes(); preserve();
   });
   await check("direct certification failures publish authored locations and recover in the next watch publication", async () => {
-    const candidate = (value: string) => `${imports}import { S } from "./schema.js"; import type { HsonDataValue } from "hson-live";\nconst page: HsonDataValue<typeof S> = Hson.data\`<value "${value}">\`;\nS.certify(page); S.certify(page);\n`;
+    const candidate = (value: string) => `${imports}import { S } from "./schema.js"; import type { HsonDataValue } from "hson-live";\nconst page: HsonDataValue<typeof S> = Hson.data.parse\`<value "${value}">\`;\nS.certify(page); S.certify(page);\n`;
     write("candidate.ts", candidate("wrong"));
     current = await next();
     assert.equal(current.diagnostics.length, 1);

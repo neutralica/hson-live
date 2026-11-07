@@ -229,7 +229,7 @@ check("LiveMap exposes only detached canonical root copies", () => {
 });
 
 check("detached public observations cannot mutate canonical ownership", () => {
-  const map = hson.liveMap.fromLibraries({ state: { data: { a: { b: 1 } }, schema: Hson.schema`<type "data" content <a <content <b "number">>>>` } });
+  const map = hson.liveMap.fromLibraries({ state: { json: { a: { b: 1 } }, schema: Hson.schema`<type "data" content <a <content <b "number">>>>` } });
   const state = map.data.must("state");
   const baseline = state.snap();
   const beforeRev = map.rev;
@@ -256,7 +256,7 @@ check("document operations stay on the named library while restore stays on the 
   assert.equal(Object.isFrozen(page.document.attrs.must), true);
   assert.equal(typeof page.document.content.insert, "function");
   assert.equal(typeof page.document.content.move, "function");
-  const data = hson.liveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }).data.must("state");
+  const data = hson.liveMap.fromLibraries({ state: { json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }).data.must("state");
   assert.equal("attrs" in data.at([]), false);
 });
 

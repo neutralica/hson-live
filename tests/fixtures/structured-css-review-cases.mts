@@ -63,7 +63,7 @@ export async function structured_css_review_cases(check: (name: string, run: () 
     } finally {l.dispose();}
   });
   await check('ordinary Part-shaped Data rejects omission without acquiring Part governance', () => {
-    const m=hsonLiveMap.fromLibraries({data:{data:{...part,stylesheet:''}}}), data=m.data.data.at([]);
+    const m=hsonLiveMap.fromLibraries({data:{json:{...part,stylesheet:''}}}), data=m.data.data.at([]);
     data.at(['css','width']).set(3);
     data.object.setKey('stylesheet',':scope{color:blue}');
     const before=m.capture(), ledger=authority(m).identityEpoch().issued();
@@ -119,7 +119,7 @@ export async function structured_css_review_cases(check: (name: string, run: () 
       assert.throws(()=>p.replace({...part,css} as never));assert.deepEqual(m.capture(),before);
     }
     assert.equal(reads,0);
-    const data=hsonLiveMap.fromLibraries({data:{data:{kind:'document',document:'<p hson:part/>',css:{color:true},stylesheet:false}},parts:{parts:{css:part}}});
+    const data=hsonLiveMap.fromLibraries({data:{json:{kind:'document',document:'<p hson:part/>',css:{color:true},stylesheet:false}},parts:{parts:{css:part}}});
     data.data.data.at(['css','color']).set(false);data.data.data.at(['stylesheet']).set(true);
     assert.equal(data.data.data.snap(['css','color']),false);assert.equal(data.parts.parts.at(['css']).snap()?.kind,'document');
     assert.throws(()=>data.parts.parts.at(['css','css'] as never),/field access/);

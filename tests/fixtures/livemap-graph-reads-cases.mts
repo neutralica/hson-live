@@ -64,7 +64,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
 
   await check("array ranges select once, detach values and preserve boundary semantics", () => {
     const padding = Object.fromEntries(Array.from({length: 2048}, (_, i) => ["p" + i, i]));
-    const map = hsonLiveMap.fromLibraries({state:{data:{...padding, selected:Array.from({length:512},(_,i)=>({n:i,zero:-0}))}}});
+    const map = hsonLiveMap.fromLibraries({state:{json:{...padding, selected:Array.from({length:512},(_,i)=>({n:i,zero:-0}))}}});
     const library = map.data.must("state"), owner = internal_livemap_aggregate_authority(map);
     const root = resolve_value_node(owner.root(owner.libraries()[0]!), [])!;
     const first = root.$_content[0] as HsonNode, tag = first.$_tag;
@@ -132,7 +132,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
       assert.deepEqual(materialize_projected_hson_node(root), materialize_projected_value(candidate));
       assert.ok(ordered_projected_value_equal(projected_value_from_hson_node(root), candidate));
     }
-    const map = hsonLiveMap.fromLibraries({ state: { data: source } }), library = map.data.must("state");
+    const map = hsonLiveMap.fromLibraries({ state: { json: source } }), library = map.data.must("state");
     assert.equal(library.hson(), source.toHson());
     assert.deepEqual(library.at([]).asObject()!.object.keys(), ["10", "2", "__proto__", "constructor", "", "emptyObject", "emptyArray", "nested"]);
     for (const path of [[], ["2"], ["2", "10"], ["nested"], ["nested", 0], ["10"]] satisfies LivePath[]) {
@@ -164,7 +164,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
   });
 
   await check("selected reads and shape guards never traverse unrelated Library subtrees", () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { scalar: -0, selected: { leaf: 3 }, rows: [{leaf: 1}, {leaf: 2}], other: { huge: [1,2,3] } } } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { scalar: -0, selected: { leaf: 3 }, rows: [{leaf: 1}, {leaf: 2}], other: { huge: [1,2,3] } } } });
     const library = map.data.must("state"), owner = internal_livemap_aggregate_authority(map), identity = owner.libraries()[0]!;
     const root = owner.root(identity), sibling = resolve_value_node(root, ["other", "huge"]);
     assert.ok(sibling);
@@ -184,7 +184,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
   });
 
   await check("snapshots detach from graph and identity remains stable across reads and direct/staged writes", () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { value: {}, rows: [3,1,2] } } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: {}, rows: [3,1,2] } } });
     const library = map.data.must("state"), owner = internal_livemap_aggregate_authority(map);
     library.at(["value"]).replace(source);
     const libraryId = owner.libraries()[0]!;
@@ -230,12 +230,12 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
 
   await check("literal strings, authenticated carriers and submission handoff preserve D4c and D4b contracts", () => {
     for (const candidate of ["42", "true", "null", "{}", "<a 1>", source]) {
-      const map = hsonLiveMap.fromLibraries({ state: { data: candidate } }), library = map.data.must("state");
+      const map = hsonLiveMap.fromLibraries({ state: { json: candidate } }), library = map.data.must("state");
       assert.deepEqual(library.snap(), typeof candidate === "string" ? candidate : candidate.materialize());
       assert.equal(library.hson(), typeof candidate === "string" ? Hson.data.from(candidate).toHson() : candidate.toHson());
     }
     assert.equal(Hson.data.from(source), source);
-    const map = hsonLiveMap.fromLibraries({ state: { data: { value: {} } } }), owner = internal_livemap_aggregate_authority(map);
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: {} } } }), owner = internal_livemap_aggregate_authority(map);
     const staged = make_livemap_staged_writer(owner);
     staged.writer.data.must("state").at(["value"]).replace(source); staged.close();
     const writes = staged.writes();
@@ -247,7 +247,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
   });
 
   await check("missing paths, refined handles and collection errors preserve failure contracts", () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { object: { a: 1 }, array: [], scalar: -0 } } }), library = map.data.must("state");
+    const map = hsonLiveMap.fromLibraries({ state: { json: { object: { a: 1 }, array: [], scalar: -0 } } }), library = map.data.must("state");
     const missing = library.at(["missing"]);
     assert.equal(missing.snap(), undefined); assert.equal(missing.hson(), undefined); assert.equal(missing.kind(), "missing");
     assert.throws(() => missing.must.snap()); assert.throws(() => missing.must.hson());
@@ -266,7 +266,7 @@ export async function livemap_graph_read_cases(check: Check): Promise<void> {
   });
 
   await check("object selection captures its snapshot before caller key-list access", () => {
-    const map = hsonLiveMap.fromLibraries({state:{data:{a:{value:1},b:2}}}), library = map.data.must("state");
+    const map = hsonLiveMap.fromLibraries({state:{json:{a:{value:1},b:2}}}), library = map.data.must("state");
     const api = library.at([]).asObject()!.object;
     const keys: string[] = [];
     Object.defineProperty(keys,0,{enumerable:true,configurable:true,get:()=>{library.at(["a"]).replace({value:9});return "a";}});

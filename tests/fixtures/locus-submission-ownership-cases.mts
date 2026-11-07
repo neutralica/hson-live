@@ -20,7 +20,7 @@ import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mt
 
 type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
 const create = (withDocument = true) => hsonLiveMap.locus.create({
-  state: { data: { value: {}, items: [{}] } },
+  state: { json: { value: {}, items: [{}] } },
   ...(withDocument ? { page: { document: '<main @:main <p @:first title="old" <i/>/> <p @:second title="other"/>/>' } } : {}),
 });
 type Locus = ReturnType<typeof create>;
@@ -355,7 +355,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
 
   await check("Schema failures remain atomic and durable replay retains captured values", async () => {
     const schema = Hson.schema`<type "data" content <n "number">>`;
-    const definitions = { state: { data: { n: 0 }, schema } };
+    const definitions = { state: { json: { n: 0 }, schema } };
     const storage = new MemoryCheckpointAdapter(), options = { logicalMapId: "d4b-ownership", persistence: storage };
     const locus = await hsonLiveMap.locus.resume(definitions, options);
     const selected = locus.data.must("state").at([]);
@@ -370,7 +370,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
   });
 
   await check("internal aggregate Library submission owns sources and CSS; action values capture before deferred handlers", async () => {
-    const map = hsonLiveMap.fromLibraries({ initial: { data: 0 } });
+    const map = hsonLiveMap.fromLibraries({ initial: { json: 0 } });
     let called = false;
     const aggregate = create_locus_hosted_aggregate_internal({ map, actions: { capture: (_context, payload) => {
       called = true; return payload?.materialize();
@@ -378,12 +378,12 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
     try {
       const value = Proxy.revocable({ n: -0 }, {});
       const css = { page: { rules: [], properties: [], keyframes: [], order: [{ kind: "text" as const, text: "p{color:red}" }] } };
-      const adding = aggregate.add_libraries_internal({ added: { data: value.proxy }, page: { document: "<p/>" } }, undefined, undefined, css);
+      const adding = aggregate.add_libraries_internal({ added: { json: value.proxy }, page: { document: "<p/>" } }, undefined, undefined, css);
       value.revoke(); css.page.order[0]!.text = "p{color:blue}"; await adding;
       assert.ok(Object.is(map.data.must("added").snap(["n"]), -0)); assert.equal(map.doc.must("page").css.snapshot(), "p{color:red}");
       const payload = Proxy.revocable({ count: 1 }, {}), dispatched = aggregate.dispatch_action("capture", payload.proxy);
       assert.equal(called, false); payload.revoke(); assert.deepEqual(await dispatched, { count: 1 });
-      const before = map.capture(); await rejected(() => Reflect.apply(aggregate.add_libraries_internal, aggregate, [{ bad: { data: new Date() } }]));
+      const before = map.capture(); await rejected(() => Reflect.apply(aggregate.add_libraries_internal, aggregate, [{ bad: { json: new Date() } }]));
       assert.deepEqual(map.capture(), before);
     } finally { aggregate.dispose(); }
   });

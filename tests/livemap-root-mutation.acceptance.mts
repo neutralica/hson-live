@@ -37,7 +37,7 @@ const NumberSchema = Hson.schema`<type "data" defs <Value "number"> content <ref
 
 function governed() {
   const map = hsonLiveMap.fromLibraries({
-    state: { data: { count: 1, keep: 2, nested: { a: 1, b: 2 } }, schema: StateSchema },
+    state: { json: { count: 1, keep: 2, nested: { a: 1, b: 2 } }, schema: StateSchema },
   });
   const state = map.data.must("state");
   const root = state.at([]);
@@ -166,7 +166,7 @@ check("explicit root replacement removes omitted members and validates the compl
   assert.equal(map.rev, 0);
   assert.equal(publications.length, 0);
   assert.equal(feeds.length, 0);
-  const broad = hsonLiveMap.fromLibraries({ state: { data: { a: 1, b: 2 } } });
+  const broad = hsonLiveMap.fromLibraries({ state: { json: { a: 1, b: 2 } } });
   const broadRoot = broad.data.must("state").at([]);
   changed(broadRoot.replace({ a: 3 }), 0);
   assert.deepEqual(broadRoot.snap(), { a: 3 });
@@ -177,7 +177,7 @@ check("root arrays and tuples assign the whole endpoint and retain ordinary no-o
     { schema: ArraySchema, initial: [1, 2, 3], next: [4], proposal: [5, 6] },
     { schema: TupleSchema, initial: ["first", 1], next: ["next", 2], proposal: ["updated", 3] },
   ]) {
-    const map = hsonLiveMap.fromLibraries({ state: { data: initial, schema } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: initial, schema } });
     const root = map.data.must("state").at([]);
     let publications = 0;
     let feeds = 0;
@@ -201,7 +201,7 @@ check("root arrays and tuples assign the whole endpoint and retain ordinary no-o
     assert.equal(publications, 2);
     assert.equal(feeds, 2);
 
-    const nestedMap = hsonLiveMap.fromLibraries({ state: { data: { items: next } } });
+    const nestedMap = hsonLiveMap.fromLibraries({ state: { json: { items: next } } });
     const nested = nestedMap.data.must("state").at(["items"]);
     const nestedIdentity = acquire_projected_identity(nestedMap.data.must("state"), ["items"]);
     unchanged(nested.set(next), 0);
@@ -214,7 +214,7 @@ check("root arrays and tuples assign the whole endpoint and retain ordinary no-o
 });
 
 check("root primitive set and update replace the value with atomic validation", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: 1, schema: NumberSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: 1, schema: NumberSchema } });
   const root = map.data.must("state").at([]);
   let publications = 0;
   let feeds = 0;
@@ -249,8 +249,8 @@ check("multi-library root assignments preserve other values, identity, and the i
   ];
   for (const { initial, next, proposal, schema } of cases) {
     const map = hsonLiveMap.fromLibraries({
-      state: { data: Hson.data.fromSource(JSON.stringify(initial)), ...(schema === undefined ? {} : { schema }) },
-      other: { data: { keep: { value: 1 } } },
+      state: { json: Hson.data.fromSource(JSON.stringify(initial)), ...(schema === undefined ? {} : { schema }) },
+      other: { json: { keep: { value: 1 } } },
     });
     // Runtime Schema cases intentionally use the Schema-neutral selector.
     const state = map.data.must(String("state"));
@@ -328,8 +328,8 @@ check("multi-library root assignments preserve other values, identity, and the i
 
 check("multi-library rejected assignments and explicit replacement retain existing policy atomically", () => {
   const map = hsonLiveMap.fromLibraries({
-    state: { data: [1, 2], schema: ArraySchema },
-    other: { data: { keep: 1 } },
+    state: { json: [1, 2], schema: ArraySchema },
+    other: { json: { keep: 1 } },
   });
   const state = map.data.must("state");
   const root = state.at([]);
@@ -353,7 +353,7 @@ check("multi-library rejected assignments and explicit replacement retain existi
   assert.equal(publications, 0);
   assert.equal(feeds, 0);
 
-  const single = hsonLiveMap.fromLibraries({ state: { data: [1] } });
+  const single = hsonLiveMap.fromLibraries({ state: { json: [1] } });
   const singleState = single.data.must("state");
   const singleRoot = singleState.at([]);
   const singleIdentity = acquire_projected_identity(singleState, []);
@@ -369,7 +369,7 @@ check("multi-library rejected assignments and explicit replacement retain existi
 
 check("root assignment retires descendants while object patches and nested writes remain constructive", () => {
   const map = hsonLiveMap.fromLibraries({
-    state: { data: [{ child: {} }] }, other: { data: { a: 1, b: 2, nested: { a: 1, b: 2 }, items: [1, 2] } },
+    state: { json: [{ child: {} }] }, other: { json: { a: 1, b: 2, nested: { a: 1, b: 2 }, items: [1, 2] } },
   });
   const state = map.data.must("state");
   const other = map.data.must("other");
@@ -401,7 +401,7 @@ check("root assignment retires descendants while object patches and nested write
 });
 
 check("multi-library null roots retain fixed root-kind constraints", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: null }, other: { data: {} } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: null }, other: { json: {} } });
   const root = map.data.must("state").at([]);
   unchanged(root.set(null), 0);
   unchanged(root.update(current => current), 0);
@@ -411,7 +411,7 @@ check("multi-library null roots retain fixed root-kind constraints", () => {
 });
 
 check("replay preserves root assignment intent through the existing operation codec", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: [1] }, other: { data: { keep: 1 } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: [1] }, other: { json: { keep: 1 } } });
   const aggregate = internal_livemap_aggregate_authority(map);
   const state = map.data.must("state");
   const other = acquire_projected_identity(map.data.must("other"), []);

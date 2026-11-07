@@ -11,7 +11,7 @@ type PageGraph = Readonly<{ $_tag: "_hson_root"; $_content: readonly [Readonly<{
 declare const Page: HsonSchema<PageGraph, "document">;
 const definitions = {
   page: { document: '<main <b "text"/>/>', schema: Page },
-  state: { data: { count: 1 }, schema: State },
+  state: { json: { count: 1 }, schema: State },
   components: { parts: { submit: { kind: "document" as const, document: "<button hson:part/>" } } },
 };
 const map = hsonLiveMap.fromLibraries(definitions);
@@ -27,7 +27,7 @@ map.data.state.at(["count"]).must.snap() satisfies number;
 map.data.state.must.hson() satisfies HsonData;
 map.parts.components.submit.must.snap().document satisfies HsonDocument | string;
 map.parts.components.submit.must.hson() satisfies HsonData;
-const broad = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { data: { value: 1 } } });
+const broad = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { json: { value: 1 } } });
 broad.doc.page.at([0]).snap() satisfies string | undefined;
 broad.doc.page.at([0]).must.snap() satisfies string;
 broad.doc.page.at([0]).must.hson() satisfies HsonDocument;

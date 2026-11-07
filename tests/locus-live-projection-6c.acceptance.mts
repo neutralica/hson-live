@@ -15,10 +15,10 @@ const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const LocalSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const authority = hsonLiveMap.fromLibraries({
-  visibleA: { data: { value: "A0" }, schema: DataSchema },
-  visibleB: { data: { value: "B0" }, schema: DataSchema },
-  PRIVATE_NAME_SENTINEL: { data: { value: "PRIVATE_ROOT_SENTINEL" }, schema: DataSchema },
-  UNSELECTED_NAME_SENTINEL: { data: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: DataSchema },
+  visibleA: { json: { value: "A0" }, schema: DataSchema },
+  visibleB: { json: { value: "B0" }, schema: DataSchema },
+  PRIVATE_NAME_SENTINEL: { json: { value: "PRIVATE_ROOT_SENTINEL" }, schema: DataSchema },
+  UNSELECTED_NAME_SENTINEL: { json: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: DataSchema },
   page: { document: "<main/>", schema: PageSchema },
   hiddenDoc: { document: "<main/>", schema: PageSchema },
 });
@@ -43,9 +43,9 @@ const authorityProgress = project_locus_live_revision_internal(Object.freeze({
 }), initial, Object.freeze({ ...initial, revision: initial.revision + 1 }), selectedA);
 assert.equal(authorityProgress.kind, "progress");
 const clientA = client_projection_map({ authority: snapshotA,
-  local: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
+  local: { local: { json: { value: "LOCAL" }, schema: LocalSchema } } });
 const clientB = client_projection_map({ authority: snapshotB,
-  local: { local: { data: { value: "LOCAL" }, schema: LocalSchema } } });
+  local: { local: { json: { value: "LOCAL" }, schema: LocalSchema } } });
 const replicaA = create_echo_aggregate_replica_capability_internal(clientA);
 const replicaB = create_echo_aggregate_replica_capability_internal(clientB);
 let before = initial;

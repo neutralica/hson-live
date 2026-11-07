@@ -67,7 +67,7 @@ function assert_recovered(locus: Parameters<typeof locus_map_internal>[0], origi
   assert_style_fidelity(main(library_root(current, "page")));
 }
 async function resume(adapter: FileCheckpointAdapter, id: string, data = data_fixture(), document = document_fixture()) {
-  return hsonLiveMap.locus.resume({ "state": { data, schema: Data, access: "shared" }, "page": { document, schema: Page, access: "shared" }, "scalar": { data: -0, schema: Data, access: "shared" }, "numeric": { data: { negative: -0, ordinary: 0 }, schema: Numeric, access: "shared" }, "exact": { data: { negative: -0 }, schema: Exact, access: "shared" } }, { logicalMapId: id, persistence: adapter });
+  return hsonLiveMap.locus.resume({ "state": { json: data, schema: Data, access: "shared" }, "page": { document, schema: Page, access: "shared" }, "scalar": { json: -0, schema: Data, access: "shared" }, "numeric": { json: { negative: -0, ordinary: 0 }, schema: Numeric, access: "shared" }, "exact": { json: { negative: -0 }, schema: Exact, access: "shared" } }, { logicalMapId: id, persistence: adapter });
 }
 
 // Integrity-valid corrupt roots exercise contextual qualification independently
@@ -214,7 +214,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     await mismatch("persisted present undefined versus absent", copy => { delete style_leaf(main(library_root(copy, "page")), "width").unit; });
     await mismatch("persisted absent versus present undefined", copy => { style_leaf(main(library_root(copy, "page")), "height").unit = undefined; });
     await mismatch("nested data signed zero", copy => {
-      const altered = hsonLiveMap.fromLibraries({ state: { data: { ...data_fixture(), nested: { pair: [0, 0], deeper: [{ negative: -0 }] } }, schema: Data } });
+      const altered = hsonLiveMap.fromLibraries({ state: { json: { ...data_fixture(), nested: { pair: [0, 0], deeper: [{ negative: -0 }] } }, schema: Data } });
       library_root(copy, "state").$_content = altered.data.must("state").root().$_content;
     });
     await mismatch("ordered object members", copy => {
@@ -253,7 +253,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
       const invalid = clone_node(library_root(original, name));
       if (target === "page") style_leaf(main(invalid), "width").unit = null;
       else if (target === "attribute") main(invalid).$_attrs!.count = undefined;
-      else invalid.$_content = hsonLiveMap.fromLibraries({ wrong: { data: { negative: 0 } } }).data.must("wrong").root().$_content;
+      else invalid.$_content = hsonLiveMap.fromLibraries({ wrong: { json: { negative: 0 } } }).data.must("wrong").root().$_content;
       replace_stored_root(adapter, id, name, invalid);
       const corrupt = adapter.state(id);
       const reopening = fresh(id);

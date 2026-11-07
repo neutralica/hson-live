@@ -117,9 +117,17 @@ function expression_family(node: ts.Expression, checker: ts.TypeChecker, seen: S
   if (ts.isAsExpression(node)) return type_family(node.type, checker);
   if (ts.isSatisfiesExpression(node)) return expression_family(node.expression, checker, seen);
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isTemplateExpression(node)) return "string";
+  if ((ts.isTaggedTemplateExpression(node) || ts.isCallExpression(node))
+    && ts.isPropertyAccessExpression(ts.isTaggedTemplateExpression(node) ? node.tag : node.expression)) {
+    const operation = ts.isTaggedTemplateExpression(node) ? node.tag : node.expression;
+    if (ts.isPropertyAccessExpression(operation) && operation.name.text === "parse"
+      && ts.isPropertyAccessExpression(operation.expression) && operation.expression.name.text === "data"
+      && ts.isIdentifier(operation.expression.expression)
+      && is_official_hson_package_binding(operation.expression.expression, "Hson", checker)) return "object";
+  }
   if (ts.isTaggedTemplateExpression(node) && ts.isPropertyAccessExpression(node.tag) && ts.isIdentifier(node.tag.expression)
     && is_official_hson_package_binding(node.tag.expression, "Hson", checker)) {
-    if (node.tag.name.text === "data") return "object";
+    if (node.tag.name.text === "data") return "data";
     if (node.tag.name.text === "document") return "document";
     if (node.tag.name.text === "canonical") return "canonical";
   }

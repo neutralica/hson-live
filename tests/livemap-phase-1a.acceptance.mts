@@ -39,7 +39,7 @@ check("family tops use ordinary canonical Schema and generated evidence", () => 
 
 check("data top certifies every supported data family and rejects invalid material", () => {
   for (const candidate of [Hson.data`<x 1>`, Hson.data`[1, true, null]`, Hson.data`"hello"`, Hson.data`-0`, Hson.data`true`, Hson.data`null`]) {
-    assert.equal((ANY_DATA.certify(candidate)).toHson(), (candidate).toHson());
+    assert.equal((ANY_DATA.certify(candidate)).toHson(), Hson.data.from(candidate).toHson());
   }
   assert.equal(ANY_DATA.certify("<main/>").scalar(), "<main/>");
   assert.throws(() => ANY_DATA.certify(undefined as never));
@@ -70,7 +70,7 @@ check("primitive data roots admit, expose scalar handles, commit, and round trip
     { data: null, mode: "data-null", value: null, next: null },
   ] as const;
   for (const entry of cases) {
-    const map = hsonLiveMap.fromLibraries({ value: { data: entry.data, schema: ANY_DATA } });
+    const map = hsonLiveMap.fromLibraries({ value: { json: entry.data, schema: ANY_DATA } });
     const library = map.data.must("value");
     assert.equal(library.mode, entry.mode);
     assert.deepEqual(library.snap(), entry.value);

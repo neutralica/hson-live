@@ -18,7 +18,7 @@ function consume_document_quad(location: LiveMapDocumentQuadLocation<"page">): Q
 }
 void consume_document_quad;
 
-const quadLibrary = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { data: {} } });
+const quadLibrary = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { json: {} } });
 const quadLocation: LiveMapDocumentQuadLocation<"page"> | undefined = quadLibrary.doc.must("page").q("unknown");
 void quadLocation;
 // @ts-expect-error Data Library surfaces remain unchanged.
@@ -154,7 +154,7 @@ void encodedHostedLibraries;
 const hostedSession = await librariesAuthority.session.create({ libraries: ["page"] });
 const hostedLibrariesCut: LocusSessionHtmlNow = hostedSession.now({ html: "page" });
 void hostedLibrariesCut.libs;
-const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
+const dataMap = hsonLiveMap.fromLibraries({ state: { json: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
 void dataMap.cut().libs;
 void installedLibraries.map;
 void librariesSsr.document;
@@ -227,7 +227,7 @@ import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
 declare const standaloneSchema: HsonSchema;
-const standaloneCanonical: HsonCanonical = standaloneSchema.certify(Hson.data`37`).toHson();
+const standaloneCanonical: HsonCanonical = standaloneSchema.certify(Hson.data.parse`37`).toHson();
 // @ts-expect-error Hson.validate is absent; Schema objects own certification.
 Hson.validate(standaloneSchema, Hson.canonical`37`);
 // @ts-expect-error The narrow authoring subpath also exposes certify, not validate.
@@ -447,7 +447,7 @@ declare const multiActionContext: LocusActionContext;
 declare const soloLocus: Locus;
 void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
-void multiLocus.admit({ "runtimeState": { data: { count: 1 }, access: "shared" } });
+void multiLocus.admit({ "runtimeState": { json: { count: 1 }, access: "shared" } });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] });
 void multiLocus.session.get("session")!.update({ libraries: ["runtimeState"] },
   { principalId: "alice" });
@@ -876,7 +876,7 @@ declare const publicDeclarationClosure:
 void publicDeclarationClosure;
 
 declare const governanceSchema: HsonSchema;
-const schemaBoundMap = mapSubpath.fromLibraries({ state: { data: {}, schema: governanceSchema } }).data.must("state");
+const schemaBoundMap = mapSubpath.fromLibraries({ state: { json: {}, schema: governanceSchema } }).data.must("state");
 // @ts-expect-error LiveMap exposes no public live canonical-node debug escape.
 schemaBoundMap.debug.node([]);
 // @ts-expect-error Schema detachment through undefined is not part of the owner contract.
@@ -1126,7 +1126,7 @@ const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<html <h
   void documentAcquisitionIsPublic;
 }
 
-const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { data: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" content <value "any">>` } }).data.must("state");
+const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { json: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" content <value "any">>` } }).data.must("state");
 bindingTree.bind.text(projectedHsonLookalike.at(["value"]));
 bindingTree.bind.attr(projectedHsonLookalike.at(["value"]), "data-projected");
 

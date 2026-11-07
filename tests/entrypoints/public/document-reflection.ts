@@ -13,7 +13,7 @@ import type { EchoLocalDocumentLibrary, EchoProjectedDocumentLibrary } from "hso
 const libraries = hsonLiveMap.fromLibraries({
   page: { document: '<main "Ready"/>' },
   authored: { document: Hson.document`<main "Ready"/>` },
-  state: { data: { count: 0 } },
+  state: { json: { count: 0 } },
   components: { parts: { button: { kind: "document", document: "<button/>" } } },
 });
 const page = libraries.doc.must("page");

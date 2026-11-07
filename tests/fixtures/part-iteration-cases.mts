@@ -33,7 +33,7 @@ const scopes = (map: LiveMap) => {
 export function part_iteration_cases(verify: (name: string, run: () => void) => void): void {
   const check = verify;
   check("object iteration: positional aliases, exact ordered keys and canonical consumption", () => {
-    const items = Hson.data`<'10' 10 '2' 2 '' false 'a.b!' null 'a/b' "slash" '__proto__' "own">`;
+    const items = Hson.data.parse`<'10' 10 '2' 2 '' false 'a.b!' null 'a/b' "slash" '__proto__' "own">`;
     for (const [directive, text, expected] of [
       ['per:key:value', '^{key}:^{value}', ['10:10', '2:2', ':false', 'a.b!:null', 'a/b:slash', '__proto__:own']],
       ['per:key', '^{key}', ['10', '2', '', 'a.b!', 'a/b', '__proto__']],

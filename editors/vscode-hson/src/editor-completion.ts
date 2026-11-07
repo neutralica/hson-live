@@ -130,7 +130,9 @@ export class HsonEditorCompletionCache {
       || declaration.parent.declarations.length !== 1) return undefined;
     const annotation = resolve_hson_schema_annotation(ts, document.checker, declaration.type, document.eligible);
     if (annotation === undefined) return undefined;
-    if (annotation.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson") return null;
+    if (annotation.schema === undefined || annotation.kind !== "data" && annotation.kind !== "hson" && annotation.kind !== "value") return null;
+    const exact = tagged !== undefined && ts.isPropertyAccessExpression(tagged.tag) && tagged.tag.name.text === "parse";
+    if (exact !== (annotation.kind === "value")) return null;
     const source = annotated_data_schema_source(ts, document.program, document.checker, declaration.type, document.eligible, document.schemaDeclarations);
     if (source === undefined) return null;
     const raw = source;

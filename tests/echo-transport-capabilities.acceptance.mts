@@ -118,7 +118,7 @@ await check("ordered feed replacement fences late output without ending finite o
 
 await check("Locus logical attachment keeps finite admission separate from replaceable sync", async () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema } });
   const authority = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map,
     actions: { echo: (_context, payload) => payload } });
   const notices: string[] = [];
@@ -148,7 +148,7 @@ await check("Locus logical attachment keeps finite admission separate from repla
 
 await check("Locus ends displaced, cancelled, and closed subscriptions once", async () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema } });
   const authority = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   const attachment = authority.attach(() => {});
   await attachment.operations.submit({ type: "session-create", id: "create" });
@@ -177,7 +177,7 @@ await check("Locus ends displaced, cancelled, and closed subscriptions once", as
 
 await check("reentrant subscription replacement cannot install an orphan sink", async () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema } });
   const authority = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map });
   const attachment = authority.attach(() => {});
   await attachment.operations.submit({ type: "session-create", id: "create" });
@@ -210,7 +210,7 @@ await check("reentrant subscription replacement cannot install an orphan sink", 
 
 await check("Node Locus WebSocket binding forwards finite operations and releases listeners", async () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema } });
   const locus = create_locus_fixture(authority_definition_from_fixture_options({ ...test_public_projection(map), map }));
   class NodeSocket extends EventEmitter {
     readyState: number = WebSocket.OPEN;

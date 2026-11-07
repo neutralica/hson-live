@@ -44,7 +44,7 @@ for (const selected of ["control", "page", "flat"] as const) {
     other: { access: "shared", document: `<html <head/> <body ${part}/>/>` },
     flat: { access: "shared", document: '<html <head/> <body <button/>/>/>' },
     hidden: { access: "private", document: scopedPage },
-    data: { access: "shared", data: { count: 0 } },
+    data: { access: "shared", json: { count: 0 } },
   }, { interactions: descriptors, authorizeProjection: ({ requested }) => requested,
     actions: { save: (_context, payload) => { actions.push(payload); } } });
   const binding = bind_locus_http(locus, { endpoint: "/scoped-interactions" });

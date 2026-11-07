@@ -1,7 +1,7 @@
 import { Hson, hsonLiveMap, type HsonSchema } from "hson-live";
 declare const schema: HsonSchema<{ slides: readonly { kind: "heading" | "code"; text: string }[]; optional?: { count: number } }, "data">;
 const map = hsonLiveMap.create();
-const receipt = map.addLibraries({ page: { document: Hson.document`<main/>` }, deck: { data: { slides: [] }, schema } });
+const receipt = map.addLibraries({ page: { document: Hson.document`<main/>` }, deck: { json: { slides: [] }, schema } });
 receipt.commit.operations;
 receipt.libraries.page.render();
 receipt.libraries.deck.at(["slides", 0, "kind"]).snap() satisfies "heading" | "code" | undefined;
@@ -15,7 +15,7 @@ const dynamicReceipt = map.addLibraries({ [dynamic]: { document: "<main/>" } });
 dynamicReceipt.libraries.anything.render();
 const locus = hsonLiveMap.locus.create({ "page": { document: "<main/>", access: "shared" } });
 locus.doc.page.render();
-const admitted: void = await locus.admit({ deck: { data: { slides: [] }, schema }, next: { document: "<aside/>" } });
+const admitted: void = await locus.admit({ deck: { json: { slides: [] }, schema }, next: { document: "<aside/>" } });
 locus.doc.must("next").render();
 locus.data.must("deck", schema).at(["optional", "count"]).snap() satisfies number | undefined;
 // @ts-expect-error Impossible governed literal path.
@@ -26,7 +26,7 @@ locus.data.must("deck", schema).at(["optional", "count", 0]);
 locus.data.deck.snap();
 // @ts-expect-error Admission returns no Library receipt.
 admitted.libraries;
-await locus.admit({ [dynamic]: { data: 1 } });
+await locus.admit({ [dynamic]: { json: 1 } });
 locus.data.must(dynamic).snap();
 const maybeLocal = dynamicReceipt.libraries[dynamic];
 if (maybeLocal?.mode === "document") maybeLocal.render();
@@ -41,11 +41,11 @@ locus.doc.must("present").render();
 
 // Optional definition keys preserve membership and their present-family evidence.
 declare const optionalDefinitions: {
-  state: { data: number };
+  state: { json: number };
   page: { document: string };
-  requiredDeck: { data: { slides: [] }; schema: typeof schema };
+  requiredDeck: { json: { slides: [] }; schema: typeof schema };
   optionalPage?: { document: string };
-  optionalDeck?: { data: { slides: [] }; schema: typeof schema };
+  optionalDeck?: { json: { slides: [] }; schema: typeof schema };
 };
 const optionalLocal = map.addLibraries(optionalDefinitions);
 optionalLocal.commit.operations;

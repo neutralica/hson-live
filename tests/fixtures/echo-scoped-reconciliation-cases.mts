@@ -29,7 +29,7 @@ type Snapshot = Extract<Output, { type: "recovery-snapshot" }>;
 // Private semantic receiving seam: real Locus session grants and captured cuts,
 // existing history selection and Echo recovery orchestration. No wire codec is opened.
 function receiving(f: Fixture, scoped = true, initial = f.state(), existingMap?: import("../../src/types/livemap.types.ts").LiveMap) {
-  const map = existingMap ?? compose_client_projection_internal(initial, local_initializers({ local: { data: { n: 5 } }, localPage: { document: '<nav @:local/>' } }), scoped);
+  const map = existingMap ?? compose_client_projection_internal(initial, local_initializers({ local: { json: { n: 5 } }, localPage: { document: '<nav @:local/>' } }), scoped);
   const management = acquire_echo_map_management_internal(map), a = authority(map);
   const sessions = make_locus_session_manager();
   const notices = new Set<(event: EchoAttachmentEvent) => void>();
@@ -781,7 +781,7 @@ export async function terminal_progress_open_cases(check: (name: string, run: ()
   }
 
   await check("public HTTP Echo terminal session disposal cannot retain caught-up readiness", async () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { n: 0 } } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { n: 0 } } });
     const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]),
       defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
     const retained = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "terminal-review" } });

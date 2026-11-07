@@ -116,6 +116,45 @@ check("authored document assignments never generate canonical proof overlays", (
     }
   }
 });
+check("packaged CLI diagnoses whole HSON source under json while preserving native string members", () => {
+  const directory = prepare("library-representations");
+  const consumer = join(directory, "representation.ts");
+  const text = 'import { Hson, hsonLiveMap } from "hson-live";\nconst source = Hson.data`<a 1>`;\nconst widened: string = source;\nhsonLiveMap.fromLibraries({ direct: { json: Hson.data`<a 1>` }, branded: { json: source }, widened: { json: widened } });\nhsonLiveMap.fromLibraries({ literal: { json: "<a 1>" }, nested: { json: { source } }, array: { json: [source] }, parsed: { hson: source }, exact: { json: Hson.data.parse(source) } });\n';
+  writeFileSync(consumer, text);
+  const result = generate(directory);
+  assert.notEqual(result.status, 0);
+  const diagnostics: string[] = JSON.parse(result.stdout.trim()).diagnostics.filter((entry: string) => entry.startsWith(consumer + ":"));
+  assert.equal(diagnostics.length, 3, result.stdout + result.stderr);
+  assert.ok(diagnostics.every(entry => entry.includes("HSON source supplied to json")));
+  assert.equal(readFileSync(consumer, "utf8"), text);
+  writeFileSync(consumer, text.replace('direct: { json:', 'direct: { hson:').replace('branded: { json:', 'branded: { hson:').replace('widened: { json:', 'widened: { hson:'));
+  succeed(generate(directory));
+  succeed(stock_check(join(directory, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
+});
+check("packaged CLI withdraws stale native initializers through Data.from", () => {
+  const directory = prepare("native-data-mutation");
+  const consumer = join(directory, "native.ts");
+  const text = [
+    'import { Hson } from "hson-live";',
+    'const S = Hson.schema`<type "data" content <n "number">>`;',
+    'const A = Hson.schema`<type "data" defs <Numbers <array "number">> content <ref "Numbers">>`;',
+    'const value: { n: string | number } = { n: "before" }; value.n = 1;',
+    'S.certify(Hson.data.from(value));',
+    'const array: (string | number)[] = ["before"]; array[0] = 1;',
+    'A.certify(Hson.data.from(array));',
+    'S.certify(Hson.data.parse`<n 1>`); S.certify(Hson.data.parse("<n 1>"));',
+    "S.certify(Hson.data.fromSource('{\"n\":1}'));",
+  ].join('\n');
+  writeFileSync(consumer, text);
+  succeed(generate(directory));
+  succeed(stock_check(join(directory, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
+  writeFileSync(consumer, text + '\nconst unchanged = { n: "invalid" }; S.certify(Hson.data.from(unchanged));\nconst unchangedArray = ["invalid"]; A.certify(Hson.data.from(unchangedArray));\n');
+  const invalid = generate(directory);
+  assert.notEqual(invalid.status, 0);
+  const diagnostics: string[] = JSON.parse(invalid.stdout.trim()).diagnostics.filter((entry: string) => entry.startsWith(consumer + ":"));
+  assert.equal(diagnostics.length, 2, invalid.stdout + invalid.stderr);
+  assert.ok(diagnostics.every(entry => entry.includes("type mismatch")));
+});
 check("packaged current CLI generates a complete compiler project without touching authored bytes", () => {
   const result = generate(project);
   succeed(result);
@@ -211,7 +250,7 @@ check("post-admission use cannot refine exported map declarations", () => {
   const other = prepare("unsupported-exported-map");
   writeFileSync(join(other, "flow-map.ts"), `import { Hson, hsonLiveMap } from "hson-live";
 export const S = Hson.schema\`<type "data" content <value "number">>\`;
-export const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } });
+export const map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 } } });
 map.data.must("state").schema.use(S);
 `);
   succeed(generate(other));
@@ -469,7 +508,7 @@ check("producer admission gates CLI evidence and initially governed reads", () =
       "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")],
     } }, files: ["index.ts"] }));
   const body = '<type "data" content <name "string">>';
-  const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada" }, schema: Bad } });\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
+  const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { json: { name: "Ada" }, schema: Bad } });\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
   const currentRoot = join(directory, ".hson/compiler-input/tsconfig.json");
   const current = () => JSON.parse(readFileSync(join(currentRoot, "manifest.json"), "utf8")) as Manifest & { diagnostics: readonly string[] };
   const mirrored = () => readFileSync(join(currentRoot, "sources/index.ts"), "utf8");
@@ -497,9 +536,9 @@ check("producer admission gates CLI evidence and initially governed reads", () =
   // The same source-generation admission boundary must protect assignment
   // overlays even when its Schema producer is valid.
   for (const tag of ['Hson.data`// \\8\r\n<name "Ada">`', 'Hson?.data`<name "Ada">`', 'Hson.data?.`<name "Ada">`']) {
-    writeFileSync(join(directory, "index.ts"), valid + '\r\nimport type { HsonDataValue } from "hson-live";\r\n' + `const candidate: HsonDataValue<typeof Bad> = ${tag};\r\n`);
+    writeFileSync(join(directory, "index.ts"), valid + '\r\nimport type { HsonData } from "hson-live";\r\n' + `const candidate: HsonData<typeof Bad> = ${tag};\r\n`);
     assert.notEqual(generate(directory).status, 0, tag);
-    assert.doesNotMatch(mirrored().slice(mirrored().indexOf("const candidate:")), /as unknown as HsonDataValue/);
+    assert.doesNotMatch(mirrored().slice(mirrored().indexOf("const candidate:")), /as unknown as HsonData/);
   }
   // A custom watch-analysis callback cannot bypass producer eligibility at
   // materialization by supplying a raw-compilable rejected producer record.

@@ -77,7 +77,7 @@ function map_fixture() {
   quidSequence += 1;
   currentQ = quidSequence.toString().padStart(9, "0");
   const map = admit_exact_runtime_livemap_libraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${currentQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
   enable_interactions(map);
@@ -160,7 +160,7 @@ await check("hidden storage is aggregate state but not public selection", () => 
   assert.deepEqual(map.data.must("state").snap(), { count: 0 });
 
   const late = admit_exact_runtime_livemap_libraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${currentQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
   assert.equal(internal_livemap_aggregate_authority(late).captureHosted().registry.libraries.every(
@@ -316,7 +316,7 @@ await check("moved consumed once stays consumed until its descriptor changes", (
 
 await check("revoking shared interaction feature removes installed listeners", async () => {
   const authorityMap = hsonLiveMap.fromLibraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: "<main <button/>/>", schema: PageSchema },
   });
   enable_interactions(authorityMap);
@@ -479,7 +479,7 @@ await check("local to local to authoritative reconciliation owns one exact subje
 await check("fingerprinting retains owned exact data without parsing or materialization", () => {
   const values = [
     Hson.data.from({ nested: [null, [], {}, "", "123", "true", "null", -0, Number.MIN_VALUE, Number.MAX_VALUE] }),
-    Hson.data`<'10' -0 '2' <__proto__ true constructor null> '1' []>`,
+    Hson.data.parse`<'10' -0 '2' <__proto__ true constructor null> '1' []>`,
     Hson.data.from(-0), Hson.data.from("123"), Hson.data.from("true"), Hson.data.from("null"),
     Hson.data.from(""), Hson.data.from(null), Hson.data.from([]), Hson.data.from({}),
     Hson.data.fromSource(Hson.canonical`123`), Hson.data.fromSource(Hson.canonical`true`),
@@ -530,7 +530,7 @@ await check("fingerprinting retains owned exact data without parsing or material
 
 await check("fingerprints normalize descriptor fields and distinguish exact data changes", () => {
   const map = map_fixture();
-  add_interaction(map, local("fingerprint", "run", Hson.data`<'10' -0 '2' 2>`));
+  add_interaction(map, local("fingerprint", "run", Hson.data.parse`<'10' -0 '2' 2>`));
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
@@ -550,7 +550,7 @@ await check("fingerprints normalize descriptor fields and distinguish exact data
     aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
       value: ordered_projected_array([reordered]) }]);
     assert.equal(target.registrations[0]?.listener, installed);
-    for (const data of [Hson.data`<'2' 2 '10' -0>`, Hson.data`<'2' 2 '10' 0>`,
+    for (const data of [Hson.data.parse`<'2' 2 '10' -0>`, Hson.data.parse`<'2' 2 '10' 0>`,
       Hson.data.from("123"), Hson.data.from(123)]) {
       replace_interaction(map, local("fingerprint", "run", data));
       assert.equal(target.registrations.length, 1);
@@ -564,7 +564,7 @@ await check("fingerprints normalize descriptor fields and distinguish exact data
 
 await check("failure observers receive frozen public descriptors with authenticated Data values", () => {
   const map = map_fixture();
-  const data = Hson.data`<'10' -0 '2' <nested [null, "123"]>>`;
+  const data = Hson.data.parse`<'10' -0 '2' <nested [null, "123"]>>`;
   const descriptors = [local("browser-failure", "run", data), authoritative("locus-failure", "save", data)];
   for (const descriptor of descriptors) add_interaction(map, descriptor);
   const reflection = hsonMirror(map.doc.must("page"));
@@ -1060,7 +1060,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const exact = Hson.data.fromSource(Hson.canonical`<'10' -0 '2' <__proto__ <constructor 1 prototype 2>> __proto__ <polluted true>>`);
   currentQ = "000008999";
   const authorityMap = hsonLiveMap.fromLibraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: "<main <button/>/>", schema: PageSchema },
   });
   enable_interactions(authorityMap);

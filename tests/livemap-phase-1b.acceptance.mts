@@ -47,7 +47,7 @@ check("map admission keeps one map and commit evidence", () => {
   assert.equal(map.rev, 1);
   assert.equal(map.doc.must("home").mode, "document");
   const home = map.doc.must("home");
-  map.addLibraries({ state: { data: { count: 0 } } });
+  map.addLibraries({ state: { json: { count: 0 } } });
   assert.equal(map.rev, 2);
   assert.equal(map.doc.must("home"), home);
   const state = map.data.must("state");
@@ -59,7 +59,7 @@ check("map admission keeps one map and commit evidence", () => {
   const beforeFailure = map.capture();
   const duplicateName: string = "home";
   assert.throws(() => map.addLibraries({
-    extra: { data: 1 }, [duplicateName]: { data: 2 },
+    extra: { json: 1 }, [duplicateName]: { json: 2 },
   }), /duplicated/);
   assert.deepEqual(map.capture(), beforeFailure);
   assert.equal(commits.length, 2);
@@ -70,7 +70,7 @@ check("map admission keeps one map and commit evidence", () => {
   const replayed = hsonLiveMap.create();
   for (const commit of commits) replayed.replay(commit);
   assert.deepEqual(replayed.capture(), styled);
-  const foreign = hsonLiveMap.fromLibraries({ other: { data: 1 } }).capture();
+  const foreign = hsonLiveMap.fromLibraries({ other: { json: 1 } }).capture();
   assert.throws(() => map.restore(foreign), /current Library topology/);
   assert.deepEqual(map.capture(), styled);
   map.restore(styled);
@@ -85,7 +85,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   const stop = map.commits.observe((commit) => observations.push({
     rev: commit.rev, names: map.capture().registry.libraries.map((entry) => entry.name),
   }));
-  const commit = map.addLibraries({ page: { document: page }, state: { data: { count: 0 } } }).commit;
+  const commit = map.addLibraries({ page: { document: page }, state: { json: { count: 0 } } }).commit;
   stop();
   assert.deepEqual([commit.prevRev, commit.rev, commit.changed], [0, 1, true]);
   assert.equal(commit.operations.length, 1);
@@ -96,7 +96,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   assert.equal(map.data.must("state").schema.get(), ANY_DATA);
   const explicit = hsonLiveMap.create();
   explicit.addLibraries({ page: { document: page, schema: ANY_DOCUMENT },
-    state: { data: { count: 0 }, schema: ANY_DATA } });
+    state: { json: { count: 0 }, schema: ANY_DATA } });
   assert.equal(explicit.capture().registry.digest, map.capture().registry.digest);
   assert.equal(document_html(map.doc.must("page")), complete_html("<main>Hello</main>"));
   assert.notEqual(map.capture().registry.digest, before.registry.digest);
@@ -111,25 +111,25 @@ check("empty map admits a document and data atomically with top Schemas", () => 
 
 check("existing handles survive unrelated admission and explicit Schema governs", () => {
   const schema = Hson.schema`<type "data" content <count "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { count: 2 } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { count: 2 } } });
   const state = map.data.must("state");
   const root = state.at([]);
   const epoch = livemap_identity_epoch_accounting(state).epoch;
-  const commit = map.addLibraries({ page: { document: page }, exact: { data: { count: 4 }, schema } }).commit;
+  const commit = map.addLibraries({ page: { document: page }, exact: { json: { count: 4 }, schema } }).commit;
   assert.equal(commit.rev, 1);
   assert.equal(map.data.must("state"), state);
   assert.equal(livemap_identity_epoch_accounting(state).epoch, epoch);
   assert.deepEqual(root.snap(), { count: 2 });
   assert.deepEqual(state.snap(), { count: 2 });
   assert.equal(map.data.must("exact").schema.get(), schema);
-  assert.throws(() => map.addLibraries({ invalid: { data: { count: "no" }, schema } }), /Schema|number/i);
+  assert.throws(() => map.addLibraries({ invalid: { json: { count: "no" }, schema } }), /Schema|number/i);
   assert.equal(map.rev, 1);
 });
 
 check("primitive data families remain scalar under runtime admission", () => {
   const map = hsonLiveMap.create();
   const commit = map.addLibraries({
-    text: { data: "hello" }, number: { data: 3 }, flag: { data: true }, empty: { data: null },
+    text: { json: "hello" }, number: { json: 3 }, flag: { json: true }, empty: { json: null },
   }).commit;
   assert.equal(commit.rev, 1);
   for (const [name, value, mode] of [
@@ -145,7 +145,7 @@ check("primitive data families remain scalar under runtime admission", () => {
 });
 
 check("failed admission leaves revision, registry, observers and identity alone", () => {
-  const map = hsonLiveMap.fromLibraries({ existing: { data: { count: 1 } } });
+  const map = hsonLiveMap.fromLibraries({ existing: { json: { count: 1 } } });
   const old = map.data.must("existing");
   const baseline = map.capture();
   const epoch = livemap_identity_epoch_accounting(old);
@@ -157,14 +157,14 @@ check("failed admission leaves revision, registry, observers and identity alone"
   if (!is_Node(child)) throw new Error("Expected document child.");
   child.$_meta = { quid: "000009111" };
   const bad: unknown[] = [
-    { existing: { data: 2 } },
-    { "@hson/canonical-interactions": { data: {} } },
-    { invalid: { data: undefined } },
-    { wrong: { data: 1, schema: ANY_DOCUMENT } },
+    { existing: { json: 2 } },
+    { "@hson/canonical-interactions": { json: {} } },
+    { invalid: { json: undefined } },
+    { wrong: { json: 1, schema: ANY_DOCUMENT } },
     { wrong: { document: "<main/>", schema: ANY_DATA } },
     { wrong: { document: "<article/>", schema: narrow } },
     { claimed: { document: claimed } },
-    { valid: { data: 1 }, invalid: { document: "<article/>", schema: narrow } },
+    { valid: { json: 1 }, invalid: { document: "<article/>", schema: narrow } },
   ];
   for (const [index, input] of bad.entries()) {
     assert.throws(() => map.addLibraries(input as never), /./, `Failure case ${index} was admitted.`);
@@ -179,7 +179,7 @@ check("failed admission leaves revision, registry, observers and identity alone"
 check("portable replay and fresh install preserve topology guarantees", () => {
   const map = hsonLiveMap.create();
   const before = map.capture();
-  const commit = map.addLibraries({ page: { document: page }, state: { data: { count: 0 } } }).commit;
+  const commit = map.addLibraries({ page: { document: page }, state: { json: { count: 0 } } }).commit;
   const after = map.capture();
   const installed = install_libraries_snapshot(after).map;
   assert.equal(installed.rev, 1);
@@ -212,14 +212,14 @@ check("portable replay and fresh install preserve topology guarantees", () => {
 });
 
 check("topology tagged payload contradictions reject atomically and valid retry succeeds", () => {
-  const source = hsonLiveMap.fromLibraries({ existing: { data: { count: 1 } } });
+  const source = hsonLiveMap.fromLibraries({ existing: { json: { count: 1 } } });
   const target = install_libraries_snapshot(source.capture()).map;
   const existing = target.data.must("existing");
   const before = target.capture();
   const epoch = livemap_identity_epoch_accounting(existing);
   let published = 0;
   const stop = target.commits.observe(() => { published += 1; });
-  const valid = source.addLibraries({ added: { data: { items: ["a", "b"] } } }).commit;
+  const valid = source.addLibraries({ added: { json: { items: ["a", "b"] } } }).commit;
   const operation = valid.operations[0];
   assert.ok(operation && "kind" in operation.operation && operation.operation.kind === "library-add");
   for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
@@ -240,7 +240,7 @@ check("topology tagged payload contradictions reject atomically and valid retry 
 });
 
 check("forward replay and compatible restore preserve shared library handles", () => {
-  const source = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+  const source = hsonLiveMap.fromLibraries({ state: { json: { count: 1 } } });
   const initial = source.capture();
   const state = source.data.must("state");
   const transition = source.addLibraries({ page: { document: page } }).commit;
@@ -283,7 +283,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
     const beforeIdentity = engine.inspect().libraries[0]!.identity;
     const beforeRoot = control.root();
     const beforeAccounting = livemap_identity_epoch_accounting(control);
-    const commit = source.addLibraries({ ordered: { data: Hson.data.fromSource(fixture.expectedJson) } }).commit;
+    const commit = source.addLibraries({ ordered: { json: Hson.data.fromSource(fixture.expectedJson) } }).commit;
     const stop = forbid_structural_js_enumeration();
     try {
       const replayed = receiver.replay(commit);

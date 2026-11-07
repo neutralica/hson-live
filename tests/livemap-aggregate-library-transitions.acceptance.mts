@@ -47,8 +47,8 @@ function pair(
   colorsSchema = StringSchema,
 ) {
   const map = hsonLiveMap.fromLibraries({
-    data: { data, schema: dataSchema },
-    colors: { data: colors, schema: colorsSchema },
+    data: { json: data, schema: dataSchema },
+    colors: { json: colors, schema: colorsSchema },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
   const [dataIdentity, colorsIdentity] = aggregate.libraries();
@@ -57,7 +57,7 @@ function pair(
 }
 
 check("one-library registry keeps stable selection and map-wide commits", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: NumberSchema } });
   const state = map.data.must("state");
   const commit = state.at(["value"]).set(2);
 
@@ -204,7 +204,7 @@ check("failure in another library cannot partially issue a QUID claim", () => {
 
 check("a document-mode internal library can coexist under the same map authority", () => {
   const map = hsonLiveMap.fromLibraries({
-    data: { data: { value: 1 }, schema: NumberSchema },
+    data: { json: { value: 1 }, schema: NumberSchema },
     document: { document: "<main/>", schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence []>>]>>]>>` },
   });
   const aggregate = internal_livemap_aggregate_authority(map);
@@ -221,7 +221,7 @@ check("a document-mode internal library can coexist under the same map authority
 });
 
 check("aggregate preparation clones only affected library candidates and publishes once", () => {
-  const single = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberSchema } });
+  const single = hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema: NumberSchema } });
   const singleStart = performance.now();
   single.data.must("state").at(["value"]).set(2);
   const singleMs = performance.now() - singleStart;

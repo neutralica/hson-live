@@ -190,7 +190,7 @@ export function styled_composition_cases(check: (name: string, run: () => void) 
     page(map).at([1,0]).delete();assert.equal(page(map).css.snapshot(),'');
   });
   check("failed Schema, exhausted allocation and reentrant inner work remain atomic", () => {
-    const map=hsonLiveMap.fromLibraries({parts:{parts:{x:part('<p hson:part/>','anything {')}},state:{data:{count:0}},page:{document:'<aside/>'}});
+    const map=hsonLiveMap.fromLibraries({parts:{parts:{x:part('<p hson:part/>','anything {')}},state:{json:{count:0}},page:{document:'<aside/>'}});
     atomic(map,()=>map.addLibraries({bad:{document:'<main <hson-part lib="parts" at="x"/>/>',schema:Hson.schema`<type "document" tag "main" content "empty">`}}));
     allocator(owner(map).identityEpoch().owner,()=> 'invalid');
     try {atomic(map,()=>map.addLibraries({bad:{document:'<hson-part lib="parts" at="x"/>'}}),/QUID/);} finally {allocator(owner(map).identityEpoch().owner,undefined);}

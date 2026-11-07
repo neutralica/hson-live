@@ -21,11 +21,11 @@ const listener = Object.freeze({ event: "click", target: "element" as const, cap
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false });
 
 const map = hsonLiveMap.fromLibraries({
-  allowedData: { data: { value: "ALLOWED_ROOT_SENTINEL" }, schema: DataSchema },
+  allowedData: { json: { value: "ALLOWED_ROOT_SENTINEL" }, schema: DataSchema },
   allowedPage: { document: "<main/>", schema: PageSchema },
-  PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
+  PRIVATE_NAME_SENTINEL: { json: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: PrivateSchema },
   hiddenDoc: { document: "<hidden/>", schema: HiddenDocSchema },
-  UNSELECTED_NAME_SENTINEL: { data: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: UnselectedSchema },
+  UNSELECTED_NAME_SENTINEL: { json: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: UnselectedSchema },
 });
 enable_interactions(map);
 add_interaction(map, { id: "allowed", subject: { library: "allowedPage", path: [99] }, listener,
@@ -61,7 +61,7 @@ for (const kind of ["empty metadata", "nested empty metadata"] as const) {
   assert.throws(() => admit_authority_projection_snapshot(malformed));
   assert.throws(() => decode_authority_projection_snapshot(JSON.stringify(malformed)));
   assert.throws(() => client_projection_map({ authority: malformed,
-    local: { localData: { data: { value: "safe" }, schema: DataSchema } } }));
+    local: { localData: { json: { value: "safe" }, schema: DataSchema } } }));
 }
 assert.deepEqual(decoded, projected);
 const equivalentSource = { ...decoded, libraries: decoded.libraries.map(entry => ({ ...entry, schema: ` ${entry.schema} ` })) };
@@ -89,7 +89,7 @@ for (const forbidden of ["registryDigest", "issuedQuids", "epoch", "catalog", "o
 assert.equal(encoded.toLowerCase().includes("quid"), false);
 
 const client = client_projection_map({ authority: decoded, local: {
-  localData: { data: { value: "local" }, schema: DataSchema },
+  localData: { json: { value: "local" }, schema: DataSchema },
   localDoc: { document: "<aside/>", schema: LocalDocSchema },
 } });
 assert.equal(client.rev, 0);
@@ -109,7 +109,7 @@ assert.equal(echo.sync.appliedRev, decoded.revision);
 assert.equal(client.rev, 0);
 echo.dispose();
 assert.throws(() => client_projection_map({ authority: decoded,
-  local: { allowedData: { data: { value: "collision" }, schema: DataSchema } } }), /collides/i);
+  local: { allowedData: { json: { value: "collision" }, schema: DataSchema } } }), /collides/i);
 
 const disabled = await normalize_locus_effective_projection(policy, { libraries: ["allowedData"] });
 const noSystem = project_authority_snapshot(complete, disabled);
@@ -132,7 +132,7 @@ assert.deepEqual(zeroSnapshot.libraries, []);
 assert.ok(zeroSnapshot.system);
 assert.equal(encode_authority_projection_snapshot(zeroSnapshot).includes("ALLOWED_INTERACTION_SENTINEL"), false);
 const localOnly = client_projection_map({ authority: zeroSnapshot,
-  local: { localData: { data: { value: "only" }, schema: DataSchema } } });
+  local: { localData: { json: { value: "only" }, schema: DataSchema } } });
 assert.equal(localOnly.rev, 0);
 assert.equal(localOnly.data.must("localData").mode, "data-object");
 const localDocumentOnly = client_projection_map({ authority: zeroSnapshot,
@@ -142,7 +142,7 @@ assert.throws(() => client_projection_map({ authority: zeroSnapshot, local: {} }
 const zeroDisabled = project_authority_snapshot(complete, await normalize_locus_effective_projection(policy, { libraries: [] }));
 assert.equal(zeroDisabled.system, null);
 const localOnlyWithoutSystem = client_projection_map({ authority: zeroDisabled,
-  local: { localData: { data: { value: "only" }, schema: DataSchema } } });
+  local: { localData: { json: { value: "only" }, schema: DataSchema } } });
 assert.equal(localOnlyWithoutSystem.rev, 0);
 assert.equal(localOnlyWithoutSystem.data.must("localData").mode, "data-object");
 assert.throws(() => client_projection_map({ authority: zeroDisabled, local: {} }), /no LiveMap/i);
@@ -155,7 +155,7 @@ assert.throws(() => admit_authority_projection_snapshot({ ...decoded,
   libraries: decoded.libraries.map((entry) => entry.name === "allowedData" ? { ...entry, root: decoded.libraries[1]!.root } : entry),
 }), /malformed/i);
 assert.throws(() => client_projection_map({ authority: { ...decoded, projectionDigest: "0".repeat(64) },
-  local: { localData: { data: { value: "safe" }, schema: DataSchema } } }), /malformed/i);
+  local: { localData: { json: { value: "safe" }, schema: DataSchema } } }), /malformed/i);
 assert.throws(() => decode_authority_projection_snapshot(encoded.replace('"format":"hson-exact-value"', '"format":"invalid"')), /malformed/i);
 const quidRoot = encode_hosted_root(parse_hson_exact_runtime("<main @000000001/>", { allowTopLevelDocumentText: true }));
 assert.throws(() => admit_authority_projection_snapshot({ ...decoded,

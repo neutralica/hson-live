@@ -15,7 +15,7 @@ declare const ShapeSchema: HsonSchema<ShapeState, "data">;
 if (false) {
   const map = hsonLiveMap.fromLibraries({
     state: {
-      data: {
+      json: {
         object: { value: 1 },
         array: [1],
         scalar: "ready",

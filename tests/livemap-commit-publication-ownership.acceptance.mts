@@ -68,7 +68,7 @@ function graph_op(commit: LiveMapCommit): PublishedGraphOp {
 }
 
 await check("Data observer attempts cannot change later observers, returned commits or revisions", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: [], other: 0 } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: [], other: 0 } } });
   const state = map.data.must("state"), accepted = [{ deep: { values: [-0, 1] } }];
   const publications: LiveMapCommit[] = [];
   let first: LiveMapCommit | undefined, watches = 0;
@@ -108,7 +108,7 @@ const dataRoutes: ReadonlyArray<readonly [string, (state: LiveMapDataLibrary) =>
   ["rename", state => state.at([]).asObject()!.object.renameKey("object", "renamed")],
 ];
 for (const [name, write] of dataRoutes) await check(`Data ${name} protects all previous, next, removed and inserted values`, () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: [{ deep: [1] }, { deep: [2] }], object: { nested: [-0] } } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: [{ deep: [1] }, { deep: [2] }], object: { nested: [-0] } } } });
   const state = map.data.must("state");
   let expected: LiveMapCommit | undefined, second: LiveMapCommit | undefined;
   map.commits.observe(commit => { expected = structuredClone(commit); attack(commit); });
@@ -124,7 +124,7 @@ for (const [name, write] of dataRoutes) await check(`Data ${name} protects all p
 });
 
 await check("early Data feeds cannot change later feeds, commit observers or returned operations", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: [] } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: [] } } });
   const items = map.data.must("state").at(["items"]);
   let expected: LiveMapCommit | undefined, laterFeed: LiveMapCommit | undefined, observed: LiveMapCommit | undefined;
   let firstOp: LiveMapDataOp | undefined, laterOp: LiveMapDataOp | undefined;
@@ -143,7 +143,7 @@ await check("early Data feeds cannot change later feeds, commit observers or ret
 });
 
 await check("batch return and observer descriptions own every accepted operation", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: [], other: [] } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: [], other: [] } } });
   let expected: LiveMapCommit | undefined, observed: LiveMapCommit | undefined, publications = 0;
   map.commits.observe(commit => { expected = structuredClone(commit); attack(commit); });
   map.commits.observe(commit => { publications += 1; observed = commit; });
@@ -276,7 +276,7 @@ await check("multi-Library Data, Parts and scoped Document topology owns nested 
   map.commits.observe(commit => { expected = structuredClone(commit); attack(commit); });
   map.commits.observe(commit => { publications += 1; later = commit; });
   const returned = map.addLibraries({
-    state: { data: { values: [-0, 1] } },
+    state: { json: { values: [-0, 1] } },
     parts: { parts: { badge: { kind: "document", document: '<b hson:part @:label "accepted"/>', stylesheet: ':scope{color:red}' } } },
     page: { document: '<main <hson-part lib="parts" at="badge"/>/>', stylesheet: "main{margin:0}" },
   }).commit;
@@ -295,7 +295,7 @@ await check("multi-Library Data, Parts and scoped Document topology owns nested 
   assert.match(page.css.snapshot(), /color:red/);
   assert.doesNotMatch(page.hson(), /corrupted|hson-part/);
   assert.deepEqual([map.rev, publications], [1, 1]);
-  assert.throws(() => map.addLibraries({ state: { data: {} } }), /already|duplicate|exists/i);
+  assert.throws(() => map.addLibraries({ state: { json: {} } }), /already|duplicate|exists/i);
   assert.deepEqual([map.rev, publications], [1, 1]);
   map.data.must("state").at(["values", 1]).set(2);
   const authority = create_locus_hosted_aggregate_internal({ map, scopedDocuments: true });
@@ -308,7 +308,7 @@ await check("multi-Library Data, Parts and scoped Document topology owns nested 
 });
 
 await check("Locus gates cannot change the hosted description accepted and returned later", async () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: [] } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: [] } } });
   let expected: HostedAggregateCommit | undefined, observed: HostedAggregateCommit | undefined;
   let gates = 0, publications = 0;
   const authority = create_locus_hosted_aggregate_internal({ map, gate(input) {
@@ -329,7 +329,7 @@ await check("Locus gates cannot change the hosted description accepted and retur
 });
 
 await check("hosted mixed Data, Document and CSS descriptions resist earlier authority listeners", async () => {
-  const map: LiveMap = hsonLiveMap.fromLibraries({ state: { data: { items: [] } }, page: { document: "<main/>" } });
+  const map: LiveMap = hsonLiveMap.fromLibraries({ state: { json: { items: [] } }, page: { document: "<main/>" } });
   const page = map.doc.must("page"), mirror = hsonMirror(page);
   const authority = create_locus_hosted_aggregate_internal({ map });
   let expected: HostedAggregateCommit | undefined, later: HostedAggregateCommit | undefined;

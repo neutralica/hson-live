@@ -6,7 +6,7 @@ import type { LiveMapKnownNames, LiveMapDefinitions, LiveMapLibraryDefinition } 
 
 declare const schema: HsonSchema<{ rows: readonly { title: string }[]; optional?: { list: number[] }; unknown: unknown; choice: number[] | { count: number } }, "data">;
 declare const otherSchema: HsonSchema<{ different: string }, "data">;
-const definition = { data: { rows: [], unknown: [], choice: [] }, schema } as const satisfies LiveMapLibraryDefinition;
+const definition = { json: { rows: [], unknown: [], choice: [] }, schema } as const satisfies LiveMapLibraryDefinition;
 const definitions = { deck: { ...definition, access: "shared" }, page: { document: "<main/>" } } as const satisfies LocusDefinitions;
 const loc = hsonLiveMap.locus.create(definitions);
 loc.doc.page.render();
@@ -45,7 +45,7 @@ const maybe = hsonLiveMap.locus.create(maybeDefinitions);
 maybe.doc.page.render();
 // @ts-expect-error Optional definitions cannot establish guaranteed membership.
 maybe.data.deck.at(["rows"]).array;
-await maybe.admit({ deck: { data: { different: "new" }, schema: otherSchema } }) satisfies void;
+await maybe.admit({ deck: { json: { different: "new" }, schema: otherSchema } }) satisfies void;
 maybe.data.must("deck", otherSchema).schema.get() satisfies typeof otherSchema;
 maybe.data.must("deck", otherSchema).at(["different"]).snap() satisfies string;
 // @ts-expect-error Checked Schema evidence rejects unrelated paths.
@@ -72,17 +72,17 @@ const local = hsonLiveMap.fromLibraries(keyed);
 local.data.required.schema.get() satisfies typeof schema;
 // @ts-expect-error An optional key cannot establish governing evidence.
 local.data.possible.at(["rows"]).array;
-const admitted = local.addLibraries({ possible: { data: { different: "fresh" }, schema: otherSchema } });
+const admitted = local.addLibraries({ possible: { json: { different: "fresh" }, schema: otherSchema } });
 admitted.libraries.possible.schema.get() satisfies typeof otherSchema;
 // @ts-expect-error A definitely existing key is still rejected.
-local.addLibraries({ required: { data: {} } });
+local.addLibraries({ required: { json: {} } });
 declare const wideKeyed: LiveMapDefinitions;
 const wideMap = hsonLiveMap.fromLibraries(wideKeyed);
 // @ts-expect-error No literals survive widening.
 const name: LiveMapKnownNames<typeof wideMap> = "anything";
 void name;
 
-const roots = hsonLiveMap.fromLibraries({ array: { data: [1, "initial"] }, object: { data: { initial: 1 } } } as const);
+const roots = hsonLiveMap.fromLibraries({ array: { json: [1, "initial"] }, object: { json: { initial: 1 } } } as const);
 roots.data.array.at([]).array.push({ changed: true });
 roots.data.array.at([]).array.toArray() satisfies readonly JsonValue[];
 // @ts-expect-error Initial values do not establish an immutable tuple.
@@ -94,7 +94,7 @@ roots.data.object.at([]).object.deleteKey("initial");
 roots.data.object.at(["initial"]).snap() satisfies number;
 // @ts-expect-error Root category does not prove any nested collection.
 roots.data.object.at(["initial"]).array;
-await loc.admit({ "array": { data: [], access: "shared" }, "object": { data: {}, access: "shared" } });
+await loc.admit({ "array": { json: [], access: "shared" }, "object": { json: {}, access: "shared" } });
 loc.data.must("array").at([]).asArray()!.array.push("new");
 loc.data.must("object").at([]).asObject()!.object.setKey("new", 1);
 roots.batch(writer => {

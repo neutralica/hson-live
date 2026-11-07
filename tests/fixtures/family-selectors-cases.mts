@@ -6,7 +6,7 @@ import { locus_map_internal, echo_map_internal } from "../../src/internal/govern
 const schema = Hson.schema`<type "data" content <count "number">>`;
 const same = HsonSchema.fromHson(schema.toHson());
 const other = Hson.schema`<type "data">`;
-const definitions = { page: { document: '<main "hello"/>' }, state: { data: { count: 1 }, schema },
+const definitions = { page: { document: '<main "hello"/>' }, state: { json: { count: 1 }, schema },
   components: { parts: { button: { kind: "document" as const, document: '<button hson:part/>' } } } };
 const collisions = ["must", "then", "toJSON", "name", "length", "call", "apply", "bind", "prototype",
   "constructor", "toString", "valueOf", "hasOwnProperty", "__proto__", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "caller", "arguments"];
@@ -53,12 +53,12 @@ export async function family_selector_cases() {
   assert.equal(map.doc.apply(null, ["page", undefined]), map.doc.page);
   assert.equal(map.doc.bind(null)("page"), map.doc.page);
   assert.equal(typeof map.doc.name, "string"); assert.equal(typeof map.doc.length, "number");
-  map.addLibraries({ later: { data: { count: 4 }, schema } });
+  map.addLibraries({ later: { json: { count: 4 }, schema } });
   assert.equal(map.data.must("later", same).snap(["count"]), 4);
   const possible: { state?: typeof definitions.state } = {};
   const transient = hsonLiveMap.fromLibraries(possible);
   assert.equal(transient.data("state", schema), undefined);
-  transient.addLibraries({ state: { data: { count: 1 }, schema: other } });
+  transient.addLibraries({ state: { json: { count: 1 }, schema: other } });
   assert.equal(transient.data("state", schema), undefined);
   assert.equal(transient.data("state", other), transient.data.must("state"));
 
@@ -101,7 +101,7 @@ export async function family_selector_cases() {
     assert.equal(locus.parts.must("components"), locus.parts("components"));
     assert.notEqual(locus.data.must("state"), locus_map_internal(locus).data.must("state"));
     for (const id of ["one", "two"]) assert.equal((await locus.dispatchAction({ type: "action", id, name: "inspect" })).type, "ack");
-    await locus.admit({ "incoming": { data: { count: 9 }, schema, access: "shared" } });
+    await locus.admit({ "incoming": { json: { count: 9 }, schema, access: "shared" } });
     assert.equal(locus.data.must("incoming", same).snap(["count"]), 9);
     assert.equal(locus.data("incoming", other), undefined);
     await locus.stage(writer => {
@@ -114,7 +114,7 @@ export async function family_selector_cases() {
 
 export async function family_selector_echo_cases() {
   const locus = hsonLiveMap.locus.create(Object.fromEntries(Object.entries(definitions).map(([name, definition]) => [name, { ...definition, access: "shared" as const }])), {
-    local: [{ name: "local", initializer: { data: { count: 3 }, schema } },
+    local: [{ name: "local", initializer: { json: { count: 3 }, schema } },
       { name: "widgets", initializer: definitions.components }],
     authorizeProjection: () => ({ libraries: ["page", "state", "components", "local", "widgets"] }),
   });

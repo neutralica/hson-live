@@ -102,7 +102,7 @@ export function authority_definitions_from_map_fixture<TMap extends LiveMap>(map
     const schema = HsonSchema.fromHson(registry.schema);
     const definition: LiveMapLibraryDefinition = registry.mode === "document"
       ? { document: state.root, schema }
-      : (() => { const value = node_to_json_value(state.root); return { data: value, schema }; })();
+      : (() => { const value = node_to_json_value(state.root); return { json: value, schema }; })();
     definitions[entry.name] = { ...definition, access: entry.ownership };
     if (state.css !== undefined) css[entry.name] = state.css;
   }

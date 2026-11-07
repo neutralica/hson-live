@@ -20,10 +20,10 @@ import { create_locus_hosted_aggregate_authority_internal } from "../src/api/loc
 
 const Schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const map = hsonLiveMap.fromLibraries({
-  A: { data: { value: "A0" }, schema: Schema },
-  B: { data: { value: "B0" }, schema: Schema },
-  PRIVATE_NAME_SENTINEL: { data: { value: "PRIVATE_ROOT_SENTINEL" }, schema: Schema },
-  UNSELECTED_NAME_SENTINEL: { data: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: Schema },
+  A: { json: { value: "A0" }, schema: Schema },
+  B: { json: { value: "B0" }, schema: Schema },
+  PRIVATE_NAME_SENTINEL: { json: { value: "PRIVATE_ROOT_SENTINEL" }, schema: Schema },
+  UNSELECTED_NAME_SENTINEL: { json: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: Schema },
 });
 const server = create_locus_hosted_aggregate_authority_internal({ map, libraries: [
   { name: "A", ownership: "shared" },
@@ -204,7 +204,7 @@ echo.dispose();
 server.dispose();
 
 // A projected frame is checked before accepting the authority write.
-const probeMap = hsonLiveMap.fromLibraries({ A: { data: { value: "A0" }, schema: Schema } });
+const probeMap = hsonLiveMap.fromLibraries({ A: { json: { value: "A0" }, schema: Schema } });
 const probe = internal_livemap_aggregate_authority(probeMap);
 const probeInitial = probe.captureHosted();
 const probePolicy = make_locus_hosted_projection_policy(probeInitial.registry, probeInitial.authority,
@@ -221,7 +221,7 @@ const projectedBytes = new TextEncoder().encode(JSON.stringify({ type: "commit",
     incarnationId: probeEffective.authority.incarnationId, registryDigest: projected.commit.registryDigest,
     commit: projected.commit }, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT })).byteLength;
 assert.ok(projectedBytes > oldBytes + 1);
-const tightMap = hsonLiveMap.fromLibraries({ A: { data: { value: "A0" }, schema: Schema } });
+const tightMap = hsonLiveMap.fromLibraries({ A: { json: { value: "A0" }, schema: Schema } });
 const tightServer = create_locus_hosted_aggregate_authority_internal({ map: tightMap, libraries: [{ name: "A", ownership: "shared" }],
   defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A"] }),
   maxWireBytes: oldBytes + 1 });
@@ -296,7 +296,7 @@ for (const invalid of invalid_tagged_graphs) {
   });
   let detach = bind_locus_websocket(server, connection.socket);
   const client = create_echo_aggregate_client_internal({ transport: test_echo_transport(connection.client), logicalMapId: server.logicalMapId,
-    initializers: local_initializers({ local: { data: { value: "retained" }, schema: Schema } }) });
+    initializers: local_initializers({ local: { json: { value: "retained" }, schema: Schema } }) });
   await client.connect();
   const owned = client.map;
   if (!owned) throw new Error("Expected live replica.");

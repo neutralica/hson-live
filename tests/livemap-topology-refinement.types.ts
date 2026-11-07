@@ -8,17 +8,17 @@ const map = hsonLiveMap.create();
 const commit = map.addLibraries({ home: { document: mainShell } }).commit;
 void commit.operations;
 map.doc.must("home").css.stylesheet("body { margin: 0; }");
-map.addLibraries({ state: { data: initialState, schema } });
+map.addLibraries({ state: { json: initialState, schema } });
 // Required family lookup recovers dynamically admitted Libraries.
 map.data.must("state").snap();
 // @ts-expect-error Admission is an operation on LiveMap, not its selector.
-map.addLibraries({ private: [{ name: "next", definition: { data: 1 } }] });
+map.addLibraries({ private: [{ name: "next", definition: { json: 1 } }] });
 // @ts-expect-error The factory does not admit libraries on an existing map.
-hsonLiveMap.addLibraries(map, { next: { data: 1 } });
+hsonLiveMap.addLibraries(map, { next: { json: 1 } });
 
 const known = hsonLiveMap.fromLibraries({
   home: { document: mainShell },
-  state: { data: initialState, schema },
+  state: { json: initialState, schema },
 });
 known.doc.must("home").css;
 const preciseSchema: HsonSchema = known.data.must("state").schema.get();
@@ -29,8 +29,8 @@ known.data.must("state").css;
 // @ts-expect-error A document location is not the document-library root.
 known.doc.must("home").at([0]).css;
 // @ts-expect-error A statically known name cannot be admitted twice.
-known.addLibraries({ home: { data: initialState } });
-known.addLibraries({ extra: { data: initialState } });
+known.addLibraries({ home: { json: initialState } });
+known.addLibraries({ extra: { json: initialState } });
 
 declare const dynamicName: string;
 const constructedDynamic = hsonLiveMap.fromLibraries({ [dynamicName]: { document: mainShell } });
@@ -39,7 +39,7 @@ constructedDynamic.doc.must("unrelated").css;
 constructedDynamic.doc.unrelated.document;
 
 declare const typedSchema: HsonSchema<Readonly<{ count: number }>, "data">;
-const typedMap = hsonLiveMap.fromLibraries({ exact: { data: { count: 1 }, schema: typedSchema } });
+const typedMap = hsonLiveMap.fromLibraries({ exact: { json: { count: 1 }, schema: typedSchema } });
 typedMap.data.must("exact").at(["count"]).replace(2);
 // @ts-expect-error The construction Schema preserves the numeric data path.
 typedMap.data.must("exact").at(["count"]).replace("wrong");

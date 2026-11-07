@@ -65,7 +65,7 @@ const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <
 
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { value: 0 }, schema: DataSchema },
+    state: { json: { value: 0 }, schema: DataSchema },
     page: { document: "<main/>", schema: PageSchema },
   });
 }
@@ -176,7 +176,7 @@ await check("progress requires the owner, contiguous revision, and exact authori
 });
 
 await check("ordinary local registry LiveMap cannot advance authority position", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: DataSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: DataSchema } });
   assert.equal(Reflect.has(map, "advanceHostedProgress"), false);
   assert.equal(map.rev, 0);
   map.data.must("state").at(["value"]).set(1);

@@ -8,11 +8,11 @@ const Count = Hson.schema`<type "data" content <value "number">>`;
 const Page = Hson.schema`<type "document" tag "main" content "empty">`;
 const sheet: string = "main { display: block; }";
 const definitions = {
-  count: { data: { value: 1 }, schema: Count },
+  count: { json: { value: 1 }, schema: Count },
   page: { document: "<main/>", schema: Page },
 } as const;
 const direct = hsonLiveMap.fromLibraries(definitions);
-const locus = hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" }, "page": { ...definitions.page, stylesheet: sheet, access: "private" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }] });
+const locus = hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" }, "page": { ...definitions.page, stylesheet: sheet, access: "private" } }, { local: [{ name: "ui", initializer: { json: { selected: false } } }] });
 const knownName = locus.data.must("count");
 const documentName = locus.doc.must("page");
 const noPublicMap: "map" extends keyof typeof locus ? true : false = false;
@@ -61,15 +61,15 @@ const noStageLib: "lib" extends keyof typeof locus.stage ? true : false = false;
 const noStageAdmission: "admit" extends keyof typeof locus.stage ? true : false = false;
 void [noStageLib, noStageAdmission];
 // @ts-expect-error Synchronous stage callbacks cannot add topology.
-void locus.stage((loc) => { loc.admit({ added: { data: 1 } }); });
+void locus.stage((loc) => { loc.admit({ added: { json: 1 } }); });
 // @ts-expect-error LiveMap batches cannot add topology.
-direct.batch((map) => { map.addLibraries({ added: { data: 1 } }); });
+direct.batch((map) => { map.addLibraries({ added: { json: 1 } }); });
 // @ts-expect-error Runtime Locus addition excludes local initializers.
-void locus.admit({ local: { data: 1, access: "local" } });
+void locus.admit({ local: { json: 1, access: "local" } });
 // @ts-expect-error A fresh Locus cannot accept persistence.
 void hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" } }, { persistence: {} });
 // @ts-expect-error Literal duplicate names are rejected.
-void hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" } }, { local: [{ name: "count", initializer: { data: 1 } }] });
+void hsonLiveMap.locus.create({ "count": { ...definitions.count, access: "shared" } }, { local: [{ name: "count", initializer: { json: 1 } }] });
 
 declare const provider: LocusPersistenceAdapter;
 // @ts-expect-error Durable resume requires a stable logicalMapId.

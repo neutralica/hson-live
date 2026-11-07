@@ -29,7 +29,7 @@ function fixture() {
       plain: { kind: "document", document: '<i hson:part/>' },
       named: { kind: "document", document: '<i hson:part @:label/>' },
       secret: { kind: "document", document: '<strong hson:part "PRIVATE_DEFINITION_SENTINEL"/>' },
-    } }, page: { document: '<main <footer/>/>' }, other: { data: { n: 0 } },
+    } }, page: { document: '<main <footer/>/>' }, other: { json: { n: 0 } },
   });
   const a = authority(map), library = a.libraries()[1]!;
   return { map, a, library };

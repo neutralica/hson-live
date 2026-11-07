@@ -27,15 +27,26 @@ const directory = mkdtempSync(join(tmpdir(), "part-reference-diagnostics-"));
 process.once("exit", () => rmSync(directory, { recursive: true, force: true }));
 writeFileSync(join(directory, "package.json"), '{"type":"module"}');
 const files = new Map<string, string>();
+const versions = new Map<string, string>();
 let revision = 0;
 const file = (name: string) => join(directory, name);
-const edit = (name: string, text: string) => { files.set(file(name), text); revision++; };
+const edit = (name: string, text: string) => {
+  const path = file(name);
+  files.set(path, text);
+  versions.set(path, String(++revision));
+};
+const remove = (name: string) => {
+  const path = file(name);
+  files.delete(path);
+  versions.set(path, String(++revision));
+};
 const options: ts.CompilerOptions = { strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
   moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true, noEmit: true, types: [], baseUrl: root,
   paths: { "hson-live": ["src/index.ts"], "hson-live/hson": ["src/hson-authoring.ts"], "hson-live/livemap": ["src/api/livemap/index.ts"] } };
 const host: ts.LanguageServiceHost = {
   getCompilationSettings: () => options, getScriptFileNames: () => [...files.keys()], getProjectVersion: () => String(revision),
-  getScriptVersion: () => String(revision), getScriptSnapshot: path => {
+  // Fixture buffers change independently; disk dependencies stay unchanged in this suite.
+  getScriptVersion: path => versions.get(path) ?? "0", getScriptSnapshot: path => {
     const text = files.get(path) ?? ts.sys.readFile(path); return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text);
   }, getCurrentDirectory: () => directory, getDefaultLibFileName: ts.getDefaultLibFilePath,
   fileExists: path => files.has(path) || ts.sys.fileExists(path), readFile: path => files.get(path) ?? ts.sys.readFile(path),
@@ -803,7 +814,7 @@ check("on-prefixed structured forwarding retains typed source facts and represen
 });
 function schemaApplication(reference: string, shape = '<title "string">', value = '<title "ok">', receiving = '%{incoming}', supplied = true, body?: string): string {
   return imports + 'import type {HsonDataValue} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
-    + 'const input:HsonDataValue<typeof S>=Hson.data`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
+    + 'const input:HsonDataValue<typeof S>=Hson.data.parse`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
     + (body ?? '<p hson:part data:record="' + receiving + '" "' + reference + '"/>')
     + '`}}},page:{document:Hson.document`<hson-part at="components/card"' + (supplied ? ' incoming:data="${input.toHson()}"' : '') + '/>`}});';
 }
@@ -842,7 +853,7 @@ check('optional incoming absence propagates while explicitly supplied values ret
 });
 check('two distinct caller Schemas produce an error only for the proven failing invocation', () => {
   const source = schemaApplication('^{record.typo}')
-    .replace('const map=', 'const Other=Hson.schema`<type "data" content <typo "string">>`; const other:HsonDataValue<typeof Other>=Hson.data`<typo "valid">`; const map=')
+    .replace('const map=', 'const Other=Hson.schema`<type "data" content <typo "string">>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<typo "valid">`; const map=')
     .replace('<hson-part at="components/card" incoming:data="${input.toHson()}"/>', '<main <hson-part at="components/card" incoming:data="${input.toHson()}"/> <hson-part at="components/card" incoming:data="${other.toHson()}"/>/>');
   const result = inspect(source), errors = memberErrors(result);
   assert.equal(errors.length, 1); assert.equal(errors[0]!.start, result.text.indexOf('"components/card"'));
@@ -852,9 +863,9 @@ check('two distinct caller Schemas produce an error only for the proven failing 
 check('unknown inputs advisory annotations and variant-dependent members remain member-diagnostic silent', () => {
   for (const source of [
     schemaApplication('^{record.typo}', '<title "string">', '<>'),
-    schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`', 'declare const input:HsonDataValue<typeof S>'),
+    schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`', 'declare const input:HsonDataValue<typeof S>'),
     schemaApplication('^{record.typo}').replace('HsonDataValue<typeof S>', 'HsonDataValue'),
-    schemaApplication('^{record.typo}').replace('Hson.data`<title "ok">`', 'Hson.data.from(dynamic)'),
+    schemaApplication('^{record.typo}').replace('Hson.data.parse`<title "ok">`', 'Hson.data.from(dynamic)'),
     schemaApplication('^{record.choice.title}', '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'),
     schemaApplication('^{record.title.typo}', '<title <optional <content <caption "string">>>>', '<>'),
   ]) assert.equal(memberErrors(inspect(source)).length, 0, source);
@@ -903,11 +914,31 @@ check('upstream-only edits withdraw and restore validated diagnostic evidence wi
   assert.equal(files.get(file('app.ts')), source);
   edit('member-schema.ts', 'export {};');
 });
+check('introduced redirected and removed unsaved imports refresh member evidence', () => {
+  const input = 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;';
+  const source = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;', 'import {input} from "./lifecycle-input.js";');
+  const count = () => static_part_reference_diagnostics(collect_part_source_facts(ts, service.getProgram()!))
+    .filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID').length;
+  try {
+    assert.equal(memberErrors(inspect(source)).length, 0);
+    edit('lifecycle-input.ts', input); assert.equal(count(), 1);
+    edit('lifecycle-input.ts', 'export {input} from "./lifecycle-alternate.js";'); assert.equal(count(), 0);
+    edit('lifecycle-alternate.ts', input); assert.equal(count(), 1);
+    remove('lifecycle-alternate.ts'); assert.equal(count(), 0);
+    edit('lifecycle-alternate.ts', input); assert.equal(count(), 1);
+    remove('lifecycle-input.ts'); assert.equal(count(), 0);
+    edit('lifecycle-input.ts', input); assert.equal(count(), 1);
+    assert.equal(files.get(file('app.ts')), source, 'dependency changes never replace the consumer buffer');
+  } finally {
+    remove('lifecycle-input.ts'); remove('lifecycle-alternate.ts');
+    edit('app.ts', 'export {};');
+  }
+});
 check('incomplete cross-file inputs and exhausted projection budgets cannot produce new member errors', () => {
-  const unknown = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./missing-input.js";');
+  const unknown = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;', 'import {input} from "./missing-input.js";');
   assert.equal(memberErrors(inspect(unknown)).length, 0);
-  edit('member-input.ts', 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;');
-  const imported = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;', 'import {input} from "./member-input.js";');
+  edit('member-input.ts', 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;');
+  const imported = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;', 'import {input} from "./member-input.js";');
   assert.equal(memberErrors(inspect(imported)).length, 1);
   assert.equal(memberErrors(inspect(imported.replace('import {input}', 'import type {input}'))).length, 0, 'a type-only value alias supplies no runtime evidence');
   let shape = '<title "string">', value = '<title "ok">';

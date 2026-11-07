@@ -13,9 +13,9 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const events = create_test_event_emitter("echo.http");
 events.case_begin("http1", "HTTP/1 finite operations and continuing synchronization");
 
-const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" },
-  { name: "ui", ownership: "local", initializer: { data: { value: 0 } } }]), defaultProjection: { libraries: ["state", "ui"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }), actions: { echo: (_context, payload) => payload } });
+  { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["state", "ui"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }), actions: { echo: (_context, payload) => payload } });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 const application: LiveHostApplication = {
   name: "echo-http",
@@ -248,7 +248,7 @@ try {
   assert.equal((await raw({ type: "session-goodbye", id: "cut-goodbye" }, cutCapability)).status, 200);
   assert.equal(locus.session.get(credentialSession.sessionId)?.revoke(), true);
 
-  const otherMap = hsonLiveMap.fromLibraries({ other: { data: 0 } });
+  const otherMap = hsonLiveMap.fromLibraries({ other: { json: 0 } });
   const otherLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(otherMap, [{ name: "other", ownership: "shared" }]) });
   const otherBinding = bind_locus_http(otherLocus, { endpoint: "/_hson" });
   try {

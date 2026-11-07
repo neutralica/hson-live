@@ -85,9 +85,9 @@ check("Hson authoring preserves signed zero, exact order, integer names, and dan
   const materialized = (data).materialize();
   assert.deepEqual(Object.keys(materialized as object).slice(0, 3), ["1", "2", "10"]);
   assert.deepEqual(entries(data).slice(0, 3).map(([name]) => name), ["10", "2", "1"]);
-  assert.notEqual((Hson.data`<a 1 b 2>`).toHson(), (Hson.data`<b 2 a 1>`).toHson());
-  assert.notEqual((data).toHson(), (Hson.data`<'1' 1 '2' 2 '10' 10>`).toHson());
-  assert.deepEqual(entries(Hson.data`<'10' 1 normal 2 '1' 3 '' true>`).map(([name]) => name), ["10", "normal", "1", ""]);
+  assert.notEqual((Hson.data.parse`<a 1 b 2>`).toHson(), (Hson.data.parse`<b 2 a 1>`).toHson());
+  assert.notEqual((data).toHson(), (Hson.data.parse`<'1' 1 '2' 2 '10' 10>`).toHson());
+  assert.deepEqual(entries(Hson.data.parse`<'10' 1 normal 2 '1' 3 '' true>`).map(([name]) => name), ["10", "normal", "1", ""]);
 });
 
 check("every representative admitted value closes through canonical Hson", () => {
@@ -95,7 +95,7 @@ check("every representative admitted value closes through canonical Hson", () =>
     Hson.data.from("text"), Hson.data.from(true), Hson.data.from(null),
     Hson.data.from(0), Hson.data.from(-0), Hson.data.from([]), Hson.data.from([[], [1, null]]),
     Hson.data.from({ ordinary: 1, nested: { constructor: true, prototype: null } }),
-    Hson.data`<'10' -0 '2' <__proto__ <constructor 1 prototype 2>> '' []>`,
+    Hson.data.parse`<'10' -0 '2' <__proto__ <constructor 1 prototype 2>> '' []>`,
   ];
   for (const value of representatives) {
     assert.strictEqual(Hson.data.from(value), value);
@@ -105,7 +105,7 @@ check("every representative admitted value closes through canonical Hson", () =>
 
 check("equivalent data presentation normalizes at dynamic boundaries", () => {
   const forged = "<a  1>";
-  assert.equal((Hson.data.fromSource(forged)).toHson(), (Hson.data`<a 1>`).toHson());
+  assert.equal((Hson.data.fromSource(forged)).toHson(), (Hson.data.parse`<a 1>`).toHson());
 });
 
 check("data producers and shared parsing close at the same nesting boundary", () => {
@@ -173,7 +173,7 @@ check("data-only receiver retains grammar and rejects document attributes before
 
 check("named data library exact reads preserve source order and values", () => {
   const map = hson.liveMap.fromLibraries({ state: {
-    data: Hson.data.fromSource('{"value":{"10":-0,"2":{"__proto__":true},"tail":[1,{"constructor":2,"prototype":3}]}}'),
+    json: Hson.data.fromSource('{"value":{"10":-0,"2":{"__proto__":true},"tail":[1,{"constructor":2,"prototype":3}]}}'),
     schema: Hson.schema`<type "data" content <value "any">>`,
   } });
   const exact = map.data.must("state").at([]).hson();
@@ -187,8 +187,8 @@ check("named data library exact reads preserve source order and values", () => {
 
 check("named data library rejects reserved names before state, revision, or publication", () => {
   const schema = Hson.schema`<type "data" content <nested "any">>`;
-  assert.throws(() => hson.liveMap.fromLibraries({ state: { data: { _hson_root: 1 }, schema } }));
-  const map = hson.liveMap.fromLibraries({ state: { data: { nested: { value: 1 } }, schema } });
+  assert.throws(() => hson.liveMap.fromLibraries({ state: { json: { _hson_root: 1 }, schema } }));
+  const map = hson.liveMap.fromLibraries({ state: { json: { nested: { value: 1 } }, schema } });
   const state = map.data.must("state");
   let publications = 0;
   const stop = map.commits.observe(() => { publications += 1; });
@@ -206,7 +206,7 @@ check("named data library rejects reserved names before state, revision, or publ
   assert.equal(map.rev, 0);
   assert.deepEqual(state.snap(), before);
   assert.equal(publications, 0);
-  assert.equal(state.at([]).hson(), (Hson.data`<nested <value 1>>`).toHson());
+  assert.equal(state.at([]).hson(), (Hson.data.parse`<nested <value 1>>`).toHson());
   stop();
 });
 

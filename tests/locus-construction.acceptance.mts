@@ -24,7 +24,7 @@ assert.deepEqual(fidelityPage?.css, structuredRecord, "Fixture transport preserv
 assert.equal(fidelityLocus.logicalMapId, "structured-css-fixture-map");
 assert.equal(fidelityLocus.rev, 1, "Initial structured CSS stays at revision zero and the interaction is one transition");
 fidelityLocus.dispose();
-const definition = [{ "secret": { data: { token: "hidden" }, schema: Secret, access: "private" }, "count": { data: { value: 1 }, schema: Count, access: "shared" }, "page": { document: "<main <button/>/>", access: "shared" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }], defaultProjection: { libraries: ["count", "page", "ui"] }, authorizeProjection: () => ({ libraries: ["count", "page", "ui"] }) }] as const;
+const definition = [{ "secret": { json: { token: "hidden" }, schema: Secret, access: "private" }, "count": { json: { value: 1 }, schema: Count, access: "shared" }, "page": { document: "<main <button/>/>", access: "shared" } }, { local: [{ name: "ui", initializer: { json: { selected: false } } }], defaultProjection: { libraries: ["count", "page", "ui"] }, authorizeProjection: () => ({ libraries: ["count", "page", "ui"] }) }] as const;
 const locus = hsonLiveMap.locus.create({ ...definition[0] }, { ...definition[1], interactions: [descriptor] });
 assert.deepEqual(locus_map_internal(locus).capture().registry.libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name),
   ["secret", "count", "page"]);
@@ -163,7 +163,7 @@ assert.equal(opaqueStyled.rev, 0);
 assert.equal(opaqueStyled.doc.must("bad").css.snapshot(), malformedCss);
 opaqueStyled.dispose();
 // @ts-expect-error Data CSS remains invalid at runtime.
-assert.throws(() => hsonLiveMap.locus.create({ "data": { data: 1, stylesheet: sheet, access: "shared" } }), /document/i);
+assert.throws(() => hsonLiveMap.locus.create({ "data": { json: 1, stylesheet: sheet, access: "shared" } }), /document/i);
 authored.dispose();
 const cssDurableStore = new MemoryCheckpointAdapter();
 const cssDurableDefinition = [{ "page": { document: "<main/>", stylesheet: sheet, access: "shared" } }, { logicalMapId: "css-text-durable", persistence: cssDurableStore }] as const;
@@ -184,6 +184,6 @@ assert.deepEqual(localSession.now().local.find((entry) => entry.name === "localP
   { rules: [], properties: [], keyframes: [], order: [{ kind: "text", text: sheet }] });
 localStyled.dispose();
 
-assert.throws(() => hsonLiveMap.locus.create({ "count": { data: { value: "wrong" }, schema: Count, access: "shared" } }),
+assert.throws(() => hsonLiveMap.locus.create({ "count": { json: { value: "wrong" }, schema: Count, access: "shared" } }),
   /Schema|invalid|mismatch/i);
 console.log("ok - Locus flat construction, local initializers, CSS, and interactions");

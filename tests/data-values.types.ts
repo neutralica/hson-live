@@ -10,7 +10,45 @@ const retained: HsonDataValue<typeof A> = Hson.data.from(certified);
 const narrow: NarrowValue<typeof A> = retained;
 const projected: JsonFromSchema<typeof A> = certified.materialize();
 const encoded: HsonData<typeof A> = certified.toHson();
-const inferred: HsonFromSchema<typeof A> = certified;
+const inferred: HsonFromSchema<typeof A> = encoded;
+const source: HsonData = Hson.data`<count 1>`;
+const parsed: HsonDataValue = Hson.data.parse(source);
+const taggedParsed: HsonDataValue = Hson.data.parse`<count ${1}>`;
+// @ts-expect-error Exact parsing requires HSON text, never native objects.
+Hson.data.parse({ count: 1 });
+// @ts-expect-error Source parsing does not authenticate an erased Schema assertion.
+const parsedProof: HsonDataValue<typeof A> = Hson.data.parse(encoded);
+const sourceMap = hsonLiveMap.fromLibraries({ state: { hson: source, schema: A } });
+sourceMap.data.state.snap() satisfies JsonFromSchema<typeof A>;
+// @ts-expect-error Recognizable HSON source selects the hson channel, not semantic json.
+hsonLiveMap.fromLibraries({ state: { json: source } });
+// @ts-expect-error Branded variables retain the representation restriction.
+sourceMap.addLibraries({ next: { json: encoded } });
+// @ts-expect-error Authored document source is also HSON text.
+hsonLiveMap.fromLibraries({ state: { json: Hson.document`<p/>` } });
+// Native records retain semantic member values, including authored text strings.
+hsonLiveMap.fromLibraries({ state: { json: { source } } });
+hsonLiveMap.fromLibraries({ state: { json: [source] } });
+// @ts-expect-error Hosted construction shares the representation restriction.
+hsonLiveMap.locus.create({ state: { json: source } });
+// @ts-expect-error Durable construction shares the representation restriction.
+hsonLiveMap.locus.resume({ state: { json: source } }, { logicalMapId: "representation", persistence: {} as never });
+// @ts-expect-error Client-local initializers share the representation restriction.
+hsonLiveMap.locus.create({}, { local: [{ name: "seed", initializer: { json: source } }] });
+const brandedLocus = hsonLiveMap.locus.create({ state: { hson: source } });
+// @ts-expect-error Asynchronous admission shares the representation restriction.
+brandedLocus.admit({ next: { json: source } });
+const widenedSource: string = source;
+hsonLiveMap.fromLibraries({ state: { json: widenedSource } }); // Erased evidence is not a universal static guarantee.
+hsonLiveMap.fromLibraries({ state: { json: "<count 1>" } });
+// @ts-expect-error Both channels are forbidden, including present undefined in either optional-property mode.
+hsonLiveMap.fromLibraries({ state: { json: true, hson: undefined } });
+// @ts-expect-error Both channels are forbidden, including present undefined in either optional-property mode.
+hsonLiveMap.fromLibraries({ state: { json: undefined, hson: "true" } });
+// @ts-expect-error A Data definition must select a channel.
+hsonLiveMap.fromLibraries({ state: { schema: A } });
+// @ts-expect-error The former Library data field is not a compatibility alias.
+hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: A } });
 // @ts-expect-error Identical shapes do not erase Schema definition identity.
 const wrong: HsonDataValue<typeof B> = certified;
 // @ts-expect-error An uncertified nominal value cannot fabricate Schema proof.
@@ -37,13 +75,13 @@ Hson.data.from(() => 1);
 Hson.data.from(undefined);
 // @ts-expect-error Nested carriers require explicit materialization.
 Hson.data.from({ nested: certified });
-const map = hsonLiveMap.fromLibraries({ state: { data: certified, schema: A }, parts: { parts: { p: { kind: "document", document: '<p hson:part data:x="%{x}" "^{x}"/>' } } } });
+const map = hsonLiveMap.fromLibraries({ state: { json: certified, schema: A }, parts: { parts: { p: { kind: "document", document: '<p hson:part data:x="%{x}" "^{x}"/>' } } } });
 map.data.state.at([]).replace(certified);
 map.parts.parts.p.write({ x: certified });
 // @ts-expect-error Part inputs do not accept arbitrary object instances.
 map.parts.parts.p.write({ x: new Date() });
 // @ts-expect-error Library inputs do not accept arbitrary object instances.
-hsonLiveMap.fromLibraries({ state: { data: new Date() } });
+hsonLiveMap.fromLibraries({ state: { json: new Date() } });
 const locus = hsonLiveMap.locus.create({}, { actions: { forward(_context, payload, message) {
   const input: HsonDataValue | undefined = payload;
   const request: HsonDataValue | undefined = message.payload;
@@ -59,9 +97,9 @@ import type { JsonValue } from "../src/core/types.js";
 type EqualData<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type CheckData<T extends true> = T;
 const unknownRoots = hsonLiveMap.fromLibraries({
-  nil: { data: Hson.data.from(null) }, text: { data: DedicatedHson.data.from("42") },
-  number: { data: Hson.data.from(42) }, boolean: { data: Hson.data.from(true) },
-  array: { data: Hson.data.from([1]) }, object: { data: Hson.data.from({ x: 1 }) },
+  nil: { json: Hson.data.from(null) }, text: { json: DedicatedHson.data.from("42") },
+  number: { json: Hson.data.from(42) }, boolean: { json: Hson.data.from(true) },
+  array: { json: Hson.data.from([1]) }, object: { json: Hson.data.from({ x: 1 }) },
 });
 const unknownSnapshot = unknownRoots.data.nil.snap();
 type UnknownRoot = CheckData<EqualData<typeof unknownSnapshot, JsonValue>>;
@@ -69,7 +107,7 @@ type UnknownRoot = CheckData<EqualData<typeof unknownSnapshot, JsonValue>>;
 const objectRoot: Readonly<Record<string, JsonValue>> = unknownRoots.data.nil.snap();
 declare const typedNull: HsonDataValue<HsonSchema<null, "data">>;
 declare const typedArray: HsonDataValue<HsonSchema<readonly number[], "data">>;
-const knownRoots = hsonLiveMap.fromLibraries({ nil: { data: typedNull }, array: { data: typedArray }, governed: { data: certified, schema: A } });
+const knownRoots = hsonLiveMap.fromLibraries({ nil: { json: typedNull }, array: { json: typedArray }, governed: { json: certified, schema: A } });
 knownRoots.data.nil.snap() satisfies JsonValue;
 knownRoots.data.array.snap() satisfies readonly JsonValue[];
 knownRoots.data.governed.snap() satisfies { readonly count: number };
@@ -95,7 +133,7 @@ declare const typedString: HsonDataValue<HsonSchema<string, "data">>;
 declare const typedNumber: HsonDataValue<HsonSchema<number, "data">>;
 declare const typedBoolean: HsonDataValue<HsonSchema<boolean, "data">>;
 declare const typedObject: HsonDataValue<HsonSchema<{ readonly x: number }, "data">>;
-const semanticRoots = hsonLiveMap.fromLibraries({ text: { data: typedString }, num: { data: typedNumber }, bool: { data: typedBoolean }, obj: { data: typedObject } });
+const semanticRoots = hsonLiveMap.fromLibraries({ text: { json: typedString }, num: { json: typedNumber }, bool: { json: typedBoolean }, obj: { json: typedObject } });
 semanticRoots.data.text.snap() satisfies JsonValue;
 semanticRoots.data.num.snap() satisfies JsonValue;
 semanticRoots.data.bool.snap() satisfies JsonValue;

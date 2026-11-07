@@ -26,11 +26,11 @@ function map(options: { presentationValue?: string; changedPublicSchema?: boolea
   return hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: PageSchema },
     presentation: options.changedPublicSchema
-      ? { data: { value: options.presentationValue ?? "slides", extra: "x" }, schema: PresentationSchemaChanged }
-      : { data: { value: options.presentationValue ?? "slides" }, schema: PresentationSchema },
+      ? { json: { value: options.presentationValue ?? "slides", extra: "x" }, schema: PresentationSchemaChanged }
+      : { json: { value: options.presentationValue ?? "slides" }, schema: PresentationSchema },
     credentials: options.changedPrivateSchema
-      ? { data: { password: "SECRET_ROOT", token: "SECRET_TOKEN" }, schema: CredentialsSchemaChanged }
-      : { data: { password: "SECRET_ROOT" }, schema: CredentialsSchema },
+      ? { json: { password: "SECRET_ROOT", token: "SECRET_TOKEN" }, schema: CredentialsSchemaChanged }
+      : { json: { password: "SECRET_ROOT" }, schema: CredentialsSchema },
   });
 }
 
@@ -137,8 +137,8 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
   assert.notEqual(first.digest, differentSet.digest);
   const changedRevisionMap = hsonLiveMap.fromLibraries({
     page: { document: "<main/>", schema: PageSchema },
-    presentation: { data: { value: "slides" }, schema: PresentationSchema },
-    credentials: { data: { password: "SECRET_ROOT" }, schema: CredentialsSchema },
+    presentation: { json: { value: "slides" }, schema: PresentationSchema },
+    credentials: { json: { password: "SECRET_ROOT" }, schema: CredentialsSchema },
   });
   const changedRevisionPolicy = make_locus_hosted_projection_policy(
     internal_livemap_aggregate_authority(changedRevisionMap).hostedRegistry(), FENCE, CATALOG, undefined, authorize);

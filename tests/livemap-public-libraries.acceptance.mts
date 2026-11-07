@@ -47,8 +47,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 
 function create_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { count: 1, nested: { value: 2 } }, schema: StateSchema },
-    colors: { data: { primary: "blue" }, schema: ColorsSchema },
+    state: { json: { count: 1, nested: { value: 2 } }, schema: StateSchema },
+    colors: { json: { primary: "blue" }, schema: ColorsSchema },
     page: { document: "<main/>", schema: PageSchema },
   });
 }
@@ -188,7 +188,7 @@ await check("fromLibraries establishes fixed named data and document Libraries",
 await check("addLibraries admits runtime libraries while lib remains a selector", () => {
   const map = create_map();
   const page = map.doc.must("page");
-  const commit = map.addLibraries({ extra: { data: { primary: "green" }, schema: ColorsSchema } }).commit;
+  const commit = map.addLibraries({ extra: { json: { primary: "green" }, schema: ColorsSchema } }).commit;
   assert.deepEqual([commit.changed, commit.prevRev, commit.rev, map.rev], [true, 0, 1, 1]);
   assert.equal(commit.operations.length, 1);
   assert.equal(Reflect.get(commit.operations[0]!.operation, "kind"), "library-add");
@@ -237,7 +237,7 @@ await check("public aggregate snapshot transfers state and revision without gene
 await check("named registry construction preserves selection and atomic commits in either declaration order", () => {
   for (const order of [["left", "right"], ["right", "left"]] as const) {
     const inputs = Object.fromEntries(order.map((name) => [name, {
-      data: { count: name === "left" ? 1 : 2, nested: { value: 0 } },
+      json: { count: name === "left" ? 1 : 2, nested: { value: 0 } },
       schema: StateSchema,
     }]));
     const map = hsonLiveMap.fromLibraries(inputs);
@@ -266,7 +266,7 @@ await check("named registry construction preserves selection and atomic commits 
 });
 
 await check("one named library seeds the ordinary registry authority", () => {
-  const data = hsonLiveMap.fromLibraries({ state: { data: { count: 1, nested: { value: 2 } }, schema: StateSchema } });
+  const data = hsonLiveMap.fromLibraries({ state: { json: { count: 1, nested: { value: 2 } }, schema: StateSchema } });
   const document = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   for (const [map, mode] of [[data, "data-object"], [document, "document"]] as const) {
     const authority = internal_livemap_aggregate_authority(map);
@@ -489,8 +489,8 @@ await check("named Handles stay library-relative and return one truthful global 
 
 await check("each named Library validates its initial graph before the registry is returned", () => {
   assert.throws(() => hsonLiveMap.fromLibraries({
-    state: { data: { count: 1, nested: { value: 2 } }, schema: StateSchema },
-    colors: { data: { primary: 3 }, schema: ColorsSchema },
+    state: { json: { count: 1, nested: { value: 2 } }, schema: StateSchema },
+    colors: { json: { primary: 3 }, schema: ColorsSchema },
   }), /schema/i);
 });
 

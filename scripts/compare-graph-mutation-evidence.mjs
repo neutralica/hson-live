@@ -12,7 +12,7 @@ import {Hson,hsonLiveMap,enable_interactions,add_interaction,replace_interaction
 import {internal_livemap_aggregate_authority} from './src/api/livemap/livemap.internal.ts';
 import {make_portable_aggregate_commit} from './src/api/livemap/livemap.hosted.ts';
 export function run(){
- const map=hsonLiveMap.fromLibraries({state:{data:Hson.data.fromSource('{"10":-0,"2":2,"small":{"a":1,"b":2},"rows":[{"n":1},{"n":1},{"n":3}]}')},page:{document:'<main/>'}});
+ const map=hsonLiveMap.fromLibraries({state:{json:Hson.data.fromSource('{"10":-0,"2":2,"small":{"a":1,"b":2},"rows":[{"n":1},{"n":1},{"n":3}]}')},page:{document:'<main/>'}});
  enable_interactions(map);
  const engine=internal_livemap_aggregate_authority(map), state=map.data.state, captures=[];
  engine.observe(c=>{const wire=make_portable_aggregate_commit(c.hosted);captures.push(JSON.stringify({...wire,authority:{logicalMapId:'fixture',incarnationId:'fixture'}}));});

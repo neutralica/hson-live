@@ -50,7 +50,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     }
   });
   await check("public widened Parts access rejects supplemental Schema without publication", () => {
-    const map = hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, ordinary: { data: 1 } });
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, ordinary: { json: 1 } });
     const name: string = "parts", selected = map.parts.must(name), before = map.capture(), schema = selected.schema.get();
     let observations = 0; const stop = map.commits.observe(() => observations++);
     try {
@@ -126,8 +126,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   }
 
   await check("public admission rejects malformed collections and mixed families atomically", async () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: 1 } });
-    const locus = hsonLiveMap.locus.create({ "state": { data: 1, access: "shared" } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: 1 } });
+    const locus = hsonLiveMap.locus.create({ "state": { json: 1, access: "shared" } });
     let mapEvents = 0, locusEvents = 0;
     map.commits.observe(() => mapEvents++); locus.commits.observe(() => locusEvents++);
     const bad: unknown[] = [null, [], 1, "{}", { x: null }, { x: { kind: "data", document: "<p/>" } },
@@ -143,12 +143,12 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         assert.throws(() => hsonLiveMap.fromLibraries({ invalid } as LiveMapDefinitions));
         assert.throws(() => hsonLiveMap.locus.create({ invalid } as never));
         const before = map.capture(), revision = locus.rev;
-        assert.throws(() => map.addLibraries({ earlier: { data: 2 }, invalid } as LiveMapDefinitions));
-        await assert.rejects(locus.admit({ earlier: { data: 2 }, invalid } as never));
+        assert.throws(() => map.addLibraries({ earlier: { json: 2 }, invalid } as LiveMapDefinitions));
+        await assert.rejects(locus.admit({ earlier: { json: 2 }, invalid } as never));
         assert.deepEqual(map.capture(), before); assert.equal(locus.rev, revision);
         assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.data.must("invalid"));
       }
-      for (const invalid of [{ parts: deckParts, data: {} }, { parts: deckParts, document: "<p/>" }, { parts: deckParts, schema: ANY_DOCUMENT }]) {
+      for (const invalid of [{ parts: deckParts, json: {} }, { parts: deckParts, document: "<p/>" }, { parts: deckParts, schema: ANY_DOCUMENT }]) {
         assert.throws(() => map.addLibraries({ invalid } as never));
       }
       assert.equal(mapEvents, 0); assert.equal(locusEvents, 0);
@@ -157,8 +157,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
 
   await check("public Parts reject supplemental Schemas at every admission surface atomically", async () => {
     const custom = Hson.schema`<type "data" content <para <content <kind "string" document "string">>>>`;
-    const map = hsonLiveMap.fromLibraries({ state: { data: 1 } });
-    const locus = hsonLiveMap.locus.create({ "state": { data: 1, access: "shared" } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: 1 } });
+    const locus = hsonLiveMap.locus.create({ "state": { json: 1, access: "shared" } });
     let mapEvents = 0, locusEvents = 0;
     map.commits.observe(() => mapEvents++); locus.commits.observe(() => locusEvents++);
     const message = /Parts Library definitions do not support a supplemental Schema/;
@@ -170,8 +170,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         for (const ownership of ["private", "shared"] as const) {
           assert.throws(() => hsonLiveMap.locus.create({ parts: { ...definition, access: ownership } } as never), message);
           const before = map.capture(), revision = locus.rev;
-          assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition } as never), message);
-          await assert.rejects(locus.admit({ earlier: { data: 2, access: ownership }, parts: { ...definition, access: ownership } } as never), message);
+          assert.throws(() => map.addLibraries({ earlier: { json: 2 }, parts: definition } as never), message);
+          await assert.rejects(locus.admit({ earlier: { json: 2, access: ownership }, parts: { ...definition, access: ownership } } as never), message);
           assert.deepEqual(map.capture(), before); assert.equal(locus.rev, revision);
           assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.parts.must("parts"));
         }
@@ -195,8 +195,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     const concealSchema: ProxyHandler<object> = {
       has: (target, key) => key === "schema" ? false : Reflect.has(target, key),
     };
-    const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 }, schema: ANY_DATA } });
-    const locus = hsonLiveMap.locus.create({ "state": { data: { count: 1 }, schema: ANY_DATA, access: "shared" } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { count: 1 }, schema: ANY_DATA } });
+    const locus = hsonLiveMap.locus.create({ "state": { json: { count: 1 }, schema: ANY_DATA, access: "shared" } });
     const before = map.capture(), revision = locus.rev, state = locus.data.must("state").snap();
     let mapEvents = 0, locusEvents = 0;
     const stopMap = map.commits.observe(() => mapEvents++), stopLocus = locus.commits.observe(() => locusEvents++);
@@ -221,11 +221,11 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         ];
         for (const definition of definitions) {
           assert.throws(() => hsonLiveMap.fromLibraries({ parts: definition() } as never), message);
-          assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition() } as never), message);
+          assert.throws(() => map.addLibraries({ earlier: { json: 2 }, parts: definition() } as never), message);
           assert.deepEqual(map.capture(), before); assert.equal(mapEvents, 0);
           for (const ownership of ["private", "shared"] as const) {
             assert.throws(() => hsonLiveMap.locus.create({ parts: Object.assign(definition(), { access: ownership }) } as never), message);
-            await assert.rejects(locus.admit({ earlier: { data: 2, access: ownership }, parts: Object.assign(definition(), { access: ownership }) } as never), message);
+            await assert.rejects(locus.admit({ earlier: { json: 2, access: ownership }, parts: Object.assign(definition(), { access: ownership }) } as never), message);
             assert.equal(locus.rev, revision); assert.deepEqual(locus.data.must("state").snap(), state);
             assert.throws(() => locus.data.must("earlier")); assert.throws(() => locus.parts.must("parts"));
             assert.equal(locusEvents, 0);
@@ -234,8 +234,8 @@ export async function public_parts_cases(check: (name: string, run: () => void |
         }
       }
       // Rejected prefixes reserve no names and do not poison subsequent preparation.
-      map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} }, page: { document: "<main/>", schema: ANY_DOCUMENT } });
-      await locus.admit({ "earlier": { data: 2, access: "private" }, "parts": { parts: {}, access: "private" }, "page": { document: "<main/>", schema: ANY_DOCUMENT, access: "private" } });
+      map.addLibraries({ earlier: { json: 2 }, parts: { parts: {} }, page: { document: "<main/>", schema: ANY_DOCUMENT } });
+      await locus.admit({ "earlier": { json: 2, access: "private" }, "parts": { parts: {}, access: "private" }, "page": { document: "<main/>", schema: ANY_DOCUMENT, access: "private" } });
       const parts = map.parts.must("parts"), authorityParts = locus.parts.must("parts");
       if (String(parts.mode) === "document" || String(authorityParts.mode) === "document") throw Error("Expected data Libraries");
       assert.deepEqual(parts.snap(), {}); assert.deepEqual(authorityParts.snap(), {});
@@ -271,10 +271,10 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               ownKeys(target) { inject(); return Reflect.ownKeys(target); },
             });
             const message = /Parts Library definitions do not support a supplemental Schema/;
-            const legitimate = { earlier: { data: 2, schema: ANY_DATA }, parts: { parts: { para: deckParts.para } },
+            const legitimate = { earlier: { json: 2, schema: ANY_DATA }, parts: { parts: { para: deckParts.para } },
               page: { document: "<main/>", schema: ANY_DOCUMENT } };
             if (route === "LiveMap") {
-              const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+              const map = hsonLiveMap.fromLibraries({ state: { json: { count: 1 } } });
               const before = map.capture(), revision = map.rev;
               let commits = 0, watches = 0;
               const stop = map.commits.observe(() => commits++), unwatch = map.data.must("state").at([]).watch(() => watches++);
@@ -296,7 +296,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
               } finally { stop(); unwatch(); }
             } else {
               const ownership = route === "private Locus" ? "private" : "shared";
-              const locus = hsonLiveMap.locus.create({ "state": { data: { count: 1 }, access: "shared" } });
+              const locus = hsonLiveMap.locus.create({ "state": { json: { count: 1 }, access: "shared" } });
               // Inspect this valid authority through the same public runtime that created it.
               const before = locus.cut().libs, revision = locus.rev;
               const state = locus.data.must("state");
@@ -368,7 +368,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   });
 
   await check("public Parts presence rejection preserves a completed reentrant edit", () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { count: 1 } } });
     let captured: ReturnType<typeof map.capture> | undefined, observations = 0;
     const stop = map.commits.observe(() => observations++);
     const definition = new Proxy({ get parts() {
@@ -378,10 +378,10 @@ export async function public_parts_cases(check: (name: string, run: () => void |
       return {};
     } }, { has: (target, key) => key === "schema" ? false : Reflect.has(target, key) });
     try {
-      assert.throws(() => map.addLibraries({ earlier: { data: 2 }, parts: definition }), /Parts Library definitions do not support a supplemental Schema/);
+      assert.throws(() => map.addLibraries({ earlier: { json: 2 }, parts: definition }), /Parts Library definitions do not support a supplemental Schema/);
       assert.ok(captured !== undefined); assert.deepEqual(map.capture(), captured); assert.equal(observations, 1);
       map.data.must("state").at(["count"]).set(3);
-      map.addLibraries({ earlier: { data: 2 }, parts: { parts: {} } });
+      map.addLibraries({ earlier: { json: 2 }, parts: { parts: {} } });
       assert.equal(map.data.must("state").at(["count"]).snap(), 3);
       const parts = map.parts.must("parts");
       if (String(parts.mode) === "document") throw Error("Expected data Library");
@@ -456,12 +456,12 @@ export async function public_parts_cases(check: (name: string, run: () => void |
 
   await check("ordinary data Libraries retain custom Schema admission and mutation", async () => {
     const schema = Hson.schema`<type "data" content <para <content <kind "string" document "string">>>>`;
-    const definition = { data: { para: deckParts.para }, schema };
+    const definition = { json: { para: deckParts.para }, schema };
     const map = hsonLiveMap.fromLibraries({ data: definition });
     const locus = hsonLiveMap.locus.create({ "data": { ...definition, access: "private" } });
     try {
       assert.equal(map.data.must("data").schema.get(), schema);
-      assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: deckParts, schema } }));
+      assert.throws(() => hsonLiveMap.fromLibraries({ data: { json: deckParts, schema } }));
       assert.throws(() => map.data.must("data").at([]).replace({} as never));
       assert.throws(() => map.batch(writer => { writer.data.must("data").at(["para", "document"]).set(1 as never); }));
       const revision = locus.rev;
@@ -523,7 +523,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
 
   await check("public resolver distinguishes ineligible Libraries, missing collections, and missing members", async () => {
     const cases = [
-      { definitions: { parts: { data: deckParts } }, message: /Library "parts" is not a governed Part collection/ },
+      { definitions: { parts: { json: deckParts } }, message: /Library "parts" is not a governed Part collection/ },
       { definitions: {}, message: /Unknown Part collection "parts"/ },
       { definitions: { parts: { parts: {} } }, message: /Unknown Part member.*parts.*para/ },
     ];

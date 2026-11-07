@@ -20,7 +20,7 @@ try {
   const values=Array.from({length:size},(_,i)=>({n:i,zero:-0}));let data=values,path=[];
   for(let d=0;d<depth;d++){data={nested:data};path.unshift('nested');}
   data=Object.fromEntries([...Array.from({length:width},(_,i)=>['p'+i,i]),['selected',data]]);path.unshift('selected');
-  const library=hsonLiveMap.fromLibraries({state:{data}}).data.must('state');const api=library.at(path).asArray().array;
+  const library=hsonLiveMap.fromLibraries({state:{json: data}}).data.must('state');const api=library.at(path).asArray().array;
   const read=()=>api.slice(start,end);assert.deepEqual(read(),values.slice(start,end));
   for(let i=0;i<20;i++)sink=read();const samples=[];
   for(let b=0;b<7;b++){globalThis.gc?.();const t=performance.now();for(let i=0;i<15;i++)sink=read();samples.push((performance.now()-t)*1000/15);}

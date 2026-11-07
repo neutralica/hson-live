@@ -99,7 +99,7 @@ export function cut8_copy_cases(check: (name: string, run: () => void) => void):
           { $_tag: "body", $_content: [{ $_tag: "_hson_elem", $_content: [style_branch()] }] },
         ] }] },
       ] };
-      const map = hsonLiveMap.fromLibraries({ data: { data: { nested: [0, -0] } }, page: { document } });
+      const map = hsonLiveMap.fromLibraries({ data: { json: { nested: [0, -0] } }, page: { document } });
       const authority = internal_livemap_aggregate_authority(map);
       const checkpoint = authority.captureSemanticCheckpoint();
       const root = map.data.must("data").root();

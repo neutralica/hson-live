@@ -1,5 +1,5 @@
-import { admit_hson, admit_hson_source, reconstruct_hson_interpolated_template } from "./api/transform/hson-admission.js";
-import { HsonDataValue, hson_data_value, hson_data_from_value } from "./api/data/hson-data.js";
+import { admit_hson, reconstruct_hson_interpolated_template } from "./api/transform/hson-admission.js";
+import { HsonDataValue, hson_data_from_value, hson_data_text_from_value } from "./api/data/hson-data.js";
 import { admit_canonical_hson_data_value } from "./api/data/hson-data-hson.js";
 import { ExactDocumentCarrier } from "./api/document/hson-document.js";
 import { qualify_authored_document_source, assemble_authored_document, serialize_authored_document } from "./api/document/hson-authored.js";
@@ -10,6 +10,8 @@ import { tokenize_hson, tokenize_authored_document_library } from "./api/transfo
 import { make_leaf } from "./api/transform/parsers/parse-tokens.js";
 import { admit_hson_number } from "./core/hson-number.js";
 import { projected_value_to_hson_node } from "./core/projected-value-graph.js";
+import { canonical_hson_data_from_node } from "./core/hson-data-canonical-codec.js";
+import type { OrderedProjectedValue } from "./core/ordered-projected-value.js";
 import { detach_hson_root_value } from "./api/transform/utils/node-utils/detach-hson-root-value.js";
 import { admit_portable_hson_node } from "./api/transform/utils/hson-utils/quid-ingress.js";
 import { serialize_hson } from "./api/transform/serializers/serialize-hson.js";
@@ -18,7 +20,7 @@ import { is_transform_error } from "./core/errors.js";
 import { is_Node } from "./core/node-guards.js";
 import { HsonSchema } from "./api/schema/hson-schema.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
-import type { HsonAuthored, HsonCanonical, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
+import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
 import type { Tokens } from "./api/transform/token.types.js";
 
 type Substitution = string | number | boolean | null;
@@ -71,7 +73,7 @@ function interpolation_values(
         });
       } else if (mode === "data" || token.context === "data-value") {
         values[token.slot] = [projected_value_to_hson_node(
-          hson_data_value(hson_data_from_value(admit_canonical_hson_data_value(admit_hson_source(candidate)))),
+          admit_canonical_hson_data_value(candidate),
         )];
       } else {
         const semantic = detach_hson_root_value(parse_hson(candidate));
@@ -108,19 +110,43 @@ function canonical(strings: TemplateStringsArray, ...substitutions: readonly Sub
   return serialize_hson(detach_hson_root_value(root));
 }
 
-function data_tag(strings: TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonDataValue {
+function data_template_value(strings: TemplateStringsArray, substitutions: readonly Substitution[]): OrderedProjectedValue {
   const template = reconstruct_hson_interpolated_template(strings, substitutions);
-  if (template.slots.length === 0) return hson_data_from_value(admit_canonical_hson_data_value(admit_hson_source(template.source)));
+  if (template.slots.length === 0) {
+    try { return admit_canonical_hson_data_value(template.source); }
+    catch (cause) {
+      // Keep the source tag's structured syntax/portability errors while
+      // sharing exact Data admission without normalization and reparsing.
+      if (cause instanceof TypeError && is_transform_error(cause.cause)) throw cause.cause;
+      throw cause;
+    }
+  }
   const tokens = tokenize_hson(template.source, 0, undefined, template.slots, "data", substitutions);
   const values = interpolation_values(template.source, tokens, substitutions, "data");
   try {
     const root = parse_hson_interpolated_template(template.source, "data", values, tokens);
-    return hson_data_from_value(admit_canonical_hson_data_value(serialize_hson(detach_hson_root_value(root))));
+    return canonical_hson_data_from_node(root);
   } catch (cause) {
     if (is_transform_error(cause)) throw cause;
     _throw_transform_err("composed Hson.data value failed admission", "Hson.data", undefined, cause,
       { code: "HSON_INTERPOLATION_COMPOSED_INVALID", stage: "canonical-data-admission" });
   }
+}
+
+/** Normalized Data source; the erased brand confers no runtime authority. */
+function data_tag(strings: TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonData {
+  return hson_data_text_from_value(data_template_value(strings, substitutions));
+}
+
+/** HSON-only exact parsing, using the same admission and template composition as the source tag. */
+function data_parse(source: string): HsonDataValue;
+function data_parse(strings: TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonDataValue;
+function data_parse(input: string | TemplateStringsArray, ...substitutions: readonly Substitution[]): HsonDataValue {
+  if (typeof input === "string") {
+    if (substitutions.length !== 0) throw new TypeError("Hson.data.parse source invocation does not accept substitutions.");
+    return hson_data_from_value(admit_canonical_hson_data_value(input));
+  }
+  return hson_data_from_value(data_template_value(input, substitutions));
 }
 
 function document_tag(strings: TemplateStringsArray, ...substitutions: readonly DocumentSubstitution[]): HsonAuthored {
@@ -147,6 +173,7 @@ function schema_tag(strings: TemplateStringsArray): HsonSchema {
 export const Hson = Object.freeze({
   canonical,
   data: Object.freeze(Object.assign(data_tag, {
+    parse: data_parse,
     from: HsonDataValue.from,
     fromSource: HsonDataValue.fromSource,
   })),

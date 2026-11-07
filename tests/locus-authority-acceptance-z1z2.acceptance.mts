@@ -15,8 +15,8 @@ import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus
 const schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    A: { data: { value: "A0" }, schema },
-    B: { data: { value: "B0" }, schema },
+    A: { json: { value: "A0" }, schema },
+    B: { json: { value: "B0" }, schema },
   });
 }
 const libraries = [

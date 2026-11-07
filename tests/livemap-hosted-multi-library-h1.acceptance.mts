@@ -55,8 +55,8 @@ function check(name: string, run: () => void): void {
 
 function makeMap() {
   return hsonLiveMap.fromLibraries({
-    alpha: { data: { negativeZero: 0, ordered: { a: 1, b: 2 }, items: [1, 2], count: 0 }, schema: DataSchema },
-    beta: { data: { enabled: true }, schema: FlagSchema },
+    alpha: { json: { negativeZero: 0, ordered: { a: 1, b: 2 }, items: [1, 2], count: 0 }, schema: DataSchema },
+    beta: { json: { enabled: true }, schema: FlagSchema },
     page: { document: "<main/>", schema: DocumentSchema },
     modal: { document: "<main/>", schema: DocumentSchema },
   });
@@ -317,8 +317,8 @@ check("same-runtime snapshot plus ordered aggregate tail reproduces exact state,
 
 check("focused capture, codec, ledger hydration, and replay telemetry stays bounded", () => {
   const two = hsonLiveMap.fromLibraries({
-    alpha: { data: { negativeZero: 0, ordered: { a: 1, b: 2 }, items: [1, 2], count: 0 }, schema: DataSchema },
-    beta: { data: { enabled: true }, schema: FlagSchema },
+    alpha: { json: { negativeZero: 0, ordered: { a: 1, b: 2 }, items: [1, 2], count: 0 }, schema: DataSchema },
+    beta: { json: { enabled: true }, schema: FlagSchema },
   });
   const captureTwoStart = performance.now();
   internal_livemap_aggregate_authority(two).captureHosted();

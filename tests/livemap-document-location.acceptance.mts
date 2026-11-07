@@ -158,7 +158,7 @@ check("malformed logical paths reject and coordinate inspection is frozen", () =
 });
 
 check("data paths remain selected from their named library", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: ["first"] }, schema: DataSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: ["first"] }, schema: DataSchema } });
   const state = map.data.must("state");
   assert.equal(state.at(["items", 0]).snap(), "first");
   assert.equal(typeof state.at(["items"]).asArray()!.array.push, "function");

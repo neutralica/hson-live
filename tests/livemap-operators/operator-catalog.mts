@@ -36,7 +36,7 @@ const Wide = Hson.schema`<type "data" content <
   kept <optional "any"> copy <optional "any"> other <optional "any">
 >>`;
 export function registry(initial: string | JsonValue) {
-  return hsonLiveMap.fromLibraries({ state: { data: typeof initial === "string" ? Hson.data.fromSource(initial) : initial, schema: Wide } });
+  return hsonLiveMap.fromLibraries({ state: { json: typeof initial === "string" ? Hson.data.fromSource(initial) : initial, schema: Wide } });
 }
 export function state(initial: string | JsonValue): State {
   return registry(initial).data.must("state");
@@ -136,7 +136,7 @@ export function error_code(error: unknown): string {
 }
 export function schema_number_map(): State {
   const schema = Hson.schema`<type "data" content <value "number">>`;
-  return hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema } }).data.must("state");
+  return hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema } }).data.must("state");
 }
 
 export function assert_operator(operator: DeterministicLiveMapOperator): OperatorResult {

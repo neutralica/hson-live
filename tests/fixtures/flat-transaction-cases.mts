@@ -43,7 +43,7 @@ function unchanged(map: LiveMap, before: ReturnType<typeof snapshot>) {
   });
 }
 async function fixture() {
-  const map = make_livemap_libraries({ page: { document }, other: { document }, data: { data: { n: 0 } },
+  const map = make_livemap_libraries({ page: { document }, other: { document }, data: { json: { n: 0 } },
     parts: { parts: { p: { kind: "document", document: '<i hson:part "Scoped"/>', stylesheet: 'i{color:green}' } } },
     scoped: { document: '<aside <hson-part lib="parts" at="p"/>/>' } }, [], undefined,
   { page: structured_css_fixture(css), other: structured_css_fixture(css) });
@@ -171,7 +171,7 @@ export async function flat_transaction_cases(check: (name: string, run: () => Pr
     } finally { stops.forEach(stop => stop()); f.locus.dispose(); }
   });
   await check("styled flat Echo accepts no-op participants alongside scoped and data progress", async () => {
-    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<i hson:part "Scoped"/>' } }, access: "private" }, "page": { document, stylesheet: css, access: "shared" }, "data": { data: { n: 0 }, access: "shared" }, "scoped": { document: '<aside <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+    const locus = hsonLiveMap.locus.create({ "parts": { parts: { p: { kind: "document", document: '<i hson:part "Scoped"/>' } }, access: "private" }, "page": { document, stylesheet: css, access: "shared" }, "data": { json: { n: 0 }, access: "shared" }, "scoped": { document: '<aside <hson-part lib="parts" at="p"/>/>', access: "shared" } }, { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
     const session = await locus.session.create({ libraries: ["page", "data", "scoped"] });
     const binding = bind_locus_http(locus, { endpoint: "/flat-noop" });
     const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://flat.test/flat-noop", fetch: (input, init) => binding.handle(new Request(input, init), {}) });

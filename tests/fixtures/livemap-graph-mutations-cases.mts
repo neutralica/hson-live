@@ -70,7 +70,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
   await livemap_equal_effect_replay_cases(check);
   await livemap_replay_evidence_cases(check);
   await check("preparation edits one evolving private graph and keeps an independent stale witness", () => {
-    const map = hsonLiveMap.fromLibraries({state:{data:{nested:{n:0,keep:true},rows:[0,1]}}});
+    const map = hsonLiveMap.fromLibraries({state:{json:{nested:{n:0,keep:true},rows:[0,1]}}});
     const engine = internal_livemap_aggregate_authority(map), id = engine.libraries()[0]!;
     const root = engine.root(id), before = structuredClone(root);
     const detached = clone_live_root(root);
@@ -120,7 +120,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
     assert.equal(engine.root(id).$_tag,ARR_TAG);assert.deepEqual(engine.snap(id),[1,0]);
   });
   await check("equal assignment, replacement, move, rename and splice preserve semantic identity intent", () => {
-    const map=hsonLiveMap.fromLibraries({state:{data:{rows:[{n:1},{n:1},{n:2}],names:{a:{n:1},b:{n:1}}}}});
+    const map=hsonLiveMap.fromLibraries({state:{json:{rows:[{n:1},{n:1},{n:2}],names:{a:{n:1},b:{n:1}}}}});
     const state=map.data.state, engine=internal_livemap_aggregate_authority(map), id=engine.libraries()[0]!;
     engine.acquireLocalProjectedIdentity(id,["rows",0],"000008701");
     engine.acquireLocalProjectedIdentity(id,["rows",1],"000008702");
@@ -144,7 +144,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
   });
   await check("accepted equal replacement and splice replay in a fresh runtime without source QUIDs", () => {
     for (const kind of ["replace", "splice"] as const) {
-      const source=hsonLiveMap.fromLibraries({state:{data:{rows:[{n:1}]}}});
+      const source=hsonLiveMap.fromLibraries({state:{json:{rows:[{n:1}]}}});
       const engine=internal_livemap_aggregate_authority(source), id=engine.libraries()[0]!;
       const client=compose_client_portable_aggregate_internal(make_portable_aggregate_snapshot(engine.captureHosted()), []);
       const replica=create_echo_aggregate_replica_capability_internal(client);
@@ -162,7 +162,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
     }
   });
   await check("shallow ordered constructive writes preserve numeric member order and exact numbers", () => {
-    const map=hsonLiveMap.fromLibraries({state:{data:Hson.data.fromSource('{"10":0,"2":0,"nested":{"keep":true,"drop":true}}')}});
+    const map=hsonLiveMap.fromLibraries({state:{json:Hson.data.fromSource('{"10":0,"2":0,"nested":{"keep":true,"drop":true}}')}});
     map.batch(d=>{
       d.data.state.at([]).set(Hson.data.fromSource('{"2":-0,"1":5,"nested":{"keep":false}}'));
       d.data.state.at(["nested"]).set(Hson.data.fromSource('{"10":1,"2":2}'));
@@ -181,7 +181,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
   await check("complete candidate depth and governing Schema reject atomically", () => {
     let deep: JsonValue=0;
     for(let i=0;i<HSON_MAX_NESTING-2;i++) deep={n:deep};
-    const map=hsonLiveMap.fromLibraries({state:{data:{slot:0}},guard:{data:{n:0},schema:Hson.schema`<type "data" content <n <number <int true min 0>>>>`}});
+    const map=hsonLiveMap.fromLibraries({state:{json:{slot:0}},guard:{json:{n:0},schema:Hson.schema`<type "data" content <n <number <int true min 0>>>>`}});
     const before=map.data.state.hson();
     assert.throws(()=>map.batch(d=>{d.data.state.at(["slot"]).set({extra:deep});d.data.guard.at(["n"]).set(1)}));
     assert.equal(map.data.state.hson(),before);assert.equal(map.rev,0);
@@ -213,7 +213,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
   });
   await check("reserved acceptance retains candidates through disposal and releases failed durable decisions", async () => {
     for (const outcome of ["accept", "failed", "uncertain", "dispose"] as const) {
-      const map = hsonLiveMap.fromLibraries({ state: { data: { n: 0 } } });
+      const map = hsonLiveMap.fromLibraries({ state: { json: { n: 0 } } });
       const engine = internal_livemap_aggregate_authority(map);
       let token: PreparedLiveMapAuthorityTransition | undefined;
       let enter!: () => void, release!: () => void, reject!: (error: Error) => void;
@@ -250,7 +250,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
     }
   });
   await check("close then writes preserves submitted commands and reentrant publication stays ordered", () => {
-    const map=hsonLiveMap.fromLibraries({state:{data:{n:0}}});
+    const map=hsonLiveMap.fromLibraries({state:{json:{n:0}}});
     const engine=internal_livemap_aggregate_authority(map), staged=make_livemap_staged_writer(engine);
     staged.writer.data.must("state").at(["n"]).set(1);staged.close();
     const writes=staged.writes();assert.equal(writes.length,1);

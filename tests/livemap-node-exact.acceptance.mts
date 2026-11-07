@@ -197,7 +197,7 @@ check("owned data engine admits exact data and rejects array sorting or scalar-c
     assert.notEqual(built.aggregate.root(identity), input); same(built.aggregate.root(identity), expected);
   }
   const reversed = root(arr(val(1), val(2))); child(reversed).$_content.reverse();
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 } } });
   const authority = internal_livemap_aggregate_authority(map); const before = state(map);
   for (const input of [reversed, root(obj(val(1))), root(obj(str("x"))), root(obj(obj())), root(obj(arr()))]) {
     assert.throws(() => prepare_livemap_root(input, "data"));
@@ -381,7 +381,7 @@ check("selected canonical source is privately admitted and configuration combina
   const input = root(node("p", elem(str("x")))); let reads = 0; let schemaReads = 0; let dataReads = 0;
   const definitions = {
     page: { get document() { return ++reads === 1 ? input : root(node("q")); }, get schema() { schemaReads++; return ANY_DOCUMENT; } },
-    state: { get data() { dataReads++; return { count: -0, list: [true, null] }; } },
+    state: { get json() { dataReads++; return { count: -0, list: [true, null] }; } },
     empty: { document: root(node("html")) },
   };
   const map = hsonLiveMap.fromLibraries(definitions);

@@ -338,7 +338,7 @@ check("LiveMap projection and every numeric path follow canonical physical order
     scalar_item("1", "b"),
   ]);
   const map = hson.liveMap.fromLibraries({ data: {
-    data: Hson.data.fromSource(hsonTransform.fromNode(detach_hson_root_value(source)).toJson().serialize()),
+    json: Hson.data.fromSource(hsonTransform.fromNode(detach_hson_root_value(source)).toJson().serialize()),
     schema,
   } });
   const data = map.data.must("data");
@@ -353,7 +353,7 @@ check("LiveMap projection and every numeric path follow canonical physical order
 check("LiveMap splice and move regenerate dense indexes and preserve addressability", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <items <array "string">>>`;
   const map = hson.liveMap.fromLibraries({ data: {
-    data: { items: ["a", "b", "c"] },
+    json: { items: ["a", "b", "c"] },
     schema,
   } });
   const data = map.data.must("data");

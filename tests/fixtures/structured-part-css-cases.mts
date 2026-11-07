@@ -108,7 +108,7 @@ export async function structured_css_cases(check: (name: string, run: () => void
       assert.deepEqual(l.parts.must('parts').at(['many']).snap()?.css,expected);
       assert.deepEqual(l.parts.must('parts').at(['stagedMany']).snap()?.css,expected);
     } finally { l.dispose(); }
-    assert.throws(()=>hsonLiveMap.fromLibraries({ordinary:{data:{color:undefined}}} as never));
+    assert.throws(()=>hsonLiveMap.fromLibraries({ordinary:{json:{color:undefined}}} as never));
   });
   await check('atomic late CSS failures and definition/occurrence replacement preserve ownership', () => {
     const m = realized(), page=m.doc.must('page'), before=page.css.snapshot(), rev=m.rev, ledger=authority(m).identityEpoch().issued();

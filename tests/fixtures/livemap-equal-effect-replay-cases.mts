@@ -18,7 +18,7 @@ type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
 type Route = "hosted" | "durable" | "echo";
 function receive(snapshot: PortableAggregateSnapshot, route: Route) {
   const map = route === "echo" ? compose_client_portable_aggregate_internal(snapshot, [])
-    : hsonLiveMap.fromLibraries({ state: { data: {} } });
+    : hsonLiveMap.fromLibraries({ state: { json: {} } });
   const a = authority(map);
   if (route !== "echo") a.restoreClientHosted(snapshot);
   const id = a.libraries()[0]!;
@@ -45,7 +45,7 @@ export async function livemap_equal_effect_replay_cases(check: Check): Promise<v
   for (const route of ["hosted", "durable", "echo"] as const) {
     for (const invalid of ["empty splice", "equal scalar replacement", "equal primitive splice", "equal array scalar replacement"] as const) {
       await check(`${route} rejects ${invalid} with complete replay atomicity`, () => {
-        const source = hsonLiveMap.fromLibraries({ state: { data: { rows: [1], n: 0 } } });
+        const source = hsonLiveMap.fromLibraries({ state: { json: { rows: [1], n: 0 } } });
         const a = authority(source), id = a.libraries()[0]!;
         const snapshot = make_portable_aggregate_snapshot(a.captureHosted());
         const valid = portable(a.accept(a.prepare([{ target: a.target(id, ["n"]), kind: "set", value: 1 }])).commit);
@@ -116,7 +116,7 @@ export async function livemap_equal_effect_replay_cases(check: Check): Promise<v
     }
     await check(`${route} replays retirement of eligible empty object and array children`, () => {
       for (const value of [{}, []]) for (const kind of ["replace", "splice"] as const) {
-        const source = hsonLiveMap.fromLibraries({ state: { data: { rows: [value] } } });
+        const source = hsonLiveMap.fromLibraries({ state: { json: { rows: [value] } } });
         const a = authority(source), id = a.libraries()[0]!;
         a.acquireLocalProjectedIdentity(id, ["rows", 0], "000008831");
         const r = receive(make_portable_aggregate_snapshot(a.captureHosted()), route);
@@ -137,7 +137,7 @@ export async function livemap_equal_effect_replay_cases(check: Check): Promise<v
     });
     await check(`${route} preserves ordered equal container retirement with fresh receiver correspondence`, () => {
       for (const localClaims of [false, true]) {
-        const source = hsonLiveMap.fromLibraries({ state: { data: { rows: [{ n: 1 }, [{ n: 2 }], 3], n: 0 } } });
+        const source = hsonLiveMap.fromLibraries({ state: { json: { rows: [{ n: 1 }, [{ n: 2 }], 3], n: 0 } } });
         const a = authority(source), id = a.libraries()[0]!;
         const paths = [[], ["rows"], ["rows", 0], ["rows", 1], ["rows", 1, 0]] as const;
         paths.forEach((path, index) => a.acquireLocalProjectedIdentity(id, path, `00000881${index}`));

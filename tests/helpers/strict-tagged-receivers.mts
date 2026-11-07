@@ -14,8 +14,8 @@ import { corrupt_tagged_payload, exact_tagged_payload, invalid_tagged_graphs, ta
 /** The same malformed inner-payload controls execute in Node and actual Workers. */
 export function strict_tagged_receiver_controls(): Readonly<{ snapshotRejections: number; actionRejections: number; replayRejections: number }> {
   const Page = Hson.schema`<type "document">`;
-  const source = hsonLiveMap.fromLibraries({ state: { data: { items: ["a", "b"] } }, page: { document: "<main/>", schema: Page } });
-  const target = hsonLiveMap.fromLibraries({ state: { data: { items: ["old", "state"] } }, page: { document: "<main/>", schema: Page } });
+  const source = hsonLiveMap.fromLibraries({ state: { json: { items: ["a", "b"] } }, page: { document: "<main/>", schema: Page } });
+  const target = hsonLiveMap.fromLibraries({ state: { json: { items: ["old", "state"] } }, page: { document: "<main/>", schema: Page } });
   const page = target.doc.must("page");
   if (page.mode !== "document") throw new Error("Expected page.");
   const subject = acquire_document_identity(page.document, { kind: "path", path: [0] });

@@ -59,8 +59,8 @@ await check("exact values, Hson source, and D2 certification reject reserved nam
 
 await check("Data Library construction rejects values and decoded JSON names without unwrapping", () => {
   for (const value of invalidValues) for (const data of [value]) {
-    assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { data } }), /Reserved Hson prefix/);
-    assert.throws(() => hsonLiveMap.locus.create({ rejected: { data } }), /Reserved Hson prefix/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { json: data } }), /Reserved Hson prefix/);
+    assert.throws(() => hsonLiveMap.locus.create({ rejected: { json: data } }), /Reserved Hson prefix/);
   }
   for (const data of [
     String.raw`{"\u0024\u005fmeta":{"quid":"000000001"},"a":1}`,
@@ -68,7 +68,7 @@ await check("Data Library construction rejects values and decoded JSON names wit
     String.raw`[{"\u005fhson_root":{"a":1}}]`,
     String.raw`{"\u005fhson_root":{"a":1}}`,
   ]) {
-    assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { data: Hson.data.fromSource(data) } }));
+    assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { json: Hson.data.fromSource(data) } }));
     assert.throws(() => Hson.data.from(JSON.parse(data)), /Reserved Hson prefix/);
     assert.throws(() => certify(JSON.parse(data)), /Reserved Hson prefix/);
   }
@@ -77,7 +77,7 @@ await check("Data Library construction rejects values and decoded JSON names wit
 });
 
 await check("Library addition and mutation publish no partial state or identity", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0, nested: {}, items: [0] } } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0, nested: {}, items: [0] } } });
   const state = map.data.must("state"), owner = internal_livemap_aggregate_authority(map);
   let publications = 0, watches = 0;
   map.commits.observe(() => { publications++; });
@@ -99,7 +99,7 @@ await check("Library addition and mutation publish no partial state or identity"
   for (const value of invalidValues) {
     for (const write of writes) assert.throws(() => write(state, value));
     for (const data of [value]) {
-      assert.throws(() => map.addLibraries({ first: { data: 1 }, rejected: { data } }));
+      assert.throws(() => map.addLibraries({ first: { json: 1 }, rejected: { json: data } }));
       assert.equal(map.data("first"), undefined);
       assert.equal(map.data("rejected"), undefined);
     }
@@ -146,7 +146,7 @@ await check("D2 direct Part Data rejects before writing; source validation stays
 
 await check("action payloads and decoder outputs reject before handlers; results cannot certify success", async () => {
   let executions = 0, decoderValue: unknown = null, resultValue: unknown = null;
-  const locus = hsonLiveMap.locus.create({ state: { data: { value: 0 } } }, {
+  const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {
     actions: {
       probe: () => { executions++; },
       decoded: () => { executions++; },
@@ -216,16 +216,16 @@ await check("strings, exact ordering, ownership, structural Transform and Docume
   const values = { text: "$_meta _hson_root", nested: ["$_", { text: '{"$_meta":{"quid":"000000001"}}' }] };
   assert.deepEqual((Hson.data.from(values)).materialize(), values);
   assert.equal((certify(values) as HsonDataValue).toHson(), Hson.data.from(values).toHson());
-  const map = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource(JSON.stringify(values)) }, literal: { data: "$_meta _hson_root" } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: Hson.data.fromSource(JSON.stringify(values)) }, literal: { json: "$_meta _hson_root" } });
   values.nested.push("later");
   assert.notDeepEqual(map.data.must("state").snap(), values);
   assert.equal(map.data.must("literal").snap(), "$_meta _hson_root");
   for (const invalidSource of ["$_meta", "<p/>"]) {
-    assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { data: Hson.data.fromSource(invalidSource) } }));
+    assert.throws(() => hsonLiveMap.fromLibraries({ rejected: { json: Hson.data.fromSource(invalidSource) } }));
   }
   assert.equal((certify("42") as HsonDataValue).scalar(), "42");
-  assert.equal((Hson.data.from("42")).toHson(), (Hson.data`"42"`).toHson());
-  const ordered = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource('{"10":-0,"2":2,"__proto__":true}') } }).data.must("state").at([]).hson()!;
+  assert.equal((Hson.data.from("42")).toHson(), Hson.data`"42"`);
+  const ordered = hsonLiveMap.fromLibraries({ state: { json: Hson.data.fromSource('{"10":-0,"2":2,"__proto__":true}') } }).data.must("state").at([]).hson()!;
   assert.deepEqual(Hson.data.fromSource((ordered)).entries()?.map(([key]) => key), ["10", "2", "__proto__"]);
   assert.ok(Object.is(Hson.data.fromSource(ordered).entries()![0]![1].materialize(), -0));
   // Explicit general Transform envelopes retain their established interpretation.

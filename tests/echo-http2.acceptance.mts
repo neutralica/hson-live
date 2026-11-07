@@ -17,7 +17,7 @@ events.case_begin("multiplex", "HTTP/2 stream and independent finite request");
 
 const cert = await readFile(new URL("./fixtures/livehost-tls/cert.pem", import.meta.url));
 const key = await readFile(new URL("./fixtures/livehost-tls/key.pem", import.meta.url));
-const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 let releaseFinite: (() => void) | undefined;

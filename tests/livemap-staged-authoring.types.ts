@@ -6,8 +6,8 @@ declare const stateSchema: HsonSchema<{ count: number; mode: "light" | "dark" },
 declare const pageSchema: HsonSchema<PageEvidence["value"], "document">;
 
 const map = hsonLiveMap.fromLibraries({
-  plain: { data: { count: 0 } },
-  typed: { data: { count: 0, mode: "light" }, schema: stateSchema },
+  plain: { json: { count: 0 } },
+  typed: { json: { count: 0, mode: "light" }, schema: stateSchema },
   page: { document: '<main id="hero" <section "body"/>/>', schema: pageSchema },
 });
 

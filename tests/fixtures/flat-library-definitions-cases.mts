@@ -33,26 +33,27 @@ async function rejected(locus: Locus, definitions: unknown) {
   } finally { stop(); }
 }
 export async function flat_library_definition_cases() {
+  await explicit_data_channel_cases();
   for (const name of ["a/b", "/a", "a/", "a//b"]) {
-    for (const definition of [{ data: 1 }, { document: "<main/>" }, { parts: components }]) {
+    for (const definition of [{ json: 1 }, { document: "<main/>" }, { parts: components }]) {
       assert.throws(() => hsonLiveMap.fromLibraries({ [name]: definition }), /Library name .*must not contain/);
       assert.throws(() => hsonLiveMap.locus.create({ [name]: definition }), /Library name .*must not contain/);
     }
-    const map = hsonLiveMap.fromLibraries({ valid: { data: 1 } });
+    const map = hsonLiveMap.fromLibraries({ valid: { json: 1 } });
     const before = map.capture();
-    assert.throws(() => map.addLibraries({ earlier: { data: 1 }, [name]: { data: 2 } }), /Library name .*must not contain/);
+    assert.throws(() => map.addLibraries({ earlier: { json: 1 }, [name]: { json: 2 } }), /Library name .*must not contain/);
     assert.deepEqual(map.capture(), before);
     assert.throws(() => map.data(name), /Library name .*must not contain/);
-    const locus = hsonLiveMap.locus.create({ valid: { data: 1 } });
-    await rejected(locus, { earlier: { data: 1 }, [name]: { data: 2 } });
+    const locus = hsonLiveMap.locus.create({ valid: { json: 1 } });
+    await rejected(locus, { earlier: { json: 1 }, [name]: { json: 2 } });
     locus.dispose();
   }
   await document_stylesheet_cases();
   await local_correspondence_correction_cases();
-  const literalNames = hsonLiveMap.fromLibraries({ "a\\b": { data: 1 }, "a%2Fb": { data: 2 } });
+  const literalNames = hsonLiveMap.fromLibraries({ "a\\b": { json: 1 }, "a%2Fb": { json: 2 } });
   assert.equal(literalNames.data.must("a\\b").snap(), 1);
   assert.equal(literalNames.data.must("a%2Fb").snap(), 2);
-  const minimal = hsonLiveMap.locus.create({ first: { data: 1 } });
+  const minimal = hsonLiveMap.locus.create({ first: { json: 1 } });
   assert.equal(await minimal.admit({ page: { document: "<main/>" } }), undefined);
   assert.equal(minimal.doc.must("page").render(), "<!doctype html><html><head></head><body><main></main></body></html>");
   assert.equal("addLibraries" in minimal, false);
@@ -72,7 +73,7 @@ export async function flat_library_definition_cases() {
       assert.match(locus.doc.must("page").render(), /margin:0/);
       assert.match(locus.doc.must("page").render(), /color:red/);
       assert.deepEqual(locus.parts.must("components").snap(), components);
-      await locus.admit({ private: { data: { count: 1 }, schema: Count }, denied: { data: 2, access: "private" } });
+      await locus.admit({ private: { json: { count: 1 }, schema: Count }, denied: { json: 2, access: "private" } });
       assert.equal(locus.data.must("private", Count).snap(["count"]), 1);
       const session = await locus.session.create({ libraries: ["page", "components", "private", "denied"] });
       assert.deepEqual(session.now().libs.libraries.map(entry => entry.name), ["page"]);
@@ -84,41 +85,41 @@ export async function flat_library_definition_cases() {
   noGrant.dispose();
 
   const names = ["__proto__", "constructor", "toString", "prototype", "then", "must", "private", "shared", "local", "schema", "actions"];
-  const keyed = Object.create({ inherited: { data: 99 } });
-  for (const [index, name] of names.entries()) Object.defineProperty(keyed, name, { value: { data: index }, enumerable: index % 2 === 0 });
+  const keyed = Object.create({ inherited: { json: 99 } });
+  for (const [index, name] of names.entries()) Object.defineProperty(keyed, name, { value: { json: index }, enumerable: index % 2 === 0 });
   const collisions = hsonLiveMap.locus.create(keyed);
   try {
     names.forEach((name, index) => assert.equal(collisions.data.must(name).snap(), index));
     assert.equal(collisions.data("inherited"), undefined);
     assert.equal(Object.hasOwn(Object.prototype, "data"), false);
-    await rejected(collisions, { earlier: { data: 1 }, constructor: { data: 2 } });
-    await rejected(collisions, new Proxy({ repeat: { data: 1 } }, { ownKeys: () => ["repeat", "repeat"] }));
+    await rejected(collisions, { earlier: { json: 1 }, constructor: { json: 2 } });
+    await rejected(collisions, new Proxy({ repeat: { json: 1 } }, { ownKeys: () => ["repeat", "repeat"] }));
   } finally { collisions.dispose(); }
 
-  const locus = hsonLiveMap.locus.create({ state: { data: { count: 0 }, schema: Count } });
+  const locus = hsonLiveMap.locus.create({ state: { json: { count: 0 }, schema: Count } });
   const quid = parse_hson_exact_runtime("<main @000000123/>", { allowTopLevelDocumentText: true });
   for (const invalid of [
-    { data: 1, document: "<main/>" }, { parts: {}, document: "<main/>" }, { data: undefined, document: "<main/>" }, {},
+    { json: 1, document: "<main/>" }, { parts: {}, document: "<main/>" }, { json: undefined, document: "<main/>" }, {},
     { parts: { bad: { kind: "data", document: "<p/>" } } }, { parts: {}, schema: Count },
-    { data: { count: "bad" }, schema: Count }, { document: "<main/>", schema: Count }, { data: 1, schema: {} },
+    { json: { count: "bad" }, schema: Count }, { document: "<main/>", schema: Count }, { json: 1, schema: {} },
     { document: '<main <hson-part lib="missing" at="button"/>/>' }, { document: '<main <hson-part/>/>' },
-    { document: quid }, { document: "<main/>", stylesheet: 42 }, { data: 1, stylesheet: "main{}" },
-    { data: 1, access: "local" }, { data: 1, access: undefined }, { data: 1, ownership: "shared" },
+    { document: quid }, { document: "<main/>", stylesheet: 42 }, { json: 1, stylesheet: "main{}" },
+    { json: 1, access: "local" }, { json: 1, access: undefined }, { json: 1, ownership: "shared" },
   ]) {
-    assert.throws(() => hsonLiveMap.locus.create({ earlier: { data: 1 }, invalid } as never));
-    await rejected(locus, { earlier: { data: 1 }, invalid });
+    assert.throws(() => hsonLiveMap.locus.create({ earlier: { json: 1 }, invalid } as never));
+    await rejected(locus, { earlier: { json: 1 }, invalid });
     assert.equal(locus.data("earlier"), undefined);
   }
-  await rejected(locus, { [Symbol("hidden")]: { data: 1 } });
+  await rejected(locus, { [Symbol("hidden")]: { json: 1 } });
   await rejected(locus, {});
   let nested: Promise<void> | undefined;
-  await locus.stage(() => { nested = assert.rejects(locus.admit({ nested: { data: 1 } }), /forbidden/i); });
+  await locus.stage(() => { nested = assert.rejects(locus.admit({ nested: { json: 1 } }), /forbidden/i); });
   await nested;
   assert.equal(locus.data("nested"), undefined);
-  const pending = locus.admit({ stale: { data: 1 } });
+  const pending = locus.admit({ stale: { json: 1 } });
   locus.dispose();
   await assert.rejects(pending, /closed|disposed/i);
-  await assert.rejects(locus.admit({ disposed: { data: 1 } }), /closed|disposed/i);
+  await assert.rejects(locus.admit({ disposed: { json: 1 } }), /closed|disposed/i);
 
   assert.throws(() => hsonLiveMap.locus.create({}, { unsupported: true } as never), /unsupported/);
   assert.throws(() => hsonLiveMap.locus.create({}, [] as never), /configuration/);
@@ -146,7 +147,7 @@ export async function flat_library_definition_cases() {
   persistence.release.resolve(); await admitting;
   assert.equal(settled, true); assert.equal(durable.rev, 1); assert.equal(published, 1);
   persistence.failAppend = Error("durable append failed");
-  await rejected(durable, { failed: { data: 1 } });
+  await rejected(durable, { failed: { json: 1 } });
   stop(); durable.dispose();
   const replayed = await hsonLiveMap.locus.resume({}, config);
   assert.equal(replayed.rev, 1); assert.match(replayed.doc.must("page").render(), /Hello/);
@@ -163,12 +164,70 @@ export async function flat_library_definition_cases() {
     const now = (await clientLocal.session.create({ libraries: ["ui"] })).now();
     assert.equal(now.libs.libraries.length, 0);
     assert.match(JSON.stringify(now.local), /blue/);
-    await rejected(clientLocal, { ui: { data: 1 } });
+    await rejected(clientLocal, { ui: { json: 1 } });
   } finally { clientLocal.dispose(); }
 
   const local = hsonLiveMap.fromLibraries({ page: { document: "<main/>", stylesheet: "main{color:red}" } });
   assert.match(local.doc.must("page").css.snapshot(), /color:red/);
   assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: "<main/>", access: "shared" } } as never), /metadata/);
+}
+
+async function explicit_data_channel_cases() {
+  const source = Hson.data`<count -0>`;
+  for (const definition of [{ json: { count: -0 }, schema: Count }, { hson: source, schema: Count }]) {
+    const map = hsonLiveMap.fromLibraries({ state: definition });
+    map.addLibraries({ added: definition });
+    assert.equal(map.data.must("state").hson(), source);
+    assert.equal(map.data.must("added").hson(), source);
+    const locus = hsonLiveMap.locus.create({ state: { ...definition, access: "shared" } }, {
+      local: [{ name: "local", initializer: definition }],
+      authorizeProjection: () => ({ libraries: ["state", "added", "local"] }),
+    });
+    try {
+      await locus.admit({ added: { ...definition, access: "shared" } });
+      assert.equal(locus.data.must("state").hson(), source);
+      assert.equal(locus.data.must("added").hson(), source);
+      const session = (await locus.session.create({ libraries: ["state", "added", "local"] })).now();
+      assert.equal(session.local.length, 1);
+      assert.equal(session.local[0]!.mode, "data-object");
+      assert.ok(session.libs.libraries.every(entry => entry.name !== "local"));
+    } finally { locus.dispose(); }
+    const persistence = new MemoryCheckpointAdapter(), config = { logicalMapId: "explicit-data-channels", persistence };
+    const durable = await hsonLiveMap.locus.resume({ state: definition }, config);
+    try { await durable.admit({ added: definition }); await hsonLiveMap.locus.checkpoint(durable); }
+    finally { durable.dispose(); }
+    const restored = await hsonLiveMap.locus.resume({ state: definition }, config);
+    try { assert.equal(restored.data.must("added").hson(), source); }
+    finally { restored.dispose(); }
+  }
+  const invalid = [{ json: true, hson: undefined }, { json: undefined, hson: "true" }, {}, { data: true },
+    { json: undefined }, { hson: undefined }, { hson: '{"count":1}' }, { hson: '<count "wrong">', schema: Count }];
+  const locus = hsonLiveMap.locus.create({ state: { hson: source, schema: Count } });
+  try {
+    for (const definition of invalid) {
+      await rejected(locus, { first: { json: 1 }, bad: definition });
+      await assert.rejects(hsonLiveMap.locus.resume({ bad: definition } as never, {
+        logicalMapId: "invalid-channel", persistence: new MemoryCheckpointAdapter(),
+      }));
+      assert.throws(() => hsonLiveMap.locus.create({}, { local: [{ name: "bad", initializer: definition }] } as never));
+    }
+  } finally { locus.dispose(); }
+  // Capture the source before a durable load yields to application code.
+  class HeldLoad extends MemoryCheckpointAdapter {
+    readonly entered = deferred(); readonly release = deferred();
+    override async load(id: string) { this.entered.resolve(); await this.release.promise; return super.load(id); }
+  }
+  const persistence = new HeldLoad();
+  let selected = source, reads = 0;
+  const pending = hsonLiveMap.locus.resume({ state: { get hson() { reads++; return selected; }, schema: Count } }, {
+    logicalMapId: "source-capture", persistence,
+  });
+  await persistence.entered.promise;
+  selected = Hson.data`<count 99>`;
+  persistence.release.resolve();
+  const captured = await pending;
+  try { assert.equal(reads, 1); assert.equal(captured.data.must("state").hson(), source); }
+  finally { captured.dispose(); }
 }
 
 /** Checkpoint B: the actual construction, topology, local seed and durable receivers. */
@@ -205,7 +264,7 @@ async function document_stylesheet_cases() {
       { color: "red", CoLoR: "blue" }, { padding: { value: 2, unit: "bogus" } }, { color: false },
       { $media: { "screen,": { color: "red" } } }, { color: "red; background:blue" }];
     for (const stylesheet of invalid) {
-      assert.throws(() => Reflect.apply(map.addLibraries, map, [{ first: { data: 1 }, invalid: { document, stylesheet } }]));
+      assert.throws(() => Reflect.apply(map.addLibraries, map, [{ first: { json: 1 }, invalid: { document, stylesheet } }]));
       assert.deepEqual(map.capture(), before); assert.strictEqual(owner.identityEpoch().issued(), issued); assert.equal(observations, 0);
     }
   }
@@ -225,7 +284,7 @@ async function document_stylesheet_cases() {
   try {
     assertSheet(locus_map_internal(locus), "page");
     await locus.admit({ later: { document, stylesheet: makeStyle(), access: "shared" } }); assertSheet(locus_map_internal(locus), "later");
-    await rejected(locus, { first: { data: 1 }, invalid: { document, stylesheet: { "@:missing": { color: "red" } } } });
+    await rejected(locus, { first: { json: 1 }, invalid: { document, stylesheet: { "@:missing": { color: "red" } } } });
     const now = (await locus.session.create({ libraries: ["page", "ui"] })).now();
     assert.match(JSON.stringify(now.local), /red/); assert.doesNotMatch(JSON.stringify(now.local), /orange/);
     const localRecord = now.local.find(entry => entry.name === "ui")!.css!;
@@ -275,7 +334,7 @@ async function document_stylesheet_cases() {
     }
   }
   const persistence = new HeldCssAppend(), config = { logicalMapId: "d4c-css-map", persistence };
-  const durable = await hsonLiveMap.locus.resume({ state: { data: 0 } }, config);
+  const durable = await hsonLiveMap.locus.resume({ state: { json: 0 } }, config);
   try {
     const blocking = durable.stage(draft => { draft.data.must("state").at([]).set(1); }); await persistence.entered.promise;
     const style = makeStyle(), proxy = Proxy.revocable(style, {});
@@ -283,10 +342,10 @@ async function document_stylesheet_cases() {
     style.color = "orange"; style["@:title"].color = "orange"; proxy.revoke();
     persistence.release.resolve(); await blocking; await pending; assertSheet(locus_map_internal(durable), "page");
   } finally { persistence.release.resolve(); durable.dispose(); }
-  const resumed = await hsonLiveMap.locus.resume({ state: { data: 0 } }, config);
+  const resumed = await hsonLiveMap.locus.resume({ state: { json: 0 } }, config);
   try { assertSheet(locus_map_internal(resumed), "page"); await hsonLiveMap.locus.checkpoint(resumed); }
   finally { resumed.dispose(); }
-  const checkpointed = await hsonLiveMap.locus.resume({ state: { data: 0 } }, config);
+  const checkpointed = await hsonLiveMap.locus.resume({ state: { json: 0 } }, config);
   try { assertSheet(locus_map_internal(checkpointed), "page"); }
   finally { checkpointed.dispose(); }
 }
@@ -297,7 +356,7 @@ async function local_correspondence_correction_cases() {
   const { sha256_sync } = await import("../../src/core/sha256-sync.js");
   const { lookup_document_quad_internal } = await import("../../src/api/livemap/livemap.document.quad.js");
   const { authority_definitions_from_map_fixture, create_locus_fixture } = await import("../helpers/locus-definition-fixture.mts");
-  const original = hsonLiveMap.fromLibraries({ text: { data: "42" } });
+  const original = hsonLiveMap.fromLibraries({ text: { json: "42" } });
   const reconstructed = create_locus_fixture(authority_definitions_from_map_fixture(original, [{ name: "text", ownership: "shared" }]));
   assert.equal(reconstructed.data.must("text").snap(), "42"); reconstructed.dispose();
   const seed = async (document: string) => {

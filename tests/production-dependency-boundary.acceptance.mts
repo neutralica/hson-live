@@ -214,13 +214,13 @@ check("native /livemap namespace keeps LiveMap, Echo, and Locus browser graphs s
   const prefix = 'import * as hsonLiveMap from "hson-live/livemap";';
   const plain = browser_graph("livemap-create-public.mjs", `${prefix} globalThis.map = hsonLiveMap.create();`);
   const libraries = browser_graph("livemap-libraries-public.mjs", `${prefix}
-    globalThis.map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 } } });`);
+    globalThis.map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 } } });`);
   const echo = browser_graph("livemap-echo-public.mjs", `${prefix}
     const transport = { operations: { async submit() { return { kind: "not-submitted" }; } },
       attachment: { observe() { return () => {}; } } };
     globalThis.echo = hsonLiveMap.echo.create({ transport });`);
   const locus = browser_graph("livemap-locus-public.mjs", `${prefix}
-    globalThis.locus = hsonLiveMap.locus.create({ state: { data: { value: 1 }, access: "shared" } });`);
+    globalThis.locus = hsonLiveMap.locus.create({ state: { json: { value: 1 }, access: "shared" } });`);
   const subsystem = (graph: typeof plain, name: "livemap" | "echo" | "locus"): string[] =>
     graph.inputs.filter((input) => input.includes(`/api/${name}/`));
   const noSibling = (graph: typeof plain, name: "livemap" | "echo" | "locus", label: string): void => {

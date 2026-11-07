@@ -31,11 +31,11 @@ export function run_schema_diagnostic_cases(): void {
   ];
   for (const strings of rejected) assert.throws(() => Reflect.apply(Hson.data, Hson, [strings]),
     (error: unknown) => error instanceof Error && "code" in error && error.code === "HSON_TAGGED_TEMPLATE_REQUIRED");
-  const raw = Hson.data`<name "\\n">`;
+  const raw = Hson.data.parse`<name "\\n">`;
   assert.deepEqual((raw).materialize(), { name: "\\n" });
-  assert.deepEqual((Hson.data`// \n \u0041 \0
+  assert.deepEqual((Hson.data.parse`// \n \u0041 \0
 <name "Ada">`).materialize(), { name: "Ada" });
-  assert.deepEqual((Hson.data`<name "\n">`).materialize(), { name: "\n" });
+  assert.deepEqual((Hson.data.parse`<name "\n">`).materialize(), { name: "\n" });
   const schema: HsonSchema = Hson.schema`<type "data" defs <
     Title <content <kind <exact "title">>>
     Code <content <kind <exact "code"> language "string" body "string">>
@@ -60,7 +60,7 @@ export function run_schema_diagnostic_cases(): void {
   assert.deepEqual(evaluate({ items: [{}] }).issues.map(issue => issue.path), [["items", 0, "kind"]]);
   assert.equal(evaluate({ items: [{ kind: "unknown" }] }).issues[0]?.expected, '"title"');
 
-  const candidate = Hson.data`<items [<kind "code">]>`;
+  const candidate = Hson.data.parse`<items [<kind "code">]>`;
   assert.throws(() => schema.certify(candidate), (error: unknown) => {
     assert.ok(error instanceof HsonSchemaError);
     assert.deepEqual(error.path, ["items", 0, "language"]);

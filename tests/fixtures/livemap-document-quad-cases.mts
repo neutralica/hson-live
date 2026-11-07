@@ -406,7 +406,7 @@ export function document_quad_cases(check: (name: string, run: () => void) => vo
     assert.deepEqual(install_libraries_snapshot(captured).map.capture(), captured);
   });
   check("QUAD-free private authored admission preserves ordinary data capture and replay", () => {
-    const map = authored({ page: { document: '<main/>' }, state: { data: { count: 1 } } });
+    const map = authored({ page: { document: '<main/>' }, state: { json: { count: 1 } } });
     const captured = map.capture();
     assert.deepEqual(install_libraries_snapshot(captured).map.capture(), captured);
     assert.equal(internal_livemap_aggregate_authority(map).identityEpoch().issued().size, 0);

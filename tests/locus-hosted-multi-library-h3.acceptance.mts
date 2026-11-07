@@ -126,10 +126,10 @@ function socket_pair(): Readonly<{
 
 function make_map(libraries = 3) {
   const input = {
-    state: { data: { theme: "light", count: 0, box: { id: 0 } }, schema: StateSchema },
-    colors: { data: { theme: "light", accent: "#000" }, schema: ColorsSchema },
+    state: { json: { theme: "light", count: 0, box: { id: 0 } }, schema: StateSchema },
+    colors: { json: { theme: "light", accent: "#000" }, schema: ColorsSchema },
     page: { document: "<main/>", schema: PageSchema },
-    ...(libraries >= 4 ? { extra: { data: { theme: "light", accent: "#111" }, schema: ColorsSchema } } : {}),
+    ...(libraries >= 4 ? { extra: { json: { theme: "light", accent: "#111" }, schema: ColorsSchema } } : {}),
   };
   return hsonLiveMap.fromLibraries(input);
 }

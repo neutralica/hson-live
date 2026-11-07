@@ -653,9 +653,11 @@ check("editor completion uses current same-file Schema and exact partial token r
     host.readFile = name => name === file ? text : read(name);
     return cache.complete(file, text, version, offset, ts.createProgram([file], options, host));
   };
-  const source = 'import { Hson, type HsonDataValue } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonDataValue<typeof S> = Hson.data`<co`';
+  const source = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonData<typeof S> = Hson.data`<co`';
   const result = complete("/workspace/completion.ts", source, 1, source.length - 1);
   assert.deepEqual(result.map(entry => entry.candidate.label), ["count", "color"]);
+  const parsed = source.replaceAll('HsonData', 'HsonDataValue').replace('Hson.data`', 'Hson.data.parse`');
+  assert.deepEqual(complete("/workspace/parsed-completion.ts", parsed, 1, parsed.length - 1).map(entry => entry.candidate.label), ["count", "color"]);
   assert.deepEqual(result[0]?.range, { start: source.length - 3, end: source.length - 1 });
   const nested = source.replace('Hson.data`<co`', 'Hson.data`<presentation <th`');
   assert.deepEqual(complete("/workspace/completion.ts", nested, 2, nested.length - 1).map(entry => entry.candidate.label), ["theme"]);
@@ -724,10 +726,14 @@ check("literal escape failures survive opaque partial quoted slots with exact ho
 });
 
 check("static interpolation diagnostics report position failures without inferring branded source", () => {
-  const prefix = 'import { Hson, type HsonDataValue, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonDataValue<typeof S> = Hson.data`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
+  const prefix = 'import { Hson, type HsonDataValue, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonDataValue<typeof S> = Hson.data.parse`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
   const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/interpolation.ts").map(d => d.code).filter(code => code?.includes("STATIC_TYPE") || code?.includes("DATA_IN_DOCUMENT") || code?.includes("DOCUMENT_IN_DATA"));
   assert.deepEqual(codes('Hson.document`<main ${data}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
   assert.deepEqual(codes('Hson.document`<main ${data.toHson()}/>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${Hson.data`<a 1>`}>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${Hson.data.parse`<a 1>`}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.data.parse`<value ${Hson.data`<a 1>`}>`;'), []);
+  assert.deepEqual(codes('Hson.data.parse`<value ${Hson.data.parse("true")}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
   const mismatchSource = prefix + 'Hson.document`<main ${123}/>`;';
   const mismatch = diagnose(mismatchSource, "typescript", "/workspace/interpolation.ts").find(d => d.code === "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE");
   assert.deepEqual(mismatch?.range, { start: mismatchSource.lastIndexOf("${123}") + 2, end: mismatchSource.lastIndexOf("${123}") + 5 });
@@ -974,12 +980,12 @@ check("inferred Data carriers require serialization while source qualification s
     .map(diagnostic => diagnostic.code)
     .filter(code => code?.includes("STATIC_TYPE") || code === "HSON_INTERPOLATION_DATA_IN_DOCUMENT" || code === "HSON_INTERPOLATION_DOCUMENT_IN_DATA");
   for (const [body, code] of [
-    ['const data = Hson.data`<x 1>`; Hson.document`<main ${data}/>`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
-    ['const data = Hson.data`<x 1>`; Hson.data`<x ${data}>`;', "HSON_INTERPOLATION_DATA_STATIC_TYPE"],
-    ['const data = Hson.data`"hello"`; Hson.document`${data}`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
-    ['const data = Hson.data`<x 1>`; Hson.document`<p "${data}"/>`;', "HSON_QUOTED_INTERPOLATION_STATIC_TYPE"],
-    ['const data = Hson.data`<main "">`; Hson.document`<html <head/> ${data}/>`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
-    ['const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data.parse`<x 1>`; Hson.document`<main ${data}/>`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data.parse`<x 1>`; Hson.data.parse`<x ${data}>`;', "HSON_INTERPOLATION_DATA_STATIC_TYPE"],
+    ['const data = Hson.data.parse`"hello"`; Hson.document`${data}`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data.parse`<x 1>`; Hson.document`<p "${data}"/>`;', "HSON_QUOTED_INTERPOLATION_STATIC_TYPE"],
+    ['const data = Hson.data.parse`<main "">`; Hson.document`<html <head/> ${data}/>`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
+    ['const data = Hson.data.parse`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;', "HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"],
   ] as const) {
     assert.deepEqual(familyCodes(body), [code]);
     assert.deepEqual(familyCodes(body.replaceAll('${data}', '${data.toHson()}')), []);

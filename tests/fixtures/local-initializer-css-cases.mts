@@ -63,7 +63,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
       ['[hson\\:quid="123456789"]', /Unsupported or mixed CSS identity attribute selector/],
       ['[hson\\:quad="_123456789"]', /Portable CSS requires a corresponding ordinary Library subject/],
     ] as const) {
-      const client = compose(snapshot, local_initializers({ ui: { data: { value: 0 } }, existing: { document: "<main/>" } }));
+      const client = compose(snapshot, local_initializers({ ui: { json: { value: 0 } }, existing: { document: "<main/>" } }));
       const aggregate = owner(client), existing = client.doc.must("existing");
       if (existing.mode !== "document") throw Error("document");
       const library = aggregate.libraries()[1];
@@ -97,7 +97,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
         assert.equal(aggregate.identityEpoch().issued(), ledger); assert.deepEqual(aggregate.hostedPosition(), position);
         assert.throws(() => client.data.must("panel")); assert.throws(() => client.doc.must("alpha"));
         // A rejected document seed must not retain even a mode contract.
-        const retry = local_initializers({ panel: { data: { accepted: true } } });
+        const retry = local_initializers({ panel: { json: { accepted: true } } });
         install(client, retry); assert.equal(client.data.must("panel").mode, "data-object");
         assert.equal(commits, 1); assert.equal(positions, 1); assert.equal(client.rev, before.revision + 1);
         install(client, retry); assert.equal(commits, 1);
@@ -108,7 +108,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
     const snapshot = make_portable_aggregate_snapshot(owner(hsonLiveMap.create()).captureHosted());
     const seed = with_css(local_initializers({ panel: { document: "<aside/>" } })[0]!,
       '::part(hson\\:quid){color:red}.hson\\:quid{color:red}:future(foo){color:blue}');
-    const client = compose(snapshot, local_initializers({ ui: { data: {} } })), aggregate = owner(client);
+    const client = compose(snapshot, local_initializers({ ui: { json: {} } })), aggregate = owner(client);
     const ledger = aggregate.identityEpoch().issued(), before = client.rev;
     const observed: string[] = [], errors: unknown[] = [];
     const stop = client.commits.observe(() => {
@@ -130,7 +130,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
   check("outer root decoding retains one or several independently accepted inner seed contracts and CSS at every observer", () => {
     const snapshot = make_portable_aggregate_snapshot(owner(hsonLiveMap.create()).captureHosted());
     for (const count of [1, 2]) {
-      const client = compose(snapshot, local_initializers({ ui: { data: {} } }));
+      const client = compose(snapshot, local_initializers({ ui: { json: {} } }));
       const outer = with_css(local_initializers({ outer: { document: '<aside "outer-root"/>' } })[0]!, 'aside{color:red}');
       const inners = [with_css(local_initializers({ inner: { document: '<article "inner-root"/>' } })[0]!, 'article{color:blue}'),
         with_css(local_initializers({ another: { document: '<main "another-root"/>' } })[0]!, 'main{color:green}')].slice(0, count);
@@ -153,7 +153,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
   });
   check("reentrant name collision rejects the outer seed without adopting or overwriting the accepted inner incarnation", () => {
     const snapshot = make_portable_aggregate_snapshot(owner(hsonLiveMap.create()).captureHosted());
-    const client = compose(snapshot, local_initializers({ ui: { data: {} } })), aggregate = owner(client);
+    const client = compose(snapshot, local_initializers({ ui: { json: {} } })), aggregate = owner(client);
     const outer = with_css(local_initializers({ outer: { document: '<aside "outer-collision"/>' } })[0]!, 'aside{color:red}');
     const collision = with_css(local_initializers({ outer: { document: '<article/>',
       schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "article" content "empty">]>>]>>` } })[0]!, 'article{color:blue}');
@@ -177,7 +177,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
   });
   check("reentrant authority revision change rejects the outer candidate while preserving inner state and leaving no outer contract", () => {
     const snapshot = make_portable_aggregate_snapshot(owner(hsonLiveMap.create()).captureHosted());
-    const client = compose(snapshot, local_initializers({ ui: { data: {} } })), aggregate = owner(client);
+    const client = compose(snapshot, local_initializers({ ui: { json: {} } })), aggregate = owner(client);
     const outer = with_css(local_initializers({ outer: { document: '<aside "late-outer"/>' } })[0]!, 'aside{color:red}');
     const inner = with_css(local_initializers({ inner: { document: '<main/>' } })[0]!, 'main{color:blue}');
     const observed = observe_seeds(client, [inner]);
@@ -197,7 +197,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
       assert.deepEqual(observed.errors, []); assert.deepEqual(observed.revisions, [1]); assert.deepEqual(observed.positions, [1]);
       // A different mode can claim the still-absent name: no rejected document
       // seed contract leaked out of the failed outer candidate.
-      const retry = local_initializers({ outer: { data: { accepted: true } } });
+      const retry = local_initializers({ outer: { json: { accepted: true } } });
       install(client, retry); assert.equal(client.data.must("outer").mode, "data-object");
       assert_installed_seeds(client, [inner, ...retry]);
       assert.deepEqual(observed.errors, []); assert.deepEqual(observed.revisions, [1, 2]); assert.deepEqual(observed.positions, [1, 2]);

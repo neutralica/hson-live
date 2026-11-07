@@ -7,19 +7,19 @@ import type { ReadDataLocation } from "../../src/types/governor.types.js";
 export async function library_evidence_cases() {
   const earlier = Hson.schema`<type "data" content <earlier "number">>`;
   const later = Hson.schema`<type "data" content <later "string">>`;
-  const definitions: { seed: { data: number }; maybe?: { data: { earlier: number }; schema: typeof earlier } } = { seed: { data: 1 } };
+  const definitions: { seed: { json: number }; maybe?: { json: { earlier: number }; schema: typeof earlier } } = { seed: { json: 1 } };
   const optionalMap = hsonLiveMap.fromLibraries(definitions);
-  const receipt = optionalMap.addLibraries({ maybe: { data: { later: "present" }, schema: later } });
+  const receipt = optionalMap.addLibraries({ maybe: { json: { later: "present" }, schema: later } });
   assert.equal(receipt.libraries.maybe.schema.get(), later);
   assert.deepEqual(receipt.libraries.maybe.snap(), { later: "present" });
-  const groups: { maybe?: { data: { earlier: number }; schema: typeof earlier } } = {};
+  const groups: { maybe?: { json: { earlier: number }; schema: typeof earlier } } = {};
   const optionalLocus = hsonLiveMap.locus.create(groups);
   try {
-    await optionalLocus.admit({ "maybe": { data: { later: "present" }, schema: later, access: "shared" } });
+    await optionalLocus.admit({ "maybe": { json: { later: "present" }, schema: later, access: "shared" } });
     assert.equal(optionalLocus.data.must("maybe", later).schema.get(), later);
   } finally { optionalLocus.dispose(); }
 
-  const map = hsonLiveMap.fromLibraries({ state: { data: { value: [1], parent: { value: { count: 1 } } } }, array: { data: [1] } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { value: [1], parent: { value: { count: 1 } } } }, array: { json: [1] } });
   const state = map.data.must("state");
   const aggregate = internal_livemap_aggregate_authority(map);
   const before = map.capture(), issued = aggregate.identityEpoch().issued(), issuedBefore = enumerate_livemap_issued_quids(issued);
@@ -98,15 +98,15 @@ export async function library_evidence_cases() {
   map.batch(writer => { const checked = writer.data.must("state").at(["value"]).asArray(); expired = () => checked.array.push(9); });
   assert.throws(() => expired!(), /expired/i);
 
-  const staleMap = hsonLiveMap.fromLibraries({ old: { data: [1] } });
+  const staleMap = hsonLiveMap.fromLibraries({ old: { json: [1] } });
   const stale = staleMap.data.must("old").at([]).asArray()!;
-  internal_livemap_aggregate_authority(staleMap).restorePortableLibraries(hsonLiveMap.fromLibraries({ next: { data: [2] } }).capture());
+  internal_livemap_aggregate_authority(staleMap).restorePortableLibraries(hsonLiveMap.fromLibraries({ next: { json: [2] } }).capture());
   assert.throws(() => stale.snap(), /another map authority/i);
   assert.throws(() => stale.array.push(3), /another map authority/i);
 
   const schema = Hson.schema`<type "data" content <value <optional "any"> parent <optional <content <value "any">>>>>`;
   let retainedRead: ReturnType<ReadDataLocation["asArray"]>;
-  const locus = hsonLiveMap.locus.create({ "state": { data: { value: [1], parent: { value: { n: 1 } } }, schema, access: "shared" } }, { actions: { inspect(context) {
+  const locus = hsonLiveMap.locus.create({ "state": { json: { value: [1], parent: { value: { n: 1 } } }, schema, access: "shared" } }, { actions: { inspect(context) {
       retainedRead = context.data.must("state").at(["value"]).asArray();
       assert.ok(retainedRead);
       assert.equal("set" in retainedRead, false);
@@ -150,7 +150,7 @@ export async function library_evidence_cases() {
 }
 
 export async function echo_refinement_cases() {
-  const locus = hsonLiveMap.locus.create({ "state": { data: { value: [1] }, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { value: { n: 1 } } } }], authorizeProjection: () => ({ libraries: ["state", "ui"] }) });
+  const locus = hsonLiveMap.locus.create({ "state": { json: { value: [1] }, access: "shared" } }, { local: [{ name: "ui", initializer: { json: { value: { n: 1 } } } }], authorizeProjection: () => ({ libraries: ["state", "ui"] }) });
   const session = await locus.session.create({ libraries: ["state", "ui"] });
   const binding = bind_locus_http(locus, { endpoint: "/evidence" });
   const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://evidence.test/evidence",

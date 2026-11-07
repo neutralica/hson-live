@@ -97,8 +97,9 @@ writeFileSync(join(directory, "definitions.ts"), 'import { Hson } from "hson-liv
   + 'export const definitions = { components: { parts } };\n');
 writeFileSync(join(directory, "umbrella-only.ts"), 'import { Hson, hson, ANY_DOCUMENT } from "hson-live";\n'
   + 'const S = Hson.schema`<type "document" tag "article">`;\n'
-  + 'const loc = hson.liveMap.fromLibraries({ page: { document: "<aside/>", schema: ANY_DOCUMENT } });\n'
-  + 'loc.doc.must("page").schema.use(S);\n');
+  + 'const loc = hson.liveMap.fromLibraries({ page: { document: "<aside/>", schema: S } });\n'
+  + 'const advisory = hson.liveMap.fromLibraries({ page: { document: "<aside/>", schema: ANY_DOCUMENT } });\n'
+  + 'advisory.doc.must("page").schema.use(S);\n');
 const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
   strict: true, skipLibCheck: true, noEmit: true, baseUrl: root, paths: {
     "hson-live": ["src/index.ts"], "hson-live/hson": ["src/hson-authoring.ts"], "hson-live/livemap": ["src/api/livemap/index.ts"],
@@ -239,6 +240,10 @@ check("declaration, attribute and placeholder ranges stay in original host coord
 check("Schema candidates still expand complete Parts and preserve independent diagnostic ranges", () => {
   const diagnostics = static_schema_candidate_diagnostics(ts, program);
   assert.equal(diagnostics.length, 3, JSON.stringify(diagnostics));
+  assert.ok(diagnostics.every(item => item.code === "INVALID_LITERAL"));
+  const umbrella = diagnostics.filter(item => item.file.endsWith("/umbrella-only.ts"));
+  assert.equal(umbrella.length, 1, "post-admission schema.use cannot govern the advisory Library");
+  assert.equal(program.getSourceFile(umbrella[0]!.file)!.text.slice(umbrella[0]!.start, umbrella[0]!.end), '"<aside/>"');
   assert.ok(diagnostics.some(item => item.file.endsWith("/umbrella-only.ts") && item.message.includes('received "aside"')));
   assert.ok(diagnostics.some(item => withCrlf.slice(item.start, item.end) === "aside"));
   assert.ok(diagnostics.some(item => item.message.includes('received "p"')));
@@ -659,7 +664,7 @@ check('C1 multiple forwarding edges accumulate paths and qualified transitions c
 });
 check('C1 shared connectors retain independent roots, argument correlations and batch Library authority', () => {
   const source = forwarding_fixture().replace('const page=',
-    'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data`<title true>`;const page=')
+    'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title true>`;const page=')
     .replace('<hson-part at="components/A" incoming:data="${input.toHson()}"/>',
       '<main <hson-part at="components/A" incoming:data="${input.toHson()}"/> <hson-part at="components/A" incoming:data="${other.toHson()}"/>/>');
   const test = evidenceProject('c1-independent', { 'index.ts': source });
@@ -676,7 +681,7 @@ check('C1 shared connectors retain independent roots, argument correlations and 
   assert.deepEqual(children.map(context => context.library.name), ['components', 'components', 'other']);
   const correlated = evidenceProject('c1-correlations', { 'index.ts': forwarding_fixture({
     intermediate: '<section hson:part data:outer="%{incoming}" data:second="%{extra}" <hson-part at="B" payload:data="^{second}"/>/>'
-  }).replace('const page=', 'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data`<title true>`;const page=')
+  }).replace('const page=', 'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title true>`;const page=')
     .replace('incoming:data="${input.toHson()}"', 'incoming:data="${input.toHson()}" extra:data="${other.toHson()}"') });
   const child = part_data_contexts(correlated.facts, correlated.document('B'), 'payload');
   assert.equal(child.length, 1, 'one frame per invocation, not per receiving argument');
@@ -775,13 +780,13 @@ check('Data value evidence distinguishes literal strings, official source admiss
     [1, 'Hson.data.from("<title \\"ok\\">")', 'advisory'],
     [2, 'Hson.data.fromSource("<title \\"ok\\">")', 'validated'],
     [3, 'Hson.data.fromSource(\'{"title":"ok"}\')', 'validated'],
-    [4, 'Hson.data`<title "ok">`', 'validated'],
+    [4, 'Hson.data.parse`<title "ok">`', 'validated'],
     [5, 'dynamic', 'advisory'],
     [6, 'fake.data.fromSource("<title \\"ok\\">")', 'advisory'],
   ] as const) {
     const source = write_fixture({ shape: '<title "string">', value: '<title "ok">' })
       .replace('declare const dynamic:any;', 'declare const dynamic:any; declare const fake:typeof Hson;')
-      .replace('Hson.data`<title "ok">`', expression);
+      .replace('Hson.data.parse`<title "ok">`', expression);
     const test = evidenceProject('data-value-' + index, { 'index.ts': source });
     assert.deepEqual(test.program.getSyntacticDiagnostics(), [], expression);
     const context = part_data_contexts(test.facts, test.document('A'), 'incoming')[0]!;

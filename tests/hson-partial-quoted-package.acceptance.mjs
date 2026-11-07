@@ -23,8 +23,8 @@ function check(name, run) {
 check("root and narrow public authoring entrypoints share interpolation and identity", () => {
   assert.equal(publicHson, rootHson);
   assert.equal(publicHson.document`<a href="/slides/${2}"/>`, '<a href="/slides/2"/>');
-  assert.equal(rootHson.data`"pre${true}${null}${-0}post"`.toHson(), '"pretruenull-0post"');
-  assert.equal((publicHson.data`"${""}
+  assert.equal(rootHson.data`"pre${true}${null}${-0}post"`, '"pretruenull-0post"');
+  assert.equal((publicHson.data.parse`"${""}
   tail
 "`).materialize(), "\n  tail\n");
 });
@@ -36,8 +36,8 @@ const source = `import { Hson, ANY_DOCUMENT } from "hson-live/hson";
     let rejects = false; try { schema.certify(Hson.document\`<a href="/slides/\${3}" title="ok"/>\`); } catch { rejects = true; }
     export const parity = { href: attrs.href, exactText: attrs.title === 'pre' + hostile + 'null-0post',
       oneNode: Hson.document.toNode(ANY_DOCUMENT.certify(value)).$_content.length === 1, rejects,
-      data: (Hson.data\`<label "pre\${true}\${null}\${-0}post">\`).materialize().label,
-      empty: (Hson.data\`"\${""}
+      data: (Hson.data.parse\`<label "pre\${true}\${null}\${-0}post">\`).materialize().label,
+      empty: (Hson.data.parse\`"\${""}
   tail
 "\`).materialize() };`;
 const partialExpected = { href: "/slides/2", exactText: true, oneNode: true, rejects: true, data: "pretruenull-0post", empty: "\n  tail\n" };

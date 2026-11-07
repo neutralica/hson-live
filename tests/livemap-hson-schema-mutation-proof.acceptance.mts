@@ -54,7 +54,7 @@ function user(age = 37) {
 }
 
 check("structural reads supply precise independent mutation proposals", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: user(), schema: UserSchema } });
   const state = map.data.must("state");
   const age = state.at(["age"]);
   const flags = state.at(["flags"]);
@@ -91,8 +91,8 @@ check("structural reads supply precise independent mutation proposals", () => {
   state.at(["nickname"]).set("grace");
 
   const libraries = hsonLiveMap.fromLibraries({
-    state: { data: user(), schema: UserSchema },
-    tree: { data: { value: "root", age: 1, children: [] }, schema: TreeSchema },
+    state: { json: user(), schema: UserSchema },
+    tree: { json: { value: "root", age: 1, children: [] }, schema: TreeSchema },
   });
   const libraryAge = libraries.data.must("state").at(["age"]);
   libraryAge.set(38);
@@ -133,7 +133,7 @@ check("structural reads supply precise independent mutation proposals", () => {
 });
 
 check("refinement and composite failures reject before revision or publication", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: user(), schema: UserSchema } });
   const state = map.data.must("state");
   const publications: unknown[] = [];
   map.commits.observe((event) => publications.push(event));
@@ -159,7 +159,7 @@ check("refinement and composite failures reject before revision or publication",
 });
 
 check("detached structural snapshots forward as proposals and invalid updates stay atomic", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: user(), schema: UserSchema } });
   const state = map.data.must("state");
   const publications: unknown[] = [];
   map.commits.observe(event => publications.push(event));
@@ -188,7 +188,7 @@ check("detached structural snapshots forward as proposals and invalid updates st
 });
 
 check("nested recursive handles preserve governed reads while accepting ordinary candidates", () => {
-  const map = hsonLiveMap.fromLibraries({ tree: { data: {
+  const map = hsonLiveMap.fromLibraries({ tree: { json: {
     value: "root",
     age: 1,
     children: [{ value: "leaf", age: 0, children: [] }],
@@ -205,9 +205,9 @@ check("nested recursive handles preserve governed reads while accepting ordinary
 });
 
 check("construction and restore cannot install invalid governed data", () => {
-  assert.throws(() => hsonLiveMap.fromLibraries({ state: { data: user(-1), schema: UserSchema } }));
+  assert.throws(() => hsonLiveMap.fromLibraries({ state: { json: user(-1), schema: UserSchema } }));
 
-  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: user(), schema: UserSchema } });
   const state = map.data.must("state");
   const beforeRoot = state.snap();
   const beforeRev = map.rev;

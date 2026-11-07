@@ -588,7 +588,7 @@ check("iterator element suggestions reuse literal Data and Schema provenance wit
     + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="«<title \\\"first\\\">»"/>`}});');
   assert.ok(literal.labels.includes('item.title'));
   const schema = 'import type { HsonDataValue } from "hson-live";\nconst Blocks = Hson.schema`<type "data" defs <Rows <array <content <title "string" children <array <content <caption "string">>>>>>> content <ref "Rows">>`;\n'
-    + 'const blocks: HsonDataValue<typeof Blocks> = Hson.data`«»`;\n';
+    + 'const blocks: HsonDataValue<typeof Blocks> = Hson.data.parse`«»`;\n';
   const application = (body: string, input = '${blocks.toHson()}') => imports + schema + 'const loc=maps.fromLibraries({' + definition(body)
     + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + input + '"/>`}});';
   const result = complete(application(body));
@@ -625,7 +625,7 @@ check('interpolated Part completion refreshes imported Schema evidence with unch
   const schema = (name: string) => 'import { Hson } from "hson-live"; export const Rows = Hson.schema`<type "data" defs <Rows <array <content <' + name + ' "string">>>> content <ref "Rows">>`;';
   edit('iterator-schema.ts', schema('title'));
   const source = imports + 'import type { HsonDataValue } from "hson-live"; import { Rows } from "./iterator-schema.js";'
-    + 'const rows: HsonDataValue<typeof Rows> = Hson.data`«»`; const map = maps.fromLibraries({ components: { parts: { list: { kind: "document", document: Hson.document`'
+    + 'const rows: HsonDataValue<typeof Rows> = Hson.data.parse`«»`; const map = maps.fromLibraries({ components: { parts: { list: { kind: "document", document: Hson.document`'
     + '<ul hson:part class="${dynamic}" data:items="%{items}" <li for:item="^{items}" "^{item.|}"/>/>`'
     + '} } }, page: { document: Hson.document`<hson-part lib="components" at="list" items:data="${rows.toHson()}"/>` } });';
   const original = complete(source);
@@ -676,7 +676,7 @@ check("object iterator property evidence preserves keys and conservative heterog
   assert.deepEqual(literal.labels, ['record.key', 'record.title']);
   const application = (body: string, shape: string, input = '${records.toHson()}') => imports
     + 'import type { HsonDataValue } from "hson-live"; const Records=Hson.schema`<type "data" content ' + shape + '>`;'
-    + 'const records: HsonDataValue<typeof Records> = Hson.data`<>`; const loc=maps.fromLibraries({' + definition(body)
+    + 'const records: HsonDataValue<typeof Records> = Hson.data.parse`<>`; const loc=maps.fromLibraries({' + definition(body)
     + ',page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + input + '"/>`}});';
   const shape = '<first <content <title "string" count "number" children <array <content <caption "string">>>>> second <content <title "string" active "boolean" children <array <content <caption "string">>>>>>';
   const result = complete(application(body, shape));
@@ -757,7 +757,7 @@ const typedShape = '<title "string" note <optional "number"> kind <exact "card">
 const typedValue = '<title "hello" kind "card" state "ready" nested <caption "nested">>';
 function typedPart(body: string, shape = typedShape, value = typedValue): string {
   return imports + 'import type {HsonDataValue} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
-    + 'const input:HsonDataValue<typeof S>=Hson.data`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
+    + 'const input:HsonDataValue<typeof S>=Hson.data.parse`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
     + body + '`}}},page:{document:Hson.document`<hson-part at="components/card" incoming:data="${input.toHson()}"/>`}});';
 }
 const hoverText = (program: ts.Program, text: string, spelling: string) => part_data_hover(collect_part_source_facts(ts, program), file('app.ts'), text.indexOf(spelling) + 3)?.text;
@@ -793,7 +793,7 @@ check('local Data hover reaches the language service with exact authored ranges 
 });
 check('multiple callers keep separate hover alternatives and advisory shapes', () => {
   const source = typedPart('<p hson:part data:record="%{incoming}" "^{record.title|}"/>')
-    .replace('const map=', 'const Other=Hson.schema`<type "data" content <title "number">>`; const other:HsonDataValue<typeof Other>=Hson.data`<title 3>`; const map=')
+    .replace('const map=', 'const Other=Hson.schema`<type "data" content <title "number">>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<title 3>`; const map=')
     .replace('<hson-part at="components/card" incoming:data="${input.toHson()}"/>', '<main <hson-part at="components/card" incoming:data="${input.toHson()}"/> <hson-part at="components/card" incoming:data="${other.toHson()}"/>/>');
   const result = complete(source), text = hoverText(result.program, result.text, '^{record.title}')!;
   assert.match(text, /2 direct invocations/); assert.match(text, /string \(required\); validated/); assert.match(text, /number \(required\); validated/);
@@ -821,7 +821,7 @@ function secondTypedCaller(source: string, declaration: string): string {
 }
 check('integrated mixed-caller completion retains support absence and invocation ownership', () => {
   const source = secondTypedCaller(typedPart('<p hson:part data:record="%{incoming}" "^{record.ti|tle}"/>', '<title "string">', '<title "hello">'),
-    'const Other=Hson.schema`<type "data" content <count "number">>`; const other:HsonDataValue<typeof Other>=Hson.data`<count 3>`;');
+    'const Other=Hson.schema`<type "data" content <count "number">>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<count 3>`;');
   const actual = integratedTypedDetails(source);
   assert.ok(actual.entries.some(entry => entry.name === 'record.title'));
   assert.equal(actual.result.entries.find(entry => entry.candidate.label === 'record.title')!.candidate.certainty, 'possible');
@@ -846,8 +846,8 @@ check('integrated completion keeps single shared advisory and unknown caller evi
   assert.match(single.detail!, /Member described in every recognized caller Schema/);
   assert.equal(single.errors.length, 0);
   for (const [declaration, expected] of [
-    ['const Other=Hson.schema`<type "data" content <title <optional "number">>>`; const other:HsonDataValue<typeof Other>=Hson.data`<title 3>`;', /number \(optional\); validated/],
-    ['const Other=Hson.schema`<type "data" content <title "number">>`; const other:HsonDataValue<typeof Other>=Hson.data`<>`;', /number \(required\); advisory/],
+    ['const Other=Hson.schema`<type "data" content <title <optional "number">>>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<title 3>`;', /number \(optional\); validated/],
+    ['const Other=Hson.schema`<type "data" content <title "number">>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<>`;', /number \(required\); advisory/],
     ['const other=dynamic;', /unknown Schema evidence/],
     ['const Other=Hson.schema`<type "data" content <title`; declare const other:HsonDataValue<typeof Other>;', /unknown Schema evidence/],
   ] as const) {
@@ -859,7 +859,7 @@ check('integrated completion keeps single shared advisory and unknown caller evi
   }
   const absent = integratedTypedDetails(secondTypedCaller(
     typedPart('<p hson:part data:record="%{incoming}" "^{record.ti|}"/>', '<count "number">', '<count 1>'),
-    'const Other=Hson.schema`<type "data" content <count "number">>`; const other:HsonDataValue<typeof Other>=Hson.data`<count 3>`;'));
+    'const Other=Hson.schema`<type "data" content <count "number">>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<count 3>`;'));
   assert.ok(!absent.entries.some(entry => entry.name === 'record.title'));
   assert.equal(absent.detail, undefined);
 });
@@ -913,7 +913,7 @@ const destinations = ['heading', 'quote', 'image', 'code'].map(name => name + ':
 const invocation = '<hson-part at="components/dispatch" incoming:data="${input.toHson()}"/>';
 function selectorFixture(node = '<exact "heading">', value = '<kind "heading">', attributes = 'at="^{block.kind}"', shape = '<kind ' + node + '>'): string {
   return selectorImports + 'const S=Hson.schema`<type "data" content ' + shape + '>`;\n'
-    + 'const input:HsonDataValue<typeof S>=Hson.data`' + value + '`;\n'
+    + 'const input:HsonDataValue<typeof S>=Hson.data.parse`' + value + '`;\n'
     + 'const dispatch=Hson.document`<section hson:part data:block="%{incoming}" <hson-part ' + attributes + ' block:data="^{block}"/>/>`;\n'
     + 'const map=maps.fromLibraries({components:{parts:{dispatch:{kind:"document",document:dispatch},' + destinations + '}},page:{document:Hson.document`' + invocation + '`}});';
 }
@@ -979,7 +979,7 @@ check('runtime coordinate forms qualify inherited, explicit, prefix and whole-qu
   assert.deepEqual(part_definition_targets(facts, file('app.ts'), test.offset), []);
 });
 check('disjoint caller values remain separate groups, while identical definition locations deduplicate', () => {
-  const source = selectorFixture().replace('const map=', 'const T=Hson.schema`<type "data" content <kind <exact "quote">>>`; const other:HsonDataValue<typeof T>=Hson.data`<kind "quote">`; const map=')
+  const source = selectorFixture().replace('const map=', 'const T=Hson.schema`<type "data" content <kind <exact "quote">>>`; const other:HsonDataValue<typeof T>=Hson.data.parse`<kind "quote">`; const map=')
     .replace(invocation, '<main ' + invocation + ' ' + invocation.replace('${input.toHson()}', '${other.toHson()}') + ' ' + invocation + '/>');
   const test = select(source);
   assert.deepEqual(test.names, ['heading', 'quote']);
@@ -1146,9 +1146,9 @@ check('C1 integrated grandchild consumers accumulate paths across two forwarding
 check('C1 two independent callers through immutable A keep child alternatives, strengths and absence', () => {
   const base = forwarding_fixture({ body: '<p hson:part data:record="%{payload}" "^{record.ti|tle}"/>' });
   for (const [extra, expected] of [
-    ['const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data`<title 3>`;', /number \(required\); validated/],
-    ['const T=Hson.schema`<type "data" content <count "number">>`;const other:HsonDataValue<typeof T>=Hson.data`<count 3>`;', /absent in this Schema; validated/],
-    ['const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data`<>`;', /number \(required\); advisory/],
+    ['const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title 3>`;', /number \(required\); validated/],
+    ['const T=Hson.schema`<type "data" content <count "number">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<count 3>`;', /absent in this Schema; validated/],
+    ['const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<>`;', /number \(required\); advisory/],
     ['const other=dynamic;', /unknown Schema evidence/],
   ] as const) {
     const source = base.replace('const page=', extra + 'const page=').replace('<hson-part at="components/A" incoming:data="${input.toHson()}"/>',
@@ -1265,7 +1265,7 @@ check('C2a actual language-service completion and hover retain types, finite val
   }
   const advisory = integratedTypedDetails(typedWrite(undefined, typedShape, '<>'));
   assert.match(advisory.detail!, /advisory/); assert.match(advisory.hover!, /advisory/);
-  const unavailable = integratedTypedDetails(typedWrite().replace('const input:HsonDataValue<typeof S>=Hson.data`' + typedValue + '`;', 'declare const input:HsonDataValue<typeof S>;'));
+  const unavailable = integratedTypedDetails(typedWrite().replace('const input:HsonDataValue<typeof S>=Hson.data.parse`' + typedValue + '`;', 'declare const input:HsonDataValue<typeof S>;'));
   assert.match(unavailable.detail!, /advisory/); assert.match(unavailable.hover!, /advisory/);
   assert.deepEqual(actual.errors, []); assert.deepEqual(advisory.errors, []);
 });
@@ -1277,11 +1277,14 @@ check('C2a unsupported write targets, argument records and expressions stay unkn
     assert.ok(!/validated|advisory|caller Schema/.test(actual.detail ?? ''), call);
     assert.equal(actual.hover, undefined, call); assert.deepEqual(actual.errors, []);
   }
+  const literalSource = integratedTypedDetails(typedWrite().replaceAll('HsonDataValue', 'HsonData').replace('Hson.data.parse`', 'Hson.data`'));
+  assert.ok(!/validated|advisory|caller Schema/.test(literalSource.detail ?? ''));
+  assert.equal(literalSource.hover, undefined);
 });
 check('C2a receiving declarations correlate arguments by interface identity despite equal local spellings', () => {
   const source = typedWrite('<p hson:part data:record="%{incoming}" data:incoming="%{other}" "^{record.ti|tle}:^{incoming.title}"/>',
     '<title "string">', '<title "hello">', 'map.parts.components.A.write({incoming:input,other});')
-    .replace('const map=', 'const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data`<title 3>`;const map=');
+    .replace('const map=', 'const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title 3>`;const map=');
   const actual = integratedTypedDetails(source);
   assert.match(actual.detail!, /string \(required\); validated/); assert.ok(!actual.detail!.includes('number (required)'));
   const isolatedHost = { ...host };
@@ -1295,7 +1298,7 @@ check('C2a receiving declarations correlate arguments by interface identity desp
 check('C2a two independent write callers retain separate Schema alternatives without definitive member errors', () => {
   const source = typedWrite(undefined, '<title "string">', '<title "hello">',
     'map.parts.components.A.write({incoming:input});\nmap.parts.components.A.write({incoming:other});')
-    .replace('const map=', 'const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data`<title 3>`;const map=');
+    .replace('const map=', 'const T=Hson.schema`<type "data" content <title "number">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title 3>`;const map=');
   const actual = integratedTypedDetails(source);
   assert.match(actual.detail!, /string \(required\); validated/); assert.match(actual.detail!, /number \(required\); validated/);
   assert.match(actual.hover!, /2 recognized invocation contexts/);
@@ -1327,7 +1330,7 @@ check('C2a write roots use C1 whole/subtree forwarding and Pass B navigation thr
   }
 });
 check('C2a imported immutable targets refresh on upstream-only Schema and receiving-interface edits', () => {
-  const schema = 'import {Hson,type HsonDataValue} from "hson-live";export const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data`<title "ok">`;';
+  const schema = 'import {Hson,type HsonDataValue} from "hson-live";export const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;';
   const part = 'import {Hson} from "hson-live";export const A=Hson.document`<p hson:part data:record="%{incoming}" "^{record.title}"/>`;';
   edit('c2a-schema.ts', schema); edit('c2a-part.ts', part);
   edit('c2a-target.ts', 'import {hsonLiveMap as maps} from "hson-live";import {A} from "./c2a-part.js";const map=maps.fromLibraries({components:{parts:{A:{kind:"document",document:A}}}});export const selected=map.parts.components.A;');

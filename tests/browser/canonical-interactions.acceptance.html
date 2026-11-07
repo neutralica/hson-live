@@ -21,7 +21,7 @@
     const page = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } }).doc.must("page").root();
     page.$_content[0].$_content[0].$_content[1].$_content[0].$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
     const map = admit_exact_runtime_livemap_libraries({
-      state: { data: { count: 0 }, schema: StateSchema },
+      state: { json: { count: 0 }, schema: StateSchema },
       page: { document: page, schema: PageSchema },
     });
     enable_interactions(map);
@@ -78,7 +78,7 @@
 
     const runtimeMap = hsonLiveMap.create();
     const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
-      runtimeData: { data: true } });
+      runtimeData: { json: true } });
     const runtimeReplica = hsonLiveMap.create();
     runtimeReplica.replay(runtimeCommit.commit);
     const runtimeAdmissionPassed = runtimeMap.rev === 1

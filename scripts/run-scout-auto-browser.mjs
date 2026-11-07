@@ -32,7 +32,7 @@ const sessionsByPage = new Map();
 const locus = hsonLiveMap.locus.create({
   page: { document: '<html title="R" <head <base href="/assets/"/> <script src="/canonical.js"/>/> <body <main <p "Useful SSR"/> <i @:message id="message" "Styled subject"/>/>/>/>', access: 'shared' },
   manual: { document: '<html <head/> <body <p "Manual SSR"/>/>/>', access: 'shared' },
-  secrets: { data: { secret: 'private-data-sentinel' }, access: 'private' },
+  secrets: { json: { secret: 'private-data-sentinel' }, access: 'private' },
   ui: { parts: { scout: { kind: 'document', document: '<hson-scout hson:part hidden "%{payload}"/>' } }, access: 'private' },
 }, { authorizeProjection: ({requested}) => ({ libraries: requested.libraries.filter(name => name === 'page' || name === 'manual') }), sessions: {graceMs:500} });
 const authority = internal_livemap_aggregate_authority(locus_map_internal(locus));

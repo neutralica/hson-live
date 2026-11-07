@@ -19,7 +19,7 @@ const parts = { parts: {
   panel: { kind: "document", document: '<section hson:part @:root <hson-part at="leaf"/>/>' },
 } } as const;
 const page = { document: '<main @:root <hson-part @:slot lib="parts" at="panel"/> <hson-part lib="parts" at="panel"/>/>' };
-function initial() { return hsonLiveMap.fromLibraries({ parts, initial: { data: 0 } }); }
+function initial() { return hsonLiveMap.fromLibraries({ parts, initial: { json: 0 } }); }
 function scopes(map: LiveMap, name: string) {
   const a = authority(map), index = a.hostedRegistry().libraries.findIndex(entry => entry.name === name);
   return a.documentScopes(a.libraries()[index]!);
@@ -76,7 +76,7 @@ export async function verify_topology_contract_restart(f: Awaited<ReturnType<typ
     for (const quid of issued(a.identityEpoch().issued())) assert.ok(!f.sourceIds.includes(quid));
     // Checkpoint after the additions, then restore that checkpoint with a new tail.
     await l.checkpoint();
-    await l.add_libraries_internal({ later: { data: 9 } }, undefined, [{ name: "later", ownership: "shared" }]);
+    await l.add_libraries_internal({ later: { json: 9 } }, undefined, [{ name: "later", ownership: "shared" }]);
     const next = await resume(l.logicalMapId, { persistence: f.adapter, scopedDocuments: true }); assert.ok(next);
     try {
       assert.equal(next.rev, 5); assert.ok(checkpoint_libraries_equal(a.captureSemanticCheckpoint().libraries,
@@ -99,13 +99,13 @@ export async function topology_repair_cases(check: (name: string, run: () => Pro
           if (activity === "same-owner") a.claimManagement(owner);
           if (activity === "replacement" || activity === "replacement-work") a.claimManagement(other);
           if (activity === "replacement-work") {
-            const inner = prepare(map, other, { inner: { data: 7 } }); a.accept(inner.transition, "isolate", inner.afterInstall);
+            const inner = prepare(map, other, { inner: { json: 7 } }); a.accept(inner.transition, "isolate", inner.afterInstall);
           }
           verify = unchanged(map);
         };
-        const inputs: LiveMapDefinitions = surface === "definition" ? { earlier: { data: 1 }, get page() { revoke(); return page; } }
-          : surface === "batch" ? new Proxy({ earlier: { data: 1 }, page }, { ownKeys(target) { revoke(); return Reflect.ownKeys(target); } })
-          : { earlier: { data: 1 }, page };
+        const inputs: LiveMapDefinitions = surface === "definition" ? { earlier: { json: 1 }, get page() { revoke(); return page; } }
+          : surface === "batch" ? new Proxy({ earlier: { json: 1 }, page }, { ownKeys(target) { revoke(); return Reflect.ownKeys(target); } })
+          : { earlier: { json: 1 }, page };
         try {
           if (surface === "core-batch") {
             const definitions = new Proxy([{ name: "earlier", family: "data" as const, root: hsonTransform.fromJson(1).toNode(), hsonSchema: Hson.schema`<type "data">` }],
@@ -128,7 +128,7 @@ export async function topology_repair_cases(check: (name: string, run: () => Pro
   await check("H0b reserved topology candidates retain the original grant through installation", async () => {
     for (const reserved of [false, true]) for (const reacquire of [false, true]) {
       const map = initial(), a = authority(map), owner = {}; a.claimManagement(owner);
-      const p = prepare(map, owner, { earlier: { data: 1 }, page }), release = reserved ? a.reserve(p.transition) : () => {};
+      const p = prepare(map, owner, { earlier: { json: 1 }, page }), release = reserved ? a.reserve(p.transition) : () => {};
       a.releaseManagement(owner); if (reacquire) a.claimManagement(owner); const verify = unchanged(map);
       try { assert.throws(() => a.accept(p.transition, "isolate", p.afterInstall), /management authority changed/); verify(); }
       finally { release(); a.discard(p.transition); a.releaseManagement(owner); }

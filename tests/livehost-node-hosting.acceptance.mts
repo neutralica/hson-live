@@ -591,7 +591,7 @@ check("optional connection capability carries text and binary data", async () =>
 check("connection paths select applications without interpreting Locus topology", async () => {
   const selections: string[] = [];
   const Room = Hson.schema`<type "data" content <room "string">>`;
-  const oneLibrary = (room: string, logicalMapId: string) => hsonLiveMap.locus.create({ "room": { data: { room }, schema: Room, access: "shared" } }, { logicalMapId, defaultProjection: { libraries: ["room"] }, authorizeProjection: () => ({ libraries: ["room"] }) });
+  const oneLibrary = (room: string, logicalMapId: string) => hsonLiveMap.locus.create({ "room": { json: { room }, schema: Room, access: "shared" } }, { logicalMapId, defaultProjection: { libraries: ["room"] }, authorizeProjection: () => ({ libraries: ["room"] }) });
   const loci = new Map([
     ["room-a", oneLibrary("a", "logical-a")],
     ["room-b", oneLibrary("b", "logical-b")],

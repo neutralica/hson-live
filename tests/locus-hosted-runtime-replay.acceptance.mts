@@ -50,7 +50,7 @@ const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(a
 const wire = pair();
 let detach = bind_locus_websocket(locus, wire.server, { principalId: "alice" });
 const echo = create_echo_aggregate_client_internal({ transport: test_echo_transport(wire.client), logicalMapId: locus.logicalMapId,
-  initializers: local_initializers({ preferences: { data: { theme: "dark" } } }) });
+  initializers: local_initializers({ preferences: { json: { theme: "dark" } } }) });
 await echo.connect();
 const clientMap = echo.map;
 assert.ok(clientMap);
@@ -65,14 +65,14 @@ assert.ok(sessionId);
 echo.disconnect();
 detach();
 
-await locus.admit({ "newState": { data: { value: 1 }, access: "shared" } });
+await locus.admit({ "newState": { json: { value: 1 }, access: "shared" } });
 await locus.stage((draft) => {
   const state = draft.data.must("newState");
   if (String(state.mode) === "document") throw new Error("Expected data Library.");
   state.at(["value"]).set(2);
 });
-await locus.admit({ "privateState": { data: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
-    PRIVATE_REPLAY_SCHEMA_SENTINEL: "private" }, schema: Hson.schema`<type "data" content <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>`, access: "private" }, "nextState": { data: { value: 3 }, access: "shared" }, "ungrantedState": { data: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
+await locus.admit({ "privateState": { json: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
+    PRIVATE_REPLAY_SCHEMA_SENTINEL: "private" }, schema: Hson.schema`<type "data" content <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>`, access: "private" }, "nextState": { json: { value: 3 }, access: "shared" }, "ungrantedState": { json: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
     UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" }, schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>`, access: "shared" } });
 await locus.stage((draft) => {
   const next = draft.data.must("nextState"), hidden = draft.data.must("privateState");
@@ -125,7 +125,7 @@ mirror.dispose();
 locus.dispose();
 process.stdout.write("ok - retained reconnect installs current grant after hidden history without rebuilding the client\n");
 
-const currentAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 1 } } });
+const currentAuthority = hsonLiveMap.fromLibraries({ anchor: { json: { value: 1 } } });
 const currentServer = create_locus_fixture({ ...authority_definitions_from_map_fixture(currentAuthority, [{ name: "anchor", ownership: "shared" }]), defaultProjection: { libraries: ["anchor"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
 const currentWire = pair();
 let detachCurrent = bind_locus_websocket(currentServer, currentWire.server, { principalId: "alice" });
@@ -135,7 +135,7 @@ await currentEcho.connect();
 const currentMap = require_map(currentEcho);
 const currentSession = currentEcho.session.sessionId;
 assert.ok(currentSession);
-await currentServer.admit({ "later": { data: { value: 9 }, access: "shared" } });
+await currentServer.admit({ "later": { json: { value: 9 }, access: "shared" } });
 assert.equal(currentEcho.lastAppliedRev, currentServer.rev);
 assert.throws(() => currentMap.data.must("later"), /Unknown/);
 currentEcho.disconnect();
@@ -166,13 +166,13 @@ const emptyProjection = normalize_locus_effective_projection(emptyPolicy, { libr
 if (emptyProjection instanceof Promise) throw new Error("Expected synchronous projection.");
 const topologyClient = client_projection_map({
   authority: project_authority_snapshot(beforeTopology, emptyProjection),
-  local: { preferences: { data: { value: "local" } } },
+  local: { preferences: { json: { value: "local" } } },
 });
 const topologyLocal = topologyClient.data.must("preferences");
 const topologyReplica = create_echo_aggregate_replica_capability_internal(topologyClient);
 let topologyCommit: HostedAggregateCommit | undefined;
 sourceAggregate.observe((commit) => { topologyCommit = commit.hosted; });
-topologySource.addLibraries({ visible: { data: { value: 1 } }, hidden: { data: { secret: "PURE_HIDDEN_SENTINEL" } } });
+topologySource.addLibraries({ visible: { json: { value: 1 } }, hidden: { json: { secret: "PURE_HIDDEN_SENTINEL" } } });
 const afterTopology = sourceAggregate.captureHosted();
 const visiblePolicy = make_locus_hosted_projection_policy(afterTopology.registry, afterTopology.authority,
   [{ name: "visible", ownership: "shared" }, { name: "hidden", ownership: "private" }],
@@ -211,7 +211,7 @@ let enteredCut = (): void => {};
 let releaseCut = (): void => {};
 const cutEntered = new Promise<void>((resolve) => { enteredCut = resolve; });
 const cutGate = new Promise<void>((resolve) => { releaseCut = resolve; });
-const tailAuthority = hsonLiveMap.fromLibraries({ anchor: { data: { value: 0 } } });
+const tailAuthority = hsonLiveMap.fromLibraries({ anchor: { json: { value: 0 } } });
 const tailServer = create_locus_hosted_aggregate_authority_internal({ map: tailAuthority,
   libraries: [{ name: "anchor", ownership: "shared" }],
   defaultProjection: { libraries: ["anchor"] },
@@ -229,7 +229,7 @@ const tailSession = tailEcho.session.sessionId;
 assert.ok(tailSession);
 tailEcho.disconnect();
 detachTail();
-await tailServer.add_libraries({ added: { data: { value: 1 } } }, { added: "shared" });
+await tailServer.add_libraries({ added: { json: { value: 1 } } }, { added: "shared" });
 await tailServer.stage((draft) => {
   const added = draft.data.must("added");
   if (String(added.mode) === "document") throw new Error("Expected added data Library.");
@@ -248,7 +248,7 @@ await tailServer.stage((draft) => {
   if (String(added.mode) === "document") throw new Error("Expected added data Library.");
   added.at(["value"]).set(3);
 });
-await tailServer.add_libraries({ hiddenTail: { data: { secret: "HIDDEN_TAIL_SENTINEL" } } });
+await tailServer.add_libraries({ hiddenTail: { json: { secret: "HIDDEN_TAIL_SENTINEL" } } });
 releaseCut();
 assert.equal((await tailRecovery).outcome, "replay");
 assert.equal(tailEcho.map, tailMap);
@@ -280,7 +280,7 @@ const emptySession = emptyEcho.session.sessionId;
 assert.ok(emptySession);
 emptyEcho.disconnect();
 detachEmpty();
-await emptyServer.admit({ "first": { data: { value: 7 }, access: "shared" } });
+await emptyServer.admit({ "first": { json: { value: 7 }, access: "shared" } });
 await emptyServer.session.get(emptySession)!.update({ libraries: ["first"] }, { principalId: "alice" });
 detachEmpty = bind_locus_websocket(emptyServer, emptyWire.server, { principalId: "alice" });
 assert.equal((await emptyEcho.connect()).outcome, "replay");
@@ -348,7 +348,7 @@ let enteredRevocationCut = (): void => {};
 let releaseRevocationCut = (): void => {};
 const revocationCutEntered = new Promise<void>((resolve) => { enteredRevocationCut = resolve; });
 const revocationCutGate = new Promise<void>((resolve) => { releaseRevocationCut = resolve; });
-const revokeAuthority = hsonLiveMap.fromLibraries({ base: { data: { value: 0 } } });
+const revokeAuthority = hsonLiveMap.fromLibraries({ base: { json: { value: 0 } } });
 const revokeServer = create_locus_hosted_aggregate_authority_internal({ map: revokeAuthority,
   libraries: [{ name: "base", ownership: "shared" }],
   defaultProjection: { libraries: ["base"] },
@@ -365,7 +365,7 @@ const revokeSession = revokeEcho.session.sessionId;
 assert.ok(revokeSession);
 revokeEcho.disconnect();
 detachRevoke();
-await revokeServer.add_libraries({ withheld: { data: { secret: "REVOKED_REPLAY_SENTINEL" } } });
+await revokeServer.add_libraries({ withheld: { json: { secret: "REVOKED_REPLAY_SENTINEL" } } });
 const beforeRevokedReplay = revokeWire.serverSent.length;
 detachRevoke = bind_locus_websocket(revokeServer, revokeWire.server, { principalId: "alice" });
 const revokedRecovery = revokeEcho.connect();

@@ -1,4 +1,3 @@
-import type { HsonDataValue } from "../data/hson-data.js";
 import type { $RENDER } from "../../core/constants.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
@@ -63,9 +62,9 @@ import type { HsonSchema } from "../schema/hson-schema.js";
 
 /** Canonical Hson proof representation selected by the Schema family. */
 export type HsonFromSchema<TSchema extends HsonSchema> =
-  TSchema extends HsonSchema<unknown, "data"> ? HsonDataValue<TSchema>
+  TSchema extends HsonSchema<unknown, "data"> ? HsonData<TSchema>
     : TSchema extends HsonSchema<unknown, "document"> ? HsonDocument<TSchema>
-      : HsonDataValue | HsonDocument;
+      : HsonData | HsonDocument;
 
 /** Readonly structural JS/JSON projection; Schema refinements remain runtime constraints. */
 export type JsonFromSchema<TSchema extends HsonSchema<unknown, "data">> =

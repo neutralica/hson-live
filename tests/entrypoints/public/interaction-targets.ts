@@ -41,7 +41,7 @@ remove_interaction(endpoint, "id");
 remove_interaction(replica, "id");
 
 // Retain specialized inventories, not just broad declared capabilities.
-const concrete = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { data: { count: 0 } } });
+const concrete = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { json: { count: 0 } } });
 const governed = hsonLiveMap.locus.create({ page: { document: "<main/>" } });
 add_interaction(concrete, descriptor);
 concrete.batch(draft => { add_interaction(draft, descriptor); replace_interaction(draft, descriptor); remove_interaction(draft, "id"); });

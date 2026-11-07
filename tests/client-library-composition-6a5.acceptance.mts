@@ -36,7 +36,7 @@ const LocalSchema: HsonSchema = Hson.schema`<type "document" tag "html" content 
 
 function authority() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { value: 0 }, schema: DataSchema },
+    state: { json: { value: 0 }, schema: DataSchema },
     page: { document: "<main/>", schema: PageSchema },
   });
 }
@@ -45,7 +45,7 @@ function setup() {
   const server = authority();
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
   const client = compose_client_portable_aggregate_internal(snapshot, local_initializers({
-    ui: { data: { value: 0 }, schema: DataSchema },
+    ui: { json: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
   }));
   const engine = internal_livemap_aggregate_authority(client);
@@ -80,7 +80,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 {
   const { snapshot, replica } = setup();
   assert.throws(() => compose_client_portable_aggregate_internal(snapshot, local_initializers({
-    state: { data: { value: 1 }, schema: DataSchema },
+    state: { json: { value: 1 }, schema: DataSchema },
   })), /collides/i);
   replica.dispose();
 }
@@ -129,7 +129,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const effective = await normalize_locus_effective_projection(policy, requested.defaultProjection);
   const snapshot = authority_projection_as_client_composition_internal(project_authority_snapshot(cut, effective));
   const client = compose_client_portable_aggregate_internal(snapshot, local_initializers({
-    ui: { data: { value: 0 }, schema: DataSchema },
+    ui: { json: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
   }));
   const ui = client.data.must("ui");
@@ -306,7 +306,7 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
   const snapshot = Object.freeze({ ...base, registry, registryDigest: registry.digest,
     libraries: Object.freeze([]) });
   const local = compose_client_portable_aggregate_internal(snapshot, local_initializers({
-    ui: { data: { value: 0 }, schema: DataSchema },
+    ui: { json: { value: 0 }, schema: DataSchema },
   }));
   const replica = create_echo_aggregate_replica_capability_internal(local);
   const ui = local.data.must("ui");
@@ -324,9 +324,9 @@ function socket_pair(): Readonly<{ client: LocusWebSocketLike; server: LocusWebS
 
 for (const fixture of orderedRootReconstructionFixtures) {
   const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
-  const server = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource(fixture.expectedJson) } });
+  const server = hsonLiveMap.fromLibraries({ state: { json: Hson.data.fromSource(fixture.expectedJson) } });
   const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
-  const seeds = local_initializers({ ui: { data: Hson.data.fromSource(fixture.expectedJson) } });
+  const seeds = local_initializers({ ui: { json: Hson.data.fromSource(fixture.expectedJson) } });
   const stopConstruction = forbid_structural_js_enumeration();
   let client;
   try { client = compose_client_portable_aggregate_internal(snapshot, seeds); }
@@ -338,7 +338,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   const engine = internal_livemap_aggregate_authority(client);
   const identities = engine.libraries();
   const accounting = livemap_identity_epoch_accounting(ui);
-  const laterSeeds = local_initializers({ later: { data: Hson.data.fromSource(fixture.expectedJson) } });
+  const laterSeeds = local_initializers({ later: { json: Hson.data.fromSource(fixture.expectedJson) } });
   const stopLocal = forbid_structural_js_enumeration();
   try { install_client_local_initializers_internal(client, laterSeeds); }
   finally { stopLocal(); }
@@ -349,7 +349,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   assert.deepEqual(livemap_identity_epoch_accounting(ui), accounting);
 
   const replica = create_echo_aggregate_replica_capability_internal(client);
-  const commit = server.addLibraries({ zzAdded: { data: Hson.data.fromSource(fixture.expectedJson) } }).commit;
+  const commit = server.addLibraries({ zzAdded: { json: Hson.data.fromSource(fixture.expectedJson) } }).commit;
   const added = commit.operations[0];
   assert.ok(added && "kind" in added.operation && added.operation.kind === "library-add");
   const topology: LiveMapLibraryAddOperation = { library: added.library, operation: added.operation };
@@ -381,7 +381,7 @@ for (const fixture of orderedRootReconstructionFixtures) {
   const accounting = livemap_identity_epoch_accounting(local);
   let publications = 0;
   const stop = client.commits.observe(() => { publications += 1; });
-  const seeds = local_initializers({ later: { data: { items: ["a", "b"] } } });
+  const seeds = local_initializers({ later: { json: { items: ["a", "b"] } } });
   for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
     const malformed = seeds.map(seed => ({ ...seed, root: { ...seed.root,
       payload: corrupt_tagged_payload(seed.root.payload, kind) } }));

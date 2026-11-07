@@ -1,4 +1,5 @@
 import { Hson } from "../../hson-authoring.js";
+import { admit_canonical_hson_data_value } from "../../api/data/hson-data-hson.js";
 import { admit_data_source } from "../../core/data-source-admission.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { assert_canonical_hson_data_value } from "../../core/projected-value-graph.js";
@@ -7,6 +8,7 @@ import { hson_source_syntactic_eligibility, is_official_hson_package_binding } f
 import type { StaticSchemaCandidate } from "./candidate-evaluation.js";
 import { is_object_literal_prototype_setter, library_source_fields } from "./library-source.js";
 import { immutable_source_declaration } from "./schema-identity.js";
+import { admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
 
 export type StaticSourceCandidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
 /** Bounded source alternatives shared by Schema preflight and Part source evidence. */
@@ -20,12 +22,13 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
     && is_official_hson_package_binding(node.expression, "Hson", checker, true, typescript, eligible);
   const dataProducer = (input: ts.Expression): boolean => {
     const node = unwrap(input);
-    return typescript.isTaggedTemplateExpression(node) && officialData(node.tag)
+    return typescript.isTaggedTemplateExpression(node) && (officialData(node.tag)
+      || typescript.isPropertyAccessExpression(node.tag) && node.tag.name.text === "parse" && officialData(node.tag.expression))
       || typescript.isCallExpression(node) && typescript.isPropertyAccessExpression(node.expression)
-        && ["from", "fromSource"].includes(node.expression.name.text) && officialData(node.expression.expression);
+        && ["from", "fromSource", "parse"].includes(node.expression.name.text) && officialData(node.expression.expression);
   };
   type Alternatives = Readonly<{ nodes: readonly ts.Expression[]; complete: boolean; conditional: boolean }>;
-  const alternatives = (input: ts.Expression, family: "certify" | "document" | "data", seen = new Set<ts.Declaration>(), depth = 0): Alternatives => {
+  const alternatives = (input: ts.Expression, family: "certify" | "document" | "data" | "json", seen = new Set<ts.Declaration>(), depth = 0): Alternatives => {
     const unknown: Alternatives = { nodes: [input], complete: false, conditional: false };
     if (depth > 16) return unknown;
     const node = unwrap(input);
@@ -34,12 +37,12 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
       const binding = immutable_source_declaration(typescript, checker, node, eligible);
       const found = binding?.declaration;
       if (found === undefined || found.initializer === undefined || seen.has(found)) return unknown;
-      // Nonprimitive JSON (including alternatives) is known only at its sole use.
+      // Nonprimitive native Data (including alternatives) is known only at its sole use.
       const initial = unwrap(found.initializer);
       const primitive = typescript.isStringLiteral(initial) || typescript.isNoSubstitutionTemplateLiteral(initial)
         || typescript.isNumericLiteral(initial) || typescript.isPrefixUnaryExpression(initial)
         || [typescript.SyntaxKind.TrueKeyword, typescript.SyntaxKind.FalseKeyword, typescript.SyntaxKind.NullKeyword].includes(initial.kind);
-      if (family === "data" && !primitive && !dataProducer(initial)) {
+      if ((family === "json" || family === "certify") && !primitive && !dataProducer(initial)) {
         if (found.getSourceFile() !== node.getSourceFile() || found.getEnd() >= node.getStart()) return unknown;
         let uncertain = false;
         const references = (entry: ts.Node): void => {
@@ -61,35 +64,52 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
     }
     return { nodes: [node], complete, conditional: false };
   };
-  const candidate = (node: ts.Expression, family: "certify" | "document" | "data"): StaticSourceCandidate | undefined => {
+  const candidate = (node: ts.Expression, family: "certify" | "document" | "data" | "json"): StaticSourceCandidate | undefined => {
+    if ((family === "json" || family === "certify") && typescript.isTaggedTemplateExpression(node)
+      && typescript.isPropertyAccessExpression(node.tag) && node.tag.name.text === "parse" && officialData(node.tag.expression)
+      && typescript.isNoSubstitutionTemplateLiteral(node.template) && !node.template.isUnterminated) {
+      try {
+        admit_hson_tagged_template(typescript, node, "data");
+        // Exact parsing changes the runtime representation, not the authored
+        // source coordinates used for Schema issues and collision evidence.
+        return { node, source: node.template.getText(node.getSourceFile()).slice(1, -1), family: "data", bodyStart: node.template.getStart() + 1 };
+      }
+      catch { return undefined; }
+    }
     if (typescript.isTaggedTemplateExpression(node) && typescript.isPropertyAccessExpression(node.tag)
       && typescript.isIdentifier(node.tag.expression) && is_official_hson_package_binding(node.tag.expression, "Hson", checker, true, typescript, eligible)
       && ["document", "data", "canonical"].includes(node.tag.name.text)
       && typescript.isNoSubstitutionTemplateLiteral(node.template) && !node.template.isUnterminated) {
       if (family === "document" && node.tag.name.text === "data") return undefined;
-      if (family === "data" && node.tag.name.text !== "data") {
+      if ((family === "json" || family === "certify")) {
         const raw = node.template.getText(node.getSourceFile()).slice(1, -1);
         const strings = Object.freeze(Object.assign([node.template.text], { raw: Object.freeze([raw]) }));
-        try { return { node, json: node.tag.name.text === "canonical" ? Hson.canonical(strings) : Hson.document(strings) }; }
+        try { return { node, json: node.tag.name.text === "canonical" ? Hson.canonical(strings) : node.tag.name.text === "data" ? Hson.data(strings) : Hson.document(strings) }; }
         catch { return undefined; }
       }
       return { node, source: node.template.getText(node.getSourceFile()).slice(1, -1), family: node.tag.name.text === "document" ? "document" : node.tag.name.text === "canonical" ? "canonical" : "data", bodyStart: node.template.getStart() + 1 };
     }
-    if (family === "document" && (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node))) {
+    if ((family === "document" || family === "data") && (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node))) {
       // Escaped JS strings have no direct raw-Hson correspondence; anchor on the expression.
-      return { node, source: node.text, family: "document", bodyStart: -1 };
+      return { node, source: node.text, family, bodyStart: -1 };
     }
-    if (family !== "document" && typescript.isCallExpression(node) && node.arguments.length === 1
-      && typescript.isPropertyAccessExpression(node.expression) && ["fromSource", "from"].includes(node.expression.name.text)
+    if ((family === "json" || family === "certify") && typescript.isCallExpression(node) && node.arguments.length === 1
+      && typescript.isPropertyAccessExpression(node.expression) && ["fromSource", "from", "parse"].includes(node.expression.name.text)
       && typescript.isPropertyAccessExpression(node.expression.expression) && node.expression.expression.name.text === "data"
       && typescript.isIdentifier(node.expression.expression.expression)
       && is_official_hson_package_binding(node.expression.expression.expression, "Hson", checker, true, typescript, eligible)) {
-      const inputs = alternatives(node.arguments[0]!, "data");
+      const inputs = alternatives(node.arguments[0]!, node.expression.name.text === "from" ? "json" : "data");
       const only = inputs.complete && inputs.nodes.length === 1 ? inputs.nodes[0] : undefined;
       if (only === undefined) return undefined;
       if (node.expression.name.text === "from" && dataProducer(only)) {
-        const known = candidate(only, "data");
+        const known = candidate(only, "json");
         return known === undefined ? undefined : { ...known, node };
+      }
+      if (node.expression.name.text === "parse") {
+        const known = candidate(only, "data");
+        if (known === undefined || !("source" in known) || known.family === "document") return undefined;
+        try { admit_canonical_hson_data_value(known.source); return known; }
+        catch { return undefined; }
       }
       const value = json_literal(unwrap(only), typescript, eligible);
       if (!value.known) return undefined;
@@ -102,13 +122,13 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
         return { node, data };
       } catch { return undefined; }
     }
-    if (family !== "document") {
+    if (family === "json" || family === "certify") {
       const value = json_literal(node, typescript, eligible);
       return value.known ? { node, json: value.value } : undefined;
     }
     return undefined;
   };
-  const candidates = (input: ts.Expression, family: "certify" | "document" | "data"): readonly StaticSourceCandidate[] | undefined => {
+  const candidates = (input: ts.Expression, family: "certify" | "document" | "data" | "json"): readonly StaticSourceCandidate[] | undefined => {
     const result = alternatives(input, family);
     if (!result.complete) return undefined;
     const found = result.nodes.map(node => candidate(node, family));

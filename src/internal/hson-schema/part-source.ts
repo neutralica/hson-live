@@ -17,7 +17,7 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { PART_DECLARATION, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields, is_object_literal_prototype_setter } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
-import { annotated_data_schema_provenance } from "./schema-annotation.js";
+import { annotated_data_schema_provenance, resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { immutable_source_declaration } from "./schema-identity.js";
 import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
@@ -197,7 +197,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   const evidence = new Map<ts.Declaration, PartDataSchemaEvidence | undefined>();
   const dataSchema = (expression: ts.Expression | undefined, serialized = false): PartDataSchemaEvidence | undefined => {
     let input = expression;
-    if (serialized) {
+    let serializedCarrier = false;
+    if (serialized && input !== undefined && typescript.isCallExpression(input)) {
       // Authored attributes carry text; only the official carrier serializer
       // connects that text to value evidence. A same-spelled method is unknown.
       if (input === undefined || !sources.eligible(input) || !typescript.isCallExpression(input) || input.arguments.length !== 0
@@ -208,11 +209,17 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         || !typescript.isClassDeclaration(declaration.parent) || declaration.parent.name?.text !== "HsonDataValue"
         || !["src/api/data/hson-data.ts", "dist/api/data/hson-data.d.ts"].includes(hson_package_declaration_path(declaration.getSourceFile().fileName) ?? "")) return undefined;
       input = input.expression.expression;
+      serializedCarrier = true;
     }
     if (input === undefined || !typescript.isIdentifier(input) || !sources.eligible(input)) return undefined;
     const binding = immutable_source_declaration(typescript, checker, input, sources.eligible);
     const declaration = binding?.declaration;
     if (!binding?.eligible || declaration?.type === undefined) return undefined;
+    const annotation = resolve_hson_schema_annotation(typescript, checker, declaration.type, sources.eligible);
+    const sourceRepresentation = annotation?.kind === "data" || annotation?.kind === "hson";
+    // A source brand describes serialized text. Parts .write() still receives
+    // that text as a literal string; only authored transport parses its Data.
+    if (serialized && !serializedCarrier ? !sourceRepresentation : annotation?.kind !== "value") return undefined;
     if (evidence.has(declaration)) return evidence.get(declaration);
     evidence.set(declaration, undefined);
     const provenance = annotated_data_schema_provenance(typescript, program, checker, declaration.type, sources.eligible, schemaDeclarations);
@@ -223,10 +230,10 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       schemas.set(source, compiled.ok ? compiled.value : undefined);
     }
     const schema = schemas.get(source);
-    if (schema === undefined) return undefined;
+    if (schema === undefined || schema.semantic.kind === "document" || schema.semantic.kind === "document-element") return undefined;
     // A type annotation supplies context only. Validation uses the existing
     // bounded static Hson candidate admission and production Schema evaluator.
-    const candidates = declaration.initializer === undefined ? undefined : sources.candidates(declaration.initializer, "data");
+    const candidates = declaration.initializer === undefined ? undefined : sources.candidates(declaration.initializer, serialized && !serializedCarrier ? "data" : "json");
     const validated = candidates !== undefined && candidates.length > 0 && candidates.every(candidate => evaluate_static_schema_candidate(schema, candidate).kind === "valid");
     const result: PartDataSchemaEvidence = { schema, strength: validated ? "validated" : "advisory",
       schemaLocation: location(provenance.declaration), annotationLocation: location(declaration.type),
@@ -610,8 +617,10 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const definition = entry.value === undefined ? undefined : object(entry.value);
             const own = definition === undefined ? undefined : library_source_fields(definition.node, typescript);
             const parts = own?.get("parts"), body = own?.get("document");
-            const family = parts !== undefined && own?.size === 1 ? "parts" : body !== undefined && !own?.has("data") && parts === undefined ? "document"
-              : own?.has("data") && body === undefined && parts === undefined ? "data" : "unknown";
+            const hasData = own?.has("json") || own?.has("hson");
+            const exclusiveData = !!own?.has("json") !== !!own?.has("hson");
+            const family = own?.has("data") ? "unknown" : parts !== undefined && own?.size === 1 ? "parts" : body !== undefined && !hasData && parts === undefined ? "document"
+              : exclusiveData && body === undefined && parts === undefined ? "data" : "unknown";
             const collection = family !== "parts" || parts === undefined ? undefined : object(parts);
             const members = collection === undefined ? undefined : library_source_field_candidates(collection.node, typescript);
             const evidence = family !== "parts" || parts === undefined ? undefined : part_collection_evidence(typescript, sources, parts);
@@ -634,7 +643,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               && evidence.members.every(member => observedMembers.some(observed => observed.name === member.key))) memberCompleteness = "complete";
             const documentEvidence = body === undefined ? undefined : alternatives(body);
             const producerCertain = family === "parts" ? memberCompleteness === "complete" : family === "document" ? documentEvidence?.certain === true
-              : family === "data" && sources.candidates(own!.get("data")!, "data") !== undefined;
+              : family === "data" && sources.candidates((own!.get("json") ?? own!.get("hson"))!, own!.has("json") ? "json" : "data") !== undefined;
             const shapeCertain = eligible && definitions?.fresh && fields?.complete && definition?.fresh && sources.eligible(definitions.node)
               && sources.eligible(entry.declaration);
             const library: PartLibrarySource = {

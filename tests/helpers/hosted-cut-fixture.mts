@@ -10,8 +10,8 @@ const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 export async function hosted_cut_fixture() {
   const map = hsonLiveMap.fromLibraries({
     page: { document: '<main <p "WORKER_PERMITTED_SENTINEL"/>/>', schema: Page },
-    data: { data: { value: "WORKER_DATA_SENTINEL" }, schema: Data },
-    private: { data: { value: "WORKER_PRIVATE_SENTINEL" }, schema: Data },
+    data: { json: { value: "WORKER_DATA_SENTINEL" }, schema: Data },
+    private: { json: { value: "WORKER_PRIVATE_SENTINEL" }, schema: Data },
   });
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" },
       { name: "private", ownership: "private" }]), logicalMapId: "worker-projection-map", incarnationId: "worker-projection-incarnation", authorizeProjection: () => ({ libraries: ["page", "data"] }) });

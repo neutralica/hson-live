@@ -19,7 +19,7 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
   checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 function deferred<T>() { let resolve: (value: T) => void = () => {}; const promise = new Promise<T>((done) => { resolve = done; }); return Object.freeze({ promise, resolve }); }
-function make_map() { return hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: ValueSchema }, other: { data: { value: 0 }, schema: ValueSchema } }); }
+function make_map() { return hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: ValueSchema }, other: { json: { value: 0 }, schema: ValueSchema } }); }
 type TestActions = Readonly<{ cross: Readonly<{ value: number }>; held: number }>;
 function message(id: string, name: keyof TestActions, payload: TestActions[keyof TestActions]): LocusClientActionMessage<TestActions> {
   return Object.freeze({ type: "action", id: `${id}-wire`, clientId: `${id}-client`, requestId: `${id}-request`, attemptId: `${id}-attempt`, name, payload }) as LocusClientActionMessage<TestActions>;

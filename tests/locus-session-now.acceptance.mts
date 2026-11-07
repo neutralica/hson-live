@@ -64,9 +64,9 @@ function portable_private_free(raw: string) {
 const Data = Hson.schema`<type "data" content <value "string">>`;
 for (const strategy of ["replay", "reconcile"] as const) {
   const map = hsonLiveMap.fromLibraries({
-    visible: { data: { value: "INITIAL" }, schema: Data },
-    PRIVATE_NAME: { data: { PRIVATE_SCHEMA: "PRIVATE_ROOT" }, schema: Hson.schema`<type "data" content <PRIVATE_SCHEMA "string">>` },
-    UNSELECTED_NAME: { data: { value: "UNSELECTED_ROOT" }, schema: Data },
+    visible: { json: { value: "INITIAL" }, schema: Data },
+    PRIVATE_NAME: { json: { PRIVATE_SCHEMA: "PRIVATE_ROOT" }, schema: Hson.schema`<type "data" content <PRIVATE_SCHEMA "string">>` },
+    UNSELECTED_NAME: { json: { value: "UNSELECTED_ROOT" }, schema: Data },
   });
   const options: LocusRegistryOptions<typeof map> = { map,
     libraries: [{ name: "visible", ownership: "shared" }, { name: "PRIVATE_NAME", ownership: "private" },
@@ -94,7 +94,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
   portable_private_free(JSON.stringify(snapshot));
   assert.deepEqual(Object.keys(initial.capability.now()).sort(), ["format", "initializerDigest", "libs", "local", "sessionBinding"]);
   const client = client_projection_map({ authority: snapshot,
-    local: { local: { data: { value: "LOCAL" }, schema: Data } } });
+    local: { local: { json: { value: "LOCAL" }, schema: Data } } });
   assert.deepEqual(data(client, "visible").snap(), { value: "INITIAL" });
   assert.equal(snapshot.libraries[0]?.schema, Data.toHson());
   assert.throws(() => client.data.must("PRIVATE_NAME"), /unknown/i);
@@ -145,7 +145,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 // Expiration is driven by the existing public session scheduler, with no wall-clock race.
 {
   const expirations = new Set<() => void>();
-  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { data: { value: "value" } } }), [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }), sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } } });
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.fromLibraries({ state: { json: { value: "value" } } }), [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }), sessions: { schedule: (_delay, callback) => { expirations.add(callback); return () => { expirations.delete(callback); }; } } });
   for (const id of ["", "unknown"]) assert.equal(locus.session.get(id), undefined);
   const initial = await session(locus);
   initial.detach();
@@ -157,7 +157,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 }
 
 for (const libraries of [["page"], ["page", "state"]]) {
-  const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body <main/>/>/>" }, state: { data: { value: 1 } } });
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body <main/>/>/>" }, state: { json: { value: 1 } } });
   map.doc.must("page").css.stylesheet("main { color: blue; }");
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "page", ownership: "shared" }, { name: "state", ownership: "shared" }]), defaultProjection: { libraries }, authorizeProjection: () => ({ libraries }) });
   const initial = await session(locus);

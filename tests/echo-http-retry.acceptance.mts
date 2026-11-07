@@ -10,7 +10,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 const events = create_test_event_emitter("echo.http-retry");
 events.case_begin("delayed-retry", "temporary stream-open failures wait and later recover");
-const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
 const retained = await locus.session.create({ libraries: ["state"] }, { connection: { principalId: "alice" } });
 const binder = bind_locus_http(locus, { endpoint: "/_hson" });

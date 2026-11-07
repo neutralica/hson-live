@@ -29,7 +29,7 @@ let releaseAuthorizer: (() => void) | undefined;
 let authorizerEntered: (() => void) | undefined;
 const entered = new Promise<void>((resolve) => { authorizerEntered = resolve; });
 const gate = new Promise<void>((resolve) => { releaseAuthorizer = resolve; });
-const map = hsonLiveMap.fromLibraries({ state: { data: 0 } });
+const map = hsonLiveMap.fromLibraries({ state: { json: 0 } });
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, authorizeProjection: async ({ requested }) => {
     authorizerEntered?.();
     await gate;
@@ -50,7 +50,7 @@ try {
 events.case_end("pending-create", "pass");
 
 events.case_begin("pending-attach", "dispose before an attach body arrives cannot advance its session");
-const attachMap = hsonLiveMap.fromLibraries({ state: { data: 0 } });
+const attachMap = hsonLiveMap.fromLibraries({ state: { json: 0 } });
 const attachLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(attachMap, [{ name: "state", ownership: "shared" }]) });
 const retained = await attachLocus.session.create({ libraries: ["state"] }, { connection: context });
 const attachBinder = bind_locus_http(attachLocus, { endpoint: "/_hson" });
@@ -71,7 +71,7 @@ try {
 events.case_end("pending-attach", "pass");
 
 events.case_begin("current-stream", "observe and recover each displace the old HTTP response");
-const streamMap = hsonLiveMap.fromLibraries({ state: { data: 0 } });
+const streamMap = hsonLiveMap.fromLibraries({ state: { json: 0 } });
 const streamLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(streamMap, [{ name: "state", ownership: "shared" }]) });
 const streamBinder = bind_locus_http(streamLocus, { endpoint: "/_hson" });
 try {
@@ -112,7 +112,7 @@ globalThis.setTimeout = ((callback: (...args: unknown[]) => void, delay?: number
   }
   return originalSetTimeout(callback, delay, ...args);
 }) as typeof globalThis.setTimeout;
-const leaseMap = hsonLiveMap.fromLibraries({ state: { data: 0 } });
+const leaseMap = hsonLiveMap.fromLibraries({ state: { json: 0 } });
 const leaseLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(leaseMap, [{ name: "state", ownership: "shared" }]) });
 const leaseBinder = bind_locus_http(leaseLocus, { endpoint: "/_hson" });
 try {

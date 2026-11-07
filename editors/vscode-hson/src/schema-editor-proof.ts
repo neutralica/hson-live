@@ -32,12 +32,12 @@ export function verified_schema_assignment_ranges(
     const annotation = resolve_hson_schema_annotation(typescript, checker, declaration.type, eligible);
     if (annotation === undefined || annotation.kind === "projected" || annotation.schema === undefined) continue;
     const association = resolve_schema_association(typescript, program, checker, annotation.schema, eligible, evidenceFile);
-    if (association === undefined || annotation.kind !== "hson" && association.mode !== annotation.kind) continue;
+    if (association === undefined || annotation.kind !== "hson" && association.mode !== (annotation.kind === "value" ? "data" : annotation.kind)) continue;
     // Hson.document always produces authored source, including QUAD-free text.
     // A structural match cannot remove the missing canonical qualification.
     if (association.mode === "document") continue;
     const initializer = declaration.initializer;
-    if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, association.mode, eligible)) continue;
+    if (!typescript.isTaggedTemplateExpression(initializer) || !is_official_member_tag(typescript, checker, initializer, annotation.kind === "value" ? "parse" : association.mode, eligible)) continue;
     const source = tagged_source(typescript, initializer, association.mode);
     if (source === undefined) continue;
     // These producers classify admission failures of this exact template only.
@@ -126,8 +126,10 @@ function unwrap_tagged_schema(typescript: typeof ts, node: ts.Expression): ts.Ta
 
 function is_official_member_tag(typescript: typeof ts, checker: ts.TypeChecker, tagged: ts.TaggedTemplateExpression, member: string,
   eligible: (node: ts.Node) => boolean): boolean {
-  return eligible(tagged) && typescript.isPropertyAccessExpression(tagged.tag)
-    && tagged.tag.name.text === member
-    && typescript.isIdentifier(tagged.tag.expression)
-    && is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true, typescript, eligible);
+  if (member === "parse" && (!typescript.isPropertyAccessExpression(tagged.tag) || tagged.tag.name.text !== "parse")) return false;
+  const tag = member === "parse" && typescript.isPropertyAccessExpression(tagged.tag) && tagged.tag.name.text === "parse" ? tagged.tag.expression : tagged.tag;
+  return eligible(tagged) && typescript.isPropertyAccessExpression(tag)
+    && tag.name.text === (member === "parse" ? "data" : member)
+    && typescript.isIdentifier(tag.expression)
+    && is_official_hson_package_binding(tag.expression, "Hson", checker, true, typescript, eligible);
 }

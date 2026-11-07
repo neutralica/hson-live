@@ -67,7 +67,7 @@ export const Any = Hson.schema\`<type "data">\`;
 export const AnyPage = Hson.schema\`<type "document">\`;
 export const Twin = Hson.schema\`<type "data" content <name "string" format <union [<exact "hson">, <exact "html">]>>>\`;
 export const Tree = Hson.schema\`<type "data" defs <Node <content <value "string" children <array <ref "Node">>>>> content <ref "Node">>\`;
-export const certificate = S.certify(Hson.data\`<name "Ada" format "hson">\`);
+export const certificate = S.certify(Hson.data.parse\`<name "Ada" format "hson">\`);
 export const authoredPlain = Hson.document\`<main "body"/>\`;
 export const authoredNamed = Hson.document\`<main @:main "body"/>\`;
 export const documentCertificate = Page.certify(Hson.document\`<main "body"/>\`);
@@ -80,8 +80,8 @@ export class Certificates {
   getValue() { return certificate; }
 }
 export const map = hsonLiveMap.fromLibraries({
-  main: { data: certificate, schema: S },
-  tree: { data: { value: "root", children: [] }, schema: Tree },
+  main: { json: certificate, schema: S },
+  tree: { json: { value: "root", children: [] }, schema: Tree },
   page: { document: documentCertificate, schema: Page },
 });
 export function getMap() { return map; }
@@ -91,7 +91,7 @@ export const treeValue = map.data.must("tree").at(["children", 0, "value"]).snap
 export const alias = S;
 export const pageAlias = Page;
 // Precise published reads come from admission; subsequent equal use is a no-op.
-const attached = hsonLiveMap.fromLibraries({ main: { data: { name: "Ada", format: "hson" }, schema: S }, page: { document: '<main "body"/>', schema: Page } });
+const attached = hsonLiveMap.fromLibraries({ main: { json: { name: "Ada", format: "hson" }, schema: S }, page: { document: '<main "body"/>', schema: Page } });
 attached.data["main"].schema.use(S);
 attached["doc"].page.schema.use(Page);
 export const library = attached.data["main"];
@@ -101,7 +101,7 @@ export function getText() { attached.doc.page.schema.use(Page); return attached.
 export const checked = map.data.must("main", S);
 export const optional = map.data("main", S);
 export const loc = hsonLiveMap.locus.create({
-  deck: { data: certificate, schema: S },
+  deck: { json: certificate, schema: S },
   page: { document: documentCertificate, schema: Page, access: "shared" },
   components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } },
 });
@@ -117,10 +117,10 @@ export function getRead(ctx: LocusActionContext) { return ctx.data.must("incomin
 export function getStaged(ctx: LocusActionContext) { const stage = ctx.stage; return stage.data.must("incoming", S); }
 export function getEcho(echo: Echo<LiveMap>) { return echo.data.must("incoming", S); }
 export function lookupWrongFamily() { return loc.doc("page", S); }
-declare const optionalDefinitions: { deck?: { data: { name: string; format: "hson" | "html" }; schema: typeof S } };
+declare const optionalDefinitions: { deck?: { json: { name: string; format: "hson" | "html" }; schema: typeof S } };
 export const uncertainMap = hsonLiveMap.fromLibraries(optionalDefinitions);
 export const uncertain = uncertainMap.data.deck;
-const privateLocus = hsonLiveMap.locus.create({ deck: { data: certificate, schema: S },
+const privateLocus = hsonLiveMap.locus.create({ deck: { json: certificate, schema: S },
   components: { parts: { submit: { kind: "document", document: Hson.document\`<button hson:part/>\` } } } });
 export const privatePart = privateLocus.parts.components.submit;
 export const privateGoverned = privateLocus.data.deck;
@@ -128,14 +128,14 @@ export const privateGoverned = privateLocus.data.deck;
 check("packaged compiler proves type-only Schema queries through re-exports and immutable aliases", () => {
   const directory = join(temporary, "type-only-schema");
   const source = `
-import { Hson, type HsonDataValue } from "hson-live";
+import { Hson, type HsonData } from "hson-live";
 import type { S } from "./schema.js";
 import { S as Value } from "./schema.js";
 import { type Reexported, type Chained } from "./bridge.js";
-export const value: HsonDataValue<typeof S> = Hson.data\`<name "Ada">\`;
-export const reexported: HsonDataValue<typeof Reexported> = Hson.data\`<name "Ada">\`;
-export const chained: HsonDataValue<typeof Chained> = Hson.data\`<name "Ada">\`;
-export const ordinary: HsonDataValue<typeof Value> = Hson.data\`<name "Ada">\`;
+export const value: HsonData<typeof S> = Hson.data\`<name "Ada">\`;
+export const reexported: HsonData<typeof Reexported> = Hson.data\`<name "Ada">\`;
+export const chained: HsonData<typeof Chained> = Hson.data\`<name "Ada">\`;
+export const ordinary: HsonData<typeof Value> = Hson.data\`<name "Ada">\`;
 `;
   project(directory, source, { ...options, lib: ["ESNext", "DOM"] });
   writeFileSync(join(directory, "schema.ts"), 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <name "string">>`; export const Alias = S; export const Next = Alias;');
@@ -171,12 +171,12 @@ check("isolated stock TypeScript consumes only published Worker declarations", (
   writeFileSync(join(published, "package.json"), JSON.stringify({ name: "schema-producer", type: "module", exports: { ".": { types: "./dist/index.d.ts", import: "./dist/index.js" } } }));
   project(consumer, `
 import { authoredPlain, authoredNamed, S, Twin, Tree, alias, Page, pageAlias, library, page, text, getText, certificate, documentCertificate, getCertificate, certificates, certificateObject, Certificates, map, getMap, snapshot, treeValue, treeLibrary, checked, optional, loc, governed, governedPage, part, required, getLocus, getGoverned, privateGoverned, getIncoming, findIncoming, getRead, getStaged, getEcho, lookupWrongFamily, uncertain } from "schema-producer";
-import type { HsonAuthored, HsonDocument, HsonCanonical, JsonValue, JsonFromSchema, HsonFromSchema } from "hson-live/hson";
+import type { HsonAuthored, HsonDocument, HsonCanonical, HsonDataValue, JsonValue, JsonFromSchema, HsonFromSchema } from "hson-live/hson";
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
 type Shape = { readonly name: string; readonly format: "hson" | "html" };
 type Exact = Assert<Equal<JsonFromSchema<typeof S>, Shape>>;
-type Certificate = Assert<Equal<typeof certificate, HsonFromSchema<typeof S>>>;
+type Certificate = Assert<Equal<typeof certificate, HsonDataValue<typeof S>>>;
 type AuthoredPlain = Assert<Equal<typeof authoredPlain, HsonAuthored>>;
 type AuthoredNamed = Assert<Equal<typeof authoredNamed, HsonAuthored>>;
 // @ts-expect-error Published authoring has no canonical proof.
@@ -184,12 +184,12 @@ const falseCanonical: HsonCanonical = authoredPlain;
 // @ts-expect-error Declarations cannot promote authored names to canonical documents.
 const falseDocument: HsonDocument = authoredNamed;
 type DocumentCertificate = Assert<Equal<typeof documentCertificate, HsonFromSchema<typeof Page>>>;
-const returnedCertificate: HsonFromSchema<typeof S> = getCertificate();
-const arrayCertificate: HsonFromSchema<typeof S> | undefined = certificates[0];
-const propertyCertificate: HsonFromSchema<typeof S> = certificateObject.certificate;
-const fieldCertificate: HsonFromSchema<typeof S> = new Certificates().value;
+const returnedCertificate: HsonDataValue<typeof S> = getCertificate();
+const arrayCertificate: HsonDataValue<typeof S> | undefined = certificates[0];
+const propertyCertificate: HsonDataValue<typeof S> = certificateObject.certificate;
+const fieldCertificate: HsonDataValue<typeof S> = new Certificates().value;
 const getterCertificate: HsonFromSchema<typeof Page> = new Certificates().document;
-const methodCertificate: HsonFromSchema<typeof S> = new Certificates().getValue();
+const methodCertificate: HsonDataValue<typeof S> = new Certificates().getValue();
 export const mapValue = map.data.must("main").snap();
 export const returnedMapValue = getMap().data.must("main").snap();
 // Consume recursive reads structurally; publishing a new recursive alias is a separate public naming contract.
@@ -204,7 +204,7 @@ type RecursiveLeaf = Assert<Equal<typeof treeValue, string | undefined>>;
 const certifiedPageText: string = map.doc.must("page").at([0]).snap();
 const storedSchema: typeof S = map.data.must("main").schema.get();
 // @ts-expect-error Identical structural projections do not merge certification identity.
-const otherCertificate: HsonFromSchema<typeof Twin> = certificate;
+const otherCertificate: HsonDataValue<typeof Twin> = certificate;
 // @ts-expect-error Raw strings never acquire certification proof.
 const rawCertificate: typeof certificate = '<name "Ada" format "hson">';
 // @ts-expect-error Certificate families stay separate.
@@ -292,8 +292,8 @@ check("existing root imports publish the same inferred public types", () => {
   const source = `
 import { Hson, hsonLiveMap } from "hson-live";
 export const S = Hson.schema\`<type "data" content <values <array "string">>>\`;
-export const certificate = S.certify(Hson.data\`<values []>\`);
-export const map = hsonLiveMap.fromLibraries({ state: { data: { values: [] }, schema: S } });
+export const certificate = S.certify(Hson.data.parse\`<values []>\`);
+export const map = hsonLiveMap.fromLibraries({ state: { json: { values: [] }, schema: S } });
 export const library = map.data.must("state");
 `;
   // An explicitly authored root import has its existing DOM dependency. Only
@@ -308,7 +308,7 @@ export const library = map.data.must("state");
   project(rootConsumer, `
 import { S, certificate, map, library } from "../root-producer/out/index.js";
 import type { HsonFromSchema } from "hson-live/hson";
-const proof: HsonFromSchema<typeof S> = certificate;
+const proof: HsonFromSchema<typeof S> = certificate.toHson();
 export const values = map.data.must("state").snap().values;
 const sameValues: readonly string[] = library.snap().values;
 // @ts-expect-error The published root-import map still rejects invalid items.

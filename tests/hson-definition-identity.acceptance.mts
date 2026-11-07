@@ -61,10 +61,10 @@ try {
   const unique = (cases: string) => `<type "data" content <items <array <content <content <key "string">> unique <by "key" cases ${cases}>>>>>`;
   assert.notEqual(digest(unique('[["a",["A"]],["b",["B"]]]')), digest(unique('[["b",["B"]],["a",["A"]]]')));
   assert.notEqual(digest(unique('[["a",["A","B"]]]')), digest(unique('[["a",["B","A"]]]')));
-  const authority = hsonLiveMap.fromLibraries({ shared: { data: {} } });
+  const authority = hsonLiveMap.fromLibraries({ shared: { json: {} } });
   const catalog = (source: string, value = "x") => make_locus_application_catalog(authority, [
     { name: "shared", ownership: "shared" },
-    { name: "local", ownership: "local", initializer: { data: { value }, schema: HsonSchema.fromHson(source) } },
+    { name: "local", ownership: "local", initializer: { json: { value }, schema: HsonSchema.fromHson(source) } },
   ]);
   const first = catalog(a).local.get("local")!;
   const second = catalog(b).local.get("local")!;
@@ -76,7 +76,7 @@ try {
   assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <ref "Unused">>>'), /consuming/);
   assert.throws(() => HsonSchema.fromHson('<type "data" defs <A <ref "B"> B <ref "A">>>'), /consuming/);
 
-  const sourceMap = hsonLiveMap.fromLibraries({ state: { data: { value: "x" }, schema: HsonSchema.fromHson(a) } });
+  const sourceMap = hsonLiveMap.fromLibraries({ state: { json: { value: "x" }, schema: HsonSchema.fromHson(a) } });
   const snapshot = sourceMap.capture();
   const presentedSnapshot = { ...snapshot, registry: { ...snapshot.registry,
     libraries: snapshot.registry.libraries.map(entry => ({ ...entry, schema: b as typeof entry.schema })) } };

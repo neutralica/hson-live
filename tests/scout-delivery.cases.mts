@@ -14,7 +14,7 @@ export async function scout_delivery_cases(): Promise<void> {
   const timers = new Set<() => void>();
   const locus = hsonLiveMap.locus.create({
     page: { document: '<html <head/> <body <main <p "Original"/>/>/>/>', access: 'shared' },
-    secrets: { data: { password: 'private-data-sentinel' }, access: 'private' },
+    secrets: { json: { password: 'private-data-sentinel' }, access: 'private' },
     ui: { parts: { scout: { kind: 'document', document: '<hson-scout hson:part hidden "%{payload}"/>' },
       nested: { kind: 'document', document: '<hson-scout hson:part hidden <hson-part lib="ui" at="text" payload="%{payload}"/>/>' },
       text: { kind: 'document', document: '<span hson:part "%{payload}"/>' },

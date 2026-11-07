@@ -72,8 +72,8 @@ async function tick(): Promise<void> {
 
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { theme: "light", count: 0 }, schema: StateSchema },
-    colors: { data: { accent: "#000" }, schema: ColorsSchema },
+    state: { json: { theme: "light", count: 0 }, schema: StateSchema },
+    colors: { json: { accent: "#000" }, schema: ColorsSchema },
     page: { document: "<main/>", schema: PageSchema },
   });
 }

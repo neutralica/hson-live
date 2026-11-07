@@ -22,10 +22,10 @@ const listener = Object.freeze({ event: "click", target: "element" as const, cap
 function hostile_map() {
 const map = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PERMITTED_HTML_SENTINEL"/>/>', schema: Page },
-  permittedData: { data: { value: "PERMITTED_ROOT_SENTINEL" }, schema: Data },
-  PRIVATE_NAME_SENTINEL: { data: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: Private },
+  permittedData: { json: { value: "PERMITTED_ROOT_SENTINEL" }, schema: Data },
+  PRIVATE_NAME_SENTINEL: { json: { PRIVATE_SCHEMA_SENTINEL: "PRIVATE_ROOT_SENTINEL" }, schema: Private },
   privatePage: { document: '<main <p "PRIVATE_DOCUMENT_SENTINEL"/>/>', schema: Page },
-  UNSELECTED_NAME_SENTINEL: { data: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: Unselected },
+  UNSELECTED_NAME_SENTINEL: { json: { UNSELECTED_SCHEMA_SENTINEL: "UNSELECTED_ROOT_SENTINEL" }, schema: Unselected },
   unselectedPage: { document: '<main <p "UNSELECTED_DOCUMENT_SENTINEL"/>/>', schema: Page },
 });
 enable_interactions(map);
@@ -115,7 +115,7 @@ for (const artifact of [cut.html, raw, combined]) {
 assert.ok(raw.includes("PERMITTED_ROOT_SENTINEL"));
 assert.ok(raw.includes("PERMITTED_INTERACTION_SENTINEL"));
 const client = client_projection_map({ authority: decoded.bootstrap.libs,
-  local: { local: { data: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
+  local: { local: { json: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
 assert.equal(client.rev, 0);
 assert.equal(client.data.must("local").mode, "data-object");
 assert.equal(raw.includes("CLIENT_LOCAL_SENTINEL"), false);
@@ -223,7 +223,7 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
   assert.ok(credential && fallbackSessionId);
   const ssr = fallbackLocus.session.get(fallbackSessionId)!.now({ html: "page" });
   const browserMap = client_projection_map({ authority: ssr.libs,
-    local: { local: { data: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
+    local: { local: { json: { value: "CLIENT_LOCAL_SENTINEL" }, schema: Data } } });
   assert.equal(browserMap.rev, 0);
   stopCreation();
   const toServer = new Set<(raw: string) => void>();

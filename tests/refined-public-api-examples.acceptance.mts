@@ -7,7 +7,7 @@ import { reflect_document } from "hson-live/mirror";
 const canonical = hsonTransform.fromTrustedHtml("<main><p>Ready</p></main>").toHson().serialize();
 assert.match(hsonTransform.fromHson(canonical).toHtml().serialize(), /<main>/);
 
-const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
+const map = hsonLiveMap.fromLibraries({ state: { json: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
 const state = map.data.must("state");
 state.at(["count"]).set(1);
 assert.equal(state.snap(["count"]), 1);

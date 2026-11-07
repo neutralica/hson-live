@@ -16,9 +16,9 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 });
 
 for (const [definitions, configuration] of [
-  [{ onlyPrivate: { data: 1 } }, {}],
+  [{ onlyPrivate: { json: 1 } }, {}],
   [{ onlyShared: { document: "<main/>", access: "shared" } }, {}],
-  [{}, { local: [{ name: "onlyLocal", initializer: { data: 1 } }] }],
+  [{}, { local: [{ name: "onlyLocal", initializer: { json: 1 } }] }],
   [{}, {}],
 ] as const) {
   const created = hsonLiveMap.locus.create(definitions, configuration);
@@ -27,27 +27,27 @@ for (const [definitions, configuration] of [
   created.dispose();
 }
 
-const definition = [{ "A": { data: { value: 1 }, access: "shared" } }, { logicalMapId: "final-locus-model" }] as const;
+const definition = [{ "A": { json: { value: 1 }, access: "shared" } }, { logicalMapId: "final-locus-model" }] as const;
 const read = (locus: ReturnType<typeof hsonLiveMap.locus.create>, name: string) => {
   const library = locus.data.must(name);
   if (String(library.mode) === "document") throw new Error("Expected data Library.");
   return Hson.data.fromSource((library.at(["value"]).hson()!)).materialize();
 };
 
-const fresh = hsonLiveMap.locus.create({ "secret": { data: { value: 1 }, access: "private" }, "public": { data: { value: 2 }, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { selected: false } } }] });
+const fresh = hsonLiveMap.locus.create({ "secret": { json: { value: 1 }, access: "private" }, "public": { json: { value: 2 }, access: "shared" } }, { local: [{ name: "ui", initializer: { json: { selected: false } } }] });
 assert.equal(fresh.rev, 0);
 assert.deepEqual(locus_map_internal(fresh).capture().registry.libraries.map((entry) => entry.name), ["secret", "public"]);
 assert.throws(() => fresh.data.must("ui"), /Unknown LiveMap Library/);
 assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined, [hsonLiveMap.create()]), /unsupported|definition|Library/i);
 await assert.rejects(hsonLiveMap.locus.checkpoint(fresh), /no durable backing/i);
 // @ts-expect-error Literal duplicate names are rejected before runtime.
-assert.throws(() => hsonLiveMap.locus.create({ "x": { data: 1, access: "shared" } }, { local: [{ name: "x", initializer: { data: 2 } }] }), /duplicate/i);
+assert.throws(() => hsonLiveMap.locus.create({ "x": { json: 1, access: "shared" } }, { local: [{ name: "x", initializer: { json: 2 } }] }), /duplicate/i);
 fresh.dispose();
 
 const storage = new MemoryCheckpointAdapter();
 const first = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], persistence: storage });
 assert.equal(first.rev, 0);
-await first.admit({ "B": { data: { value: 2 }, access: "private" }, "C": { data: { value: 3 }, access: "shared" } });
+await first.admit({ "B": { json: { value: 2 }, access: "private" }, "C": { json: { value: 3 }, access: "shared" } });
 assert.equal(first.rev, 1);
 assert.deepEqual(storage.appendCalls.at(-1)?.locus.libraryOwnershipAdded,
   [{ name: "B", ownership: "private" }, { name: "C", ownership: "shared" }]);
@@ -116,15 +116,15 @@ Reflect.set(absentCheckpointLibrary.checkpoint.locus, "runtimeOwnership", [
   ...checkpointState.checkpoint.locus.runtimeOwnership, { name: "absent", ownership: "shared" },
 ]);
 await reject_corrupt(absentCheckpointLibrary);
-await assert.rejects(hsonLiveMap.locus.resume({ ...definition[0], C: { data: { value: 3 }, access: "shared" } }, { ...definition[1], persistence: storage }), /conflict/i);
+await assert.rejects(hsonLiveMap.locus.resume({ ...definition[0], C: { json: { value: 3 }, access: "shared" } }, { ...definition[1], persistence: storage }), /conflict/i);
 await assert.rejects(hsonLiveMap.locus.resume({  }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
 await assert.rejects(hsonLiveMap.locus.resume({ "A": { document: "<main/>", access: "shared" } }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
-await assert.rejects(hsonLiveMap.locus.resume({ "A": { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`, access: "shared" } }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
+await assert.rejects(hsonLiveMap.locus.resume({ "A": { json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`, access: "shared" } }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
 
 const failed = new MemoryCheckpointAdapter();
 const held = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], persistence: failed });
 failed.failAppend = new Error("append unavailable");
-await assert.rejects(held.admit({ "C": { data: {}, access: "shared" } }), /append/i);
+await assert.rejects(held.admit({ "C": { json: {}, access: "shared" } }), /append/i);
 assert.equal(held.rev, 0);
 assert.throws(() => held.data.must("C"), /Unknown LiveMap Library/);
 held.dispose();
@@ -149,14 +149,14 @@ class DelayedPreflightAdapter extends MemoryCheckpointAdapter {
   }
 }
 const racingStorage = new DelayedPreflightAdapter();
-const racingDefinition = [{ "state": { data: { value: 0 }, access: "shared" } }, { logicalMapId: "checkpoint-prefix-race" }] as const;
+const racingDefinition = [{ "state": { json: { value: 0 }, access: "shared" } }, { logicalMapId: "checkpoint-prefix-race" }] as const;
 const racing = await hsonLiveMap.locus.resume({ ...racingDefinition[0] }, { ...racingDefinition[1], persistence: racingStorage });
 racingStorage.blockNextLoad = true;
 const compacting = hsonLiveMap.locus.checkpoint(racing);
 await racingStorage.entered.promise;
 await racing.data.must("state").at(["value"]).set(1);
 await racing.data.must("state").at(["value"]).set(2);
-await racing.admit({ "later": { data: { value: 3 }, access: "shared" } });
+await racing.admit({ "later": { json: { value: 3 }, access: "shared" } });
 racingStorage.release.resolve();
 await compacting;
 assert.equal(racingStorage.state(racingDefinition[1].logicalMapId)?.checkpoint.rev, 0);
@@ -170,14 +170,14 @@ racingRestored.dispose();
 const validation = hsonLiveMap.locus.create({  });
 await assert.rejects(validation.admit({  }), /requires a Library/i);
 // @ts-expect-error Local runtime additions are intentionally absent.
-await assert.rejects(validation.admit({ local: { data: 1, access: "local" } }), /access/i);
+await assert.rejects(validation.admit({ local: { json: 1, access: "local" } }), /access/i);
 validation.dispose();
 // Durable scalar codec fidelity is Cut 8; negative zero is covered at exact in-memory receivers.
 for (const fixture of orderedRootReconstructionFixtures.filter(entry => entry.id !== "structural-json-order.negative-zero")) {
   const persistence = new MemoryCheckpointAdapter();
-  const options = [{ "base": { data: 1, access: "shared" } }, { logicalMapId: `ordered-root-${fixture.id}`, persistence }] as const;
+  const options = [{ "base": { json: 1, access: "shared" } }, { logicalMapId: `ordered-root-${fixture.id}`, persistence }] as const;
   const created = await hsonLiveMap.locus.resume(options[0], options[1]);
-  await created.admit({ "ordered": { data: Hson.data.fromSource(fixture.expectedJson), access: "shared" } });
+  await created.admit({ "ordered": { json: Hson.data.fromSource(fixture.expectedJson), access: "shared" } });
   const original: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
   assert.equal(canonical_hson_graph_equal(locus_map_internal(created).data.must("ordered").root(), original), true);
   const payload = locus_map_internal(created).capture().libraries.find(entry => entry.name === "ordered")!.root.payload;

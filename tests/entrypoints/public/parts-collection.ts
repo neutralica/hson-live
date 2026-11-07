@@ -44,7 +44,7 @@ const schemaHandle: HsonSchema<unknown, "data"> = governed.parts.must("parts").s
 const typedLocus = hsonLiveMap.locus.create({ "parts": { ...explicit, access: "private" } });
 const locusValue: LiveMapPartCollection = typedLocus.parts.must("parts").snap();
 // @ts-expect-error A definition cannot select two families.
-const mixed: LiveMapLibraryDefinition = { parts, data: {} };
+const mixed: LiveMapLibraryDefinition = { parts, json: {} };
 // @ts-expect-error A document definition cannot also select Parts.
 const mixedDocument: LiveMapLibraryDefinition = { parts, document: "<p/>" };
 // @ts-expect-error Unsupported Part kind.
@@ -54,7 +54,7 @@ const invalidCss: LiveMapDocumentPart = { kind: "document", document, stylesheet
 // @ts-expect-error A Part member does not admit Schema.
 const memberSchema: LiveMapDocumentPart = { kind: "document", document, schema };
 // @ts-expect-error The internal validation marker is not public admission syntax.
-const marker: LiveMapLibraryDefinition = { data: parts, validation: "hson-part-collection-v1" };
+const marker: LiveMapLibraryDefinition = { json: parts, validation: "hson-part-collection-v1" };
 void [part, text, kind, css, locusText, schemaValue, schemaHandle, locusValue,
   mixed, mixedDocument, invalidKind, invalidCss, memberSchema, marker];
 
@@ -128,7 +128,7 @@ governed.parts.must("parts").at(["header"]).set(schemaPart);
 governed.batch(writer => { writer.parts.must("parts").at(["header"]).replace(schemaPart); });
 void typedLocus.parts.must("parts").at(["header"]).set(schemaPart);
 void typedLocus.stage(writer => { writer.parts.must("parts").at(["header"]).replace(schemaPart); });
-const ordinary = hsonLiveMap.fromLibraries({ data: { data: invalidParts } });
+const ordinary = hsonLiveMap.fromLibraries({ data: { json: invalidParts } });
 ordinary.data.must("data").at([]).set(invalidParts);
 ordinary.batch(writer => { writer.data.must("data").at([]).replace(invalidParts); });
 void [invalidCollection, invalidDefinition, invalidCopy];
@@ -386,8 +386,8 @@ void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set(
 void emptyLocus.stage(writer => { writer.parts.must("parts").at(["header"]).set({ kind: "document", document: "<p hson:part/>", stylesheet: "p{color:blue}" }); });
 
 // Ordinary data Libraries retain custom Schema projections, including staged Locus writes.
-const ordinaryGoverned = hsonLiveMap.fromLibraries({ data: { data: invalidParts, schema } });
-const ordinaryLocus = hsonLiveMap.locus.create({ "data": { data: invalidParts, schema, access: "private" } });
+const ordinaryGoverned = hsonLiveMap.fromLibraries({ data: { json: invalidParts, schema } });
+const ordinaryLocus = hsonLiveMap.locus.create({ "data": { json: invalidParts, schema, access: "private" } });
 const ordinaryValue: { header: { kind: "document"; document: string } } = ordinaryGoverned.data.must("data").snap();
 const ordinarySchema: typeof schema = ordinaryGoverned.data.must("data").schema.get();
 ordinaryGoverned.data.must("data").at(["header"]).replace(schemaPart);
@@ -472,9 +472,9 @@ map.batch(writer => { writer.parts.must("parts").at([]).set(invalidParts); });
 void locus.parts.must("parts").at([]).set(invalidParts);
 // @ts-expect-error Authenticated collection writes reject invalid Part definitions.
 void locus.stage(writer => { writer.parts.must("parts").at([]).set(invalidParts); });
-const ordinaryUndefined = hsonLiveMap.fromLibraries({ data: { data: 1 } });
+const ordinaryUndefined = hsonLiveMap.fromLibraries({ data: { json: 1 } });
 ordinaryUndefined.data.must("data").schema.use(ANY_DATA);
-hsonLiveMap.fromLibraries({ data: { data: 1, schema: ANY_DATA } });
+hsonLiveMap.fromLibraries({ data: { json: 1, schema: ANY_DATA } });
 hsonLiveMap.fromLibraries({ parts: { parts: {} } });
 hsonLiveMap.locus.create({ "parts": { parts: {}, access: "private" } });
 

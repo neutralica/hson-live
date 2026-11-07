@@ -35,7 +35,7 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 
 function map_fixture(multiple = false) {
   return admit_exact_runtime_livemap_libraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime(`<html <head/> <body <main title="zero" <item @${QUID}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
     ...(multiple ? { admin: { document: "<html <head/> <body <aside/>/>/>", schema: AdminSchema } } : {}),
   });
@@ -43,7 +43,7 @@ function map_fixture(multiple = false) {
 
 function hosted_map_fixture(multiple = false) {
   return hsonLiveMap.fromLibraries({
-    state: { data: { count: 0 }, schema: StateSchema },
+    state: { json: { count: 0 }, schema: StateSchema },
     page: { document: '<main title="zero" <item/>/>', schema: PageSchema },
     ...(multiple ? { admin: { document: "<html <head/> <body <aside/>/>/>", schema: AdminSchema } } : {}),
   });
@@ -203,7 +203,7 @@ await check("cut retains its HTML, data and interactions after source mutation",
 });
 
 await check("state-only defaults and explicit family empties reconstruct as independent topologies", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { count: 7 }, schema: StateSchema },
+  const map = hsonLiveMap.fromLibraries({ state: { json: { count: 7 }, schema: StateSchema },
     page: { document: "<main/>", schema: PageSchema }, admin: { document: "<html <head/> <body <aside/>/>/>", schema: AdminSchema } });
   const names = (libs: import("../src/types/livemap.types.ts").LiveMapSnapshot) => libs.registry.libraries.map(entry => entry.name);
   assert.deepEqual(Object.keys(map.cut()), ["libs"]);
@@ -229,7 +229,7 @@ await check("state-only defaults and explicit family empties reconstruct as inde
 });
 
 await check("cut rejects invalid names, families, duplicates and HTML outside transferred documents", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: 1 }, page: { document: "<main/>" }, admin: { document: "<aside/>" } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: 1 }, page: { document: "<main/>" }, admin: { document: "<aside/>" } });
   const cut: (options: unknown) => unknown = options => map.cut(options as any);
   for (const options of [null, [], { data: "state" }, { documents: "page" }, { data: ["missing"] },
     { documents: ["missing"] }, { data: ["state", "state"] }, { documents: ["page", "page"] },
@@ -251,8 +251,8 @@ await check("HTML selection is normalized once before detached state capture", (
 });
 
 await check("runtime admissions and dynamic strings retain cut admission and reconstruction", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: 1 }, page: { document: "<main/>" } });
-  map.addLibraries({ later: { document: "<aside/>" }, laterState: { data: 2 } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: 1 }, page: { document: "<main/>" } });
+  map.addLibraries({ later: { document: "<aside/>" }, laterState: { json: 2 } });
   const selected = map.cut({ data: ["laterState"], documents: ["later"], html: "later" });
   const name: "later" = selected.document;
   assert.equal(name, "later");
@@ -271,7 +271,7 @@ await check("runtime admissions and dynamic strings retain cut admission and rec
 });
 
 await check("interaction storage follows selected documents and preserves enabled-empty state", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: 1 }, page: { document: "<main <button/>/>" }, admin: { document: "<aside <button/>/>" } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: 1 }, page: { document: "<main <button/>/>" }, admin: { document: "<aside <button/>/>" } });
   assert.equal(map.cut({ data: [], documents: [] }).libs.libraries.length, 0);
   enable_interactions(map);
   for (const library of ["page", "admin"]) add_interaction(map, {
@@ -300,7 +300,7 @@ await check("interaction storage follows selected documents and preserves enable
 });
 
 await check("subset contracts retain the Schema fixed at admission", () => {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { count: 3 }, schema: StateSchema }, page: { document: "<main/>" } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { count: 3 }, schema: StateSchema }, page: { document: "<main/>" } });
   const before = map.cut({ documents: [] });
   data(map, "state").at(["count"]).set(4);
   const { libs } = map.cut({ documents: [] });
@@ -315,7 +315,7 @@ await check("subset contracts retain the Schema fixed at admission", () => {
 
 await check("aggregate-scale roots are consumable without changing ordinary exact-value limits", () => {
   const payload = "x".repeat(5 * 1024 * 1024);
-  const map = hsonLiveMap.fromLibraries({ large: { data: { payload } }, page: { document: `<main "${payload}"/>` }, omitted: { data: false } });
+  const map = hsonLiveMap.fromLibraries({ large: { json: { payload } }, page: { document: `<main "${payload}"/>` }, omitted: { json: false } });
   assert.equal(map.doc.must("page").render(), complete_html(`<main>${payload}</main>`));
   const cut = map.cut({ data: ["large"], documents: ["page"], html: "page" });
   assert.ok(cut.libs.libraries.every(entry => entry.root.payload.length > 4 * 1024 * 1024));
@@ -394,7 +394,7 @@ await check("Libraries rendering selection and hosted cuts preserve the aggregat
 for (const fixture of orderedRootReconstructionFixtures) {
   await check(`SSR cut and bootstrap retain independent source order: ${fixture.id}`, () => {
     const expected: HsonNode = { $_tag: "_hson_root", $_content: [fixture.graph] };
-    const source = hsonLiveMap.fromLibraries({ state: { data: Hson.data.fromSource(fixture.expectedJson) }, page: { document: "<main/>" } });
+    const source = hsonLiveMap.fromLibraries({ state: { json: Hson.data.fromSource(fixture.expectedJson) }, page: { document: "<main/>" } });
     assert.equal(canonical_hson_graph_equal(source.data.must("state").root(), expected), true);
     const cut = source.cut({ html: "page" });
     const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(cut.libs));

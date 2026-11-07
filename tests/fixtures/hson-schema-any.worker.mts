@@ -8,16 +8,16 @@ const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload 
 const canonical = Hson.canonical`<args [null, true, -0] payload <z 1 a <nested []>>>`;
 const certified = schema.certify(Hson.data.fromSource(canonical));
 const exact = Hson.data.fromSource(Hson.canonical`<'10' -0 '2' <__proto__ true>>`);
-const map = hsonLiveMap.fromLibraries({ state: { data: { args: -0, payload: { z: 1, a: [] } }, schema } });
+const map = hsonLiveMap.fromLibraries({ state: { json: { args: -0, payload: { z: 1, a: [] } }, schema } });
 const state = map.data.must("state");
 state.at(["payload"]).replace({ second: [], first: { nested: true } });
 const relational: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["wide", ["A", "B"]], ["single-b", ["B"]], ["single-c", ["C"]]]>>>>>`;
-const relationalAccepted = relational.certify(Hson.data`<items [<kind "wide">, <kind "single-c">]>`);
+const relationalAccepted = relational.certify(Hson.data.parse`<items [<kind "wide">, <kind "single-c">]>`);
 let relationalRejected = false;
-try { relational.certify(Hson.data`<items [<kind "wide">, <kind "single-b">]>`); }
+try { relational.certify(Hson.data.parse`<items [<kind "wide">, <kind "single-b">]>`); }
 catch { relationalRejected = true; }
 const empty = hsonLiveMap.create();
-const primitive = hsonLiveMap.fromLibraries({ value: { data: 7, schema: ANY_DATA } });
+const primitive = hsonLiveMap.fromLibraries({ value: { json: 7, schema: ANY_DATA } });
 const broadDocument = Hson.document`<main <p "worker"/>/>`;
 
 parentPort?.postMessage({

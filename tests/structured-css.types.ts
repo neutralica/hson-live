@@ -108,7 +108,7 @@ single.batch(writer=>{
 });
 // @ts-expect-error Locus preserves path restrictions
 void governed.parts.parts.p.at(['stylesheet']);
-const ordinary=hsonLiveMap.fromLibraries({data:{data:{kind:'document',document:'<p hson:part/>',css:{color:true},stylesheet:false}}});
+const ordinary=hsonLiveMap.fromLibraries({data:{json:{kind:'document',document:'<p hson:part/>',css:{color:true},stylesheet:false}}});
 ordinary.data.data.at([]).set({css:{color:false}});
 ordinary.data.data.at(['css','color']).set(false);
 ordinary.data.data.at(['stylesheet']).set(true);

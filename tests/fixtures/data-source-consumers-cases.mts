@@ -15,6 +15,7 @@ import { is_Node } from "../../src/core/node-guards.js";
 import { projected_value_from_hson_node } from "../../src/core/projected-value-graph.js";
 import { materialize_projected_value } from "../../src/core/projected-value-materialization.js";
 import { hson_schema_digest } from "../../src/api/schema/hson-schema.js";
+import { read_transform_error_details } from "../../src/core/errors.js";
 
 type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
 const orderedJson = String.raw`{"10":-0,"2":{"text":"quote\" slash\\ line\n\u0061","nested":[{},[],"42",true,null]},"tail":[]}`;
@@ -34,9 +35,124 @@ const literals = ["42", "true", "null", "{}", "<count 1>", "<broken", orderedJso
 const invalidValues = [Object.create(HsonDataValue.prototype), { nested: undefined }, { _hson_root: 1 }, { $_meta: { quid: "000000001" } }, new Date(), () => 1, 1n];
 
 export async function data_source_consumer_cases(check: Check): Promise<void> {
+  await check("Data source authoring and HSON-only exact parsing share ordered admission", () => {
+    const source = Hson.data`<slides []>`;
+    assert.equal(typeof source, "string");
+    assert.deepEqual(hsonTransform.fromHson(source).toJson().value(), { slides: [] });
+    assert.ok(Hson.data.parse(source) instanceof HsonDataValue);
+    assert.ok(Hson.data.parse`<slides []>`.equals(Hson.data.parse(source)));
+    const nested = Hson.data`<'10' -0 '2' <empty "" values [true,false,null,[],<>]>>`;
+    const exact = Hson.data.parse(nested);
+    assert.deepEqual(exact.entries()?.map(([name]) => name), ["10", "2"]);
+    assert.ok(Object.is(exact.entries()?.[0]?.[1].scalar(), -0));
+    assert.equal(exact.toHson(), nested);
+    assert.ok(Hson.data.parse`<outer ${nested} quoted "pre${true}${null}${-0}post">`
+      .equals(Hson.data.parse(Hson.data`<outer ${nested} quoted "pre${true}${null}${-0}post">`)));
+    for (const [source, value] of [['""', ""], ['"true"', "true"], ["true", true], ["false", false], ["null", null], ["-0", -0]] as const) {
+      assert.ok(Object.is(Hson.data.parse(source).scalar(), value));
+    }
+    for (const source of ['{"a":1}', '{}', '<a 1 a 2>', '<a 1', '<p/>', '<p title="x"/>', '<a <p/>>', '<@000000001 a 1>', '<a <_hson_root 1>>', '[] []', '', 'NaN', '+1']) {
+      assert.throws(() => Hson.data.parse(source));
+      assert.throws(() => Hson.data.parse`${source}`);
+    }
+    for (const input of [undefined, null, {}, [], new String("true"), exact, Object.create(HsonDataValue.prototype)]) {
+      assert.throws(() => Reflect.apply(Hson.data.parse, undefined, [input]));
+    }
+    const capture = (strings: TemplateStringsArray, _value: unknown) => strings;
+    for (const strings of [capture`<a ${0}>`, capture`<a "${0}">`]) {
+      for (const invalid of [undefined, {}, [], exact, NaN, Infinity, 1n]) assert.throws(() => Reflect.apply(Hson.data.parse, undefined, [strings, invalid]));
+    }
+    assert.throws(() => Hson.data.parse`<a ${"bare"}>`);
+    assert.throws(() => Hson.data.parse`<${"name"} 1>`);
+    assert.equal(Hson.data.parse`<a "${""}">`.entries()?.[0]?.[1].scalar(), "");
+    assert.ok(Object.is(Hson.data.parse`${-0}`.scalar(), -0));
+    const syntaxTemplate = (strings: TemplateStringsArray) => strings;
+    for (const tag of [Hson.data, Hson.data.parse]) {
+      assert.throws(() => Reflect.apply(tag, undefined, [syntaxTemplate`<@000000001 a 1>`]), error =>
+        read_transform_error_details(error)?.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN");
+    }
+    const forgedSource = '<p/>' as ReturnType<typeof Hson.data>;
+    assert.throws(() => Hson.data.parse(forgedSource));
+    assert.throws(() => Reflect.apply(Hson.data.parse, undefined, ["true", false]));
+    // No public serializer or factory participates in private exact capture.
+    const serializer = HsonDataValue.prototype.toHson;
+    try {
+      HsonDataValue.prototype.toHson = () => { throw new Error("public serializer invoked"); };
+      assert.ok(Hson.data.parse`<a ${nested}>` instanceof HsonDataValue);
+    } finally { HsonDataValue.prototype.toHson = serializer; }
+  });
+
+  await check("native Data.from captures current mutable values without changing source semantics", () => {
+    const S = Hson.schema`<type "data" content <n "number">>`;
+    const A = Hson.schema`<type "data" defs <Numbers <array "number">> content <ref "Numbers">>`;
+    const value: { n: string | number } = { n: "before" };
+    value.n = 1;
+    const exact = Hson.data.from(value);
+    assert.ok(exact instanceof HsonDataValue);
+    assert.equal(S.certify(exact), exact);
+    assert.deepEqual(exact.materialize(), { n: 1 });
+    const array: (string | number)[] = ["before"];
+    array[0] = 1;
+    assert.deepEqual(A.certify(Hson.data.from(array)).materialize(), [1]);
+    const appended: (string | number)[] = ["before"];
+    appended.splice(0, 1, 1);
+    assert.deepEqual(A.certify(Hson.data.from(appended)).materialize(), [1]);
+    assert.throws(() => S.certify(Hson.data.from({ n: "invalid" })));
+    assert.throws(() => A.certify(Hson.data.from(["invalid"])));
+    assert.deepEqual(S.certify(Hson.data.parse`<n 1>`).materialize(), { n: 1 });
+    assert.deepEqual(S.certify(Hson.data.parse("<n 1>")).materialize(), { n: 1 });
+    assert.deepEqual(S.certify(Hson.data.fromSource('{"n":1}')).materialize(), { n: 1 });
+    assert.throws(() => S.certify(Hson.data.from("<n 1>")));
+    assert.throws(() => Hson.data.parse('{"n":1}'));
+  });
+
+  await check("explicit Library channels preserve representation, complete validation and single capture", () => {
+    const source = Hson.data`<slides []>`;
+    const schema = Hson.schema`<type "data" content <slides <array "any">>>`;
+    const fromSource = hsonLiveMap.fromLibraries({ slides: { hson: source, schema } });
+    const fromNative = hsonLiveMap.fromLibraries({ slides: { json: { slides: [] }, schema } });
+    assert.equal(fromSource.data.slides.hson(), fromNative.data.slides.hson());
+    assert.strictEqual(fromSource.data.slides.schema.get(), schema);
+    assert.strictEqual(fromNative.data.slides.schema.get(), schema);
+    const kinds = hsonLiveMap.fromLibraries({ text: { json: "true" }, bool: { json: true }, parsed: { hson: "true" },
+      exact: { json: Hson.data.parse(source), schema } });
+    assert.equal(kinds.data.text.snap(), "true"); assert.equal(kinds.data.bool.snap(), true); assert.equal(kinds.data.parsed.snap(), true);
+    // JavaScript cannot authenticate a primitive string's erased source brand.
+    // Static callers receive a representation diagnostic; runtime remains literal.
+    const erased = Reflect.apply(hsonLiveMap.fromLibraries, undefined, [{ literal: { json: Hson.data`<a 1>` } }]);
+    assert.equal(erased.data.literal.snap(), Hson.data`<a 1>`);
+    const nestedSource = hsonLiveMap.fromLibraries({ object: { json: { source } }, array: { json: [source] } });
+    assert.equal(nestedSource.data.object.snap().source, source);
+    assert.deepEqual(nestedSource.data.array.snap(), [source]);
+    assert.equal(kinds.data.exact.hson(), fromSource.data.slides.hson());
+    let reads = 0, schemaReads = 0;
+    const captured = hsonLiveMap.fromLibraries({ slides: {
+      get hson() { reads++; return reads === 1 ? source : '<slides "changed">'; },
+      get schema() { schemaReads++; return schema; },
+    } });
+    assert.equal(reads, 1); assert.equal(schemaReads, 1); assert.equal(captured.data.slides.hson(), fromSource.data.slides.hson());
+    const invalid = [{}, { data: {} }, { json: undefined }, { hson: undefined }, { hson: {} }, { hson: new String(source) },
+      { json: true, hson: "true" }, { json: true, hson: undefined }, { json: undefined, hson: "true" },
+      { json: Object.create(HsonDataValue.prototype) }, { json: { nested: Hson.data.parse(source) } },
+      { hson: '<slides "invalid">', schema }, { json: { slides: "invalid" }, schema },
+      { hson: '<@000000001 slides []>' }, { json: { $_meta: { quid: "000000001" } } }];
+    const map = hsonLiveMap.fromLibraries({ state: { json: true } });
+    const owner = internal_livemap_aggregate_authority(map), before = owner.captureSemanticCheckpoint(), issued = owner.identityEpoch().issued();
+    let publications = 0; map.commits.observe(() => publications++);
+    for (const definition of invalid) {
+      assert.throws(() => Reflect.apply(hsonLiveMap.fromLibraries, undefined, [{ bad: definition }]));
+      assert.throws(() => Reflect.apply(map.addLibraries, map, [{ first: { json: 1 }, bad: definition }]));
+      assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined, [{ bad: definition }]));
+    }
+    assert.deepEqual(owner.captureSemanticCheckpoint(), before); assert.equal(owner.identityEpoch().issued(), issued); assert.equal(publications, 0);
+    const order = hsonLiveMap.fromLibraries({ source: { hson: "<'10' -0 '2' 2>" }, native: { json: { "10": -0, "2": 2 } } });
+    assert.deepEqual(Hson.data.parse(order.data.source.hson()).entries()?.map(([name]) => name), ["10", "2"]);
+    assert.deepEqual(Hson.data.parse(order.data.native.hson()).entries()?.map(([name]) => name), ["2", "10"]);
+  });
+
   await check("Data Libraries and Schema receive literal values or explicit bilingual source admission", () => {
     for (const text of literals) {
-      const data = Hson.data.from(text), map = hsonLiveMap.fromLibraries({ state: { data: text } });
+      const data = Hson.data.from(text), map = hsonLiveMap.fromLibraries({ state: { json: text } });
       assert.equal(data.scalar(), text); assert.equal(admit_data_input(text).scalar(), text);
       assert.equal(ANY_DATA.certify(text).scalar(), text);
       assert.equal(map.data.must("state").snap(), text);
@@ -45,7 +161,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     for (const [json, hson] of pairs) {
       const expected = Hson.data.fromSource(hson);
       for (const source of [json, hson]) {
-        const data = Hson.data.fromSource(source), map = hsonLiveMap.fromLibraries({ state: { data } });
+        const data = Hson.data.fromSource(source), map = hsonLiveMap.fromLibraries({ state: { json: data } });
         assert.ok(data.equals(expected)); assert.strictEqual(admit_data_input(data), data);
         assert.strictEqual(Hson.data.from(data), data); assert.strictEqual(ANY_DATA.certify(data), data);
         assert.equal(map.data.must("state").hson(), expected.toHson());
@@ -58,10 +174,10 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     const schema = Hson.schema`<type "data" content <count "number" label "string">>`;
     const identity = hson_schema_digest(schema), source = schema.toHson();
     for (const text of ['{"count":-0,"label":"42"}', '<count -0 label "42">']) {
-      const data = Hson.data.fromSource(text), expected = Hson.data`<count -0 label "42">`;
+      const data = Hson.data.fromSource(text), expected = Hson.data.parse`<count -0 label "42">`;
       assert.strictEqual(schema.certify(data), data);
       assert.ok(schema.certify(data).equals(expected));
-      const map = hsonLiveMap.fromLibraries({ state: { data, schema } });
+      const map = hsonLiveMap.fromLibraries({ state: { json: data, schema } });
       assert.equal(map.data.must("state").hson(), expected.toHson());
       assert.throws(() => schema.certify(text), /Schema/);
     }
@@ -69,7 +185,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     for (const text of ['{"count":"42","label":"x"}', '<count "42" label "x">']) {
       const data = Hson.data.fromSource(text);
       assert.throws(() => schema.certify(data), /Schema/);
-      assert.throws(() => hsonLiveMap.fromLibraries({ state: { data, schema } }), /Schema/);
+      assert.throws(() => hsonLiveMap.fromLibraries({ state: { json: data, schema } }), /Schema/);
     }
   });
 
@@ -87,7 +203,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     assert.equal(Hson.data.from(source).scalar(), source); assert.equal(ANY_DATA.certify(documentSource).scalar(), documentSource);
     const capture = (strings: TemplateStringsArray, _value: unknown) => strings;
     for (const template of [capture`${0}`, capture`"${0}"`]) assert.throws(() => Reflect.apply(Hson.data, Hson, [template, exact]));
-    const map = hsonLiveMap.fromLibraries({ state: { data: { text: "before", value: {}, items: [] } } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { text: "before", value: {}, items: [] } } });
     const state = map.data.must("state");
     state.at(["text"]).set(orderedJson); assert.equal(state.snap()?.text, orderedJson);
     const ordered = Hson.data.fromSource("<'10' -0 '2' <text \"42\">>");
@@ -146,7 +262,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
       const connector = parse_authored_document_library(invocation).root.$_content[0]; assert.ok(is_Node(connector));
       assert.equal(connector.$_attrs?.["incoming:data"], expectedText);
       assert.strictEqual(ANY_DATA.certify(carrier), carrier);
-      map.addLibraries({ protectedValue: { data: carrier } });
+      map.addLibraries({ protectedValue: { json: carrier } });
       assert.equal(map.data.must("protectedValue").hson(), expectedText);
       assert.equal(encode_hson_data_internal(carrier), encode_hson_data_internal(Hson.data.fromSource(expectedText)));
     } finally { HsonDataValue.prototype.toHson = publicSerializer; HsonDataValue.from = publicFrom; HsonDataValue.fromSource = publicSource; }
@@ -162,15 +278,15 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
   });
 
   await check("Data and explicit-source failures publish no Library, revision, QUID or observation", () => {
-    const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 } } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
     const owner = internal_livemap_aggregate_authority(map), before = owner.captureSemanticCheckpoint(), issued = owner.identityEpoch().issued();
     let publications = 0; map.commits.observe(() => { publications++; });
     for (const source of invalidSources) {
-      assert.throws(() => map.addLibraries({ first: { data: 1 }, rejected: { data: Hson.data.fromSource(source) } }));
+      assert.throws(() => map.addLibraries({ first: { json: 1 }, rejected: { json: Hson.data.fromSource(source) } }));
       assert.equal(map.data("first"), undefined); assert.equal(map.data("rejected"), undefined);
       assert.throws(() => ANY_DATA.certify(Hson.data.fromSource(source)));
     }
-    for (const data of invalidValues) assert.throws(() => Reflect.apply(map.addLibraries, map, [{ first: { data: 1 }, rejected: { data } }]));
+    for (const data of invalidValues) assert.throws(() => Reflect.apply(map.addLibraries, map, [{ first: { json: 1 }, rejected: { json: data } }]));
     assert.deepEqual(owner.captureSemanticCheckpoint(), before); assert.equal(owner.identityEpoch().issued(), issued);
     assert.equal(publications, 0); assert.equal(map.rev, 0);
   });
@@ -178,7 +294,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
   await check("Locus payloads, validators, authorizers, decoder output and results use authenticated values", async () => {
     const received: HsonDataValue[] = [], validated: HsonDataValue[] = [];
     let resultValue: HsonDataInput = {}, decoderValue: HsonDataInput = {};
-    const locus = hsonLiveMap.locus.create({ state: { data: { value: 0 } } }, {
+    const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {
       actions: { probe: (_context, payload) => { received.push(payload!); return resultValue; }, decoded: (_context, payload) => { received.push(payload!); } },
       schema: { actions: { decoded: { payload: input => {
         if (input !== undefined) { assert.ok(input instanceof HsonDataValue); validated.push(input); }

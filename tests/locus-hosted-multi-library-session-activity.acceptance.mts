@@ -114,7 +114,7 @@ function socket_fixture(): Readonly<{
 }
 
 function make_map() {
-  return hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
+  return hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: StateSchema } });
 }
 
 function created_credential(socket: ReturnType<typeof socket_fixture>): string {

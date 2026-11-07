@@ -358,7 +358,7 @@ export async function document_css_reconciliation_browser_cases(): Promise<{ nam
       } finally { fault.restore(); f.close(); }
     }
     for (const mode of ['normal', 'transient', 'persistent'] as const) {
-      const locus = hsonLiveMap.locus.create({ page: { document: markup, access: 'shared' }, keep: { data: { n: 1 }, access: 'shared' } },
+      const locus = hsonLiveMap.locus.create({ page: { document: markup, access: 'shared' }, keep: { json: { n: 1 }, access: 'shared' } },
         { authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
       await locus.stage(writer => writer.doc.must('page').css({ domain: 'css', kind: 'replace', stylesheet: record('green') }));
       const session = await locus.session.create({ libraries: ['page', 'keep'] });

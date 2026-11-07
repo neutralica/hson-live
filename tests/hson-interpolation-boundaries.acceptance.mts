@@ -21,7 +21,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   tags: Object.freeze(["hson", "interpolation", "semantic-boundaries", "root-closure"]),
 });
 
-const data_source_tag = (strings: TemplateStringsArray, ...values: (string | number | boolean | null)[]): HsonData => Hson.data(strings, ...values).toHson();
+const data_source_tag = (strings: TemplateStringsArray, ...values: (string | number | boolean | null)[]): HsonData => Hson.data(strings, ...values);
 const events = create_test_event_emitter(HSON_LIVE_TEST_METADATA.id);
 let checks = 0;
 function check(name: string, run: () => void): void {
@@ -150,9 +150,9 @@ check("source candidates and typed primitives preserve generic canonical roots",
     const canonical = Hson.canonical`${value}`;
     const data = Hson.data`${value}`;
     closes(canonical, spelling);
-    closes((data).toHson(), spelling);
+    closes(data, spelling);
     const canonicalNode = hsonTransform.fromHson(canonical).toNode();
-    const dataNode = hsonTransform.fromHson((data).toHson()).toNode();
+    const dataNode = hsonTransform.fromHson(data).toNode();
     assert.equal(canonicalNode.$_tag, "_hson_val");
     assert.equal(Object.is(canonicalNode.$_content[0], value), true);
     assert.equal(Object.is(dataNode.$_content[0], value), true);
@@ -198,7 +198,7 @@ check("unquoted invalid source and contextual domains still reject", () => {
   rejects(() => Hson.data`${"<p/>"}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   for (const source of ["1", "-0", "true", "false", "null", "<x 1>", "«1»"]) {
     closes(Hson.canonical`${source}`, source);
-    closes((Hson.data`${source}`).toHson(), source);
+    closes(Hson.data`${source}`, source);
     rejects(() => Hson.document`${source}`, "HSON_INTERPOLATION_CANDIDATE_INVALID");
   }
   for (const tag of [Hson.canonical, data_source_tag, Hson.document]) closes(tag`${'"hello"'}`, '"hello"');
@@ -232,7 +232,7 @@ check("quoted strings preserve exact contents and cannot leak structural nodes",
     }
     closes(Hson.canonical`<main "${value}"/>`, `<main ${JSON.stringify(value)}/>`);
     closes(Hson.document`<p "${value}"/>`, `<p ${JSON.stringify(value)}/>`);
-    closes((Hson.data`<x "${value}">`).toHson(), `<x ${JSON.stringify(value)}>`);
+    closes(Hson.data`<x "${value}">`, `<x ${JSON.stringify(value)}>`);
   }
   const main = hsonTransform.fromHson(Hson.canonical`<main "${"<p/>"}"/>`).toNode();
   assert.doesNotMatch(JSON.stringify(main), /"\$_tag":"p"/);
@@ -248,7 +248,7 @@ check("runtime brands cannot alter meaning and universal STRs cross families", (
     closes(Hson.canonical`${source}`, "<p/>");
     closes(Hson.canonical`"${source}"`, '"<p/>"');
   }
-  const dataString: HsonData = Hson.data`"hello"`.toHson();
+  const dataString: HsonData = Hson.data`"hello"`;
   const documentString: HsonAuthored = Hson.document`"hello"`;
   const canonicalString: HsonCanonical = Hson.canonical`"hello"`;
   const ordinaryString: string = '"hello"';
@@ -256,7 +256,7 @@ check("runtime brands cannot alter meaning and universal STRs cross families", (
     for (const tag of [Hson.canonical, data_source_tag, Hson.document]) closes(tag`${source}`, '"hello"');
   }
   assert.equal(Hson.document`${dataString}`, '"hello"');
-  assert.equal((Hson.data`${documentString}`).toHson(), '"hello"');
+  assert.equal(Hson.data`${documentString}`, '"hello"');
 });
 
 check("undefined omission remains document-only and unquoted", () => {
@@ -321,7 +321,7 @@ check("partial quoted values share scalar spelling across authoring modes", () =
       closes(tag`"pre${value}post"`, JSON.stringify(`pre${text}post`));
       closes(tag`"${value}${""}${value}"`, JSON.stringify(text + text));
     }
-    assert.deepEqual((Hson.data`<label "pre${value}post">`).materialize(), { label: `pre${text}post` });
+    assert.deepEqual((Hson.data.parse`<label "pre${value}post">`).materialize(), { label: `pre${text}post` });
     closes(Hson.document`<a href="/slides/${value}" title="Slide ${value} of ${2}"/>`,
       `<a href=${JSON.stringify(`/slides/${text}`)} title=${JSON.stringify(`Slide ${text} of 2`)}/>`);
     closes(Hson.document`<a title="${value}${""}${value}"/>`, `<a title=${JSON.stringify(text + text)}/>`);
@@ -398,7 +398,7 @@ check("empty scalar slots retain their position through multiline framing and ma
       assert.equal(String(decoded(reference)).replaceAll("§", ""), expected);
     }
   }
-  assert.equal((Hson.data`"${""}
+  assert.equal((Hson.data.parse`"${""}
   tail
 "`).materialize(), '\n  tail\n');
 });
@@ -464,8 +464,8 @@ check("governing Schemas validate the resulting strings and retain authored qual
   assert.throws(() => schema.certify(Hson.document`<a href="/slides/${4}" title="Slide ${2} of ${3}"/>`));
   assert.throws(() => schema.certify(Hson.document`<a href="/slides/${'2" injected="yes'}" title="Slide ${2} of ${3}"/>`));
   const data = Hson.schema`<type "data" content <label <exact "pre2post">>>`;
-  assert.deepEqual((ANY_DATA.certify(Reflect.apply(data.certify, data, [Hson.data`<label "pre${2}post">`]))).materialize(), { label: "pre2post" });
-  assert.throws(() => data.certify(Hson.data`<label "pre${3}post">`));
+  assert.deepEqual((ANY_DATA.certify(Reflect.apply(data.certify, data, [Hson.data.parse`<label "pre${2}post">`]))).materialize(), { label: "pre2post" });
+  assert.throws(() => data.certify(Hson.data.parse`<label "pre${3}post">`));
   const authored = Hson.document`<a @:slide title="Slide ${2}"/>`;
   assert.match(authored, /@:slide/);
   assert.notEqual(authored, Hson.document`<a title="Slide 2"/>`);

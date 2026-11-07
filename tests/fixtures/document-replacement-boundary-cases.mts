@@ -18,7 +18,7 @@ import { get_el_for_node } from "../../src/api/livetree/utils/node-map-helpers.t
 // @ts-expect-error Caller-authored lineage has no public exported type.
 import type { LiveMapReplacementLineage } from "../../src/api/livemap/index.ts";
 
-const fixture = () => hsonLiveMap.fromLibraries({ page: { document: '<main <button @:keep/>/>', schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>` }, state: { data: { n: 0 } } });
+const fixture = () => hsonLiveMap.fromLibraries({ page: { document: '<main <button @:keep/>/>', schema: Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>` }, state: { json: { n: 0 } } });
 const target = { kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, 0]) };
 const replacement = (): HsonNode => ({ $_tag: "button", $_content: [] });
 const obsolete = [{ source: [], destination: [] }];

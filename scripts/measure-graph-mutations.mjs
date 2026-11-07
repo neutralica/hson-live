@@ -26,7 +26,7 @@ export function fixture(size, operation) {
   const value = operation==='investigation-leaf'
     ? {rows:Array.from({length:size},(_,id)=>({id,label:'row'+id,score:-0})),flag:true}
     : operation==='schema' ? {rows:rows.map(r=>r.score)} : {rows, small:{a:0,b:0,c:0,d:0}, names:{a:1,b:2,c:3}};
-  const map = hsonLiveMap.fromLibraries({state:{data:value,...(operation==='schema'?{schema}:{})}});
+  const map = hsonLiveMap.fromLibraries({state:{json:value,...(operation==='schema'?{schema}:{})}});
   const library=map.data.must('state'), engine=internal_livemap_aggregate_authority(map), index=Math.floor(size/2);
   let counter=0, toggle=false, host, replica, client;
   if(operation==='locus' || operation==='echo') host=create_locus_hosted_aggregate_internal({map});

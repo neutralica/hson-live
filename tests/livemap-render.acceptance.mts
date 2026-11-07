@@ -6,7 +6,7 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 const map = hsonLiveMap.fromLibraries({
   page: { document: "<main/>" },
   second: { document: "<aside/>" },
-  state: { data: { value: 1 } },
+  state: { json: { value: 1 } },
 });
 assert.equal(map.doc.must("page").render(), complete_html("<main></main>"));
 assert.equal(map.doc.must("second").render(), complete_html("<aside></aside>"));
@@ -18,9 +18,9 @@ assert.equal(map.rev, 0);
 const local = hsonLiveMap.fromLibraries({
   page: { document: "<main/>" },
   second: { document: "<main/>" },
-  state: { data: 1 },
+  state: { json: 1 },
   largeDocument: { document: `<aside "${"x".repeat(5 * 1024 * 1024)}"/>` },
-  largeData: { data: { payload: "y".repeat(5 * 1024 * 1024) } },
+  largeData: { json: { payload: "y".repeat(5 * 1024 * 1024) } },
 });
 const authority = internal_livemap_aggregate_authority(local);
 let unrelatedReads = 0;

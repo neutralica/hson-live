@@ -341,7 +341,7 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     finally { restored.dispose(); }
   });
   await check("actual Echo full recovery and contraction rebind selected CSS without disclosing private Libraries", async () => {
-    const map = fixture(); map.addLibraries({ extra: { document: '<aside/>' }, hidden: { data: { PRIVATE_PART_SENTINEL: true } } });
+    const map = fixture(); map.addLibraries({ extra: { document: '<aside/>' }, hidden: { json: { PRIVATE_PART_SENTINEL: true } } });
     owner(map).restorePortableLibraries({ ...map.capture(), revision: 0 });
     const sourceQuid = assertCurrentCss(map)[0]!;
     const server = create_locus_hosted_aggregate_authority_internal({ map,

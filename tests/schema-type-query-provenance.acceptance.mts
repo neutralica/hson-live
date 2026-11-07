@@ -25,9 +25,9 @@ mkdirSync(installed, { recursive: true });
 cpSync(join(root, "package.json"), join(installed, "package.json"));
 cpSync(join(root, "dist"), join(installed, "dist"), { recursive: true });
 const schemaSource = '<type "data" content <name "string">>';
-const imports = 'import { Hson, type HsonDataValue } from "hson-live";\n';
-const assignment = (name: string, schema: string, content = '"Ada"') => `const ${name}: HsonDataValue<typeof ${schema}> = Hson.data\`<name ${content}>\`;`;
-const completion = (binding: string, annotation = "HsonDataValue<typeof S>", tag = "Hson.data") =>
+const imports = 'import { Hson, type HsonData } from "hson-live";\n';
+const assignment = (name: string, schema: string, content = '"Ada"') => `const ${name}: HsonData<typeof ${schema}> = Hson.data\`<name ${content}>\`;`;
+const completion = (binding: string, annotation = "HsonData<typeof S>", tag = "Hson.data") =>
   imports + binding + `\nconst value: ${annotation} = ${tag}\`<na\`;`;
 const files: Readonly<Record<string, string>> = {
   "schema.ts": 'import { Hson } from "hson-live";\n'
@@ -42,7 +42,7 @@ const files: Readonly<Record<string, string>> = {
   "complete-value.ts": completion('import { S } from "./schema.js";'),
   "complete-reexport.ts": completion('import type { Reexported as S } from "./type-star.js";'),
   "complete-chain.ts": completion('import type { Chained as S } from "./type-star.js";'),
-  "complete-annotation-alias.ts": completion('import type { Next as S } from "./schema.js"; type Alias<T extends typeof S> = HsonDataValue<T>;', "Alias<typeof S>"),
+  "complete-annotation-alias.ts": completion('import type { Next as S } from "./schema.js"; type Alias<T extends typeof S> = HsonData<T>;', "Alias<typeof S>"),
   "complete-bad-direct.ts": completion('import type { S } from "./schema.js\n'),
   "complete-bad-import.ts": completion('import type { S } from "./malformed-import.js";'),
   "complete-bad-export.ts": completion('import type { S } from "./malformed-export.js";'),
@@ -50,12 +50,12 @@ const files: Readonly<Record<string, string>> = {
   "complete-bad-alias.ts": completion('import type { Bad as S } from "./malformed-alias.js";'),
   "complete-invalid-value-alias.ts": completion('import type { Bad as S } from "./invalid-value-alias.js";'),
   "complete-missing.ts": completion('import type { S } from "./missing.js";'),
-  "complete-type-producer.ts": completion('import type { S } from "./schema.js"; import type { Hson as TypeHson } from "hson-live";', "HsonDataValue<typeof S>", "TypeHson.data"),
+  "complete-type-producer.ts": completion('import type { S } from "./schema.js"; import type { Hson as TypeHson } from "hson-live";', "HsonData<typeof S>", "TypeHson.data"),
   "attachments.ts": imports + [
     'import { hsonLiveMap } from "hson-live"; import { S as Value, type S as Query } from "./schema.js";',
-    'const typeTarget = hsonLiveMap.fromLibraries({ entry: { data: { name: 42 } } });',
+    'const typeTarget = hsonLiveMap.fromLibraries({ entry: { json: { name: 42 } } });',
     'typeTarget.data.must("entry").schema.use(Query);',
-    'const valueTarget = hsonLiveMap.fromLibraries({ entry: { data: { name: 42 } } });',
+    'const valueTarget = hsonLiveMap.fromLibraries({ entry: { json: { name: 42 } } });',
     'valueTarget.data.must("entry").schema.use(Value);',
   ].join("\n"),
   "queries.ts": imports + [

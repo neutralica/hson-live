@@ -44,8 +44,8 @@ function socket_pair() {
 
 function make_map() {
   return hsonLiveMap.fromLibraries({
-    game: { data: { ready: true } },
-    private: { data: { ready: true } },
+    game: { json: { ready: true } },
+    private: { json: { ready: true } },
     page: { document: "<main/>" },
   });
 }
@@ -337,13 +337,13 @@ for (const strategy of ["replay", "reconcile"] as const) {
     assert.equal(locus.rev, 3);
     let nestedAddition: Promise<unknown> | undefined;
     await locus.stage(() => {
-      nestedAddition = locus.admit({ "later": { data: { value: 1 }, access: "shared" } });
+      nestedAddition = locus.admit({ "later": { json: { value: 1 }, access: "shared" } });
     });
     if (nestedAddition === undefined) throw new Error("Nested library addition was not attempted.");
     await assert.rejects(nestedAddition, /active stage/i);
     assert.equal(locus.rev, 3);
     assert.throws(() => locus.data.must("later"), /Unknown/);
-    await locus.admit({ "later": { data: { value: 1 }, access: "shared" } });
+    await locus.admit({ "later": { json: { value: 1 }, access: "shared" } });
     assert.equal(locus.rev, 4);
     assert.equal(locus.data.must("later").mode, "data-object");
   } finally { locus.dispose(); }
@@ -432,7 +432,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 
 {
   const schema = Hson.schema`<type "data" content <count "number">>`;
-  let map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema } });
+  let map = hsonLiveMap.fromLibraries({ state: { json: { count: 0 }, schema } });
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
   map = locus_map_internal(locus);
   try {

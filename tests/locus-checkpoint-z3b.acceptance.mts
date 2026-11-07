@@ -47,8 +47,8 @@ function socket_pair(): { client: LocusWebSocketLike; server: LocusWebSocketLike
   };
 }
 function make_map() {
-  return hsonLiveMap.fromLibraries({ public: { data: { value: "public" }, schema: Data },
-    private: { data: { value: "private" }, schema: Data } });
+  return hsonLiveMap.fromLibraries({ public: { json: { value: "public" }, schema: Data },
+    private: { json: { value: "private" }, schema: Data } });
 }
 const libraries = [{ name: "public", ownership: "shared" as const },
   { name: "private", ownership: "private" as const }];
@@ -102,13 +102,13 @@ await case_("restart reapplies deployment local definitions without persisting c
   const id = "z3b-local-catalog";
   const libraries = [
     { name: "public", ownership: "shared" as const },
-    { name: "ui", ownership: "local" as const, initializer: { data: { value: 0 } } },
+    { name: "ui", ownership: "local" as const, initializer: { json: { value: 0 } } },
   ];
   const options = { persistence: adapter, logicalMapId: id, libraries,
     authorizeProjection: ({ requested }: { requested: { libraries: readonly string[] } }) =>
       ({ libraries: requested.libraries }) };
   const locus = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options,
-    map: hsonLiveMap.fromLibraries({ public: { data: { value: 1 } } }) }));
+    map: hsonLiveMap.fromLibraries({ public: { json: { value: 1 } } }) }));
   const session = await locus.session.create({ libraries: ["public", "ui"] });
   const pair = socket_pair(); const detach = bind_locus_websocket(locus, pair.server);
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
@@ -125,7 +125,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   echo.dispose(); detach(); locus.dispose();
 
   const restored = await resume_locus_fixture(authority_definition_from_fixture_options({ ...options,
-    map: hsonLiveMap.fromLibraries({ public: { data: { value: 0 } } }) }));
+    map: hsonLiveMap.fromLibraries({ public: { json: { value: 0 } } }) }));
   assert.throws(() => restored.data.must("ui"), /Unknown/i);
   const freshSession = await restored.session.create({ libraries: ["public", "ui"] });
   const freshPair = socket_pair(); const detachFresh = bind_locus_websocket(restored, freshPair.server);
@@ -138,11 +138,11 @@ await case_("restart reapplies deployment local definitions without persisting c
   const conflictAdapter = new MemoryCheckpointAdapter();
   const conflictId = "z3b-restored-local-collision";
   const oldDeployment = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), []), persistence: conflictAdapter, logicalMapId: conflictId });
-  await oldDeployment.admit({ "ui": { data: { value: 9 }, access: "private" } });
+  await oldDeployment.admit({ "ui": { json: { value: 9 }, access: "private" } });
   await hsonLiveMap.locus.checkpoint(oldDeployment);
   oldDeployment.dispose();
   await assert.rejects(resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), [
-      { name: "ui", ownership: "local", initializer: { data: { value: 0 } } },
+      { name: "ui", ownership: "local", initializer: { json: { value: 0 } } },
     ]), persistence: conflictAdapter, logicalMapId: conflictId }), /collid|catalog|authority|topology/i);
 });
 
@@ -194,8 +194,8 @@ await case_("checkpoint chunks exclude runtime QUID identity and restore fresh i
 await case_("two data and two document libraries retain system interactions and tail lineage", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const map = hsonLiveMap.fromLibraries({
-    dataA: { data: { value: "A0" }, schema: Data },
-    dataB: { data: { value: "B0" }, schema: Data },
+    dataA: { json: { value: "A0" }, schema: Data },
+    dataB: { json: { value: "B0" }, schema: Data },
     pageA: { document: "<main <button id=\"one\"/> <button id=\"two\"/>/>", schema: Buttons },
     pageB: { document: "<main/>", schema: Page },
   });
@@ -416,10 +416,10 @@ await case_("one root above 4 MiB and aggregate above 64 MiB checkpoint and rest
   const adapter = new MemoryCheckpointAdapter();
   const count = 16;
   const names = Array.from({ length: count }, (_, index) => `private${index}`);
-  const inputs: Record<string, { data: { value: string }; schema: HsonSchema } | { document: string; schema: HsonSchema }> = Object.create(null);
-  inputs.public = { data: { value: "tiny" }, schema: Data };
+  const inputs: Record<string, { json: { value: string }; schema: HsonSchema } | { document: string; schema: HsonSchema }> = Object.create(null);
+  inputs.public = { json: { value: "tiny" }, schema: Data };
   inputs.page = { document: "<main/>", schema: Page };
-  for (const name of names) inputs[name] = { data: { value: "" }, schema: Data };
+  for (const name of names) inputs[name] = { json: { value: "" }, schema: Data };
   const map = hsonLiveMap.fromLibraries(inputs);
   const libraries = [{ name: "public", ownership: "shared" as const },
     { name: "page", ownership: "shared" as const },

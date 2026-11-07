@@ -41,7 +41,7 @@ const replace = (coordinate: readonly number[], index: number, member = "panel")
   ({ domain: "graph", op: "replace-content", target: target(coordinate), index, replacement: connector(member) });
 
 function fixture(text = shell) {
-  const map = hsonLiveMap.fromLibraries({ parts: { parts: parts }, state: { data: { n: 0 } },
+  const map = hsonLiveMap.fromLibraries({ parts: { parts: parts }, state: { json: { n: 0 } },
     page: { document: '<main/>' }, unrelated: { document: '<aside @:other/>' } });
   const unrelated = map.doc.must("unrelated");
   if (unrelated.mode !== "document") throw Error("Expected document Library.");

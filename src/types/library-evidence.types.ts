@@ -49,8 +49,10 @@ type DefinitionSchema<T, F extends "data" | "document"> = T extends { schema: in
 /** Family, governing Schema identity and governed value are derived once, independently of membership. */
 export type LibraryDefinitionEvidence<T> = T extends { parts: unknown }
   ? { family: "parts"; value: LiveMapPartCollection; schema: typeof import("../api/schema/hson-schema.js").ANY_DATA }
-  : T extends { data: infer Initial }
+  : T extends { json: infer Initial }
     ? { family: "data"; value: T extends { schema: infer S extends HsonSchema } ? DataSchemaValue<S> : DataRoot<Initial>; schema: DefinitionSchema<T, "data"> }
+    : T extends { hson: string }
+      ? { family: "data"; value: T extends { schema: infer S extends HsonSchema } ? DataSchemaValue<S> : JsonValue; schema: DefinitionSchema<T, "data"> }
     : T extends { document: unknown }
       ? { family: "document"; value: T extends { schema: infer S extends HsonSchema } ? DocumentSchemaGraph<S> : HsonNode; schema: DefinitionSchema<T, "document"> }
       : never;

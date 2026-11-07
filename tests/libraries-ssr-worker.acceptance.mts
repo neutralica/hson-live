@@ -9,8 +9,8 @@ import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-run
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
 const map = admit_exact_runtime_livemap_libraries({
-  state: { data: { count: 4 }, schema: StateSchema },
-  omitted: { data: true },
+  state: { json: { count: 4 }, schema: StateSchema },
+  omitted: { json: true },
   page: { document: parse_hson_exact_runtime('<html <head/> <body <main <p @000009711 "worker"/>/>/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
 });
 const node = map.cut({ data: ["state"], documents: ["page"], html: "page" });

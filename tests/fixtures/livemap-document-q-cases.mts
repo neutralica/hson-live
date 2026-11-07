@@ -384,7 +384,7 @@ export function document_q_cases(check: (name: string, run: () => void) => void)
     } finally { allocator(owner(map).identityEpoch().owner, undefined); off(); stop(); }
     assert.deepEqual(map.capture(), before); assert.equal(owner(map).identityEpoch().issued(), ledger);
     assert.equal(allocations, 0); assert.equal(commits, 0); assert.equal(positions, 0);
-    const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, data: { data: { member: {} } } });
+    const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' }, data: { json: { member: {} } } });
     const clean = plain.capture(); assert.equal(page(plain).q("anything"), undefined);
     assert.equal("q" in plain.data.must("data"), false); assert.equal(owner(plain).identityEpoch().issued().size, 0);
     assert.deepEqual(plain.capture(), clean);

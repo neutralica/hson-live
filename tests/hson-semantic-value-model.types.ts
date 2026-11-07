@@ -64,7 +64,7 @@ void serialized;
 void neutralAsData; void dataAsDocument; void documentAsData; void unprovedAsProved;
 void crossIdentity; void dataAsSchema; void sliced; void appended;
 
-const dataMap = hsonLiveMap.fromLibraries({ state: { data: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
+const dataMap = hsonLiveMap.fromLibraries({ state: { hson: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
 const governedData: LiveMapDataLibrary<JsonFromSchema<typeof SameShapeOneSchema>, "state", typeof SameShapeOneSchema> = dataMap.data.must("state");
 const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id="hero" <header/> <section "body"/>/>`, schema: PageSchema } });
 const governedDocument: LiveMapDocumentLibrary<DocumentSchemaGraph<typeof PageSchema>> = documentMap.doc.must("page");
@@ -82,10 +82,10 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
 type Assert<T extends true> = T;
 type DeckHson = HsonFromSchema<typeof UserSchema>;
 type DeckJson = JsonFromSchema<typeof UserSchema>;
-type DataRepresentation = Assert<Equal<DeckHson, HsonDataValue<typeof UserSchema>>>;
+type DataRepresentation = Assert<Equal<DeckHson, HsonData<typeof UserSchema>>>;
 type DocumentRepresentation = Assert<Equal<HsonFromSchema<typeof PageSchema>, HsonDocument<typeof PageSchema>>>;
 declare const deckJson: DeckJson;
-const deckHson: DeckHson = proved;
+const deckHson: DeckHson = proved.toHson();
 // @ts-expect-error A document Schema is not a JSON value Schema.
 type PageJson = JsonFromSchema<typeof PageSchema>;
 // @ts-expect-error Hson proof text is not a JSON value.

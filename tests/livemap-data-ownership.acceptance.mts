@@ -35,7 +35,7 @@ async function check(name: string, run: () => unknown): Promise<void> {
 
 const schema = Hson.schema`<type "data" content "any">`;
 const create = () => hsonLiveMap.fromLibraries({
-  state: { data: { items: [[]], other: 0, nested: { value: [] } }, schema },
+  state: { json: { items: [[]], other: 0, nested: { value: [] } }, schema },
 });
 
 function canonical(state: Pick<LiveMapDataLibrary, "root"> & { snap: () => unknown }): JsonValue {
@@ -171,7 +171,7 @@ await check("frozen Proxy arrays detach, publish the captured value and survive 
 
 await check("changing valid Proxy descriptors are captured once for graph, schema and operations", () => {
   const finiteSchema = Hson.schema`<type "data" content <items <array "number"> other "number">>`;
-  const map = hsonLiveMap.fromLibraries({ state: { data: { items: [], other: 0 }, schema: finiteSchema } });
+  const map = hsonLiveMap.fromLibraries({ state: { json: { items: [], other: 0 }, schema: finiteSchema } });
   const state = map.data.must("state");
   let reads = 0;
   const input = new Proxy([0], {
@@ -269,7 +269,7 @@ await check("aggregate commands capture at enqueue time and late failures remain
 
 await check("schema rejects the captured candidate before any installation or publication", () => {
   const map = hsonLiveMap.fromLibraries({ state: {
-    data: { items: [1], other: 0 },
+    json: { items: [1], other: 0 },
     schema: Hson.schema`<type "data" content <items <array "number"> other "number">>`,
   } });
   const state = map.data.must("state"), before = map.capture();
@@ -293,7 +293,7 @@ await check("schema rejects the captured candidate before any installation or pu
 
 await check("Locus and Echo keep complete canonical Data equal at matching authority revisions", async () => {
   const locus = hsonLiveMap.locus.create({ state: {
-    data: { items: [], other: 0 }, schema, access: "shared",
+    json: { items: [], other: 0 }, schema, access: "shared",
   } }, { defaultProjection: { libraries: ["state"] }, authorizeProjection: () => ({ libraries: ["state"] }) });
   const toServer = new Set<(raw: string) => void>(), toClient = new Set<(raw: string) => void>();
   const client: LocusWebSocketLike = {

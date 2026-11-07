@@ -1,5 +1,5 @@
 /// <reference path="./support/ambient.d.ts" />
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDataValue, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
 import type { JsonValue } from "hson-live/hson";
 import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, CompletedPageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
 import { slideSchema as sameSlide } from "./schema.js";
@@ -26,12 +26,12 @@ type StructuralFlags = Assert<Equal<JsonFromSchema<typeof RecordSchema>["flags"]
 declare const document: HsonDocument<typeof slideSchema>;
 const sameDocument: HsonDocument<typeof sameSlide> = document;
 // @ts-expect-error Document mode cannot be admitted as data mode.
-type WrongMode = HsonDataValue<typeof slideSchema>;
+type WrongMode = HsonData<typeof slideSchema>;
 // @ts-expect-error Identical document text does not make two declarations interchangeable.
 const otherDocument: HsonDocument<typeof twinSchema> = document;
-declare const plain: HsonDataValue<typeof PlainA>;
+declare const plain: HsonData<typeof PlainA>;
 // @ts-expect-error Value types are both JsonValue; their Schema identities still differ.
-const otherPlain: HsonDataValue<typeof PlainB> = plain;
+const otherPlain: HsonData<typeof PlainB> = plain;
 
 declare const value: JsonFromSchema<typeof RecordSchema>;
 const status: "ready" = value.status;
@@ -54,7 +54,7 @@ const mainTag: "main" = page.$_content[0].$_tag;
 const sectionTag: "section" = page.$_content[0].$_content[0].$_content[0].$_tag;
 const hidden: "hidden" | undefined = page.$_content[0].$_attrs.hidden;
 
-const map = hsonLiveMap.fromLibraries({ state: { schema: RecordSchema, data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } } });
+const map = hsonLiveMap.fromLibraries({ state: { schema: RecordSchema, json: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] } } });
 map.data.must("state").at(["age"]).set(4);
 map.data.must("state").at(["flags"]).replace([false, true]);
 // @ts-expect-error Mutation candidates retain member types.
@@ -71,7 +71,7 @@ const admittedText: string = admittedDocument.doc.must("home").at([1, 0, 0, 0]).
 admittedDocument.doc.must("home").at([2]);
 // @ts-expect-error Admitted text endpoints do not expose element attributes.
 admittedDocument.doc.must("home").at([1, 0, 0, 0]).attrs;
-const admittedData = hsonLiveMap.fromLibraries({ record: { data: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] }, schema: RecordSchema } });
+const admittedData = hsonLiveMap.fromLibraries({ record: { json: { name: "Ada", age: 3, status: "ready", choice: "left", flags: [true], pair: ["x", 1] }, schema: RecordSchema } });
 const exactDataGetter: typeof RecordSchema = admittedData.data.must("record").schema.get();
 admittedData.data.must("record").schema.use(RecordSchema);
 // @ts-expect-error Admitted Data mutations retain member types.
@@ -79,7 +79,7 @@ admittedData.data.must("record").at(["age"]).set("four");
 // @ts-expect-error Admitted Data paths reject undeclared members.
 admittedData.data.must("record").at(["missing"]);
 
-const broad = hsonLiveMap.fromLibraries({ home: { document: '<main/>', schema: ANY_DOCUMENT }, record: { data: { name: "Ada" }, schema: ANY_DATA } });
+const broad = hsonLiveMap.fromLibraries({ home: { document: '<main/>', schema: ANY_DOCUMENT }, record: { json: { name: "Ada" }, schema: ANY_DATA } });
 broad.doc.must("home").schema.use(CompletedPageSchema);
 broad.data.must("record").schema.use(RecordSchema);
 // @ts-expect-error Prohibited post-admission use cannot prove a different governing Schema.
@@ -107,9 +107,9 @@ export const refinedTitle = publicRefined.doc.must("home").at([1, 0, 0, 0]);
 export function getRefinedTitle() { return publicRefined.doc.must("home").at([1, 0, 0, 0]); }
 
 // Existing static-literal validation is reused for generated inputs as well.
-const authored: HsonDataValue<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
+const authored: HsonData<typeof RecordSchema> = Hson.data`<name "Ada" age 3 status "ready" choice "left" flags [true] pair ["x", 1]>`;
 const authoredDocument: HsonDocument<typeof slideSchema> = slideSchema.certify(Hson.document`<main/>`);
-const broadData: HsonDataValue<typeof annotatedSchema> = annotatedSchema.certify(Hson.data`42`);
+const broadData: import("hson-live").HsonDataValue<typeof annotatedSchema> = annotatedSchema.certify(Hson.data.parse`42`);
 
 declare const tsSchema: typeof TsSchema;
 // @ts-expect-error Same stem and export name, distinct .mts declaration.

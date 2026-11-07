@@ -37,7 +37,7 @@ const css = structured_css_fixture('[hson\\:quad="footer"]{color:purple}main{dis
 const initialCatalog = [{ name: "parts", ownership: "private" }, { name: "initial", ownership: "shared" }, { name: "hidden", ownership: "private" }] as const;
 const additions = [{ name: "page", ownership: "shared" }, { name: "data", ownership: "shared" }] as const;
 const catalog = [...initialCatalog, ...additions];
-function initial() { return hsonLiveMap.fromLibraries({ parts, initial: { document: '<aside @:initial/>' }, hidden: { data: { secret: "PRIVATE_LIBRARY" } } }); }
+function initial() { return hsonLiveMap.fromLibraries({ parts, initial: { document: '<aside @:initial/>' }, hidden: { json: { secret: "PRIVATE_LIBRARY" } } }); }
 function id(map: LiveMap, name: string) { const a = authority(map); return a.libraries()[a.hostedRegistry().libraries.findIndex(e => e.name === name)]!; }
 function data(map: LiveMap, name: string) { const library = map.data.must(name); if (String(library.mode) === "document") throw Error(); return library.snap(); }
 function state(map: LiveMap, name = "page") { return authority(map).scopedDocumentState(id(map, name)); }
@@ -65,7 +65,7 @@ export async function topology_tail_fixture() {
   const l = await persist({ map, persistence: adapter, scopedDocuments: true });
   const epoch = a.identityEpoch().current(), oldIds = issued(a.identityEpoch().issued()), initialState = state(map, "initial");
   let observations = 0; const off = map.commits.observe(() => observations++);
-  const commit = await l.add_libraries_internal({ page, data: { data: { n: 0 } } }, undefined, additions, { page: css });
+  const commit = await l.add_libraries_internal({ page, data: { json: { n: 0 } } }, undefined, additions, { page: css });
   off(); assert.equal(observations, 1); assert.equal(l.rev, 1); assert.equal(a.identityEpoch().current(), epoch);
   assert.ok(oldIds.every(q => a.identityEpoch().issued().has(q))); assert.ok(equal(initialState, state(map, "initial")));
   assert.deepEqual(commit.topology!.operation.libraries.map(e => e.name), ["page", "data"]);
@@ -78,7 +78,7 @@ export async function topology_tail_fixture() {
   assert.throws(() => map.capture(), /Echo/);
   const effective = await projection(map), snapshot = capture(map, effective, true);
   assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNUSED_PART|PRIVATE_LIBRARY|"name":"parts"/);
-  const echo = receive(snapshot, local_initializers({ local: { data: 1 } })); assert.ok(echo.map);
+  const echo = receive(snapshot, local_initializers({ local: { json: 1 } })); assert.ok(echo.map);
   assert.ok(equal(state(map), state(echo.map))); assert.throws(() => echo.map!.parts.must("parts"));
   const sourceIds = issued(a.identityEpoch().issued());
   for (const quid of issued(authority(echo.map).identityEpoch().issued())) assert.ok(!sourceIds.includes(quid));
@@ -108,7 +108,7 @@ export async function verify_topology_restart(f: Awaited<ReturnType<typeof topol
     for (const quid of issued(a.identityEpoch().issued())) assert.ok(!f.sourceIds.includes(quid));
     const effective = await projection(l.map), snapshot = capture(l.map, effective, true);
     assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNUSED_PART|PRIVATE_LIBRARY|"name":"parts"/);
-    const echo = receive(snapshot, local_initializers({ local: { data: 1 } })); assert.ok(echo.map);
+    const echo = receive(snapshot, local_initializers({ local: { json: 1 } })); assert.ok(echo.map);
     try {
       assert.ok(equal(state(l.map), state(echo.map)));
       const op = await l.stage(w => { const d = w.doc.must("page"); if (d.mode !== "document") throw Error(); d.attrs.set({ kind: "path", path: path([0, 0, 1, 0, 0]) }, "title", "restarted"); });
@@ -141,7 +141,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
   });
   await check("H0b public Locus uses private/shared and same-batch Parts without publishing their definitions", async () => {
     for (const ownership of ["private", "shared"] as const) for (const batch of [false, true]) {
-      const map = batch ? hsonLiveMap.fromLibraries({ initial: { data: 0 } }) : hsonLiveMap.fromLibraries({ parts, initial: { data: 0 } });
+      const map = batch ? hsonLiveMap.fromLibraries({ initial: { json: 0 } }) : hsonLiveMap.fromLibraries({ parts, initial: { json: 0 } });
       const libraries = batch ? [{ name: "initial", ownership: "shared" as const }] : [{ name: "parts", ownership }, { name: "initial", ownership: "shared" as const }];
       const { locus } = create_registry_locus_internal({ map, libraries, defaultProjection: { libraries: ["initial"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
       try {
@@ -177,7 +177,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     try {
       const session = await locus.session.create({ libraries: ["initial"] }, { resumable: true });
       const sessionBefore = session.now(), verify = preserved(map);
-      await assert.rejects(locus.admit({ "earlier": { data: 1, access: "shared" }, "page": { document: '<hson-part lib="parts" at="missing"/>', access: "shared" } }), /Unknown Part/);
+      await assert.rejects(locus.admit({ "earlier": { json: 1, access: "shared" }, "page": { document: '<hson-part lib="parts" at="missing"/>', access: "shared" } }), /Unknown Part/);
       verify(); assert.deepEqual(session.now(), sessionBefore); assert.throws(() => locus.data.must("earlier"));
     } finally { locus.dispose(); }
   });
@@ -190,7 +190,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     const receiver = compose_client_projection_internal(captureSession(map, sessions, "topology", true), local_initializers({}), true);
     const r = authority(receiver), manager = {}; r.claimManagement(manager);
     try {
-      map.addLibraries({ page, data: { data: 1 } });
+      map.addLibraries({ page, data: { json: 1 } });
       const authorized = await projection(map); sessions.update_projection("topology", before, authorized);
       const snapshot = captureSession(map, sessions, "topology", true), incoming = composition(snapshot, true);
       assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE_UNUSED_PART|PRIVATE_LIBRARY|"name":"parts"/);
@@ -199,7 +199,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       verify();
       reconcile_client_projection_snapshot_internal(receiver, manager, incoming, true);
       assert.ok(equal(state(map), state(receiver)));
-      const fresh = compose_client_projection_internal(snapshot, local_initializers({ local: { data: 9 } }), true);
+      const fresh = compose_client_projection_internal(snapshot, local_initializers({ local: { json: 9 } }), true);
       const fa = authority(fresh), owner = {}; fa.claimManagement(owner);
       try {
         assert.ok(equal(state(map), state(fresh))); const local = fresh.data.must("local"), localRoot = fa.root(id(fresh, "local"));
@@ -226,9 +226,9 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
   await check("H0b invalid final definitions, duplicate names, missing Parts and schema failures preserve the complete map", async () => {
     const map = initial(); map.addLibraries({ page });
     const invalid: LiveMapDefinitions[] = [
-      { earlier: { data: 2 }, bad: { document: '<hson-part lib="missing" at="x"/>' } },
-      { earlier: { data: 2 }, bad: { document: '<hson-part lib="parts" at="missing"/>' } },
-      { earlier: { data: 2 }, page },
+      { earlier: { json: 2 }, bad: { document: '<hson-part lib="missing" at="x"/>' } },
+      { earlier: { json: 2 }, bad: { document: '<hson-part lib="parts" at="missing"/>' } },
+      { earlier: { json: 2 }, page },
       { earlier: page, bad: { document: '<main <hson-part lib="parts" at="panel"/>/>', schema: Hson.schema`<type "document" tag "main" content "empty">` } },
       { earlier: page, bad: { parts: { broken: { kind: "document", document: '<p' } } } },
     ];
@@ -243,7 +243,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
         if (!entered) { entered = true; a.releaseManagement(owner); if (change === "reacquire") a.claimManagement(owner); }
         return mint_hson_node_quid();
       });
-      try { assert.throws(() => prepare_hosted_livemap_library_add_internal(map, owner, { earlier: { data: 1 }, page }), /QUID|management authority changed/); verify(); }
+      try { assert.throws(() => prepare_hosted_livemap_library_add_internal(map, owner, { earlier: { json: 1 }, page }), /QUID|management authority changed/); verify(); }
       finally { allocator(a.identityEpoch().owner, undefined); a.releaseManagement(owner); }
     }
     const map = initial(), a = authority(map), manager = {}; a.claimManagement(manager);
@@ -255,7 +255,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
   });
   await check("H0b independently accepted reentrant topology survives rejection of the outer candidate", async () => {
     const map = initial(), a = authority(map); let inner: ReturnType<typeof preserved> | undefined;
-    allocator(a.identityEpoch().owner, () => { if (!inner) { map.addLibraries({ inner: { data: 9 } }); inner = preserved(map); } return mint_hson_node_quid(); });
+    allocator(a.identityEpoch().owner, () => { if (!inner) { map.addLibraries({ inner: { json: 9 } }); inner = preserved(map); } return mint_hson_node_quid(); });
     try { assert.throws(() => map.addLibraries({ page }), /changed|stale/); inner!(); assert.equal(data(map, "inner"), 9); }
     finally { allocator(a.identityEpoch().owner, undefined); }
   });
@@ -291,8 +291,8 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     const map = initial(), a = authority(map), adapter = new MemoryCheckpointAdapter(), l = await persist({ map, persistence: adapter, scopedDocuments: true });
     const append = adapter.appendCommit.bind(adapter); let queued: Promise<unknown> | undefined;
     adapter.appendCommit = async () => {
-      const verify = preserved(map); assert.throws(() => map.addLibraries({ bypass: { data: 1 } })); verify();
-      queued = l.add_libraries_internal({ inner: { data: 7 } }, undefined, [{ name: "inner", ownership: "private" }]);
+      const verify = preserved(map); assert.throws(() => map.addLibraries({ bypass: { json: 1 } })); verify();
+      queued = l.add_libraries_internal({ inner: { json: 7 } }, undefined, [{ name: "inner", ownership: "private" }]);
       adapter.appendCommit = append; throw Error("refused");
     };
     const before = a.captureSemanticCheckpoint(), ledger = a.identityEpoch().issued();

@@ -36,7 +36,7 @@ const descriptor: BrowserInteractionDescriptor = {
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
 };
 function fixture(multipleDocuments = false, schema?: HsonSchema, rows: JsonValue = [1, 2]) {
-  const map = hsonLiveMap.fromLibraries({ state: { data: { rows, n: 0 }, ...(schema ? { schema } : {}) }, page: { document: "<main/>" },
+  const map = hsonLiveMap.fromLibraries({ state: { json: { rows, n: 0 }, ...(schema ? { schema } : {}) }, page: { document: "<main/>" },
     ...(multipleDocuments ? { second: { document: "<aside/>" }, third: { document: "<footer/>" } } : {}) });
   enable_interactions(map);
   return map;

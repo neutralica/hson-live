@@ -6,10 +6,10 @@ declare const Deck: HsonSchema<{ readonly slides: readonly { readonly title: str
 declare const maybeSchema: typeof Deck | undefined;
 declare const broadSchema: HsonSchema | undefined;
 const map = hsonLiveMap.fromLibraries({
-  page: { document: '<main/>' }, deck: { data: { slides: [] }, schema: Deck },
+  page: { document: '<main/>' }, deck: { json: { slides: [] }, schema: Deck },
   components: { parts: { button: { kind: "document", document: '<button hson:part/>' } } },
   name: { document: '<aside/>' }, must: { document: '<aside/>' }, then: { document: '<aside/>' },
-  array: { data: [1] },
+  array: { json: [1] },
   __defineGetter__: { document: "<main/>" }, __defineSetter__: { document: "<main/>" },
   __lookupGetter__: { document: "<main/>" }, __lookupSetter__: { document: "<main/>" },
 });
@@ -33,7 +33,7 @@ map.data("deck")?.at(["slides"]).array.map(slide => slide.title);
 map.data.must("deck", maybeSchema).at(["slides"]).array.map(slide => slide.title);
 
 const dynamic = hsonLiveMap.create();
-dynamic.addLibraries({ incoming: { data: { slides: [] }, schema: Deck } });
+dynamic.addLibraries({ incoming: { json: { slides: [] }, schema: Deck } });
 // @ts-expect-error Admission does not retroactively add property inventory.
 dynamic.data.incoming;
 dynamic.doc.must("runtimeDocument").render();
@@ -46,7 +46,7 @@ dynamic.data.must("incoming", undefined).at(["slides"]).array;
 // @ts-expect-error Broad optional Schema carries no precise inventory or value proof.
 dynamic.data.must("incoming", broadSchema).snap() satisfies { slides: readonly { title: string }[] };
 
-declare const uncertain: { deck?: { data: { slides: never[] }; schema: typeof Deck } };
+declare const uncertain: { deck?: { json: { slides: never[] }; schema: typeof Deck } };
 const possible = hsonLiveMap.fromLibraries(uncertain);
 // @ts-expect-error Possible membership is still optional on properties.
 possible.data.deck.snap();

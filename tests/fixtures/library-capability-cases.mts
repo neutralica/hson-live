@@ -56,7 +56,7 @@ export async function library_capability_cases() {
   try {
     await locus.admit({ "privatePage": { document: "<aside/>", access: "private" } });
     assert.equal(locus.doc.must("privatePage").render(), "<!doctype html><html><head></head><body><aside></aside></body></html>");
-    await assert.rejects(locus.admit({ "privatePage": { data: 1, access: "shared" } }));
+    await assert.rejects(locus.admit({ "privatePage": { json: 1, access: "shared" } }));
     await locus.stage(w => { w.doc.must("page").at([1, 0]).asElement().attrs.set("title", "button"); });
     const selected = locus.doc.must("page");
     if (selected.mode !== "document") throw Error("Expected document");
@@ -85,7 +85,7 @@ export async function library_capability_cases() {
 
 export async function collection_capability_cases() {
   const initial = { slides: [{ id: "one", column1: [{ kind: "heading", content: "Title" }] }] };
-  const local = hsonLiveMap.fromLibraries({ deck: { data: initial, schema: DeckSchema }, page: { document: page, schema: PageSchema } });
+  const local = hsonLiveMap.fromLibraries({ deck: { json: initial, schema: DeckSchema }, page: { document: page, schema: PageSchema } });
   const slides = local.data.must("deck").at(["slides"]);
   assert.equal("push" in slides, false);
   assert.deepEqual(slides.array.map(slide => slide.id), ["one"]);
@@ -126,7 +126,7 @@ export async function collection_capability_cases() {
   local.batch(writer => { const array = writer.data.must("deck").at(["slides"]).array; expired = () => array.clear(); });
   assert.throws(() => expired!(), /expired/i);
 
-  const updates = hsonLiveMap.fromLibraries({ values: { data: [1] } });
+  const updates = hsonLiveMap.fromLibraries({ values: { json: [1] } });
   const updatePath = updates.data.must("values").at([]).asArray()!;
   const updateCommit = updatePath.update(snapshot => {
     updatePath.array.push(2);
@@ -138,7 +138,7 @@ export async function collection_capability_cases() {
   updatePath.array.clear();
   for (const action of [() => updatePath.array.pop(), () => updatePath.array.shift(), () => updatePath.array.first(), () => updatePath.array.at(0)]) assert.throws(action);
 
-  const ordered = hsonLiveMap.fromLibraries({ record: { data: Hson.data.fromSource('{"10":10,"2":2,"a":1}') } });
+  const ordered = hsonLiveMap.fromLibraries({ record: { json: Hson.data.fromSource('{"10":10,"2":2,"a":1}') } });
   const object = ordered.data.must("record").at([]).asObject()!.object;
   assert.deepEqual(object.keys(), ["10", "2", "a"]);
   assert.deepEqual(object.entries().map(([key]) => key), ["10", "2", "a"]);
@@ -149,7 +149,7 @@ export async function collection_capability_cases() {
   const schema = Hson.schema`<type "data" content <values <array "number"> record "any" choice "any">>` as HsonSchema<Values, "data">;
   const state = { values: [3, 1, 2], record: { a: 1, b: 2 }, choice: [1] };
   let actionReads = 0;
-  const locus = hsonLiveMap.locus.create({ "deck": { data: initial, schema: DeckSchema, access: "shared" }, "state": { data: state, schema, access: "shared" }, "page": { document: page, schema: PageSchema, access: "shared" } }, { local: [{ name: "ui", initializer: { data: { values: [1] } } }], authorizeProjection: () => ({ libraries: ["deck", "state", "page", "ui"] }), authorizeAction: () => false, actions: { inspect(context) {
+  const locus = hsonLiveMap.locus.create({ "deck": { json: initial, schema: DeckSchema, access: "shared" }, "state": { json: state, schema, access: "shared" }, "page": { document: page, schema: PageSchema, access: "shared" } }, { local: [{ name: "ui", initializer: { json: { values: [1] } } }], authorizeProjection: () => ({ libraries: ["deck", "state", "page", "ui"] }), authorizeAction: () => false, actions: { inspect(context) {
     const library = context.data.must("state");
     const location = library.at(["values"]).asArray()!;
     assert.equal("push" in location.array, false);
@@ -241,7 +241,7 @@ export async function collection_command_parity_cases() {
   type State = { values: number[]; words: string[]; record: { [key: string]: number } };
   const schema = Hson.schema`<type "data" content <values <array "number"> words <array "string"> record "any">>` as HsonSchema<State, "data">;
   const initial = { values: [3, 1, 2, 1], words: ["b", "a"], record: { a: 1, b: 2 } };
-  const definition = { data: initial, schema };
+  const definition = { json: initial, schema };
   const commands = [
     ["values", "array", "push", [4]], ["values", "array", "pushMany", [[4, 5]]],
     ["values", "array", "unshift", [4]], ["values", "array", "unshiftMany", [[4, 5]]],
@@ -280,7 +280,7 @@ export async function collection_command_parity_cases() {
 
 export async function refinement_repair_cases() {
   for (const present of [false, true]) {
-    const definitions: { state: { data: number }; optionalPage?: { document: string } } = { state: { data: 1 } };
+    const definitions: { state: { json: number }; optionalPage?: { document: string } } = { state: { json: 1 } };
     if (present) definitions.optionalPage = { document: "<main/>" };
     const map = hsonLiveMap.create();
     const receipt = map.addLibraries(definitions);
@@ -293,14 +293,14 @@ export async function refinement_repair_cases() {
     }
     else assert.equal(present, false);
     let failedReceipt: unknown;
-    assert.throws(() => { failedReceipt = map.addLibraries({ state: { data: 2 } }); });
+    assert.throws(() => { failedReceipt = map.addLibraries({ state: { json: 2 } }); });
     assert.equal(failedReceipt, undefined);
     assert.equal(map.rev, 1);
   }
 
   const definitions = {
-    state: { data: { value: 0, record: {}, required: [] } },
-    deck: { data: { slides: [{ id: "one", column1: [] }] }, schema: DeckSchema },
+    state: { json: { value: 0, record: {}, required: [] } },
+    deck: { json: { slides: [{ id: "one", column1: [] }] }, schema: DeckSchema },
   };
   for (const governed of [false, true]) {
     const map = hsonLiveMap.fromLibraries(definitions);
@@ -400,7 +400,7 @@ export async function refinement_repair_cases() {
         await locus.admit({ "admitted": { document: "<aside/>", access: "shared" } });
         assert.equal(locus.doc.must("admitted").render(), "<!doctype html><html><head></head><body><aside></aside></body></html>");
         let failedReceipt: unknown;
-        await assert.rejects((async () => { failedReceipt = await locus.admit({ "admitted": { data: 1, access: "shared" } }); })());
+        await assert.rejects((async () => { failedReceipt = await locus.admit({ "admitted": { json: 1, access: "shared" } }); })());
         assert.equal(failedReceipt, undefined);
       }
     } finally { locus.dispose(); }
