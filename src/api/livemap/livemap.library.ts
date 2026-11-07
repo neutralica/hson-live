@@ -70,6 +70,12 @@ export type LiveMapAggregateCommit = Readonly<{
 /** Narrow internal write request used only by aggregate-library tests. @internal */
 export type LiveMapAggregateWrite =
   | Readonly<{
+    target: LiveMapSystemTarget;
+    kind: "interaction";
+    /** Apply canonical interaction intent at this position in the maintained candidate. */
+    edit: (current: OrderedProjectedValue) => OrderedProjectedValue;
+  }>
+  | Readonly<{
     target: LiveMapAuthorityTarget;
     kind: "set-key";
     key: string;

@@ -69,7 +69,7 @@ export function resolve_locus_document_action(
   name: string,
   payload: JsonValue | undefined,
 ): LocusDocumentActionResolution {
-  if (!is_document_action_name(name)) return Object.freeze({ kind: "not-document-action" });
+  if (!is_locus_document_action_name(name)) return Object.freeze({ kind: "not-document-action" });
   if (!is_record(payload)) {
     return Object.freeze({ kind: "invalid", message: `Locus action ${name} requires an object payload.` });
   }
@@ -221,7 +221,8 @@ export function resolve_locus_document_action(
   });
 }
 
-function is_document_action_name(name: string): name is LocusDocumentActionName {
+/** Shared exact built-in namespace membership. @internal */
+export function is_locus_document_action_name(name: string): name is LocusDocumentActionName {
   return DOCUMENT_ACTION_NAMES.has(name);
 }
 

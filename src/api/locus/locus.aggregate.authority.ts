@@ -1,3 +1,5 @@
+import { registered_locus_action } from "./locus.action-validation.js";
+import { is_locus_document_action_name } from "./locus.document-actions.js";
 import type { OwnedLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
 import { resolve_document_css_action_subjects } from "../../internal/css/document-css-action-subjects.js";
@@ -1295,7 +1297,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   ): Promise<LocusActionTerminalOutcome> {
     try {
       let result: unknown | void;
-      if (is_document_action(request.name)) {
+      if (is_locus_document_action_name(request.name)) {
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
         const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: payload }) }), origin);
         if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
@@ -1430,7 +1432,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   ): Readonly<{ ok: true; payload: HsonDataValue | undefined; executeDocument?: (draft: LocusHostedAggregateStageWriter) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
       const admittedPayload = request.payload === undefined ? undefined : admit_data_input(request.payload);
-      if (is_document_action(request.name)) {
+      if (is_locus_document_action_name(request.name)) {
         const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
         const libraryName = required_string(record.library);
         if (origin.kind === "session" && (libraryName === undefined
@@ -1483,7 +1485,7 @@ export function create_locus_hosted_aggregate_authority_internal<
             } });
           },
         });
-      } else if (options.actions?.[request.name] === undefined) {
+      } else if (registered_locus_action(options.actions, request.name) === undefined) {
         return Object.freeze({ ok: false, code: "LOCUS_UNKNOWN_ACTION", message: `Unknown Locus action: ${request.name}` });
       } else {
         const decoded = decode_locus_action_payload(options.schema?.actions?.[request.name]?.payload, admittedPayload);
@@ -1844,20 +1846,6 @@ function document_target_for_library(
     kind: "path" as const,
     path: validate_document_path(target.path),
   });
-}
-
-function is_document_action(name: string): boolean {
-  return name === "document.css"
-    || name === "document.attrs.set"
-    || name === "document.attrs.drop"
-    || name === "document.attrs.setMany"
-    || name === "document.attrs.dropMany"
-    || name === "document.attrs.clear"
-    || name === "document.attrs.replace"
-    || name === "document.content.replace"
-    || name === "document.content.insert"
-    || name === "document.content.remove"
-    || name === "document.content.move";
 }
 
 function bounded(value: number | undefined, fallback: number, label: string, ceiling: number): number {

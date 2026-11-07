@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { activate_interactions, bind_locus_http, continue_hosted_document, hsonLiveMap, hsonMirror,
+import { add_interaction, replace_interaction, remove_interaction, activate_interactions, bind_locus_http, continue_hosted_document, hsonLiveMap, hsonMirror,
   type InteractionDescriptor, type InteractionFailure } from "../src/index.ts";
 import { echo_map_internal, locus_map_internal } from "../src/internal/governor-maps.ts";
 import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
@@ -104,9 +104,12 @@ for (const selected of ["control", "page", "flat"] as const) {
         loseActionReply = false; failures.length = 0; calls.length = 2;
         // Reorder the occurrences, then verify their original DOM subjects
         // still invoke their own canonical descriptors at their maintained paths.
-        const bodyLocation = locus.doc.must("page").at([1]).asElement();
-        assert.ok(bodyLocation);
-        await bodyLocation.move(0, 1);
+        await locus.stage(stage => {
+          stage.doc.must("page").at([1]).asElement().move(0, 1);
+          add_interaction(stage, browser("temporary", "page", 0));
+          replace_interaction(stage, browser("flat-click", "flat", 0));
+          remove_interaction(stage, "temporary");
+        });
         await until(() => continuation.echo.sync.appliedRev === locus.rev);
         assert.equal(body.childNodes[0], buttons[1]); assert.equal(body.childNodes[1], buttons[0]);
         buttons[0].dispatchEvent(new Event("click")); buttons[1].dispatchEvent(new Event("click"));

@@ -1,3 +1,4 @@
+import { registered_locus_action } from "./locus.action-validation.js";
 import { is_Node } from "../../core/node-guards.js";
 import { has_part_connector } from "../livemap/livemap.document.composition.js";
 import { prepare_locus_scoped_commit_internal } from "./locus.scoped-preparation.internal.js";
@@ -270,7 +271,7 @@ export function create_locus_hosted_aggregate_internal(
     add_owned_libraries_internal: (definitions, afterInstall, ownership, css) => enqueue_libraries(
       () => prepare_hosted_admitted_libraries_internal(options.map, owner, definitions, css), afterInstall, ownership),
     async dispatch_action(name, payload, message, origin = directOrigin) {
-      const action = options.actions?.[name];
+      const action = registered_locus_action(options.actions, name);
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
       const admittedPayload = payload === undefined ? undefined : admit_data_input(payload);
       return (await enqueue(async (writer) => {

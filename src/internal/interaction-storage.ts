@@ -6,8 +6,7 @@ export const INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME = INTERACTION_RESERVED_
 
 type InteractionDraftCapability = Readonly<{
   system: LiveMapSystemIdentity;
-  read: () => OrderedProjectedValue;
-  replace: (value: OrderedProjectedValue) => void;
+  update: (edit: (current: OrderedProjectedValue) => OrderedProjectedValue) => void;
 }>;
 
 const DRAFTS = new WeakMap<object, InteractionDraftCapability>();
@@ -25,10 +24,9 @@ export function register_disabled_interaction_draft_internal(draft: object, asse
 export function register_interaction_draft_internal(
   draft: object,
   system: LiveMapSystemIdentity,
-  read: () => OrderedProjectedValue,
-  replace: (value: OrderedProjectedValue) => void,
+  update: (edit: (current: OrderedProjectedValue) => OrderedProjectedValue) => void,
 ): void {
-  DRAFTS.set(draft, Object.freeze({ system, read, replace }));
+  DRAFTS.set(draft, Object.freeze({ system, update }));
 }
 
 export function interaction_draft_capability_internal(

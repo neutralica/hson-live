@@ -1,3 +1,4 @@
+import { mixed_stage_interaction_cases } from "./fixtures/interaction-mixed-stage-cases.mts";
 import { activate_document_interactions_internal } from "../src/api/interactions/interactions.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
@@ -139,6 +140,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
   catch (error) { testEvents.case_end(name, "fail"); testEvents.terminal("fail"); throw error; }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+
+await check("mixed-stage descriptors follow their logical subjects atomically", mixed_stage_interaction_cases);
 
 await check("hidden storage is aggregate state but not public selection", () => {
   let map = map_fixture();

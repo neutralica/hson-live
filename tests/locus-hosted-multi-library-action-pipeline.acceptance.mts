@@ -1,10 +1,11 @@
+import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { create_locus_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import { test_echo_transport } from "./helpers/echo-websocket-transport.mts";
 import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
-import { test_public_projection } from "./helpers/hosted-catalog.mts";
+import { test_public_projection, test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
 import { Hson, HsonDataValue, hsonLiveMap, type HsonSchema, type LiveMap } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -641,6 +642,104 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   first.dispose();
   second.dispose();
   locus.dispose();
+});
+
+await check("action membership rejects inherited and unknown keys before execution or authorization", async () => {
+  const authorized: string[] = [];
+  let executions = 0;
+  const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 }, schema: StateSchema, access: "shared" } }, {
+    authorizeAction: ({ action }) => { authorized.push(action); return true; },
+    actions: { valid: (context) => {
+      executions++;
+      context.stage.data.must("state").at(["value"]).set(executions);
+      return Hson.data.from(-0);
+    } },
+  });
+  const pair = socket_pair();
+  bind_locus_websocket(locus, pair.server);
+  const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus_map_internal(locus)) });
+  try {
+    await activate_echo(echo);
+    const before = JSON.stringify(locus_map_internal(locus).capture());
+    for (const name of ["toString", "constructor", "valueOf", "__proto__", "unknown-action"]) {
+      const direct = await locus.dispatchAction({ type: "action", id: `direct-${name}`, name });
+      const external = await echo.action(name);
+      for (const result of [direct, external]) {
+        assert.equal(result.type, "error", name);
+        if (result.type !== "error") throw new Error("Expected unknown action");
+        assert.equal(result.error.code, "LOCUS_UNKNOWN_ACTION", name);
+      }
+      assert.equal(JSON.stringify(locus_map_internal(locus).capture()), before);
+      assert.equal(executions, 0);
+      assert.deepEqual(authorized, []);
+    }
+    for (const dispatch of [() => locus.dispatchAction({ type: "action", id: "valid", name: "valid" }), () => echo.action("valid")]) {
+      const result = await dispatch();
+      assert.equal(result.type, "ack");
+      assert.ok(result.type === "ack" && Object.is(result.result?.materialize(), -0));
+    }
+    assert.equal(executions, 2);
+    assert.equal(locus.data.must("state").snap(["value"]), 2);
+    assert.deepEqual(authorized, ["valid"]);
+  } finally { echo.dispose(); locus.dispose(); }
+});
+
+await check("own prototype-like and non-built-in document names remain application actions", async () => {
+  for (const name of ["toString", "constructor", "valueOf", "__proto__", "document.custom"]) {
+    const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 }, schema: StateSchema, access: "shared" } }, {
+      actions: { [name]: () => Hson.data.from(name) },
+    });
+    try {
+      const result = await locus.dispatchAction({ type: "action", id: name, name });
+      assert.equal(result.type, "ack");
+      assert.ok(result.type === "ack" && result.result?.materialize() === name);
+    } finally { locus.dispose(); }
+  }
+});
+
+await check("catalog admission ignores inherited entries and rejects non-executable own handlers", async () => {
+  let inheritedCalls = 0;
+  const actions = { valid: () => undefined };
+  Object.setPrototypeOf(actions, { inherited: () => { inheritedCalls++; } });
+  const definition = { page: { document: "<main/>", access: "shared" as const } };
+  const locus = hsonLiveMap.locus.create(definition, { actions });
+  try {
+    const result = await locus.dispatchAction({ type: "action", id: "inherited", name: "inherited" });
+    assert.equal(result.type, "error");
+    assert.equal(inheritedCalls, 0);
+  } finally { locus.dispose(); }
+  Reflect.set(actions, "invalid", 42);
+  assert.throws(() => hsonLiveMap.locus.create(definition, { actions }), /executable handler/);
+});
+
+await check("raw aggregate validation and dispatch independently require an own executable entry", async () => {
+  const map = make_map();
+  let executions = 0;
+  const actions = { valid: () => { executions++; return 7; } };
+  Reflect.set(actions, "invalid", 42);
+  const server = create_locus_hosted_aggregate_authority_internal({ map, libraries: test_application_catalog(map), actions });
+  try {
+    const before = JSON.stringify(map.capture());
+    for (const name of ["toString", "constructor", "valueOf", "missing", "invalid"]) {
+      await assert.rejects(server.dispatch_action(name), /Unknown hosted aggregate Locus action/);
+      const result = await server.dispatch_message({ type: "action", id: name, name });
+      assert.ok(result.type === "error" && result.error.code === "LOCUS_UNKNOWN_ACTION");
+    }
+    assert.equal(executions, 0);
+    assert.equal(JSON.stringify(map.capture()), before);
+    assert.equal(await server.dispatch_action("valid"), 7);
+    assert.equal(executions, 1);
+  } finally { server.dispose(); }
+});
+
+await check("actual built-in document action collisions reject registration", () => {
+  for (const name of ["document.css", "document.attrs.set", "document.attrs.drop", "document.attrs.setMany",
+    "document.attrs.dropMany", "document.attrs.clear", "document.attrs.replace", "document.content.replace",
+    "document.content.insert", "document.content.remove", "document.content.move"]) {
+    assert.throws(() => hsonLiveMap.locus.create({ page: { document: "<main/>", access: "shared" } }, {
+      actions: { [name]: () => undefined },
+    }), /reserved.*built-in|built-in.*reserved/i, name);
+  }
 });
 
 process.stdout.write(`1..${checks}\n`);

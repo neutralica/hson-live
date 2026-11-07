@@ -103,6 +103,8 @@ const dispose = activate_interactions({
 target.dispatchEvent(new Event("click"));
 for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
 
+await (await import("./interaction-mixed-stage-cases.mts")).mixed_stage_interaction_cases();
+
 parentPort?.postMessage(Object.freeze({
   equal: handled?.equals(exact) === true,
   order: handled === undefined ? [] : (handled).entries()?.map(([name]) => name) ?? [],

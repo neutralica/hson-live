@@ -1099,7 +1099,7 @@ function make_livemap_registry_engine(
     }>>();
     for (const [index, write] of writes.entries()) {
       try {
-        if (write.target.domain !== "application") continue;
+        if (write.target.domain !== "application" || write.kind === "interaction") continue;
         const library = require_library(write.target.library);
         if (library.validation !== PART_COLLECTION_VALIDATION) continue;
         const operation = write.kind === "collection" ? `${write.command.collection}.${write.command.method}`
@@ -1310,6 +1310,13 @@ function make_livemap_registry_engine(
             }));
             continue;
           }
+          // Earlier Document operations have already maintained these subjects.
+          // Lower this edit here so it cannot restore stale descriptor paths.
+          if (write.kind === "interaction") {
+            const current = project_live_path(candidate.root, target.path);
+            if (current === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
+            write = { target, kind: "replace", value: write.edit(current) };
+          }
           const localWrites = aggregate_write_ops(write, candidate.root);
           const planned = plan_write_ops(candidate.root, localWrites);
           for (let index = 0; index < planned.ops.length; index += 1) {
@@ -1326,6 +1333,7 @@ function make_livemap_registry_engine(
           }
           continue;
         }
+        if (write.kind === "interaction") throw new Error("Interaction edits require canonical system state.");
         const library = require_library(write.target.library);
         const partPlan = partPlans.get(expandedWriteIndex);
         if (partPlan !== undefined) {

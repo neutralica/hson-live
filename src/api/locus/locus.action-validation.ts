@@ -52,3 +52,13 @@ export function decode_locus_action_payload<TValue>(
 export function locus_schema_error_message(issues: readonly string[]): string {
   return issues.length ? issues.join("; ") : "Value failed Locus schema validation.";
 }
+
+/** One application catalog membership rule for validation and execution. @internal */
+export function registered_locus_action<TAction>(
+  actions: Readonly<Record<string, TAction>> | undefined,
+  name: string,
+): TAction | undefined {
+  if (actions === undefined || !Object.hasOwn(actions, name)) return undefined;
+  const action = actions[name];
+  return typeof action === "function" ? action : undefined;
+}

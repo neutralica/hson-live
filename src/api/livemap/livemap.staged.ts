@@ -8,8 +8,6 @@ import { document_css_commands, capture_document_css_command } from "../../inter
 import { collection_commands, normalize_part_collection_command } from "./livemap.collection-command.js";
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapDocumentRequestTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
-import { project_live_path } from "./livemap.editor.js";
-import { type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal, register_disabled_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { capture_document_attrs_command, type DocumentAttrsCommand, admit_public_document_graph_operation } from "./livemap.document.mutation.js";
@@ -96,7 +94,6 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   const writes: LiveMapAggregateWrite[] = [];
   let open = true;
   let consumed = false;
-  let releaseInteraction: (() => void) | undefined;
   const assert_open = (): void => {
     if (!open) throw new Error("Expired staged authoring scope.");
   };
@@ -276,18 +273,9 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
   }));
   const interactionSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
   if (interactionSystem !== undefined) {
-    const initial = project_live_path(aggregate.systemRoot(interactionSystem), ["descriptors"]);
-    if (initial === undefined) throw new Error("Canonical interaction descriptor collection is missing.");
-    let interactionValue: OrderedProjectedValue | undefined = initial;
-    releaseInteraction = () => { interactionValue = undefined; };
-    register_interaction_draft_internal(writer, interactionSystem, () => {
+    register_interaction_draft_internal(writer, interactionSystem, (edit) => {
       assert_open();
-      if (interactionValue === undefined) throw new Error("Expired interaction draft.");
-      return interactionValue;
-    }, (value) => {
-      assert_open();
-      interactionValue = value;
-      writes.push(Object.freeze({ target: aggregate.systemTarget(interactionSystem, ["descriptors"]), kind: "replace", value }));
+      writes.push(Object.freeze({ target: aggregate.systemTarget(interactionSystem, ["descriptors"]), kind: "interaction", edit }));
     });
   } else {
     register_disabled_interaction_draft_internal(writer, assert_open);
@@ -296,8 +284,6 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
     open = false;
     if (consumed) writes.length = 0;
     selectedFacades.clear();
-    releaseInteraction?.();
-    releaseInteraction = undefined;
   };
   return Object.freeze({
     writer: writer as unknown as LiveMapStagedWriter<TMap, void>,

@@ -51,8 +51,7 @@ import { interaction_schema_internal } from "./interactions.projection.js";
 const INTERACTION_SCHEMA = interaction_schema_internal();
 
 type Storage = Readonly<{
-  read: () => OrderedProjectedValue;
-  replace: (value: OrderedProjectedValue) => void;
+  update: (edit: (current: OrderedProjectedValue) => OrderedProjectedValue) => void;
 }>;
 
 type RuntimeRecord = Readonly<{
@@ -109,11 +108,15 @@ export function enable_interactions(map: LiveMap): void {
 export function add_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
   prepare_local_slot_for_add(target, descriptor);
   const storage = interaction_storage(target);
-  const current = descriptor_array(storage.read());
-  if (current.some((entry) => descriptor_id(entry) === descriptor.id)) {
-    throw new Error(`Canonical interaction ${JSON.stringify(descriptor.id)} already exists.`);
-  }
-  storage.replace(ordered_projected_array([...current, descriptor_to_value(descriptor)]));
+  const value = descriptor_to_value(descriptor);
+  const id = descriptor.id;
+  storage.update((descriptors) => {
+    const current = descriptor_array(descriptors);
+    if (current.some((entry) => descriptor_id(entry) === id)) {
+      throw new Error(`Canonical interaction ${JSON.stringify(id)} already exists.`);
+    }
+    return ordered_projected_array([...current, value]);
+  });
 }
 
 function prepare_local_slot_for_add(target: object, descriptor: InteractionDescriptor): void {
@@ -141,21 +144,27 @@ function prepare_local_slot_for_add(target: object, descriptor: InteractionDescr
 
 export function replace_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
   const storage = interaction_storage(target);
-  const current = descriptor_array(storage.read());
-  const index = current.findIndex((entry) => descriptor_id(entry) === descriptor.id);
-  if (index < 0) throw new Error(`Canonical interaction ${JSON.stringify(descriptor.id)} does not exist.`);
-  const next = [...current];
-  next[index] = descriptor_to_value(descriptor);
-  storage.replace(ordered_projected_array(next));
+  const value = descriptor_to_value(descriptor);
+  const id = descriptor.id;
+  storage.update((descriptors) => {
+    const current = descriptor_array(descriptors);
+    const index = current.findIndex((entry) => descriptor_id(entry) === id);
+    if (index < 0) throw new Error(`Canonical interaction ${JSON.stringify(id)} does not exist.`);
+    const next = [...current];
+    next[index] = value;
+    return ordered_projected_array(next);
+  });
 }
 
 export function remove_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptorId: string): void {
   if (typeof descriptorId !== "string") throw new TypeError("Canonical interaction ID must be a string.");
   const storage = interaction_storage(target);
-  const current = descriptor_array(storage.read());
-  const index = current.findIndex((entry) => descriptor_id(entry) === descriptorId);
-  if (index < 0) throw new Error(`Canonical interaction ${JSON.stringify(descriptorId)} does not exist.`);
-  storage.replace(ordered_projected_array(current.filter((_, candidate) => candidate !== index)));
+  storage.update((descriptors) => {
+    const current = descriptor_array(descriptors);
+    const index = current.findIndex((entry) => descriptor_id(entry) === descriptorId);
+    if (index < 0) throw new Error(`Canonical interaction ${JSON.stringify(descriptorId)} does not exist.`);
+    return ordered_projected_array(current.filter((_, candidate) => candidate !== index));
+  });
 }
 
 /** Materialize current canonical interaction intent against one fixed active LiveTree. */
@@ -425,18 +434,15 @@ function installed_descriptors(root: import("../../core/types.js").HsonNode): Or
 
 function interaction_storage(target: object): Storage {
   const draft = interaction_draft_capability_internal(target);
-  if (draft !== undefined) return Object.freeze({ read: draft.read, replace: draft.replace });
+  if (draft !== undefined) return Object.freeze({ update: draft.update });
   const aggregate = internal_livemap_aggregate_authority(target);
   const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
   if (system === undefined) interaction_storage_not_enabled_internal();
   return Object.freeze({
-    read: () => {
-      return installed_descriptors(aggregate.systemRoot(system));
-    },
-    replace: (value) => { aggregate.commit([{
+    update: (edit) => { aggregate.commit([{
       target: aggregate.systemTarget(system, ["descriptors"]),
-      kind: "replace",
-      value,
+      kind: "interaction",
+      edit,
     }]); },
   });
 }

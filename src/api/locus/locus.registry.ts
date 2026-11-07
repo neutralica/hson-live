@@ -1,3 +1,4 @@
+import { is_locus_document_action_name } from "./locus.document-actions.js";
 import { register_scout_session, register_scout_capture } from "../../internal/scout-delivery-session.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
@@ -115,7 +116,7 @@ export function create_registry_locus_internal<
     context: unknown,
     payload: HsonDataValue | undefined,
     message?: LocusClientActionMessage,
-  ) => unknown | void | Promise<unknown | void>> = {};
+  ) => unknown | void | Promise<unknown | void>> = Object.create(null);
   const readFacades = new WeakMap<object, ReturnType<typeof readLib>>();
   const readLib = (selected: import("../../types/livemap.types.js").LiveMapDataLibrary | import("../../types/livemap.types.js").LiveMapDocumentLibrary, parts: boolean) => {
     if (selected.mode !== "document") {
@@ -155,6 +156,8 @@ export function create_registry_locus_internal<
 
   for (const [name, handler] of Object.entries(options.actions ?? {})) {
     if (handler === undefined) continue;
+    if (is_locus_document_action_name(name)) throw new TypeError(`Locus action ${JSON.stringify(name)} is reserved for a built-in document action.`);
+    if (typeof handler !== "function") throw new TypeError(`Locus action ${JSON.stringify(name)} requires an executable handler.`);
     actions[name] = async (context, payload, actionMessage) => {
       actionSequence += 1;
       const aggregateContext = context as Readonly<{
