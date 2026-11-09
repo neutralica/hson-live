@@ -20,6 +20,7 @@ import type { LiveTree } from "../src/api/livetree/livetree.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
+import { set_interaction_activation_initialization_hook_for_tests } from "../src/api/interactions/interactions.ts";
 import { get_node_for_el, unlinkElement } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
@@ -196,16 +197,19 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
 {
   const map = documentMap(source());
   const fixture = mainFixture();
-  assert.throws(
-    () => continue_document({
-      map,
-      root: fixture.root as unknown as Element,
-      interactions: { local: {} },
-    }),
-    (cause) => cause instanceof DocumentContinuationError && cause.phase === "interactions" && cause.cause !== undefined,
-  );
+  const options = { map, root: fixture.root as unknown as Element, interactions: { local: {} } };
+  const failure = new Error("interaction activation initialization failed");
+  set_interaction_activation_initialization_hook_for_tests(() => { throw failure; });
+  try {
+    assert.throws(
+      () => continue_document(options),
+      (cause) => cause instanceof DocumentContinuationError && cause.phase === "interactions" && cause.cause === failure,
+    );
+  } finally {
+    set_interaction_activation_initialization_hook_for_tests(undefined);
+  }
   assert.equal(get_node_for_el(fixture.root as unknown as Element), undefined);
-  const retry = continue_document({ map, root: fixture.root as unknown as Element });
+  const retry = continue_document(options);
   retry.dispose();
 }
 
