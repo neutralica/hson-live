@@ -73,7 +73,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       // received Data alias. Iteration/forwarding/conditional structure supplies
       // no guaranteed execution, and optional ancestors supply no presence proof.
       const event = use.context === "event";
-      if ((!event && use.context !== "value") || use.conditional || use.iterators.length !== 0 || use.resolution !== "resolved"
+      if ((!event && use.context !== "value") || use.conditional || use.withinOptionalStructure || use.iterators.length !== 0 || use.resolution !== "resolved"
         || binding?.origin !== "receiving" || binding.kind !== "data" || binding.incoming === undefined
         || use.reference.path.length === 0) continue;
       for (const context of part_data_contexts(facts, document, binding.incoming)) {

@@ -28,6 +28,7 @@ export type PartDataContext = PartDataInvocation & Readonly<{
   /** Relative to the original Schema authority; no Schema subtree is compiled. */
   path: SchemaDataPath;
   uncertainty: readonly string[];
+  /** Certainty of reaching this invocation, before considering the reference's own path. */
   executionCertain: boolean;
 }>;
 
@@ -104,7 +105,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
           }
           const context: PartDataContext = { ...invocation, invocation, incoming: declaration.incoming, receiving, argument, evidence, path, uncertainty,
             executionCertain: parent === undefined && write === undefined && reached && certain && entries.length === 1 && interfaceValid && connector?.headerComplete === true
-              && definition.admission === "qualified" && definition.optionalStructures.length === 0 };
+              && definition.admission === "qualified" };
           contexts.push(context);
           const incoming = result.get(definition) ?? new Map<string, PartDataContext[]>();
           const existing = incoming.get(declaration.incoming) ?? [];

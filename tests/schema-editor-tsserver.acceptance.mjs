@@ -809,38 +809,47 @@ const loc = hsonLiveMap.locus.create({
       await editConsumer(source);
       return (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
     };
-    const errors = await hsonErrors(source);
-    const calls = [...source.matchAll(/"bits\/card"/g)].map(match => match.index);
-    const flags = [...source.matchAll(/event:go/g)].map(match => match.index);
-    assert.equal(errors.length, 4, JSON.stringify(errors));
-    const operand = source.indexOf("^{args.missing}");
-    for (const error of errors) {
-      assert.match(error.text, /cannot succeed for this invocation's validated Data Schema/);
-      const related = error.relatedInformation.map(info => info.span);
-      assert.deepEqual(related[0], { file: file("consumer.ts"), start: location(source, operand), end: location(source, operand + "^{args.missing}".length) });
-      assert.deepEqual(related[1].start, location(source, source.indexOf("data:args") + 5));
-      assert.equal(related[2].file, file("consumer.ts"));
-    }
-    assert.deepEqual(errors.map(error => [error.start, error.end, error.relatedInformation[3].span]),
-      flags.flatMap(flag => calls.map(call => [location(source, call), location(source, call + '"bits/card"'.length), {
-        file: file("consumer.ts"), start: location(source, flag), end: location(source, flag + "event:go".length),
-      }])));
-    const partial = source.replace('const Shape', 'declare const opaque: string;\nconst Shape')
+    const optional = '<aside part:optional title="%{extra?}"/>';
+    const sibling = source.replace('<div <button event:go/>/>', optional);
+    const partial = sibling.replace('const Shape', 'declare const opaque: string;\nconst Shape')
+      .replace(optional, optional.replace('/>', ' event:spare/>'))
       .replace('events: { go:', 'events: { spare: opaque, go:');
-    const partialErrors = await hsonErrors(partial);
-    assert.deepEqual(partialErrors.map(error => [error.code, error.start, error.end, error.relatedInformation?.[3]?.span]),
-      [...partial.matchAll(/event:go/g)].flatMap(flag => [...partial.matchAll(/"bits\/card"/g)].map(call => [
-        95002, location(partial, call.index), location(partial, call.index + call[0].length), {
-          file: file("consumer.ts"), start: location(partial, flag.index), end: location(partial, flag.index + flag[0].length),
-        },
-      ])));
+    for (const [text, count] of [
+      [source, 2],
+      [source.replace(' <div <button event:go/>/>', ''), 1],
+      [sibling, 1],
+      [partial, 1],
+      [source.replace('<div <button event:go/>/>', '<div <button event:go/>/> ' + optional), 2],
+      [source.replace('<div ', '<div part:optional title="%{extra?}" '), 1],
+      [source.replace('<div <button event:go/>/>', '<button part:optional title="%{extra?}" event:go/>'), 1],
+      [sibling.replace('<button event:go/> ' + optional, '<aside part:optional title="%{extra?}" <button event:go/>/>'), 0],
+      [sibling.replace('<button event:go/> ' + optional, '<button part:optional title="%{extra?}" event:go/>'), 0],
+    ]) {
+      const errors = await hsonErrors(text);
+      const calls = [...text.matchAll(/"bits\/card"/g)];
+      const flags = [...text.matchAll(/event:go/g)].slice(0, count);
+      const operand = text.indexOf("^{args.missing}");
+      for (const error of errors) {
+        assert.match(error.text, /cannot succeed for this invocation's validated Data Schema/);
+        const related = error.relatedInformation.map(info => info.span);
+        assert.deepEqual(related[0], { file: file("consumer.ts"), start: location(text, operand), end: location(text, operand + "^{args.missing}".length) });
+        assert.deepEqual(related[1].start, location(text, text.indexOf("data:args") + 5));
+        assert.equal(related[2].file, file("consumer.ts"));
+      }
+      assert.deepEqual(errors.map(error => [error.start, error.end, error.relatedInformation[3].span]),
+        flags.flatMap(flag => calls.map(call => [location(text, call.index), location(text, call.index + call[0].length), {
+          file: file("consumer.ts"), start: location(text, flag.index), end: location(text, flag.index + flag[0].length),
+        }])), text);
+    }
     assert.equal((await hsonErrors(source.replace('<button event:go/>', '<p "^{args.missing}"/> <button event:go/>'))).length, 6);
+    assert.equal((await hsonErrors(sibling.replace('<button event:go/>', '<p "^{args.missing}"/> <button event:go/>'))).length, 4);
+    assert.equal((await hsonErrors(sibling.replace(optional, '<aside part:optional title="%{extra?}" <p "^{args.missing}"/>/>'))).length, 2);
     assert.equal((await hsonErrors(source.replace('^{args.missing}', '^{args.missing?}'))).length, 4);
     for (const valid of [
-      source.replace('^{args.missing}', '^{args.title}'),
-      source.replace('<title "string">', '<title "string" missing <optional "string">>'),
-      source.replace('<type "data" content <title "string">>', '<type "data">'),
-      source.replace('HsonDataValue<typeof Shape>', 'HsonDataValue'),
+      sibling.replace('^{args.missing}', '^{args.title}'),
+      sibling.replace('<title "string">', '<title "string" missing <optional "string">>'),
+      sibling.replace('<type "data" content <title "string">>', '<type "data">'),
+      sibling.replace('HsonDataValue<typeof Shape>', 'HsonDataValue'),
     ]) assert.deepEqual(await hsonErrors(valid), []);
     await editConsumer(consumer);
   });

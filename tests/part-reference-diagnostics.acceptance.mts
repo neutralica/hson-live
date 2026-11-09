@@ -953,7 +953,7 @@ function schemaApplication(reference: string, shape = '<title "string">', value 
 const memberErrors = (result: ReturnType<typeof inspect>) => result.diagnostics.filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID');
 check('event inputs reuse validated path proof and identify nested and repeated attachments', () => {
   const eventSchema = (reference: string, shape?: string, value?: string, text = '') => schemaApplication('', shape, value, '%{incoming}', true,
-    '<main hson:part data:record=%{incoming} ' + text + '<button event:go/> <aside <button event:go/>/>/>',
+    '<main hson:part data:record=%{incoming} ' + text + '<button event:go/> <aside <button event:go/>/> <aside part:optional title="%{extra?}"/>/>',
     '{go:' + eventDeclaration(reference) + '}');
   const missing = '^{record.missing}';
   const source = eventSchema(missing);
@@ -982,6 +982,16 @@ check('partial event opacity preserves each independently invalid caller Schema 
     '{go:' + eventDeclaration(missing) + '}');
   const cases = [
     [source.replace(' <aside <button event:go/>/>', ''), 1],
+    [source.replace('<aside <button event:go/>/>', '<aside part:optional title="%{extra?}"/>'), 1],
+    [source.replace('{go:', '{spare:dynamic,go:').replace('<aside <button event:go/>/>', '<aside part:optional title="%{extra?}" event:spare/>'), 1],
+    [source.replace('<aside ', '<aside part:optional title="%{extra?}" '), 1],
+    [source.replace('<aside <button event:go/>/>', '<button part:optional title="%{extra?}" event:go/>'), 1],
+    [source.replace('<button event:go/> <aside ', '<aside part:optional title="%{extra?}" '), 0],
+    [source.replace('<button event:go/> <aside <button event:go/>/>', '<button part:optional title="%{extra?}" event:go/>'), 0],
+    [source.replace('<aside <button event:go/>/>', '<div for:row=^{record.rows} <button event:go/>/>')
+      .replace('<title "string">', '<title "string" rows <array "number">>').replace('<title "ok">', '<title "ok" rows «»>'), 1],
+    [source.replace('<main hson:part ', '<main hson:part ${dynamic} '), 0],
+    [source.replace(eventDeclaration(missing) + '}', 'condition ? ' + eventDeclaration(missing) + ' : ' + eventDeclaration('{null}') + '}'), 0],
     [source, 2],
     [source.replace('{go:', '{spare:dynamic,go:'), 2],
     [source.replace('{go:', '{spare:dynamic,go:').replace('<aside ', '<aside event:spare '), 2],
@@ -1015,6 +1025,23 @@ check('validated direct input proves one invocation member error with exact refe
     assert.equal(diagnostics[0]!.relatedInformation!.length, 3);
     assert.equal(diagnostics[0]!.start, error.start);
   } finally { integrated.dispose(); }
+});
+check('ordinary Data references share occurrence-specific optionality', () => {
+  for (const [body, count] of [
+    ['<p "^{record.typo}"/> <aside part:optional title="%{extra?}"/>', 1],
+    ['<p part:optional title="%{extra?}" "^{record.typo}"/>', 0],
+    ['<aside part:optional title="%{extra?}" <p "^{record.typo}"/>/>', 0],
+  ] as const) {
+    const result = inspect(schemaApplication('', undefined, undefined, '%{incoming}', true,
+      '<main hson:part data:record=%{incoming} ' + body + '/>'));
+    const errors = memberErrors(result);
+    assert.equal(errors.length, count, body);
+    for (const error of errors) {
+      assert.equal(result.text.slice(error.start, error.end), '"components/card"');
+      const reference = error.related![0]!;
+      assert.equal(result.text.slice(reference.start, reference.end), '^{record.typo}');
+    }
+  }
 });
 check('optional references permit missing members but never necessarily present scalar or null traversal', () => {
   assert.equal(memberErrors(inspect(schemaApplication('^{record.typo?}'))).length, 0);

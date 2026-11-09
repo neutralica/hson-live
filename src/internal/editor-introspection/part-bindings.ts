@@ -42,6 +42,7 @@ export type PartBindingReference = Readonly<{
   root: PartSourceLocation;
   scope?: PartSourceLocation;
   iterators: readonly PartSourceLocation[];
+  withinOptionalStructure: boolean;
   context: PartReferenceUse["context"] | "receiving";
   attachment?: PartSourceLocation;
   conditional?: true;
@@ -76,14 +77,15 @@ function value_boundaries(source: string, range: HsonSourceRange, decoded: strin
 export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAnalysis, provenance: HsonSourceProvenance,
   source: string, map: (range: HsonSourceRange) => PartSourceLocation | undefined,
   eventRange?: (reference: PartReference, range: HsonSourceRange) => PartSourceLocation | undefined) {
-  const paths = new Map<HsonNode, readonly number[]>();
-  const visit = (node: HsonNode, path: readonly number[]): void => {
-    paths.set(node, path);
-    node.$_content.forEach((child, index) => { if (is_Node(child)) visit(child, [...path, index]); });
+  const occurrences = new Map<HsonNode, { path: readonly number[]; withinOptionalStructure: boolean }>();
+  const visit = (node: HsonNode, path: readonly number[], optionalAncestor: boolean): void => {
+    const withinOptionalStructure = optionalAncestor || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL);
+    occurrences.set(node, { path, withinOptionalStructure });
+    node.$_content.forEach((child, index) => { if (is_Node(child)) visit(child, [...path, index], withinOptionalStructure); });
   };
-  visit(root, []);
+  visit(root, [], false);
   const range = (node: HsonNode, attribute?: string, role: "name" | "value" = "value") => {
-    const path = paths.get(node);
+    const path = occurrences.get(node)?.path;
     return path === undefined ? undefined : attribute === undefined
       ? provenance.range({ kind: "node", path: role === "value" ? [...path, 0] : path, role: role === "value" ? "value" : "coverage" })
       : provenance.range({ kind: "attribute", owner: path, name: attribute, role });
@@ -126,6 +128,9 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
   };
   const projectReference = (parsed: PartReference, node: HsonNode, attribute: string | undefined, context: PartBindingReference["context"],
     binding?: PartLocalDeclaration, iterators: readonly HsonNode[] = [], conditional?: true): PartBindingReference | undefined => {
+    // For an event operand, this node is the attachment subject, even when the operand is shared.
+    const occurrence = occurrences.get(node);
+    if (occurrence === undefined) return undefined;
     let location: PartSourceLocation | undefined, root: PartSourceLocation | undefined, attachment: PartSourceLocation | undefined;
     if (context === "event") {
       location = eventRange?.(parsed, { start: parsed.start, end: parsed.end });
@@ -148,6 +153,7 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     const target = binding === undefined ? undefined : declaration(binding);
     return { reference: parsed, location, root, scope: scopeLocation(iterators.at(-1) ?? rootElement),
       iterators: iterators.flatMap(node => { const where = scopeLocation(node); return where === undefined ? [] : [where]; }), context,
+      withinOptionalStructure: occurrence.withinOptionalStructure,
       resolution: parsed.namespace === "incoming" || binding !== undefined && target === undefined ? "unavailable" : target === undefined ? "unresolved" : "resolved",
       ...(target === undefined ? {} : { declaration: target }), ...(attachment === undefined ? {} : { attachment }),
       ...(conditional === undefined ? {} : { conditional }) };
