@@ -47,9 +47,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
     for (const library of batch.libraries) if (library.family === "parts") for (const member of library.members) {
       const key = JSON.stringify([library.name, member.name]);
       const entries = selected.get(key) ?? [];
-      for (const definition of member.documents) entries.push({ definition, library, certain: library.certainty === "certain"
-        && library.memberCompleteness === "complete" && member.certainty === "certain" && member.admission === "qualified"
-        && member.documents.length === 1 && definition.parameterCompleteness === "complete" });
+      for (const definition of member.documents) entries.push({ definition, library, certain: member.contractSource === definition });
       selected.set(key, entries);
     }
     const expand = (source: PartDocumentSource | undefined, connector: PartConnectorSource | undefined, root: PartDataInvocation["root"],
@@ -126,8 +124,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
       const reached = ordinary && source.receivers.length === 1 && (receiver.certainty === "certain" || receiver.placementCertain === true)
         && (source.librarySourceAdmission === "qualified" || source.valueIndependentAdmission === true)
         && source.iteratorDeclarations.length === 0 && source.optionalStructures.length === 0 && source.partDeclarations.length === 0 && source.referenceIssues.length === 0
-        && batch.receivingInventory === "candidate-only" && batch.inventoryCompleteness === "complete"
-        && batch.libraries.every(library => library === receiver.library || library.certainty === "certain");
+        && batch.receivingInventory === "candidate-only" && batch.inventoryCompleteness === "complete";
       for (const connector of source.connectors) {
         expand(source, connector, { source, connector, batch }, { frames: 0 }, reached);
       }

@@ -1,5 +1,6 @@
 /** Public specialist oracle for external Transform conformance suites. */
 import { hsonTransform } from "../api/transform/index.js";
+import { copy_transform_node } from "../api/transform/node-exact.js";
 import { parse_hson } from "../api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../api/transform/serializers/serialize-hson.js";
 import type { HsonSerializeInputOptions } from "../api/transform/serializers/serialize-hson.js";
@@ -152,7 +153,7 @@ function base_witness(input: Readonly<{
     expectedClassification: input.expectedClassification,
     actualClassification: input.actualClassification,
     ...(input.stage === undefined ? {} : { stage: input.stage }),
-    ...(input.firstCanonicalDifference === undefined ? {} : { firstCanonicalDifference: input.firstCanonicalDifference }),
+    ...(input.firstCanonicalDifference === undefined ? {} : { firstCanonicalDifference: Object.freeze(clone_value(input.firstCanonicalDifference)) }),
     ...(input.structuredError === undefined ? {} : { structuredError: input.structuredError }),
   });
 }
@@ -311,7 +312,7 @@ export function assertCanonicalSerializedClosure(
     ingress: input.ingress ?? "canonical-node",
     serializeOptions: input.serializeOptions,
   });
-  return reparsed;
+  return copy_transform_node(reparsed);
 }
 
 /** Assert strict parse/serialize/reparse closure without comparison-time repair. */
@@ -439,7 +440,12 @@ export function assertCanonicalClosure(input: CanonicalClosureInput): CanonicalC
     priorSource = nextSource;
   }
 
-  return Object.freeze({ semantic, serialized, reparsed });
+  // Only the controlled source and closure stages can serialize parsed flag evidence.
+  return Object.freeze({
+    semantic: input.ingress === "hson-source" ? copy_transform_node(semantic) : semantic,
+    serialized,
+    reparsed: copy_transform_node(reparsed),
+  });
 }
 
 export type CanonicalRejectionInput = Readonly<{

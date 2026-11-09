@@ -18,6 +18,7 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
+import { authored_event_cases } from "./authored-event-cases.mts";
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
@@ -104,6 +105,7 @@ target.dispatchEvent(new Event("click"));
 for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
 
 await (await import("./interaction-mixed-stage-cases.mts")).mixed_stage_interaction_cases();
+await authored_event_cases();
 
 parentPort?.postMessage(Object.freeze({
   equal: handled?.equals(exact) === true,

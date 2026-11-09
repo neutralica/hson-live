@@ -19,10 +19,21 @@ export function part_definition_targets(facts: PartSourceFacts, file: string, of
 /** Source navigation only, using the same lexical identities and governed
  * receiving-inventory evidence used by completion and contract diagnostics. */
 export function part_definition_target(facts: PartSourceFacts, file: string, offset: number): PartDefinitionTarget | undefined {
+  const at = (range: PartSourceLocation) => range.file === file && range.start <= offset && offset < range.end;
+  if (facts.unavailableEventReferences.some(at)) return undefined;
+  const eventUses = facts.documents.flatMap(document => document.bindingSources?.references.filter(use =>
+    use.context === "event" && at(use.root)) ?? []);
+  const event = eventUses[0], target = event?.declaration?.location;
+  if (event !== undefined) {
+    return target !== undefined && eventUses.every(use => {
+      const candidate = use.declaration?.location;
+      return use.resolution === "resolved" && candidate?.file === target.file && candidate.start === target.start && candidate.end === target.end;
+    }) ? { name: event.reference.name, origin: event.root, target } : undefined;
+  }
   for (const document of facts.documents) {
     if (document.location.file !== file) continue;
     for (const use of document.bindingSources?.references ?? []) {
-      if (use.root.start <= offset && offset < use.root.end && use.resolution === "resolved" && use.declaration !== undefined) {
+      if (use.root.file === file && use.root.start <= offset && offset < use.root.end && use.resolution === "resolved" && use.declaration !== undefined) {
         return { name: use.reference.name, origin: use.root, target: use.declaration.location };
       }
     }

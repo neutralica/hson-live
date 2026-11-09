@@ -45,6 +45,7 @@ export function deliver_scout(session: LocusSession, now: LocusSessionHtmlNow,
         if (part.css !== undefined || part.quads !== undefined) throw new Error("Scout Parts cannot contribute CSS or authored identities.");
         return part;
       });
+    if (realized.interactions.length) throw new Error("Scout delivery cannot carry authored interactions.");
     if (realized.styles.length || realized.quads?.length || realized.scoped.document.length
       || realized.scoped.occurrences.some(occurrence => occurrence.bindings.length)) {
       throw new Error("Scout delivery cannot discard CSS or identity contributions.");

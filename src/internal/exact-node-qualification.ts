@@ -1,3 +1,4 @@
+import { copy_event_attachments } from "../core/authored-event-names.js";
 import { PART_DECLARATION, part_structural_reference } from "./part-placeholder.js";
 import { ARR_TAG, ELEM_TAG, HSON_META_TRANSIT_PREFIX, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG, _TRANSIT_PREFIX } from '../core/constants.js';
 import { _throw_transform_err } from '../core/errors.js';
@@ -49,6 +50,11 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
   return capture_graph(input, operation, portable, false);
 }
 
+/** The caller owns this freshly parsed HSON graph. Retain its scanner evidence. */
+export function capture_parsed_hson_graph(input: HsonNode, operation: string): HsonNode {
+  return capture_graph(input, operation, true, false, copy_event_attachments);
+}
+
 /** Copy runtime storage without public admission qualification or snapshot branding. @internal */
 export function observe_exact_hson_graph(input: HsonNode, operation: string): ReadonlyHsonNode {
   const copy = capture_graph(input, operation, false, true);
@@ -68,7 +74,8 @@ export function observe_exact_hson_graph(input: HsonNode, operation: string): Re
   return copy;
 }
 
-function capture_graph(input: unknown, operation: string, portable: boolean, observation: boolean): HsonNode {
+function capture_graph(input: unknown, operation: string, portable: boolean, observation: boolean,
+  copyAuthoredAttrs?: typeof copy_event_attachments): HsonNode {
   const holder: Record<string, unknown> = Object.create(null);
   const active = new WeakMap<object, Trace>();
   const copied = new WeakMap<object, Map<Storage, object>>();
@@ -171,6 +178,7 @@ function capture_graph(input: unknown, operation: string, portable: boolean, obs
     let variants = copied.get(source);
     if (!variants) { variants = new Map(); copied.set(source, variants); }
     variants.set(storage, result);
+    if (storage === "attrs") copyAuthoredAttrs?.(source, result);
     put(target, key, result);
     active.set(source, path);
     append(stack, { kind: 'leave', source });

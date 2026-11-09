@@ -74,7 +74,10 @@ function snapshot(directory: string, excludeGenerated = true): Map<string, Buffe
 }
 
 function generate(project: string) {
-  return spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "generate", "--project", join(project, "tsconfig.json")], { cwd: root, encoding: "utf8", timeout: 120_000 });
+  return packaged_schema(project, "generate");
+}
+function packaged_schema(project: string, command: "generate" | "check") {
+  return spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), command, "--project", join(project, "tsconfig.json")], { cwd: root, encoding: "utf8", timeout: 120_000 });
 }
 function succeed(result: ReturnType<typeof generate>): void { assert.equal(result.status, 0, result.stdout + result.stderr + (result.error?.message ?? "")); }
 function stock_check(project: string, extra: readonly string[] = []) {
@@ -443,6 +446,52 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
   const cli = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "check", "--project", config], { cwd: root, encoding: "utf8", timeout: 120_000 });
   assert.equal(cli.status, 0, cli.stdout + cli.stderr);
   assert.deepEqual(snapshot(directory), before);
+});
+
+check("packaged compiler evaluates event-bearing Parts as graph-only Schema candidates", () => {
+  const directory = prepare("authored-events");
+  const consumer = join(directory, "events.ts");
+  const source = [
+    'import { Hson, hsonLiveMap } from "hson-live";',
+    'const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">, <tag "button" content "empty">]>>]>>`;',
+    'hsonLiveMap.fromLibraries({',
+    '  bits: { parts: {',
+    '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`, events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" } },',
+    '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`, events: { go: "<hson:event on:click local:deck.go input:data=%{text} <> >" } },',
+    '  } },',
+    '  page: { document: Hson.document`<html <head/> <body <hson-part lib="bits" at="typed" args:data="<>"/> <hson-part lib="bits" at="scalar" text="hi"/>/>/>`, schema: Page },',
+    '});',
+  ].join("\n");
+  writeFileSync(consumer, source);
+  succeed(generate(directory));
+  succeed(stock_check(join(directory, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
+  const invalid = source.replace('<tag "button" content "empty">', '<tag "aside" content "empty">');
+  writeFileSync(consumer, invalid);
+  const result = generate(directory);
+  assert.notEqual(result.status, 0, result.stdout + result.stderr);
+  const diagnostics: string[] = JSON.parse(result.stdout.trim()).diagnostics.filter((entry: string) => entry.startsWith(consumer + ":"));
+  const line = invalid.split("\n")[7]!;
+  assert.equal(diagnostics.length, 1, result.stdout + result.stderr);
+  assert.ok(diagnostics[0]?.startsWith(`${consumer}:8:${line.indexOf("Hson.document") + 1}: `), diagnostics[0]);
+  assert.match(diagnostics[0]!, /Static Hson does not satisfy Page/);
+  const events = ', events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" }';
+  // None of these inventories proves a composed Schema candidate. Part
+  // reference and unused-binding diagnostics belong to the editor projection.
+  for (const replacement of ["", ", events: {}", ', events: { go: "<hson:event on:click local:deck.go input:data=^{missing} <> >", other: unresolved }', ", events: opaque"]) {
+    writeFileSync(consumer, 'declare const opaque: Record<string, string>, unresolved: string;\n' + invalid.replace(events, replacement));
+    const result = generate(directory);
+    succeed(result);
+    assert.deepEqual(JSON.parse(result.stdout.trim()).diagnostics, []);
+    succeed(packaged_schema(directory, "check"));
+  }
+  const partial = 'declare const spare: string;\n' + invalid
+    .replace('input:data=%{text} <> >" }', 'input:data=%{text} <> >", spare }')
+    .replace('at="scalar" text="hi"', 'at="scalar" bogus="hi"');
+  writeFileSync(consumer, partial);
+  const editorOnly = generate(directory);
+  succeed(editorOnly);
+  assert.deepEqual(JSON.parse(editorOnly.stdout.trim()).diagnostics, []);
+  succeed(packaged_schema(directory, "check"));
 });
 
 check("capture racing publication fails clearly and captured compiler reads never fall through to disk", () => {

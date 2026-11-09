@@ -1168,7 +1168,8 @@ export type LiveMapLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibra
 
 /** One governed Part definition. Admission permanently binds its name and complete value
  * to its authoritative owner. Authored Hson strings, including HsonAuthored, are accepted. */
-export type LiveMapDocumentPart = Readonly<{ kind: "document"; document: string; css?: import("../core/style.types.js").CssMap | undefined; stylesheet?: string; schema?: never }>;
+export type LiveMapDocumentPart = Readonly<{ kind: "document"; document: string; css?: import("../core/style.types.js").CssMap | undefined;
+  stylesheet?: string; events?: Readonly<Record<string, string>>; schema?: never }>;
 
 /** Append-only governed definitions. Proposals may construct new names atomically;
  * existing members, including nested CSS and document source, cannot be edited or removed. */

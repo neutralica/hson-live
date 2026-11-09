@@ -1,6 +1,9 @@
 import { complete_document, completed_document_paths, single_document_element } from "../../internal/complete-document.js";
 import { part_coordinates } from "../../internal/part-coordinates.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
+import { classify_ordinary_hson_structure } from "../../core/hson-structural-mode.js";
+import { AUTHORED_EVENT_TAG, copy_event_attachments, event_attachment_position } from "../../core/authored-event-names.js";
+import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReferenceInput, type PartEvents } from "../../internal/part-events.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
 import { part_contract_error } from "../../internal/part-contract.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
@@ -16,7 +19,7 @@ import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { is_document_quad_name, type DocumentQuadAdmission, parse_authored_document_library } from "./livemap.document.quad.js";
 import { lower_internal_document_content_remove } from "./livemap.document.logical.js";
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
-import type { PortableDocumentQuads, LiveMapGraphOp } from "../../types/livemap.types.js";
+import type { PortableDocumentQuads, LiveMapGraphOp, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
@@ -175,7 +178,12 @@ type ConfiguredTarget = Readonly<{ configuration: Configuration; path: readonly 
 // proves every requested target was actually visited without a second graph walk.
 type ConfigurationScope = Map<HsonNode, ConfiguredTarget>;
 /** Detached shell or validated Part coordinates; never a source identity overlay. @internal */
-export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; css?: DocumentCssRecord }>;
+export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; css?: DocumentCssRecord; events?: PartEvents }>;
+/** An operation-local contribution addressed in the composition output. */
+export type DocumentCompositionInteraction = Readonly<Omit<PartEvent, "input"> & {
+  path: LiveMapDocumentPath;
+  data: OrderedProjectedValue;
+}>;
 /** Detached occurrence coordinates, consumed only by ordinary destination preparation. @internal */
 export type DocumentCompositionStyle = Readonly<{
   css: DocumentCssRecord;
@@ -198,6 +206,7 @@ type PartEnvironment = {
   readonly context: string;
   readonly selected: string;
   readonly signature: PartDefinitionAnalysis;
+  readonly events?: PartEvents;
   omitted?: (node: HsonNode) => boolean;
   authoredArguments?: ReadonlyMap<HsonNode, readonly string[]>;
   structures?: ReadonlyMap<HsonNode, Extract<PartBinding, { kind: "doc" }>>;
@@ -256,7 +265,8 @@ export function expand_document_composition(
   limits: Readonly<{ maxDepth: number; maxNodes: number; maxCharacters: number; configuration?: Configuration }>,
   readPart: (collection: string, member: string) => DocumentCompositionSource,
   receiver: "document" | "content" = "content",
-): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[]; scoped: DocumentScopedQuadRecord; identityDemands: readonly (readonly number[])[] }> {
+): Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; styles: readonly DocumentCompositionStyle[];
+  interactions: readonly DocumentCompositionInteraction[]; scoped: DocumentScopedQuadRecord; identityDemands: readonly (readonly number[])[] }> {
   const sources = new Map<string, Map<string, DocumentCompositionSource>>();
   const part = (collection: string, member: string): DocumentCompositionSource => {
     assert_hson_identifier_name(collection, "Library");
@@ -285,7 +295,7 @@ export function expand_document_composition(
   const analyses = new Map<HsonNode, PartDefinitionAnalysis>();
   const analysis = (definition: DocumentCompositionSource): PartDefinitionAnalysis => {
     let result = analyses.get(definition.root);
-    if (result === undefined) { result = analyze_part_definition(definition.root); analyses.set(definition.root, result); }
+    if (result === undefined) { result = analyze_part_definition(definition.root, undefined, definition.events); analyses.set(definition.root, result); }
     return result;
   };
   const validateArguments = (definition: DocumentCompositionSource, supplied: readonly string[], selected: string): void => {
@@ -398,6 +408,7 @@ export function expand_document_composition(
   const active = new Map<string, Set<string>>();
   // Preorder selection is the actual expansion order, independent of completion order.
   const styles: NonNullable<Occurrence["style"]>[] = [];
+  const interactions: DocumentCompositionInteraction[] = [];
   let bindingCount = 0, pathSegments = 0;
   const scopedPath = (coordinate: readonly number[]) => {
     if (coordinate.length > DOCUMENT_SCOPED_QUAD_LIMITS.pathDepth
@@ -579,6 +590,9 @@ export function expand_document_composition(
       continue;
     }
     if (++nodes > limits.maxNodes) throw new Error("Document composition node limit exceeded.");
+    if (item.$_tag.toLowerCase() === AUTHORED_EVENT_TAG) throw new TypeError("hson:event is reserved for Part event declarations.");
+    const attached = Object.keys(item.$_attrs ?? {}).filter(name => event_attachment_position(item, name) !== undefined)
+      .map(attribute => ({ attribute, declaration: part_event_attachment(item, attribute, environment?.events) }));
     if (Object.keys(item.$_attrs ?? {}).some(is_part_iterator_attribute)) throw new TypeError("Part iteration is only allowed within a governed Part definition.");
     if (Object.hasOwn(item.$_attrs ?? {}, PART_DECLARATION)) throw new TypeError("hson:part is only allowed on a governed Part definition root.");
     if (Object.hasOwn(item.$_attrs ?? {}, PART_OPTIONAL)) throw new TypeError("part:optional is only allowed within a governed Part definition.");
@@ -663,7 +677,8 @@ export function expand_document_composition(
       const definition = part(lib, member);
       const authoredArguments = frame.occurrence.parameters?.authoredArguments?.get(item);
       validateArguments(definition, authoredArguments ?? parameterNames, `${lib}/${member}`);
-      const environment: PartEnvironment = { bindings: parameters, locals: new Map(), context, selected: `${lib}/${member}`, signature: analysis(definition) };
+      const environment: PartEnvironment = { bindings: parameters, locals: new Map(), context, selected: `${lib}/${member}`,
+        signature: analysis(definition), ...(definition.events === undefined ? {} : { events: definition.events }) };
       const selected = { ...definition, root: substitute_part_parameters(definition, analysis(definition), environment, limits.maxCharacters - characters, preparation, (connector, inspectInterface, local) => validateConnector(connector, lib, local, inspectInterface)) };
       const content = selected.root.$_content;
       if (is_Node(content[0]) && environment.omitted?.(content[0])) {
@@ -713,7 +728,8 @@ export function expand_document_composition(
     // at may name the addressed element itself; two routes to one target are ambiguous.
     if (nestedScope?.has(item)) throw new Error("Ambiguous composition configuration target.");
     const header: HsonNode = { $_tag: item.$_tag, $_content: [] };
-    if (item.$_attrs !== undefined) header.$_attrs = item.$_attrs;
+    if (item.$_attrs !== undefined) header.$_attrs = attached.length === 0 ? item.$_attrs
+      : Object.fromEntries(Object.entries(item.$_attrs).filter(([name]) => event_attachment_position(item, name) === undefined));
     if (item.$_meta !== undefined) header.$_meta = item.$_meta;
     const copy = materialize_owned_occurrences(header);
     let content = item.$_content;
@@ -741,6 +757,13 @@ export function expand_document_composition(
     // Output is append-only. Connector frames share the actual receiver; child
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
+    for (const { attribute, declaration: { input, ...event } } of attached) {
+      const data = input.kind === "literal" ? input.value
+        : resolve_part_event_reference(input, item, attribute, environment);
+      charge(event.key);
+      charge(JSON.stringify(data));
+      interactions.push({ ...event, path: scopedPath(outputPath), data });
+    }
     frame.output.push(copy);
     const localNames = frame.occurrence.localNames.get(item) ?? [];
     for (const name of [...localNames, configuration?.q]) if (name !== undefined) bind(frame.occurrence, name, "element", outputPath);
@@ -786,6 +809,7 @@ export function expand_document_composition(
     demands.set(JSON.stringify(path), path);
   }
   return Object.freeze({ root: realizedRoot, scoped, identityDemands: Object.freeze([...demands.values()]),
+    interactions: Object.freeze(interactions.map(item => Object.freeze({ ...item, path: finalize(item.path) }))),
     styles: Object.freeze(finalStyles),
     ...(associations.length === 0 ? {} : { quads: Object.freeze(associations.map(association => Object.freeze({ ...association, path: finalize(association.path) }))) }) });
 }
@@ -818,6 +842,21 @@ function resolve_part_reference(reference: PartReference, environment: PartEnvir
   }
   if (value === undefined && !allowAbsent && !reference.optional && !binding.optionalAbsence) throw new TypeError(`Missing Part path ${part_reference_text(reference)} in ${context}.`);
   return binding.kind !== "data" ? binding : { ...binding, value };
+}
+
+function resolve_part_event_reference(input: PartEventReferenceInput, node: HsonNode, attribute: string,
+  environment: PartEnvironment | undefined): OrderedProjectedValue;
+function resolve_part_event_reference(input: PartEventReferenceInput, node: HsonNode, attribute: string,
+  environment: PartEnvironment | undefined, allowAbsent: true): OrderedProjectedValue | undefined;
+function resolve_part_event_reference(input: PartEventReferenceInput, node: HsonNode, attribute: string,
+  environment: PartEnvironment | undefined, allowAbsent = false): OrderedProjectedValue | undefined {
+  try {
+    const { value } = resolve_part_reference(input.reference, part_environment_at(environment, node), allowAbsent);
+    if (value !== undefined || allowAbsent) return value;
+    throw new TypeError("An attached event's input:data must resolve to present Data. Supply a value or omit the subject.");
+  } catch (cause) {
+    return fail_part_event_reference(cause instanceof Error ? cause.message : String(cause), input, node, attribute, cause);
+  }
 }
 
 /** The body pass borrows the lexical environment captured for this exact instance. */
@@ -898,6 +937,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     if (node.$_meta !== undefined) header.$_meta = node.$_meta;
     budget.text(JSON.stringify(header).length);
     const copy = clone_hson_graph_without_quids(header);
+    if (node.$_attrs !== undefined && copy.$_attrs !== undefined) copy_event_attachments(node.$_attrs, copy.$_attrs);
     output.push(copy); nodeLocals.set(copy, locals);
     const declared = authoredNames.get(node);
     if (declared !== undefined) localNames.set(copy, declared);
@@ -934,6 +974,11 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     for (const reference of matches(value)) observe(reference, node);
     return value;
   }, observe, undefined, {
+    event(node, attribute) {
+      const event = part_event_attachment(node, attribute, source.events);
+      if (event.input.kind === "reference"
+        && resolve_part_event_reference(event.input, node, attribute, environment, true) !== undefined) present.add(node);
+    },
     enter(node, parent) {
       if (parent !== undefined) parents.set(node, parent);
       if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) optional.add(node);
@@ -1019,7 +1064,14 @@ export function has_part_connector(root: HsonNode): boolean {
   const stack = [root];
   while (stack.length) {
     const node = stack.pop()!;
-    if (node.$_tag.toLowerCase() === "hson-part" || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL) || Object.hasOwn(node.$_attrs ?? {}, PART_DECLARATION) || Object.keys(node.$_attrs ?? {}).some(is_part_iterator_attribute)) return true;
+    const tag = node.$_tag.toLowerCase();
+    if (tag === AUTHORED_EVENT_TAG) {
+      const { kind } = classify_ordinary_hson_structure(node);
+      if (kind === "empty-element" || kind === "element" || kind === "legacy-empty-element-wrapper") return true;
+    }
+    if (tag === "hson-part" || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)
+      || Object.hasOwn(node.$_attrs ?? {}, PART_DECLARATION)
+      || Object.keys(node.$_attrs ?? {}).some(name => is_part_iterator_attribute(name) || event_attachment_position(node, name) !== undefined)) return true;
     for (const child of node.$_content) if (is_Node(child)) stack.push(child);
   }
   return false;

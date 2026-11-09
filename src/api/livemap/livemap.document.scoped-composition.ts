@@ -4,7 +4,7 @@ import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { LiveMapDocumentPath, LiveMapGraphOp } from "../../types/livemap.types.js";
 import { expand_document_composition, document_composition_options, has_part_connector, lower_part_content_operation,
-  type DocumentCompositionSource, type DocumentCompositionStyle } from "./livemap.document.composition.js";
+  type DocumentCompositionSource, type DocumentCompositionStyle, type DocumentCompositionInteraction } from "./livemap.document.composition.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord, type ScopedQuadBindingRecord } from "./livemap.document.scoped-quad-codec.js";
 import { make_document_scoped_quads, encode_document_scoped_quads, new_document_quad_occurrence,
   retire_document_quad_occurrences, type DocumentScopedQuadContext, type DocumentScopedQuads,
@@ -40,6 +40,7 @@ export type PreparedDocumentScopedComposition = DocumentScopedQuadContext & Read
   identityEffects: readonly LiveMapDocumentIdentityEffect[];
   initialStyles: readonly DocumentCompositionStyle[];
   steps: readonly Readonly<{ operation: DocumentGraphOp; styles: readonly DocumentCompositionStyle[];
+    interactions?: readonly DocumentCompositionInteraction[];
     context: DocumentScopedQuadContext; scopes: DocumentScopedQuads }>[];
   changed: boolean;
   assertCurrent: () => void;
@@ -121,7 +122,7 @@ export function materialize_document_scoped_record(context: DocumentScopedQuadCo
  * The caller captures authority before reading any composition source.
  * @internal
  */
-export function prepare_document_scoped_composition(context: DocumentScopedQuadContext, composition: Composition,
+export function prepare_document_scoped_composition(context: DocumentScopedQuadContext, composition: Omit<Composition, "interactions">,
   authority: DocumentScopedIdentityAuthority): PreparedDocumentScopedComposition {
   authority.assertCurrent();
   if (context.root !== composition.root) throw new Error("Composition candidate requires its realized graph.");
@@ -233,6 +234,7 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
     let nextScopes = retain_document_scoped_operation(context, state, operation, next);
     effects.push(...planned.identityEffects);
     let styles: readonly DocumentCompositionStyle[] = [];
+    let interactions: readonly DocumentCompositionInteraction[] | undefined;
     if (composition !== undefined && (operation.op === "replace-root" || operation.op === "insert-content" || operation.op === "replace-content")) {
       const prefix = operation.op === "replace-root" ? undefined : [...operation.target.path, operation.index];
       const relocate = (path: readonly number[]) => validate_document_path(prefix === undefined ? path : [...prefix, ...path.slice(1)]);
@@ -244,11 +246,13 @@ export function prepare_document_scoped_operations(before: DocumentScopedQuadCon
       next = { owner: merged.owner, root: merged.root, overlay: merged.overlay, issued: merged.issued };
       nextScopes = merged.scopes; effects.push(...merged.effects);
       styles = composition.styles.map(style => ({ ...style, subjects: style.subjects.map(subject => ({ ...subject, path: relocate(subject.path) })) }));
+      if (composition.interactions.length) interactions = composition.interactions.map(item => ({ ...item, path: relocate(item.path) }));
     }
     changed ||= !canonical_graph_equal(context.root, next.root) || !livemap_document_identity_overlay_equal(context.overlay, next.overlay)
       || !document_scoped_quads_equal(state, nextScopes);
     context = next; state = nextScopes;
-    steps.push(Object.freeze({ operation: planned.operation, context, scopes: state, styles: Object.freeze(styles) }));
+    steps.push(Object.freeze({ operation: planned.operation, context, scopes: state, styles: Object.freeze(styles),
+      ...(interactions === undefined ? {} : { interactions: Object.freeze(interactions) }) }));
     authority.assertCurrent();
   }
   authority.assertCurrent();

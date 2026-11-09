@@ -1,8 +1,12 @@
+import { parse_part_event } from "../part-events.js";
+import { is_event_attachment_attribute } from "../../core/authored-event-names.js";
+import { read_transform_error_details } from "../../core/errors.js";
+import { is_hson_bare_name_char } from "../../core/hson-name.js";
 import { part_coordinates } from "../part-coordinates.js";
-import { analyze_part_definition, transform_part_parameter_strings, type PartLocalDeclaration, type PartDefinitionAnalysis } from "../part-definition.js";
+import { analyze_part_definition, transform_part_parameter_strings, type PartEventAlternative, type PartEventEvidence, type PartLocalDeclaration, type PartDefinitionAnalysis, type PartReferenceUse } from "../part-definition.js";
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
-import { is_Node } from "../../core/node-guards.js";
+import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { hson_package_declaration_path, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
@@ -27,7 +31,8 @@ import { project_part_bindings, parse_part_binding_source, type PartBindingSourc
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
-export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }>[] }>;
+type PartReferenceIssueSource = { location: PartSourceLocation; message: string; declaration?: PartSourceLocation; attachment?: PartSourceLocation };
+export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }>[] }>;
 export type PartLocalSource = Readonly<{ name: string; kind: "scalar" | "data" | "doc"; location: PartSourceLocation; incoming?: string;
   dataOrigin?: Readonly<{ incoming: string; path: SchemaDataPath }> }>;
 export type PartLexicalScopeSource = Readonly<{ location: PartSourceLocation; bindings: readonly PartLocalSource[] }>;
@@ -89,7 +94,7 @@ export type PartDocumentSource = Readonly<{
   /** Lexical reuse suggestions only, never a qualified parameter inventory. */
   parameterSpellings: readonly PartParameterSource[];
   parameterCompleteness: "complete" | "unknown";
-  /** The shared analyzer's contract evidence; absent for incomplete definitions. */
+  /** Known input kinds and definite demands. An open vocabulary can still have a signature. */
   signature?: Pick<PartDefinitionAnalysis, "parameters" | "requiredness">;
   receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
   iteratorDeclarations: readonly Readonly<{ location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
@@ -102,7 +107,7 @@ export type PartDocumentSource = Readonly<{
   definitionRoot?: PartSourceLocation;
   partDeclarations: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string }>[];
   optionalStructures: readonly Readonly<{ location: PartSourceLocation; root: boolean; issue?: string; references?: number }>[];
-  referenceIssues: readonly Readonly<{ location: PartSourceLocation; message: string; declaration?: PartSourceLocation }>[];
+  referenceIssues: readonly Readonly<PartReferenceIssueSource>[];
   /** Payload ranges, never guessed decoded-substring offsets. No type or optionality is implied. */
   receivers: readonly Readonly<{ batch: ts.CallExpression; library?: PartLibrarySource; certainty: "certain" | "possible";
     /** A single immutable producer in a known receiving field; its values may remain unknown. */
@@ -115,7 +120,10 @@ export type PartLibrarySource = Readonly<{
   family: "parts" | "document" | "data" | "unknown";
   /** Candidate evidence, not a claim about a live receiving inventory. */
   certainty: "certain" | "possible";
-  members: readonly Readonly<{ name: string; declaration: PartSourceLocation; admission: "qualified" | "unknown"; certainty: "certain" | "possible"; documents: readonly PartDocumentSource[] }>[];
+  members: readonly Readonly<{ name: string; declaration: PartSourceLocation; admission: "qualified" | "unknown"; certainty: "certain" | "possible";
+    documents: readonly PartDocumentSource[];
+    /** A known source contract at this coordinate, independent of collection-wide runtime admission. */
+    contractSource?: PartDocumentSource }>[];
   memberCompleteness: Completeness;
 }>;
 export type PartSourceBatch = Readonly<{
@@ -142,7 +150,13 @@ export type PartWriteSource = Readonly<{
     nameLocation: PartSourceLocation; valueLocation: PartSourceLocation; dataEvidence?: PartDataSchemaEvidence }>[];
 }>;
 /** Program-snapshot facts, owned by the compiler. No registry, runtime identity or durable cache. */
-export type PartSourceFacts = Readonly<{ batches: readonly PartSourceBatch[]; documents: readonly PartDocumentSource[]; writes: readonly PartWriteSource[] }>;
+export type PartSourceFacts = Readonly<{
+  batches: readonly PartSourceBatch[];
+  documents: readonly PartDocumentSource[];
+  writes: readonly PartWriteSource[];
+  /** Known declaration roots whose receiving Part did not establish a full set of uses. */
+  unavailableEventReferences: readonly PartSourceLocation[];
+}>;
 
 type Candidates = ReturnType<typeof static_source_candidates>;
 function location(node: ts.Node): PartSourceLocation {
@@ -253,8 +267,94 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const result = object(found.initializer, seen);
     return result === undefined ? undefined : { node: result.node, fresh: false };
   };
-  const document = (producer: ts.Expression): PartDocumentSource | undefined => {
-    const existing = documents.get(producer);
+  type SourceRangeMap = (range: HsonSourceRange) => PartSourceLocation | undefined;
+  type EventSources = Readonly<{
+    events: PartEventEvidence | null;
+    ranges: ReadonlyMap<PartReference, SourceRangeMap>;
+    issues: readonly PartDocumentSource["referenceIssues"][number][];
+  }>;
+  const missingEvents: EventSources = { events: null, ranges: new Map(), issues: [] };
+  const adjacent = new Map<ts.Expression, EventSources>();
+  const contextual = new Map<ts.Expression, Map<EventSources, PartDocumentSource>>();
+  const unavailableEventReferences: PartSourceLocation[] = [];
+  const reachable: { reachableOnly: true } = { reachableOnly: true };
+  const unavailable = (reference: PartReference, map: SourceRangeMap): void => {
+    const root = map({ start: reference.start + 2, end: reference.start + 2 + reference.name.length });
+    if (root !== undefined) unavailableEventReferences.push(root);
+  };
+  const eventSources = (input: ts.Expression): EventSources => {
+    const cached = adjacent.get(input);
+    if (cached !== undefined) return cached;
+    const ranges = new Map<PartReference, SourceRangeMap>();
+    const issues: PartDocumentSource["referenceIssues"][number][] = [];
+    const parsed = new Map<ts.Expression, PartEventAlternative>();
+    const declaration = (literal: ts.Expression): PartEventAlternative => {
+      if (!sources.eligible(literal) || !typescript.isStringLiteral(literal) && !typescript.isNoSubstitutionTemplateLiteral(literal)) return "opaque";
+      const previous = parsed.get(literal);
+      if (previous !== undefined) return previous;
+      const file = literal.getSourceFile(), correspondence = static_hson_literal_correspondence(file.text, file, literal);
+      const map = (range: HsonSourceRange): PartSourceLocation | undefined => {
+        const mapped = correspondence === undefined ? undefined : map_static_hson_range(correspondence, range);
+        return mapped === undefined ? undefined : { file: file.fileName, ...mapped, precision: "exact" };
+      };
+      try {
+        const event = parse_part_event(literal.text);
+        parsed.set(literal, event);
+        if (event.input.kind === "reference") ranges.set(event.input.reference, map);
+        return event;
+      } catch (cause) {
+        // Preserve the key while the malformed declaration supplies no use evidence.
+        parsed.set(literal, "opaque");
+        const details = read_transform_error_details(cause);
+        const at = (index: number) => {
+          let end = index;
+          while (end < literal.text.length && is_hson_bare_name_char(literal.text[end]!)) end++;
+          return map({ start: index, end: Math.min(literal.text.length, Math.max(index + 1, end)) });
+        };
+        const related = details?.related?.find(item => item.role === "first-declaration");
+        const end = details?.related?.find(item => item.role === "value-end")?.source.index;
+        const start = details?.source?.index;
+        const where = start === undefined ? undefined : end === undefined ? at(start) : map({ start, end });
+        issues.push({ location: where ?? location(literal),
+          message: cause instanceof Error ? cause.message : String(cause),
+          ...(related === undefined ? {} : { declaration: at(related.source.index) }) });
+        return "opaque";
+      }
+    };
+    const evidence = sources.alternatives(input, "json", reachable);
+    const collections = evidence.nodes.map(node => {
+      if (!typescript.isObjectLiteralExpression(node) || !sources.eligible(node)) return undefined;
+      const fields = library_source_field_candidates(node, typescript).fields;
+      const values = new Map<string, PartEventAlternative[]>();
+      let opaque = false;
+      // A later unknown field may overwrite an earlier key. A known last
+      // assignment still supplies its own declaration independently.
+      for (const { name, value } of fields.reverse()) {
+        if (name === undefined || value === undefined) { opaque = true; continue; }
+        const possible = sources.alternatives(value, "document", reachable);
+        const options = possible.nodes.map(declaration);
+        if (opaque || !possible.complete) options.push("opaque");
+        values.set(name, options);
+      }
+      return { values, opaque };
+    });
+    const events: PartEventEvidence = {
+      get(name) {
+        const options = new Set<PartEventAlternative>();
+        for (const collection of collections) {
+          const values = collection?.values.get(name) ?? [collection?.opaque === false ? "absent" : "opaque"];
+          for (const value of values) options.add(value);
+        }
+        if (!evidence.complete) options.add("opaque");
+        return options.size === 1 && options.has("absent") ? undefined : [...options];
+      },
+    };
+    const result = { events, ranges, issues };
+    adjacent.set(input, result);
+    return result;
+  };
+  const document = (producer: ts.Expression, adjacentEvents?: EventSources): PartDocumentSource | undefined => {
+    const existing = adjacentEvents === undefined ? documents.get(producer) : contextual.get(producer)?.get(adjacentEvents);
     if (existing !== undefined) return existing;
     const file = producer.getSourceFile();
     let text: string, slots: readonly HsonTemplateSlot[] = [], qualified = false, spellingEligible = false;
@@ -299,7 +399,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     } else return undefined;
     const headers = new Map<number, PartConnectorSource>();
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
-    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }[] = [];
+    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }[] = [];
     const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
     const iteratorDeclarations: { location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
       enclosingIterators?: readonly PartSourceLocation[] }[] = [];
@@ -307,9 +407,9 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const partDeclarations: { location: PartSourceLocation; root: boolean; issue?: string }[] = [];
     const roots: PartSourceLocation[] = [];
-    const referenceIssues: { location: PartSourceLocation; message: string; declaration?: PartSourceLocation;
-      reference?: PartReference }[] = [];
-    const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure", typed?: "data" | "doc"): void => {
+    const referenceIssues: PartReferenceIssueSource[] = [...adjacentEvents?.issues ?? []];
+    const eventInputs = new Map<PartParameterSource["uses"][number], string | undefined>();
+    const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure" | "event", typed?: "data" | "doc"): void => {
       const mapped = range === undefined ? undefined : map(range);
       if (mapped === undefined) return;
       const whole = typed ? whole_part_reference(value) : undefined;
@@ -324,7 +424,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     };
     const observedAttributes = new WeakSet<object>();
     const tags: string[] = [];
-    let scanned = true;
+    let scanned = true, hasEventAttachments = false;
     try {
       tokenize_authored_document_library(text, {
         recordToken(token, evidence) {
@@ -334,6 +434,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         },
         recordAttribute(attr, ranges) {
           attributeRanges.set(attr, ranges);
+          if (adjacentEvents === missingEvents && attr.value === undefined && is_event_attachment_attribute(attr.name)) hasEventAttachments = true;
         },
         elementHeader(tag, range, attrs, complete) {
           const connector = tag.toLowerCase() === "hson-part";
@@ -435,6 +536,12 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         },
       }, { slots, substitutions: slots.map(() => "") });
     } catch { scanned = false; }
+    // Proven absence only changes facts for a document with an authored attachment.
+    if (adjacentEvents === missingEvents && !hasEventAttachments) {
+      adjacentEvents = undefined;
+      const ordinary = documents.get(producer);
+      if (ordinary !== undefined) return ordinary;
+    }
     const names = new Set<string>();
     let parameterCompleteness: "complete" | "unknown" = "unknown";
     let signature: PartDocumentSource["signature"];
@@ -473,17 +580,40 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             : provenance.range({ kind: "attribute", owner: path, name: attribute, role });
           return range === undefined ? location(producer) : map({ start: range.start, end: Math.min(range.end, text.length) }) ?? location(producer);
         };
+        const useIssues: [PartReferenceUse, (typeof referenceIssues)[number]][] = [];
         const analysis = analyze_part_definition(root, issue => {
-          if (!lexicalComplete) return;
+          if (!lexicalComplete || issue.use?.conditional) return;
           const owner = nodeLocation(issue.node, issue.attribute,
-            issue.attribute?.startsWith("^{") ? "name" : "value");
+            issue.attribute?.startsWith("^{") || issue.attribute?.toLowerCase().startsWith("event:") ? "name" : "value");
           if (issue.message === "Invalid Part placeholder." && referenceIssues.some(prior => prior.message === "Invalid Part property reference."
             && owner.start <= prior.location.start && prior.location.end <= owner.end)) return;
-          referenceIssues.push({ location: owner, message: issue.message, reference: issue.reference });
-        });
-        if (analysisText === text && spellingEligible) bindingSources = project_part_bindings(root, analysis, provenance, text, map);
-        for (const issue of referenceIssues) if (issue.reference !== undefined) {
-          issue.declaration = bindingSources?.references.find(use => use.reference === issue.reference)?.declaration?.location;
+          const diagnostic: (typeof referenceIssues)[number] = { location: owner, message: issue.message };
+          referenceIssues.push(diagnostic);
+          if (issue.use !== undefined) useIssues.push([issue.use, diagnostic]);
+        }, adjacentEvents?.events);
+        if (analysisText === text && spellingEligible) {
+          const projected = project_part_bindings(root, analysis, provenance, text, map,
+            (reference, range) => adjacentEvents?.ranges.get(reference)?.(range));
+          bindingSources = projected.sources;
+          for (const [use, diagnostic] of useIssues) {
+            const observed = projected.byUse.get(use);
+            diagnostic.declaration = observed?.declaration?.location;
+            if (use.context === "event" && observed !== undefined) {
+              diagnostic.location = observed.location;
+              diagnostic.attachment = observed.attachment;
+            }
+          }
+        }
+        for (const use of analysis.uses) if (use.context === "event") {
+          const reference = use.reference, eventRange = adjacentEvents?.ranges.get(reference);
+          if (eventRange === undefined) continue;
+          if (use.attribute !== undefined && analysis.opaqueEvents.get(use.node)?.has(use.attribute)) unavailable(reference, eventRange);
+          const where = eventRange(reference);
+          if (where === undefined) continue;
+          const fact = { name: reference.name, location: where, context: "event" as const, namespace: reference.namespace,
+            reference: reference.reference, optional: reference.optional === true, structured: reference.path.length > 0 };
+          uses.push(fact);
+          eventInputs.set(fact, reference.namespace === "incoming" ? reference.name : use.binding?.receiving?.reference.name);
         }
         const declarationLocation = (binding: PartLocalDeclaration) => nodeLocation(binding.node,
           binding.receiving === undefined ? analysis.iterators.get(binding.node)?.attribute : `${binding.kind}:${binding.name}`,
@@ -532,9 +662,11 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         }
         if (completeAnalysis) {
           const counts = new Map<HsonNode, number>();
+          const opaqueSubtrees = new Set(analysis.opaqueEvents.keys());
           const optionalNodes = new Map<HsonNode, typeof optionalStructures[number]>();
           let optionalIndex = 0;
           const count = (node: HsonNode, amount: number) => counts.set(node, (counts.get(node) ?? 0) + amount);
+          for (const use of analysis.uses) if (use.context === "event") count(use.node, 1);
           transform_part_parameter_strings(root, (value, node) => {
             const matches = part_placeholder_matches(value);
             if (matches === undefined) throw new Error("Invalid Part placeholder");
@@ -551,16 +683,26 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             },
             leave(node, parent) {
               const references = counts.get(node) ?? 0, fact = optionalNodes.get(node);
-              if (fact !== undefined) fact.references = references;
-              if (parent !== undefined) count(parent, references);
+              if (fact !== undefined && (!opaqueSubtrees.has(node) || references > 0)) fact.references = references;
+              if (parent !== undefined) {
+                count(parent, references);
+                if (opaqueSubtrees.has(node)) opaqueSubtrees.add(parent);
+              }
             },
           });
-          for (const declaration of analysis.receiving) if (!analysis.used.has(declaration) && !optionalStructures.some(fact => fact.root)) {
+          const opaqueScopes = [...analysis.opaqueEvents.keys()].map(node => analysis.scopes.get(node));
+          for (const declaration of analysis.receiving) if (!analysis.used.has(declaration) && !optionalStructures.some(fact => fact.root)
+            && !(declaration.kind === "data" && opaqueScopes.some(scope => scope?.get(declaration.name) === declaration))) {
             referenceIssues.push({ location: declarationLocation(declaration), message: `Unused Part ${declaration.kind} binding ${JSON.stringify(declaration.name)}.` });
           }
           for (const name of analysis.parameters.keys()) names.add(name);
-          parameterCompleteness = referenceIssues.length === 0 ? "complete" : "unknown";
-          if (parameterCompleteness === "complete") signature = { parameters: analysis.parameters, requiredness: analysis.requiredness };
+          parameterCompleteness = analysis.opaqueEvents.size === 0 && referenceIssues.length === 0 ? "complete" : "unknown";
+          const element = root.$_content[0];
+          if (referenceIssues.length === 0 && root.$_content.length === 1 && is_ordinary_element_node(element)
+            && element.$_tag.toLowerCase() !== "hson-part" && partDeclarations.some(flag => flag.root && flag.issue === undefined)
+            && optionalStructures.every(flag => flag.issue === undefined)) {
+            signature = { parameters: analysis.parameters, requiredness: analysis.requiredness };
+          }
         }
       } catch { names.clear(); }
     }
@@ -577,7 +719,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       catch { /* Invalid authored structure still withdraws contract proof. */ }
     }
     const receivers: PartDocumentSource["receivers"][number][] = [];
-    const inputs = new Map(uses.map(use => [use, use.namespace === "incoming" ? use.name
+    const inputs = new Map(uses.map(use => [use, use.context === "event" ? eventInputs.get(use) : use.namespace === "incoming" ? use.name
       : part_source_bindings_at(lexicalScopes, use.location.start)?.find(binding => binding.name === use.name)?.incoming]));
     const result: PartDocumentSource = { producer, location: location(producer), authoredRanges, admission: qualified ? "qualified" : "unknown",
       librarySourceAdmission, ...(valueIndependentAdmission === undefined ? {} : { valueIndependentAdmission }),
@@ -587,13 +729,24 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       parameterCompleteness, ...(signature === undefined ? {} : { signature }), optionalStructures, receivingDeclarations: spellingEligible ? receivingDeclarations : [],
       ...(bindingSources === undefined ? {} : { bindingSources }),
       iteratorDeclarations: spellingEligible ? iteratorDeclarations : [], lexicalScopes: spellingEligible ? lexicalScopes : [], referenceIssues, receivers };
-    documents.set(producer, result);
+    if (adjacentEvents === undefined) documents.set(producer, result);
+    else {
+      const contexts = contextual.get(producer) ?? new Map<EventSources, PartDocumentSource>();
+      contexts.set(adjacentEvents, result);
+      contextual.set(producer, contexts);
+    }
     relationships.set(result, receivers);
     return result;
   };
-  const alternatives = (input: ts.Expression) => {
-    const possible = sources.alternatives(input, "document");
-    const found = possible.nodes.flatMap(node => { const observed = document(node); return observed === undefined ? [] : [observed]; });
+  const alternatives = (input: ts.Expression, adjacentEvents?: EventSources) => {
+    const possible = sources.alternatives(input, "document", adjacentEvents === undefined ? undefined : reachable);
+    const found = possible.nodes.flatMap(node => { const observed = document(node, adjacentEvents); return observed === undefined ? [] : [observed]; });
+    if (adjacentEvents !== undefined && (!possible.complete || found.length !== possible.nodes.length
+      || found.some(document => document.bindingSources === undefined))) {
+      // Structural interpolation or an opaque producer can add an attachment
+      // whose scope cannot be projected. Withdraw navigation for these operands.
+      for (const [reference, map] of adjacentEvents.ranges) unavailable(reference, map);
+    }
     // Filtering observations cannot remove an alternative or its conditionality from the proof.
     const lexicalCertain = possible.complete && !possible.conditional && possible.nodes.length === 1 && found.length === 1;
     return { documents: found, lexicalCertain, certain: lexicalCertain && found[0]!.admission === "qualified" };
@@ -625,27 +778,51 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const members = collection === undefined ? undefined : library_source_field_candidates(collection.node, typescript);
             const evidence = family !== "parts" || parts === undefined ? undefined : part_collection_evidence(typescript, sources, parts);
             let memberCompleteness: Completeness = members === undefined ? "unknown" : "partial";
+            const shapeCertain = eligible && definitions?.fresh && fields?.complete && definition?.fresh && sources.eligible(definitions.node)
+              && sources.eligible(entry.declaration);
             const observedMembers = (members?.fields ?? []).flatMap(member => {
               if (member.name === undefined || member.value === undefined) return [];
-              const record = object(member.value), fields = record === undefined ? undefined : library_source_fields(record.node, typescript);
-              const source = fields?.get("document");
+              const record = object(member.value);
               const value = part_value(typescript, sources, member.value);
+              const variants = record === undefined ? sources.alternatives(member.value, "json", reachable) : undefined;
+              const records = variants?.nodes ?? (record === undefined ? [] : [record.node]);
+              const observed = records.map(node => {
+                const fields = typescript.isObjectLiteralExpression(node) ? library_source_fields(node, typescript) : undefined;
+                const source = fields?.get("document"), events = fields?.get("events");
+                const adjacentEvents = source !== undefined && eligible && sources.eligible(node)
+                  && (record?.fresh || value.known || variants !== undefined)
+                  ? events === undefined ? missingEvents : eventSources(events) : undefined;
+                return { fields, adjacentEvents, evidence: source === undefined ? undefined : alternatives(source, adjacentEvents) };
+              });
+              if (variants !== undefined && (!variants.complete || observed.some(variant => variant.evidence === undefined))) {
+                for (const variant of observed) for (const [reference, map] of variant.adjacentEvents?.ranges ?? []) unavailable(reference, map);
+              }
+              const memberEvidence = record === undefined ? { documents: [...new Set(observed.flatMap(variant => variant.evidence?.documents ?? []))],
+                lexicalCertain: false, certain: false }
+                : observed[0]?.evidence ?? { documents: [], lexicalCertain: false, certain: false };
               let qualified = false;
               if (value.known) {
                 try { validate_part_collection(admit_projected_value({ [member.name]: value.value })); qualified = true; }
                 catch { /* A lexical member can survive without qualifying as a Part. */ }
               }
+              const selected = shapeCertain && collection?.fresh && members?.complete && record?.fresh && memberEvidence.certain
+                ? memberEvidence.documents[0] : undefined;
+              const fields = observed[0]?.fields, kind = fields?.get("kind");
+              // Known Part syntax supplies a source contract even if its event
+              // values cannot yet pass runtime collection admission.
+              const contractSource = selected?.signature !== undefined && (qualified
+                || selected.librarySourceAdmission === "qualified" && fields?.has("events")
+                && [...fields.keys()].every(key => ["kind", "document", "events", "css", "stylesheet"].includes(key))
+                && kind !== undefined && sources.candidates(kind, "json")?.every(candidate => "json" in candidate && candidate.json === "document"))
+                ? selected : undefined;
               return [{ name: member.name, declaration: location(member.declaration), fresh: record?.fresh === true,
-                qualified,
-                evidence: source === undefined ? { documents: [], lexicalCertain: false, certain: false } : alternatives(source) }];
+                qualified, contractSource, evidence: memberEvidence }];
             });
             if (eligible && evidence !== undefined && members?.complete && evidence.members.length === observedMembers.length
               && evidence.members.every(member => observedMembers.some(observed => observed.name === member.key))) memberCompleteness = "complete";
             const documentEvidence = body === undefined ? undefined : alternatives(body);
             const producerCertain = family === "parts" ? memberCompleteness === "complete" : family === "document" ? documentEvidence?.certain === true
               : family === "data" && sources.candidates((own!.get("json") ?? own!.get("hson"))!, own!.has("json") ? "json" : "data") !== undefined;
-            const shapeCertain = eligible && definitions?.fresh && fields?.complete && definition?.fresh && sources.eligible(definitions.node)
-              && sources.eligible(entry.declaration);
             const library: PartLibrarySource = {
               ...(entry.name === undefined ? {} : { name: entry.name }), declaration: location(entry.declaration),
               ...(entry.declaration.name === undefined ? {} : { nameLocation: location(entry.declaration.name) }), family,
@@ -653,7 +830,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               members: observedMembers.map(member => ({ name: member.name, declaration: member.declaration,
                 admission: member.qualified ? "qualified" : "unknown",
                 certainty: eligible && memberCompleteness === "complete" && collection?.fresh && member.fresh && member.evidence.certain ? "certain" : "possible",
-                documents: member.evidence.documents })), memberCompleteness,
+                documents: member.evidence.documents,
+                ...(member.contractSource === undefined ? {} : { contractSource: member.contractSource }) })), memberCompleteness,
             };
             libraries.push(library);
             const relate = (related: ReturnType<typeof alternatives>, certain: boolean): void => {
@@ -675,7 +853,11 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   }
   // Unconnected authored templates have possible receivers only, each retaining its own batch identity.
   // They cannot borrow absence/membership proof from a similarly named Library elsewhere.
-  for (const found of documents.values()) {
+  const observedDocuments = [
+    ...[...documents].filter(([producer, found]) => !contextual.has(producer) || found.receivers.length > 0).map(([, found]) => found),
+    ...[...contextual.values()].flatMap(contexts => [...contexts.values()]),
+  ];
+  for (const found of observedDocuments) {
     const receivers = relationships.get(found)!;
     if (receivers.length !== 0 || found.connectors.length === 0) continue;
     for (const batch of batches) receivers.push({ batch: batch.call, certainty: "possible" });
@@ -699,7 +881,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     }
     if (supported) writes.push({ call, location: location(call), ...target, arguments: arguments_ });
   }
-  const facts: PartSourceFacts = { batches, documents: [...documents.values()], writes };
+  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, unavailableEventReferences };
   sourceFacts.set(program, facts);
   return facts;
 }

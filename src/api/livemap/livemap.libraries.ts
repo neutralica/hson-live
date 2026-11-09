@@ -11,11 +11,13 @@ import { document_markup, document_hson } from "../../internal/document-represen
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
 import { attach_part_write, write_part_invocation } from "../../internal/part-write.js";
+import { read_part_events } from "../../internal/part-events.js";
 import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
-import { project_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { composed_interaction_value } from "../interactions/interactions.descriptor.js";
 import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
@@ -24,7 +26,7 @@ import { apply_portable_document_css_op, canonical_portable_document_css_op } fr
 import { portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
-import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
@@ -62,13 +64,12 @@ import type {
 } from "../../types/livemap.types.js";
 import { hson_data_text_from_value } from "../data/hson-data.js";
 import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
-import { type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { ordered_projected_array, ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { admit_data_input, hson_data_value, hson_data_from_value, type HsonDataInput } from "../data/hson-data.js";
 import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
 import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
-import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_live_path } from "./livemap.path.js";
 import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
@@ -114,7 +115,7 @@ import {
   encode_hosted_root,
   HOSTED_MAX_SNAPSHOT_BYTES,
 } from "./livemap.hosted.js";
-import { admit_public_livemap_root, admit_owned_livemap_root } from "./livemap.node-admission.js";
+import { admit_authored_livemap_document, admit_public_livemap_root, admit_owned_livemap_root } from "./livemap.node-admission.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
@@ -153,14 +154,19 @@ export type CanonicalLibraryDefinition = Readonly<{
 }>;
 
 /** Owned source candidates produced here, never decoded from external fields. @internal */
-export type OwnedLibraryDefinition = CanonicalLibraryDefinition & Readonly<{ part?: PartLibraryCandidate }>;
+export type OwnedLibraryDefinition = CanonicalLibraryDefinition & Readonly<{ part?: PartLibraryCandidate;
+  compositionInteractions?: ReturnType<typeof expand_document_composition>["interactions"] }>;
 
 function capture_library_source(name: string, input: ReturnType<typeof must_library_input>, publicInput = true): OwnedLibraryDefinition {
   if ("part" in input) return Object.freeze({ name, root: input.part.graph.root, schema: input.schema,
     family: "data", validation: PART_COLLECTION_VALIDATION, part: input.part });
-  const authored = "document" in input && typeof input.document === "string" ? parse_authored_document_library(input.document) : undefined;
+  const source = "data" in input ? library_data_root(input.data) : input.document;
+  const authored = typeof source === "string" ? parse_authored_document_library(source) : undefined;
   const family = "data" in input ? "data" : "document";
-  const root = (publicInput ? admit_public_livemap_root : admit_owned_livemap_root)(authored?.root ?? library_root(input), family, `Library ${name}`);
+  const operation = `Library ${name}`;
+  const root = authored === undefined
+    ? (publicInput ? admit_public_livemap_root : admit_owned_livemap_root)(source, family, operation)
+    : admit_authored_livemap_document(authored.root, operation);
   return Object.freeze({ name, root, schema: input.schema, family,
     ...(authored?.declarations.length ? { quads: [...authored.declarations].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0) } : {}),
     ...(input.validation === undefined ? {} : { validation: input.validation }) });
@@ -225,7 +231,8 @@ function realize_authored_definitions(definitions: readonly OwnedLibraryDefiniti
     const candidate = expand_document_composition(definition.name, () => ({ ...definition, root: normalize_document_root(definition.root) }),
       document_composition_options(undefined), readPart, "document");
     const { quads: sourceQuads, ...ordinary } = definition;
-    return { ...ordinary, root: candidate.root, ...(candidate.quads === undefined ? {} : { quads: candidate.quads }), compositionStyles: candidate.styles, compositionScopes: candidate.scoped };
+    return { ...ordinary, root: candidate.root, ...(candidate.quads === undefined ? {} : { quads: candidate.quads }),
+      compositionStyles: candidate.styles, compositionScopes: candidate.scoped, compositionInteractions: candidate.interactions };
   });
 }
 
@@ -610,8 +617,9 @@ export function make_livemap_from_admitted_libraries_internal(
   definitions: readonly OwnedLibraryDefinition[], systems: readonly InitialSystemState[] = [],
   clientSnapshot?: PortableAggregateSnapshot,
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
+  inferPartInteractions = true,
 ): LiveMap {
-  return make_livemap_library_receiver(realize_authored_definitions(definitions), systems, clientSnapshot, css);
+  return make_livemap_library_receiver(realize_authored_definitions(definitions), systems, clientSnapshot, css, false, inferPartInteractions);
 }
 
 /** The established exact runtime facility enters the same receiver without portable admission. @internal */
@@ -645,7 +653,16 @@ function make_livemap_library_receiver(
   clientSnapshot: PortableAggregateSnapshot | undefined,
   initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
   scoped = false,
+  inferPartInteractions = true,
 ): LiveMap {
+  const descriptors = definitions.flatMap(definition =>
+    (definition.compositionInteractions ?? []).map(item => composed_interaction_value(definition.name, item)));
+  if (descriptors.length || inferPartInteractions && systems.length === 0 && definitions.some(definition => definition.part?.hasEvents)) {
+    if (systems.length !== 0) throw new Error("Authored event composition cannot replace an existing initial system contribution.");
+    systems = [{ key: INTERACTION_RESERVED_LIBRARY_KEY, transportName: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
+      root: projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(descriptors)]])),
+      hsonSchema: interaction_schema_internal() }];
+  }
   const built = make_livemap_owned_registry_authority(definitions.map((definition) => {
     const { name, root, schema, family } = definition;
     const quads = own_document_quads(definition);
@@ -816,8 +833,11 @@ function make_livemap_library_receiver(
     clientLocal = false, beforeInstall?: () => void, installed?: () => void,
     compositionStyles?: Readonly<{ name: string; styles: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[] }>): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
-    for (const { name } of additions) {
+    for (const { name, compositionInteractions } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
+      if (compositionInteractions?.length) {
+        throw new Error("Library topology changes cannot carry authored events. Add the Document Library first, then compose the Part in a Document edit.");
+      }
     }
     const definitions = additions.map((definition) => {
       const { name, root, schema, family } = definition;
@@ -1005,7 +1025,8 @@ function make_livemap_library_receiver(
     }, configuration, readPart, "document");
     const definitions = capture_library_definitions([{ name, family: "document", schema: configuration.schema, ...candidate }])
       .map(definition => ({ ...definition, ...((sourceScopes ?? candidate.scoped).occurrences.length === 0 ? {}
-        : { compositionScopes: sourceScopes ?? candidate.scoped, compositionStyles: candidate.styles }) }));
+        : { compositionScopes: sourceScopes ?? candidate.scoped, compositionStyles: candidate.styles }),
+        compositionInteractions: candidate.interactions }));
     // Source coherence ends at this exact detached candidate. Ordinary admission
     // retains its own revision, identity and management fences thereafter.
     checkCapture();
@@ -1382,7 +1403,9 @@ function make_data_library(
         if (typeof document !== "string") throw new Error(`Unknown Part member ${JSON.stringify(member)}.`);
         // Connector authoring needs the receiving interface, not the selected
         // Part's CSS or occurrence associations. Those belong to composition.
-        const source = write_part_invocation(library.name, member, input, parse_authored_document_library(document).root);
+        const events = aggregate.projectData(library.identity, [...stablePath, "events"]);
+        const source = write_part_invocation(library.name, member, input, parse_authored_document_library(document).root,
+          events === undefined ? undefined : read_part_events(events));
         assertCurrent();
         readMember();
         return source;
@@ -1979,17 +2002,11 @@ function is_record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function library_root(input: NormalizedLibraryInput): HsonNode {
-  if ("data" in input) {
-    if (input.data === undefined) throw new TypeError("LiveMap data Library requires Data material.");
-    // This receiver admits application Data, never Transform structural envelopes.
-    // Authenticate carriers before ordinary value capture; strings are literal Data.
-    return projected_value_to_hson_root(hson_data_value(admit_data_input(input.data)));
-  }
-  if (input.document === undefined) throw new TypeError("LiveMap document Library requires Hson material.");
-  return typeof input.document === "string"
-    ? parse_hson(input.document, { allowTopLevelDocumentText: true })
-    : input.document;
+function library_data_root(input: HsonDataInput): HsonNode {
+  if (input === undefined) throw new TypeError("LiveMap data Library requires Data material.");
+  // This receiver admits application Data, never Transform structural envelopes.
+  // Authenticate carriers before ordinary value capture; strings are literal Data.
+  return projected_value_to_hson_root(hson_data_value(admit_data_input(input)));
 }
 
 function exact_transport_fields(input: object, fields: readonly string[]): void {

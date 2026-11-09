@@ -23,7 +23,7 @@ function standalone(source: string, map: (range: { start: number; end: number })
     if (slots.length && !hson_interpolation_roles(source, "document", slots).every(role => role === "quoted-string")) return empty;
     const { root, provenance } = parse_part_binding_source(source, slots);
     const analysis = analyze_part_definition(root, () => {});
-    return project_part_bindings(root, analysis, provenance, source, map);
+    return project_part_bindings(root, analysis, provenance, source, map).sources;
   } catch { return empty; } // Incomplete/unavailable authoring retains TextMate's lexical fallback.
 }
 

@@ -43,6 +43,8 @@ export type PartBindingReference = Readonly<{
   scope?: PartSourceLocation;
   iterators: readonly PartSourceLocation[];
   context: PartReferenceUse["context"] | "receiving";
+  attachment?: PartSourceLocation;
+  conditional?: true;
   resolution: "resolved" | "unresolved" | "unavailable";
   declaration?: PartBindingDeclaration;
 }>;
@@ -72,7 +74,8 @@ function value_boundaries(source: string, range: HsonSourceRange, decoded: strin
 
 /** Reuse one completed authoritative analysis and its parser provenance. */
 export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAnalysis, provenance: HsonSourceProvenance,
-  source: string, map: (range: HsonSourceRange) => PartSourceLocation | undefined): PartBindingSources {
+  source: string, map: (range: HsonSourceRange) => PartSourceLocation | undefined,
+  eventRange?: (reference: PartReference, range: HsonSourceRange) => PartSourceLocation | undefined) {
   const paths = new Map<HsonNode, readonly number[]>();
   const visit = (node: HsonNode, path: readonly number[]): void => {
     paths.set(node, path);
@@ -122,30 +125,38 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     return result;
   };
   const projectReference = (parsed: PartReference, node: HsonNode, attribute: string | undefined, context: PartBindingReference["context"],
-    binding?: PartLocalDeclaration, iterators: readonly HsonNode[] = []): PartBindingReference | undefined => {
-    const structural = context === "structure";
-    const where = range(node, attribute, structural ? "name" : "value");
-    const value = structural ? attribute : attribute === undefined ? node.$_content[0] : node.$_attrs?.[attribute];
-    if (where === undefined || typeof value !== "string") return undefined;
-    if (!valueBoundaries.has(where)) valueBoundaries.set(where, value_boundaries(source, where, value));
-    const boundaries = valueBoundaries.get(where);
-    if (boundaries === undefined) return undefined;
-    const start = boundaries[parsed.start], end = boundaries[parsed.end];
-    const rootStart = boundaries[parsed.start + 2], rootEnd = boundaries[parsed.start + 2 + parsed.name.length];
-    if (start === undefined || end === undefined || rootStart === undefined || rootEnd === undefined) return undefined;
-    const location = mapped({ start, end }), root = mapped({ start: rootStart, end: rootEnd });
+    binding?: PartLocalDeclaration, iterators: readonly HsonNode[] = [], conditional?: true): PartBindingReference | undefined => {
+    let location: PartSourceLocation | undefined, root: PartSourceLocation | undefined, attachment: PartSourceLocation | undefined;
+    if (context === "event") {
+      location = eventRange?.(parsed, { start: parsed.start, end: parsed.end });
+      root = eventRange?.(parsed, { start: parsed.start + 2, end: parsed.start + 2 + parsed.name.length });
+      attachment = mapped(range(node, attribute, "name"));
+    } else {
+      const structural = context === "structure";
+      const where = range(node, attribute, structural ? "name" : "value");
+      const value = structural ? attribute : attribute === undefined ? node.$_content[0] : node.$_attrs?.[attribute];
+      if (where === undefined || typeof value !== "string") return undefined;
+      if (!valueBoundaries.has(where)) valueBoundaries.set(where, value_boundaries(source, where, value));
+      const boundaries = valueBoundaries.get(where);
+      if (boundaries === undefined) return undefined;
+      const start = boundaries[parsed.start], end = boundaries[parsed.end];
+      const rootStart = boundaries[parsed.start + 2], rootEnd = boundaries[parsed.start + 2 + parsed.name.length];
+      if (start === undefined || end === undefined || rootStart === undefined || rootEnd === undefined) return undefined;
+      location = mapped({ start, end }); root = mapped({ start: rootStart, end: rootEnd });
+    }
     if (location === undefined || root === undefined) return undefined;
     const target = binding === undefined ? undefined : declaration(binding);
     return { reference: parsed, location, root, scope: scopeLocation(iterators.at(-1) ?? rootElement),
       iterators: iterators.flatMap(node => { const where = scopeLocation(node); return where === undefined ? [] : [where]; }), context,
       resolution: parsed.namespace === "incoming" || binding !== undefined && target === undefined ? "unavailable" : target === undefined ? "unresolved" : "resolved",
-      ...(target === undefined ? {} : { declaration: target }) };
+      ...(target === undefined ? {} : { declaration: target }), ...(attachment === undefined ? {} : { attachment }),
+      ...(conditional === undefined ? {} : { conditional }) };
   };
   const rootElement = is_Node(root.$_content[0]) ? root.$_content[0] : root;
   const reference = (use: PartReferenceUse): PartBindingReference | undefined => {
     const existing = references.get(use);
     if (existing !== undefined) return existing;
-    const result = projectReference(use.reference, use.node, use.attribute, use.context, use.binding, use.iterators);
+    const result = projectReference(use.reference, use.node, use.attribute, use.context, use.binding, use.iterators, use.conditional);
     if (result !== undefined) references.set(use, result);
     return result;
   };
@@ -155,5 +166,9 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     const ref = projectReference(binding.receiving.reference, binding.node, `${binding.kind}:${binding.name}`, "receiving");
     return ref === undefined ? [] : [ref];
   });
-  return { declarations: [...declarations.values()], references: [...references.values(), ...incoming].sort((a, b) => a.root.start - b.root.start) };
+  const sources: PartBindingSources = {
+    declarations: [...declarations.values()],
+    references: [...references.values(), ...incoming].sort((a, b) => a.root.file.localeCompare(b.root.file) || a.root.start - b.root.start),
+  };
+  return { sources, byUse: references };
 }

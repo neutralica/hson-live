@@ -1,3 +1,4 @@
+import { event_attachment_position, is_event_attachment_attribute } from "../../../core/authored-event-names.js";
 import { serialize_hson_content_string } from "../../../core/hson-content-string.js";
 import {
   ARR_TAG,
@@ -18,7 +19,7 @@ import { is_Node } from "../../../core/node-guards.js";
 import { is_persisted_quid } from "../../../core/persisted-quid.js";
 import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
 import { hson_metadata_policy } from "../../../core/hson-metadata.js";
-import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
+import type { HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
 import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { serialize_hson_tag_name } from "../utils/hson-utils/hson-tag-helpers.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
@@ -143,19 +144,14 @@ function compareKeys([left]: readonly [string, unknown], [right]: readonly [stri
 
 /** Sort ordinary attributes canonically; flags remain after valued entries. */
 function emitAttrsAndMeta(
-  attrs: Readonly<HsonAttrs> | undefined,
+  node: HsonNode,
 ): string {
-  const entries = Object.entries(attrs ?? {});
-  const valued = entries
-    .filter(([key, value]) => value !== key)
-    .sort(compareKeys);
-  const flags = entries
-    .filter(([key, value]) => value === key)
-    .sort(compareKeys);
-
-  const terms: string[] = [];
-  for (const [key, value] of valued) terms.push(serializeAttribute(key, value));
-  for (const [key] of flags) terms.push(key);
+  const entries = Object.entries(node.$_attrs ?? {});
+  const isFlag = ([key, value]: readonly [string, unknown]): boolean =>
+    is_event_attachment_attribute(key) ? event_attachment_position(node, key) !== undefined : value === key;
+  const valued = entries.filter(entry => !isFlag(entry)).sort(compareKeys);
+  const flags = entries.filter(isFlag).sort(compareKeys);
+  const terms = valued.map(([key, value]) => serializeAttribute(key, value)).concat(flags.map(([key]) => key));
   return terms.length === 0 ? "" : ` ${terms.join(" ")}`;
 }
 
@@ -446,7 +442,7 @@ function emitStandardNode(
     _throw_transform_err(`serialize-hson: invalid quid`, "serialize_hson");
   }
   const quad = ctx.authoredQuad?.(node);
-  const header = `<${tag}${quad === undefined ? "" : ` @:${quad}`}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node.$_attrs)}`;
+  const header = `<${tag}${quad === undefined ? "" : ` @:${quad}`}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node)}`;
   const { children, closer, cluster } = standardContent(node);
 
   if (children.length === 0) return `${pad}${header}${closer}`;

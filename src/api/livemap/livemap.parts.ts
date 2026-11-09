@@ -1,6 +1,7 @@
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
-import { validate_part_definition_flags } from "../../internal/part-definition.js";
+import { analyze_part_definition, validate_part_definition_flags } from "../../internal/part-definition.js";
+import { read_part_events, type PartEvents } from "../../internal/part-events.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { ANY_DATA, hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
@@ -15,7 +16,7 @@ import { merge_part_stylesheets } from "../../internal/css/part-stylesheet.js";
 import { encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { DocumentCssRecord } from "../../types/document-css.types.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
-import { admit_public_livemap_root } from "./livemap.node-admission.js";
+import { admit_authored_livemap_document, admit_public_livemap_root } from "./livemap.node-admission.js";
 import { prepare_livemap_root } from "./livemap.document.js";
 import { decode_document_quads, parse_authored_document_library } from "./livemap.document.quad.js";
 
@@ -50,6 +51,7 @@ export type ValidatedPart = Readonly<{
   root: HsonNode;
   quads?: PortableDocumentQuads;
   css?: DocumentCssRecord;
+  events?: PartEvents;
 }>;
 
 /** Exact optional owner evidence; explicit undefined and accessors fail closed. @internal */
@@ -96,20 +98,22 @@ export function validate_part_member(key: string, member: OrderedProjectedValue)
   assert_hson_identifier_name(key, "Part");
   if (!is_ordered_projected_object(member)) throw new TypeError("Part requires a data record.");
   const fields = new Map(member.entries);
-  if (fields.size < 2 || fields.size > 4 || [...fields.keys()].some(name => name !== "kind" && name !== "document" && name !== "css" && name !== "stylesheet")
+  if ([...fields.keys()].some(name => name !== "kind" && name !== "document" && name !== "css" && name !== "stylesheet" && name !== "events")
     || fields.get("kind") !== "document" || typeof fields.get("document") !== "string") {
-    throw new TypeError("Part requires exactly kind, authored document, and optional css/stylesheet; member Schema is unsupported.");
+    throw new TypeError("Part requires kind, authored document, and optional css/stylesheet and events; member Schema is unsupported.");
   }
   const source = fields.get("document");
   if (typeof source !== "string") throw new TypeError("Part document requires authored Hson text.");
   const authored = parse_authored_document_library(source);
-  const root = admit_public_livemap_root(authored.root, "document", "Part document");
+  const root = admit_authored_livemap_document(authored.root, "Part document");
   const element = root.$_content[0];
   if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-part") {
     throw new TypeError("Part requires exactly one ordinary element root.");
   }
-  validate_part_definition_flags(root);
-  return interpret_part_source(key, fields, authored, root);
+  const part = interpret_part_source(key, fields, authored, root);
+  validate_part_definition_flags(root, part.events);
+  if (part.events !== undefined) analyze_part_definition(root, undefined, part.events);
+  return part;
 }
 
 
@@ -146,10 +150,13 @@ function interpret_part_source(key: string, fields: ReadonlyMap<string, OrderedP
   if (typeof rawSheet === "string") records.push(opaque_document_stylesheet(rawSheet));
   if (fields.has("css")) records.push(structured_part_stylesheet(materialize_projected_value(fields.get("css")!), names));
   const css = records.length ? encode_portable_document_stylesheet(merge_part_stylesheets(records)) : undefined;
+  const rawEvents = fields.get("events");
+  const events = rawEvents === undefined ? undefined : read_part_events(rawEvents);
   if (css !== undefined) for (const name of document_css_subject_identities(css, "inbound")) {
     if (!names.has(name)) throw new TypeError(`Part stylesheet references missing local QUAD ${name}.`);
   }
-  return Object.freeze({ key, root, ...(quads === undefined ? {} : { quads }), ...(css === undefined ? {} : { css }) });
+  return Object.freeze({ key, root, ...(quads === undefined ? {} : { quads }), ...(css === undefined ? {} : { css }),
+    ...(events === undefined ? {} : { events }) });
 }
 
 
@@ -165,11 +172,13 @@ export function validate_data_library(root: HsonNode, mode: string, validation: 
 export type PartLibraryCandidate = Readonly<{
   value: OrderedProjectedValue;
   graph: ReturnType<typeof prepare_livemap_root>;
+  hasEvents: boolean;
 }>;
 
 /** Capture once; the same immutable value supplies composition and installation. @internal */
 export function admit_part_library(input: unknown): PartLibraryCandidate {
   const value = admit_projected_value(normalize_part_css_authoring(input));
-  validate_part_collection(value);
-  return Object.freeze({ value, graph: prepare_livemap_root(projected_value_to_hson_root(value), "data") });
+  const parts = validate_part_collection(value);
+  return Object.freeze({ value, graph: prepare_livemap_root(projected_value_to_hson_root(value), "data"),
+    hasEvents: parts.some(part => (part.events?.size ?? 0) > 0) });
 }

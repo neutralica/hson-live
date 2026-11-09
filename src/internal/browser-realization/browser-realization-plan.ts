@@ -9,6 +9,7 @@ import {
   VAL_TAG,
 } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
+import { AUTHORED_EVENT_TAG, event_attachment_position } from "../../core/authored-event-names.js";
 import type { CanonicalPublicAttrValue, HsonNode, Primitive } from "../../core/types.js";
 import { serialize_style } from "../../api/transform/utils/attrs-utils/serialize-style.js";
 import { canonical_svg_attr_name } from "../../api/transform/utils/html-utils/parse_html_attrs.js";
@@ -317,6 +318,9 @@ function plan_element(
     throw incompatible("a reserved virtual node reached native element planning", path);
   }
   const names = browser_element_namespace(parentNamespace, node.$_tag);
+  if (names.localName.toLowerCase() === AUTHORED_EVENT_TAG) {
+    throw incompatible("hson:event is reserved for Part event declarations", path);
+  }
   const attrs: BrowserRealizationAttribute[] = [];
   const plannedAttrNames = new Set<string>();
   const quid = node.$_meta?.[HSON_META_QUID];
@@ -325,6 +329,9 @@ function plan_element(
     plannedAttrNames.add("hson:quid");
   }
   for (const [name, value] of Object.entries(node.$_attrs ?? {})) {
+    if (event_attachment_position(node, name) !== undefined) {
+      throw incompatible("an authored event attachment must be composed before browser realization", path);
+    }
     const lowered = lower_browser_attribute_value(name, value, names.namespace);
     if (lowered === undefined) continue;
     if (plannedAttrNames.has(lowered.name)) {

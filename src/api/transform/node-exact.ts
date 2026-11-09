@@ -1,6 +1,6 @@
 import { is_Node } from '../../core/node-guards.js';
 import type { HsonNode } from '../../core/types.js';
-import { capture_exact_hson_graph as capture, qualify_exact_hson_graph as qualify } from '../../internal/exact-node-qualification.js';
+import { capture_exact_hson_graph as capture, capture_parsed_hson_graph, qualify_exact_hson_graph as qualify } from '../../internal/exact-node-qualification.js';
 
 // Private Transform snapshots; contextual runtime qualification has no public bypass.
 const snapshots = new WeakSet<object>();
@@ -36,11 +36,12 @@ export function admit_exact_portable_node(input: unknown, operation = 'fromNode'
 }
 
 /** Preserve an already parsed source's ownership/output shape during staging. */
-export function own_transform_source(node: HsonNode): HsonNode {
-  return snapshots.has(node) ? node : own(capture(node, 'Transform.snapshot', false));
+export function own_transform_source(node: HsonNode, parsedHson = false): HsonNode {
+  if (snapshots.has(node)) return node;
+  return own(parsedHson ? capture_parsed_hson_graph(node, 'Transform.snapshot') : capture(node, 'Transform.snapshot', false));
 }
 
-/** Independent mutable observation; descriptor flags/topology are not semantics. */
+/** Independent mutable observation of graph values, without authored flag evidence. */
 export function copy_transform_node(node: HsonNode): HsonNode {
   return capture(node, 'Transform.toNode', false);
 }

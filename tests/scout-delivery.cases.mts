@@ -20,6 +20,8 @@ export async function scout_delivery_cases(): Promise<void> {
       text: { kind: 'document', document: '<span hson:part "%{payload}"/>' },
       css: { kind: 'document', document: '<hson-scout hson:part hidden "%{payload}"/>', stylesheet: '' },
       identity: { kind: 'document', document: '<hson-scout hson:part hidden @:identity "%{payload}"/>' },
+      effectful: { kind: 'document', document: '<hson-scout hson:part hidden event:probe "%{payload}"/>',
+        events: { probe: '<hson:event on:click local:probe input:data={null} <> >' } },
       malformed: { kind: 'document', document: '<p hson:part "%{payload}"/>' },
     }, access: 'private' },
   }, { authorizeProjection: () => ({ libraries: ["page"] }), sessions: { schedule: (delay, callback) => { assert.equal(delay, 30_000); timers.add(callback); return () => { timers.delete(callback); }; } } });
@@ -52,6 +54,11 @@ export async function scout_delivery_cases(): Promise<void> {
       assert.throws(() => deliver_scout(invalid, invalid.now({ html: 'page' }), locus.parts.ui.at([member]), { endpoint: '/_hson', module: '/scout-auto.js' }));
       assert.equal(locus.session.debug().activeSessionCount, 0);
     }
+    const effectful = await locus.session.create({ libraries: ['page'] });
+    assert.throws(() => deliver_scout(effectful, effectful.now({ html: 'page' }), locus.parts.ui.effectful,
+      { endpoint: '/_hson', module: '/scout-auto.js' }), /Scout delivery cannot carry authored interactions/);
+    assert.equal(locus.session.debug().activeSessionCount, 0);
+    assert.equal(JSON.stringify(locus.cut()), before);
     const fresh = await locus.session.create({ libraries: ['page'] });
     const original = fresh.now({ html: 'page' });
     assert.throws(() => deliver_scout(fresh, { ...original }, locus.parts.ui.scout, { endpoint: '/_hson', module: '/scout-auto.js' }));

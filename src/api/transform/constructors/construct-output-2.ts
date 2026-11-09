@@ -36,7 +36,7 @@ import { copy_transform_node, own_transform_source, qualify_transform_value } fr
 export function construct_output_2(frame: TransformFrame): TransformOutput {
   // Source parsers retain their current owner shapes; no portable flattening.
   // Capture once per frame, before any terminal can publish an observation.
-  frame.node = own_transform_source(frame.node);
+  frame.node = own_transform_source(frame.node, frame.meta?.origin === "hson-text");
   return {
     toNode() {
       return copy_transform_node(frame.node);

@@ -16,7 +16,9 @@ import { allocate_livemap_quid } from "./livemap.quid-allocation.js";
 import { prepare_document_scoped_composition, prepare_document_scoped_operations, prepare_document_scoped_reconstruction } from "./livemap.document.scoped-composition.js";
 import { prepare_document_scoped_library_styles, type PreparedDocumentScopedLibrary } from "./livemap.document.scoped-library.js";
 import { normalize_document_scoped_library_subjects, capture_document_scoped_library, decode_document_scoped_library, own_document_scopes, restore_document_scoped_library_styles } from "./livemap.document.scoped-portable.js";
-import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle } from "./livemap.document.composition.js";
+import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionStyle,
+  type DocumentCompositionInteraction } from "./livemap.document.composition.js";
+import { composed_interaction_value } from "../interactions/interactions.descriptor.js";
 import { merge_part_stylesheets, retire_part_styles } from "../../internal/css/part-stylesheet.js";
 import { registry_from_entries } from "./livemap.hosted.js";
 import {
@@ -1172,7 +1174,11 @@ function make_livemap_registry_engine(
       beforeOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
       afterOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
       operation: LiveMapGraphOp,
+      attachments: readonly DocumentCompositionInteraction[] = [],
     ): void => {
+      if (attachments.length && systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) {
+        throw new Error("Authored events require canonical interactions. Enable interactions during map construction.");
+      }
       if (replayingSystem || systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) return;
       const name = hostedBindingsByIdentity?.get(library.identity)?.name;
       if (name === undefined) throw new Error("Interaction document Library name is unavailable.");
@@ -1181,10 +1187,14 @@ function make_livemap_registry_engine(
       const rewritten = rewrite_interaction_subjects(
         descriptors, name, beforeRoot, beforeOverlay, afterOverlay, operation,
       );
-      if (rewritten === undefined) return;
+      if (rewritten === undefined && attachments.length === 0) return;
+      const current = rewritten ?? descriptors;
+      if (!Array.isArray(current)) throw new Error("Canonical interaction descriptors are malformed.");
+      const value = attachments.length === 0 ? current
+        : ordered_projected_array([...current, ...attachments.map(attachment => composed_interaction_value(name, attachment))]);
       const candidate = system_candidate();
       if (candidate === undefined) return;
-      const localWrite: LiveMapCoreWriteOp = { kind: "replace", path: ["descriptors"], value: rewritten };
+      const localWrite: LiveMapCoreWriteOp = { kind: "replace", path: ["descriptors"], value };
       const planned = plan_write_ops(candidate.root, [localWrite]);
       for (let index = 0; index < planned.ops.length; index += 1) {
         const projected = planned.transportOps[index];
@@ -1471,7 +1481,7 @@ function make_livemap_registry_engine(
             nextOrdinal += 1;
           }
           scopedOrdinals.set(library.identity, nextOrdinal);
-          if (step !== undefined) stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation);
+          if (step !== undefined) stage_interaction_paths(library, candidate.root, candidate.overlay, next.overlay, step.operation, step.interactions);
           for (const quid of livemap_document_identity_quids(next.overlay)) {
             if (candidate.overlay.pathForQuid(quid) === undefined) constructionClaims.push({ library: library.identity, quid });
           }
@@ -2423,6 +2433,9 @@ function make_livemap_registry_engine(
         root: normalize_document_root(definition.root), quads: own_document_quads(definition),
       }) };
       const result = expand_document_composition(definition.name, () => ({ root: definition.root, ...(definition.quads === undefined ? {} : { quads: definition.quads }) }), document_composition_options(undefined), readPart, "document");
+      if (result.interactions.length) {
+        throw new Error("Library topology changes cannot carry authored events. Add the Document Library first, then compose the Part in a Document edit.");
+      }
       const { quads: sourceQuads, ...ordinary } = definition;
       return { ...ordinary, root: result.root, ...(result.quads === undefined ? {} : { quads: result.quads }), compositionStyles: result.styles, compositionScopes: result.scoped };
     });
@@ -3869,6 +3882,7 @@ function make_livemap_registry_engine(
       const composition = expand_document_composition("candidate", () => source,
         document_composition_options(undefined), authority.readPart, "document");
       authority.assertCurrent();
+      if (composition.interactions.length) throw new Error("Detached scoped preparation cannot carry authored interactions.");
       const prepared = prepare_livemap_root(composition.root, "document");
       const candidate = prepare_document_scoped_composition({ owner: library.identity, root: composition.root,
         overlay: require_document_overlay(prepared.documentOverlay), issued: mapIdentityEpoch.issued() }, composition, authority);
@@ -3879,6 +3893,9 @@ function make_livemap_registry_engine(
       const authority = scoped_preparation_authority(before.assertCurrent);
       before.assertCurrent();
       const candidate = prepare_document_scoped_operations(before, before.scopes, operations, authority);
+      if (candidate.steps.some(step => step.interactions?.length)) {
+        throw new Error("Detached scoped preparation cannot carry authored interactions.");
+      }
       return finish_scoped_preparation(prepare_document_scoped_library_styles(candidate, before.stylesheet, before, true));
     },
     captureScopedDocumentEffects: (candidate) => {

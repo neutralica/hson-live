@@ -1,4 +1,4 @@
-import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference } from "../../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference, type PartReference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
@@ -21,6 +21,7 @@ import {
   is_hson_bare_name_start,
 } from "../../../core/hson-name.js";
 import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
+import { AUTHORED_EVENT_TAG } from "../../../core/authored-event-names.js";
 import type {
   HsonSourceLexicalCollector,
   HsonTokenSourceEvidence,
@@ -219,6 +220,11 @@ export function tokenize_authored_document_library(hson: string, collector?: Hso
     template?.substitutions, template === undefined ? undefined : "document", undefined, undefined, undefined, undefined, true).scan();
 }
 
+/** Dedicated authored event envelope. Only the inline Data operand emits Hson tokens. @internal */
+export function tokenize_authored_event(source: string) {
+  return new HsonScanner(source, 0).scanEventDeclaration();
+}
+
 class HsonScanner {
   private readonly tokens: Tokens[] = [];
   private index = 0;
@@ -249,6 +255,79 @@ class HsonScanner {
   private editorCommentEof = false;
   private editorElement: HsonGrammarCheckpoint["element"];
   private editorAttribute: string | undefined;
+
+  public scanEventDeclaration(): Readonly<{
+    flags: ReadonlyMap<string, Position>;
+    input: Readonly<{ value: Tokens[] | PartReference; start: Position; end: Position }>;
+  }> {
+    const code = "HSON_EVENT_DECLARATION_INVALID";
+    const invalid = (message: string, at = this.position()): never => this.fail(message, at, code);
+    this.skipTrivia();
+    if (this.peek() !== "<") invalid("Expected one literal <hson:event declaration.");
+    this.consumeExpected("<");
+    this.skipTrivia();
+    if (!this.startsWith(AUTHORED_EVENT_TAG) || this.scanBareName("event tag") !== AUTHORED_EVENT_TAG) {
+      invalid("Expected one literal <hson:event declaration.");
+    }
+    const flags = new Map<string, Position>();
+    let input: { value: Tokens[] | PartReference; start: Position; end: Position } | undefined;
+    let separated = this.skipTrivia();
+    while (this.peek() !== "<") {
+      if (this.atEnd() || this.peek() === ">" || this.startsWith("/>")) invalid("An authored event requires an outcome object <>.");
+      if (!separated) invalid("Expected trivia between authored event header items.");
+      const at = this.position();
+      const name = this.scanBareName("event header item");
+      const first = flags.get(name);
+      if (first !== undefined) this.fail(`Duplicate authored event header item ${JSON.stringify(name)}.`, at, code,
+        [{ role: "first-declaration", pos: first }]);
+      flags.set(name, at);
+      separated = this.skipTrivia();
+      if (name !== "input:data") {
+        if (this.peek() === "=") invalid("Only input:data takes a value in an authored event header.", at);
+        continue;
+      }
+      if (this.peek() !== "=") invalid("Expected input:data={Hson Data} or one whole Part reference.");
+      this.consumeExpected("=");
+      this.skipTrivia();
+      const start = this.position();
+      let value: Tokens[] | PartReference;
+      if (this.peek() === "{") {
+        this.consumeExpected("{");
+        this.skipTrivia();
+        if (this.peek() === "}") invalid("input:data requires one Hson Data value.");
+        this.scanObjectMemberValue(1, "input:data", "}");
+        this.skipTrivia();
+        if (this.peek() !== "}") invalid("input:data requires one Hson Data value followed by }.");
+        this.consumeExpected("}");
+        value = this.tokens;
+      } else {
+        const reference = scan_part_reference(this.source, start.index);
+        if (reference === undefined) {
+          const message = this.startsWith("#{") ? PART_LOCAL_REFERENCE_MIGRATION
+            : "Expected input:data={Hson Data} or one whole Part reference.";
+          const { end } = classifyAttributeOperand(this.source, start.index);
+          return this.fail(message, start, code, end > start.index
+            ? [{ role: "value-end", pos: this.positionAt(end) }] : undefined);
+        }
+        while (this.index < reference.end) this.consume();
+        value = reference;
+      }
+      input = { value, start, end: this.position() };
+      separated = this.skipTrivia();
+    }
+    this.consumeExpected("<");
+    this.skipTrivia();
+    if (this.peek() !== ">") invalid("Nonempty authored event outcomes are unsupported. Use <>.");
+    this.consumeExpected(">");
+    this.skipTrivia();
+    if (this.peek() !== ">") invalid("Expected > after the single authored event outcome object.");
+    this.consumeExpected(">");
+    this.skipTrivia();
+    if (!this.atEnd()) invalid("Expected exactly one authored event declaration.");
+    if (input === undefined) return invalid("An authored event requires explicit input:data. Use {null} for null Data.");
+    flags.delete("input:data");
+    return { flags, input };
+  }
 
   private slotHere(): HsonTemplateSlot | undefined {
     const slot = this.templateSlots[this.nextSlot];
@@ -652,7 +731,7 @@ class HsonScanner {
     }
   }
 
-  private scanObjectMemberValue(depth: number, memberName: string): void {
+  private scanObjectMemberValue(depth: number, memberName: string, terminator?: "}"): void {
     this.assertNesting(depth);
     if (this.slotHere() !== undefined) { this.emitSlot("data-value"); return; }
     const ch = this.peek();
@@ -695,7 +774,7 @@ class HsonScanner {
     }
 
     const pos = this.position();
-    const raw = this.scanBareToken();
+    const raw = this.scanBareToken(terminator);
     this.bareValueCheckpoint(pos.index, raw);
     if (!isPrimitiveLiteral(raw)) {
       if (this.peek() === "=") {
@@ -747,6 +826,9 @@ class HsonScanner {
       this.fail(`element name must not decode to the empty string`, tagPos, "HSON_ELEMENT_NAME_REQUIRED");
     }
     assert_authored_hson_source_name(tag, tagPos);
+    if (tag.toLowerCase() === AUTHORED_EVENT_TAG) {
+      this.fail("hson:event is reserved for declarations in a Part's events collection.", tagPos, "HSON_EVENT_DECLARATION_INVALID");
+    }
 
     const attrs: RawAttr[] = [];
     const previousElement = this.editorElement;
@@ -1591,7 +1673,7 @@ class HsonScanner {
     return out;
   }
 
-  private scanBareToken(): string {
+  private scanBareToken(terminator?: "}"): string {
     const start = this.position();
     let out = "";
 
@@ -1602,7 +1684,7 @@ class HsonScanner {
       if (
         isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "/" ||
         ch === "[" || ch === "]" || ch === "«" || ch === "»" ||
-        ch === "," || ch === `"` || ch === "'" || ch === "`" || ch === "="
+        ch === "," || ch === `"` || ch === "'" || ch === "`" || ch === "=" || ch === terminator
       ) {
         break;
       }

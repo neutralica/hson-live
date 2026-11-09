@@ -1,4 +1,5 @@
 import { analyze_part_definition } from "./part-definition.js";
+import type { PartEvents } from "./part-events.js";
 import { part_contract_error } from "./part-contract.js";
 import type { HsonAuthored } from "../api/transform/transform.types.js";
 import { qualify_authored_document_source, serialize_authored_document } from "../api/document/hson-authored.js";
@@ -29,9 +30,9 @@ export function forward_part_write<T extends object>(target: T, raw: object, ass
 }
 
 /** @internal Pure connector authoring. The owner encloses caller capture in its fence. */
-export function write_part_invocation(library: string, member: string, input: readonly unknown[], definition: HsonNode): HsonAuthored {
+export function write_part_invocation(library: string, member: string, input: readonly unknown[], definition: HsonNode, events?: PartEvents): HsonAuthored {
   if (input.length > 1) throw new TypeError("Part.write requires at most one argument record.");
-  const analysis = analyze_part_definition(definition), receiving = analysis.parameters;
+  const analysis = analyze_part_definition(definition, undefined, events), receiving = analysis.parameters;
   const selected = `${library}/${member}`, supplied = new Set<string>();
   const attrs: Record<string, string> = Object.create(null);
   attrs.lib = library;

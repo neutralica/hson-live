@@ -1,3 +1,4 @@
+import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
@@ -6,6 +7,7 @@ import type {
   LocusPersistenceAdapter,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { enable_interactions } from "../interactions/interactions.js";
 import { add_livemap_canonical_libraries_internal, type CanonicalLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { registry_from_entries, type HostedAggregateCommit } from "../livemap/livemap.hosted.js";
@@ -168,17 +170,18 @@ export async function resume_registry_locus<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: DurableRegistryOptions<TMap, TActions>,
-  internal: Readonly<{ scopedDocuments?: true | "auto" }> = {},
+  internal: Readonly<{ scopedDocuments?: true | "auto"; implicitInteractionsOnNew?: boolean }> = {},
 ): Promise<Locus<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
   const probe = Object.freeze({});
   initialAuthority.claimManagement(probe);
   initialAuthority.releaseManagement(probe);
   const initial = initialAuthority.hostedPosition();
+  let registryDigest = initial.registryDigest;
   const initialEpoch = initialAuthority.identityEpoch().current(), initialIssued = initialAuthority.identityEpoch().issued();
   const assertInitialCurrent = () => {
     const current = initialAuthority.hostedPosition();
-    if (current.revision !== initial.revision || current.registryDigest !== initial.registryDigest
+    if (current.revision !== initial.revision || current.registryDigest !== registryDigest
       || current.authority.logicalMapId !== initial.authority.logicalMapId || current.authority.incarnationId !== initial.authority.incarnationId
       || initialAuthority.identityEpoch().current() !== initialEpoch || initialAuthority.identityEpoch().issued() !== initialIssued) {
       throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID", "Deployment authority changed during durable restoration.");
@@ -189,15 +192,27 @@ export async function resume_registry_locus<
     persistence: options.persistence as LocusHostedAggregatePersistenceAdapter,
   });
   try { assertInitialCurrent(); } catch (cause) { restored?.dispose(); throw cause; }
-  if (restored === undefined) return persistent_view(options, true, undefined, internal.scopedDocuments);
+  if (restored === undefined) {
+    if (internal.implicitInteractionsOnNew) enable_interactions(options.map);
+    return persistent_view(options, true, undefined, internal.scopedDocuments);
+  }
   const restoredCheckpoint = internal_livemap_aggregate_authority(restored.map).captureSemanticCheckpoint();
+  const restoredSystem = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope === "hson-internal");
+  // Unused Part definitions infer a slot only for a new authority. On resume
+  // the durable registry supplies that decision; actual contributions still require it.
+  if (internal.implicitInteractionsOnNew !== undefined
+    && restoredSystem.some(entry => entry.name === INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME)) {
+    try {
+      enable_interactions(options.map);
+      registryDigest = initialAuthority.hostedRegistry().digest;
+    } catch (cause) { restored.dispose(); throw cause; }
+  }
   const initialRegistry = initialAuthority.hostedRegistry();
   const originalNames = initialRegistry.libraries.filter((entry) => entry.scope !== "hson-internal");
   const restoredNames = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal");
   const runtimeOwnership = new Map(restored.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
   const restoredOriginals = restoredNames.filter((entry) => !runtimeOwnership.has(entry.name));
   const initialSystem = initialRegistry.libraries.filter((entry) => entry.scope === "hson-internal");
-  const restoredSystem = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope === "hson-internal");
   if (originalNames.length !== restoredOriginals.length
     || originalNames.some(entry => runtimeOwnership.has(entry.name))
     || registry_from_entries(originalNames).digest !== registry_from_entries(restoredOriginals).digest
@@ -232,7 +247,7 @@ export async function resume_registry_locus<
     }
     assertInitialCurrent();
   } catch (cause) { restored.dispose(); throw cause; }
-  if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
+  if (restoredCheckpoint.registry.digest !== initialRegistry.digest) {
     const definitions: CanonicalLibraryDefinition[] = [];
     for (const [index, entry] of restoredCheckpoint.registry.libraries.entries()) {
       if (entry.scope === "hson-internal" || !runtimeOwnership.has(entry.name)) continue;

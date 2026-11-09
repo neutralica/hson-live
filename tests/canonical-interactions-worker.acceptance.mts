@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { authored_event_cases } from "./fixtures/authored-event-cases.mts";
 
 const testEvents = create_test_event_emitter("canonical-interactions-worker");
-const caseId = "hidden interaction recovery and exact authoritative dispatch work in an actual Worker";
+const caseId = "authored interaction composition, hidden recovery and exact dispatch";
 testEvents.case_begin(caseId, caseId);
 try {
+  await authored_event_cases();
   const result = await new Promise<Readonly<{ equal: boolean; order: readonly string[]; negativeZero: boolean }>>((resolve, reject) => {
     const worker = repository_typescript_worker(new URL("./fixtures/canonical-interactions.worker.mts", import.meta.url));
     worker.once("message", resolve);

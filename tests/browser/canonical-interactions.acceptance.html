@@ -9,8 +9,13 @@
       Hson,
       activate_interactions,
       add_interaction,
+      assertCanonicalClosure,
+      bind_locus_http,
+      continue_hosted_document,
+      decode_hosted_root,
       enable_interactions,
       hsonLiveMap,
+      hsonTransform,
       graft,
       admit_exact_runtime_livemap_libraries,
     } from "./.canonical-interactions.library.bundle.js";
@@ -95,10 +100,146 @@
       && exactArgs;
     dispose();
     dispose();
-    window.__HSON_CANONICAL_INTERACTIONS_BROWSER__ = Object.freeze({ passed, calls, exactArgs });
     const result = document.querySelector("#result");
-    result.textContent = passed ? "pass" : `fail ${JSON.stringify(window.__HSON_CANONICAL_INTERACTIONS_BROWSER__)}`;
-    result.dataset.status = passed ? "pass" : "fail";
+    try {
+      await checkAuthoredEvents();
+      window.__HSON_CANONICAL_INTERACTIONS_BROWSER__ = Object.freeze({ passed, calls, exactArgs });
+      result.textContent = passed ? "pass" : `fail ${JSON.stringify(window.__HSON_CANONICAL_INTERACTIONS_BROWSER__)}`;
+      result.dataset.status = passed ? "pass" : "fail";
+    } catch (cause) {
+      result.textContent = cause.stack ?? String(cause);
+      result.dataset.status = "fail";
+    }
+
+    async function checkAuthoredEvents() {
+      const payloads = [], args = [], failures = [];
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const parsed = hsonTransform.fromHson('<button id="observed" event:advance/>');
+      const graph = parsed.toNode(), attrs = graph.$_content[0].$_attrs;
+      delete attrs["event:advance"];
+      attrs["event:advance"] = "ready";
+      check(hsonTransform.fromNode(graph).toHson().serialize().includes('event:advance="ready"'), "Valued reassignment was lost.");
+      attrs["event:advance"] = "event:advance";
+      const observed = hsonTransform.fromNode(graph).toHson().serialize();
+      const oracle = { launcher: "native-chrome", caseId: "public oracle" };
+      const { semantic, reparsed, serialized } = assertCanonicalClosure({ ...oracle, ingress: "hson-source",
+        source: '<button id="advance" event:advance "Next"/>' });
+      const oracleAttrs = reparsed.$_content[0].$_attrs;
+      delete oracleAttrs["event:advance"];
+      oracleAttrs["event:advance"] = "event:advance";
+      oracleAttrs.id = "oracle-observed";
+      const oracleObserved = assertCanonicalClosure({ ...oracle, ingress: "canonical-node", node: reparsed }).serialized;
+      const transplanted = hsonTransform.fromHson("<button/>").toNode();
+      transplanted.$_content[0].$_attrs = semantic.$_content[0].$_attrs;
+      transplanted.$_content[0].$_attrs.id = "oracle-transplanted";
+      const oracleTransplanted = assertCanonicalClosure({ ...oracle, ingress: "canonical-node", node: transplanted }).serialized;
+      const locus = hsonLiveMap.locus.create({
+        parts: { access: "private", parts: {
+          controls: {
+            kind: "document",
+            document: Hson.document`<main hson:part
+              ${serialized}
+              <button id="panel" event:panel "Panel"/>
+              <button id="ordinary" event:advance="event:advance" event:phase="ready" "Ordinary"/>
+              ${observed}
+              ${Hson.document`<section ${oracleObserved} ${oracleTransplanted}/>`}
+            />`,
+            events: {
+              advance: "<hson:event once stopProp on:click host:deck.advance input:data={<step 3>} <> >",
+              panel: "<hson:event on:click local:deck.panel input:data={-0} <> >",
+            },
+          },
+          extra: {
+            kind: "document",
+            document: Hson.document`<button hson:part id="extra" event:panel "Extra"/>`,
+            events: { panel: "<hson:event on:click local:deck.panel input:data={null} <> >" },
+          },
+        } },
+        page: { access: "shared", document: '<hson-part lib="parts" at="controls"/>' },
+      }, {
+        authorizeProjection: ({ requested }) => requested,
+        actions: { "deck.advance": (_context, payload) => { payloads.push(payload); } },
+      });
+      const binding = bind_locus_http(locus, { endpoint: "/authored-events" });
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/authored-events",
+        fetch: (input, init) => binding.handle(new Request(input, init), {}) });
+      const receiver = document.createElement("iframe");
+      let continuation, submissions = 0;
+      const until = async (condition, message) => {
+        for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+        check(condition(), message);
+      };
+      try {
+        const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+        const now = session.now({ html: "page" });
+        const state = decode_hosted_root(now.libs.system.interactions).$_content[0];
+        const descriptorCount = JSON.parse(hsonTransform.fromNode(state).toJson().serialize()).descriptors.length;
+        check(!/event:panel|hson:event|hson-part|input:data/.test(JSON.stringify(now)), "Authored markers leaked into hosted output.");
+        const loaded = new Promise(resolve => receiver.addEventListener("load", resolve, { once: true }));
+        receiver.srcdoc = now.html;
+        document.body.append(receiver);
+        await loaded;
+        const page = receiver.contentDocument;
+        continuation = await continue_hosted_document({
+          now, credential: session.credential, root: page.documentElement,
+          transport: { ...transport, operations: { submit(request, options) {
+            if (request.type === "action") submissions++;
+            return transport.operations.submit(request, options);
+          } } },
+          interactions: { local: { "deck.panel": (_event, subject, data) => { args.push([subject.dom.el(), data]); } },
+            onFailure: failure => failures.push(failure) },
+        });
+        const advance = page.querySelector("#advance"), panel = page.querySelector("#panel");
+        let bubbles = 0;
+        page.querySelector("main").addEventListener("click", () => bubbles++);
+        panel.click();
+        check(args.length === 1 && args[0][0] === panel && Object.is(args[0][1].scalar(), -0) && submissions === 0,
+          "Browser-local behavior did not receive its subject and signed zero independently.");
+        advance.click();
+        advance.click();
+        await until(() => payloads.length === 1 || failures.length > 0, "No authored Locus action was received.");
+        check(payloads.length === 1 && payloads[0].equals(Hson.data.from({ step: 3 })) && submissions === 1
+          && bubbles === 2 && failures.length === 0, "Authored Locus input or native once/stopProp behavior was incorrect.");
+        await locus.stage(stage => stage.doc.must("page").at([1, 0]).asElement().move(0, 1));
+        await until(() => continuation.echo.sync.appliedRev === locus.rev, "Authored occurrence move did not reach the browser.");
+        check(page.querySelector("main").firstElementChild === panel, "Movement replaced the browser's subject.");
+        panel.click();
+        advance.click();
+        check(args.length === 2 && args[1][0] === panel && submissions === 1, "Movement changed a listener lifetime.");
+        const extra = hsonTransform.fromHson(locus.parts.parts.extra.write()).toNode().$_content[0];
+        await locus.stage(stage => stage.doc.must("page").at([1, 0]).asElement().insert(2, extra));
+        await until(() => continuation.echo.sync.appliedRev === locus.rev, "Authored insertion did not reach the browser.");
+        const inserted = page.querySelector("#extra");
+        check(inserted && !inserted.hasAttribute("event:panel"), "Inserted subject was missing or leaked authoring syntax.");
+        inserted.click();
+        const ordinary = page.querySelector("#ordinary");
+        check(!advance.hasAttribute("event:advance") && ordinary.getAttribute("event:advance") === "event:advance"
+          && ordinary.getAttribute("event:phase") === "ready", "Valued attributes did not survive native realization.");
+        ordinary.click();
+        check(args.length === 3 && args[2][0] === inserted && args[2][1].scalar() === null && submissions === 1,
+          "Hosted insertion did not activate the authored browser-local descriptor.");
+        const observedButton = page.querySelector("#observed");
+        observedButton.click();
+        const oracleButton = page.querySelector("#oracle-observed");
+        const transplantedButton = page.querySelector("#oracle-transplanted");
+        oracleButton.click();
+        transplantedButton.click();
+        if (submissions > 1) await until(() => payloads.length > 1 || failures.length > 0, "Extra action did not settle.");
+        check(descriptorCount === 2 && submissions === 1 && payloads.length === 1
+          && observedButton.getAttribute("event:advance") === "event:advance"
+          && oracleButton.getAttribute("event:advance") === "event:advance"
+          && transplantedButton.getAttribute("event:advance") === "event:advance"
+          && observed === '<button event:advance="event:advance" id="observed"/>',
+        `Mutable flag round trip changed executable intent: ${JSON.stringify({ observed, oracleObserved, oracleTransplanted, descriptorCount, submissions, hostedActions: payloads.length })}`);
+      } finally {
+        continuation?.dispose();
+        continuation?.echo.dispose();
+        transport.dispose();
+        binding.dispose();
+        locus.dispose();
+        receiver.remove();
+      }
+    }
   </script>
 </body>
 </html>

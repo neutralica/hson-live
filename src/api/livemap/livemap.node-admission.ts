@@ -3,6 +3,7 @@ import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import {
   capture_exact_hson_graph,
+  capture_parsed_hson_graph,
   qualify_exact_hson_graph,
   type ExactHsonRole,
 } from "../../internal/exact-node-qualification.js";
@@ -22,6 +23,13 @@ function root_role(root: HsonNode, family?: Family): ExactHsonRole {
 export function admit_public_livemap_root(input: unknown, family: Family, operation: string): HsonNode {
   const root = capture_exact_hson_graph(input, operation, true);
   qualify_exact_hson_graph(root, operation, root_role(root, family), true);
+  return root;
+}
+
+/** Capture a freshly parsed document for authored composition. */
+export function admit_authored_livemap_document(input: HsonNode, operation: string): HsonNode {
+  const root = capture_parsed_hson_graph(input, operation);
+  qualify_exact_hson_graph(root, operation, "document-source", true);
   return root;
 }
 

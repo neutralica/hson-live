@@ -28,7 +28,8 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
         && ["from", "fromSource", "parse"].includes(node.expression.name.text) && officialData(node.expression.expression);
   };
   type Alternatives = Readonly<{ nodes: readonly ts.Expression[]; complete: boolean; conditional: boolean }>;
-  const alternatives = (input: ts.Expression, family: "certify" | "document" | "data" | "json", seen = new Set<ts.Declaration>(), depth = 0): Alternatives => {
+  const alternatives = (input: ts.Expression, family: "certify" | "document" | "data" | "json",
+    options: Readonly<{ reachableOnly?: true }> = {}, seen = new Set<ts.Declaration>(), depth = 0): Alternatives => {
     const unknown: Alternatives = { nodes: [input], complete: false, conditional: false };
     if (depth > 16) return unknown;
     const node = unwrap(input);
@@ -53,12 +54,19 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
         if (uncertain) return unknown;
       }
       const next = new Set(seen); next.add(found);
-      const result = alternatives(found.initializer, family, next, depth + 1);
+      const result = alternatives(found.initializer, family, options, next, depth + 1);
       return { ...result, complete: complete && result.complete && binding?.eligible === true };
     }
     if (typescript.isConditionalExpression(node)) {
-      const left = alternatives(node.whenTrue, family, new Set(seen), depth + 1);
-      const right = alternatives(node.whenFalse, family, new Set(seen), depth + 1);
+      if (options.reachableOnly && complete) {
+        const condition = alternatives(node.condition, "document", {}, seen, depth + 1);
+        const kind = condition.complete && condition.nodes.length === 1 ? condition.nodes[0]?.kind : undefined;
+        if (kind === typescript.SyntaxKind.TrueKeyword || kind === typescript.SyntaxKind.FalseKeyword) {
+          return alternatives(kind === typescript.SyntaxKind.TrueKeyword ? node.whenTrue : node.whenFalse, family, options, seen, depth + 1);
+        }
+      }
+      const left = alternatives(node.whenTrue, family, options, seen, depth + 1);
+      const right = alternatives(node.whenFalse, family, options, seen, depth + 1);
       const nodes = [...left.nodes, ...right.nodes];
       return { nodes: nodes.slice(0, 16), complete: complete && left.complete && right.complete && nodes.length <= 16, conditional: true };
     }

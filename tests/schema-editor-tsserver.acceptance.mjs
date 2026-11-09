@@ -617,6 +617,233 @@ const loc = hsonLiveMap.locus.create({
     }
     await editConsumer(consumer);
   });
+  await check("authored event inputs participate in Part contracts with adjacent source ranges", async () => {
+    const valid = [
+      'import { Hson, hsonLiveMap } from "hson-live";',
+      'const loc = hsonLiveMap.fromLibraries({',
+      '  bits: { parts: {',
+      '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`,',
+      '      events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" } },',
+      '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`,',
+      '      events: { go: "<hson:event on:click local:deck.go input:data=%{text} <> >" } },',
+      '  } },',
+      '  page: { document: Hson.document`<main <hson-part lib="bits" at="scalar" text="hi"/> <hson-part lib="bits" at="typed" args:data="<>"/>/>` },',
+      '});',
+    ].join("\n");
+    const hsonErrors = async source => {
+      await editConsumer(source);
+      return (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
+    };
+    assert.deepEqual(await hsonErrors(valid), []);
+    const input = valid.indexOf("^{args}") + 2;
+    const definitions = await request("definition", { file: file("consumer.ts"), ...location(valid, input) });
+    assert.deepEqual(definitions?.[0]?.start, location(valid, valid.indexOf("data:args") + "data:".length));
+    const typedEvents = 'events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" }';
+    for (const replacement of ['events: opaque', '...opaque']) {
+      const uncertain = valid.replace(typedEvents, replacement)
+        .replace('const loc', 'declare const opaque: Record<string, string>;\nconst loc');
+      assert.deepEqual(await hsonErrors(uncertain), []);
+    }
+    for (const [source, message, span] of [
+      [valid.replace("event:go", "event:unknown"), /Missing Part event declaration "unknown"/, 'event:unknown'],
+      [valid.replace(typedEvents, ""), /requires a governed Part's events collection/, "event:go"],
+      [valid.replace(typedEvents, "events: {}"), /Missing Part event declaration "go"/, "event:go"],
+    ]) {
+      const errors = await hsonErrors(source);
+      assert.equal(errors.length, 2, JSON.stringify(errors));
+      const attachment = errors.find(error => message.test(error.text));
+      assert.deepEqual(attachment?.start, location(source, source.indexOf(span)));
+      assert.deepEqual(attachment?.end, location(source, source.indexOf(span) + span.length));
+      assert.ok(errors.some(error => /Unused Part data binding "args"/.test(error.text)));
+    }
+    const partial = valid.replace('const loc', 'declare const opaque: string;\nconst loc')
+      .replace('event:go', 'event:go event:other')
+      .replace('^{args} <> >" }', '^{unknown} <> >", other: opaque }');
+    const partialErrors = await hsonErrors(partial);
+    assert.equal(partialErrors.length, 1, JSON.stringify(partialErrors));
+    assert.match(partialErrors[0].text, /Missing Part local declaration "unknown"/);
+    assert.deepEqual(partialErrors[0].start, location(partial, partial.indexOf("^{unknown}")));
+    const reused = valid.replace('const loc', 'const shared = Hson.document`<button hson:part event:go/>`;\nconst loc')
+      .replace('document: Hson.document`<button hson:part event:go/>`', 'document: shared')
+      .replace('    scalar:', '    other: { kind: "document", document: shared, events: { go: "<hson:event on:click local:other input:data=%{other} <> >" } },\n    scalar:')
+      .replace(' <hson-part lib="bits" at="typed"', ' <hson-part lib="bits" at="other" other="hi"/> <hson-part lib="bits" at="typed"');
+    assert.deepEqual(await hsonErrors(reused), []);
+    for (const [source, message, span] of [
+      [valid.replace(' text="hi"', ''), /Missing Part parameter "text"/, '<hson-part lib="bits" at="scalar"'],
+      [valid.replace(' text="hi"', ' text="hi" extra="x"'), /Unknown Part parameter "extra"/, 'extra'],
+      [valid.replace("%{text}", "^{missing}"), /Missing Part local declaration "missing"/, '^{missing}'],
+      [valid.replace("^{args}", "^{args.}"), /one whole Part reference/, "^{args.}"],
+      [valid.replace("^{args}", String.raw`\u005e{args.}`), /one whole Part reference/, String.raw`\u005e{args.}`],
+      [valid.replace("on:click", "capture on:click"), /Unsupported authored event header/, 'capture'],
+      [valid.replace("local:deck.go", "local:deck.go host:other"), /exactly one host: or local:/, 'host:other'],
+    ]) {
+      const errors = await hsonErrors(source);
+      assert.equal(errors.length, 1, JSON.stringify(errors));
+      assert.match(errors[0].text, message);
+      const start = source.indexOf(span);
+      assert.deepEqual(errors[0].start, location(source, start));
+      assert.deepEqual(errors[0].end, location(source, start + span.length));
+    }
+    const scoped = [
+      'import { Hson, hsonLiveMap } from "hson-live";',
+      'const events = { go: "<hson:event on:click local:deck.go input:data=^{args.item} <> >" } as const;',
+      'hsonLiveMap.fromLibraries({ bits: { parts: { scoped: { kind: "document", events,',
+      '  document: Hson.document`<section hson:part data:args=%{args} data:items=%{items}',
+      '    <button event:go/>',
+      '    <div for:row:args=^{items} <div for:args=^{row.items} <button event:go/>/> <button event:go/>/>',
+      '  />`,',
+      '} } } });',
+    ].join("\n");
+    const errors = await hsonErrors(scoped);
+    assert.equal(errors.length, 1, JSON.stringify(errors));
+    assert.match(errors[0].text, /does not match its declared representation/);
+    const at = scoped.indexOf("^{args.item}"), alias = scoped.indexOf("for:row:args") + "for:row:".length;
+    assert.deepEqual(errors[0].start, location(scoped, at));
+    assert.deepEqual(errors[0].end, location(scoped, at + "^{args.item}".length));
+    const related = errors[0].relatedInformation?.[0]?.span;
+    assert.equal(related?.file, file("consumer.ts"));
+    assert.deepEqual(related?.start, location(scoped, alias));
+    assert.deepEqual(related?.end, location(scoped, alias + "args".length));
+    const attachment = errors[0].relatedInformation?.[1]?.span;
+    assert.equal(attachment?.file, file("consumer.ts"));
+    assert.deepEqual(attachment?.start, location(scoped, scoped.lastIndexOf("event:go")));
+    assert.deepEqual(attachment?.end, location(scoped, scoped.lastIndexOf("event:go") + "event:go".length));
+    const ambiguous = await request("definition", { file: file("consumer.ts"), ...location(scoped, at + 2) });
+    assert.equal(ambiguous?.length ?? 0, 0);
+    const repaired = scoped.replace("for:row:args", "for:row:index").replace("for:args", "for:entry");
+    assert.deepEqual(await hsonErrors(repaired), []);
+    const sharedTarget = await request("definition", { file: file("consumer.ts"), ...location(repaired, at + 2) });
+    assert.deepEqual(sharedTarget?.[0]?.start, location(repaired, repaired.indexOf("data:args") + "data:".length));
+
+    const shared = [
+      'import { Hson, hsonLiveMap } from "hson-live";',
+      'declare const fragment: string;',
+      'const go = "<hson:event on:click local:go input:data=^{args.item} <> >";',
+      'hsonLiveMap.fromLibraries({ bits: { parts: {',
+      '  first: { kind: "document", events: { go }, document: Hson.document`<button hson:part data:args=%{args} event:go/>` },',
+      '  second: { kind: "document", events: { go }, document: Hson.document`<section hson:part <button event:go/> <button event:go/>/>` },',
+      '} } });',
+    ].join("\n");
+    const sameErrors = await hsonErrors(shared);
+    const operand = shared.indexOf("^{args.item}");
+    assert.equal(sameErrors.length, 2, JSON.stringify(sameErrors));
+    assert.equal(sameErrors[0].text, sameErrors[1].text);
+    for (const error of sameErrors) {
+      assert.deepEqual(error.start, location(shared, operand));
+      assert.deepEqual(error.end, location(shared, operand + "^{args.item}".length));
+    }
+    assert.match(sameErrors[0].text, /Missing Part local declaration "args"/);
+    const badAttachments = [...shared.matchAll(/event:go/g)].slice(1).map(match => match.index);
+    assert.deepEqual(sameErrors.map(error => error.relatedInformation?.map(info => info.span)), badAttachments.map(index => [{
+      file: file("consumer.ts"), start: location(shared, index), end: location(shared, index + "event:go".length),
+    }]));
+    const targetAtOperand = () => request("definition", { file: file("consumer.ts"), ...location(shared, operand + 2) });
+    assert.equal((await targetAtOperand())?.length ?? 0, 0);
+    assert.deepEqual(await hsonErrors(shared.replace('<section hson:part ', '<section hson:part ${fragment} ')), []);
+    assert.equal((await targetAtOperand())?.length ?? 0, 0);
+    assert.deepEqual(await hsonErrors(shared.replace('  second:', '  // second:')), []);
+    assert.deepEqual((await targetAtOperand())?.[0]?.start, location(shared, shared.indexOf("data:args") + 5));
+    await editConsumer(consumer);
+  });
+  await check("bundled event definitions account for every possible attachment scope", async () => {
+    const prefix = [
+      'import { Hson, hsonLiveMap } from "hson-live";',
+      'declare const branch: boolean, opaque: string, fragment: string, collection: Record<string, string>;',
+      'const shared = "<hson:event on:click local:go input:data=^{row.label} <> >";',
+      'const other = "<hson:event on:click local:go input:data={null} <> >";',
+    ].join("\n");
+    const resolved = '<section hson:part data:row=%{rows} <button event:go/>/>';
+    const unresolved = '<section hson:part <button event:go/>/>';
+    const part = (body, events) => '{ kind: "document", document: Hson.document`' + body + '`, events: ' + events + ' }';
+    const source = (first = part(resolved, '{ go: shared }'), second) => prefix
+      + '\nhsonLiveMap.fromLibraries({ bits: { parts: { first: ' + first + (second === undefined ? '' : ', second: ' + second) + ' } } });';
+    const cases = [
+      ["one use", source(), true],
+      ["two uses of one binding", source(part(resolved.replace('/>/>', '/> <button event:go/>/>'), '{ go: shared }')), true],
+      ["different bindings", source(undefined, part(resolved, '{ go: shared }')), false],
+      ["conditional value", source(undefined, part(unresolved, '{ go: branch ? shared : other }')), false],
+      ["resolved conditional value", source(part(resolved, '{ go: branch ? shared : other }')), true],
+      ["conditional collection", source(undefined, part(unresolved, 'branch ? { go: shared } : { go: other }')), false],
+      ["conditional Part", source(undefined, 'branch ? ' + part(unresolved, '{ go: shared }') + ' : ' + part(unresolved, '{ go: other }')), false],
+      ["inactive value", source(undefined, part(unresolved, '{ go: false ? shared : other }')), true],
+      ["inactive collection", source(undefined, part(unresolved, 'false ? { go: shared } : { go: other }')), true],
+      ["inactive Part", source(undefined, 'false ? ' + part(unresolved, '{ go: shared }') + ' : ' + part(unresolved, '{ go: other }')), true],
+      ["structural interpolation", source(undefined, part(unresolved.replace('hson:part', 'hson:part ${fragment}'), '{ go: branch ? shared : other }')), false],
+      ["opaque value alternative", source(part(resolved.replace('event:go', 'event:go event:maybe'), '{ go: shared, maybe: branch ? shared : opaque }')), false],
+      ["opaque collection alternative", source(part(resolved, 'branch ? { go: shared } : collection'), part(resolved, '{ go: shared }')), false],
+      ["unattached opaque alternative", source(part(resolved, '{ go: shared, spare: branch ? shared : opaque }')), true],
+    ];
+    const actual = [];
+    for (const [name, text] of cases) {
+      await editConsumer(text);
+      const offset = text.indexOf("^{row.label}") + 2;
+      const targets = await request("definition", { file: file("consumer.ts"), ...location(text, offset) });
+      actual.push([name, (targets ?? []).map(target => [target.file, target.start, target.end])]);
+    }
+    assert.deepEqual(actual, cases.map(([name, text, unique]) => {
+      const start = text.indexOf('data:row') + 'data:'.length;
+      return [name, unique ? [[file("consumer.ts"), location(text, start), location(text, start + 'row'.length)]] : []];
+    }));
+    const distinct = source(part(resolved, '{ go: branch ? shared : copy }'))
+      .replace('hsonLiveMap.fromLibraries', 'const copy = "<hson:event on:click local:go input:data=^{row.label} <> >";\nhsonLiveMap.fromLibraries');
+    await editConsumer(distinct);
+    for (const operand of distinct.matchAll(/\^\{row\.label\}/g)) {
+      const targets = await request("definition", { file: file("consumer.ts"), ...location(distinct, operand.index + 2) });
+      const start = distinct.indexOf("data:row") + 5;
+      assert.deepEqual((targets ?? []).map(target => [target.file, target.start, target.end]),
+        [[file("consumer.ts"), location(distinct, start), location(distinct, start + 3)]]);
+    }
+    await editConsumer(consumer);
+  });
+  await check("validated event Data paths use the caller Schema and report every proven attachment", async () => {
+    const source = [
+      'import { Hson, hsonLiveMap, type HsonDataValue } from "hson-live";',
+      'const Shape = Hson.schema`<type "data" content <title "string">>`;',
+      'const input: HsonDataValue<typeof Shape> = Hson.data.parse`<title "present">`;',
+      'hsonLiveMap.fromLibraries({ bits: { parts: { card: { kind: "document",',
+      '  document: Hson.document`<main hson:part data:args=%{args} <button event:go/> <div <button event:go/>/>/>`,',
+      '  events: { go: "<hson:event on:click local:go input:data=^{args.missing} <> >" },',
+      '} } }, page: { document: Hson.document`<article <hson-part at="bits/card" args:data="${input.toHson()}"/> <hson-part at="bits/card" args:data="${input.toHson()}"/>/>` } });',
+    ].join("\n");
+    const hsonErrors = async source => {
+      await editConsumer(source);
+      return (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
+    };
+    const errors = await hsonErrors(source);
+    const calls = [...source.matchAll(/"bits\/card"/g)].map(match => match.index);
+    const flags = [...source.matchAll(/event:go/g)].map(match => match.index);
+    assert.equal(errors.length, 4, JSON.stringify(errors));
+    const operand = source.indexOf("^{args.missing}");
+    for (const error of errors) {
+      assert.match(error.text, /cannot succeed for this invocation's validated Data Schema/);
+      const related = error.relatedInformation.map(info => info.span);
+      assert.deepEqual(related[0], { file: file("consumer.ts"), start: location(source, operand), end: location(source, operand + "^{args.missing}".length) });
+      assert.deepEqual(related[1].start, location(source, source.indexOf("data:args") + 5));
+      assert.equal(related[2].file, file("consumer.ts"));
+    }
+    assert.deepEqual(errors.map(error => [error.start, error.end, error.relatedInformation[3].span]),
+      flags.flatMap(flag => calls.map(call => [location(source, call), location(source, call + '"bits/card"'.length), {
+        file: file("consumer.ts"), start: location(source, flag), end: location(source, flag + "event:go".length),
+      }])));
+    const partial = source.replace('const Shape', 'declare const opaque: string;\nconst Shape')
+      .replace('events: { go:', 'events: { spare: opaque, go:');
+    const partialErrors = await hsonErrors(partial);
+    assert.deepEqual(partialErrors.map(error => [error.code, error.start, error.end, error.relatedInformation?.[3]?.span]),
+      [...partial.matchAll(/event:go/g)].flatMap(flag => [...partial.matchAll(/"bits\/card"/g)].map(call => [
+        95002, location(partial, call.index), location(partial, call.index + call[0].length), {
+          file: file("consumer.ts"), start: location(partial, flag.index), end: location(partial, flag.index + flag[0].length),
+        },
+      ])));
+    assert.equal((await hsonErrors(source.replace('<button event:go/>', '<p "^{args.missing}"/> <button event:go/>'))).length, 6);
+    assert.equal((await hsonErrors(source.replace('^{args.missing}', '^{args.missing?}'))).length, 4);
+    for (const valid of [
+      source.replace('^{args.missing}', '^{args.title}'),
+      source.replace('<title "string">', '<title "string" missing <optional "string">>'),
+      source.replace('<type "data" content <title "string">>', '<type "data">'),
+      source.replace('HsonDataValue<typeof Shape>', 'HsonDataValue'),
+    ]) assert.deepEqual(await hsonErrors(valid), []);
+    await editConsumer(consumer);
+  });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {
     for (const [name, original] of originals) assert.deepEqual(readFileSync(file(name)), original);
     assert.equal(existsSync(file(".hson")), false);

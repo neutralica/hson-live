@@ -1,3 +1,4 @@
+import { is_event_attachment_attribute, record_event_attachments } from "../../../core/authored-event-names.js";
 // Shared Hson token assembly; receiving-context attribute decoding is supplied by the caller.
 
 import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX, EVERY_VSN } from "../../../core/constants.js";
@@ -199,6 +200,9 @@ export function assemble_hson_tokens(
 
         if (!isVSN && Object.keys(attrs).length) {
             node.$_attrs = attrs;
+            const eventFlags = open.rawAttrs.filter(attr => attr.value === undefined && is_event_attachment_attribute(attr.name));
+            if (eventFlags.length) record_event_attachments(attrs, new Map(eventFlags.map(({ name, start }) =>
+                [name, { index: start.index, line: start.line, column: start.col }])));
         }
 
         let sawClose: TokenClose | null = null;

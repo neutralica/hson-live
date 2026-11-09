@@ -28,14 +28,18 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
   const memberInvocations = new Set<object>();
-  const report = (where: PartSourceLocation | undefined, code: string, message: string, declaration?: PartSourceLocation): void => {
+  const report = (where: PartSourceLocation | undefined, code: string, message: string,
+    declaration?: PartSourceLocation, attachment?: PartSourceLocation): void => {
     if (where?.precision !== "exact") return;
-    const key = JSON.stringify([where.file, where.start, where.end, code, message]);
+    const key = JSON.stringify([where.file, where.start, where.end, code, message, attachment]);
     if (reported.has(key)) return;
     reported.add(key);
-    output.push({ file: where.file, start: where.start, end: where.end, code, message,
-      ...(declaration?.precision !== "exact" ? {} : { related: [{ file: declaration.file, start: declaration.start, end: declaration.end,
-        message: "Relevant Part declaration." }] }) });
+    const related: StaticSchemaDiagnosticLocation[] = [];
+    if (declaration?.precision === "exact") related.push({ file: declaration.file, start: declaration.start, end: declaration.end,
+      message: "Relevant Part declaration." });
+    if (attachment?.precision === "exact") related.push({ file: attachment.file, start: attachment.start, end: attachment.end,
+      message: "Part event attachment." });
+    output.push({ file: where.file, start: where.start, end: where.end, code, message, ...(related.length === 0 ? {} : { related }) });
   };
   for (const document of facts.documents) {
     // Grammar and declared-name conflicts are local facts; they require no receiver shape.
@@ -62,30 +66,33 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       if (isDefinition && iterator.issue !== undefined || ordinaryReceiver) report(iterator.location, "HSON_PART_REFERENCE_INVALID",
         iterator.issue ?? "Part iteration is only allowed within a governed Part definition.");
     }
-    if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message, issue.declaration);
+    if (isDefinition) for (const issue of document.referenceIssues) report(issue.location, "HSON_PART_REFERENCE_INVALID", issue.message, issue.declaration, issue.attachment);
     if (isDefinition) for (const use of document.bindingSources?.references ?? []) {
       const binding = use.declaration;
-      // Initial proof boundary: exact, unconditional ordinary reads of a directly
+      // Initial proof boundary: exact, unconditional reads of a directly
       // received Data alias. Iteration/forwarding/conditional structure supplies
       // no guaranteed execution, and optional ancestors supply no presence proof.
-      if (use.context !== "value" || use.iterators.length !== 0 || use.resolution !== "resolved"
+      const event = use.context === "event";
+      if ((!event && use.context !== "value") || use.conditional || use.iterators.length !== 0 || use.resolution !== "resolved"
         || binding?.origin !== "receiving" || binding.kind !== "data" || binding.incoming === undefined
         || use.reference.path.length === 0) continue;
       for (const context of part_data_contexts(facts, document, binding.incoming)) {
         if (context.receiving !== binding || !context.executionCertain || context.evidence?.strength !== "validated"
-          || context.argument === undefined || context.connector === undefined || memberInvocations.has(context.connector)) continue;
+          || context.argument === undefined || context.connector === undefined || (!event && memberInvocations.has(context.connector))) continue;
         const alternatives = part_data_projection(context.evidence, use.reference.path).alternatives;
+        // A surviving event subject always needs present Data.
         const invalid = alternatives.length > 0 && alternatives.every(alternative => alternative.presence === "required"
-          && (alternative.kind === "invalid-traversal" || !use.reference.optional && alternative.kind === "absent"));
+          && (alternative.kind === "invalid-traversal" || (event || !use.reference.optional) && alternative.kind === "absent"));
         if (!invalid) continue;
         const selector = context.connector.attributes.find(attribute => attribute.name === "at")?.valueLocation;
         const where = selector?.precision === "exact" ? selector : context.argument.nameLocation;
         if (where.precision !== "exact" || use.location.precision !== "exact" || binding.location.precision !== "exact") continue;
-        memberInvocations.add(context.connector);
+        if (!event) memberInvocations.add(context.connector);
         output.push({ ...where, code: "HSON_PART_DATA_MEMBER_INVALID",
           message: `Part reference ^{${use.reference.reference}} cannot succeed for this invocation's validated Data Schema.`,
           related: [{ ...use.location, message: "Authored Part reference." }, { ...binding.location, message: `Receiving local ${binding.name} from incoming ${binding.incoming}.` },
-            { ...context.evidence.schemaLocation, message: "Validated input Schema." }] });
+            { ...context.evidence.schemaLocation, message: "Validated input Schema." },
+            ...(use.attachment === undefined ? [] : [{ ...use.attachment, message: "Part event attachment." }])] });
       }
     }
     // A known invocation can disprove its own collection input. It never supplies
@@ -98,10 +105,10 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         const coordinates = part_source_coordinates(connector);
         if (coordinates === undefined || coordinates.issue !== undefined) continue;
         const { library: lib, member: at } = coordinates;
-        const libraries = batch.libraries.filter(library => library.name === lib && library.family === "parts" && library.certainty === "certain");
-        const members = libraries.length === 1 ? libraries[0]!.members.filter(member => member.name === at && member.certainty === "certain") : [];
-        const definition = members.length === 1 && members[0]!.documents.length === 1 ? members[0]!.documents[0] : undefined;
-        if (definition?.parameterCompleteness !== "complete") continue;
+        const libraries = batch.libraries.filter(library => library.name === lib && library.family === "parts");
+        const members = libraries.length === 1 ? libraries[0]!.members.filter(member => member.name === at) : [];
+        const definition = members.length === 1 ? members[0]!.contractSource : undefined;
+        if (definition?.signature === undefined) continue;
         const inputs = new Map<string, OrderedProjectedValue | undefined>();
         const literalInput = (name: string): OrderedProjectedValue | undefined => {
           if (!inputs.has(name)) {
@@ -195,7 +202,8 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
     if ((receiver.certainty !== "certain" && !receiver.placementCertain) || receiver.library?.family !== "document") continue;
     const batch = facts.batches.find(batch => batch.call === receiver.batch);
     if (batch === undefined || !batch.eligible || batch.receivingInventory !== "candidate-only"
-      || batch.inventoryCompleteness !== "complete" || batch.libraries.some(library => library !== receiver.library && library.certainty !== "certain")) continue;
+      || batch.inventoryCompleteness !== "complete") continue;
+    const inventoryCertain = batch.libraries.every(library => library === receiver.library || library.certainty === "certain");
     for (const connector of document.connectors) {
       if (!connector.headerComplete) continue;
       const coordinates = part_source_coordinates(connector);
@@ -211,34 +219,40 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
         || attribute.value === undefined && !attribute.dynamicValue)) continue;
       const libraries = batch.libraries.filter(library => library.name === libraryName);
       if (libraries.length === 0 || libraries.length === 1 && libraries[0]!.family !== "parts") {
-        report(libraryLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(libraryName)}.`);
+        if (inventoryCertain) report(libraryLocation, "HSON_PART_LIBRARY_UNKNOWN", `Unknown Parts Library ${JSON.stringify(libraryName)}.`);
         continue;
       }
       const library = libraries.length === 1 ? libraries[0] : undefined;
-      if (library?.family !== "parts" || library.memberCompleteness !== "complete") continue;
+      if (library?.family !== "parts") continue;
       const members = library.members.filter(member => member.name === memberName);
       if (members.length === 0) {
-        report(memberLocation, "HSON_PART_MEMBER_UNKNOWN", `Unknown Part member ${JSON.stringify(memberName)} in Parts Library ${JSON.stringify(libraryName)}.`);
+        if (inventoryCertain && library.memberCompleteness === "complete") {
+          report(memberLocation, "HSON_PART_MEMBER_UNKNOWN", `Unknown Part member ${JSON.stringify(memberName)} in Parts Library ${JSON.stringify(libraryName)}.`);
+        }
         continue;
       }
       const member = members.length === 1 ? members[0] : undefined;
-      if (member?.admission !== "qualified" || member.certainty !== "certain" || member.documents.length !== 1) continue;
-      const definition = member.documents[0]!;
-      if (definition.admission !== "qualified" || definition.parameterCompleteness !== "complete") continue;
+      const definition = member?.contractSource;
+      const contract = definition?.signature;
+      if (member === undefined || definition === undefined || contract === undefined) continue;
       const supplied = new Set(arguments_.map(attribute => part_argument_name(attribute.name)!.name));
-      const vocabulary = new Set(definition.parameters.map(parameter => parameter.name));
       const contractLocation = (name: string) => definition.bindingSources?.declarations.find(binding => binding.incoming === name)?.location
         ?? definition.bindingSources?.references.find(use => use.reference.namespace === "incoming" && use.reference.name === name)?.root
         ?? member.declaration;
-      for (const name of vocabulary) if (!supplied.has(name) && definition.signature?.requiredness.get(name) === "required") {
+      for (const [name, requiredness] of contract.requiredness) if (!supplied.has(name) && requiredness === "required") {
         report(connector.location.precision === "exact" ? connector.location : at?.nameLocation ?? lib?.nameLocation,
           "HSON_PART_ARGUMENT_MISSING", `Missing Part parameter ${JSON.stringify(name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`, contractLocation(name));
       }
       for (const attribute of arguments_) {
         const argument = part_argument_name(attribute.name)!;
-        if (!vocabulary.has(argument.name)) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`, member.declaration);
-        } else if (argument.kind !== definition.signature?.parameters.get(argument.name)) {
+        const kind = contract.parameters.get(argument.name);
+        if (kind === undefined) {
+          // An opaque attachment can add a scalar read. Structured inputs
+          // still need a receiving declaration in the known Part body.
+          if (argument.kind !== "scalar" || definition.parameterCompleteness === "complete") {
+            report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`, member.declaration);
+          }
+        } else if (argument.kind !== kind) {
           report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface of ${JSON.stringify(`${libraryName}/${memberName}`)}.`, contractLocation(argument.name));
         }
       }
