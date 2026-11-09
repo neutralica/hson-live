@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import ts from "typescript";
 import * as configuration from "./validation-config.mjs";
+export { assertInventory } from "./validation-config.mjs";
 
 export const repositoryRoot = resolve(import.meta.dirname, "..");
 const editor = "editors/vscode-hson";
@@ -178,8 +179,14 @@ export function createInventory(root = repositoryRoot, config = configuration) {
   const commandCache = new Map();
   const commandProjects = new Map();
   const nestedCommands = new Map();
-  for (const [name, mode] of [["check", "check"], ["check:full", "full"], ["check:extended", "extended"]]) {
-    if (scripts[name] !== `node scripts/run-current-acceptance.mjs ${mode}`) errors.push(`Public gate command does not match configuration: ${name}`);
+  const publicGates = {
+    check: "node scripts/run-current-acceptance.mjs check",
+    "check:full": "node scripts/run-current-acceptance.mjs full",
+    "check:extended": "node scripts/run-current-acceptance.mjs extended",
+    "check:commit": "sh .githooks/pre-commit",
+  };
+  for (const [name, body] of Object.entries(publicGates)) {
+    if (scripts[name] !== body) errors.push(`Public gate command does not match configuration: ${name}`);
   }
   function command(name, prefix = "", trail = []) {
     const id = prefix ? `${prefix}:${name}` : name;
@@ -193,7 +200,7 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     const nested = [];
     nestedCommands.set(id, nested);
     // Public aggregates are resolved from the gate configuration.
-    if (!prefix && ["check", "check:full", "check:extended"].includes(name)) return targets;
+    if (!prefix && Object.hasOwn(publicGates, name)) return targets;
     // This is a command grammar, not a shell parser. Only unquoted safe tokens
     // separated by && are supported. Validate the WHOLE command before crediting
     // any entrypoint, so an echo, comment, string or shell operator cannot hide one.
@@ -246,7 +253,7 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     for (const path of initial) add(path);
     return result;
   }
-  const gates = Object.fromEntries(["check", "full", "extended"].map(mode => [mode, gateCommands(scripts, mode)]));
+  const gates = Object.fromEntries(["check", "full", "extended", "commit"].map(mode => [mode, gateCommands(scripts, mode)]));
   for (const [name, body] of Object.entries(config.rootBuildPrerequisites ?? {})) {
     if (!/^node --import=tsx tests\/[\w-]+\.acceptance\.mts$/.test(body)
       || scripts[name] !== `npm run build && ${body}` || scripts[`pre${name}`] || scripts[`post${name}`]) {
@@ -274,7 +281,7 @@ export function createInventory(root = repositoryRoot, config = configuration) {
   }
   for (const name of Object.keys(scripts)) {
     if (name.startsWith("test:")) assign(name, "", ordinary.includes(name) ? "check" : extended.includes(name) ? "extended" : "full-additional");
-    else if (/^(?:check:|hson-schema:check|hson-schema:verify|measure:|corpus:|operators:)/.test(name) && !["check:full", "check:extended"].includes(name)) assign(name, "", "tooling");
+    else if (/^(?:check:|hson-schema:check|hson-schema:verify|measure:|corpus:|operators:)/.test(name) && !Object.hasOwn(publicGates, name)) assign(name, "", "tooling");
   }
   for (const name of Object.keys(packages[editor])) if (/^(?:test(?::|$)|validate:|benchmark$)/.test(name)) assign(name, editor, "editor");
   for (const path of maintenance) {
@@ -384,9 +391,4 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     support: [...files.keys()].filter(path => !suites.some(suite => suite.identity === path)).map(path => ({ path, destinations: destinations.get(path) ?? [], typeProjects: typeOwners.get(path) ?? [], requirements: [...files.get(path).requirements], prerequisites: [...files.get(path).prerequisites] })),
     metadataPolicy: "Missing legacy metadata is reported; malformed or duplicate declared metadata is rejected. File paths are authoritative identities.",
     gates, commands, suites, duplicates, metadataMissing, errors: [...new Set(errors)] };
-}
-
-export function assertInventory(inventory) {
-  if (inventory.errors.length) throw new Error(`Validation inventory preflight failed:\n${inventory.errors.map(error => `- ${error}`).join("\n")}`);
-  return inventory;
 }

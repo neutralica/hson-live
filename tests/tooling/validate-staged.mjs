@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { validateStaged } from "../../scripts/validate-staged.mjs";
+import { validateCommitted, validateStaged } from "../../scripts/validate-staged.mjs";
 import { runStages, validationEnvironment } from "../../scripts/validation-execution.mjs";
 import { runAcceptance } from "../../scripts/run-current-acceptance.mjs";
 import { ordinary, gateCommands } from "../../scripts/validation-config.mjs";
@@ -56,7 +56,8 @@ function cliFixture({ brokenRootInstall = false, brokenEditorInstall = false } =
   for (const prefix of ["", "editors/vscode-hson/"]) {
     mkdirSync(resolve(root, prefix), { recursive: true });
     const pkg = { name: prefix ? "fixture-editor" : "fixture-root", version: "1.0.0", private: true, type: "module",
-      scripts: { first: "node -e \"console.log('first completed')\"", last: "node -e \"console.log('last completed')\"" } };
+      scripts: { "check:commit": "sh .githooks/pre-commit",
+        first: "node -e \"console.log('first completed')\"", last: "node -e \"console.log('last completed')\"" } };
     writeFileSync(resolve(root, prefix, "package.json"), JSON.stringify(pkg));
     if (!(prefix ? brokenEditorInstall : brokenRootInstall)) writeFileSync(resolve(root, prefix, "package-lock.json"), JSON.stringify({
       name: pkg.name, version: pkg.version, lockfileVersion: 3, requires: true, packages: { "": { name: pkg.name, version: pkg.version } },
@@ -69,31 +70,54 @@ identity:{fixture:true},configuration:{},preflight(){},stages:[{name:'first'},{n
   if (brokenEditorInstall) {
     const pkgPath = resolve(root, "package.json");
     const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-    for (const name of ["check:editor", "test:schema-editor-tsserver"]) {
-      pkg.scripts[name] = "node -e \"throw Error('blocked editor stage executed')\"";
-    }
+    pkg.scripts["check:editor"] = "node -e \"throw Error('blocked editor stage executed')\"";
     writeFileSync(pkgPath, JSON.stringify(pkg));
     writeFileSync(resolve(root, "scripts/validation-config.mjs"),
-      "export const gateCommands=()=>['first','check:editor','test:schema-editor-tsserver','last'];export const rootBuildPrerequisites={};");
+      "export const gateCommands=()=>['first','check:editor','last'];export const rootBuildPrerequisites={};");
     writeFileSync(resolve(root, "scripts/run-current-acceptance.mjs"), `import {runStages} from './validation-execution.mjs';
 export function runAcceptance(mode,options){return runStages({root:new URL('../',import.meta.url).pathname,mode,
 identity:{fixture:true},configuration:{},preflight(){},
-stages:['first','check:editor','test:schema-editor-tsserver','last'].map(name=>({name})),...options});}`);
+stages:['first','check:editor','last'].map(name=>({name})),...options});}`);
   }
   git(root, ["add", "scripts", "package.json", "editors"]);
   if (!brokenRootInstall) git(root, ["add", "package-lock.json"]);
   return root;
 }
 
+function installHook(root) {
+  mkdirSync(resolve(root, ".githooks"));
+  copyFileSync(resolve(sourceRoot, ".githooks/pre-commit"), resolve(root, ".githooks/pre-commit"));
+  git(root, ["config", "core.hooksPath", ".githooks"]);
+  git(root, ["add", ".githooks"]);
+}
+
 try {
+  await check("installed hook rejects staged conflict markers before using any project scripts", () => {
+    const root = cliFixture();
+    installHook(root);
+    const head = git(root, ["rev-parse", "HEAD"]);
+    writeFileSync(resolve(root, "input"), "<<<<<<< HEAD\nleft\n=======\nright\n>>>>>>> other\n");
+    git(root, ["add", "input"]);
+    writeFileSync(resolve(root, "input"), "clean worktree\n");
+    const pkgPath = resolve(root, "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
+    pkg.scripts["check:commit"] = "exit 0";
+    writeFileSync(pkgPath, JSON.stringify(pkg));
+    const hook = spawnSync("git", ["hook", "run", "pre-commit"], { cwd: root, env: validationEnvironment(), encoding: "utf8" });
+    assert.notEqual(hook.status, 0);
+    assert.match(hook.stderr + hook.stdout, /leftover conflict marker/);
+    assert.equal(git(root, ["rev-parse", "HEAD"]), head);
+    assert.equal(existsSync(resolve(root, ".git/validation-reports")), false);
+  });
+
   await check("installed hook uses the default CLI, private dependency installs and staged commit tree", () => {
     const root = cliFixture();
-    mkdirSync(resolve(root, ".githooks"));
-    copyFileSync(resolve(sourceRoot, ".githooks/pre-commit"), resolve(root, ".githooks/pre-commit"));
-    git(root, ["config", "core.hooksPath", ".githooks"]);
-    git(root, ["add", ".githooks"]);
+    installHook(root);
     const candidate = git(root, ["write-tree"]);
     writeFileSync(resolve(root, "input"), "unstaged owner work\n");
+    for (const script of ["validate-staged.mjs", "validation-execution.mjs", "run-current-acceptance.mjs"]) {
+      writeFileSync(resolve(root, "scripts", script), "throw new Error('unstaged validator ran');\n");
+    }
     const commit = spawnSync("git", ["commit", "-qm", "candidate"], {
       cwd: root, env: { ...validationEnvironment(), npm_config_offline: "true" }, encoding: "utf8", timeout: 30_000,
     });
@@ -106,12 +130,13 @@ try {
     assert.equal(existsSync(resolve(root, "node_modules")), false);
     assert.equal(existsSync(resolve(root, "editors/vscode-hson/node_modules")), false);
     const setup = JSON.parse(readFileSync(report.setupReport, "utf8"));
-    assert(setup.stages.every(row => row.status === "passed"));
+    assert.deepEqual(setup.stages.map(row => row.status), ["skipped", "passed", "passed"]);
+    assert.equal(JSON.parse(readFileSync(report.gateReport, "utf8")).mode, "commit");
     assert.equal(existsSync(report.checkout), false);
     assert(existsSync(report.gateReport));
   });
 
-  await check("failed root install still attempts editor installation and independently runnable stages", () => {
+  await check("failed root install still attempts editor installation and accounts for blocked stages", () => {
     const root = cliFixture({ brokenRootInstall: true });
     const child = spawnSync(process.execPath, ["scripts/validate-staged.mjs"], {
       cwd: root, env: { ...validationEnvironment(), npm_config_offline: "true" }, encoding: "utf8", timeout: 30_000,
@@ -122,7 +147,7 @@ try {
     const setup = JSON.parse(readFileSync(report.setupReport, "utf8"));
     const gate = JSON.parse(readFileSync(report.gateReport, "utf8"));
     assert.deepEqual(setup.stages.slice(1).map(row => row.status), ["failed", "passed"]);
-    assert.deepEqual(gate.stages.map(row => row.status), ["failed", "passed", "passed"]);
+    assert.deepEqual(gate.stages.map(row => row.status), ["skipped", "blocked", "blocked"]);
     assert.equal(existsSync(report.checkout), false);
   });
 
@@ -141,19 +166,16 @@ try {
     assert.equal(report.candidateUnchanged, true); assert.equal(report.checkoutRemoved, true);
     assert.equal(existsSync(report.checkout), false);
     assert.deepEqual(setup.stages.map(row => [row.name, row.status]), [
-      ["inventory-preflight", "passed"], ["install-root", brokenRootInstall ? "failed" : "passed"], ["install-editor", "failed"],
+      ["inventory-preflight", "skipped"], ["install-root", brokenRootInstall ? "failed" : "passed"], ["install-editor", "failed"],
     ]);
-    assert.deepEqual(gate.stages.map(row => [row.name, row.status]), [
-      ["inventory-preflight", brokenRootInstall ? "failed" : "passed"], ["first", "passed"],
-      ["check:editor", "blocked"], ["test:schema-editor-tsserver", "blocked"], ["last", "passed"],
-    ]);
-    for (const row of gate.stages.filter(row => row.status === "blocked")) {
-      assert.deepEqual(row.blockedBecause, ["install-editor"]);
-      assert.equal(row.log, undefined);
-    }
+    assert.deepEqual(gate.stages.map(row => row.status), brokenRootInstall
+      ? ["skipped", "blocked", "blocked", "blocked"]
+      : ["passed", "passed", "blocked", "passed"]);
+    assert.deepEqual(gate.stages.find(row => row.name === "check:editor").blockedBecause,
+      brokenRootInstall ? ["install-root", "install-editor"] : ["install-editor"]);
     for (const [ledger, path] of [[setup, report.setupReport], [gate, report.gateReport]]) {
       assert.equal(ledger.status, "failed"); assert.notEqual(ledger.exitStatus, 0); assert(ledger.endedAt);
-      assert(ledger.stages.every(row => ["passed", "failed", "blocked"].includes(row.status)));
+      assert(ledger.stages.every(row => ["passed", "failed", "blocked", "skipped"].includes(row.status)));
       for (const row of ledger.stages.slice(1).filter(row => row.status !== "blocked")) {
         assert(row.startedAt); assert(row.endedAt); assert(row.log);
         const log = readFileSync(resolve(path, "..", row.log), "utf8");
@@ -162,6 +184,23 @@ try {
         assert.doesNotMatch(log, /blocked editor stage executed/);
       }
     }
+  });
+
+  await check("certification freezes the committed tree and ignores staged and unstaged files", async () => {
+    const root = fixture(), commit = git(root, ["rev-parse", "HEAD"]);
+    writeFileSync(resolve(root, "input"), "staged\n"); git(root, ["add", "input"]);
+    writeFileSync(resolve(root, "input"), "unstaged\n");
+    const result = await validateCommitted({ cwd: root, validateSnapshot(snapshot, _reports, _cancelled, mode) {
+      assert.equal(mode, "full");
+      assert.equal(git(snapshot, ["rev-parse", "HEAD"]), commit);
+      assert.equal(readFileSync(resolve(snapshot, "input"), "utf8"), "committed\n");
+      return { exitStatus: 0 };
+    } });
+    assert.equal(result.exitStatus, 0);
+    assert.equal(result.report.head, commit);
+    assert.equal(result.report.committedTree, git(root, ["rev-parse", "HEAD^{tree}"]));
+    assert.equal(git(root, ["show", ":input"]), "staged");
+    assert.equal(readFileSync(resolve(root, "input"), "utf8"), "unstaged\n");
   });
 
   await check("exact staged snapshot, concurrent edits, private generated output and durable logs", async () => {
@@ -222,14 +261,38 @@ try {
     assert.equal(preflight.report.stages[1].status, "passed"); assert.notEqual(preflight.exitStatus, 0);
   });
 
-  await check("inventory root-build dependency blocks consumers after build failure", async () => {
+  await check("discovered root-build dependency survives failed inventory validation", async () => {
     const root = fixture();
     const result = await run(root, resolve(root, ".git/reports"), [stage("build", "process.exit(7)"),
       stage("consumer", "throw Error('must never run')"), stage("independent", "process.exit(0)")], {
       preflight: () => ({ commands: { consumer: { prerequisites: ["root build output"] } } }),
+      checkInventory() { throw Error("inventory rejected"); },
     });
+    assert.equal(result.report.stages[0].status, "failed");
     assert.deepEqual(result.report.stages.slice(1).map(row => row.status), ["failed", "blocked", "passed"]);
   });
+
+  for (const inventoryFails of [false, true]) await check(
+    `build-dependent commit stages are blocked when build fails${inventoryFails ? " and inventory cannot load" : ""}`, async () => {
+      const calls = [];
+      const result = await runAcceptance("commit", { collectAll: true, reportRoot: resolve(temporary, "commit-dependencies"),
+        identity: { fixture: true }, preflight() {
+          if (inventoryFails) throw Error("inventory could not load");
+          return { errors: [] };
+        },
+        execute(_command, [, name]) { calls.push(name); return { status: name === "build" ? 7 : 0 }; },
+      });
+      const blocked = ["check:tests", "check:entrypoints", "test:public-entrypoint-runtime"];
+      assert.notEqual(result.exitStatus, 0);
+      assert.equal(result.report.stages[0].status, inventoryFails ? "failed" : "passed");
+      assert.equal(result.report.stages[1].status, "failed");
+      assert.deepEqual(result.report.stages.filter(row => row.status === "blocked").map(row => row.name), blocked);
+      for (const row of result.report.stages.filter(row => blocked.includes(row.name))) {
+        assert.deepEqual(row.blockedBecause, ["build"]);
+        assert.equal(row.startedAt, undefined);
+      }
+      assert.deepEqual(calls, ["build", "check:source", "check:tooling", "check:editor", "test:hson-document", "test:portable-node-ingress"]);
+    });
 
   for (const change of ["index", "HEAD", "branch"]) await check(`${change} changes reject success for the captured candidate`, async () => {
     const root = fixture();
@@ -377,16 +440,13 @@ process.exitCode=result.exitStatus;`);
     assert.deepEqual(names, [...ordinary]);
     const calls = [];
     const result = await runAcceptance("check", { collectAll: true, reportRoot: resolve(temporary, "inventory"),
-      identity: { fixture: true }, rootBuildPrerequisites: {}, preflight() {},
-      execute: async (executable, args) => { calls.push([executable, args]); return { status: 17 }; } });
+      identity: { fixture: true }, rootBuildPrerequisites: {}, preflight: () => ({ errors: [] }),
+      execute: async (executable, args) => { calls.push([executable, args]); return { status: args[1] === "build" ? 0 : 17 }; } });
     assert.deepEqual(result.report.stages.slice(1).map(row => row.name), names);
     assert.deepEqual(result.report.stages.slice(1).map(row => row.command), names.map(name => scripts[name]));
     assert.deepEqual(calls, names.map(name => ["npm", ["run", name]]));
-    assert(result.report.stages.slice(1).every(row => row.status === "failed"));
-    // No changes to the existing inventories are part of this transition.
-    for (const file of ["scripts/validation-config.mjs", "scripts/validation-inventory.mjs", "package.json"]) {
-      assert.equal(readFileSync(resolve(sourceRoot, file), "utf8"), git(sourceRoot, ["show", `HEAD:${file}`]) + "\n");
-    }
+    assert.equal(result.report.stages[1].status, "passed");
+    assert(result.report.stages.slice(2).every(row => row.status === "failed"));
   });
   console.log(JSON.stringify({ validationOrchestration: "passed", checks }));
 } finally { rmSync(temporary, { recursive: true, force: true }); }

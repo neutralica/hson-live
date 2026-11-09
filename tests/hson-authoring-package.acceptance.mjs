@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
+import { resolve, sep } from "node:path";
 import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
@@ -13,9 +15,44 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   tags: Object.freeze(["hson", "authoring", "bundling", "built-package"]),
 });
 
-// Use the editor's established bundler; no new library runtime dependency.
-const { build } = createRequire(new URL("../editors/vscode-hson/package.json", import.meta.url))("esbuild");
-const root = fileURLToPath(new URL("..", import.meta.url));
+const cases = {
+  narrowExport: "actual /hson export resolves to the narrow authoring module",
+  aggregateBoundary: "authoring does not traverse aggregate or full LiveMap core",
+  dependencyBoundary: "authoring permits only the temporary inline-CSS parser dependency",
+  dependencyNegativeControl: "temporary CSS allowance rejects other parsers and unexpected import routes",
+  mutationMachinery: "tree-shaken authoring retains no mutation history or session machinery",
+  d5Tooling: "D5 tooling never enters the ordinary authoring graph",
+  d6Tooling: "D6 completion query/provider machinery never enters production Hson",
+  schemaValidators: "same-object certify retains real Schema validators in tag-only bundle",
+  bundleSize: "authoring bounds its temporary CSS-inclusive bundle and retains a narrow core",
+  certifyGraph: "referencing certify does not unexpectedly import another subsystem",
+  nodeExecution: "production authoring bundle executes without a browser",
+  alphabet: "browser-targeted authoring executes alphabet semantics",
+  any: "browser-targeted authoring executes canonical any semantics",
+  data: "browser-targeted authoring executes exact HsonData semantics",
+  document: "browser-targeted authoring executes exact HsonDocument semantics",
+  action: "browser-targeted bundle executes the configured-action payload path",
+  workerAlphabet: "actual Worker executes the same alphabet semantics",
+  workerAction: "actual Worker executes the configured-action payload path",
+};
+const testEvents = create_test_event_emitter(HSON_LIVE_TEST_METADATA.id, Object.values(cases));
+const root = realpathSync(fileURLToPath(new URL("..", import.meta.url)));
+const editor = resolve(root, "editors/vscode-hson");
+const editorRequire = createRequire(resolve(editor, "package.json"));
+const rootRequire = createRequire(resolve(root, "package.json"));
+
+function requireLocal(resolver, specifier, directory) {
+  const path = realpathSync(resolver.resolve(specifier));
+  if (!path.startsWith(directory + sep)) {
+    throw Object.assign(new Error(`Package acceptance requires a local ${specifier}; resolved to ${path}. Install dependencies in this checkout.`),
+      { code: "ERR_VALIDATION_SETUP" });
+  }
+  return path;
+}
+
+// Keep the editor's established bundler and the production parser inside this checkout.
+const { build } = editorRequire(requireLocal(editorRequire, "esbuild", resolve(editor, "node_modules/esbuild")));
+requireLocal(rootRequire, "css-tree/dist/csstree.esm", resolve(root, "node_modules/css-tree"));
 const sources = {
   tag: 'import { Hson } from "hson-live/hson"; export const value = Hson.canonical`<foo/>`;',
   validation: 'import { Hson } from "hson-live/hson"; export const value = Hson.schema`<type "data" content "string">`.certify(Hson.data.parse`"hello"`);',
@@ -30,14 +67,13 @@ const sources = {
 };
 const results = {};
 for (const [name, contents] of Object.entries(sources)) {
-  const options = { stdin: { contents, resolveDir: root, sourcefile: `${name}.js` }, bundle: true, write: false, format: "esm", platform: "browser", target: "es2022", treeShaking: true, legalComments: "none", metafile: true };
+  const options = { absWorkingDir: root, stdin: { contents, resolveDir: root, sourcefile: `${name}.js` }, bundle: true, write: false, format: "esm", platform: "browser", target: "es2022", treeShaking: true, legalComments: "none", metafile: true };
   const raw = await build(options);
   const min = await build({ ...options, minify: true });
   const inputs = Object.values(min.metafile.outputs).flatMap(output => Object.entries(output.inputs)).filter(([, input]) => input.bytesInOutput > 0).map(([path]) => path);
   results[name] = { graph: min.metafile.inputs, raw: raw.outputFiles[0].contents.length, min: min.outputFiles[0].contents.length, gzip: gzipSync(min.outputFiles[0].contents, { level: 9 }).length, inputs, parsed: Object.keys(min.metafile.inputs), code: min.outputFiles[0].text };
 }
 let checks = 0;
-const testEvents = create_test_event_emitter("core.hson-authoring-package");
 function check(name, run) {
   testEvents.case_begin(name, name);
   try {
@@ -53,8 +89,8 @@ function check(name, run) {
   console.log(`ok ${++checks} - ${name}`);
 }
 const narrow = results.tag;
-check("actual /hson export resolves to the narrow authoring module", () => assert.ok(narrow.inputs.some(path => path.endsWith("dist/hson-authoring.js"))));
-check("authoring does not traverse aggregate or full LiveMap core", () => assert.ok(narrow.parsed.every(path => !/(?:dist\/hson\.js|livemap\.(?:core|document\.composition)\.js|\/part-definition\.js|\/livetree\/|\/livehost\/|\/locus\/|\/reflect\/|\/inspect\/)/.test(path))));
+check(cases.narrowExport, () => assert.ok(narrow.inputs.some(path => path.endsWith("dist/hson-authoring.js"))));
+check(cases.aggregateBoundary, () => assert.ok(narrow.parsed.every(path => !/(?:dist\/hson\.js|livemap\.(?:core|document\.composition)\.js|\/part-definition\.js|\/livetree\/|\/livehost\/|\/locus\/|\/reflect\/|\/inspect\/)/.test(path))));
 // Temporary owner-approved dependency for synchronous inline-style validation.
 // Remove this exception when css-tree is retired; no other package or route is allowed.
 const temporaryCssTreeInput = "node_modules/css-tree/dist/csstree.esm.js";
@@ -67,23 +103,23 @@ function assertAuthoringDependencies(graph) {
     }
   }
 }
-check("authoring permits only the temporary inline-CSS parser dependency", () => assertAuthoringDependencies(narrow.graph));
-check("temporary CSS allowance rejects other parsers and unexpected import routes", () => {
+check(cases.dependencyBoundary, () => assertAuthoringDependencies(narrow.graph));
+check(cases.dependencyNegativeControl, () => {
   for (const path of ["node_modules/postcss/lib/parse.js", "node_modules/css-tree/lib/parser/index.js"]) {
     assert.throws(() => assertAuthoringDependencies({ ...narrow.graph, [path]: { imports: [] } }));
   }
   assert.throws(() => assertAuthoringDependencies({ ...narrow.graph,
     "dist/hson-authoring.js": { imports: [{ path: temporaryCssTreeInput }] } }));
 });
-check("tree-shaken authoring retains no mutation history or session machinery", () => assert.ok(narrow.inputs.every(path => !/livemap\.(?:mutation|replay|history|session|store|install)/.test(path))));
+check(cases.mutationMachinery, () => assert.ok(narrow.inputs.every(path => !/livemap\.(?:mutation|replay|history|session|store|install)/.test(path))));
 // The Hson Schema compiler uses source provenance for exact authored diagnostics.
 // No retired capture, provider, lifecycle, or protocol module may join it.
-check("D5 tooling never enters the ordinary authoring graph", () => assert.ok(narrow.parsed.every(path =>
+check(cases.d5Tooling, () => assert.ok(narrow.parsed.every(path =>
   !/trusted-schema-diagnostics|embedded-hson|source-provenance/.test(path)
   || path.endsWith("hson-source-provenance/hson-source-provenance.js")
   || path.endsWith("hson-source-provenance/parse-hson-with-provenance.js"))));
-check("D6 completion query/provider machinery never enters production Hson", () => assert.ok(narrow.parsed.every(path => !/schema-completion|completion-source|editor-introspection|hson-schema\/part-source|vscode-hson/.test(path))));
-check("same-object certify retains real Schema validators in tag-only bundle", () => {
+check(cases.d6Tooling, () => assert.ok(narrow.parsed.every(path => !/schema-completion|completion-source|editor-introspection|hson-schema\/part-source|vscode-hson/.test(path))));
+check(cases.schemaValidators, () => {
   assert.ok(narrow.inputs.some(path => path.endsWith("internal/canonical-schema/verify.js")));
   assert.ok(narrow.inputs.some(path => path.endsWith("internal/schema-hson-validation/validate-canonical-hson.js")));
 });
@@ -95,33 +131,33 @@ check("same-object certify retains real Schema validators in tag-only bundle", (
 // composer and editor analysis must remain outside this graph.
 // Inspect and execute the real bundle above; externalize only css-tree for the
 // relative comparison in both artifacts so the shared parser cost is excluded.
-const coreSizeOptions = { stdin: { contents: sources.tag, resolveDir: root, sourcefile: "tag.js" },
+const coreSizeOptions = { absWorkingDir: root, stdin: { contents: sources.tag, resolveDir: root, sourcefile: "tag.js" },
   bundle: true, write: false, format: "esm", platform: "browser", target: "es2022", treeShaking: true,
   legalComments: "none", minify: true, external: ["css-tree/dist/csstree.esm"] };
 const authoringCore = await build(coreSizeOptions);
 const aggregateCore = await build({ ...coreSizeOptions, stdin: { ...coreSizeOptions.stdin, contents: sources.aggregate, sourcefile: "aggregate.js" } });
 const aggregateCoreGzip = gzipSync(aggregateCore.outputFiles[0].contents, { level: 9 }).length;
 const authoringCoreGzip = gzipSync(authoringCore.outputFiles[0].contents, { level: 9 }).length;
-check("authoring bounds its temporary CSS-inclusive bundle and retains a narrow core", () => {
+check(cases.bundleSize, () => {
   assert.ok(narrow.gzip < 118_000, `CSS-inclusive gzip=${narrow.gzip}`);
   assert.ok(authoringCoreGzip < aggregateCoreGzip / 4, `core gzip=${authoringCoreGzip}, aggregate core gzip=${aggregateCoreGzip}`);
 });
-check("referencing certify does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
+check(cases.certifyGraph, () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
 const execution = await import('data:text/javascript;base64,' + Buffer.from(narrow.code).toString('base64'));
-check("production authoring bundle executes without a browser", () => assert.equal(execution.value, "<foo/>"));
+check(cases.nodeExecution, () => assert.equal(execution.value, "<foo/>"));
 const alphabetUrl = 'data:text/javascript;base64,' + Buffer.from(results.alphabet.code).toString('base64');
 const alphabetExecution = await import(alphabetUrl);
-check("browser-targeted authoring executes alphabet semantics", () => assert.deepEqual(alphabetExecution.parity, { accepts: true, rejects: true }));
+check(cases.alphabet, () => assert.deepEqual(alphabetExecution.parity, { accepts: true, rejects: true }));
 const anyExecution = await import('data:text/javascript;base64,' + Buffer.from(results.any.code).toString('base64'));
-check("browser-targeted authoring executes canonical any semantics", () => assert.deepEqual(anyExecution.parity, { accepts: true, rejectsDocument: true, preservesNegativeZero: true, preservesOrder: true }));
+check(cases.any, () => assert.deepEqual(anyExecution.parity, { accepts: true, rejectsDocument: true, preservesNegativeZero: true, preservesOrder: true }));
 const dataExecution = await import('data:text/javascript;base64,' + Buffer.from(results.data.code).toString('base64'));
-check("browser-targeted authoring executes exact HsonData semantics", () => assert.deepEqual(dataExecution.parity, { order: ["10", "2"], negativeZero: true, safeProto: true, roundTrip: true }));
+check(cases.data, () => assert.deepEqual(dataExecution.parity, { order: ["10", "2"], negativeZero: true, safeProto: true, roundTrip: true }));
 const documentExecution = await import('data:text/javascript;base64,' + Buffer.from(results.document.code).toString('base64'));
-check("browser-targeted authoring executes exact HsonDocument semantics", () => assert.deepEqual(documentExecution.parity, { emptyRejected: true, nodeRejected: true, absence: true, wholeRejected: true, emptySlotRejected: true, quotedText: true, textItems: 1, root: "_hson_root", items: 2, roundTrip: true, primitive: true }));
+check(cases.document, () => assert.deepEqual(documentExecution.parity, { emptyRejected: true, nodeRejected: true, absence: true, wholeRejected: true, emptySlotRejected: true, quotedText: true, textItems: 1, root: "_hson_root", items: 2, roundTrip: true, primitive: true }));
 const actionUrl = 'data:text/javascript;base64,' + Buffer.from(results.action.code).toString('base64');
 const actionExecution = await import(actionUrl);
 const actionParity = { projectionReady: true, ack: true, equal: true, order: ["10", "2", "tail"], negativeZero: true, safeProto: true, reservedRejected: true, executions: 1 };
-check("browser-targeted bundle executes the configured-action payload path", () => assert.deepEqual(actionExecution.parity, actionParity));
+check(cases.action, () => assert.deepEqual(actionExecution.parity, actionParity));
 const workerParity = await new Promise((resolve, reject) => {
   const source = `const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(alphabetUrl)}).then(({ parity }) => parentPort.postMessage(parity), (error) => { throw error; });`;
   const worker = new Worker(source, { eval: true });
@@ -129,7 +165,7 @@ const workerParity = await new Promise((resolve, reject) => {
   worker.once("error", reject);
   worker.once("exit", (code) => { if (code !== 0) reject(new Error(`alphabet Worker exited with code ${code}`)); });
 });
-check("actual Worker executes the same alphabet semantics", () => assert.deepEqual(workerParity, { accepts: true, rejects: true }));
+check(cases.workerAlphabet, () => assert.deepEqual(workerParity, { accepts: true, rejects: true }));
 const workerActionParity = await new Promise((resolve, reject) => {
   const source = `const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(actionUrl)}).then(({ parity }) => parentPort.postMessage(parity), (error) => { throw error; });`;
   const worker = new Worker(source, { eval: true });
@@ -137,7 +173,7 @@ const workerActionParity = await new Promise((resolve, reject) => {
   worker.once("error", reject);
   worker.once("exit", (code) => { if (code !== 0) reject(new Error(`action Worker exited with code ${code}`)); });
 });
-check("actual Worker executes the configured-action payload path", () => assert.deepEqual(workerActionParity, actionParity));
+check(cases.workerAction, () => assert.deepEqual(workerActionParity, actionParity));
 for (const [name, { raw, min, gzip, inputs }] of Object.entries(results)) console.log(`# ${name}: ${JSON.stringify({ raw, min, gzip, retainedModules: inputs.length })}`);
 console.log(`# ${checks} Hson authoring package checks passed`);
 testEvents.terminal("pass");

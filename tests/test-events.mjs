@@ -24,16 +24,16 @@ function derive_terminal_status(statuses) {
 }
 
 /** Creates the child-side event writer for one executable suite. */
-export function create_test_event_emitter(suiteId) {
+export function create_test_event_emitter(suiteId, plannedCases) {
   require_string(suiteId, "suiteId");
   // Reuse the runner's synchronous observation transport, including when a
   // nested process captures stdout or a Worker has a separate output stream.
   const observer = process.env.HSON_VALIDATION_EVENTS ? process[Symbol.for("hson.validation.observe")] : undefined;
   const id = ++emitterSequence;
-  const observe = (type, status) => {
-    observer?.({ type, id, suiteId, status });
-  };
-  observe("suite-start");
+  const observe = (type, fields = {}) => observer?.({ type, id, suiteId, ...fields });
+  const plan = plannedCases && new Set(plannedCases);
+  if (plan && plan.size !== plannedCases.length) throw new Error("Duplicate planned test case ID.");
+  observe("suite-start", { plannedCases });
   const seenCaseIds = new Set();
   const activeCaseIds = new Set();
   const completedStatuses = [];
@@ -44,9 +44,11 @@ export function create_test_event_emitter(suiteId) {
     require_string(title, "title");
     if (terminalEmitted) throw new Error("Test event case_begin cannot follow terminal.");
     if (seenCaseIds.has(caseId)) throw new Error(`Duplicate test case ID: ${caseId}`);
+    if (plan && !plan.has(caseId)) throw new Error(`Unplanned test case ID: ${caseId}`);
     seenCaseIds.add(caseId);
     activeCaseIds.add(caseId);
     emit({ t: "case_begin", caseId, title });
+    observe("case-start", { caseId });
   }
 
   function diagnostic(caseId, kind, message) {
@@ -63,6 +65,7 @@ export function create_test_event_emitter(suiteId) {
     if (!activeCaseIds.delete(caseId)) throw new Error(`Test case is not active: ${caseId}`);
     completedStatuses.push(status);
     emit({ t: "case_end", caseId, status });
+    observe("case-end", { caseId, status });
   }
 
   function terminal(status) {
@@ -71,9 +74,10 @@ export function create_test_event_emitter(suiteId) {
     if (activeCaseIds.size > 0) throw new Error("Test event terminal requires every case to end.");
     const derived = derive_terminal_status(completedStatuses);
     if (status !== derived) throw new Error(`Test event terminal ${status} contradicts completed cases (${derived}).`);
+    if (status === "pass" && plan && seenCaseIds.size !== plan.size) throw new Error("Successful suite did not reach every planned case.");
     terminalEmitted = true;
     emit({ t: "terminal", suiteId, status });
-    observe("suite-end", status);
+    observe("suite-end", { status });
     if (["fail", "error", "cancelled"].includes(status)) process.exitCode = 1;
   }
 

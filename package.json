@@ -137,6 +137,7 @@
     "check:typescript-observability": "node --import=tsx scripts/typescript-observability.mts",
     "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.hson-worker.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.locus-worker.json && tsc -p tests/entrypoints/tsconfig.ssr-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "node scripts/run-current-acceptance.mjs check",
+    "check:commit": "sh .githooks/pre-commit",
     "test:scout-entrypoint": "node --import=tsx tests/scout-entrypoint.acceptance.mts",
     "test:scout-browser": "node scripts/run-scout-browser.mjs",
     "test:refined-public-api-examples": "node --import=tsx tests/refined-public-api-examples.acceptance.mts",

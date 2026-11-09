@@ -3,21 +3,20 @@ import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { validationEnvironment } from "./validation-execution.mjs";
 
-function git(root, args, env = validationEnvironment()) {
+function git(root, args, env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")))) {
   const result = spawnSync("git", ["--no-replace-objects", ...args], { cwd: root, env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
-  if (result.status !== 0) throw new Error(`git ${args[0]} failed: ${result.error?.message ?? result.stderr}`);
+  if (result.status !== 0) throw new Error(`git ${args[0]} failed: ${result.error?.message ?? (result.stderr + result.stdout).trim()}`);
   return result.stdout.trim();
 }
 
-async function validate(snapshot, reports, cancelled) {
-  const { runStages } = await import(pathToFileURL(resolve(snapshot, "scripts/validation-execution.mjs")).href);
+export async function runSnapshot(snapshot, reports, cancelled, mode) {
   if (cancelled()) return { exitStatus: 1 };
+  const { runStages } = await import(pathToFileURL(resolve(snapshot, "scripts/validation-execution.mjs")).href);
   // Dependency installs are private, independently attempted and fully logged.
   // Never symlink the developer's node_modules or reuse their generated output.
-  const setup = await runStages({ root: snapshot, mode: "candidate-setup", identity: { snapshot },
-    configuration: {}, preflight() {}, collectAll: true, captureOutput: true, reportRoot: reports,
+  const setup = await runStages({ root: snapshot, mode: `${mode}-setup`, identity: { snapshot },
+    configuration: {}, collectAll: true, captureOutput: true, reportRoot: reports,
     stages: [
       { name: "install-root", command: "npm ci --no-audit --no-fund", executable: "npm", args: ["ci", "--no-audit", "--no-fund"] },
       { name: "install-editor", command: "npm --prefix editors/vscode-hson ci --no-audit --no-fund", executable: "npm", args: ["--prefix", "editors/vscode-hson", "ci", "--no-audit", "--no-fund"] },
@@ -27,29 +26,38 @@ async function validate(snapshot, reports, cancelled) {
   }
   const rootReady = setup.report.stages.find(row => row.name === "install-root").status === "passed";
   const editorReady = setup.report.stages.find(row => row.name === "install-editor").status === "passed";
-  const blockedStages = editorReady ? {} : { "check:editor": ["install-editor"], "test:schema-editor-tsserver": ["install-editor"] };
+  const collectAll = mode === "commit";
   let gate;
-  if (rootReady) {
+  if (rootReady && (editorReady || collectAll)) {
     const { runAcceptance } = await import(pathToFileURL(resolve(snapshot, "scripts/run-current-acceptance.mjs")).href);
     if (cancelled()) return { exitStatus: 1, setupReport: setup.reportPath };
-    gate = await runAcceptance("check", { collectAll: true, captureOutput: true, reportRoot: reports,
-      blockedStages });
+    gate = await runAcceptance(mode, { collectAll, captureOutput: true, reportRoot: reports,
+      blockedStages: editorReady ? {} : { "check:editor": ["install-editor"] } });
   } else {
-    const { gateCommands, rootBuildPrerequisites } = await import(pathToFileURL(resolve(snapshot, "scripts/validation-config.mjs")).href);
+    const { gateCommands } = await import(pathToFileURL(resolve(snapshot, "scripts/validation-config.mjs")).href);
     if (cancelled()) return { exitStatus: 1, setupReport: setup.reportPath };
     const scripts = JSON.parse(readFileSync(resolve(snapshot, "package.json"), "utf8")).scripts;
-    const stages = gateCommands(scripts, "check").map(name => ({ name, command: scripts[name],
-      dependsOn: Object.hasOwn(rootBuildPrerequisites, name) ? ["build"] : [] }));
-    gate = await runStages({ root: snapshot, mode: "check", identity: { snapshot }, configuration: {},
-      preflight() { throw new Error("Inventory unavailable because root dependency installation failed"); },
-      collectAll: true, captureOutput: true, reportRoot: reports, stages, blockedStages });
+    const stages = gateCommands(scripts, mode).map(name => ({ name, command: scripts[name] }));
+    const blockedBy = setup.report.stages.filter(row => row.status === "failed").map(row => row.name);
+    gate = await runStages({ root: snapshot, mode, identity: { snapshot }, configuration: {},
+      reportRoot: reports, stages, blockedStages: Object.fromEntries(stages.map(({ name }) => [name, blockedBy])),
+      preflightSkippedBecause: `Dependency setup failed: ${blockedBy.join(", ")}` });
   }
   return { exitStatus: setup.exitStatus || gate.exitStatus, setupReport: setup.reportPath, gateReport: gate.reportPath };
 }
 
 // The callback is a module API for short orchestration tests, never a CLI/env
 // override that could accidentally weaken the installed hook.
-export async function validateStaged({ cwd = process.cwd(), validateSnapshot = validate } = {}) {
+export async function validateStaged({ cwd = process.cwd(), validateSnapshot, expected } = {}) {
+  return validateCheckout(cwd, "commit", validateSnapshot, expected);
+}
+
+export async function validateCommitted({ cwd = process.cwd(), validateSnapshot = runSnapshot } = {}) {
+  return validateCheckout(cwd, "full", validateSnapshot);
+}
+
+async function validateCheckout(cwd, mode, validateSnapshot, expected) {
+  const staged = mode === "commit";
   const originalEnv = { ...process.env };
   if (originalEnv.GIT_INDEX_FILE) originalEnv.GIT_INDEX_FILE = resolve(cwd, originalEnv.GIT_INDEX_FILE);
   const root = git(cwd, ["rev-parse", "--show-toplevel"], originalEnv);
@@ -59,16 +67,16 @@ export async function validateStaged({ cwd = process.cwd(), validateSnapshot = v
   const parent = resolve(original(["rev-parse", "--path-format=absolute", "--git-common-dir"]), "validation-reports");
   mkdirSync(parent, { recursive: true, mode: 0o700 });
   const reports = mkdtempSync(resolve(parent, `${new Date().toISOString().replaceAll(":", "-")}-`));
-  const reportPath = resolve(reports, "candidate.json");
-  const activeIndex = originalEnv.GIT_INDEX_FILE ?? original(["rev-parse", "--path-format=absolute", "--git-path", "index"]);
+  const reportPath = resolve(reports, staged ? "candidate.json" : "certification.json");
   const indexTree = name => {
+    const activeIndex = originalEnv.GIT_INDEX_FILE ?? original(["rev-parse", "--path-format=absolute", "--git-path", "index"]);
     const index = resolve(reports, `${name}.index`);
     // Git publishes index updates by rename. One read freezes either complete
     // version, without taking the developer's index.lock or updating its cache.
     writeFileSync(index, readFileSync(activeIndex), { mode: 0o600 });
     return git(root, ["-c", "core.splitIndex=false", "write-tree"], { ...originalEnv, GIT_INDEX_FILE: index });
   };
-  const report = { schemaVersion: 1, status: "running", startedAt: new Date().toISOString(), root };
+  const report = { schemaVersion: 1, mode, status: "running", startedAt: new Date().toISOString(), root };
   const save = () => {
     writeFileSync(reportPath + ".tmp", JSON.stringify(report, null, 2) + "\n", { mode: 0o600 });
     renameSync(reportPath + ".tmp", reportPath);
@@ -79,17 +87,28 @@ export async function validateStaged({ cwd = process.cwd(), validateSnapshot = v
   for (const [signal, handler] of handlers) process.on(signal, handler);
   try {
     save();
-    console.log(`Candidate report: ${reportPath}`);
-    report.head = head(); report.headRef = headRef();
-    report.candidateTree = indexTree("candidate");
-    if (head() !== report.head || headRef() !== report.headRef) throw new Error("HEAD changed during candidate capture");
+    console.log(`${staged ? "Candidate" : "Certification"} report: ${reportPath}`);
+    report.head = head();
+    let tree;
+    if (staged) {
+      report.headRef = headRef();
+      report.candidateTree = tree = indexTree("candidate");
+      if (head() !== report.head || headRef() !== report.headRef) throw new Error("HEAD changed during candidate capture");
+      if (expected && (tree !== expected.tree || report.head !== expected.head || report.headRef !== expected.ref)) {
+        throw new Error("Staged candidate or HEAD changed after the hook bootstrap; rerun validation");
+      }
+    } else {
+      report.committedTree = tree = original(["rev-parse", `${report.head}^{tree}`]);
+      console.log(`Certifying commit ${report.head} (tree ${tree})`);
+    }
     save();
     temporary = mkdtempSync(resolve(tmpdir(), "hson-validation-"));
     const snapshot = resolve(temporary, "checkout");
     report.checkout = snapshot; save();
     git(temporary, ["-c", "init.templateDir=", "clone", "--shared", "--no-checkout", "--quiet", "--", root, snapshot]);
     git(snapshot, ["update-ref", "--no-deref", "HEAD", report.head]);
-    git(snapshot, ["read-tree", report.candidateTree]);
+    git(snapshot, ["read-tree", tree]);
+    if (staged) git(snapshot, ["diff", "--cached", "--check", "--no-ext-diff", "--no-textconv", report.head, "--"]);
     // A submodule or authored symlink can make files escape checkout isolation.
     // Fail explicitly rather than silently validate an incomplete/aliased tree.
     if (/^(?:120000|160000) /m.test(git(snapshot, ["ls-files", "--stage"]))) throw new Error("Validation checkout does not support tracked symlinks or submodules");
@@ -99,12 +118,21 @@ export async function validateStaged({ cwd = process.cwd(), validateSnapshot = v
     writeFileSync(resolve(snapshot, ".git/info/attributes"), "* -text -filter -ident -working-tree-encoding\n");
     git(snapshot, ["checkout-index", "--all", "--force", "--index"]);
     git(snapshot, ["diff-files", "--quiet"]);
-    if (git(snapshot, ["write-tree"]) !== report.candidateTree) throw new Error("Checkout candidate tree mismatch");
+    if (git(snapshot, ["write-tree"]) !== tree) throw new Error("Validation checkout tree mismatch");
     if (cancellation) throw new Error(`Interrupted: ${cancellation}`);
-    const result = await validateSnapshot(snapshot, reports, () => cancellation);
+    // The hook loads the staged coordinator as a single blob. From this point
+    // the commit gate and its setup code load from the complete checkout.
+    const run = validateSnapshot ?? (await import(pathToFileURL(resolve(snapshot, "scripts/validate-staged.mjs")).href)).runSnapshot;
+    const result = await run(snapshot, reports, () => cancellation, mode);
     report.exitStatus = Number.isInteger(result.exitStatus) && result.exitStatus >= 0 ? result.exitStatus : 1;
     report.setupReport = result.setupReport;
     report.gateReport = result.gateReport ?? result.reportPath;
+    if (!staged && report.exitStatus === 0) {
+      git(snapshot, ["diff", "--exit-code", "--name-only", "--no-ext-diff", "--no-textconv", report.head, "--"]);
+      if (git(snapshot, ["rev-parse", "HEAD"]) !== report.head || git(snapshot, ["write-tree"]) !== tree) {
+        throw new Error("Certification checkout revision changed during validation");
+      }
+    }
     report.status = report.exitStatus === 0 ? "passed" : "failed";
   } catch (error) {
     report.status = "failed"; report.error = error.stack ?? error.message; report.exitStatus = 1;
@@ -135,7 +163,7 @@ export async function validateStaged({ cwd = process.cwd(), validateSnapshot = v
     try { save(); }
     finally { for (const [signal, handler] of handlers) process.removeListener(signal, handler); }
   }
-  console.log(`Candidate ${report.candidateTree ?? "capture"}: ${report.status}. Report: ${reportPath}`);
+  console.log(`${staged ? "Candidate" : "Certification"} ${(staged ? report.candidateTree : report.head) ?? "capture"}: ${report.status}. Report: ${reportPath}`);
   if (report.error) console.error(report.error);
   return { exitStatus: report.exitStatus, report, reportPath };
 }

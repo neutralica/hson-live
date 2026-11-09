@@ -1,2 +1,38 @@
 #!/bin/sh
-exec node scripts/validate-staged.mjs
+set -eu
+
+# Freeze the active index, including Git's temporary index for a partial commit.
+# No working-tree project scripts run before checking this tree.
+git_dir=$(git rev-parse --absolute-git-dir)
+index=$(git rev-parse --path-format=absolute --git-path index)
+head=$(git rev-parse --verify HEAD)
+ref=$(git rev-parse --symbolic-full-name HEAD)
+bootstrap=$(mktemp -d "${TMPDIR:-/tmp}/hson-bootstrap.XXXXXX")
+trap 'rm -rf -- "$bootstrap"' 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+cp -- "$index" "$bootstrap/index"
+tree=$(GIT_INDEX_FILE="$bootstrap/index" git --no-replace-objects -c core.splitIndex=false write-tree)
+# Use the frozen index for attributes, without consulting working-tree files.
+GIT_INDEX_FILE="$bootstrap/index" GIT_WORK_TREE="$bootstrap" GIT_DIR="$git_dir" \
+  git --no-replace-objects diff-tree --check --no-ext-diff --no-textconv "$head" "$tree" --
+case "$(git --no-replace-objects ls-tree "$tree" -- scripts/validate-staged.mjs)" in
+  "100644 blob "*|"100755 blob "*) ;;
+  *) echo "Staged validation bootstrap must be a regular file" >&2; exit 1 ;;
+esac
+git --no-replace-objects cat-file blob "$tree:scripts/validate-staged.mjs" > "$bootstrap/validate-staged.mjs"
+
+# Replace the shell so the runner receives Git's signals directly.
+exec node --input-type=module -e '
+import { rmSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+const [directory, tree, head, ref] = process.argv.slice(1);
+let validateStaged;
+try {
+  ({ validateStaged } = await import(pathToFileURL(directory + "/validate-staged.mjs").href));
+} finally {
+  rmSync(directory, { recursive: true, force: true });
+}
+const result = await validateStaged({ expected: { tree, head, ref } });
+process.exitCode = Number.isInteger(result.exitStatus) ? result.exitStatus : 1;
+' -- "$bootstrap" "$tree" "$head" "$ref"

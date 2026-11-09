@@ -20,6 +20,14 @@ if (eventFile) {
   // Internal bridge for the existing suite emitter; each Worker has its own
   // preload and process object, while all descendants share the event file.
   process[Symbol.for("hson.validation.observe")] = emit;
+  process.on("uncaughtExceptionMonitor", error => {
+    const code = error?.code;
+    const kind = code === "ERR_ASSERTION" ? "assertion"
+      : ["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND", "ENOENT", "EACCES", "EADDRINUSE", "ERR_VALIDATION_SETUP"].includes(code)
+        ? "environment-or-setup" : "unclassified-process";
+    const fatalByDefault = process.listenerCount("uncaughtException") === 0 && !process.hasUncaughtExceptionCaptureCallback();
+    emit({ type: "uncaught-error", kind, code, fatalByDefault });
+  });
   const args = process.argv.slice(2);
   const prefix = args.indexOf("--prefix");
   const rootBuild = isMainThread && /^(?:npm|npm-cli\.js)$/.test(basename(process.argv[1] ?? ""))

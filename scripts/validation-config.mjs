@@ -1,4 +1,16 @@
 // Gate order is explicit here; package scripts remain the executable command authority.
+export const commit = Object.freeze([
+  "build",
+  "check:source",
+  "check:tests",
+  "check:tooling",
+  "check:editor",
+  "check:entrypoints",
+  "test:hson-document",
+  "test:portable-node-ingress",
+  "test:public-entrypoint-runtime",
+]);
+
 // Preserve the accepted ordinary sequence; tooling regressions follow its stages.
 export const ordinary = Object.freeze([
   "build",
@@ -148,6 +160,19 @@ export const rootBuildPrerequisites = Object.freeze({
   "test:hson-schema-cutover": "node --import=tsx tests/hson-schema-cutover.acceptance.mts",
 });
 
+// The commit gate must keep these edges even if inventory discovery cannot run.
+// Reusable wrappers above and other discoverable dependencies use the same build stage.
+export const rootBuildConsumers = Object.freeze([
+  "check:tests",
+  "check:entrypoints",
+  "test:public-entrypoint-runtime",
+]);
+
+export function assertInventory(inventory) {
+  if (inventory.errors.length) throw new Error(`Validation inventory preflight failed:\n${inventory.errors.map(error => `- ${error}`).join("\n")}`);
+  return inventory;
+}
+
 // Environment requirements do not determine ordinary membership. Its nested Chrome,
 // TLS and Worker coverage stays mandatory. This list selects optional extended work.
 export const extended = Object.freeze([
@@ -177,6 +202,7 @@ export function gateCommands(scripts, mode) {
   const additional = Object.keys(scripts).filter(name => name.startsWith("test:")
     && !ordinary.includes(name) && !extended.includes(name));
   if (mode === "check") return [...ordinary];
+  if (mode === "commit") return [...commit];
   if (mode === "full") return [...ordinary, "hson-schema:check", "measure:echo-browser-packaging", ...additional];
   if (mode === "extended") return [...extended];
   throw new Error(`Unknown validation gate: ${mode}`);

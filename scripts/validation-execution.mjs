@@ -1,15 +1,26 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { resolve, relative } from "node:path";
+import { delimiter, dirname, resolve, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertRootBuildPublication } from "./validation-build-publication.mjs";
 
 const hash = input => createHash("sha256").update(input).digest("hex");
 // Hook-local Git variables (especially GIT_INDEX_FILE) must never redirect a
 // validation child back into the developer's checkout.
-export const validationEnvironment = () => Object.fromEntries(Object.entries(process.env).filter(([name]) =>
-  !name.startsWith("GIT_") && !/^npm_config_(?:prefix|local_prefix|workspace|workspaces)$/i.test(name)));
+export function validationEnvironment() {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
+    !name.startsWith("GIT_") && !/^npm_config_(?:prefix|local_prefix|workspace|workspaces)$/i.test(name)));
+  // npm run prepends the caller's dependency binaries. The isolated npm
+  // processes add their own paths, so remove the paths from the outer checkout.
+  const inheritedBins = new Set();
+  for (let dir = process.env.npm_config_local_prefix; dir; dir = dirname(dir)) {
+    inheritedBins.add(resolve(dir, "node_modules/.bin"));
+    if (dirname(dir) === dir) break;
+  }
+  if (env.PATH && inheritedBins.size) env.PATH = env.PATH.split(delimiter).filter(dir => !inheritedBins.has(dir)).join(delimiter);
+  return env;
+}
 export function sourceIdentity(root) {
   const git = args => spawnSync("git", args, { cwd: root, encoding: "utf8", env: validationEnvironment() });
   const head = git(["rev-parse", "HEAD"]);
@@ -56,7 +67,7 @@ function rootBuildArtifacts(root) {
 
 // Process-level wall durations only. No per-test or CPU-time claims are made.
 // Output can be inherited or captured in full; exit semantics stay with the caller.
-export async function runStages({ root, mode, stages, preflight, configuration, identify = () => sourceIdentity(root), identity = identify(), execute,
+export async function runStages({ root, mode, stages, preflight, checkInventory, preflightSkippedBecause = "Not applicable to setup", configuration, identify = () => sourceIdentity(root), identity = identify(), execute,
   rootBuildPrerequisites = {}, collectAll = false, reportRoot, captureOutput = false, blockedStages = {} }) {
   const parent = reportRoot ?? resolve(root, "tmp/validation-timing");
   mkdirSync(parent, { recursive: true });
@@ -81,33 +92,74 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
   let stoppedBy = null;
   let exitStatus = 0;
   let inventory;
+  let typeOnlySuites;
   const events = [];
+  const eventsByStage = new Map();
   let eventOffset = 0;
   const collectEvents = () => {
     const contents = readFileSync(eventFile, "utf8");
-    const current = [];
     for (const line of contents.slice(eventOffset).split("\n").filter(Boolean)) {
-      try { current.push(JSON.parse(line)); }
+      try {
+        const event = JSON.parse(line);
+        if (!eventsByStage.has(event.stage)) eventsByStage.set(event.stage, []);
+        eventsByStage.get(event.stage).push(event);
+        events.push(event);
+      }
       catch { report.observationIncomplete = true; exitStatus ||= 1; }
     }
     eventOffset = contents.length;
-    events.push(...current);
-    return current;
   };
-  const caseCompletionFor = (name, observed) => {
-    const stageEvents = observed.filter(event => event.stage === name);
-    const starts = stageEvents.filter(event => event.type === "suite-start");
-    const ends = stageEvents.filter(event => event.type === "suite-end");
+  const caseCompletionFor = (name, processId) => {
+    const stageEvents = eventsByStage.get(name) ?? [];
+    const registration = inventory?.commands?.[name];
+    const registeredEntrypoints = new Set(registration?.suites?.filter(path => !typeOnlySuites.has(path))
+      .map(path => `<repo>/${path.split(sep).join("/")}`));
+    const processThread = event => `${event.pid}:${event.threadId}`;
+    const registeredReporters = new Set(stageEvents.filter(event =>
+      event.type === "process-start" && registeredEntrypoints.has(event.entrypoint?.split(sep).join("/"))).map(processThread));
+    // Descendants share the observation stream. Only the stage leader and
+    // processes or threads executing a registered entrypoint count as results.
+    const reportsResult = event => event.pid === processId && event.threadId === 0
+      || registeredReporters.has(processThread(event));
+    const starts = stageEvents.filter(event => event.type === "suite-start" && reportsResult(event));
+    const ends = stageEvents.filter(event => event.type === "suite-end" && reportsResult(event));
     // terminal() requires completed cases, no active cases, and a consistent
     // status. Another suite/process/thread cannot complete this emitter.
     const sameEmitter = (start, end) => start.id === end.id && start.pid === end.pid && start.threadId === end.threadId;
     const incomplete = starts.some(start => ends.filter(end => sameEmitter(start, end)).length !== 1)
       || ends.some(end => !starts.some(start => sameEmitter(start, end)))
-      || Boolean(inventory?.commands?.[name]?.caseReporting && starts.length === 0);
+      || Boolean(registration?.caseReporting && starts.length === 0);
     const failed = ends.some(end => !["pass", "skip", "unsupported"].includes(end.status));
+    const suites = starts.map(start => {
+      const emitted = stageEvents.filter(event => sameEmitter(start, event));
+      const begun = emitted.filter(event => event.type === "case-start");
+      const finished = new Map(emitted.filter(event => event.type === "case-end").map(event => [event.caseId, event.status]));
+      const reached = new Set(begun.map(event => event.caseId));
+      return { suiteId: start.suiteId, pid: start.pid, threadId: start.threadId, emitterId: start.id,
+        status: emitted.find(event => event.type === "suite-end")?.status ?? "aborted",
+        casesStarted: begun.length, casesCompleted: finished.size,
+        unfinished: begun.filter(event => !finished.has(event.caseId)).map(event => event.caseId),
+        failedCases: [...finished].filter(([, status]) => ["fail", "error", "cancelled"].includes(status))
+          .map(([caseId, status]) => ({ caseId, status })),
+        notReached: start.plannedCases?.filter(caseId => !reached.has(caseId)) ?? null };
+    });
     return { status: incomplete ? "incomplete" : failed ? "failed" : starts.length ? "passed" : "not-required",
-      suitesStarted: starts.length, suitesCompleted: ends.length };
+      suitesStarted: starts.length, suitesCompleted: ends.length, suites };
   };
+  function classifyFailure(row) {
+    if (row.name === "inventory-preflight") return "inventory";
+    if (row.error || row.signal || row.cleanup?.status === "incomplete"
+      || row.name.startsWith("install-")) return "environment-or-setup";
+    if (row.caseCompletion?.suites.some(suite => ["fail", "error"].includes(suite.status)
+      && suite.failedCases.some(test => test.status === "fail"))) return "assertion";
+    // A monitor event describes the process that emitted it. A descendant's
+    // failure can be handled by its parent, even if their exit codes match.
+    const fatal = row.exitStatus === 1 && (eventsByStage.get(row.name) ?? []).find(event =>
+      event.type === "uncaught-error" && event.pid === row.processId && event.threadId === 0 && event.fatalByDefault);
+    if (fatal) return fatal.kind;
+    if (row.exitStatus === 0 && row.caseCompletion?.status === "incomplete") return "incomplete-suite";
+    return "unclassified-process";
+  }
   let rootBuild = null;
   const reuseEnabled = stages.some(stage => Object.hasOwn(rootBuildPrerequisites, stage.name));
   const identityHash = value => {
@@ -204,7 +256,7 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
           }
         }
         active = null;
-        resolveResult({ status, signal: childSignal, error,
+        resolveResult({ status, signal: childSignal, error, processId: child.pid,
           ...(stopping ? { cleanup: { scope: grouped ? "owned-process-group" : "direct-child",
             status: cleanupError ? "incomplete" : grouped ? "complete" : "descendants-unverified",
             ...(cleanupError ? { error: cleanupError.message } : {}) } } : {}) });
@@ -218,6 +270,7 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
     try {
       const result = await run();
       row.exitStatus = result.status; row.signal = result.signal ?? null;
+      if (result.processId !== undefined) row.processId = result.processId;
       if (result.error) row.error = result.error.message;
       if (result.cleanup) row.cleanup = result.cleanup;
       row.status = cancellation ? "cancelled" : result.status === 0 && !result.signal && !result.error && result.cleanup?.status !== "incomplete"
@@ -228,14 +281,19 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
     return row.status === "passed";
   }
   try {
-    if (!await timed(report.stages[0], () => {
-      inventory = preflight();
+    if (!preflight) {
+      Object.assign(report.stages[0], { status: "skipped", skippedBecause: preflightSkippedBecause });
+      save();
+    } else if (!await timed(report.stages[0], async () => {
+      inventory = await preflight();
       if (inventory) {
+        typeOnlySuites = new Set(inventory.suites?.filter(suite => suite.context === "typescript-project").map(suite => suite.identity));
         const contents = JSON.stringify(inventory, null, 2) + "\n";
         const inventoryPath = resolve(folder, "inventory.json");
         writeFileSync(inventoryPath, contents);
         report.inventory = { path: relative(reportRoot ? folder : root, inventoryPath), sha256: hash(contents) };
       }
+      checkInventory?.(inventory);
       return { status: 0 };
     })) {
       if (!collectAll) stoppedBy = "inventory-preflight";
@@ -294,7 +352,8 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
               NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${observe}${building ? ` --import=${observePublication}` : ""}`.trim() },
           });
         } finally { if (log !== undefined) closeSync(log); }
-        row.caseCompletion = caseCompletionFor(stage.name, collectEvents());
+        collectEvents();
+        row.caseCompletion = caseCompletionFor(stage.name, result.processId);
         if (result.status === 0 && !result.signal && !result.error && !cancellation) {
           if (building) {
             const artifacts = rootBuildArtifacts(root);
@@ -320,12 +379,15 @@ export async function runStages({ root, mode, stages, preflight, configuration, 
     collectEvents();
     // Include late observable evidence from descendants without extending their
     // lifetime or changing process ownership. Earlier failures stay failures.
-    for (const row of report.stages.slice(1).filter(row => row.status === "passed" && row.caseCompletion)) {
-      row.caseCompletion = caseCompletionFor(row.name, events);
-      if (["failed", "incomplete"].includes(row.caseCompletion.status)) {
+    for (const row of report.stages.slice(1).filter(row => row.caseCompletion)) {
+      row.caseCompletion = caseCompletionFor(row.name, row.processId);
+      if (row.status === "passed" && ["failed", "incomplete"].includes(row.caseCompletion.status)) {
         row.status = "failed"; exitStatus ||= 1;
       }
     }
+    for (const row of report.stages.filter(row => row.status === "failed")) row.failureKind = classifyFailure(row);
+    report.stageCounts = Object.fromEntries(["passed", "failed", "skipped", "blocked", "cancelled"]
+      .map(status => [status, report.stages.filter(row => row.status === status).length]));
     report.rootBuildInvocations = events.filter(event => event.type === "process-start" && event.rootBuild).length;
     if (cancellation) exitStatus = cancellation === "SIGINT" ? 130 : 143;
     report.status = cancellation ? "cancelled" : exitStatus === 0 ? "passed" : "failed";

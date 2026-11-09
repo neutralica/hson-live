@@ -92,6 +92,7 @@ const config = { ...configuration, ordinary: [], extended: [], maintenance: [], 
   existingRepeatedBodies: {}, declaredExecution: {},
   gateCommands: (scripts, mode) => mode === "full" ? Object.keys(scripts).filter(name => name.startsWith("test:")) : [] };
 const pkg = { scripts: { check: "node scripts/run-current-acceptance.mjs check",
+  "check:commit": "sh .githooks/pre-commit",
   "check:full": "node scripts/run-current-acceptance.mjs full", "check:extended": "node scripts/run-current-acceptance.mjs extended",
   "test:html-source-producer": `node --import=tsx ${target}`, "test:entry": "node tests/entry.mts" } };
 put("tests/entry.mts", "");
@@ -239,6 +240,7 @@ writeFileSync(resolve(executionRoot, "package.json"), JSON.stringify({ private: 
   build: "node -e \"console.log('fixture build')\"",
   fail: "npm run build && npm run build && node -e \"process.exit(7)\"",
   never: "node -e \"process.exit(99)\"",
+  suite: "node suite.mjs",
 } }));
 const identity = { fixture: true };
 const failed = await runStages({ root: executionRoot, mode: "fixture-stop", identity, configuration: {}, preflight() {},
@@ -341,6 +343,34 @@ const missingStage = await runStages({ root: executionRoot, mode: "launch-error"
 assert.notEqual(missingStage.exitStatus, 0);
 assert.equal(missingStage.report.stages[1].status, "failed");
 assert.match(missingStage.report.stages[1].error, /ENOENT/);
+assert.equal(missingStage.report.stages[1].failureKind, "environment-or-setup");
+
+const childAssertion = `import {spawnSync} from 'node:child_process';
+const child = spawnSync(process.execPath, ['-e', "require('node:assert/strict').fail('expected child assertion')"]);
+if (child.status !== 1) throw new Error('expected a failing child');`;
+for (const [name, source, status, kind] of [
+  ["handled-child", childAssertion, 0, undefined],
+  ["independent-parent-exit", childAssertion + "process.exit(17);", 17, "unclassified-process"],
+  ["matching-parent-exit", childAssertion + "process.exit(1);", 1, "unclassified-process"],
+  ["handled-leader-error", "process.on('uncaughtException',()=>{process.exitCode=1});require('node:assert/strict').fail();", 1, "unclassified-process"],
+  ["leader-assertion", "require('node:assert/strict').fail('genuine stage assertion');", 1, "assertion"],
+  ["leader-setup", "throw Object.assign(new Error('missing fixture'),{code:'ERR_VALIDATION_SETUP'});", 1, "environment-or-setup"],
+]) {
+  const result = await runStages({ root: executionRoot, mode: name, identity, configuration: {}, captureOutput: true,
+    stages: [{ name, executable: process.execPath, args: ["-e", source] }] });
+  const ledger = JSON.parse(readFileSync(result.reportPath, "utf8"));
+  const row = ledger.stages[1];
+  const events = readFileSync(result.eventFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const error = events.find(event => event.type === "uncaught-error");
+  assert.equal(row.exitStatus, status, name);
+  assert.equal(row.status, status === 0 ? "passed" : "failed", name);
+  assert.equal(row.failureKind, kind, name);
+  assert.equal(ledger.stageCounts.failed, status === 0 ? 0 : 1, name);
+  assert.equal(result.exitStatus, status, name);
+  assert(error, `${name} must keep the observed error`);
+  assert.equal(error.pid === row.processId, !source.startsWith(childAssertion), name);
+  assert.equal(error.fatalByDefault, name !== "handled-leader-error", name);
+}
 const timedOut = await runStages({ root: executionRoot, mode: "timeout", identity, configuration: {}, preflight() {},
   stages: [{ name: "timeout", executable: process.execPath, args: ["-e", "process.on('SIGTERM',()=>{});setInterval(()=>{},1000)"],
     timeout: 200, continueOnFailure: true }, { name: "after-timeout", executable: process.execPath, args: ["-e", "process.exit(0)"] }] });
@@ -371,33 +401,48 @@ const emitterUrl = pathToFileURL(resolve(root, "tests/test-events.mjs")).href;
 const beginCase = `import {create_test_event_emitter} from ${JSON.stringify(emitterUrl)};
 const events=create_test_event_emitter('fixture.completion'); events.case_begin('same','Same case');\n`;
 const finishCase = status => `events.case_end('same',${JSON.stringify(status)}); events.terminal(${JSON.stringify(status)});\n`;
-async function completionProbe(name, source, expected, { reporting = true, continued = false, started, completed } = {}) {
-  const entry = resolve(executionRoot, `${name}.mjs`);
-  writeFileSync(entry, source);
-  // Use real inventory evidence for the contract rather than a test-only flag.
-  const stageName = reporting ? "test:hson-array-index" : "build";
-  const result = await runStages({ root: executionRoot, mode: name, identity, configuration: {},
-    preflight: () => ({ commands: inventory.commands }), stages: [
-      { name: stageName, executable: process.execPath, args: [entry], timeout: 5000, continueOnFailure: continued },
+async function completionProbe(name, source, expected, { reporting = true, registered = [], typeOnly = [], exitStatus = 0,
+  continued = false, started, completed, inspect } = {}) {
+  writeFileSync(resolve(executionRoot, "suite.mjs"), source);
+  const result = await runStages({ root: executionRoot, mode: name, identity, configuration: {}, captureOutput: true,
+    preflight: () => ({
+      commands: { suite: { caseReporting: reporting, suites: ["suite.mjs", ...registered, ...typeOnly] } },
+      suites: typeOnly.map(identity => ({ identity, context: "typescript-project" })),
+    }), stages: [
+      { name: "suite", timeout: 5000, continueOnFailure: continued },
       { name: "after-completion", executable: process.execPath, args: ["-e", "process.exit(0)"] },
     ] });
-  const row = result.report.stages[1];
-  assert.equal(row.exitStatus, 0, `${name}: preserve the observed process result`);
+  const ledger = JSON.parse(readFileSync(result.reportPath, "utf8"));
+  const row = ledger.stages[1];
+  assert.equal(row.exitStatus, exitStatus, `${name}: preserve the observed process result`);
   assert.equal(row.caseCompletion.status, expected, name);
-  const passed = ["passed", "not-required"].includes(expected);
+  const passed = exitStatus === 0 && ["passed", "not-required"].includes(expected);
+  const ranNext = passed || continued;
   assert.equal(row.status, passed ? "passed" : "failed", name);
-  assert.equal(result.report.status, passed ? "passed" : "failed", name);
-  assert.equal(result.exitStatus, passed ? 0 : 1, name);
-  assert.equal(result.report.stages[2].status, passed || continued ? "passed" : "skipped", name);
-  assert.deepEqual(JSON.parse(readFileSync(result.reportPath, "utf8")).stages[1], JSON.parse(JSON.stringify(row)));
+  assert.equal(ledger.status, passed ? "passed" : "failed", name);
+  assert.equal(ledger.exitStatus, passed ? 0 : exitStatus || 1, name);
+  assert.equal(result.exitStatus, ledger.exitStatus, name);
+  assert.equal(ledger.stages[2].status, ranNext ? "passed" : "skipped", name);
+  assert.deepEqual(ledger.stageCounts, { passed: 1 + Number(passed) + Number(ranNext),
+    failed: Number(!passed), skipped: Number(!ranNext), blocked: 0, cancelled: 0 }, name);
   if (started !== undefined) assert.equal(row.caseCompletion.suitesStarted, started, name);
   if (completed !== undefined) assert.equal(row.caseCompletion.suitesCompleted, completed, name);
+  inspect?.(row, ledger);
   return readFileSync(result.eventFile, "utf8").trim().split("\n").map(line => JSON.parse(line));
 }
 for (const status of ["error", "cancelled", "fail"]) {
-  await completionProbe(`terminal-${status}`, beginCase + finishCase(status) + "process.exit(0);", "failed", { continued: true });
+  await completionProbe(`terminal-${status}`, beginCase + finishCase(status) + "process.exit(0);", "failed", { continued: true,
+    inspect(row) { assert.equal(row.failureKind, status === "fail" ? "assertion" : "unclassified-process"); },
+  });
 }
 await completionProbe("unfinished-case", beginCase + "process.exit(0);", "incomplete");
+await completionProbe("planned-abort", beginCase.replace("'fixture.completion'", "'fixture.completion', ['same', 'later']")
+  + "process.exit(0);", "incomplete", { inspect(row, report) {
+  assert.equal(row.failureKind, "incomplete-suite");
+  assert.deepEqual(row.caseCompletion.suites[0].unfinished, ["same"]);
+  assert.deepEqual(row.caseCompletion.suites[0].notReached, ["later"]);
+  assert.deepEqual(report.stageCounts, { passed: 1, failed: 1, skipped: 1, blocked: 0, cancelled: 0 });
+} });
 await completionProbe("missing-terminal", beginCase + "events.case_end('same','pass');", "incomplete");
 await completionProbe("empty-emitter", beginCase.split(" events.case_begin")[0], "incomplete");
 await completionProbe("missing-reporting", "process.exit(0);", "incomplete");
@@ -405,11 +450,36 @@ await completionProbe("ordinary-command", "process.exit(0);", "not-required", { 
 for (const status of ["pass", "skip", "unsupported"]) {
   await completionProbe(`completed-${status}`, beginCase + finishCase(status), "passed", { started: 1, completed: 1 });
 }
+// The child can report a real failure even when the stage handles it. A shared
+// suite ID is insufficient to turn that observation into a stage result.
+const handleChildFailure = args => `import {spawnSync} from 'node:child_process';
+const child=spawnSync(process.execPath,${JSON.stringify(args)},{encoding:'utf8'});
+if(child.status!==1 || !child.stdout.includes('<HSON_TEST_EVENT>')) throw new Error('expected child failure');\n`;
+const incidental = handleChildFailure(["--input-type=module", "-e", beginCase + finishCase("fail")]);
+for (const exitStatus of [0, 17, 1]) {
+  const events = await completionProbe(`incidental-suite-${exitStatus}`, incidental + `process.exit(${exitStatus});`,
+    "not-required", { reporting: false, exitStatus, started: 0, completed: 0, inspect(row) {
+      assert.equal(row.failureKind, exitStatus === 0 ? undefined : "unclassified-process");
+      assert.deepEqual(row.caseCompletion.suites, []);
+    } });
+  assert(events.some(event => event.type === "suite-end" && event.suiteId === "fixture.completion" && event.status === "fail"));
+  assert(events.some(event => event.type === "case-end" && event.caseId === "same" && event.status === "fail"));
+}
+await completionProbe("incidental-suite-with-registered-pass", beginCase + incidental + finishCase("pass"), "passed",
+  { started: 1, completed: 1, inspect(row) {
+    assert.equal(row.caseCompletion.suites[0].casesCompleted, 1);
+    assert.deepEqual(row.caseCompletion.suites[0].failedCases, []);
+  } });
+await completionProbe("incidental-suite-cannot-complete-required-reporting", incidental, "incomplete",
+  { started: 0, completed: 0, inspect(row) { assert.equal(row.failureKind, "incomplete-suite"); } });
+writeFileSync(resolve(executionRoot, "type-only.mjs"), beginCase + finishCase("fail"));
+await completionProbe("type-only-registration", beginCase + handleChildFailure(["type-only.mjs"])
+  + finishCase("pass"), "passed", { typeOnly: ["type-only.mjs"], started: 1, completed: 1 });
 // Nested stdout may be captured instead of inherited. The suite evidence must
 // still reach the existing observation file. Equal suite/case IDs are legal in
 // separate processes and threads and must not complete one another's emitters.
 for (const kind of ["subprocess", "worker"]) {
-  for (const variant of ["pass", "error", "cancelled", "incomplete", "parent-incomplete"]) {
+  for (const variant of ["pass", "fail", "error", "cancelled", "incomplete", "parent-incomplete"]) {
     const leaf = resolve(executionRoot, `leaf-${kind}-${variant}.mjs`);
     const leafStatus = variant === "parent-incomplete" ? "pass" : variant;
     writeFileSync(leaf, beginCase + (leafStatus === "incomplete" ? "" : finishCase(leafStatus)) + "process.exit(0);");
@@ -423,7 +493,13 @@ await new Promise((done,reject)=>{worker.once('error',reject);worker.once('exit'
     const expected = variant.includes("incomplete") ? "incomplete" : variant === "pass" ? "passed" : "failed";
     const observed = await completionProbe(`nested-${kind}-${variant}`, beginCase + launch
       + (variant === "parent-incomplete" ? "" : finishCase("pass")), expected,
-    { started: 2, completed: variant.includes("incomplete") ? 1 : 2 });
+    { registered: [`leaf-${kind}-${variant}.mjs`], started: 2, completed: variant.includes("incomplete") ? 1 : 2,
+      inspect(row) {
+        if (variant === "fail") {
+          assert.equal(row.failureKind, "assertion");
+          assert.deepEqual(row.caseCompletion.suites[1].failedCases, [{ caseId: "same", status: "fail" }]);
+        }
+      } });
     const reporters = observed.filter(event => event.type === "suite-start");
     assert.equal(new Set(reporters.map(event => `${event.pid}:${event.threadId}:${event.id}`)).size, 2);
     if (kind === "worker") assert.equal(new Set(reporters.map(event => event.pid)).size, 1);
@@ -433,11 +509,13 @@ await new Promise((done,reject)=>{worker.once('error',reject);worker.once('exit'
 
 // Descendant evidence arriving during a later stage must still affect the
 // aggregate. Inject it through the existing transport without owning new work.
-const lateCompletion = await runStages({ root: executionRoot, mode: "late-completion", identity, configuration: {}, preflight() {},
+const lateCompletion = await runStages({ root: executionRoot, mode: "late-completion", identity, configuration: {},
+  preflight: () => ({ commands: { early: { suites: ["late.mjs"] } } }),
   stages: [{ name: "early" }, { name: "later" }], execute(_command, _args, options) {
     const early = options.env.HSON_VALIDATION_STAGE === "early";
-    const records = ["suite-start", "suite-end"].map(type => ({ type, stage: "early", pid: 1, threadId: 0,
-      id: early ? 1 : 2, suiteId: "fixture.late", ...(type === "suite-end" ? { status: early ? "pass" : "error" } : {}) }));
+    const emitter = { stage: "early", pid: 1, threadId: 0, id: early ? 1 : 2, suiteId: "fixture.late" };
+    const records = [...(early ? [{ ...emitter, type: "process-start", entrypoint: "<repo>/late.mjs" }] : []),
+      { ...emitter, type: "suite-start" }, { ...emitter, type: "suite-end", status: early ? "pass" : "error" }];
     writeFileSync(options.env.HSON_VALIDATION_EVENTS, records.map(record => JSON.stringify(record) + "\n").join(""), { flag: "a" });
     return { status: 0 };
   } });
