@@ -1,5 +1,5 @@
 import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
-import { registry_from_entries } from "./livemap.hosted.js";
+import { assert_full_hosted_registry, registry_from_entries } from "./livemap.hosted.js";
 import { admit_public_livemap_root } from "./livemap.node-admission.js";
 import { prepare_livemap_root } from "./livemap.document.js";
 import { decode_document_quads, own_document_quads, assert_portable_document_css_correspondence } from "./livemap.document.quad.js";
@@ -50,11 +50,12 @@ export function own_semantic_checkpoint(input: LiveMapSemanticCheckpoint): LiveM
       ...(Object.hasOwn(entry, "scope") ? ["scope"] : []), ...(Object.hasOwn(entry, "validation") ? ["validation"] : [])]);
     if (typeof entry.name !== "string" || !entry.name || entry.name.length > 1_024 || names.has(entry.name)
       || !["document", "data-object", "data-array", "data-string", "data-number", "data-boolean", "data-null"].includes(entry.mode)
-      || (entry.scope !== undefined && entry.scope !== "hson-internal") || entry.rootCodec !== "hson-exact-value") {
+      || (Object.hasOwn(entry, "scope") && entry.scope !== "hson-internal") || entry.rootCodec !== "hson-exact-value") {
       throw new TypeError("Invalid semantic checkpoint Library contract.");
     }
     names.add(entry.name);
   }
+  assert_full_hosted_registry(contracts);
   const registry = registry_from_entries(contracts);
   if (registry.digest !== input.registry.digest || material.length !== registry.libraries.length) {
     throw new TypeError("Invalid semantic checkpoint registry.");

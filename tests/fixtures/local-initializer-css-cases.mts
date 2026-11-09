@@ -147,7 +147,7 @@ export function local_initializer_css_cases(check: (name: string, run: () => voi
         assert.deepEqual(observed.revisions, expected); assert.deepEqual(observed.positions, expected);
         assert.equal(client.rev, count + 1);
         assert.equal(owner(client).identityEpoch().issued().size, 0);
-        assert.deepEqual(client.capture().libraries.map(entry => entry.name), ["ui", ...inners.map(seed => seed.name), "outer"]);
+        assert.deepEqual(client.capture().libraries.map(entry => entry.name), ["ui", ...inners.map(seed => seed.name), "outer", "@hson/canonical-interactions"]);
       } finally { observed.stop(); }
     }
   });

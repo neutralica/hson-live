@@ -1,21 +1,20 @@
 /** One bounded platform report for a failure after LiveMap state acceptance. */
 export function report_livemap_observer_failure(phase: string, cause: unknown): void {
-  const error = new Error(`LiveMap ${phase} observer failed after state acceptance.`, { cause });
-  const reporter = (globalThis as typeof globalThis & {
-    reportError?: (error: unknown) => void;
-  }).reportError;
-  if (typeof reporter === "function") {
-    try {
-      Reflect.apply(reporter, globalThis, [error]);
-      return;
-    } catch (reportingFailure) {
-      queueMicrotask(() => { throw reportingFailure; });
+  let diagnostic: unknown = new Error(`LiveMap ${phase} observer failed after state acceptance.`, { cause });
+  try {
+    const reporter = (globalThis as typeof globalThis & {
+      reportError?: (error: unknown) => void;
+    }).reportError;
+    if (typeof reporter === "function") {
+      Reflect.apply(reporter, globalThis, [diagnostic]);
       return;
     }
+  } catch (reportingFailure) {
+    diagnostic = reportingFailure;
   }
-  // `reportError` is the browser/runtime reporting seam. Older runtimes still
-  // surface the failure as uncaught, but never through the accepted operation.
-  queueMicrotask(() => { throw error; });
+  // An unavailable or failing reporter falls back to an uncaught diagnostic
+  // outside the accepted operation.
+  queueMicrotask(() => { throw diagnostic; });
 }
 
 /** Snapshot, isolate, and fairly attempt one complete observer fan-out. */

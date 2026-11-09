@@ -1,3 +1,4 @@
+import { interaction_schema_internal } from "../src/api/interactions/interactions.projection.ts";
 import { body_root } from "./helpers/document-library.mts";
 import { sha256_sync } from "../src/core/sha256-sync.ts";
 import assert from "node:assert/strict";
@@ -205,12 +206,14 @@ check("aggregate snapshot carries every root, exact Schema source, revision, reg
   const snapshot = aggregate.captureHosted();
   assert.equal(snapshot.revision, 2);
   assert.equal(snapshot.registryDigest, aggregate.hostedRegistry().digest);
-  assert.deepEqual(snapshot.libraries.map((entry) => entry.name), ["alpha", "beta", "page", "modal"]);
+  assert.deepEqual(snapshot.libraries.map((entry) => entry.name),
+    ["alpha", "beta", "page", "modal", "@hson/canonical-interactions"]);
   assert.deepEqual(snapshot.libraries.map((entry) => entry.schema), [
     DataSchema.toHson(),
     FlagSchema.toHson(),
     DocumentSchema.toHson(),
     DocumentSchema.toHson(),
+    interaction_schema_internal().toHson(),
   ]);
   assert.deepEqual(snapshot.identity.issuedQuids, [Q_RETIRED]);
 });

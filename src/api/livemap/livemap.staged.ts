@@ -9,7 +9,7 @@ import { collection_commands, normalize_part_collection_command } from "./livema
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapDocumentRequestTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
-import { INTERACTION_RESERVED_LIBRARY_KEY, register_interaction_draft_internal, register_disabled_interaction_draft_internal } from "../../internal/interaction-storage.js";
+import { require_interaction_system_internal, register_interaction_draft_internal } from "../../internal/interaction-storage.js";
 import { capture_document_attrs_command, type DocumentAttrsCommand, admit_public_document_graph_operation } from "./livemap.document.mutation.js";
 import { validate_document_path } from "./livemap.document.path.js";
 import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
@@ -271,15 +271,11 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
     return { family: binding.mode === "document" ? "doc" : contract.validation === PART_COLLECTION_VALIDATION ? "parts" : "data",
       schema: aggregate.librarySchema(binding.identity), handle: selected(name) };
   }));
-  const interactionSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (interactionSystem !== undefined) {
-    register_interaction_draft_internal(writer, interactionSystem, (edit) => {
-      assert_open();
-      writes.push(Object.freeze({ target: aggregate.systemTarget(interactionSystem, ["descriptors"]), kind: "interaction", edit }));
-    });
-  } else {
-    register_disabled_interaction_draft_internal(writer, assert_open);
-  }
+  const interactionSystem = require_interaction_system_internal(aggregate);
+  register_interaction_draft_internal(writer, interactionSystem, (edit) => {
+    assert_open();
+    writes.push(Object.freeze({ target: aggregate.systemTarget(interactionSystem, ["descriptors"]), kind: "interaction", edit }));
+  });
   const close = (): void => {
     open = false;
     if (consumed) writes.length = 0;

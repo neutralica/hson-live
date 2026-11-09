@@ -1,3 +1,5 @@
+import { require_interaction_system_internal } from "../../internal/interaction-storage.js";
+import { assert_locus_interaction_binding } from "./locus.projection.js";
 import { registered_locus_action } from "./locus.action-validation.js";
 import { is_Node } from "../../core/node-guards.js";
 import { has_part_connector } from "../livemap/livemap.document.composition.js";
@@ -111,10 +113,13 @@ export type LocusHostedAggregate = Readonly<{
  */
 export function create_locus_hosted_aggregate_internal(
   options: LocusHostedAggregateOptions,
+  recovery?: Readonly<{ owner: object; authority: HostedAggregateCommit["authority"] }>,
 ): LocusHostedAggregate {
   const aggregate = internal_livemap_aggregate_authority(options.map);
-  const snapshot = aggregate.hostedPosition();
-  const owner = Object.freeze({});
+  require_interaction_system_internal(aggregate);
+  assert_locus_interaction_binding(aggregate.hostedRegistry());
+  const authority = recovery?.authority ?? aggregate.hostedPosition().authority;
+  const owner = recovery?.owner ?? Object.freeze({});
   const commitListeners = new Set<(commit: HostedAggregateCommit) => void>();
   let disposed = false;
   let faulted = false;
@@ -254,8 +259,8 @@ export function create_locus_hosted_aggregate_internal(
 
   return Object.freeze({
     map: options.map,
-    logicalMapId: snapshot.authority.logicalMapId,
-    incarnationId: snapshot.authority.incarnationId,
+    logicalMapId: authority.logicalMapId,
+    incarnationId: authority.incarnationId,
     get registryDigest() { return aggregate.hostedPosition().registryDigest; },
     get rev() { return options.map.rev; },
     async stage(callback) {

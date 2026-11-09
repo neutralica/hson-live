@@ -166,11 +166,12 @@ await check("hidden storage is aggregate state but not public selection", () => 
     state: { json: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime(`<html <head/> <body <main <button @${currentQ}/>/>/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
-  assert.equal(internal_livemap_aggregate_authority(late).captureHosted().registry.libraries.every(
-    (entry) => !Object.hasOwn(entry, "scope"),
-  ), true);
+  const lateRegistry = internal_livemap_aggregate_authority(late).hostedRegistry();
+  assert.equal(lateRegistry.libraries.filter(entry => entry.scope === "hson-internal").length, 1);
   late.data.must("state").at(["count"]).set(1);
-  assert.throws(() => enable_interactions(late), /before the first transition/);
+  enable_interactions(late);
+  assert.equal(late.rev, 1);
+  assert.equal(internal_livemap_aggregate_authority(late).hostedRegistry(), lateRegistry);
 });
 
 await check("strict Schema and authoring semantics reject before revision movement", () => {

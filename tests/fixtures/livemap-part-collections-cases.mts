@@ -6,7 +6,7 @@ import { without_structured_clone } from "../helpers/without-structured-clone.mt
 import { admit_locus_local_initializers, install_client_local_initializers_internal } from "../../src/api/locus/locus.local-initializer.ts";
 import { encode_ssr_bootstrap, decode_ssr_bootstrap } from "../../src/api/ssr/ssr-bootstrap.ts";
 import assert from "node:assert/strict";
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
+import { ANY_DATA, ANY_DOCUMENT, Hson, enable_interactions, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import { add_livemap_part_collection_internal as collect, read_livemap_part_internal as read,
   compose_livemap_document_internal as compose, make_livemap_from_canonical_libraries_internal,
@@ -190,14 +190,14 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
     const ordinary = hsonLiveMap.fromLibraries({ collection: { json: { p: { kind: "document", document: "<p hson:part/>" } }, schema } });
     const snapshot = ordinary.capture();
-    const entries = snapshot.registry.libraries.map(entry => ({ ...entry, validation }));
+    const entries = snapshot.registry.libraries.map(entry => entry.scope === undefined ? { ...entry, validation } : entry);
     // The canonical registry owner rejects even internally reconstructed evidence.
-    assert.throws(() => make_hosted_registry(entries.map(entry => ({ name: entry.name, mode: entry.mode, validation,
-      identity: {}, schema }))), /Part collections/);
+    assert.throws(() => make_hosted_registry(entries.filter(entry => entry.scope === undefined)
+      .map(entry => ({ name: entry.name, mode: entry.mode, validation, identity: {}, schema }))), /Part collections/);
     assert.throws(() => make_livemap_from_canonical_libraries_internal([{ name: "collection", family: "data", schema,
       root: graph({ p: { kind: "document", document: "<p hson:part/>" } }), validation }]), /Part collections/);
     const forged = { ...snapshot, registry: { ...snapshot.registry, libraries: entries },
-      libraries: snapshot.libraries.map(entry => ({ ...entry, validation })) };
+      libraries: snapshot.libraries.map(entry => entry.name === "collection" ? { ...entry, validation } : entry) };
     assert.throws(() => install_libraries_snapshot(forged), /Part collections|registry/i);
   });
 
@@ -226,7 +226,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       if (!("kind" in op) || op.kind !== "library-add") throw Error("Expected topology commit");
       assert.equal(op.libraries.length, 1); assert.equal(op.libraries[0]!.mode, "data-object");
       assert.equal(op.libraries[0]!.validation, validation);
-      assert.deepEqual(map.capture().registry.libraries.map(entry => entry.name), ["collection"]);
+      assert.deepEqual(map.capture().registry.libraries.map(entry => entry.name), ["collection", "@hson/canonical-interactions"]);
       assert.equal(aggregate.libraries().length, 1); assert.equal(aggregate.telemetry().acceptedTransitions, 1);
       assert.equal(data(map), map.parts.must("collection"));
       for (const member of Object.keys(parts())) assert.throws(() => map.data.must(member));
@@ -637,7 +637,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       legacy.addLibraries({ ordinary: { json: { value: 1 } } });
       collect(legacy, "collection", parts());
       assert.equal(read(legacy, "collection", "二").key, "二");
-      assert.equal(legacy.capture().registry.libraries.length, 2);
+      assert.equal(legacy.capture().registry.libraries.length, 3);
     });
     for (const route of ["portable", "hosted"]) for (const mutation of ["root", "contract"]) {
       const candidate: import("../../src/api/livemap/livemap.hosted.ts").HostedAggregateCommit = structuredClone(hostedTopology);
@@ -760,6 +760,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   await check("checkpoint export owns detached valid Parts across load and chunk-write callbacks", async () => {
     for (const boundary of ["load", "chunk"]) {
       const map = hsonLiveMap.fromLibraries({ first: definition(parts()), second: definition(parts()) });
+      enable_interactions(map);
       const checkpoint = owner(map).captureSemanticCheckpoint(), original = structuredClone(checkpoint);
       const adapter = new MemoryCheckpointAdapter();
       let changed = false;
@@ -782,15 +783,16 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("durable malformed checkpoint content rejects even when its exact chunks and hashes are coherent", async () => {
     const map = fixture(), aggregate = owner(map), adapter = new MemoryCheckpointAdapter();
+    enable_interactions(map);
     const checkpoint = aggregate.captureSemanticCheckpoint(); await write_semantic_checkpoint(checkpoint, adapter);
     const state = adapter.state(checkpoint.authority.logicalMapId)!;
     if (state.checkpoint.format !== "hson-locus-durable-aggregate-checkpoint") throw Error("Expected durable manifest");
     const manifest = state.checkpoint;
     const chunks = [...encode_checkpoint_chunks(manifest.checkpointId, manifest.rev, "collection", "root", graph({ bad: { kind: "document", document: '<p' } }))];
     for (const item of chunks) adapter.chunks.set(item.chunk.id, item.chunk);
-    adapter.seed(checkpoint.authority.logicalMapId, { checkpoint: { ...manifest, chunks: [
-      ...manifest.chunks.filter(entry => entry.part === "schema"), ...chunks.map(item => item.descriptor),
-    ] }, commits: [] });
+    adapter.seed(checkpoint.authority.logicalMapId, { checkpoint: { ...manifest, chunks: manifest.chunks.flatMap(entry =>
+      entry.owner !== "collection" || entry.part !== "root" ? [entry]
+        : entry.index === 0 ? chunks.map(item => item.descriptor) : []) }, commits: [] });
     await assert.rejects(() => load_persistent_locus_hosted_aggregate_internal(checkpoint.authority.logicalMapId, { persistence: adapter }));
   });
   await check("own contract evidence cannot be hidden by Proxy property reads in restore or SSR export", () => {
@@ -814,7 +816,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     map.addLibraries({ source: { document: '<hson-part lib="collection" at="二"/>' } });
     map.addLibraries({ page: { document: Hson.document.fromNode(map.doc.must("source").root()) } });
     const cut = map.cut({ data: [], documents: ["page"], html: "page" });
-    assert.deepEqual(cut.libs.registry.libraries.map(entry => entry.name), ["page"]);
+    assert.deepEqual(cut.libs.registry.libraries.map(entry => entry.name), ["page", "@hson/canonical-interactions"]);
     assert.match(cut.html, /<a/);
     const bootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(cut.libs));
     assert.equal(bootstrap.kind, "libraries");

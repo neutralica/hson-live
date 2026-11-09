@@ -8,6 +8,7 @@ import {
   type OrderedProjectedValue,
 } from "../core/ordered-projected-value.js";
 import type { HsonNode } from "../core/types.js";
+import type { LiveMapDocumentPath } from "../types/livemap.types.js";
 import type { LiveMapDocumentIdentityOverlay } from "../api/livemap/livemap.document.identity.js";
 import {
   append_document_path,
@@ -39,6 +40,7 @@ export function validate_interaction_descriptor_ids(descriptors: OrderedProjecte
 export function validate_interaction_subjects(
   descriptors: OrderedProjectedValue | undefined,
   isDocumentLibrary: (name: string) => boolean,
+  validatePath?: (library: string, path: LiveMapDocumentPath) => void,
 ): void {
   validate_interaction_descriptor_ids(descriptors);
   if (!Array.isArray(descriptors)) throw new TypeError("Canonical interaction descriptors must be an array.");
@@ -50,7 +52,8 @@ export function validate_interaction_subjects(
     if (typeof library !== "string" || !isDocumentLibrary(library)) {
       throw new TypeError("Canonical interaction subject must name a document Library.");
     }
-    validate_document_path(field(subject, "path"));
+    const path = validate_document_path(field(subject, "path"));
+    validatePath?.(library, path);
   }
 }
 

@@ -13,9 +13,12 @@
       bind_locus_http,
       continue_hosted_document,
       decode_hosted_root,
+      echo_map_internal,
       enable_interactions,
       hsonLiveMap,
       hsonTransform,
+      internal_livemap_aggregate_authority,
+      INTERACTION_RESERVED_LIBRARY_KEY,
       graft,
       admit_exact_runtime_livemap_libraries,
     } from "./.canonical-interactions.library.bundle.js";
@@ -133,7 +136,8 @@
       transplanted.$_content[0].$_attrs = semantic.$_content[0].$_attrs;
       transplanted.$_content[0].$_attrs.id = "oracle-transplanted";
       const oracleTransplanted = assertCanonicalClosure({ ...oracle, ingress: "canonical-node", node: transplanted }).serialized;
-      const locus = hsonLiveMap.locus.create({
+      const additions = {
+        page: { access: "shared", document: '<hson-part lib="parts" at="controls"/>' },
         parts: { access: "private", parts: {
           controls: {
             kind: "document",
@@ -155,8 +159,8 @@
             events: { panel: "<hson:event on:click local:deck.panel input:data={null} <> >" },
           },
         } },
-        page: { access: "shared", document: '<hson-part lib="parts" at="controls"/>' },
-      }, {
+      };
+      const locus = hsonLiveMap.locus.create({ anchor: { access: "shared", document: "<aside/>" } }, {
         authorizeProjection: ({ requested }) => requested,
         actions: { "deck.advance": (_context, payload) => { payloads.push(payload); } },
       });
@@ -164,12 +168,27 @@
       const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/authored-events",
         fetch: (input, init) => binding.handle(new Request(input, init), {}) });
       const receiver = document.createElement("iframe");
-      let continuation, submissions = 0;
+      let continuation, anchorEcho, stopRestore, submissions = 0;
       const until = async (condition, message) => {
         for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
         check(condition(), message);
       };
       try {
+        const anchor = await locus.session.create({ libraries: ["anchor"] });
+        anchorEcho = await hsonLiveMap.echo.create({ now: anchor.now(), credential: anchor.credential, transport });
+        const clientMap = echo_map_internal(anchorEcho), aggregate = internal_livemap_aggregate_authority(clientMap);
+        const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+        const count = () => JSON.parse(hsonTransform.fromNode(aggregate.systemRoot(system).$_content[0]).toJson().serialize()).descriptors.length;
+        const reconciled = [];
+        stopRestore = aggregate.observeRestore(() => { reconciled.push([clientMap.doc.must("page").mode, count()]); });
+        check(anchor.now().libs.system === null && count() === 0,
+          "A featureless Echo must own an empty local store without authority interactions.");
+        await locus.admit(additions);
+        await until(() => anchorEcho.sync.appliedRev === locus.rev, "Hidden topology did not advance the existing session.");
+        check(count() === 0 && reconciled.length === 0, "The anchor session received interactions before authorization.");
+        await anchor.update({ libraries: ["anchor", "page"], systemFeatures: ["interactions"] });
+        await until(() => reconciled.length !== 0, "The active Echo did not reconcile the admitted Document.");
+        check(JSON.stringify(reconciled) === '[["document",2]]', "The first Document publication lacked its complete interaction state.");
         const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
         const now = session.now({ html: "page" });
         const state = decode_hosted_root(now.libs.system.interactions).$_content[0];
@@ -232,6 +251,8 @@
           && observed === '<button event:advance="event:advance" id="observed"/>',
         `Mutable flag round trip changed executable intent: ${JSON.stringify({ observed, oracleObserved, oracleTransplanted, descriptorCount, submissions, hostedActions: payloads.length })}`);
       } finally {
+        stopRestore?.();
+        anchorEcho?.dispose();
         continuation?.dispose();
         continuation?.echo.dispose();
         transport.dispose();

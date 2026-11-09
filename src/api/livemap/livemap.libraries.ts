@@ -1,8 +1,12 @@
+import { canonical_flat_correspondence } from "./livemap.document.flat-effects.js";
+import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
+import { interaction_descriptors_from_root } from "../../internal/interaction-partitions.js";
+import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { document_scoped_quad_selection_is_live, resolve_document_scoped_quad, type DocumentScopedQuadSelection, type DocumentQuadOccurrenceLifetime, type DocumentQuadOccurrenceScope } from "./livemap.document.scoped-quad.js";
 import { normalize_css_map, type NormalizedCssMap } from "../../core/css-map.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { live_subscription } from "../../internal/library-observation.js";
-import { complete_document_source } from "../../internal/complete-document.js";
+import { assert_complete_document, complete_document_source } from "../../internal/complete-document.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { selector_for_quid } from "../livetree/managers/css-render.js";
 import { assert_part_public_path } from "../../core/part-css-access.js";
@@ -15,7 +19,6 @@ import { read_part_events } from "../../internal/part-events.js";
 import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
-import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { composed_interaction_value } from "../interactions/interactions.descriptor.js";
 import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
@@ -26,7 +29,7 @@ import { apply_portable_document_css_op, canonical_portable_document_css_op } fr
 import { portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
-import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, require_interaction_system_internal } from "../../internal/interaction-storage.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
@@ -63,13 +66,13 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 import { hson_data_text_from_value } from "../data/hson-data.js";
-import { ANY_DATA, ANY_DOCUMENT, hson_schema_source_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
+import { ANY_DATA, ANY_DOCUMENT, hson_schema_digest, hson_schema_source_digest, HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { ordered_projected_array, ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { admit_data_input, hson_data_value, hson_data_from_value, type HsonDataInput } from "../data/hson-data.js";
 import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
-import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_live_path } from "./livemap.path.js";
 import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
@@ -119,13 +122,13 @@ import { admit_authored_livemap_document, admit_public_livemap_root, admit_owned
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
-import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
+import type { LiveMapSemanticCheckpoint, PreparedLiveMapSemanticCheckpoint } from "./livemap.internal.js";
 import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js";
 import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "./livemap.staged.js";
 import type { LiveMapAggregateWrite } from "./livemap.library.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
-import { own_document_scopes, own_topology_document_scopes } from "./livemap.document.scoped-portable.js";
+import { normalize_document_scoped_library_subjects, own_document_scopes, own_topology_document_scopes } from "./livemap.document.scoped-portable.js";
 import { expand_document_composition, document_composition_options, has_part_connector, type DocumentCompositionOptions } from "./livemap.document.composition.js";
 import { parse_authored_document_library, register_document_quad_lookup, decode_document_quads, own_document_quads } from "./livemap.document.quad.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
@@ -344,16 +347,20 @@ function reconcile_document_css(document: object): void {
   if (failures.length) throw new AggregateError(failures, "Document CSS native reconciliation is incomplete.");
 }
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot, scoped?: boolean, assertAcceptance?: () => void) => void>();
+const SEMANTIC_CHECKPOINT_PREPARATION = new WeakMap<object, (checkpoint: LiveMapSemanticCheckpoint) => PreparedLiveMapSemanticCheckpoint>();
 const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void, assertAcceptance?: () => void) => LiveMapCommit>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, definitions: readonly OwnedLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
-  assertEntryCurrent: () => void) => Readonly<{
+  assertEntryCurrent: () => void, interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
   afterInstall: () => void;
 }>>();
 
-function topology_definitions(operation: LiveMapLibraryAddOperation, scoped = false): readonly CanonicalLibraryDefinition[] {
+function capture_topology_addition(operation: LiveMapLibraryAddOperation, scoped = false): Readonly<{
+  definitions: readonly CanonicalLibraryDefinition[];
+  interactionAdds: LiveMapLibraryAddOperation["operation"]["interactionAdds"];
+}> {
   if (operation.operation.kind !== "library-add" || operation.operation.libraries.length === 0
     || operation.library !== operation.operation.libraries[0]?.name) {
     throw new Error("LiveMap topology replay requires a canonical library-add operation.");
@@ -361,7 +368,10 @@ function topology_definitions(operation: LiveMapLibraryAddOperation, scoped = fa
   const definitions: CanonicalLibraryDefinition[] = [];
   const names = new Set<string>();
   exact_transport_fields(operation, ["library", "operation"]);
-  exact_transport_fields(operation.operation, ["kind", "libraries"]);
+  const hasInteractions = Object.hasOwn(operation.operation, "interactionAdds");
+  exact_transport_fields(operation.operation, ["kind", "libraries", ...(scoped && hasInteractions ? ["interactionAdds"] : [])]);
+  const interactionAdds = hasInteractions ? operation.operation.interactionAdds : undefined;
+  if (hasInteractions && interactionAdds === undefined) throw new Error("Undefined Library interaction additions.");
   for (const entry of operation.operation.libraries) {
     exact_transport_fields(entry, ["name", "mode", "schema", "root", ...(Object.hasOwn(entry, "validation") ? ["validation"] : []), ...(Object.hasOwn(entry, "css") ? ["css"] : []), ...(Object.hasOwn(entry, "quads") ? ["quads"] : []), ...(scoped && Object.hasOwn(entry, "scopes") ? ["scopes"] : []), ...(scoped && Object.hasOwn(entry, "documentContract") ? ["documentContract"] : [])]);
     const scopes = own_topology_document_scopes(entry);
@@ -379,7 +389,60 @@ function topology_definitions(operation: LiveMapLibraryAddOperation, scoped = fa
       ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
       ...(own_document_quads(entry) === undefined ? {} : { quads: decode_document_quads(own_document_quads(entry), root, entry.mode) }) });
   }
-  return capture_library_definitions(definitions);
+  return { definitions: capture_library_definitions(definitions), interactionAdds };
+}
+
+/** Admit durable Library material independently of whether its effects still need applying. @internal */
+export function admit_durable_library_add_internal(operation: LiveMapLibraryAddOperation) {
+  const { definitions, interactionAdds } = capture_topology_addition(operation, true);
+  const css = topology_css(operation);
+  const documents = new Map<string, HsonNode>();
+  for (const [index, definition] of definitions.entries()) {
+    const { name, root, schema, family, scopes, quads } = definition;
+    const entry = operation.operation.libraries[index]!;
+    if (schema.toHson() !== entry.schema) throw new Error("Durable Library Schema encoding is noncanonical.");
+    validate_hson_schema_graph(schema, root);
+    if (family !== "document") {
+      if (Object.hasOwn(entry, "css")) throw new Error("Durable CSS requires a document Library.");
+      continue;
+    }
+    documents.set(name, root);
+    const stylesheet = css[name];
+    if (Object.hasOwn(entry, "css") && stylesheet === undefined) throw new Error("Undefined durable Library CSS.");
+    if (scopes !== undefined) {
+      if (stylesheet === undefined) throw new Error("Scoped durable Library requires CSS evidence.");
+      const canonical = normalize_document_scoped_library_subjects({ root, scopes, css: stylesheet });
+      if (JSON.stringify(canonical.scopes) !== JSON.stringify(entry.scopes)
+        || JSON.stringify(canonical.css) !== JSON.stringify(entry.css)) {
+        throw new Error("Durable scoped Library evidence is noncanonical.");
+      }
+    } else {
+      const canonical = stylesheet === undefined ? undefined : canonical_flat_correspondence(root, stylesheet, quads);
+      if (JSON.stringify(canonical?.css) !== JSON.stringify(entry.css)
+        || JSON.stringify(canonical === undefined ? quads : canonical.subjects.length ? canonical.subjects : undefined)
+          !== JSON.stringify(entry.quads)) {
+        throw new Error("Durable flat Library evidence is noncanonical.");
+      }
+    }
+    assert_complete_document(root, stylesheet === undefined ? [] :
+      render_portable_document_stylesheet_carriers(decode_portable_document_stylesheet(stylesheet)));
+  }
+  if (interactionAdds !== undefined) {
+    const root = decode_hosted_root(interactionAdds);
+    admit_portable_hson_node(root, "Durable Library interaction additions");
+    validate_hson_schema_graph(interaction_schema_internal(), root);
+    const descriptors = interaction_descriptors_from_root(projected_value_from_hson_node(root));
+    const canonical = projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(descriptors)]]));
+    if (descriptors.length === 0 || JSON.stringify(encode_hosted_root(canonical)) !== JSON.stringify(interactionAdds)) {
+      throw new Error("Durable Library interaction additions are noncanonical.");
+    }
+    validate_interaction_subjects(descriptors, name => documents.has(name), (name, path) => {
+      if (!is_ordinary_element_node(resolve_document_path(documents.get(name)!, "document", path))) {
+        throw new Error("Library interaction subject must resolve to an admitted Document element.");
+      }
+    });
+  }
+  return { definitions, interactionAdds, css };
 }
 
 /** Source-free durable topology replay through the existing managed admission candidate. @internal */
@@ -388,7 +451,8 @@ export function replay_durable_library_add_internal(map: LiveMap, operation: Liv
   aggregate.claimManagement(owner);
   try {
     const assertEntryCurrent = aggregate.captureManagedRestorationFence(owner);
-    const prepared = prepare_library_add(map, owner, topology_definitions(operation, true), topology_css(operation), assertEntryCurrent);
+    const { definitions, interactionAdds, css } = admit_durable_library_add_internal(operation);
+    const prepared = prepare_library_add(map, owner, definitions, css, assertEntryCurrent, interactionAdds);
     const topology = prepared.transition.commit.topology;
     if (topology === undefined || JSON.stringify(topology) !== JSON.stringify(operation)) {
       aggregate.discard(prepared.transition);
@@ -445,7 +509,8 @@ export function install_client_projected_topology_internal(
   const assertCurrent = aggregate.captureManagedRestorationFence(owner);
   const current = aggregate.clientProjection();
   if (current === undefined) throw new Error("Projected topology requires a composed client LiveMap.");
-  const definitions = topology_definitions(operation, true);
+  const { definitions, interactionAdds } = capture_topology_addition(operation, true);
+  if (system !== undefined && interactionAdds !== undefined) throw new Error("Projected topology has two interaction contributions.");
   const newBindings = operation.operation.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchemaHandle.fromHson(entry.schema), identity: Object.freeze({}),
     ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
@@ -459,7 +524,7 @@ export function install_client_projected_topology_internal(
     .sort((a, b) => a.name.localeCompare(b.name));
   const predicted = make_hosted_registry([...application, ...existing.filter((entry) => entry.scope === "hson-internal")]);
   if (predicted.digest !== expectedDigest) throw new Error("Projected topology registry digest is incompatible.");
-  const prepared = prepare_library_add(map, owner, definitions, topology_css(operation), assertCurrent);
+  const prepared = prepare_library_add(map, owner, definitions, topology_css(operation), assertCurrent, interactionAdds);
   let installSystem: (() => void) | undefined;
   try {
     installSystem = system === undefined ? undefined
@@ -508,11 +573,12 @@ function prepare_library_add(
   map: LiveMap, owner: object, definitions: readonly OwnedLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
   assertEntryCurrent: () => void,
+  interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"],
 ): Readonly<{ transition: PreparedLiveMapAuthorityTransition; afterInstall: () => void }> {
   assertEntryCurrent();
   const prepare = HOSTED_LIBRARY_ADMISSION.get(map);
   if (prepare === undefined) throw new Error("Hosted Library admission requires a multi-library LiveMap.");
-  return prepare(owner, definitions, css, assertEntryCurrent);
+  return prepare(owner, definitions, css, assertEntryCurrent, interactionAdds);
 }
 
 /** Internal ownership evidence for write-propagating link admission. */
@@ -617,9 +683,8 @@ export function make_livemap_from_admitted_libraries_internal(
   definitions: readonly OwnedLibraryDefinition[], systems: readonly InitialSystemState[] = [],
   clientSnapshot?: PortableAggregateSnapshot,
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
-  inferPartInteractions = true,
 ): LiveMap {
-  return make_livemap_library_receiver(realize_authored_definitions(definitions), systems, clientSnapshot, css, false, inferPartInteractions);
+  return make_livemap_library_receiver(realize_authored_definitions(definitions), systems, clientSnapshot, css);
 }
 
 /** The established exact runtime facility enters the same receiver without portable admission. @internal */
@@ -653,15 +718,22 @@ function make_livemap_library_receiver(
   clientSnapshot: PortableAggregateSnapshot | undefined,
   initialCss: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
   scoped = false,
-  inferPartInteractions = true,
 ): LiveMap {
   const descriptors = definitions.flatMap(definition =>
     (definition.compositionInteractions ?? []).map(item => composed_interaction_value(definition.name, item)));
-  if (descriptors.length || inferPartInteractions && systems.length === 0 && definitions.some(definition => definition.part?.hasEvents)) {
+  if (descriptors.length > 0) {
     if (systems.length !== 0) throw new Error("Authored event composition cannot replace an existing initial system contribution.");
     systems = [{ key: INTERACTION_RESERVED_LIBRARY_KEY, transportName: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
       root: projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(descriptors)]])),
       hsonSchema: interaction_schema_internal() }];
+  }
+  const initialSystem = systems[0];
+  if (initialSystem !== undefined && (
+    initialSystem.key !== INTERACTION_RESERVED_LIBRARY_KEY
+    || initialSystem.transportName !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME
+    || hson_schema_digest(initialSystem.hsonSchema) !== hson_schema_digest(interaction_schema_internal())
+  )) {
+    throw new Error("LiveMap requires the fixed canonical interaction binding.");
   }
   const built = make_livemap_owned_registry_authority(definitions.map((definition) => {
     const { name, root, schema, family } = definition;
@@ -751,9 +823,9 @@ function make_livemap_library_receiver(
     if (demanded !== undefined && selectedEntry === undefined) throw new Error("SSR subject cut requires a selected HTML Library.");
     const ssr = demanded === undefined || selectedEntry === undefined ? undefined
       : aggregate.captureDocumentSsr(selectedEntry.identity, demanded);
-    const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+    const system = require_interaction_system_internal(aggregate);
     const registry = registry_from_entries(source.libraries.filter(entry =>
-      included.has(entry.name) || (system !== undefined && entry.scope === "hson-internal")));
+      included.has(entry.name) || entry.scope === "hson-internal"));
     const libraryRoots = captured.libraries.map((library, index) => {
       const entry = registry.libraries[index];
       if (entry === undefined) throw new Error("Cut Library metadata is unavailable.");
@@ -763,12 +835,10 @@ function make_livemap_library_receiver(
             ...(ssr.quads === undefined ? {} : { quads: ssr.quads }), css: ssr.css }
           : { root: library.root, ...(own_document_quads(library) === undefined ? {} : { quads: own_document_quads(library) }), ...(library.css === undefined ? {} : { css: library.css }) }) });
     });
-    if (system !== undefined) {
-      const entry = registry.libraries[registry.libraries.length - 1];
-      if (entry === undefined) throw new Error("Interaction system registry is unavailable.");
-      libraryRoots.push(Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest,
-        root: encode_hosted_root(project_interaction_state_internal(aggregate.systemRoot(system), new Set(documents)), HOSTED_MAX_SNAPSHOT_BYTES) }));
-    }
+    const entry = registry.libraries[registry.libraries.length - 1];
+    if (entry === undefined) throw new Error("Interaction system registry is unavailable.");
+    libraryRoots.push(Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest,
+      root: encode_hosted_root(project_interaction_state_internal(aggregate.systemRoot(system), new Set(documents)), HOSTED_MAX_SNAPSHOT_BYTES) }));
     const after = aggregate.hostedPosition();
     if (captured.revision !== after.revision || captured.authority !== after.authority || source.digest !== after.registryDigest) {
       throw new Error("LiveMap state changed during cut.");
@@ -796,7 +866,11 @@ function make_livemap_library_receiver(
     prevRev: commit.prevRev,
     rev: commit.rev,
     operations: Object.freeze([
-      ...(commit.topology === undefined ? [] : [commit.topology]),
+      ...(commit.topology === undefined ? [] : (() => {
+        if (commit.topology.operation.interactionAdds === undefined) return [commit.topology];
+        const { interactionAdds: _system, ...operation } = commit.topology.operation;
+        return [Object.freeze({ library: commit.topology.library, operation: Object.freeze(operation) })];
+      })()),
       ...(commit.css === undefined ? [] : (() => {
         const library = namesByIdentity.get(commit.css.library);
         return library === undefined ? [] : [Object.freeze({ library, operation: commit.css.operation })];
@@ -833,11 +907,8 @@ function make_livemap_library_receiver(
     clientLocal = false, beforeInstall?: () => void, installed?: () => void,
     compositionStyles?: Readonly<{ name: string; styles: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[] }>): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
-    for (const { name, compositionInteractions } of additions) {
+    for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
-      if (compositionInteractions?.length) {
-        throw new Error("Library topology changes cannot carry authored events. Add the Document Library first, then compose the Part in a Document edit.");
-      }
     }
     const definitions = additions.map((definition) => {
       const { name, root, schema, family } = definition;
@@ -848,6 +919,7 @@ function make_livemap_library_receiver(
         ...(quads === undefined ? {} : { quads }),
         ...(definition.scopes === undefined ? {} : { scopes: definition.scopes }),
         ...(definition.compositionScopes === undefined ? {} : { compositionScopes: definition.compositionScopes }),
+        ...(definition.compositionInteractions === undefined ? {} : { compositionInteractions: definition.compositionInteractions }),
         hsonSchema: schema,
         ...(definition.validation === undefined ? {} : { validation: definition.validation }),
         ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
@@ -951,7 +1023,7 @@ function make_livemap_library_receiver(
         throw new Error("LiveMap replay requires a supported topology operation.");
       }
       aggregate.assertPublicMutationAllowed();
-      return addLibrariesInternal(topology_definitions(operation), topology_css(operation));
+      return addLibrariesInternal(capture_topology_addition(operation).definitions, topology_css(operation));
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {
@@ -971,6 +1043,14 @@ function make_livemap_library_receiver(
     if (!("html" in result)) throw new Error("SSR subject cut requires HTML selection.");
     return result;
   });
+  SEMANTIC_CHECKPOINT_PREPARATION.set(libraries, checkpoint =>
+    aggregate.prepareSemanticCheckpoint(checkpoint, bindings => {
+      for (const binding of bindings) {
+        if (binding.scope !== undefined || named.has(binding.name)) continue;
+        add({ name: binding.name, family: binding.mode === "document" ? "document" : "data",
+          schema: binding.schema }, binding.identity);
+      }
+    }));
   EXACT_LIBRARY_ADMISSION.set(libraries, (definitions) => addLibrariesInternal(definitions));
   PART_COLLECTION_ADMISSION.set(libraries, (name, parts) => {
     aggregate.assertPublicMutationAllowed();
@@ -1064,7 +1144,7 @@ function make_livemap_library_receiver(
     },
   }));
   PUBLIC_MULTI_LIBRARY_MAPS.set(libraries, resolve);
-  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, additions, css, assertEntryCurrent) => {
+  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, additions, css, assertEntryCurrent, interactionAdds) => {
     assertEntryCurrent();
     if (additions.length === 0) throw new Error("Hosted Library admission batch is empty.");
     for (const { name } of additions) {
@@ -1084,7 +1164,7 @@ function make_livemap_library_receiver(
         ...(definition.authored === true ? { authored: true } : {}),
         ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
       });
-    }), assertEntryCurrent);
+    }), assertEntryCurrent, interactionAdds);
     return Object.freeze({
       transition: prepared.transition,
       afterInstall: () => {
@@ -1203,34 +1283,18 @@ export function portable_aggregate_inputs_internal(
   return Object.freeze({ inputs: Object.freeze(inputs), systems: Object.freeze(systems) });
 }
 
+/** Restore accepted topology and graph state through the existing receiver. @internal */
+export function prepare_livemap_semantic_checkpoint_internal(map: LiveMap,
+  checkpoint: LiveMapSemanticCheckpoint): PreparedLiveMapSemanticCheckpoint {
+  const prepare = SEMANTIC_CHECKPOINT_PREPARATION.get(map);
+  if (prepare === undefined) throw new Error("Semantic checkpoint requires a LiveMap receiver.");
+  return prepare(checkpoint);
+}
+
 /** Install complete semantic state without passing through a snapshot artifact. @internal */
-export function make_livemap_mirror_from_semantic_checkpoint_internal(
-  checkpoint: LiveMapSemanticCheckpoint,
-): LiveMap {
-  checkpoint = own_semantic_checkpoint(checkpoint);
-  if (checkpoint.registry.libraries.length !== checkpoint.libraries.length) {
-    throw new Error("Semantic checkpoint registry is incomplete.");
-  }
-  const inputs: CanonicalLibraryDefinition[] = [];
-  const systems: InitialSystemState[] = [];
-  for (let index = 0; index < checkpoint.registry.libraries.length; index += 1) {
-    const entry = checkpoint.registry.libraries[index];
-    const library = checkpoint.libraries[index];
-    if (entry === undefined || library === undefined || entry.name !== library.name) {
-      throw new Error("Semantic checkpoint Library order is invalid.");
-    }
-    admit_portable_hson_node(library.root, "Semantic checkpoint root");
-    const schema = HsonSchemaHandle.fromHson(entry.schema);
-    if (entry.scope === "hson-internal") {
-      systems.push(Object.freeze({ key: entry.name, transportName: entry.name,
-        root: library.root, hsonSchema: schema }));
-    } else {
-      inputs.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data", root: library.root, schema,
-        ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }) });
-    }
-  }
-  const map = make_livemap_from_canonical_libraries_internal(inputs, systems);
-  internal_livemap_aggregate_authority(map).installSemanticCheckpoint(checkpoint);
+export function make_livemap_mirror_from_semantic_checkpoint_internal(checkpoint: LiveMapSemanticCheckpoint): LiveMap {
+  const map = make_livemap_from_canonical_libraries_internal([]);
+  prepare_livemap_semantic_checkpoint_internal(map, checkpoint).install();
   return map;
 }
 

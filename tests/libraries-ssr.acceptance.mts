@@ -217,8 +217,9 @@ await check("state-only defaults and explicit family empties reconstruct as inde
   ];
   for (const selection of selections) {
     const { libs } = (map as import("../src/types/livemap.types.ts").LiveMap).cut(selection.options);
-    assert.deepEqual(names(libs), selection.names);
-    assert.deepEqual(libs.libraries.map(entry => entry.name), selection.names);
+    const expected = [...selection.names, INTERACTION_RESERVED_LIBRARY_KEY];
+    assert.deepEqual(names(libs), expected);
+    assert.deepEqual(libs.libraries.map(entry => entry.name), expected);
     assert.equal(libs.registryDigest, libs.registry.digest);
     assert.notEqual(libs.registryDigest, map.capture().registryDigest);
     assert.deepEqual(install_libraries_snapshot(libs).map.capture(), libs);
@@ -257,7 +258,7 @@ await check("runtime admissions and dynamic strings retain cut admission and rec
   const name: "later" = selected.document;
   assert.equal(name, "later");
   assert.equal(selected.html, complete_html("<aside></aside>"));
-  assert.deepEqual(selected.libs.registry.libraries.map(entry => entry.name), ["later", "laterState"]);
+  assert.deepEqual(selected.libs.registry.libraries.map(entry => entry.name), ["later", "laterState", INTERACTION_RESERVED_LIBRARY_KEY]);
   assert.deepEqual(install_libraries_snapshot(selected.libs).map.cut().libs, selected.libs);
   const documentName: string = "page";
   const dataName: string = "laterState";
@@ -270,10 +271,9 @@ await check("runtime admissions and dynamic strings retain cut admission and rec
   assert.equal(map.rev, 1);
 });
 
-await check("interaction storage follows selected documents and preserves enabled-empty state", () => {
+await check("interaction storage follows selected documents and preserves the empty canonical store", () => {
   const map = hsonLiveMap.fromLibraries({ state: { json: 1 }, page: { document: "<main <button/>/>" }, admin: { document: "<aside <button/>/>" } });
-  assert.equal(map.cut({ data: [], documents: [] }).libs.libraries.length, 0);
-  enable_interactions(map);
+  assert.equal(map.cut({ data: [], documents: [] }).libs.libraries.length, 1);
   for (const library of ["page", "admin"]) add_interaction(map, {
     id: `${library}-click`, subject: { library, path: [0, 0, 1, 0, 0, 0, 0] },
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
@@ -318,7 +318,8 @@ await check("aggregate-scale roots are consumable without changing ordinary exac
   const map = hsonLiveMap.fromLibraries({ large: { json: { payload } }, page: { document: `<main "${payload}"/>` }, omitted: { json: false } });
   assert.equal(map.doc.must("page").render(), complete_html(`<main>${payload}</main>`));
   const cut = map.cut({ data: ["large"], documents: ["page"], html: "page" });
-  assert.ok(cut.libs.libraries.every(entry => entry.root.payload.length > 4 * 1024 * 1024));
+  assert.ok(cut.libs.libraries.slice(0, 2).every(entry => entry.root.payload.length > 4 * 1024 * 1024));
+  assert.equal(cut.libs.libraries.at(-1)?.name, INTERACTION_RESERVED_LIBRARY_KEY);
   const installed = install_libraries_snapshot(cut.libs).map;
   assert.deepEqual(installed.cut().libs.registry, cut.libs.registry);
   assert.equal(data(installed, "large").snap(["payload"]), payload);

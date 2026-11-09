@@ -172,13 +172,11 @@ export function validate_data_library(root: HsonNode, mode: string, validation: 
 export type PartLibraryCandidate = Readonly<{
   value: OrderedProjectedValue;
   graph: ReturnType<typeof prepare_livemap_root>;
-  hasEvents: boolean;
 }>;
 
 /** Capture once; the same immutable value supplies composition and installation. @internal */
 export function admit_part_library(input: unknown): PartLibraryCandidate {
   const value = admit_projected_value(normalize_part_css_authoring(input));
-  const parts = validate_part_collection(value);
-  return Object.freeze({ value, graph: prepare_livemap_root(projected_value_to_hson_root(value), "data"),
-    hasEvents: parts.some(part => (part.events?.size ?? 0) > 0) });
+  validate_part_collection(value);
+  return Object.freeze({ value, graph: prepare_livemap_root(projected_value_to_hson_root(value), "data") });
 }

@@ -71,7 +71,7 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 
   const one = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   const empty = hsonLiveMap.locus.create({  });
-  assert.deepEqual(locus_map_internal(empty).capture().registry.libraries, []);
+  assert.deepEqual(locus_map_internal(empty).capture().registry.libraries.map(entry => entry.scope), ["hson-internal"]);
   empty.dispose();
   create_locus_fixture({ ...authority_definitions_from_map_fixture(one, [{ name: "page", ownership: "private" }]) }).dispose();
   const allPrivate = create_locus_fixture({ ...authority_definitions_from_map_fixture(map(), CATALOG.map((entry) => ({ name: entry.name, ownership: "private" as const }))) });

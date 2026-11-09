@@ -324,7 +324,9 @@ export function replay_document_scoped_effects(before: PreparedDocumentScopedLib
 export function decode_document_scoped_operation(payload: string): DocumentGraphOp | LiveMapCssOp {
   const value: unknown = JSON.parse(payload);
   if (value !== null && typeof value === "object" && "domain" in value && value.domain === "css") {
-    return canonical_portable_document_css_op(value);
+    const css = canonical_portable_document_css_op(value);
+    if (JSON.stringify(css) !== payload) fail();
+    return css;
   }
   return decode_scoped_effect_graph_operation(payload);
 }

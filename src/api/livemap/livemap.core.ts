@@ -35,7 +35,7 @@ import {
   type DocumentQuadBindings,
   type DocumentQuadCorrespondence,
 } from "./livemap.document.quad.js";
-import type { PortableQuadRestoration, PortableDocumentHandoff, ReceivingDocumentHandoff, ReceivingDocumentHandoffOwner } from "./livemap.internal.js";
+import type { PreparedLiveMapSemanticCheckpoint, PortableQuadRestoration, PortableDocumentHandoff, ReceivingDocumentHandoff, ReceivingDocumentHandoffOwner } from "./livemap.internal.js";
 import type { PortableDocumentQuads } from "../../types/livemap.types.js";
 import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 // Registry LiveMap transition and aggregate authority.
@@ -67,7 +67,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPOR
 import { interaction_schema_internal } from "../interactions/interactions.projection.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
-import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibraryAddOperation, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal, render_portable_document_stylesheet_carriers } from "../../internal/css/portable-document-stylesheet.js";
 import { document_css_mentions_subject_identity, document_css_subject_identities, translate_document_css_identities } from "../../internal/css/css-identity-translation.js";
@@ -110,6 +110,7 @@ import { HsonSchemaError, LiveMapDocumentMutationError, LiveMapProjectedMutation
 import { deliver_livemap_observers, report_livemap_observer_failure } from "./livemap.observer-delivery.js";
 import { must_live_path, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import {
+  assert_full_hosted_registry,
   assert_hosted_libraries_snapshot_shape,
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
@@ -411,7 +412,7 @@ function make_livemap_registry_engine(
   }>;
 
   const aggregateObservers: Array<(commit: LiveMapAggregateCommit) => void> = [];
-  const preparedSystemRoots = new WeakMap<import("./livemap.authority.js").PreparedLiveMapAuthorityTransition, HsonNode | undefined>();
+  const preparedSystemRoots = new WeakMap<import("./livemap.authority.js").PreparedLiveMapAuthorityTransition, HsonNode>();
   const aggregatePositionObservers: Array<Readonly<{
     listener: (revision: number) => void;
     phase: "published" | "installed";
@@ -469,34 +470,31 @@ function make_livemap_registry_engine(
   let clientManagementOwner: object | undefined;
   const projectedCaptureContinuity = new Map<LiveMapLibraryIdentity, object>();
   const systemIdentity = make_livemap_system_identity();
-  let systemState: LiveMapSystemState | undefined;
-
-  function prepare_system_state(input: InitialSystemState): LiveMapSystemState {
-    const preparedSystem = prepare_livemap_root(input.root);
-    if (preparedSystem.mode === "document") {
-      throw new Error("Transactional Hson system state must be data-mode.");
-    }
-    if ((preparedSystem.projectedOverlay?.size ?? 0) !== 0) {
-      throw new Error("Transactional Hson system state cannot own QUID identity.");
-    }
-    must_hson_schema_root(input.hsonSchema, preparedSystem.root);
-    if (input.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_descriptor_ids(project_live_path(preparedSystem.root, ["descriptors"]));
-    }
-    return {
-      identity: systemIdentity,
-      key: input.key,
-      transportName: input.transportName,
-      root: preparedSystem.root,
-      hsonSchema: input.hsonSchema,
-    };
-  }
-
-  if (systems.length > 1) {
-    throw new Error("LiveMap currently supports one transactional Hson system-state domain.");
-  }
+  if (systems.length > 1) throw new Error("LiveMap supports one transactional Hson system-state domain.");
   const initialSystem = systems[0];
-  if (initialSystem !== undefined) systemState = prepare_system_state(initialSystem);
+  const systemSchema = initialSystem?.hsonSchema ?? interaction_schema_internal();
+  const initialSystemRoot = prepare_livemap_root(initialSystem?.root
+    ?? projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array([])]])));
+  if (initialSystemRoot.mode === "document" || (initialSystemRoot.projectedOverlay?.size ?? 0) !== 0) {
+    throw new Error("Transactional Hson system state must be Data without runtime identity.");
+  }
+  must_hson_schema_root(systemSchema, initialSystemRoot.root);
+  const systemState: LiveMapSystemState = {
+    identity: systemIdentity,
+    key: initialSystem?.key ?? INTERACTION_RESERVED_LIBRARY_KEY,
+    transportName: initialSystem?.transportName ?? INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
+    root: initialSystemRoot.root,
+    hsonSchema: systemSchema,
+  };
+  if (systemState.key === INTERACTION_RESERVED_LIBRARY_KEY) {
+    validate_interaction_descriptor_ids(project_live_path(systemState.root, ["descriptors"]));
+    if (initialSystem !== undefined) encode_hosted_root(systemState.root);
+  }
+
+  const canonicalSystemBinding: HostedRegistryBinding = Object.freeze({
+    name: systemState.transportName, scope: "hson-internal", identity: systemState.identity,
+    mode: "data-object", schema: systemState.hsonSchema,
+  });
 
   function require_hosted_state(): Readonly<{
     registry: HostedRegistry;
@@ -776,7 +774,7 @@ function make_livemap_registry_engine(
   }
 
   function require_system(identity: LiveMapSystemIdentity): LiveMapSystemState {
-    if (systemState !== undefined && systemState.identity === identity) return systemState;
+    if (systemState.identity === identity) return systemState;
     throw new Error("Transactional Hson system target belongs to another map authority.");
   }
 
@@ -1159,8 +1157,7 @@ function make_livemap_registry_engine(
       if (selected === undefined) throw new Error(`Unknown Part member ${JSON.stringify([collection, member])}.`);
       return selected;
     };
-    const system_candidate = (): AggregateSystemCandidate | undefined => {
-      if (systemState === undefined || systemState.key !== INTERACTION_RESERVED_LIBRARY_KEY) return undefined;
+    const system_candidate = (): AggregateSystemCandidate => {
       systemCandidate ??= {
         system: systemState,
         baseRoot: clone_live_root(systemState.root),
@@ -1176,14 +1173,16 @@ function make_livemap_registry_engine(
       operation: LiveMapGraphOp,
       attachments: readonly DocumentCompositionInteraction[] = [],
     ): void => {
-      if (attachments.length && systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) {
-        throw new Error("Authored events require canonical interactions. Enable interactions during map construction.");
+      if (systemState.key !== INTERACTION_RESERVED_LIBRARY_KEY) {
+        if (attachments.length > 0) throw new Error("Authored events require the canonical interaction binding.");
+        return;
       }
-      if (replayingSystem || systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) return;
-      const name = hostedBindingsByIdentity?.get(library.identity)?.name;
-      if (name === undefined) throw new Error("Interaction document Library name is unavailable.");
+      if (replayingSystem) return;
       const descriptors = project_live_path(systemCandidate?.root ?? systemState.root, ["descriptors"]);
       if (descriptors === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
+      if (Array.isArray(descriptors) && descriptors.length === 0 && attachments.length === 0) return;
+      const name = hostedBindingsByIdentity?.get(library.identity)?.name;
+      if (name === undefined) throw new Error("Interaction document Library name is unavailable.");
       const rewritten = rewrite_interaction_subjects(
         descriptors, name, beforeRoot, beforeOverlay, afterOverlay, operation,
       );
@@ -1193,7 +1192,6 @@ function make_livemap_registry_engine(
       const value = attachments.length === 0 ? current
         : ordered_projected_array([...current, ...attachments.map(attachment => composed_interaction_value(name, attachment))]);
       const candidate = system_candidate();
-      if (candidate === undefined) return;
       const localWrite: LiveMapCoreWriteOp = { kind: "replace", path: ["descriptors"], value };
       const planned = plan_write_ops(candidate.root, [localWrite]);
       for (let index = 0; index < planned.ops.length; index += 1) {
@@ -1823,13 +1821,18 @@ function make_livemap_registry_engine(
       const root = systemCandidate.root;
       qualify_livemap_data(root, "LiveMap system candidate");
       validate_final_schema(systemCandidate.system.hsonSchema, root, aggregate_system_target(systemCandidate.system.identity, []));
-      // Broad internal Schemas must still retain the established container-root
-      // boundary. Only scalar failures need the former document-role diagnostic.
-      const value = root.$_tag === ROOT_TAG ? root.$_content[0] : root;
-      if (is_Node(value) && value.$_tag !== OBJ_TAG && value.$_tag !== ARR_TAG) {
-        qualify_exact_hson_graph(root, "prepare_livemap_root", "document-source", true);
-        assert_complete_document(root);
-        throw new Error("Transactional Hson system state cannot own QUID identity.");
+      if (systemCandidate.system.key === INTERACTION_RESERVED_LIBRARY_KEY) {
+        // The exact-root bound applies to the accumulated canonical interaction
+        // state, independently of how the transition encodes its operations.
+        encode_hosted_root(root);
+      } else {
+        // Detached, unnamed registry engines may exercise a broad Data Schema.
+        const value = root.$_tag === ROOT_TAG ? root.$_content[0] : root;
+        if (is_Node(value) && value.$_tag !== OBJ_TAG && value.$_tag !== ARR_TAG) {
+          qualify_exact_hson_graph(root, "prepare_livemap_root", "document-source", true);
+          assert_complete_document(root);
+          throw new Error("Transactional Hson system state cannot own QUID identity.");
+        }
       }
     }
 
@@ -2084,7 +2087,7 @@ function make_livemap_registry_engine(
         });
       },
     });
-    preparedSystemRoots.set(prepared, systemCandidate === undefined ? systemState?.root : systemCandidate.root);
+    preparedSystemRoots.set(prepared, systemCandidate?.root ?? systemState.root);
     assertPreparationCurrent();
     return prepared;
   }
@@ -2191,19 +2194,10 @@ function make_livemap_registry_engine(
       }
       return Object.freeze({ ...raw });
     });
-    if (systemState?.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_subjects(project_live_path(systemState.root, ["descriptors"]),
-        (name) => bindingsInput.some((binding) => binding.name === name && binding.mode === "document"
-          && binding.scope === undefined));
-    }
-    const systemBinding = systemState === undefined ? [] : [Object.freeze({
-      name: systemState.transportName,
-      scope: "hson-internal" as const,
-      identity: systemState.identity,
-      mode: "data-object" as const,
-      schema: systemState.hsonSchema,
-    })];
-    return install_hosted_registry([...bindings, ...systemBinding]);
+    validate_interaction_subjects(project_live_path(systemState.root, ["descriptors"]),
+      (name) => bindingsInput.some((binding) => binding.name === name && binding.mode === "document"
+        && binding.scope === undefined));
+    return install_hosted_registry([...bindings, canonicalSystemBinding]);
   }
 
   function configure_client_composition(snapshot: PortableAggregateSnapshot, scoped = false): void {
@@ -2228,7 +2222,7 @@ function make_livemap_registry_engine(
         throw new Error("Client projection contract disagrees with the composed registry.");
       }
       const current = binding.scope === "hson-internal"
-        ? systemState?.root
+        ? systemState.root
         : require_library(binding.identity as LiveMapLibraryIdentity).root;
       if (current === undefined || !canonical_graph_equal(current, decode_hosted_root(root.root, HOSTED_MAX_SNAPSHOT_BYTES))) {
         throw new Error("Client projection initial root disagrees with the composed registry.");
@@ -2388,11 +2382,13 @@ function make_livemap_registry_engine(
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
     compositionStyles?: readonly DocumentCompositionStyle[];
     compositionScopes?: DocumentScopedQuadRecord;
+    compositionInteractions?: readonly DocumentCompositionInteraction[];
     scopes?: DocumentScopedQuadRecord;
   }>;
 
   function prepare_add_libraries(definitions: readonly LibraryAddition[], clientLocal = false, entryManagementFence?: () => void,
-    parts: readonly (PartLibraryCandidate | undefined)[] = []): Readonly<{
+    parts: readonly (PartLibraryCandidate | undefined)[] = [],
+    replayedInteractions?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]): Readonly<{
     transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
   }> {
@@ -2433,11 +2429,9 @@ function make_livemap_registry_engine(
         root: normalize_document_root(definition.root), quads: own_document_quads(definition),
       }) };
       const result = expand_document_composition(definition.name, () => ({ root: definition.root, ...(definition.quads === undefined ? {} : { quads: definition.quads }) }), document_composition_options(undefined), readPart, "document");
-      if (result.interactions.length) {
-        throw new Error("Library topology changes cannot carry authored events. Add the Document Library first, then compose the Part in a Document edit.");
-      }
       const { quads: sourceQuads, ...ordinary } = definition;
-      return { ...ordinary, root: result.root, ...(result.quads === undefined ? {} : { quads: result.quads }), compositionStyles: result.styles, compositionScopes: result.scoped };
+      return { ...ordinary, root: result.root, ...(result.quads === undefined ? {} : { quads: result.quads }),
+        compositionStyles: result.styles, compositionScopes: result.scoped, compositionInteractions: result.interactions };
     });
     assertSourcesCurrent();
     const foreignPayloads = new Set([...disposable_document_quad_payloads(definitions.map(definition => own_document_quads(definition))),
@@ -2504,16 +2498,52 @@ function make_livemap_registry_engine(
       name, identity: state.identity, mode: state.mode, schema: hsonSchema,
       ...(state.validation === undefined ? {} : { validation: state.validation }),
     }));
-    const systemBinding: HostedRegistryBinding[] = [];
-    if (systemState !== undefined) {
-      const binding = hosted.byIdentity.get(systemState.identity);
-      if (binding === undefined) throw new Error("LiveMap system binding is unavailable.");
-      systemBinding.push(binding);
-    }
-    const nextBindings = [...existingBindings, ...newBindings, ...systemBinding];
     if (newBindings.some((binding) => binding.name === INTERACTION_RESERVED_LIBRARY_KEY)) {
       throw new Error("LiveMap system Library name is reserved.");
     }
+    const application = [...existingBindings, ...newBindings];
+    const attachments = definitions.flatMap(definition => (definition.compositionInteractions ?? [])
+      .map(attachment => ({ library: definition.name, attachment })));
+    let nextSystemRoot = systemState.root;
+    let interactionAdds: LiveMapLibraryAddOperation["operation"]["interactionAdds"];
+    if (attachments.length > 0 || replayedInteractions !== undefined) {
+      if (replayedInteractions !== undefined && clientComposition !== undefined
+        && !clientComposition.bindings.has(INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME)) {
+        throw new Error("Projected Library interaction additions require the interactions feature.");
+      }
+      let additions: readonly OrderedProjectedValue[];
+      if (replayedInteractions === undefined) {
+        additions = attachments.map(({ library, attachment }) => composed_interaction_value(library, attachment));
+      } else {
+        if (attachments.length > 0) throw new Error("Replayed Library interactions cannot carry authored sources.");
+        const root = decode_hosted_root(replayedInteractions);
+        admit_portable_hson_node(root, "Library interaction additions");
+        additions = interaction_descriptors_from_graph(root);
+        if (additions.length === 0) throw new Error("Library interaction additions are empty.");
+      }
+      const newDocuments = new Map(prepared.filter(({ state }) => state.mode === "document").map(({ name, state }) => [name, state.root]));
+      const appended = ordered_projected_array(additions);
+      validate_interaction_subjects(appended, name => newDocuments.has(name), (name, path) => {
+        const root = newDocuments.get(name)!;
+        if (!is_ordinary_element_node(resolve_document_path(root, "document", path))) {
+          throw new Error("Library interaction subject must resolve to an admitted Document element.");
+        }
+      });
+      const current = ordered_projected_array(interaction_descriptors_from_graph(systemState.root));
+      const { shared, local } = partition_interaction_descriptors(current, name =>
+        clientComposition === undefined || clientComposition.bindings.has(name) ? "shared" : "local");
+      const combined = clientLocal ? merge_interaction_descriptors(shared, [...local, ...additions])
+        : merge_interaction_descriptors([...shared, ...additions], local);
+      const applicationByName = new Map(application.map(binding => [binding.name, binding]));
+      validate_interaction_subjects(combined, name => applicationByName.get(name)?.mode === "document");
+      nextSystemRoot = projected_value_to_hson_root(ordered_projected_object([["descriptors", combined]]));
+      must_hson_schema_root(systemState.hsonSchema, nextSystemRoot);
+      // The full prospective root and the portable Descriptor delta have
+      // separate exact-value bounds, even when a Library is added atomically.
+      encode_hosted_root(nextSystemRoot);
+      interactionAdds = encode_hosted_root(projected_value_to_hson_root(ordered_projected_object([["descriptors", appended]])));
+    }
+    const nextBindings = [...application, canonicalSystemBinding];
     const nextRegistry = make_hosted_registry(nextBindings);
     const nextByIdentity = new Map(nextBindings.map((binding) => [binding.identity, binding]));
     const nextByName = new Map(nextBindings.map((binding) => [binding.name, binding]));
@@ -2546,6 +2576,7 @@ function make_livemap_registry_engine(
               return { documentContract: "scoped" as const, scopes: portable.scopes, css: portable.css };
             })()),
         }))),
+        ...(interactionAdds === undefined ? {} : { interactionAdds }),
       }),
     });
     const commit: LiveMapAggregateCommit = Object.freeze({
@@ -2553,11 +2584,11 @@ function make_livemap_registry_engine(
       operations: Object.freeze([]), topology,
       hosted: make_hosted_topology_commit(hosted.fence, hosted.registry, nextRegistry, topology, prevRev),
     });
-    assertManagementCurrent?.();
     const transition = transitionController.prepareAuthority({
       commit,
       assertManagementCurrent,
       libraryModes: Object.freeze(prepared.map(({ state }) => state.mode)),
+      release: () => { preparedSystemRoots.delete(transition); },
       baseStillCurrent: () => mapRevision === prevRev && hostedRegistry === hosted.registry && identityGeneration === generation,
       install: () => {
         mapIdentityEpoch.install(nextLedger);
@@ -2566,6 +2597,7 @@ function make_livemap_registry_engine(
         hostedRegistry = nextRegistry;
         hostedBindingsByIdentity = nextByIdentity;
         hostedBindingsByName = nextByName;
+        systemState.root = nextSystemRoot;
         mapRevision = commit.rev;
       },
       notify: (acceptedCommit) => enqueuePublication(() => {
@@ -2575,6 +2607,11 @@ function make_livemap_registry_engine(
         publishAuthorityPosition(acceptedCommit.rev);
       }),
     });
+    // The transition controller diagnoses a stale revision before the remaining
+    // capture and management freshness checks.
+    try { candidateAuthority.assertCurrent(); }
+    catch (cause) { transitionController.discardAuthority(transition); throw cause; }
+    preparedSystemRoots.set(transition, nextSystemRoot);
     return Object.freeze({ transition, identities: Object.freeze(prepared.map(({ state }) => state.identity)) });
   }
 
@@ -2697,7 +2734,7 @@ function make_livemap_registry_engine(
       if (binding === undefined) throw new Error("Hosted registry binding is unavailable during aggregate capture.");
       const state = binding.scope === "hson-internal"
         ? (() => {
-          if (systemState === undefined || binding.identity !== systemState.identity) {
+          if (binding.identity !== systemState.identity) {
             throw new Error("Hosted system-state binding is unavailable during aggregate capture.");
           }
           return systemState;
@@ -2747,7 +2784,6 @@ function make_livemap_registry_engine(
         ...portable_quads(state) });
     });
     const system = includeSystem ? (() => {
-      if (systemState === undefined) throw new Error("Selected hosted system state is unavailable.");
       return encode_hosted_root(clone_hson_graph_without_quids(systemState.root), HOSTED_MAX_SNAPSHOT_BYTES);
     })() : null;
     // The synchronous structural capture admits no policy or application callbacks.
@@ -2772,7 +2808,6 @@ function make_livemap_registry_engine(
       const state = binding.scope === "hson-internal"
         ? systemState
         : require_library(binding.identity as LiveMapLibraryIdentity);
-      if (state === undefined) throw new Error("Hosted system state is unavailable during exact capture.");
       return Object.freeze({ ...entry, root: encode_hosted_root(clone_live_root(state.root)) });
     });
     const snapshot: HostedLiveMapSnapshot = Object.freeze({
@@ -2816,7 +2851,6 @@ function make_livemap_registry_engine(
       if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
       const state = binding.scope === "hson-internal"
         ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
-      if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
       if ("mode" in state) {
         if (state.documentScopes !== undefined) {
           const captured = capture_document_scoped_library({ owner: state.identity, root: state.root,
@@ -2836,50 +2870,67 @@ function make_livemap_registry_engine(
     return Object.freeze({ authority, revision, registry: hosted.registry, libraries: Object.freeze(libraries) });
   }
 
-  function install_semantic_checkpoint(checkpoint: LiveMapSemanticCheckpoint): void {
+  function prepare_semantic_checkpoint(input: LiveMapSemanticCheckpoint,
+    afterTopologyInstall?: (bindings: readonly HostedRegistryBinding[]) => void): PreparedLiveMapSemanticCheckpoint {
     const owner = transitionController.managedExecutionOwner();
     const position = capture_fence(), generation = transitionController.generation;
     const grant = owner === undefined ? undefined : transitionController.captureManagementFence(owner);
-    const checkRestore = () => {
+    const checkRestore = (installOwner?: object) => {
       grant?.(); position();
-      transitionController.assertPublicMutationAllowed();
+      if (installOwner === undefined) transitionController.assertPublicMutationAllowed();
+      else transitionController.captureManagementFence(installOwner)();
       transitionController.assertLocalIdentityAllowed();
       if (transitionController.generation !== generation) throw new Error("Checkpoint restoration authority changed.");
     };
     checkRestore();
-    checkpoint = own_semantic_checkpoint(checkpoint);
+    const checkpoint = own_semantic_checkpoint(input);
     checkRestore();
     const hosted = require_hosted_state();
-    if (!Number.isSafeInteger(checkpoint.revision) || checkpoint.revision < 0
-      || checkpoint.registry.format !== hosted.registry.format
-      || checkpoint.registry.digest !== hosted.registry.digest
-      || registry_from_entries(checkpoint.registry.libraries).digest !== hosted.registry.digest
-      || checkpoint.libraries.length !== hosted.registry.libraries.length
-      || typeof checkpoint.authority.logicalMapId !== "string" || !checkpoint.authority.logicalMapId
-      || typeof checkpoint.authority.incarnationId !== "string" || !checkpoint.authority.incarnationId) {
+    if (afterTopologyInstall === undefined && checkpoint.registry.digest !== hosted.registry.digest) {
       throw new Error("Semantic checkpoint is incompatible with this authority.");
+    }
+    // Checkpoints describe the final state after separately admitted transitions.
+    // The manifest bounds the persisted material. A Library-add envelope and its
+    // single-transition byte limit do not apply to the recovered topology.
+    for (const name of hosted.byName.keys()) {
+      if (!checkpoint.registry.libraries.some(entry => entry.name === name)) {
+        throw new Error(name === systemState.transportName ? "Checkpoint lacks the required canonical interaction binding."
+          : "Semantic checkpoint omitted an established Library.");
+      }
     }
     const reserved = new Set<string>();
     const foreignPayloads = new Set([...disposable_document_quad_payloads(checkpoint.libraries.map(item => own_document_quads(item))),
       ...checkpoint.libraries.flatMap(item => item.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
     const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore, };
     const candidates = checkpoint.libraries.map((item, index) => {
-      const entry = hosted.registry.libraries[index];
-      if (entry === undefined || item.name !== entry.name) throw new Error("Checkpoint Library order is invalid.");
-      const binding = hosted.byName.get(entry.name);
-      if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
+      const entry = checkpoint.registry.libraries[index]!;
+      const prior = hosted.byName.get(entry.name);
+      const validation = own_data_library_validation(entry);
+      if (prior !== undefined && (prior.scope !== entry.scope || prior.mode !== entry.mode
+        || prior.validation !== validation || hson_schema_digest(prior.schema) !== entry.schemaDigest)) {
+        throw new Error("Semantic checkpoint is incompatible with an established Library contract.");
+      }
       const prepared = prepare_livemap_root(item.root, entry.mode === "document" ? "document" : "data");
-      if (prepared.mode !== entry.mode) throw new Error("Checkpoint root mode disagrees with registry.");
-      if (binding.scope !== "hson-internal") preserve_part_members(require_library(binding.identity), prepared, "checkpoint installation");
-      must_hson_schema_root(binding.schema, prepared.root);
-      validate_data_library(prepared.root, prepared.mode, binding.validation);
       if (entry.scope === "hson-internal") {
-        if (systemState === undefined || binding.identity !== systemState.identity || prepared.mode === "document") {
+        if (prior?.identity !== systemState.identity || prepared.mode !== "data-object") {
           throw new Error("Checkpoint system state is incompatible.");
         }
-        return Object.freeze({ kind: "system" as const, state: systemState, prepared });
+        validate_interaction_subjects(project_live_path(prepared.root, ["descriptors"]),
+          name => checkpoint.registry.libraries.some(entry => entry.name === name
+            && entry.scope === undefined && entry.mode === "document"));
+        encode_hosted_root(prepared.root);
+        return Object.freeze({ kind: "system" as const, prepared, binding: prior });
       }
-      const state = require_library(binding.identity as LiveMapLibraryIdentity);
+      const schema = prior?.schema ?? HsonSchemaHandle.fromHson(entry.schema);
+      must_hson_schema_family(schema, entry.mode === "document" ? "document" : "data");
+      const state = prior === undefined
+        ? make_livemap_library(prepared, schema, validation)
+        : require_library(prior.identity);
+      if (prior !== undefined) preserve_part_members(state, prepared, "checkpoint installation");
+      const binding: HostedRegistryBinding = prior ?? Object.freeze({
+        name: entry.name, identity: state.identity, mode: state.mode, schema: state.hsonSchema!,
+        ...(validation === undefined ? {} : { validation }),
+      });
       const scopedCandidate = item.scopes === undefined ? undefined : reconstruct_scoped_library(state,
         { root: item.root, scopes: item.scopes, css: item.css }, scopedAuthority,
         make_livemap_issued_quid_ledger([...enumerate_livemap_issued_quids(mapIdentityEpoch.issued()), ...reserved]), foreignPayloads);
@@ -2889,50 +2940,63 @@ function make_livemap_registry_engine(
       const addressState = scopedCandidate === undefined
         ? reconstruct_document(prepared, own_document_quads(item), item.css, reserved, undefined, [], foreignPayloads)
         : { documentOverlay: scopedCandidate.overlay, documentQuads: scoped_aliases(scopedCandidate), stylesheet: scopedCandidate.stylesheet };
-      return Object.freeze({ kind: "application" as const, state, prepared,
+      return Object.freeze({ kind: "application" as const, state, prepared, binding,
         root: scopedCandidate?.root ?? prepared.root, addressState, documentScopes: scopedCandidate?.scopes,
         css: addressState.stylesheet,
-        changed: scopedCandidate !== undefined || state.documentScopes !== undefined || !canonical_graph_equal(state.root, prepared.root)
+        changed: prior === undefined || scopedCandidate !== undefined || state.documentScopes !== undefined || !canonical_graph_equal(state.root, prepared.root)
           || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
             addressState.stylesheet!)) });
     });
-    if (systemState !== undefined && !candidates.some((candidate) => candidate.kind === "system")) {
-      throw new Error("Checkpoint omitted system state.");
-    }
+    const bindings = Object.freeze(candidates.map(candidate => candidate.binding));
+    const registry = make_hosted_registry(bindings);
+    if (registry.digest !== checkpoint.registry.digest) throw new Error("Semantic checkpoint registry is inconsistent.");
     const changedLibraries = candidates.flatMap((candidate) =>
       candidate.kind === "application" && candidate.changed ? [candidate.state.identity] : []);
     checkRestore();
-    mapIdentityEpoch.replace(reserved);
-    for (const candidate of candidates) {
-      if (candidate.kind === "system") {
-        candidate.state.root = candidate.prepared.root;
-      } else {
-        Object.assign(candidate.state, {
-          root: candidate.root,
-          documentScopes: candidate.documentScopes,
-          ...candidate.addressState,
-          projectedOverlay: candidate.prepared.projectedOverlay,
-          ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
+    return Object.freeze({
+      authority: checkpoint.authority, revision: checkpoint.revision, registry, bindings,
+      install(managementOwner = owner) {
+        // Authorize installation without running publication in managed execution.
+        // Observers must pass the ordinary write fence even on the same stack.
+        checkRestore(managementOwner);
+        mapIdentityEpoch.replace(reserved);
+        for (const candidate of candidates) {
+          if (candidate.kind === "system") {
+            systemState.root = candidate.prepared.root;
+          } else {
+            Object.assign(candidate.state, {
+              root: candidate.root,
+              documentScopes: candidate.documentScopes,
+              ...candidate.addressState,
+              projectedOverlay: candidate.prepared.projectedOverlay,
+              ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
+            });
+          }
+        }
+        libraryRegistry.replace(candidates.flatMap(candidate => candidate.kind === "application" ? [candidate.state] : []));
+        hostedRegistry = registry;
+        hostedBindingsByIdentity = new Map(bindings.map(binding => [binding.identity, binding]));
+        hostedBindingsByName = new Map(bindings.map(binding => [binding.name, binding]));
+        const previousRevision = mapRevision;
+        identityGeneration += 1;
+        mapRevision = checkpoint.revision;
+        hostedFence = Object.freeze({ ...checkpoint.authority });
+        for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
+        transitionController.invalidate();
+        afterTopologyInstall?.(bindings);
+        publishInstalledPosition();
+        const event = Object.freeze({
+          previousRevision,
+          revision: checkpoint.revision,
+          libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
+          changedLibraries: Object.freeze(changedLibraries),
+          continuity: "new-epoch" as const,
         });
-      }
-    }
-    const previousRevision = mapRevision;
-    identityGeneration += 1;
-    mapRevision = checkpoint.revision;
-    hostedFence = Object.freeze({ ...checkpoint.authority });
-    for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
-    transitionController.invalidate();
-    publishInstalledPosition();
-    const event = Object.freeze({
-      previousRevision,
-      revision: checkpoint.revision,
-      libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
-      changedLibraries: Object.freeze(changedLibraries),
-      continuity: "new-epoch" as const,
-    });
-    enqueuePublication(() => {
-      deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
-      publishAuthorityPosition();
+        enqueuePublication(() => {
+          deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
+          publishAuthorityPosition();
+        });
+      },
     });
   }
 
@@ -2991,7 +3055,7 @@ function make_livemap_registry_engine(
       must_hson_schema_root(schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, own_data_library_validation(entry));
       if (entry.scope === "hson-internal") {
-        if (systemState === undefined || systemState.transportName !== entry.name
+        if (systemState.transportName !== entry.name
           || hson_schema_digest(systemState.hsonSchema) !== hson_schema_source_digest(entry.schema) || entry.mode !== "data-object") {
           throw new Error("LiveMap topology snapshot system state is incompatible.");
         }
@@ -3019,25 +3083,18 @@ function make_livemap_registry_engine(
           ...(entry.mode === "document" ? { css: addressState.stylesheet } : {}) }));
       }
     }
-    if (systemState !== undefined && systemRoot === undefined) {
+    if (systemRoot === undefined) {
       throw new Error("LiveMap topology snapshot omitted configured system state.");
     }
-    if (systemRoot !== undefined && systemState?.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-      validate_interaction_subjects(project_live_path(systemRoot, ["descriptors"]),
-        (name) => snapshot.registry.libraries.some((entry) => entry.name === name && entry.mode === "document"
-          && entry.scope === undefined));
-    }
+    validate_interaction_subjects(project_live_path(systemRoot, ["descriptors"]),
+      (name) => snapshot.registry.libraries.some((entry) => entry.name === name && entry.mode === "document"
+        && entry.scope === undefined));
+    encode_hosted_root(systemRoot);
     const bindings: HostedRegistryBinding[] = candidates.map(({ name, state, schema }) => Object.freeze({
       name, identity: state.identity, mode: state.mode, schema,
       ...(state.validation === undefined ? {} : { validation: state.validation }),
     }));
-    if (systemState !== undefined) bindings.push(Object.freeze({
-      name: systemState.transportName,
-      scope: "hson-internal",
-      identity: systemState.identity,
-      mode: "data-object",
-      schema: systemState.hsonSchema,
-    }));
+    bindings.push(canonicalSystemBinding);
     const registry = make_hosted_registry(bindings);
     if (registry.digest !== snapshot.registry.digest
       || registry.digest !== registry_from_entries(snapshot.registry.libraries).digest) {
@@ -3062,9 +3119,7 @@ function make_livemap_registry_engine(
       });
     }
     libraryRegistry.replace(candidates.map(({ state }) => state));
-    if (systemState !== undefined && systemRoot !== undefined) {
-      systemState.root = systemRoot;
-    }
+    systemState.root = systemRoot;
     hostedRegistry = registry;
     hostedBindingsByIdentity = new Map(bindings.map((binding) => [binding.identity, binding]));
     hostedBindingsByName = new Map(bindings.map((binding) => [binding.name, binding]));
@@ -3120,6 +3175,7 @@ function make_livemap_registry_engine(
     }
     if ("identity" in snapshot) assert_hosted_libraries_snapshot_shape(snapshot);
     else assert_libraries_snapshot_shape(snapshot);
+    assert_full_hosted_registry(snapshot.registry.libraries);
     assert_libraries_snapshot_bound(snapshot);
     for (const entry of snapshot.registry.libraries) {
       const binding = hosted.byName.get(entry.name);
@@ -3194,7 +3250,7 @@ function make_livemap_registry_engine(
       must_hson_schema_root(binding.schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, binding.validation);
       if (entry.scope === "hson-internal") {
-        if (systemState === undefined || binding.identity !== systemState.identity
+        if (binding.identity !== systemState.identity
           || prepared.mode === "document" || (prepared.projectedOverlay?.size ?? 0) !== 0) {
           throw new Error("Hosted aggregate snapshot system state is incompatible.");
         }
@@ -3230,7 +3286,7 @@ function make_livemap_registry_engine(
       projectedOverlay: candidate.projectedOverlay,
       ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
     }));
-    if (systemCandidate !== undefined && systemCandidate.state.key === INTERACTION_RESERVED_LIBRARY_KEY) {
+    if (systemCandidate !== undefined) {
       validate_interaction_subjects(project_live_path(systemCandidate.root, ["descriptors"]),
         (name) => hosted.registry.libraries.some((entry) => entry.name === name && entry.mode === "document"
           && entry.scope === undefined));
@@ -3256,9 +3312,10 @@ function make_livemap_registry_engine(
       .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root)
         || (candidate.css !== undefined && !portable_document_stylesheet_equal(stylesheet(candidate.library.identity), candidate.css)))
       .map((candidate) => candidate.library.identity));
-    if (systemState !== undefined && systemCandidate === undefined) {
+    if (systemCandidate === undefined) {
       throw new Error("Hosted aggregate snapshot omitted configured transactional system state.");
     }
+    encode_hosted_root(systemCandidate.root);
     checkRestore();
     for (const candidate of candidates) {
       Object.assign(candidate.library, {
@@ -3269,9 +3326,7 @@ function make_livemap_registry_engine(
         ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
     }
-    if (systemCandidate !== undefined) {
-      systemCandidate.state.root = systemCandidate.root;
-    }
+    systemCandidate.state.root = systemCandidate.root;
     if (identity === undefined) mapIdentityEpoch.replace(reserved);
     else if (issuedLedger !== undefined) mapIdentityEpoch.install(make_livemap_issued_quid_ledger([
       ...enumerate_livemap_issued_quids(mapIdentityEpoch.issued()),
@@ -3384,7 +3439,7 @@ function make_livemap_registry_engine(
       ...snapshot.libraries.flatMap(entry => entry.scopes?.subjects.map(subject => subject.name.slice(1)) ?? [])]);
     const scopedAuthority = { identityOwner: mapIdentityEpoch.owner, assertCurrent: checkRestore, };
     let stagedIssued = mapIdentityEpoch.issued();
-    let nextSystem: LiveMapSystemState | undefined;
+    let nextSystemRoot: HsonNode | undefined;
     let systemBinding: HostedRegistryBinding | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
       const entry = snapshot.registry.libraries[index];
@@ -3398,7 +3453,7 @@ function make_livemap_registry_engine(
       if (oldBinding?.validation !== undefined && oldBinding.validation !== own_data_library_validation(entry)) {
         throw new Error("Reconciliation cannot remove an existing Part collection validation contract.");
       }
-      const established = entry.scope === "hson-internal" ? systemState?.hsonSchema
+      const established = entry.scope === "hson-internal" ? systemState.hsonSchema
         : oldBinding === undefined ? undefined : require_library(oldBinding.identity).hsonSchema;
       if (oldBinding !== undefined && (oldBinding.scope !== entry.scope || oldBinding.mode !== entry.mode
         || oldBinding.validation !== own_data_library_validation(entry))
@@ -3420,14 +3475,12 @@ function make_livemap_registry_engine(
       must_hson_schema_root(schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, own_data_library_validation(entry));
       if (entry.scope === "hson-internal") {
-        if (nextSystem !== undefined) throw new Error("Client projection has duplicate system state.");
-        nextSystem = prepare_system_state(Object.freeze({
-          key: INTERACTION_RESERVED_LIBRARY_KEY, transportName: entry.name,
-          root: prepared.root, hsonSchema: schema,
-        }));
-        systemBinding = Object.freeze({ name: entry.name, scope: "hson-internal", identity: systemIdentity,
-          mode: entry.mode, schema,
-          ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }) });
+        if (nextSystemRoot !== undefined || entry.name !== systemState.transportName
+          || entry.mode !== "data-object" || (prepared.projectedOverlay?.size ?? 0) !== 0) {
+          throw new Error("Client projection has an incompatible canonical interaction binding.");
+        }
+        nextSystemRoot = prepared.root;
+        systemBinding = canonicalSystemBinding;
       } else {
         const retained = oldBinding !== undefined && oldBinding.scope === undefined
           && oldBinding.mode === entry.mode && oldBinding.validation === own_data_library_validation(entry) && hson_schema_digest(oldBinding.schema) === hson_schema_source_digest(entry.schema);
@@ -3477,26 +3530,19 @@ function make_livemap_registry_engine(
       if (binding?.mode !== "document" || binding.scope !== undefined) return undefined;
       return composition.bindings.has(name) ? "shared" : "local";
     };
-    const localDescriptors = systemState === undefined ? [] : partition_interaction_descriptors(
+    const localDescriptors = partition_interaction_descriptors(
       interaction_descriptors_from_graph(systemState.root), currentClassify).local;
-    const incomingDescriptors = nextSystem === undefined ? [] : interaction_descriptors_from_graph(nextSystem.root);
+    const incomingDescriptors = nextSystemRoot === undefined ? [] : interaction_descriptors_from_graph(nextSystemRoot);
     const incoming = partition_interaction_descriptors(ordered_projected_array(incomingDescriptors), (name) =>
       projectedDocumentNames.has(name) ? "shared" : localDocumentNames.has(name) ? "local" : undefined);
     if (incoming.local.length > 0) throw new Error("Authority interaction snapshot contains a local subject.");
-    const keepLocalSystem = localDocumentNames.size > 0;
-    const composedSystem = nextSystem !== undefined || keepLocalSystem ? prepare_system_state({
-      key: INTERACTION_RESERVED_LIBRARY_KEY,
-      transportName: nextSystem?.transportName ?? systemState?.transportName
-        ?? INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
-      hsonSchema: nextSystem?.hsonSchema ?? systemState?.hsonSchema ?? interaction_schema_internal(),
-      root: projected_value_to_hson_root(ordered_projected_object([["descriptors",
-        merge_interaction_descriptors(incoming.shared, localDescriptors)]])),
-    }) : undefined;
-    const composedSystemBinding: HostedRegistryBinding | undefined = composedSystem === undefined ? undefined
-      : systemBinding ?? Object.freeze({ name: composedSystem.transportName, scope: "hson-internal",
-        identity: composedSystem.identity, mode: "data-object", schema: composedSystem.hsonSchema });
-    const nextBindings = [...localBindings, ...projectedBindings,
-      ...(composedSystemBinding === undefined ? [] : [composedSystemBinding])];
+    const composedRoot = projected_value_to_hson_root(ordered_projected_object([["descriptors",
+      merge_interaction_descriptors(incoming.shared, localDescriptors)]]));
+    must_hson_schema_root(systemState.hsonSchema, composedRoot);
+    encode_hosted_root(composedRoot);
+    // Only the authority cursor omits the binding when the session lacks the
+    // feature. The composed map always owns its local canonical store.
+    const nextBindings = [...localBindings, ...projectedBindings, canonicalSystemBinding];
     const nextRegistry = make_hosted_registry(nextBindings);
     const nextProjectedRegistry = make_hosted_registry([...projectedBindings,
       ...(systemBinding === undefined ? [] : [systemBinding])]);
@@ -3525,9 +3571,7 @@ function make_livemap_registry_engine(
       return from === to ? [] : [Object.freeze({ library: candidate.state.identity, from, to })];
     }));
     const semanticChanged = retired.length > 0 || candidates.some((candidate) => candidate.changed)
-      || (systemState === undefined) !== (composedSystem === undefined)
-      || (systemState !== undefined && composedSystem !== undefined
-        && !canonical_graph_equal(systemState.root, composedSystem.root));
+      || !canonical_graph_equal(systemState.root, composedRoot);
     // The complete candidate is validated before this single installation.
     checkRestore();
     mapIdentityEpoch.install(ledger);
@@ -3543,7 +3587,7 @@ function make_livemap_registry_engine(
     }
     for (const identity of retired) projectedCaptureContinuity.delete(identity);
     libraryRegistry.replace([...localStates, ...candidates.map((candidate) => candidate.state)]);
-    systemState = composedSystem;
+    systemState.root = composedRoot;
     hostedRegistry = nextRegistry;
     hostedBindingsByIdentity = new Map(nextBindings.map((binding) => [binding.identity, binding]));
     hostedBindingsByName = new Map(nextBindings.map((binding) => [binding.name, binding]));
@@ -3633,7 +3677,6 @@ function make_livemap_registry_engine(
           ? aggregate_system_target(entry.library.identity as LiveMapSystemIdentity, path)
           : aggregate_target(entry.library.identity as LiveMapLibraryIdentity, path);
         if (composition !== undefined && entry.library.scope === "hson-internal" && entry.projected !== undefined) {
-          if (systemState === undefined) throw new Error("Client interaction system state is unavailable.");
           const current = replayComposedDescriptors ?? project_live_path(systemState.root, ["descriptors"]);
           if (current === undefined) throw new Error("Client interaction descriptors are unavailable.");
           const classify = (name: string): "shared" | "local" | undefined => {
@@ -3820,53 +3863,7 @@ function make_livemap_registry_engine(
 
   const aggregateAuthority: InternalLiveMapAggregateAuthority = Object.freeze({
     libraries: () => Object.freeze(libraryRegistry.all().map((library) => library.identity)),
-    configureSystemState: (key, transportName, root, hsonSchema) => {
-      if (systemState !== undefined) {
-        if (systemState.key === key) return systemState.identity;
-        throw new Error("LiveMap transactional system-state slot is already configured.");
-      }
-      const localClientEnable = clientComposition !== undefined
-        && key === INTERACTION_RESERVED_LIBRARY_KEY
-        && libraryRegistry.all().some((state) => state.mode === "document"
-          && !clientComposition?.projected.has(state.identity));
-      if (!localClientEnable) transitionController.assertPublicMutationAllowed();
-      if (mapRevision !== 0 && !localClientEnable) {
-        throw new Error("Transactional Hson system state must be configured before the first transition.");
-      }
-      if (hostedRegistry === undefined || hostedBindingsByIdentity === undefined) {
-        throw new Error("Canonical interactions require a fixed multi-library LiveMap.");
-      }
-      const candidate = prepare_system_state({ key, transportName, root, hsonSchema });
-      const applicationBindings = libraryRegistry.all().map((state) => {
-        const binding = hostedBindingsByIdentity?.get(state.identity);
-        if (binding === undefined) throw new Error("Hosted LiveMap application binding disappeared during system-state configuration.");
-        return binding;
-      });
-      install_hosted_registry([...applicationBindings, Object.freeze({
-        name: transportName,
-        scope: "hson-internal",
-        identity: candidate.identity,
-        mode: "data-object",
-        schema: hsonSchema,
-      })]);
-      systemState = candidate;
-      if (localClientEnable) {
-        const prevRev = mapRevision;
-        mapRevision += 1;
-        transitionController.invalidate();
-        const commit: LiveMapAggregateCommit = Object.freeze({
-          kind: "aggregate", changed: true, prevRev, rev: mapRevision, operations: Object.freeze([]),
-        });
-        enqueuePublication(() => {
-          aggregateAcceptedTransitions += 1;
-          aggregatePublications += 1;
-          deliver_livemap_observers(aggregateObservers, observer => observer(commit), "commit");
-          publishAuthorityPosition();
-        });
-      }
-      return candidate.identity;
-    },
-    systemState: (key) => systemState?.key === key ? systemState.identity : undefined,
+    systemState: (key) => systemState.key === key ? systemState.identity : undefined,
     systemRoot: (system) => require_system(system).root,
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
@@ -4005,12 +4002,12 @@ function make_livemap_registry_engine(
       check();
       return result;
     },
-    prepareAddOwnedLibrariesManaged: (owner, definitions, assertEntryCurrent) => {
+    prepareAddOwnedLibrariesManaged: (owner, definitions, assertEntryCurrent, interactionAdds) => {
       const assertManagedEntryCurrent = capture_managed_restoration_fence(owner);
       const assertCurrent = () => { assertEntryCurrent?.(); assertManagedEntryCurrent(); };
       assertCurrent();
       return transitionController.runManaged(owner, () => prepare_add_libraries(definitions, false, assertCurrent,
-        definitions.map(definition => definition.part)));
+        definitions.map(definition => definition.part), interactionAdds));
     },
     prepareAddLibrariesManaged: (owner, definitions, assertEntryCurrent) => {
       const assertManagedEntryCurrent = capture_managed_restoration_fence(owner);
@@ -4093,7 +4090,7 @@ function make_livemap_registry_engine(
       clientComposition = Object.freeze({ ...composition, registry, projected, bindings });
     }),
     prepareClientProjectionSystemManaged: (owner, root, newSharedDocuments) => transitionController.runManaged(owner, () => {
-      if (clientComposition === undefined || clientManagementOwner !== owner || systemState === undefined) {
+      if (clientComposition === undefined || clientManagementOwner !== owner) {
         throw new Error("Client projected system state is unavailable.");
       }
       admit_portable_hson_node(root, "Client projected system root");
@@ -4118,18 +4115,16 @@ function make_livemap_registry_engine(
       const composedValue = ordered_projected_object([["descriptors", merged]]);
       const composedRoot = projected_value_to_hson_root(composedValue);
       must_hson_schema_root(systemState.hsonSchema, composedRoot);
-      return () => {
-        if (systemState !== undefined) {
-          systemState.root = composedRoot;
-        }
-      };
+      encode_hosted_root(composedRoot);
+      return () => { systemState.root = composedRoot; };
     }),
     captureLibraries: capture_libraries_aggregate,
     stylesheet,
     commitStylesheet: commit_stylesheet,
     captureHosted: capture_hosted_aggregate,
     captureSemanticCheckpoint: capture_semantic_checkpoint,
-    installSemanticCheckpoint: install_semantic_checkpoint,
+    prepareSemanticCheckpoint: prepare_semantic_checkpoint,
+    installSemanticCheckpoint: (checkpoint) => prepare_semantic_checkpoint(checkpoint).install(),
     restoreLibraries: (snapshot, afterTopologyInstall, currentTopologyOnly) => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall, currentTopologyOnly),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restorePortableLibrariesWithCorrespondence: (snapshot) => {
@@ -4219,6 +4214,14 @@ function make_livemap_registry_engine(
     ),
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
+    validateCoveredDurableHosted: (commit) => {
+      // A covering checkpoint retains every Library binding. Its registry
+      // digest can differ after later additions, whose fences are checked by Locus.
+      const bindings = require_hosted_state().byName;
+      const registry = { digest: commit.registryDigest };
+      if ("format" in commit) decode_portable_aggregate_commit(commit, registry, bindings);
+      else decode_private_scoped_aggregate_commit(commit, registry, bindings);
+    },
     replayDurableHosted: replay_durable_hosted_aggregate,
     replayClientHostedManaged: (owner, commit, authorityRev, scoped, assertAcceptance) => transitionController.runManaged(
       owner,
@@ -4316,8 +4319,9 @@ function make_livemap_registry_engine(
         stylesheet: stylesheet(identity), effects: undefined, identityEffects: [], initialStyles: [], steps: [], changed: false, assertCurrent });
     },
     preparedSystemRoot: (transition) => {
-      if (!preparedSystemRoots.has(transition)) throw new Error("Unknown prepared authority transition.");
-      return preparedSystemRoots.get(transition);
+      const root = preparedSystemRoots.get(transition);
+      if (root === undefined) throw new Error("Unknown prepared authority transition.");
+      return root;
     },
     accept: transitionController.acceptAuthority,
     reserve: transitionController.reserveAuthority,

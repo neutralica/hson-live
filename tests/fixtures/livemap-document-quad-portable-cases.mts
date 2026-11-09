@@ -324,7 +324,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
   await check("Library-qualified equal disposable names reconstruct independently without cross-Library authority", () => {
     const source = hsonLiveMap.fromLibraries({ one: { document: '<button/>' }, two: { document: '<button/>' } });
     const snapshot = source.capture(), records = [{ name: "_012345678", path: validate_document_path([0, 0, 1, 0, 0]), disposition: "disposable" as const }];
-    const candidate = { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry, quads: records })) };
+    const candidate = { ...snapshot, libraries: snapshot.libraries.map(entry => entry.mode === "document" ? { ...entry, quads: records } : entry) };
     const map = hsonLiveMap.create(), aggregate = owner(map), result = aggregate.restorePortableLibrariesWithCorrespondence(candidate);
     result.assertCurrent(); assert.equal(result.associations.length, 2);
     assert.notEqual(result.associations[0]!.library, result.associations[1]!.library);
@@ -434,7 +434,7 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
       if (node.$_tag === "main") node.$_meta = { quid: subject(map).quid };
       for (const child of node.$_content) if (typeof child === "object" && child !== null && "$_tag" in child) stack.push(child);
     }
-    const foreign = { ...snapshot, libraries: snapshot.libraries.map(entry => ({ ...entry, root: encode_hosted_root(root) })) };
+    const foreign = { ...snapshot, libraries: snapshot.libraries.map(entry => entry.mode === "document" ? { ...entry, root: encode_hosted_root(root) } : entry) };
     assert.throws(() => encode_ssr_bootstrap(foreign));
     const wireForeign = JSON.parse(Buffer.from(encoded, "base64url").toString());
     wireForeign.payload.libraries[0].rootPayload = foreign.libraries[0]!.root.payload;
@@ -882,8 +882,8 @@ export async function portable_quad_cases(check: (name: string, run: () => void 
     const cleanAdapter = new MemoryCheckpointAdapter(), clean = await host({ map: fixture(), persistence: cleanAdapter, logicalMapId: "quad-prefix" });
     try {
       const semantic = owner(clean.map).captureSemanticCheckpoint();
-      await assert.rejects(() => write_semantic_checkpoint({ ...semantic, libraries: semantic.libraries.map(entry => ({ ...entry,
-        quads: entry.quads?.map(binding => ({ ...binding, name: `renamed_${binding.name}` })) })) }, cleanAdapter));
+      await assert.rejects(() => write_semantic_checkpoint({ ...semantic, libraries: semantic.libraries.map(entry => entry.quads === undefined ? entry : { ...entry,
+        quads: entry.quads.map(binding => ({ ...binding, name: `renamed_${binding.name}` })) }) }, cleanAdapter));
     } finally { clean.dispose(); }
   });
 }

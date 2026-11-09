@@ -32,6 +32,7 @@ import { make_locus_activity_controller } from "./locus.activity.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
   create_locus_hosted_aggregate_authority_internal,
+  type LocusHostedAggregateRecovery,
 } from "./locus.aggregate.authority.js";
 import type { LocusHostedAggregateGateInput } from "./locus.aggregate.js";
 import { cut_hosted_projection } from "../../internal/document-cut.js";
@@ -85,7 +86,7 @@ export function create_registry_locus_internal<
     gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
     prepareGate?: (input: LocusHostedAggregateGateInput) => void;
     maxHistoryBytes?: number;
-    recoveryFloorRevision?: number;
+    recovery?: LocusHostedAggregateRecovery;
     scopedDocuments?: true | "auto";
     afterRecoveryCut?: () => void | Promise<void>;
     runtimeOwnership?: Map<string, "private" | "shared">;
@@ -97,8 +98,10 @@ export function create_registry_locus_internal<
 }> {
   const startingAuthority = internal_livemap_aggregate_authority(options.map);
   const startingPosition = startingAuthority.hostedPosition();
-  make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingPosition.authority,
-    options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
+  if (internal.recovery === undefined) {
+    make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingPosition.authority,
+      options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
+  }
   const probe = Object.freeze({});
   startingAuthority.claimManagement(probe);
   startingAuthority.releaseManagement(probe);
@@ -205,7 +208,7 @@ export function create_registry_locus_internal<
     ...(options.actionDedupe === undefined ? {} : { actionDedupe: options.actionDedupe }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     internal: Object.freeze({
-      ...(internal.recoveryFloorRevision === undefined ? {} : { recoveryFloorRevision: internal.recoveryFloorRevision }),
+      ...(internal.recovery === undefined ? {} : { recovery: internal.recovery, recoveryFloorRevision: internal.recovery.checkpoint.revision }),
       ...(internal.afterRecoveryCut === undefined ? {} : { afterRecoveryCut: internal.afterRecoveryCut }),
       acquireActionActivity: () => activity.acquire("action"),
       acquireSessionActivity: () => activity.acquire("session"),
@@ -399,7 +402,7 @@ export function create_registry_locus_internal<
   } catch (cause) {
     authorityForCleanup?.dispose();
     activityForCleanup?.dispose();
-    if (startingAuthority.hostedPosition().revision === 0) {
+    if (internal.recovery === undefined && startingAuthority.hostedPosition().revision === 0) {
       startingAuthority.setInitialHostedAuthority(startingPosition.authority);
     }
     throw cause;

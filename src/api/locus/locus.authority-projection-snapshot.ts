@@ -18,6 +18,7 @@ import { validate_hson_schema_graph } from "../../internal/schema-hson-validatio
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
+import { assert_locus_interaction_binding } from "./locus.projection.js";
 import type { LocusSessionManager } from "./locus.session.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
@@ -266,6 +267,7 @@ export function project_authority_snapshot(
 ): AuthorityProjectionSnapshot {
   try {
     assert_hosted_libraries_snapshot_shape(complete);
+    assert_locus_interaction_binding(complete.registry);
     if (complete.authority.logicalMapId !== effective.authority.logicalMapId
       || complete.authority.incarnationId !== effective.authority.incarnationId) return fail();
     const byName = new Map(complete.libraries.map((entry) => [entry.name, entry]));
@@ -302,7 +304,9 @@ export function capture_selected_authority_projection_snapshot(
   scoped = false,
 ): ScopedAuthorityProjectionSnapshot {
   try {
-    const selected = internal_livemap_aggregate_authority(map).captureSelectedHosted(
+    const aggregate = internal_livemap_aggregate_authority(map);
+    assert_locus_interaction_binding(aggregate.hostedRegistry());
+    const selected = aggregate.captureSelectedHosted(
       effective.libraries.map((entry) => entry.name), effective.hasSystemFeature("interactions"), scoped);
     if (selected.authority.logicalMapId !== effective.authority.logicalMapId
       || selected.authority.incarnationId !== effective.authority.incarnationId) return fail();

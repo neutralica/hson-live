@@ -8,6 +8,7 @@ import { admit_projected_value } from "../../src/core/projected-value-admission.
 import { mint_hson_node_quid } from "../../src/core/hson-node-quid.js";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.js";
 import { resume_registry_locus } from "../../src/api/locus/locus.registry.persistence.js";
+import { enable_interactions } from "../../src/api/interactions/interactions.js";
 import { locus_map_internal } from "../../src/internal/governor-maps.js";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import { admit_part_library, PART_COLLECTION_VALIDATION } from "../../src/api/livemap/livemap.parts.js";
@@ -283,6 +284,7 @@ export async function immutable_part_cases(check: (name: string, run: () => void
       await assert.rejects(restarted.parts.parts.p.delete(), /Immutable Part/);
     } finally { restarted.dispose(); }
     const deployment = hsonLiveMap.fromLibraries({ parts: { parts: { p: other } }, page: { document: "<main/>" } });
+    enable_interactions(deployment);
     const before = deployment.capture(), ledger = owner(deployment).identityEpoch().issued(), persisted = persistence.state(options.logicalMapId);
     await assert.rejects(resume_registry_locus({ ...options, map: deployment,
       libraries: [{ name: "parts", ownership: "shared" }, { name: "page", ownership: "shared" }] }), /Immutable Part.*durable resume/);

@@ -6,8 +6,8 @@ import { document_quad_disposition } from "../livemap/livemap.document.quad.js";
 import { remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { decode_document_quads } from "../livemap/livemap.document.quad.js";
-import { registry_from_entries } from "../livemap/livemap.hosted.js";
-import { hson_schema_source_digest } from "../schema/hson-schema.js";
+import { HOSTED_MAX_COMMIT_BYTES, HOSTED_MAX_LIBRARIES, HOSTED_MAX_OPERATIONS, assert_full_hosted_registry, hosted_registry_digest, registry_from_entries } from "../livemap/livemap.hosted.js";
+import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type { HsonNode } from "../../core/types.js";
 import { canonical_hson_graph_equal } from "../../core/canonical-hson-equal.js";
 import type { LiveMap } from "../../types/livemap.types.js";
@@ -21,7 +21,7 @@ import { encode_authoritative_topology_commit, encode_authoritative_scoped_commi
 import {
   internal_livemap_aggregate_authority,
 } from "../livemap/livemap.internal.js";
-import { replay_durable_library_add_internal, make_livemap_mirror_from_semantic_checkpoint_internal } from "../livemap/livemap.libraries.js";
+import { admit_durable_library_add_internal, replay_durable_library_add_internal, make_livemap_mirror_from_semantic_checkpoint_internal } from "../livemap/livemap.libraries.js";
 import type { LiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
 import type { HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
@@ -137,6 +137,12 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function dense_array(value: unknown, maximum: number): value is unknown[] {
+  if (!Array.isArray(value) || value.length > maximum) return false;
+  const keys = Object.keys(value);
+  return keys.length === value.length && keys.every((key, index) => key === String(index));
+}
+
 function valid_revision(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
@@ -154,7 +160,7 @@ function invalid_state(cause?: unknown): LocusPersistenceError {
 }
 
 function ownership_entries(value: unknown): readonly LocusDurableOwnershipEntry[] {
-  if (!Array.isArray(value)) throw invalid_state();
+  if (!dense_array(value, HOSTED_MAX_LIBRARIES)) throw invalid_state();
   const names = new Set<string>();
   return Object.freeze(value.map((item) => {
     const entry = record(item);
@@ -325,21 +331,30 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
   const registry = record(value.registry);
   if (registry === undefined || !exact_keys(registry, ["format", "libraries", "digest"])
     || registry.format !== "hson-hosted-registry" || registry.digest !== value.registryDigest
-    || !Array.isArray(registry.libraries) || registry.libraries.length > 1_024
-    || (registry.libraries.length === 0 ? value.chunks.length !== 0 : value.chunks.length < 2)) throw invalid_state();
+    || !dense_array(registry.libraries, HOSTED_MAX_LIBRARIES)) throw invalid_state();
   const names = new Set<string>();
+  const contracts: Omit<HostedRegistryEntry, "schema">[] = [];
   for (const raw of registry.libraries) {
     const entry = record(raw);
     if (entry === undefined || !(exact_keys(entry, ["name", "scope", "mode", "schemaDigest", "rootCodec", ...(Object.hasOwn(entry, "validation") ? ["validation"] : [])])
       || exact_keys(entry, ["name", "mode", "schemaDigest", "rootCodec", ...(Object.hasOwn(entry, "validation") ? ["validation"] : [])]))
       || typeof entry.name !== "string" || !entry.name || entry.name.length > 1_024 || names.has(entry.name)
-      || (entry.scope !== undefined && entry.scope !== "hson-internal")
+      || (Object.hasOwn(entry, "scope") && entry.scope !== "hson-internal")
       || (entry.mode !== "data-object" && entry.mode !== "data-array" && entry.mode !== "data-string"
         && entry.mode !== "data-number" && entry.mode !== "data-boolean" && entry.mode !== "data-null"
         && entry.mode !== "document")
       || !valid_digest(entry.schemaDigest) || entry.rootCodec !== "hson-exact-value") throw invalid_state();
-    assert_data_library_validation(own_data_library_validation(entry), entry.mode, typeof entry.scope === "string" ? entry.scope : undefined);
+    const scope = entry.scope === "hson-internal" ? entry.scope : undefined;
+    const validation = own_data_library_validation(entry);
+    assert_data_library_validation(validation, entry.mode, scope);
+    contracts.push({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec,
+      ...(scope === undefined ? {} : { scope }), ...(validation === undefined ? {} : { validation }) });
     names.add(entry.name);
+  }
+  try { assert_full_hosted_registry(contracts); }
+  catch (cause) {
+    throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
+      cause instanceof Error ? cause.message : "Locus checkpoint registry is invalid.", { cause });
   }
   const locus = record(value.locus);
   if (locus === undefined || !exact_keys(locus, ["runtimeOwnership"])) throw invalid_state();
@@ -347,7 +362,7 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
   if (ownership.some((entry) => !names.has(entry.name))) throw invalid_state();
   let position = 0;
   const ids = new Set<string>();
-  for (const entry of registry.libraries as readonly Record<string, unknown>[]) {
+  for (const entry of contracts) {
     const parts: CheckpointChunkDescriptor["part"][] = entry.mode === "document"
       ? ["schema", "root", "css"] : ["schema", "root"];
     for (const part of parts) {
@@ -503,7 +518,7 @@ function assert_commit_fence(
     || commitRecord.operationCount === 0 || !Array.isArray(commitRecord.operations)
     || commitRecord.operationCount !== commitRecord.operations.length)) throw invalid_state();
   const authority = record(commitRecord.authority);
-  if (authority === undefined
+  if (authority === undefined || !exact_keys(authority, ["logicalMapId", "incarnationId"])
     || authority.logicalMapId !== checkpoint.logicalMapId
     || authority.incarnationId !== checkpoint.incarnationId
     || persisted.registryDigest !== commitRecord.registryDigest
@@ -513,11 +528,42 @@ function assert_commit_fence(
         || commitRecord.registryDigest === expectedRegistryDigest
         || !Array.isArray(commitRecord.operations) || commitRecord.operations.length !== 0
       : commitRecord.registryDigest !== expectedRegistryDigest)
+    || !dense_array(commitRecord.operations, HOSTED_MAX_OPERATIONS)
     || commitRecord.prevRev !== expectedPrevRev
     || commitRecord.rev !== expectedPrevRev + 1) {
     throw invalid_state();
   }
+  if (topology) {
+    const { format: _format, ...semantic } = commitRecord;
+    if (new TextEncoder().encode(JSON.stringify(semantic)).byteLength > HOSTED_MAX_COMMIT_BYTES) throw invalid_state();
+  }
   return persisted.commit as LocusDurableAggregateCommit;
+}
+
+function validate_covered_topology(
+  topology: NonNullable<LocusDurableAggregateCommit["topology"]>,
+  entries: AnyCheckpoint["registry"]["libraries"],
+  previousDigest: string,
+  resultingDigest: string,
+): void {
+  const { definitions } = admit_durable_library_add_internal(topology);
+  // Application bindings are append-only, with the fixed system binding last
+  // at every revision. A covered addition must occupy one exact registry slice.
+  const first = entries.findIndex(entry => entry.name === definitions[0]!.name);
+  const end = first + definitions.length;
+  if (first < 0 || end >= entries.length) throw invalid_state();
+  for (const [index, definition] of definitions.entries()) {
+    const binding = entries[first + index]!;
+    if (binding.name !== definition.name || binding.mode !== topology.operation.libraries[index]!.mode
+      || binding.validation !== definition.validation || binding.schemaDigest !== hson_schema_digest(definition.schema)) {
+      throw invalid_state();
+    }
+  }
+  const system = entries.at(-1)!;
+  if (hosted_registry_digest([...entries.slice(0, first), system]) !== previousDigest
+    || hosted_registry_digest([...entries.slice(0, end), system]) !== resultingDigest) {
+    throw invalid_state();
+  }
 }
 
 async function validate_hosted_aggregate_state(
@@ -555,12 +601,20 @@ async function validate_hosted_aggregate_state(
       if (commitRecord !== undefined && valid_revision(commitRecord.rev) && commitRecord.rev <= checkpoint.rev) {
         if (crossedCheckpoint || !valid_revision(commitRecord.prevRev)
           || (lastCoveredRev !== undefined && commitRecord.prevRev !== lastCoveredRev)) throw invalid_state();
-        const priorDigest = lastCoveredDigest ?? (
-          valid_digest(commitRecord.previousRegistryDigest)
-            ? commitRecord.previousRegistryDigest : commitRecord.registryDigest
-        );
+        // At revision zero only the deployment bindings were installed.
+        const priorDigest = lastCoveredDigest ?? (commitRecord.prevRev === 0
+          ? hosted_registry_digest(checkpoint.registry.libraries.filter(entry => !runtimeOwnership.has(entry.name)))
+          : commitRecord.previousRegistryDigest ?? commitRecord.registryDigest);
         if (!valid_digest(priorDigest)) throw invalid_state();
         const covered = assert_commit_fence(item, checkpoint, commitRecord.prevRev, priorDigest);
+        if (covered.topology === undefined) {
+          aggregate.validateCoveredDurableHosted(durable_aggregate_commit_as_client(covered));
+        } else {
+          const entries = checkpoint.registry.libraries;
+          const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
+          if (additions.some(entry => runtimeOwnership.get(entry.name) !== entry.ownership)) throw invalid_state();
+          validate_covered_topology(covered.topology, entries, priorDigest, covered.registryDigest);
+        }
         lastCoveredDigest = covered.registryDigest;
         lastCoveredRev = commitRecord.rev;
         continue;

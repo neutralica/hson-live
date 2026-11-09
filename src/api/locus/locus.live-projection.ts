@@ -3,6 +3,7 @@ import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonNode } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
+import { interaction_descriptors_from_root } from "../../internal/interaction-partitions.js";
 import { decode_hosted_root, encode_hosted_root, make_portable_aggregate_commit, encode_authoritative_scoped_commit, encode_authoritative_topology_commit, make_hosted_registry, type HostedAggregateCommit, type PortableAggregateCommit, type PrivateScopedAggregateOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
 import { encode_livemap_replay_transport } from "../livemap/livemap.transport.js";
 import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
@@ -144,6 +145,10 @@ export function project_locus_live_transition_internal(
     || authority.authority.incarnationId !== effective.authority.incarnationId) {
     throw new Error("Live projection authority transition is incompatible.");
   }
+  const includeInteractions = effective.hasSystemFeature("interactions");
+  if (includeInteractions && (beforeSystemRoot === undefined || afterSystemRoot === undefined)) {
+    throw new Error("Projected interaction state is unavailable.");
+  }
   const registryDigest = projected_registry_digest(effective);
   const complete = authority.topology !== undefined
     ? encode_authoritative_topology_commit(authority)
@@ -160,18 +165,27 @@ export function project_locus_live_transition_internal(
       libraries: Object.freeze(effective.libraries.filter((entry) => !addedNames.has(entry.name))) }));
     const first = visible[0];
     if (first === undefined) throw new Error("Projected topology addition is empty.");
+    const accepted = complete.topology.operation.interactionAdds;
+    let interactionAdds: typeof accepted;
+    if (accepted !== undefined && includeInteractions) {
+      const documents = new Set(visible.filter((entry) => entry.mode === "document").map((entry) => entry.name));
+      const projected = project_interaction_state_internal(decode_hosted_root(accepted), documents);
+      if (interaction_descriptors_from_root(projected_value_from_hson_node(projected)).length > 0) {
+        interactionAdds = encode_hosted_root(projected);
+      }
+    }
     return Object.freeze({ kind: "commit", commit: Object.freeze({
       format: LOCUS_LIVE_PROJECTED_COMMIT_FORMAT, authority: effective.authority,
       previousRegistryDigest, registryDigest, prevRev: authority.prevRev, rev: authority.rev,
       topology: Object.freeze({ library: first.name,
-        operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(visible) }) }),
+        operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(visible),
+          ...(interactionAdds === undefined ? {} : { interactionAdds }) }) }),
       operations: Object.freeze([]),
     }) });
   }
   const operations: PrivateScopedAggregateOperation[] = complete?.operations.filter((entry) =>
     entry.library !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME && effective.includesLibrary(entry.library)) ?? [];
-  if (effective.hasSystemFeature("interactions")) {
-    if (beforeSystemRoot === undefined || afterSystemRoot === undefined) throw new Error("Projected interaction state is unavailable.");
+  if (includeInteractions && beforeSystemRoot !== undefined && afterSystemRoot !== undefined) {
     const includedDocuments = new Set(effective.libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
     const previous = project_interaction_state_internal(beforeSystemRoot, includedDocuments);
     const next = project_interaction_state_internal(afterSystemRoot, includedDocuments);

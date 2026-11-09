@@ -1,3 +1,6 @@
+import { HOSTED_MAX_COMMIT_BYTES, encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
+import { resume_registry_locus } from "../src/api/locus/locus.registry.persistence.ts";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { require_livemap_library_internal } from "../src/api/livemap/livemap.libraries.js";
 import "./locus-scoped-checkpoint.acceptance.mts";
 import { encode_checkpoint_chunks } from "../src/api/locus/locus.checkpoint-chunks.ts";
@@ -10,7 +13,7 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 import { create_recovery_test_driver } from "./helpers/replica-driver.mts";
 import { client_projection_map } from "./helpers/client-projection.mts";
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type LiveMap } from "../src/index.ts";
 
 
 import { validate_document_path } from "../src/api/livemap/index.ts";
@@ -82,18 +85,18 @@ await case_("checkpoint prefix compares semantic Schema identity and retains reg
     registry: { ...presented.registry, format: "wrong" } } as never, adapter), /invalid/i);
 });
 
-await case_("empty authority checkpoint restores without a placeholder library", async () => {
+await case_("empty application registry checkpoints the required interaction slot", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-empty";
   const locus = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   const manifest = active(adapter, id);
-  assert.deepEqual(manifest.registry.libraries, []);
-  assert.deepEqual(manifest.chunks, []);
+  assert.deepEqual(manifest.registry.libraries.map(entry => entry.scope), ["hson-internal"]);
+  assert.deepEqual(manifest.chunks.map(entry => entry.part), ["schema", "root"]);
   locus.dispose();
   const restored = await resume_locus_fixture({ ...authority_definitions_from_map_fixture(hsonLiveMap.create(), []), persistence: adapter, logicalMapId: id });
   assert.ok(restored);
   assert.equal(restored.rev, 0);
-  assert.deepEqual(locus_map_internal(restored).capture().registry.libraries, []);
+  assert.deepEqual(locus_map_internal(restored).capture().registry.libraries.map(entry => entry.scope), ["hson-internal"]);
   restored.dispose();
 });
 
@@ -120,7 +123,7 @@ await case_("restart reapplies deployment local definitions without persisting c
   assert.equal(adapter.appendCalls.length, 0);
   await hsonLiveMap.locus.checkpoint(locus);
   const manifest = active(adapter, id);
-  assert.deepEqual(manifest.registry.libraries.map((entry) => entry.name), ["public"]);
+  assert.deepEqual(manifest.registry.libraries.filter(entry => entry.scope === undefined).map(entry => entry.name), ["public"]);
   assert.equal(JSON.stringify(adapter.state(id)).includes('value 12>'), false);
   echo.dispose(); detach(); locus.dispose();
 
@@ -154,8 +157,9 @@ await case_("presentation-equivalent checkpoint Schema restores with exact chunk
   locus.dispose();
   const state = adapter.state(id)!;
   const manifest = active(adapter, id);
+  const application = new Set(manifest.registry.libraries.filter(entry => entry.scope === undefined).map(entry => entry.name));
   const chunks = manifest.chunks.map(descriptor => {
-    if (descriptor.part !== "schema") return descriptor;
+    if (descriptor.part !== "schema" || !application.has(descriptor.owner)) return descriptor;
     assert.equal(descriptor.index, 0);
     const replacement = [...encode_checkpoint_chunks(manifest.checkpointId, manifest.rev,
       descriptor.owner, "schema", ` ${Data.toHson()} `)];
@@ -331,6 +335,107 @@ await case_("later commits remain in tail while checkpoint chunks are blocked", 
   assert.equal(restored.rev, 3);
   assert.equal(restored.data.must("private").snap(["value"]), "R3");
   restored.dispose();
+});
+
+await case_("resume reconstructs topology larger than one Library-add transition", async () => {
+  const persistence = new MemoryCheckpointAdapter();
+  const config = { persistence, logicalMapId: "large-accepted-topology" };
+  const input = Hson.data.fromSource('<label "preserve" count -0>');
+  const startup = {
+    state: { json: { count: 0 } },
+    parts: { parts: { button: {
+      kind: "document", document: '<button hson:part event:run/>',
+      events: { run: `<hson:event on:click local:run input:data={${input.toHson()}} <> >` },
+    } } },
+  } as const;
+  const names = Array.from({ length: 6 }, (_, index) => `page${index}`);
+  const filler = "x".repeat(2_900_000);
+  const initial = await hsonLiveMap.locus.resume(startup, config);
+  const aggregate = internal_livemap_aggregate_authority;
+  const systemRoot = (map: LiveMap) => {
+    const engine = aggregate(map);
+    return encode_hosted_root(engine.systemRoot(engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!)).payload;
+  };
+  let expected: string;
+  try {
+    for (const [index, name] of names.entries()) {
+      const content = index % 2 === 0 ? ' <hson-part lib="parts" at="button"/>' : "";
+      await initial.admit({ [name]: { document: `<main "${filler}"${content}/>` } });
+    }
+    expected = systemRoot(locus_map_internal(initial));
+    assert.equal(initial.rev, names.length);
+  } finally { initial.dispose(); }
+  const validTail = persistence.state(config.logicalMapId)!;
+  assert.equal(validTail.commits.length, names.length);
+  const additions = validTail.commits.map(record => record.commit.topology!.operation);
+  const bytes = additions.map(operation => new TextEncoder().encode(operation.libraries[0]!.root.payload).byteLength);
+  assert.ok(bytes.every(size => size < 4 * 1_024 * 1_024));
+  assert.ok(bytes.reduce((total, size) => total + size, 0) > HOSTED_MAX_COMMIT_BYTES);
+  assert.deepEqual(additions.map(operation => operation.interactionAdds !== undefined),
+    [true, false, true, false, true, false]);
+
+  const assertRecovered = (map: LiveMap, expectedRevision: number) => {
+    assert.equal(map.rev, expectedRevision);
+    assert.equal(systemRoot(map), expected);
+    for (const name of names) assert.equal(map.doc.must(name).mode, "document");
+  };
+  const badTail = structuredClone(validTail);
+  Reflect.set(badTail.commits[0]!.commit, "prevRev", 1);
+  persistence.seed(config.logicalMapId, badTail);
+  await assert.rejects(hsonLiveMap.locus.resume(startup, config), { code: "LOCUS_PERSISTED_STATE_INVALID" });
+  persistence.seed(config.logicalMapId, validTail);
+  const tail = await hsonLiveMap.locus.resume(startup, config);
+  try { assertRecovered(locus_map_internal(tail), 6); }
+  finally { tail.dispose(); }
+
+  const supplied = hsonLiveMap.fromLibraries(startup), owner = aggregate(supplied);
+  const state = supplied.data.state;
+  const installed: unknown[] = [], restored: unknown[] = [], commits: number[] = [];
+  const observe = (positions: unknown[]) => positions.push([
+    supplied.rev, names.map(name => supplied.doc.must(name).mode), systemRoot(supplied),
+  ]);
+  const stopInstalled = owner.observeAuthorityPosition(() => { observe(installed); }, "installed");
+  const stopRestore = owner.observeRestore(() => { observe(restored); });
+  const stopCommit = owner.observe(commit => { commits.push(commit.rev); });
+  const resumed = await (async () => {
+    try {
+      return await resume_registry_locus({ ...config, map: supplied,
+        libraries: [{ name: "state", ownership: "private" }, { name: "parts", ownership: "private" }] });
+    } finally { stopInstalled(); stopRestore(); stopCommit(); }
+  })();
+  try {
+    assert.equal(supplied.data.state, state);
+    const observation = [[6, names.map(() => "document"), expected]];
+    assert.deepEqual(installed, observation);
+    assert.deepEqual(restored, observation);
+    assert.deepEqual(commits, []);
+    persistence.failPrune = new Error("interrupted after manifest activation");
+    await assert.rejects(hsonLiveMap.locus.checkpoint(resumed), { code: "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" });
+  } finally { resumed.dispose(); }
+  const interrupted = persistence.state(config.logicalMapId)!;
+  assert.equal(interrupted.checkpoint.rev, 6);
+  assert.equal(interrupted.commits.length, 6);
+
+  const first = interrupted.checkpoint.chunks[0]!;
+  const chunk = persistence.chunks.get(first.id)!;
+  persistence.chunks.set(first.id, { ...chunk, payload: chunk.payload + "x" });
+  await assert.rejects(hsonLiveMap.locus.resume(startup, config), { code: "LOCUS_PERSISTED_STATE_INVALID" });
+  persistence.chunks.set(first.id, chunk);
+  const afterPruneFailure = await hsonLiveMap.locus.resume(startup, config);
+  try {
+    assertRecovered(locus_map_internal(afterPruneFailure), 6);
+    await afterPruneFailure.stage(stage => stage.data.state.at(["count"]).set(1));
+    await hsonLiveMap.locus.checkpoint(afterPruneFailure);
+    assert.deepEqual(persistence.state(config.logicalMapId)?.commits, []);
+  } finally { afterPruneFailure.dispose(); }
+
+  const compacted = await hsonLiveMap.locus.resume(startup, config);
+  try {
+    assertRecovered(locus_map_internal(compacted), 7);
+    assert.equal(compacted.data.state.snap(["count"]), 1);
+    await compacted.admit({ later: { document: "<aside/>" } });
+    assert.equal(compacted.rev, 8);
+  } finally { compacted.dispose(); }
 });
 
 await case_("missing and corrupt chunks, bad descriptors, schema and tail gaps fail closed", async () => {

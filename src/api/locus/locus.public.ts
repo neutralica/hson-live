@@ -8,7 +8,7 @@ import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
 import type { LocusLibraryCatalogEntry } from "../../types/locus.projection.types.js";
 import { admit_public_livemap_definitions, make_livemap_from_admitted_libraries_internal } from "../livemap/livemap.libraries.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { enable_interactions, add_interaction } from "../interactions/interactions.js";
+import { add_interaction } from "../interactions/interactions.js";
 import { create_registry_locus } from "./locus.registry.js";
 import { resume_registry_locus, checkpoint_registry_locus } from "./locus.registry.persistence.js";
 
@@ -30,7 +30,7 @@ function capture_configuration<T extends object>(input: T, durable: boolean): T 
 
 /** Normalize construction into the existing registry owner. Admission has its own managed lifecycle. */
 function construct_locus_definition<D extends LocusDefinitionCandidates, A extends LocusActionPayloads>(
-  definitions: D, options: LocusDefinitionOptions<D, A>, deferImplicitInteractions = false,
+  definitions: D, options: LocusDefinitionOptions<D, A>,
 ) {
   const captured = admit_public_livemap_definitions(definitions, true);
   const catalog: LocusLibraryCatalogEntry[] = captured.definitions.map(({name}) => ({
@@ -58,7 +58,7 @@ function construct_locus_definition<D extends LocusDefinitionCandidates, A exten
       catalog.push({ name: entry.name, ownership: "local", initializer });
     }
   }
-  const map = make_livemap_from_admitted_libraries_internal(captured.definitions, [], undefined, captured.css, !deferImplicitInteractions);
+  const map = make_livemap_from_admitted_libraries_internal(captured.definitions, [], undefined, captured.css);
   if (options.logicalMapId !== undefined || options.incarnationId !== undefined) {
     const aggregate = internal_livemap_aggregate_authority(map);
     const original = aggregate.hostedPosition().authority;
@@ -67,14 +67,11 @@ function construct_locus_definition<D extends LocusDefinitionCandidates, A exten
       incarnationId: options.incarnationId ?? original.incarnationId,
     }));
   }
-  if (options.interactions !== undefined) enable_interactions(map);
   for (const descriptor of options.interactions ?? []) add_interaction(map, descriptor);
   const { local: _local, interactions: _interactions, ...rest } = options;
   const typedMap = map as unknown as LiveMap<LiveMapKnownDefinitions<D>>;
   const registry: LocusRegistryOptions<LiveMap<LiveMapKnownDefinitions<D>>, A> = { ...rest, map: typedMap, libraries: catalog };
-  const implicitInteractionsOnNew = deferImplicitInteractions && options.interactions === undefined
-    ? captured.definitions.some(definition => definition.part?.hasEvents) : undefined;
-  return { registry, implicitInteractionsOnNew };
+  return registry;
 }
 
 /** Establish initial authority from flat keyed definitions; omitted access is private. */
@@ -94,7 +91,7 @@ export function create<const D extends LocusDefinitionCandidates, A extends Locu
   configuration?: LocusDefinitionOptions<D, A, L> & ConfigurationCheck<NoInfer<D>, L>,
 ): Locus<LiveMap<LiveMapKnownDefinitions<D>>, A> {
   const options = capture_configuration<LocusDefinitionOptions<D, A, L>>(configuration === undefined ? {} : configuration, false);
-  return create_registry_locus(construct_locus_definition<D, A>(definitions, options).registry);
+  return create_registry_locus(construct_locus_definition<D, A>(definitions, options));
 }
 
 /** Restore a durable authority or establish the declared initial authority durably. */
@@ -118,8 +115,8 @@ export async function resume<const D extends LocusDefinitionCandidates, A extend
     throw new TypeError("Locus resume requires a stable logicalMapId.");
   }
   if (options.persistence === undefined) throw new TypeError("Locus persistence adapter is required.");
-  const { registry, implicitInteractionsOnNew } = construct_locus_definition<D, A>(definitions, options, true);
-  return resume_registry_locus({ ...registry, persistence: options.persistence }, { scopedDocuments: "auto", implicitInteractionsOnNew });
+  const registry = construct_locus_definition<D, A>(definitions, options);
+  return resume_registry_locus({ ...registry, persistence: options.persistence }, { scopedDocuments: "auto" });
 }
 
 /** Compact a resumed Locus's already durable authority. */

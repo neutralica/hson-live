@@ -2,6 +2,7 @@ import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } f
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
+import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../src/internal/interaction-storage.ts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
 import { MemoryCheckpointAdapter, deferred } from "./helpers/memory-checkpoint-adapter.mts";
@@ -36,7 +37,8 @@ const read = (locus: ReturnType<typeof hsonLiveMap.locus.create>, name: string) 
 
 const fresh = hsonLiveMap.locus.create({ "secret": { json: { value: 1 }, access: "private" }, "public": { json: { value: 2 }, access: "shared" } }, { local: [{ name: "ui", initializer: { json: { selected: false } } }] });
 assert.equal(fresh.rev, 0);
-assert.deepEqual(locus_map_internal(fresh).capture().registry.libraries.map((entry) => entry.name), ["secret", "public"]);
+assert.deepEqual(locus_map_internal(fresh).capture().registry.libraries.map((entry) => entry.name),
+  ["secret", "public", INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME]);
 assert.throws(() => fresh.data.must("ui"), /Unknown LiveMap Library/);
 assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined, [hsonLiveMap.create()]), /unsupported|definition|Library/i);
 await assert.rejects(hsonLiveMap.locus.checkpoint(fresh), /no durable backing/i);

@@ -250,7 +250,8 @@ check("aggregate capture preserves the complete fixed application registry", () 
   const capture = map.capture();
   const inspected = aggregate.inspect();
   assert.equal(capture.revision, 1);
-  assert.deepEqual(capture.registry.libraries.map((entry) => entry.name), ["data", "colors", "view"]);
+  assert.deepEqual(capture.registry.libraries.map((entry) => entry.name),
+    ["data", "colors", "view", "@hson/canonical-interactions"]);
   assert.deepEqual(inspected.libraries.map((library) => library.identity), [data, colors, view]);
   assert.equal(aggregate.snap(colors, ["value"]), "green");
   assert.equal(aggregate.snap(view, ["value"]), false);

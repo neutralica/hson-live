@@ -290,11 +290,11 @@ assert.match(local.cut({ html: "page" }).html, /LOCAL_CUT/);
 }
 
 // A registry of cardinality one uses precisely the same session, cut, live, and
-// recovery machinery. It gains no implicit libraries, projection, or document.
+// recovery machinery. The framework slot stays outside application selection.
 {
   const oneMap = hsonLiveMap.fromLibraries({ page: { document: '<main <p "ONE_LIBRARY_HTML"/>/>', schema: Page } });
   const emptyLocus = hsonLiveMap.locus.create({  });
-  assert.equal(locus_map_internal(emptyLocus).capture().registry.libraries.length, 0);
+  assert.deepEqual(locus_map_internal(emptyLocus).capture().registry.libraries.map(entry => entry.scope), ["hson-internal"]);
   emptyLocus.dispose();
   const oneLocus = create_locus_fixture({ ...authority_definitions_from_map_fixture(oneMap, [{ name: "page", ownership: "shared" }]), authorizeProjection: () => ({ libraries: ["page"] }) });
   let receive: ((raw: string) => void) | undefined;

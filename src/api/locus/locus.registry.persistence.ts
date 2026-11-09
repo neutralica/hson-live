@@ -1,4 +1,3 @@
-import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
@@ -7,9 +6,7 @@ import type {
   LocusPersistenceAdapter,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { enable_interactions } from "../interactions/interactions.js";
-import { add_livemap_canonical_libraries_internal, type CanonicalLibraryDefinition } from "../livemap/livemap.libraries.js";
-import { HsonSchema } from "../schema/hson-schema.js";
+import { prepare_livemap_semantic_checkpoint_internal } from "../livemap/livemap.libraries.js";
 import { registry_from_entries, type HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 import {
@@ -20,6 +17,7 @@ import {
   type LocusDurableOwnershipEntry,
 } from "./locus.aggregate.persistence.js";
 import { create_registry_locus_internal } from "./locus.registry.js";
+import type { LocusHostedAggregateRecovery } from "./locus.aggregate.authority.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 import { assert_part_members_preserved, PART_COLLECTION_VALIDATION } from "../livemap/livemap.parts.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
@@ -85,15 +83,15 @@ async function persistent_view<
   TActions extends LocusActionPayloads,
 >(
   options: DurableRegistryOptions<TMap, TActions>,
-  initialize: boolean,
-  runtimeOwnership = new Map<string, "private" | "shared">(),
   scopedDocuments?: true | "auto",
+  recovery?: LocusHostedAggregateRecovery,
+  runtimeOwnership = new Map<string, "private" | "shared">(),
 ): Promise<Locus<TMap, TActions>> {
   const exposureAuthority = internal_livemap_aggregate_authority(options.map);
   const suppliedAuthority = exposureAuthority.hostedPosition().authority;
-  make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), exposureAuthority.hostedPosition().authority,
-    options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
-  if (initialize) {
+  if (recovery === undefined) {
+    make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), suppliedAuthority,
+      options.libraries, options.defaultProjection, options.authorizeProjection, options.map);
     set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
     try {
       await write_semantic_checkpoint(internal_livemap_aggregate_authority(options.map).captureSemanticCheckpoint(),
@@ -110,7 +108,7 @@ async function persistent_view<
     }
   }
   const { persistence, ...locusOptions } = options;
-  const managedOptions = initialize
+  const managedOptions = recovery === undefined
     ? locusOptions
     : (() => {
       const { logicalMapId: _logicalMapId, incarnationId: _incarnationId, ...rest } = locusOptions;
@@ -118,8 +116,8 @@ async function persistent_view<
     })();
   const records = new WeakMap<HostedAggregateCommit, object>();
   const runtime = (() => {
-    try { return create_registry_locus_internal(managedOptions as LocusRegistryOptions<TMap, TActions>, {
-    ...(initialize ? {} : { recoveryFloorRevision: options.map.rev }),
+    try { return create_registry_locus_internal(managedOptions, {
+    ...(recovery === undefined ? {} : { recovery }),
     runtimeOwnership,
     ...(scopedDocuments === undefined ? {} : { scopedDocuments }),
     onDispose: (locus) => { checkpoints.delete(locus); },
@@ -136,7 +134,7 @@ async function persistent_view<
       return append_durable_commit(persistence, record);
     },
     }); } catch (cause) {
-      if (initialize && exposureAuthority.hostedPosition().revision === 0) {
+      if (recovery === undefined && exposureAuthority.hostedPosition().revision === 0) {
         exposureAuthority.setInitialHostedAuthority(suppliedAuthority);
       }
       throw cause;
@@ -161,6 +159,14 @@ async function persistent_view<
     return run;
   };
   checkpoints.set(runtime.locus, checkpoint);
+  if (recovery !== undefined) {
+    try {
+      recovery.checkpoint.install(recovery.owner);
+    } catch (cause) {
+      runtime.locus.dispose();
+      throw cause;
+    }
+  }
   return runtime.locus;
 }
 
@@ -170,18 +176,17 @@ export async function resume_registry_locus<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: DurableRegistryOptions<TMap, TActions>,
-  internal: Readonly<{ scopedDocuments?: true | "auto"; implicitInteractionsOnNew?: boolean }> = {},
+  internal: Readonly<{ scopedDocuments?: true | "auto" }> = {},
 ): Promise<Locus<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
   const probe = Object.freeze({});
   initialAuthority.claimManagement(probe);
   initialAuthority.releaseManagement(probe);
   const initial = initialAuthority.hostedPosition();
-  let registryDigest = initial.registryDigest;
   const initialEpoch = initialAuthority.identityEpoch().current(), initialIssued = initialAuthority.identityEpoch().issued();
   const assertInitialCurrent = () => {
     const current = initialAuthority.hostedPosition();
-    if (current.revision !== initial.revision || current.registryDigest !== registryDigest
+    if (current.revision !== initial.revision || current.registryDigest !== initial.registryDigest
       || current.authority.logicalMapId !== initial.authority.logicalMapId || current.authority.incarnationId !== initial.authority.incarnationId
       || initialAuthority.identityEpoch().current() !== initialEpoch || initialAuthority.identityEpoch().issued() !== initialIssued) {
       throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID", "Deployment authority changed during durable restoration.");
@@ -191,52 +196,38 @@ export async function resume_registry_locus<
   const restored = await load_persistent_locus_hosted_aggregate_internal(logicalMapId, {
     persistence: options.persistence as LocusHostedAggregatePersistenceAdapter,
   });
-  try { assertInitialCurrent(); } catch (cause) { restored?.dispose(); throw cause; }
   if (restored === undefined) {
-    if (internal.implicitInteractionsOnNew) enable_interactions(options.map);
-    return persistent_view(options, true, undefined, internal.scopedDocuments);
+    assertInitialCurrent();
+    return persistent_view(options, internal.scopedDocuments);
   }
-  const restoredCheckpoint = internal_livemap_aggregate_authority(restored.map).captureSemanticCheckpoint();
-  const restoredSystem = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope === "hson-internal");
-  // Unused Part definitions infer a slot only for a new authority. On resume
-  // the durable registry supplies that decision; actual contributions still require it.
-  if (internal.implicitInteractionsOnNew !== undefined
-    && restoredSystem.some(entry => entry.name === INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME)) {
+  try {
+    assertInitialCurrent();
+    const restoredCheckpoint = internal_livemap_aggregate_authority(restored.map).captureSemanticCheckpoint();
+    const initialRegistry = initialAuthority.hostedRegistry();
+    const originalNames = initialRegistry.libraries.filter((entry) => entry.scope !== "hson-internal");
+    const restoredNames = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal");
+    const runtimeOwnership = new Map(restored.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
+    const restoredOriginals = restoredNames.filter((entry) => !runtimeOwnership.has(entry.name));
+    if (originalNames.length !== restoredOriginals.length
+      || originalNames.some(entry => runtimeOwnership.has(entry.name))
+      || registry_from_entries(originalNames).digest !== registry_from_entries(restoredOriginals).digest) {
+      throw new LocusPersistenceError(
+        "LOCUS_PERSISTED_STATE_INVALID",
+        "Hosted registry persistence source definition conflicts with durable topology.",
+      );
+    }
+    const combinedCatalog = [...options.libraries,
+      ...restored.runtimeOwnership.map((entry) => ({ name: entry.name, ownership: entry.ownership }))];
+    let projectionPolicy: ReturnType<typeof make_locus_hosted_projection_policy>;
     try {
-      enable_interactions(options.map);
-      registryDigest = initialAuthority.hostedRegistry().digest;
-    } catch (cause) { restored.dispose(); throw cause; }
-  }
-  const initialRegistry = initialAuthority.hostedRegistry();
-  const originalNames = initialRegistry.libraries.filter((entry) => entry.scope !== "hson-internal");
-  const restoredNames = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal");
-  const runtimeOwnership = new Map(restored.runtimeOwnership.map((entry) => [entry.name, entry.ownership] as const));
-  const restoredOriginals = restoredNames.filter((entry) => !runtimeOwnership.has(entry.name));
-  const initialSystem = initialRegistry.libraries.filter((entry) => entry.scope === "hson-internal");
-  if (originalNames.length !== restoredOriginals.length
-    || originalNames.some(entry => runtimeOwnership.has(entry.name))
-    || registry_from_entries(originalNames).digest !== registry_from_entries(restoredOriginals).digest
-    || registry_from_entries(initialSystem).digest !== registry_from_entries(restoredSystem).digest) {
-    restored.dispose();
-    throw new LocusPersistenceError(
-      "LOCUS_PERSISTED_STATE_INVALID",
-      "Hosted registry persistence source definition conflicts with durable topology.",
-    );
-  }
-  const combinedCatalog = [...options.libraries,
-    ...restored.runtimeOwnership.map((entry) => ({ name: entry.name, ownership: entry.ownership }))];
-  try {
-    make_locus_hosted_projection_policy(restoredCheckpoint.registry, restoredCheckpoint.authority,
-      combinedCatalog, options.defaultProjection, options.authorizeProjection, restored.map);
-  } catch (cause) {
-    restored.dispose();
-    throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
-      `Hosted registry topology requires complete Locus ownership: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
-  }
-  try { assertInitialCurrent(); } catch (cause) { restored.dispose(); throw cause; }
-  // Deployment Parts have already been admitted to this living owner. Resolve
-  // conflicts before installing any recovered topology or changing its fence.
-  try {
+      projectionPolicy = make_locus_hosted_projection_policy(restoredCheckpoint.registry, restoredCheckpoint.authority,
+        combinedCatalog, options.defaultProjection, options.authorizeProjection, restored.map);
+    } catch (cause) {
+      throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
+        `Hosted registry topology requires complete Locus ownership: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    }
+    assertInitialCurrent();
+    // Resolve immutable deployment Part conflicts before preparing the install.
     for (const entry of initialRegistry.libraries) {
       if (entry.validation !== PART_COLLECTION_VALIDATION) continue;
       const recovered = restoredCheckpoint.libraries.find(item => item.name === entry.name);
@@ -246,22 +237,9 @@ export async function resume_registry_locus<
         projected_value_from_hson_node(recovered.root), "durable resume");
     }
     assertInitialCurrent();
-  } catch (cause) { restored.dispose(); throw cause; }
-  if (restoredCheckpoint.registry.digest !== initialRegistry.digest) {
-    const definitions: CanonicalLibraryDefinition[] = [];
-    for (const [index, entry] of restoredCheckpoint.registry.libraries.entries()) {
-      if (entry.scope === "hson-internal" || !runtimeOwnership.has(entry.name)) continue;
-      const root = restoredCheckpoint.libraries[index];
-      if (root?.name !== entry.name) throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
-        "Restored topology root order is invalid.");
-      const schema = HsonSchema.fromHson(entry.schema);
-      definitions.push({ name: entry.name, family: entry.mode === "document" ? "document" : "data",
-        root: root.root, schema, ...(entry.validation === undefined ? {} : { validation: entry.validation }) });
-    }
-    add_livemap_canonical_libraries_internal(options.map, definitions);
-  }
-  // Rebind the durable authority fence and begin a fresh local identity epoch.
-  try { internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint); }
-  finally { restored.dispose(); }
-  return persistent_view({ ...options, libraries: combinedCatalog }, false, runtimeOwnership, internal.scopedDocuments);
+    // Build the durable owner at the prepared position, then install and publish.
+    const checkpoint = prepare_livemap_semantic_checkpoint_internal(options.map, restoredCheckpoint);
+    return persistent_view({ ...options, libraries: combinedCatalog }, internal.scopedDocuments,
+      { checkpoint, owner: Object.freeze({}), projectionPolicy }, runtimeOwnership);
+  } finally { restored.dispose(); }
 }

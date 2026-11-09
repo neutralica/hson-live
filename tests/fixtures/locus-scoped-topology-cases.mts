@@ -2,7 +2,7 @@ import { assert_unchanged_library_root } from "../helpers/unchanged-library-root
 import assert from "node:assert/strict";
 import { topology_repair_cases } from "./locus-scoped-topology-repair-cases.mts";
 import { mint_hson_node_quid } from "../../src/core/hson-node-quid.ts";
-import { Hson, hsonLiveMap } from "../../src/index.ts";
+import { Hson, enable_interactions, hsonLiveMap } from "../../src/index.ts";
 import type { LiveMap, LiveMapDefinitions, LiveMapLibraryAddOperation } from "../../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority as authority } from "../../src/api/livemap/livemap.internal.ts";
 import { enumerate_livemap_issued_quids as issued } from "../../src/api/livemap/livemap.identity-epoch.ts";
@@ -126,7 +126,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
     await verify_topology_restart(await topology_tail_fixture());
   });
   await check("H0b additions preserve existing scoped lifetimes and identity history across a scoped checkpoint baseline", async () => {
-    const map = initial(); map.addLibraries({ old: page });
+    const map = initial(); enable_interactions(map); map.addLibraries({ old: page });
     const a = authority(map), oldId = id(map, "old"), oldScopes = a.documentScopes(oldId), overlay = a.documentOverlay(oldId), sheet = a.stylesheet(oldId);
     const prior = state(map, "old"), epoch = a.identityEpoch().current(), ledger = issued(a.identityEpoch().issued());
     const adapter = new MemoryCheckpointAdapter(), locus = await persist({ map, persistence: adapter, scopedDocuments: true });
@@ -300,7 +300,7 @@ export async function topology_cases(check: (name: string, run: () => Promise<vo
       await assert.rejects(l.add_libraries_internal({ page }, undefined, [{ name: "page", ownership: "shared" }]), /append/);
       assert.throws(() => map.doc.must("page")); assert.equal(a.identityEpoch().issued(), ledger);
       await queued; assert.equal(map.rev, before.revision + 1); assert.equal(data(map, "inner"), 7);
-      assert.deepEqual(a.captureSemanticCheckpoint().libraries.slice(0, 3), before.libraries);
+      assert.deepEqual(a.captureSemanticCheckpoint().libraries.filter(entry => entry.name !== "inner"), before.libraries);
     } finally { l.dispose(); }
   });
 }

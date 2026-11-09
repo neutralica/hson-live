@@ -1,3 +1,4 @@
+import { interaction_schema_internal } from "../interactions/interactions.projection.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { is_flat_document_effect, validate_flat_document_effect, type DocumentFlatEffect } from "./livemap.document.flat-effects.js";
@@ -245,6 +246,18 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
   return registry_from_entries(libraries);
 }
 
+/** Full-map transport orders application Libraries first and the single fixed system binding last. @internal */
+export function assert_full_hosted_registry(entries: readonly Omit<HostedRegistryEntry, "schema">[]): void {
+  const system = entries.at(-1);
+  if (system?.scope !== "hson-internal" || system.name !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME
+    || system.mode !== "data-object" || system.rootCodec !== HOSTED_ROOT_FORMAT
+    || system.schemaDigest !== hson_schema_digest(interaction_schema_internal())
+    || entries.slice(0, -1).some(entry => entry.scope !== undefined || entry.name === system.name)) {
+    throw new HostedAggregateRepresentationError("Hosted registry lacks the required canonical interaction binding after all application Libraries.");
+  }
+  for (const entry of entries) must_library_name(entry.name, entry.scope);
+}
+
 /** Build a detached registry from validated semantic contract entries, defensively checking attached source. @internal */
 export function registry_from_entries(entries: readonly HostedRegistryEntry[]): HostedRegistry {
   for (const entry of entries) {
@@ -260,7 +273,7 @@ export function registry_from_entries(entries: readonly HostedRegistryEntry[]): 
   return Object.freeze({
     format: HOSTED_REGISTRY_FORMAT,
     libraries,
-    digest: sha256_sync(registry_canonical_text(libraries)),
+    digest: hosted_registry_digest(libraries),
   });
 }
 
@@ -575,7 +588,8 @@ export function make_portable_aggregate_commit(authority: HostedAggregateCommit)
     throw new HostedAggregateRepresentationError("Scoped document delivery requires coordinated Echo support.");
   }
   if (authority.topology !== undefined) {
-    if (authority.topology.operation.libraries.some(entry => own_document_scopes(entry) !== undefined)) {
+    if (authority.topology.operation.interactionAdds !== undefined
+      || authority.topology.operation.libraries.some(entry => own_document_scopes(entry) !== undefined)) {
       throw new HostedAggregateRepresentationError("Scoped document delivery requires coordinated Echo support.");
     }
     const commit = Object.freeze({ format: PORTABLE_AGGREGATE_COMMIT_FORMAT, ...encode_authoritative_topology_commit(authority) });
@@ -630,7 +644,7 @@ export function make_portable_aggregate_commit(authority: HostedAggregateCommit)
 /** Strictly admit one current client event before local semantic replay. */
 export function decode_portable_aggregate_commit(
   input: PortableAggregateCommit,
-  registry: HostedRegistry,
+  registry: Pick<HostedRegistry, "digest">,
   bindingsByName: ReadonlyMap<string, HostedRegistryBinding>,
   submittedIndices?: readonly number[],
 ): readonly DecodedHostedOperation[] {
@@ -691,7 +705,7 @@ export function decode_portable_aggregate_commit(
  * Membership is resolved from the owner's fixed bindings, never effect contents.
  * Shape/semantic validation does not authorize receipt of this position. @internal */
 export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggregateCommit,
-  registry: HostedRegistry, bindings: ReadonlyMap<string, HostedRegistryBinding>):
+  registry: Pick<HostedRegistry, "digest">, bindings: ReadonlyMap<string, HostedRegistryBinding>):
   readonly (DecodedHostedOperation & Readonly<{ scoped?: DocumentScopedEffect; flat?: DocumentFlatEffect }>)[] {
   const record = exact_record(input, "Private scoped commit");
   exact_keys(record, ["authority", "registryDigest", "prevRev", "rev", "operationCount", "operations"], "Private scoped commit");
@@ -736,6 +750,8 @@ export function decode_private_scoped_aggregate_commit(input: PrivateScopedAggre
     }
     if (flat.has(binding.name)) throw incompatible_graph();
     const effect = validate_document_scoped_effects(encode_document_scoped_effects([operation.effect]), batch.length)[0]!;
+    if ((batch.length > 0 && batch.at(-1)!.after !== effect.before)
+      || JSON.stringify(effect) !== JSON.stringify(operation.effect)) throw incompatible_graph();
     batch.push(effect);
     effects.set(binding.name, batch);
   }));
@@ -1200,8 +1216,9 @@ function must_projected_object(value: JsonValue): OrderedProjectedObject {
   return projected;
 }
 
-function registry_canonical_text(entries: readonly HostedRegistryEntry[]): string {
-  return JSON.stringify({
+/** Hash the canonical immutable bindings of a validated registry. @internal */
+export function hosted_registry_digest(entries: readonly Omit<HostedRegistryEntry, "schema">[]): string {
+  return sha256_sync(JSON.stringify({
     format: HOSTED_REGISTRY_FORMAT,
     libraries: entries.map((entry) => ({
       name: entry.name,
@@ -1211,7 +1228,7 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
       ...(own_data_library_validation(entry) === undefined ? {} : { validation: own_data_library_validation(entry) }),
       rootCodec: entry.rootCodec,
     })),
-  });
+  }));
 }
 
 function assert_library_identifier(name: string, scope: unknown): void {
@@ -1305,6 +1322,6 @@ export function encode_scoped_effect_graph_operation(operation: DocumentGraphOp)
 /** @internal */
 export function decode_scoped_effect_graph_operation(payload: string): DocumentGraphOp {
   const operation = decode_hosted_graph_operation(payload, "document", true);
-  if (operation.op === "ensure-quid") throw incompatible_graph();
+  if (operation.op === "ensure-quid" || encode_hosted_graph_operation(operation, true) !== payload) throw incompatible_graph();
   return operation;
 }

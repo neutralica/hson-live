@@ -1,3 +1,4 @@
+import { locus_recovery_integrity_cases } from "./locus-recovery-integrity-cases.mts";
 import { assert_unchanged_library_root } from "../helpers/unchanged-library-root.mts";
 import { h0a_cases } from "./locus-scoped-h0a-cases.mts";
 import { scoped_tail_cases } from "./locus-scoped-tail-cases.mts";
@@ -69,6 +70,7 @@ function replacePart(adapter: MemoryCheckpointAdapter, manifest: LocusHostedAggr
 }
 
 export async function scoped_checkpoint_cases(check: (name: string, run: () => Promise<void>) => Promise<void>) {
+  await locus_recovery_integrity_cases(check);
   await check("structural Document input restores and checkpoints through existing source-free scoped records", async () => {
     const f = await fixture(false, true), adapter = new MemoryCheckpointAdapter();
     try {
@@ -156,10 +158,10 @@ export async function scoped_checkpoint_cases(check: (name: string, run: () => P
     const flat = authority(hsonLiveMap.fromLibraries({ page: { document: '<main @:root/>' }, data: { json: { n: 1 } } })).captureSemanticCheckpoint();
     assert.ok(flat.libraries[0]!.quads); assert.equal(Object.hasOwn(flat.libraries[0]!, "scopes"), false);
     const adapter = new MemoryCheckpointAdapter(); await write(flat, adapter);
-    assert.deepEqual(active(adapter, flat).chunks.map(d => d.part), ["schema", "root", "css", "quads", "schema", "root"]);
+    assert.deepEqual(active(adapter, flat).chunks.map(d => d.part), ["schema", "root", "css", "quads", "schema", "root", "schema", "root"]);
     librariesEqual(flat, authority(await read(active(adapter, flat), adapter)).captureSemanticCheckpoint());
     const plain = authority(hsonLiveMap.fromLibraries({ page: { document: '<main/>' } })).captureSemanticCheckpoint();
-    const empty = { ...plain, libraries: plain.libraries.map(entry => ({ ...entry, scopes: { document: [], occurrences: [], subjects: [] } })) };
+    const empty = { ...plain, libraries: plain.libraries.map(entry => entry.name === "page" ? { ...entry, scopes: { document: [], occurrences: [], subjects: [] } } : entry) };
     assert.equal(checkpoint_libraries_equal(plain.libraries, empty.libraries), false);
     const emptyAdapter = new MemoryCheckpointAdapter(); await write(empty, emptyAdapter);
     librariesEqual(empty, authority(await read(active(emptyAdapter, empty), emptyAdapter)).captureSemanticCheckpoint());

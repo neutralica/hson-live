@@ -78,9 +78,9 @@ const selected = installed.map.doc.must(cut.document);
 continue_document({ map: installed.map, document: selected, root });
 ```
 
-Standalone canonical interactions are opt-in and enable their topology before
-ordinary application transitions. An Echo-composed map can also gain local
-interaction capability after a local document initializer arrives:
+Every LiveMap has canonical interaction storage from construction. An Echo map
+can hold local Descriptors independently of the authority interaction grant. Pass
+activation capabilities when continuing a Document.
 
 ```ts
 const continuation = continue_document({
@@ -94,8 +94,7 @@ const continuation = continue_document({
 });
 ```
 
-Continuation calls `activate_interactions`; it does not call
-`enable_interactions`.
+Continuation uses `activate_interactions` to derive listeners from the canonical store.
 
 ## Hosted continuation
 

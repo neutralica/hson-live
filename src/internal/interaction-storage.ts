@@ -1,3 +1,4 @@
+import type { InternalLiveMapAggregateAuthority } from "../api/livemap/livemap.internal.js";
 import type { LiveMapSystemIdentity } from "../api/livemap/livemap.system.js";
 import type { OrderedProjectedValue } from "../core/ordered-projected-value.js";
 
@@ -10,15 +11,11 @@ type InteractionDraftCapability = Readonly<{
 }>;
 
 const DRAFTS = new WeakMap<object, InteractionDraftCapability>();
-const DISABLED_DRAFTS = new WeakMap<object, () => void>();
-
-export function interaction_storage_not_enabled_internal(): never {
-  throw new Error("Canonical interaction storage is not enabled. Enable it during initial LiveMap/Locus configuration before interaction mutation: call enable_interactions(map) before the first transition, or pass interactions: [] when creating or resuming Locus.");
-}
-
-/** Remember authentic writers whose owner has no interaction storage. */
-export function register_disabled_interaction_draft_internal(draft: object, assertOpen: () => void): void {
-  DISABLED_DRAFTS.set(draft, assertOpen);
+/** Every constructed LiveMap owns this binding, including featureless Echo clients. */
+export function require_interaction_system_internal(aggregate: InternalLiveMapAggregateAuthority): LiveMapSystemIdentity {
+  const identity = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+  if (identity === undefined) throw new Error("LiveMap lacks the required canonical interaction binding.");
+  return identity;
 }
 
 export function register_interaction_draft_internal(
@@ -32,10 +29,5 @@ export function register_interaction_draft_internal(
 export function interaction_draft_capability_internal(
   draft: object,
 ): InteractionDraftCapability | undefined {
-  const assertOpen = DISABLED_DRAFTS.get(draft);
-  if (assertOpen !== undefined) {
-    assertOpen();
-    interaction_storage_not_enabled_internal();
-  }
   return DRAFTS.get(draft);
 }

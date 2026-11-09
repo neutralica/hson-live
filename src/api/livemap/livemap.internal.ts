@@ -41,6 +41,15 @@ export type LiveMapSemanticCheckpoint = Readonly<{
   }>[];
 }>;
 
+/** Complete detached installation, fenced to the receiving LiveMap. @internal */
+export type PreparedLiveMapSemanticCheckpoint = Readonly<{
+  authority: HostedAuthorityFence;
+  revision: number;
+  registry: HostedRegistry;
+  bindings: readonly HostedRegistryBinding[];
+  install: (managementOwner?: object) => void;
+}>;
+
 type InternalLiveMapOwner = Readonly<{
   root: () => HsonNode;
 }>;
@@ -129,13 +138,6 @@ export function internal_authority_position_observer(
 export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Insertion-ordered opaque identities; this is an in-package test seam, not a selector API. */
   libraries: () => readonly LiveMapLibraryIdentity[];
-  /** Configure the authority's pre-existing Hson-owned interaction state slot. @internal */
-  configureSystemState: (
-    key: string,
-    transportName: string,
-    root: HsonNode,
-    hsonSchema: HsonSchema,
-  ) => LiveMapSystemIdentity;
   systemState: (key: string) => LiveMapSystemIdentity | undefined;
   systemRoot: (system: LiveMapSystemIdentity) => HsonNode;
   systemTarget: (system: LiveMapSystemIdentity, path: LivePath) => import("./livemap.library.js").LiveMapSystemTarget;
@@ -153,6 +155,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
     compositionStyles?: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[];
+    compositionInteractions?: readonly import("./livemap.document.composition.js").DocumentCompositionInteraction[];
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
     beforeInstall?: () => void) => LiveMapAggregateCommit;
   /** Same-admission storage from the private source owner; raw inputs use addLibraries. */
@@ -231,7 +234,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Continue owned source admission under the same exact management grant. */
   prepareAddOwnedLibrariesManaged: (owner: object, definitions: readonly (
     Parameters<InternalLiveMapAggregateAuthority["prepareAddLibrariesManaged"]>[1][number]
-    & Readonly<{ part?: import("./livemap.parts.js").PartLibraryCandidate }>)[], assertEntryCurrent?: () => void) => Readonly<{
+    & Readonly<{ part?: import("./livemap.parts.js").PartLibraryCandidate }>)[], assertEntryCurrent?: () => void,
+    interactionAdds?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation["operation"]["interactionAdds"]) => Readonly<{
     transition: PreparedLiveMapAuthorityTransition; identities: readonly LiveMapLibraryIdentity[];
   }>;
   /** Confirm an unmanaged Library's admitted Schema; different bindings reject. @internal */
@@ -284,6 +288,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureHosted: () => HostedLiveMapSnapshot;
   captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
   installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;
+  prepareSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint,
+    afterTopologyInstall?: (bindings: readonly HostedRegistryBinding[]) => void) => PreparedLiveMapSemanticCheckpoint;
   restoreLibraries: (snapshot: LiveMapSnapshot, afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
     currentTopologyOnly?: boolean) => void;
   restorePortableLibraries: (snapshot: LiveMapSnapshot) => void;
@@ -298,6 +304,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   replayClientHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => LiveMapAggregateCommit;
   /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
+  validateCoveredDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit) => void;
   replayDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit) => void;
   replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit, authorityRev?: number, scoped?: boolean, assertAcceptance?: () => void) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
@@ -355,7 +362,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Private inspection; unavailable through public snapshots until coordinated recovery. */
   scopedDocumentState: (library: LiveMapLibraryIdentity) => import("./livemap.document.scoped-portable.js").PortableDocumentScopedLibrary;
   /** Detached resulting system root of one prepared transition, before acceptance. @internal */
-  preparedSystemRoot: (transition: PreparedLiveMapAuthorityTransition) => HsonNode | undefined;
+  preparedSystemRoot: (transition: PreparedLiveMapAuthorityTransition) => HsonNode;
   accept: LiveMapTransitionController["acceptAuthority"];
   reserve: LiveMapTransitionController["reserveAuthority"];
   assertPrepared: LiveMapTransitionController["assertPreparedAuthority"];

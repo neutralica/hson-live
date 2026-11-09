@@ -1281,6 +1281,8 @@ export type LiveMapLibraryAddOperation = Readonly<{
   library: string;
   operation: Readonly<{
     kind: "library-add";
+    /** Exact append of canonical Descriptors for the admitted Documents. @internal */
+    interactionAdds?: Readonly<{ format: "hson-exact-value"; payload: string }>;
     libraries: readonly Readonly<{
       name: string;
       mode: LiveMapRootMode;

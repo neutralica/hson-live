@@ -174,8 +174,20 @@ export function decode_document_quads(input: unknown, root: HsonNode, mode: stri
   if (input === undefined) return undefined;
   if (mode !== "document" || !Array.isArray(input) || input.length === 0) throw new Error("Invalid portable QUAD associations.");
   qualify_livemap_document(root, "portable QUAD associations");
+  const entries = decode_document_quad_records(input);
+  const subjects = new Set<HsonNode>();
+  for (const { path } of entries) {
+    const subject = resolve_document_path(root, "document", path);
+    if (!is_ordinary_element_node(subject) || subjects.has(subject)) throw new Error("Invalid or duplicate portable QUAD subject.");
+    subjects.add(subject);
+  }
+  return entries;
+}
+
+/** Admit portable correspondence before checking endpoints against a specific graph. @internal */
+export function decode_document_quad_records(input: readonly unknown[]): PortableDocumentQuads {
   const candidates = exact_array(input);
-  const names = new Set<string>(), paths = new Set<string>(), subjects = new Set<HsonNode>();
+  const names = new Set<string>(), paths = new Set<string>();
   let previous: string | undefined;
   const entries = candidates.map((item: unknown): PortableDocumentQuads[number] => {
     if (typeof item !== "object" || item === null || Array.isArray(item)) throw new Error("Invalid portable QUAD binding.");
@@ -198,9 +210,9 @@ export function decode_document_quads(input: unknown, root: HsonNode, mode: stri
     // Negative zero has a second spelling but no distinct structural meaning.
     if (segments.some((part: unknown) => Object.is(part, -0))) throw new Error("Noncanonical portable QUAD path.");
     const path = validate_document_path(segments);
-    const key = JSON.stringify(path), subject = resolve_document_path(root, "document", path);
-    if (!is_ordinary_element_node(subject) || paths.has(key) || subjects.has(subject)) throw new Error("Invalid or duplicate portable QUAD subject.");
-    names.add(name.value); paths.add(key); subjects.add(subject); previous = name.value;
+    const key = JSON.stringify(path);
+    if (paths.has(key)) throw new Error("Invalid or duplicate portable QUAD subject.");
+    names.add(name.value); paths.add(key); previous = name.value;
     const admission: PortableDocumentQuads[number] = disposition === undefined
       ? { name: name.value, path } : { name: name.value, path, disposition: "disposable" };
     return Object.freeze(admission);

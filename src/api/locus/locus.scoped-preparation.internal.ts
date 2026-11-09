@@ -1,4 +1,4 @@
-import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
+import { require_interaction_system_internal } from "../../internal/interaction-storage.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
@@ -36,7 +36,7 @@ export function prepare_locus_scoped_commit_internal(map: LiveMap,
     return encoded;
   }
   const projected = project_locus_live_transition_internal(commit, effective,
-    aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) === undefined ? undefined : aggregate.systemRoot(aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!),
+    aggregate.systemRoot(require_interaction_system_internal(aggregate)),
     aggregate.preparedSystemRoot(transition));
   const operations = projected.kind === "commit" ? projected.commit.operations : [];
   aggregate.assertPrepared(transition);

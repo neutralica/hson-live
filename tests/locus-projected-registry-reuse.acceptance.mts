@@ -99,7 +99,7 @@ try {
 
   const first = engine.hostedRegistry().libraries[0]!;
   const forged: HostedRegistry = Object.freeze({ ...engine.hostedRegistry(), libraries: Object.freeze([
-    Object.freeze({ ...first, schemaDigest: "forged" }),
+    Object.freeze({ ...first, schemaDigest: "forged" }), engine.hostedRegistry().libraries.at(-1)!,
   ]) });
   assert.throws(() => normalize_locus_effective_projection(policy(forged), { libraries: ["a"] }), { code: "LOCUS_PROJECTION_UNAVAILABLE" });
   assert.throws(() => registry_from_entries(forged.libraries), /Schema identity/);
@@ -113,22 +113,25 @@ try {
   const stop = engine.observe(commit => { topology = commit.hosted; });
   map.addLibraries({ extra: { json: { count: 1 }, schema: Count } });
   stop();
-  assert.ok(topology?.topology);
+  const acceptedTopology = topology;
+  assert.ok(acceptedTopology?.topology);
   const expanded = await normalize_locus_effective_projection(policy(), { libraries: ["a", "extra"] });
-  const event = project_locus_live_transition_internal(topology, expanded);
+  const event = project_locus_live_transition_internal(acceptedTopology, expanded);
   assert.equal(event.kind, "commit");
   if (event.kind !== "commit") throw Error("Expected visible topology");
   assert.equal(event.commit.registryDigest, uncached(expanded));
   assert.equal(event.commit.previousRegistryDigest, projected_registry_digest(plain));
   calls = 0;
-  assert.deepEqual(project_locus_live_transition_internal(topology, expanded), event);
+  assert.deepEqual(project_locus_live_transition_internal(acceptedTopology, expanded), event);
   assert.equal(calls, 2, "derived previous-registry subset computes its own evidence");
-  const hidden = project_locus_live_transition_internal(topology, plain);
+  const hidden = project_locus_live_transition_internal(acceptedTopology, plain);
   assert.equal(hidden.kind, "progress");
   assert.equal(hidden.kind === "progress" && hidden.progress.registryDigest, projected_registry_digest(plain));
   const expandedSystem = await normalize_locus_effective_projection(policy(),
     { libraries: ["a", "extra"], systemFeatures: ["interactions"] });
-  const systemEvent = project_locus_live_transition_internal(topology, expandedSystem);
+  assert.throws(() => project_locus_live_transition_internal(acceptedTopology, expandedSystem), /interaction state/);
+  const systemRoot = engine.systemRoot(engine.systemState("@hson/canonical-interactions")!);
+  const systemEvent = project_locus_live_transition_internal(acceptedTopology, expandedSystem, systemRoot, systemRoot);
   assert.equal(systemEvent.kind, "commit");
   assert.equal(systemEvent.kind === "commit" && systemEvent.commit.previousRegistryDigest, projected_registry_digest(system));
   assert.equal(systemEvent.kind === "commit" && systemEvent.commit.registryDigest, uncached(expandedSystem));

@@ -1,5 +1,7 @@
+import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
+import { interaction_schema_internal } from "../interactions/interactions.projection.js";
 import { sha256_sync } from "../../core/sha256-sync.js";
-import { hson_schema_source_digest } from "../schema/hson-schema.js";
+import { hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
 import type {
   LocusConnectionContext,
   LocusLibraryCatalogEntry,
@@ -66,6 +68,18 @@ export type LocusHostedProjectionPolicy = Readonly<{
   installRuntimeOwnership: (entries: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[], registry: HostedRegistry) => void;
 }>;
 
+/** A full authority registry always includes exactly one canonical interaction binding. @internal */
+export function assert_locus_interaction_binding(registry: HostedRegistry): void {
+  const bindings = registry.libraries.filter(entry => entry.scope === "hson-internal");
+  const binding = bindings[0];
+  if (bindings.length !== 1 || binding?.name !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME
+    || binding.mode !== "data-object" || binding.rootCodec !== "hson-exact-value"
+    || binding.schemaDigest !== hson_schema_digest(interaction_schema_internal())
+    || hson_schema_source_digest(binding.schema) !== binding.schemaDigest) {
+    throw new Error("Locus authority lacks the required canonical interaction binding.");
+  }
+}
+
 /** Validate deployment policy against the restored/current application registry. */
 export function make_locus_hosted_projection_policy(
   registry: HostedRegistry,
@@ -75,6 +89,7 @@ export function make_locus_hosted_projection_policy(
   authorizeProjection?: LocusProjectionAuthorizer,
   map?: LiveMap,
 ): LocusHostedProjectionPolicy {
+  assert_locus_interaction_binding(registry);
   const catalog = map === undefined ? (() => {
     if (!Array.isArray(libraryEntries) || libraryEntries.some((entry) => entry.ownership === "local")) {
       throw new Error("Local initializer catalog validation requires its Locus map.");
@@ -225,8 +240,7 @@ function materialize_effective_projection(
     .sort((a, b) => a.name.localeCompare(b.name)));
   const localNames = new Set(local.map((entry) => entry.name));
   const initializerDigest = locus_local_initializer_digest(local);
-  const features = Object.freeze((requested.systemFeatures ?? []).filter((feature) => allowedFeatures.has(feature)
-    && (feature !== "interactions" || policy.registry.libraries.some((entry) => entry.scope === "hson-internal"))));
+  const features = Object.freeze((requested.systemFeatures ?? []).filter((feature) => allowedFeatures.has(feature)));
   const writable = Object.freeze(included.filter((entry) => entry.mode === "document" && allowedWritable.has(entry.name)).map((entry) => entry.name));
   const authority = Object.freeze({ ...policy.authority });
   // The canonical digest input has no root, revision, policy, or excluded registry topology.

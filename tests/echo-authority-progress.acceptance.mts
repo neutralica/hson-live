@@ -225,7 +225,8 @@ function live_committed_value(source: LiveMap, value: number) {
   const library = aggregate.libraries()[0]!;
   const commit = aggregate.commit([{ target: aggregate.target(library, ["value"]), kind: "set", value }]).hosted;
   if (commit === undefined) throw new Error("Expected hosted graph commit.");
-  const event = project_locus_live_transition_internal(commit, effective_for(source));
+  const system = aggregate.systemRoot(aggregate.systemState("@hson/canonical-interactions")!);
+  const event = project_locus_live_transition_internal(commit, effective_for(source), system, system);
   if (event.kind !== "commit") throw new Error("Expected visible projected commit.");
   return Object.freeze({ format: LOCUS_LIVE_PROJECTED_WIRE_FORMAT,
     logicalMapId: commit.authority.logicalMapId, incarnationId: commit.authority.incarnationId,

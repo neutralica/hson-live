@@ -242,7 +242,8 @@ export async function document_css_subject_cases(check: (name: string, run: () =
     assert.equal(receiving.identityEpoch().issued().has("123456789"), false);
     assert.equal(receiving.identityEpoch().issued().has("987654321"), false);
     const selected = source.cut({ documents: ["page"], data: [] });
-    assert.equal(selected.libs.libraries.length, 1); assert.equal(JSON.stringify(selected).includes("987654321"), false);
+    assert.deepEqual(selected.libs.libraries.map(entry => entry.name), ["page", "@hson/canonical-interactions"]);
+    assert.equal(JSON.stringify(selected).includes("987654321"), false);
     assertCurrentCss(install_libraries_snapshot(selected.libs).map);
   });
   await check("failed allocation and reentrant restoration retain accepted independent inner work without publishing the failed candidate", () => {

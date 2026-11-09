@@ -2,12 +2,8 @@ import { is_Node } from "../../core/node-guards.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
 import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
-import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { kind_live_path, project_live_path } from "../livemap/livemap.editor.js";
-import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
-import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import {
   is_ordered_projected_object,
   ordered_projected_array,
@@ -34,10 +30,8 @@ import type {
   BrowserInteractionDescriptor,
 } from "../../types/interaction.types.js";
 import {
-  INTERACTION_RESERVED_LIBRARY_KEY,
-  INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
   interaction_draft_capability_internal,
-  interaction_storage_not_enabled_internal,
+  require_interaction_system_internal,
 } from "../../internal/interaction-storage.js";
 import {
   observe_livetree_realizations_internal,
@@ -46,8 +40,6 @@ import {
 } from "../livetree/runtime/livetree-runtime.js";
 
 import { descriptor_to_value } from "./interactions.descriptor.js";
-import { interaction_schema_internal } from "./interactions.projection.js";
-const INTERACTION_SCHEMA = interaction_schema_internal();
 
 type Storage = Readonly<{
   update: (edit: (current: OrderedProjectedValue) => OrderedProjectedValue) => void;
@@ -92,20 +84,12 @@ export function set_interaction_activation_initialization_materialization_hook_f
   activationInitializationMaterializationHook = hook;
 }
 
-/** Opt one fixed multi-library LiveMap into transactional Hson interaction state. */
+/** Confirm the canonical interaction storage already provisioned by LiveMap. */
 export function enable_interactions(map: LiveMap): void {
-  const aggregate = internal_livemap_aggregate_authority(map);
-  if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) !== undefined) return;
-  aggregate.configureSystemState(
-    INTERACTION_RESERVED_LIBRARY_KEY,
-    INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
-    hsonTransform.fromJson({ descriptors: [] }).toNode(),
-    INTERACTION_SCHEMA,
-  );
+  require_interaction_system_internal(internal_livemap_aggregate_authority(map));
 }
 
 export function add_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
-  prepare_local_slot_for_add(target, descriptor);
   const storage = interaction_storage(target);
   const value = descriptor_to_value(descriptor);
   const id = descriptor.id;
@@ -116,29 +100,6 @@ export function add_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, v
     }
     return ordered_projected_array([...current, value]);
   });
-}
-
-function prepare_local_slot_for_add(target: object, descriptor: InteractionDescriptor): void {
-  if (interaction_draft_capability_internal(target) !== undefined) return;
-  const aggregate = internal_livemap_aggregate_authority(target);
-  if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) !== undefined) return;
-  const projection = aggregate.clientProjection();
-  if (projection === undefined) return;
-  const value = descriptor_to_value(descriptor);
-  const library = descriptor.subject.library;
-  const entry = aggregate.hostedRegistry().libraries.find((candidate) => candidate.name === library);
-  if (entry?.mode !== "document" || entry.scope !== undefined) {
-    throw new TypeError("Canonical interaction subject must name a document Library.");
-  }
-  if (projection.registry.libraries.some((candidate) => candidate.name === library)) {
-    throw new Error("Shared canonical interactions require Locus library mutation authority.");
-  }
-  const candidate = ordered_projected_object([["descriptors", ordered_projected_array([value])]]);
-  validate_interaction_subjects(ordered_projected_array([value]), (name) => name === library);
-  validate_hson_schema_graph(INTERACTION_SCHEMA, projected_value_to_hson_root(candidate));
-  aggregate.configureSystemState(INTERACTION_RESERVED_LIBRARY_KEY,
-    INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
-    hsonTransform.fromJson({ descriptors: [] }).toNode(), INTERACTION_SCHEMA);
 }
 
 export function replace_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
@@ -181,9 +142,7 @@ export function activate_document_interactions_internal(
 function activate_with_tree_provider(options: InteractionActivationOptions, currentTree?: () => LiveTree): () => void {
   const activation = snapshot_activation(options, currentTree);
   const aggregate = internal_livemap_aggregate_authority(activation.map);
-  if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) === undefined) {
-    throw new Error("Canonical interactions are not enabled for this LiveMap.");
-  }
+  const system = require_interaction_system_internal(aggregate);
   const records = new Map<string, RuntimeRecord>();
   let disposed = false;
   let reconciling = false;
@@ -204,8 +163,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
     try {
       do {
         pending = false;
-        const currentSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-        const desired = currentSystem === undefined ? [] : read_descriptors(installed_descriptors(aggregate.systemRoot(currentSystem)));
+        const desired = read_descriptors(installed_descriptors(aggregate.systemRoot(system)));
         const desiredById = new Map(desired.map((prepared) => [prepared.descriptor.id, prepared] as const));
 
         for (const [id, record] of [...records]) {
@@ -283,8 +241,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 // Resolve current canonical intent, including maintained paths after
                 // movement. A transition must never fall back to an obsolete handle.
                 try {
-                  const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-                  const currentDescriptor = system === undefined ? undefined : read_descriptors(installed_descriptors(aggregate.systemRoot(system)))
+                  const currentDescriptor = read_descriptors(installed_descriptors(aggregate.systemRoot(system)))
                     .find(candidate => candidate.descriptor.id === descriptor.id);
                   const current = currentDescriptor === undefined
                     || descriptor_fingerprint(currentDescriptor.descriptor, currentDescriptor.data) !== fingerprint
@@ -435,8 +392,7 @@ function interaction_storage(target: object): Storage {
   const draft = interaction_draft_capability_internal(target);
   if (draft !== undefined) return Object.freeze({ update: draft.update });
   const aggregate = internal_livemap_aggregate_authority(target);
-  const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (system === undefined) interaction_storage_not_enabled_internal();
+  const system = require_interaction_system_internal(aggregate);
   return Object.freeze({
     update: (edit) => { aggregate.commit([{
       target: aggregate.systemTarget(system, ["descriptors"]),

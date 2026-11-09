@@ -59,8 +59,9 @@ function assert_recovered(locus: Parameters<typeof locus_map_internal>[0], origi
   assert.deepEqual(current.authority, original.authority);
   assert.equal(current.registry.digest, original.registry.digest);
   assert.deepEqual(current.libraries.map(entry => entry.name), original.libraries.map(entry => entry.name));
-  for (const library of original.libraries) {
+  for (const [index, library] of original.libraries.entries()) {
     assert.ok(canonical_hson_graph_equal(library.root, library_root(current, library.name)), library.name);
+    if (original.registry.libraries[index]?.scope === "hson-internal") continue;
     const observed = require_livemap_library_internal(locus_map_internal(locus), library.name).root();
     assert.ok(canonical_hson_graph_equal(library.root, observed));
   }
@@ -126,7 +127,7 @@ export async function cut8_checkpoint_cases(check: (name: string, run: () => Pro
     const invalid = style_branch(); style_leaf(invalid, "width").unit = null;
     assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [invalid] } } }));
   });
-  await check("Cut 8 initial disk checkpoint has no tail and resumes five exact Schema-governed libraries", async () => {
+  await check("Cut 8 initial disk checkpoint has no tail and resumes five exact Schema-governed application Libraries", async () => {
     const id = "cut8-initial", adapter = fresh(id), locus = await resume(adapter, id);
     const original = semantic(locus);
     assert_checkpoint_roots(adapter, id, original);

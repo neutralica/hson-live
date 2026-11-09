@@ -4,7 +4,7 @@ import { sha256_sync } from "../../core/sha256-sync.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { encode_exact_hson_value } from "./livemap.document.view-state-codec.js";
 import { decode_scoped_effect_graph_operation, HOSTED_MAX_OPERATIONS } from "./livemap.hosted.js";
-import { assert_portable_document_css_correspondence, decode_document_quads, document_quad_disposition } from "./livemap.document.quad.js";
+import { assert_portable_document_css_correspondence, decode_document_quad_records, decode_document_quads, document_quad_disposition } from "./livemap.document.quad.js";
 import { document_css_subject_identities, remap_portable_document_css_identities } from "../../internal/css/css-identity-translation.js";
 import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, type PortableDocumentStylesheetRecord } from "../../internal/css/portable-document-stylesheet.js";
 
@@ -64,7 +64,8 @@ export function validate_flat_document_effect(input: DocumentFlatEffect): Docume
     throw new Error("Malformed flat document effect.");
   }
   if (input.graphs.length === 0 && input.before === input.after) throw new Error("Flat effect cannot invent an unchanged revision.");
-  input.graphs.forEach(decode_scoped_effect_graph_operation);
+  for (const graph of input.graphs) decode_scoped_effect_graph_operation(graph);
+  decode_document_quad_records(input.subjects);
   const css = encode_portable_document_stylesheet(decode_portable_document_stylesheet(input.css));
   if (JSON.stringify(css) !== JSON.stringify(input.css)) throw new Error("Noncanonical flat stylesheet.");
   return input;

@@ -71,9 +71,8 @@ function locus_descriptor(id: string, library: "page" | "panel", key = "save"): 
 
 function setup(sharedFeature: boolean, panelRoot = "<aside <button/>/>", sharedInitial = false) {
   const authority = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } });
-  if (sharedFeature) enable_interactions(authority);
   if (sharedInitial) add_interaction(authority, descriptor("shared", "page", "shared"));
-  const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(authority).captureHosted());
+  const snapshot = projected_snapshot(authority, sharedFeature);
   const client = compose_client_portable_aggregate_internal(snapshot,
     local_initializers({ panel: { document: panelRoot, schema: PanelSchema } }));
   const replica = create_echo_aggregate_replica_capability_internal(client);
@@ -105,21 +104,22 @@ function paths(map: ReturnType<typeof setup>["client"]): Record<string, readonly
   }));
 }
 
-async function projected_snapshot(authority: ReturnType<typeof setup>["authority"], withFeature: boolean,
+function projected_snapshot(authority: ReturnType<typeof setup>["authority"], withFeature: boolean,
   libraries: readonly string[] = ["page"]) {
   const captured = internal_livemap_aggregate_authority(authority).captureHosted();
   const configured = test_public_projection(authority);
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
     configured.libraries, configured.defaultProjection, configured.authorizeProjection);
-  const effective = await normalize_locus_effective_projection(policy,
+  const effective = normalize_locus_effective_projection(policy,
     { libraries, systemFeatures: withFeature ? ["interactions"] : [] });
+  if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
   return authority_projection_as_client_composition_internal(project_authority_snapshot(captured, effective));
 }
 
 function ids(map: ReturnType<typeof setup>["client"]): string[] {
   const aggregate = internal_livemap_aggregate_authority(map);
   const system = aggregate.systemState("@hson/canonical-interactions");
-  if (system === undefined) return [];
+  assert.ok(system);
   const root = projected_value_from_hson_node(aggregate.systemRoot(system));
   if (!is_ordered_projected_object(root)) throw new Error("Malformed interaction root.");
   const descriptors = root.entries.find(([name]) => name === "descriptors")?.[1];
@@ -259,6 +259,7 @@ for (const sharedFeature of [true, false]) {
 {
   const { authority, client, replica } = setup(true, "<aside <button/>/>", true);
   add_interaction(client, descriptor("local", "panel", "local", true));
+  add_interaction(client, descriptor("local-next", "panel", "local-next", true));
   const pageMirror = mirror_document(client, "page");
   const panelMirror = mirror_document(client, "panel");
   const pageTarget = new EventTarget();
@@ -267,27 +268,27 @@ for (const sharedFeature of [true, false]) {
   link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
   const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
-    local: () => { calls.push("local"); } };
+    local: () => { calls.push("local"); }, "local-next": () => { calls.push("local-next"); } };
   const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local });
   const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", local });
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
-  assert.deepEqual(calls, ["shared", "local"]);
+  assert.deepEqual(calls, ["shared", "local", "local-next"]);
   replica.restoreHosted(await projected_snapshot(authority, false));
-  assert.deepEqual(ids(client), ["local"]);
+  assert.deepEqual(ids(client), ["local", "local-next"]);
   assert.equal(replica.clientProjection()?.registry.libraries.some((entry) => entry.scope === "hson-internal"), false);
   assert.equal(internal_livemap_aggregate_authority(client).captureHosted().registry.libraries
     .some((entry) => entry.scope === "hson-internal"), true);
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
-  assert.deepEqual(calls, ["shared", "local"]);
+  assert.deepEqual(calls, ["shared", "local", "local-next"]);
   replace_interaction(authority, descriptor("shared", "page", "next"));
   replica.restoreHosted(await projected_snapshot(authority, true));
-  assert.deepEqual(ids(client), ["shared", "local"]);
+  assert.deepEqual(ids(client), ["shared", "local", "local-next"]);
   assert.equal(replica.clientProjection()?.registry.libraries.some((entry) => entry.scope === "hson-internal"), true);
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
-  assert.deepEqual(calls, ["shared", "local", "next"]);
+  assert.deepEqual(calls, ["shared", "local", "local-next", "next"]);
   disposePanel(); disposePage(); panelMirror.dispose(); pageMirror.dispose(); replica.dispose();
   process.stdout.write("ok - feature revocation and regrant retain local capability and listeners\n");
 }
@@ -320,10 +321,10 @@ for (const sharedFeature of [true, false]) {
 
 {
   const authority = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } });
-  const initial = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(authority).captureHosted());
+  const initial = projected_snapshot(authority, false);
   const client = compose_client_portable_aggregate_internal(initial, []);
   const replica = create_echo_aggregate_replica_capability_internal(client);
-  assert.equal(internal_livemap_aggregate_authority(client).systemState("@hson/canonical-interactions"), undefined);
+  assert.deepEqual(ids(client), []);
   const local = local_initializers({ panel: { document: "<aside <button/>/>", schema: PanelSchema } });
   install_client_local_initializers_internal(client, local);
   const panel = client.doc.must("panel");
@@ -332,7 +333,7 @@ for (const sharedFeature of [true, false]) {
   const beforeRejected = client.rev;
   assert.throws(() => add_interaction(client, descriptor("wrong-owner", "page")), /authority/i);
   assert.equal(client.rev, beforeRejected);
-  assert.equal(internal_livemap_aggregate_authority(client).systemState("@hson/canonical-interactions"), undefined);
+  assert.deepEqual(ids(client), []);
   add_interaction(client, descriptor("late-local", "panel"));
   assert.deepEqual(ids(client), ["late-local"]);
   assert.equal(replica.clientProjection()?.revision, cursor);
@@ -357,14 +358,14 @@ for (const sharedFeature of [true, false]) {
 
 {
   const authority = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } });
-  const initial = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(authority).captureHosted());
+  const initial = projected_snapshot(authority, false);
   const client = compose_client_portable_aggregate_internal(initial, []);
   const replica = create_echo_aggregate_replica_capability_internal(client);
   install_client_local_initializers_internal(client,
     local_initializers({ panel: { document: "<aside <button/>/>", schema: PanelSchema } }));
-  assert.equal(internal_livemap_aggregate_authority(client).systemState("@hson/canonical-interactions"), undefined);
+  assert.deepEqual(ids(client), []);
   replica.restoreHosted(initial);
-  assert.notEqual(internal_livemap_aggregate_authority(client).systemState("@hson/canonical-interactions"), undefined);
+  assert.deepEqual(ids(client), []);
   assert.equal(replica.clientProjection()?.registry.libraries.some((entry) => entry.scope === "hson-internal"), false);
   assert.deepEqual(ids(client), []);
   replica.dispose();
@@ -433,7 +434,7 @@ for (const sharedFeature of [true, false]) {
   assert.equal(locus.rev, beforeLocusRev);
   assert.equal(echo.sync.appliedRev, beforeCursor);
   assert.equal(internal_livemap_aggregate_authority(echo_map_internal(echo)).clientProjection()?.registry.digest, beforeDigest);
-  assert.equal(internal_livemap_aggregate_authority(authority).systemState("@hson/canonical-interactions"), undefined);
+  assert.deepEqual(ids(authority), []);
   const panel = echo.doc.must("panel");
   const reflection = mirror_document(echo_map_internal(echo), "panel");
   const target = new EventTarget();

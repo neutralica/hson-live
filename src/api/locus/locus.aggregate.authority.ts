@@ -1,3 +1,5 @@
+import type { PreparedLiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
+import type { LocusHostedProjectionPolicy } from "./locus.projection.js";
 import { registered_locus_action } from "./locus.action-validation.js";
 import { is_locus_document_action_name } from "./locus.document-actions.js";
 import type { OwnedLibraryDefinition } from "../livemap/livemap.libraries.js";
@@ -44,7 +46,7 @@ import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, n
 import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, projected_registry_digest, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
 import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal, authority_projection_state_fingerprint_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
-import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
+import { require_interaction_system_internal } from "../../internal/interaction-storage.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
 import {
   resolve_locus_document_action,
@@ -134,8 +136,8 @@ type HostedReconcileReason = "no_usable_revision" | "incarnation_mismatch" | "re
 
 type HostedHistoryEntry = Readonly<{
   envelope: LocusHostedAggregateAuthorityEnvelope;
-  beforeSystem?: HsonNode;
-  afterSystem?: HsonNode;
+  beforeSystem: HsonNode;
+  afterSystem: HsonNode;
   bytes: number;
 }>;
 
@@ -238,6 +240,13 @@ function is_hosted_aggregate_downstream_output(value: unknown): value is Readonl
     && typeof value.type === "string";
 }
 
+/** Validated startup position for the one Locus that will own the receiving map. @internal */
+export type LocusHostedAggregateRecovery = Readonly<{
+  owner: object;
+  checkpoint: PreparedLiveMapSemanticCheckpoint;
+  projectionPolicy: LocusHostedProjectionPolicy;
+}>;
+
 export type LocusHostedAggregateAuthorityOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
@@ -263,6 +272,7 @@ export type LocusHostedAggregateAuthorityOptions<
   internal?: Readonly<{
     /** A restored runtime cannot accept an old client's equal-revision identity as current. */
     recoveryFloorRevision?: number;
+    recovery?: LocusHostedAggregateRecovery;
     afterRecoveryCut?: () => void | Promise<void>;
     beforeRecoveryCaughtUp?: () => void | Promise<void>;
     afterRecoveryCaughtUp?: () => void | Promise<void>;
@@ -328,11 +338,16 @@ export function create_locus_hosted_aggregate_authority_internal<
   );
   const maxHistoryBytes = bounded(options.maxHistoryBytes, DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES, "history", HOSTED_MAX_SNAPSHOT_BYTES);
   const aggregate = internal_livemap_aggregate_authority(options.map);
-  const initial = aggregate.hostedPosition();
-  const registry = aggregate.hostedRegistry();
-  const projectionPolicy = make_locus_hosted_projection_policy(registry, initial.authority, options.libraries,
+  const recovery = options.internal?.recovery;
+  const recovered = recovery?.checkpoint;
+  const initial = recovered === undefined ? aggregate.hostedPosition() : {
+    authority: recovered.authority, revision: recovered.revision, registryDigest: recovered.registry.digest,
+  };
+  const registry = recovered?.registry ?? aggregate.hostedRegistry();
+  const projectionPolicy = recovery?.projectionPolicy ?? make_locus_hosted_projection_policy(registry, initial.authority, options.libraries,
     options.defaultProjection, options.authorizeProjection, options.map);
-  const bindings = aggregate.libraries();
+  const bindings = recovered?.bindings.filter(binding => binding.scope === undefined).map(binding => binding.identity)
+    ?? aggregate.libraries();
   const identitiesByName = new Map<string, object>();
   let applicationIndex = 0;
   for (let index = 0; index < registry.libraries.length; index += 1) {
@@ -351,7 +366,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   const history: HostedHistoryEntry[] = [];
   const connections = new Set<HostedAttachment>();
   const preparedLiveEvents = new WeakMap<object, ReadonlyMap<string, LocusLiveProjectedEvent>>();
-  const preparedSystemRoots = new WeakMap<object, Readonly<{ before?: HsonNode; after?: HsonNode }>>();
+  const preparedSystemRoots = new WeakMap<object, Readonly<{ before: HsonNode; after: HsonNode }>>();
   let admissionBarrier: Promise<void> | undefined;
   let releaseAdmissionBarrier: (() => void) | undefined;
   let releaseOnConstructionFailure: (() => void) | undefined;
@@ -366,13 +381,13 @@ export function create_locus_hosted_aggregate_authority_internal<
     ...(options.gate === undefined ? {} : { gate: options.gate }),
     ...(options.prepareGate === undefined ? {} : { prepareGate: options.prepareGate }),
     beforeAccept({ transition, commit }) {
-      const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
-      const beforeSystem = system === undefined ? undefined : aggregate.systemRoot(system);
-      const afterSystem = commit.topology === undefined ? aggregate.preparedSystemRoot(transition) : beforeSystem;
-      const roots = Object.freeze({
-        ...(beforeSystem === undefined ? {} : { before: decode_hosted_root(encode_hosted_root(beforeSystem)) }),
-        ...(afterSystem === undefined ? {} : { after: decode_hosted_root(encode_hosted_root(afterSystem)) }),
-      });
+      const beforeSystem = aggregate.systemRoot(require_interaction_system_internal(aggregate));
+      const afterSystem = aggregate.preparedSystemRoot(transition);
+      // Retained history owns exact copies of the installed and prospective
+      // roots. Check the full post-transition root before the durable gate.
+      const before = decode_hosted_root(encode_hosted_root(beforeSystem));
+      const after = afterSystem === beforeSystem ? before : decode_hosted_root(encode_hosted_root(afterSystem));
+      const roots = Object.freeze({ before, after });
       const envelope: LocusHostedAggregateAuthorityEnvelope = Object.freeze({
         logicalMapId: initial.authority.logicalMapId,
         incarnationId: initial.authority.incarnationId,
@@ -388,7 +403,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         roster.push(Object.freeze({ sessionId: connection.sessionId, projection: connection.effectiveProjection }));
       }
       for (const { sessionId, projection: effective } of roster) {
-        const event = project_locus_live_transition_internal(commit, effective, beforeSystem, afterSystem);
+        const event = project_locus_live_transition_internal(commit, effective, roots.before, roots.after);
         const live = projected_output(WORST_CASE_RECOVERY_ID, event, effective,
           sessions.projection_sequence(sessionId) ?? 0);
         assert_bounded_publication(live, maxWireBytes);
@@ -411,7 +426,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     },
     onFault: () => fault_authority(),
     uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
-  });
+  }, recovery === undefined ? undefined : { owner: recovery.owner, authority: initial.authority });
   releaseOnConstructionFailure = locus.dispose;
   let seq = 0;
   let generatedSessionId = 0;
@@ -711,16 +726,14 @@ export function create_locus_hosted_aggregate_authority_internal<
     // this runtime revision, so the old map must not serve new mutations.
   }
 
-  function prepare_history(envelope: LocusHostedAggregateAuthorityEnvelope, roots: Readonly<{ before?: HsonNode; after?: HsonNode }>) {
+  function prepare_history(envelope: LocusHostedAggregateAuthorityEnvelope, roots: Readonly<{ before: HsonNode; after: HsonNode }>) {
     const commit = envelope.commit;
     const previous = history.length === 0 ? historyBaseRevision : history[history.length - 1]?.envelope.commit.rev;
     if (previous !== commit.prevRev) {
       throw new Error("Hosted aggregate history lost global revision continuity.");
     }
-    const bytes = encoded_bytes(envelope) + encoded_bytes(roots ?? {});
-    const entry: HostedHistoryEntry = Object.freeze({ envelope,
-      ...(roots?.before === undefined ? {} : { beforeSystem: roots.before }),
-      ...(roots?.after === undefined ? {} : { afterSystem: roots.after }), bytes });
+    const bytes = encoded_bytes(envelope) + encoded_bytes(roots);
+    const entry: HostedHistoryEntry = Object.freeze({ envelope, beforeSystem: roots.before, afterSystem: roots.after, bytes });
     let evict = 0;
     let remaining = retainedBytes + bytes;
     if (bytes <= maxHistoryBytes) {
@@ -1033,7 +1046,8 @@ export function create_locus_hosted_aggregate_authority_internal<
       connection.subscription.pendingLiveBytes -= encoded_bytes(pending);
       if (pending.commit.prevRev < cut) continue;
       const roots = preparedSystemRoots.get(pending.commit);
-      const event = project_locus_live_transition_internal(pending.commit, effective, roots?.before, roots?.after);
+      if (roots === undefined) throw new Error("Pending hosted publication lacks prepared interaction roots.");
+      const event = project_locus_live_transition_internal(pending.commit, effective, roots.before, roots.after);
       send(connection, projected_live_output(connection, event, effective));
       if (!recovery_delivery_current(connection, activeRecovery)) return;
     }
