@@ -1,11 +1,31 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, readlinkSync, renameSync, writeFileSync } from "node:fs";
 import { delimiter, dirname, resolve, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertRootBuildPublication } from "./validation-build-publication.mjs";
 
 const hash = input => createHash("sha256").update(input).digest("hex");
+const fileIdentity = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+
+// Compare the same private checkout around a candidate assertion failure.
+// Metadata covers ignored build outputs and installed packages as well as source.
+function checkoutIdentity(root) {
+  const digest = createHash("sha256");
+  function visit(path) {
+    const stat = lstatSync(path, { bigint: true });
+    digest.update(path + "\0" + fileIdentity(stat) + "\0");
+    if (stat.isDirectory()) {
+      for (const name of readdirSync(path).sort()) visit(resolve(path, name));
+    } else if (stat.isSymbolicLink()) {
+      const target = readlinkSync(path);
+      if (!resolve(dirname(path), target).startsWith(root + sep)) throw new Error(`Link escapes private checkout: ${relative(root, path)}`);
+      digest.update(target + "\0");
+    } else if (!stat.isFile()) throw new Error(`Unexpected checkout entry: ${relative(root, path)}`);
+  }
+  visit(root);
+  return digest.digest("hex");
+}
 // Hook-local Git variables (especially GIT_INDEX_FILE) must never redirect a
 // validation child back into the developer's checkout.
 export function validationEnvironment() {
@@ -50,16 +70,15 @@ function rootBuildArtifacts(root) {
     if (!existsSync(resolve(root, path))) throw new Error(`Missing root build prerequisite artifact: ${path}`);
   }
   const digest = createHash("sha256");
-  const metadata = stat => [stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
   function visit(path) {
     const file = resolve(root, path);
     const before = lstatSync(file, { bigint: true });
     if (before.isSymbolicLink() || !before.isDirectory() && !before.isFile()) throw new Error(`Unsafe root build artifact: ${path}`);
     if (path.endsWith("/.publishing.json")) throw new Error("Root build publication is incomplete");
-    digest.update(path + "\0" + metadata(before) + "\0");
+    digest.update(path + "\0" + fileIdentity(before) + "\0");
     if (before.isDirectory()) for (const name of readdirSync(file).sort()) visit(`${path}/${name}`);
     else digest.update(readFileSync(file));
-    if (metadata(before) !== metadata(lstatSync(file, { bigint: true }))) throw new Error(`Root build artifact changed during capture: ${path}`);
+    if (fileIdentity(before) !== fileIdentity(lstatSync(file, { bigint: true }))) throw new Error(`Root build artifact changed during capture: ${path}`);
   }
   visit("dist"); visit(".hson/compiler-input/tsconfig.json");
   return digest.digest("hex");
@@ -68,7 +87,8 @@ function rootBuildArtifacts(root) {
 // Process-level wall durations only. No per-test or CPU-time claims are made.
 // Output can be inherited or captured in full; exit semantics stay with the caller.
 export async function runStages({ root, mode, stages, preflight, checkInventory, preflightSkippedBecause = "Not applicable to setup", configuration, identify = () => sourceIdentity(root), identity = identify(), execute,
-  rootBuildPrerequisites = {}, collectAll = false, reportRoot, captureOutput = false, blockedStages = {} }) {
+  rootBuildPrerequisites = {}, collectAll = false, reportRoot, captureOutput = false, blockedStages = {}, cancelled = () => null, assertSource }) {
+  const diagnostic = mode === "sweep" || mode === "sweep-setup";
   const parent = reportRoot ?? resolve(root, "tmp/validation-timing");
   mkdirSync(parent, { recursive: true });
   const folder = mkdtempSync(resolve(parent, `${new Date().toISOString().replaceAll(":", "-")}-${process.pid}-`));
@@ -83,6 +103,7 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
     cancellationPolicy: process.platform === "win32" ? "Terminate and reap the direct child; descendant cleanup is incomplete on Windows."
       : "Each stage owns a new process group. On cancellation, timeout, abnormal exit or surviving descendants send SIGTERM, then SIGKILL after 1000 ms, only to that group; reap the direct child.",
     rootBuildInvocations: 0, rootBuildReuses: 0 };
+  if (diagnostic) report.label = "DIAGNOSTIC — NOT CERTIFICATION";
   const save = () => {
     writeFileSync(reportPath + ".tmp", JSON.stringify(report, null, 2) + "\n");
     renameSync(reportPath + ".tmp", reportPath);
@@ -160,6 +181,39 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
     if (row.exitStatus === 0 && row.caseCompletion?.status === "incomplete") return "incomplete-suite";
     return "unclassified-process";
   }
+  function registeredTestFailure(row, entrypoint) {
+    if (!entrypoint || row.status !== "failed" || row.error || row.signal || row.cleanup
+      || row.diagnosticStopReason || report.observationIncomplete) return;
+    const suites = row.caseCompletion?.suites ?? [];
+    if (suites.some(suite => suite.status === "error" || suite.failedCases.some(testCase => testCase.status === "error"))) {
+      return "environment-or-setup";
+    }
+    if (row.caseCompletion?.status === "incomplete" || suites.some(suite =>
+      suite.unfinished.length || suite.status === "cancelled" || suite.failedCases.some(testCase => testCase.status === "cancelled"))) {
+      return "incomplete-suite";
+    }
+    if (row.exitStatus !== 1) return;
+    const observed = eventsByStage.get(row.name) ?? [];
+    const starts = observed.filter(event => event.type === "process-start");
+    const ends = observed.filter(event => event.type === "process-end");
+    const commands = observed.filter(event => event.type === "command-start");
+    const results = observed.filter(event => event.type === "command-end");
+    const test = starts.find(event => event.entrypoint === `<repo>/${entrypoint}` && event.pid !== row.processId);
+    if (!test || starts.length !== 2 || ends.length !== 2 || !starts.some(event => event.pid === row.processId)
+      || starts.some(event => event.threadId !== 0)
+      || ![row.processId, test.pid].every(pid => ends.some(event => event.pid === pid && event.threadId === 0 && event.exitStatus === 1))
+      || commands.length !== 1 || results.length !== 1 || commands[0].pid !== row.processId
+      || commands[0].arguments?.length !== 2 || commands[0].arguments[0] !== "-c" || commands[0].arguments[1] !== row.command
+      || results[0].id !== commands[0].id || results[0].exitStatus !== 1 || results[0].signal || results[0].error) return;
+    const errors = observed.filter(event => event.type === "uncaught-error");
+    if (errors.length) {
+      const [error] = errors;
+      return errors.length === 1 && error.pid === test.pid && error.threadId === 0 && error.fatalByDefault
+        ? error.kind : "unclassified-process";
+    }
+    if (suites.some(suite => suite.pid === test.pid && suite.status === "fail"
+      && suite.failedCases.some(testCase => testCase.status === "fail"))) return "assertion";
+  }
   let rootBuild = null;
   const reuseEnabled = stages.some(stage => Object.hasOwn(rootBuildPrerequisites, stage.name));
   const identityHash = value => {
@@ -177,7 +231,7 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
   }
   const observe = pathToFileURL(resolve(import.meta.dirname, "validation-observer.mjs")).href;
   const observePublication = pathToFileURL(resolve(import.meta.dirname, "validation-build-publication.mjs")).href;
-  let cancellation = null;
+  let cancellation = cancelled();
   let active = null;
   const handlers = new Map();
   for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -223,7 +277,8 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
       // 'exit' reaps the leader before 'close'. Descendants may still own stdio
       // or the group, so begin cleanup here and finish it before the next stage.
       child.once("exit", (status, childSignal) => {
-        if (status !== 0 || childSignal) stop();
+        // In a sweep a nonzero exit can be ordinary if the group is already gone.
+        if ((!diagnostic && status !== 0) || childSignal) stop();
         else if (grouped && child.pid) {
           // Successful shells can also leave background writers behind.
           try { process.kill(-child.pid, 0); stop(); }
@@ -232,7 +287,7 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
       });
       child.once("close", async (status, childSignal) => {
         clearTimeout(deadline);
-        if (child.pid && (status !== 0 || childSignal || error)) stop();
+        if (child.pid && ((!diagnostic && status !== 0) || childSignal || error)) stop();
         if (stopping) await escalationDone;
         clearTimeout(escalation);
         // kill() only queues a signal. Do not release the stage while the owned
@@ -274,8 +329,15 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
       if (result.error) row.error = result.error.message;
       if (result.cleanup) row.cleanup = result.cleanup;
       row.status = cancellation ? "cancelled" : result.status === 0 && !result.signal && !result.error && result.cleanup?.status !== "incomplete"
+        && !(diagnostic && (result.cleanup || report.observationIncomplete))
         && !["failed", "incomplete"].includes(row.caseCompletion?.status) ? "passed" : "failed";
     } catch (error) { row.status = "failed"; row.exitStatus = 1; row.error = error.message; }
+    try { assertSource?.(); }
+    catch (error) {
+      if (row.status !== "cancelled") row.status = "failed";
+      row.failureKind = "checkout-integrity";
+      row.diagnosticStopReason = `Cannot verify captured tracked source: ${error.message}`;
+    }
     row.endedAt = new Date().toISOString(); row.wallMs = performance.now() - begin;
     save();
     return row.status === "passed";
@@ -296,14 +358,15 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
       checkInventory?.(inventory);
       return { status: 0 };
     })) {
-      if (!collectAll) stoppedBy = "inventory-preflight";
+      if (diagnostic || !collectAll) stoppedBy = "inventory-preflight";
       exitStatus = 1;
-      console.error(report.stages[0].error);
+      console.error(report.stages[0].error ?? report.stages[0].diagnosticStopReason);
     }
     for (const [index, stage] of stages.entries()) {
       const row = report.stages[index + 1];
       // Yield between stages so pending signals are handled before another launch.
       await new Promise(done => setImmediate(done));
+      cancellation ??= cancelled();
       if (cancellation) { stoppedBy = `cancelled: ${cancellation}`; exitStatus = cancellation === "SIGINT" ? 130 : 143; }
       if (stoppedBy) { row.status = "skipped"; row.skippedBecause = stoppedBy; save(); continue; }
       const dependencies = [...(stage.dependsOn ?? [])];
@@ -312,11 +375,23 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
       row.dependsOn = [...new Set(dependencies)];
       const blocked = row.dependsOn.filter(name => report.stages.find(prior => prior.name === name)?.status !== "passed");
       if (Object.hasOwn(blockedStages, stage.name) || blocked.length) {
-        row.status = "blocked"; row.blockedBecause = Object.hasOwn(blockedStages, stage.name) ? blockedStages[stage.name] : blocked;
+        row.status = diagnostic ? "skipped" : "blocked";
+        row.blockedBecause = Object.hasOwn(blockedStages, stage.name) ? blockedStages[stage.name] : blocked;
         exitStatus ||= 1; save(); continue;
       }
       console.log(`[${index + 1}/${stages.length}] ${stage.name}`);
+      const registration = inventory?.commands?.[stage.name];
+      const candidate = mode === "sweep" && stage.name.startsWith("test:") &&
+        /^node (?:--import=tsx )?(tests\/[\w-]+\.acceptance\.m[jt]s)$/.exec(stage.command)?.[1];
+      const entrypoint = candidate && registration?.suites.includes(candidate)
+        && registration.requirements.every(requirement => ["node", "typescript-tooling"].includes(requirement)) ? candidate : null;
+      let before, integrityError;
       const passed = await timed(row, async () => {
+        if (diagnostic && process.platform === "win32") throw new Error("Owned process-group cleanup is unavailable");
+        if (entrypoint) {
+          try { before = checkoutIdentity(root); }
+          catch (error) { integrityError = error.message; }
+        }
         let executable = stage.executable ?? "npm", args = stage.args ?? ["run", stage.name];
         const body = Object.hasOwn(rootBuildPrerequisites, stage.name) ? rootBuildPrerequisites[stage.name] : undefined;
         const building = reuseEnabled && stage.name === "build";
@@ -371,9 +446,24 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
         return result;
       });
       if (!passed) {
-        if (!collectAll || stage.name === "build") rootBuild = null;
+        const testFailure = registeredTestFailure(row, entrypoint);
+        if (testFailure) row.failureKind = testFailure;
+        if (testFailure === "environment-or-setup") row.diagnosticStopReason = "Registered test reported a setup or execution error";
+        if (testFailure === "incomplete-suite") row.diagnosticStopReason = "Registered test result was incomplete or cancelled";
+        if (testFailure === "assertion") {
+          try {
+            if (!before) throw new Error(integrityError ?? "Private checkout integrity could not be confirmed");
+            if (checkoutIdentity(root) !== before) throw new Error("Private checkout changed during the failed test");
+            row.diagnosticContinuation = "verified-assertion";
+          } catch (error) { row.diagnosticStopReason = error.message; }
+        }
+        if ((!collectAll || stage.name === "build") && !row.diagnosticContinuation) rootBuild = null;
         exitStatus = row.exitStatus || 1;
-        if ((!collectAll && !stage.continueOnFailure) || row.cleanup?.status === "incomplete") stoppedBy = stage.name;
+        if (diagnostic && !row.diagnosticContinuation) {
+          row.diagnosticStopReason ??= row.error ?? row.cleanup?.error ?? (row.cleanup ? "Process cleanup was required"
+            : entrypoint ? "Ordinary assertion failure and environment integrity could not be confirmed" : "Required or composite command failed");
+          stoppedBy = stage.name;
+        } else if (!diagnostic && ((!collectAll && !stage.continueOnFailure) || row.cleanup?.status === "incomplete")) stoppedBy = stage.name;
       }
     }
     collectEvents();
@@ -385,7 +475,7 @@ export async function runStages({ root, mode, stages, preflight, checkInventory,
         row.status = "failed"; exitStatus ||= 1;
       }
     }
-    for (const row of report.stages.filter(row => row.status === "failed")) row.failureKind = classifyFailure(row);
+    for (const row of report.stages.filter(row => row.status === "failed")) row.failureKind ??= classifyFailure(row);
     report.stageCounts = Object.fromEntries(["passed", "failed", "skipped", "blocked", "cancelled"]
       .map(status => [status, report.stages.filter(row => row.status === status).length]));
     report.rootBuildInvocations = events.filter(event => event.type === "process-start" && event.rootBuild).length;

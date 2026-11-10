@@ -91,7 +91,149 @@ function installHook(root) {
   git(root, ["add", ".githooks"]);
 }
 
+function sweepFixture({ failures = false, failBuild = false, failInstall = false, drift, testError, setupDrift = false } = {}) {
+  const root = cliFixture({ brokenRootInstall: failInstall });
+  const pkg = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+  const names = ["build", "test:first", "test:later", "test:last"];
+  const tools = "import {mkdirSync,writeFileSync} from 'node:fs'; for (const name of ['typescript','tsx','esbuild']) { const dir='node_modules/'+name; mkdirSync(dir,{recursive:true}); writeFileSync(dir+'/package.json',JSON.stringify({version:'0.0.0'})); }";
+  pkg.scripts = {
+    "check:sweep": ledger(resolve(sourceRoot, "package.json")).scripts["check:sweep"],
+    postinstall: `node --input-type=module -e "${tools}${setupDrift ? " writeFileSync('tests/first.acceptance.mjs', '');" : ""}"`,
+    build: failBuild ? 'node -e "process.exit(1)"'
+      : 'node -e "const fs = require(\'node:fs\'); fs.mkdirSync(\'dist\'); fs.writeFileSync(\'dist/build\', \'private\')"',
+  };
+  copyFileSync(resolve(sourceRoot, "scripts/run-current-acceptance.mjs"), resolve(root, "scripts/run-current-acceptance.mjs"));
+  mkdirSync(resolve(root, "tests"));
+  copyFileSync(resolve(sourceRoot, "tests/test-events.mjs"), resolve(root, "tests/test-events.mjs"));
+  for (const test of ["first", "later", "last"]) {
+    const path = `tests/${test}.acceptance.mjs`;
+    pkg.scripts[`test:${test}`] = `node ${path}`;
+    writeFileSync(resolve(root, path), [
+      "import assert from 'node:assert/strict';",
+      "import {readFileSync, writeFileSync} from 'node:fs';",
+      "assert.equal(readFileSync('dist/build', 'utf8'), 'private');",
+      test === "later" ? "writeFileSync('dist/test-output', 'private');" : "",
+      drift === "source" && test === "first" ? "writeFileSync('tests/later.acceptance.mjs', 'console.log(\"rewritten test\");');" : "",
+      drift === "dependencies" && test === "first" ? "writeFileSync('node_modules/partial', 'incomplete');" : "",
+      testError === "setup" && test === "first" ? "await import('./missing-fixture.mjs');" : "",
+      testError === "mixed" && test === "first" ? `
+import { create_test_event_emitter as create } from './test-events.mjs';
+const events = create('checks', ['load', 'check']);
+events.case_begin('load', 'Load fixture');
+try { await import('./missing-fixture.mjs'); }
+catch (error) {
+  events.diagnostic('load', 'error', error.message);
+  events.case_end('load', 'error');
+}
+events.terminal('error');
+const checks = create('assertions', ['check']);
+checks.case_begin('check', 'Check value');
+try { assert.fail('failed assertion'); }
+catch (error) {
+  checks.diagnostic('check', 'fail', error.message);
+  checks.case_end('check', 'fail');
+}
+checks.terminal('fail');` : "",
+      testError === "child" && test === "first" ? `
+import { spawnSync } from 'node:child_process';
+process.exitCode = spawnSync(process.execPath, ['-e', 'require("node:assert/strict").fail()']).status;` : "",
+      failures && test === "first" ? "assert.fail('uncaught assertion');" : "",
+      failures && test === "last" ? `
+import { create_test_event_emitter as create } from './test-events.mjs';
+const checks = create('last', ['check']);
+checks.case_begin('check', 'Check value');
+try { assert.fail('reported assertion'); }
+catch { checks.case_end('check', 'fail'); }
+checks.terminal('fail');` : `console.log("passed ${test}");`,
+    ].join("\n"));
+  }
+  writeFileSync(resolve(root, "package.json"), JSON.stringify(pkg));
+  writeFileSync(resolve(root, "scripts/validation-config.mjs"), `
+export const ordinary=${JSON.stringify(names)}, rootBuildConsumers=[], rootBuildPrerequisites={};
+export const gateCommands=(_scripts, gate)=>gate==='full'?ordinary:[];
+export const assertInventory=inventory=>inventory;`);
+  const commands = Object.fromEntries(names.slice(1).map(name => [name, {
+    suites: [`tests/${name.slice(5)}.acceptance.mjs`], requirements: ["node"],
+    caseReporting: name === "test:last" && failures || name === "test:first" && testError === "mixed",
+  }]));
+  writeFileSync(resolve(root, "scripts/validation-inventory.mjs"), `export const createInventory=()=>({suites:[], commands:${JSON.stringify(commands)}});`);
+  git(root, ["add", "package.json", "scripts", "tests"]);
+  git(root, ["commit", "-qm", "diagnostic fixture"]);
+  return root;
+}
+
+const ledger = path => JSON.parse(readFileSync(path, "utf8"));
+
 try {
+  for (const [name, options, expected] of [
+    ["continues after two clean assertions", { failures: true }, ["passed", "failed", "passed", "failed"]],
+    ["stops after a failed build", { failBuild: true }, ["failed", "skipped", "skipped", "skipped"]],
+    ["stops after a failed install", { failInstall: true }, ["skipped", "skipped", "skipped", "skipped"]],
+    ["stops after a failing test changes installed dependencies", { failures: true, drift: "dependencies" }, ["passed", "failed", "skipped", "skipped"]],
+    ["stops after a passing test changes tracked source", { drift: "source" }, ["passed", "failed", "skipped", "skipped"]],
+    ["stops after a failing test changes tracked source", { failures: true, drift: "source" }, ["passed", "failed", "skipped", "skipped"]],
+    ["stops setup after an install changes tracked source", { setupDrift: true }, ["skipped", "skipped", "skipped", "skipped"]],
+    ["stops on mixed assertion and setup errors", { testError: "mixed" }, ["passed", "failed", "skipped", "skipped"]],
+    ["stops on a module-load error alone", { testError: "setup" }, ["passed", "failed", "skipped", "skipped"]],
+    ["stops on an incidental child assertion", { testError: "child" }, ["passed", "failed", "skipped", "skipped"]],
+    ["keeps passing diagnostics separate from certification", {}, ["passed", "passed", "passed", "passed"]],
+  ]) await check(`sweep ${name}`, () => {
+    const root = sweepFixture(options);
+    writeFileSync(resolve(root, "tests/later.acceptance.mjs"), "throw new Error('owner working tree');");
+    const invocation = spawnSync("npm", ["run", "check:sweep"], {
+      cwd: root, env: { ...validationEnvironment(), npm_config_offline: "true" }, encoding: "utf8", timeout: 30_000,
+    });
+    const success = expected.every(status => status === "passed");
+    assert.equal(invocation.status, success ? 0 : 1, invocation.error?.message ?? invocation.stdout + invocation.stderr);
+    const reports = resolve(root, ".git/diagnostic-reports");
+    const [folder] = readdirSync(reports);
+    const report = ledger(resolve(reports, folder, "diagnostic.json"));
+    const gate = ledger(report.gateReport);
+    const setup = ledger(report.setupReport);
+    const stages = gate.stages.slice(1);
+    assert.deepEqual(stages.map(row => row.status), expected);
+    assert.deepEqual(gate.stageCounts, Object.fromEntries(["passed", "failed", "skipped", "blocked", "cancelled"]
+      .map(status => [status, [gate.stages[0].status, ...expected].filter(item => item === status).length])));
+    assert(stages.filter(row => row.status === "skipped").every(row => !row.log && (row.skippedBecause || row.blockedBecause?.length)));
+    assert.equal(report.label, "DIAGNOSTIC — NOT CERTIFICATION");
+    assert.equal(gate.label, report.label);
+    assert.equal(setup.label, report.label);
+    assert.equal(report.status, success ? "passed" : "failed");
+    assert.equal(report.exitStatus, invocation.status);
+    assert.equal(gate.status, report.status);
+    assert([report, setup, gate].every(row => row.endedAt));
+    assert.equal(report.checkoutRemoved, true);
+    assert.equal(existsSync(report.checkout), false);
+    assert.equal(existsSync(resolve(root, ".git/validation-reports")), false);
+    if (options.failInstall || options.setupDrift) assert.deepEqual(setup.stages.slice(1).map(row => row.status), ["failed", "skipped"]);
+    if (options.setupDrift) assert.match(setup.stages[1].diagnosticStopReason, /tracked source.*tests\/first\.acceptance\.mjs/s);
+    if (options.drift === "source") assert.match(stages[1].diagnosticStopReason, /tracked source.*tests\/later\.acceptance\.mjs/s);
+    if (options.drift === "dependencies") assert.match(stages[1].diagnosticStopReason, /checkout changed/);
+    if (options.testError) {
+      assert.equal(stages[1].diagnosticContinuation, undefined);
+      assert.equal(stages[1].failureKind, options.testError === "child" ? "unclassified-process" : "environment-or-setup");
+      if (options.testError === "mixed") assert.deepEqual(stages[1].caseCompletion.suites.map(suite => suite.status), ["error", "fail"]);
+    }
+    if (options.failures && !options.drift) {
+      assert.deepEqual(stages.filter(row => row.failureKind === "assertion").map(row => row.name), ["test:first", "test:last"]);
+      assert(stages.filter(row => row.status === "failed").every(row => row.diagnosticContinuation === "verified-assertion"));
+      assert.match(readFileSync(resolve(report.gateReport, "..", stages[2].log), "utf8"), /passed later/);
+    }
+  });
+
+  await check("sweep stops on incomplete cleanup", async () => {
+    const root = fixture();
+    const result = await run(root, resolve(temporary, "sweep-cleanup"), [{ name: "test:first" }, { name: "test:later" }], {
+      mode: "sweep", execute: () => ({ status: 1, cleanup: { status: "incomplete", error: "owned group remains" } }),
+    });
+    const [, failed, unreached] = ledger(result.reportPath).stages;
+    assert.equal(result.exitStatus, 1);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.cleanup.status, "incomplete");
+    assert.equal(unreached.status, "skipped");
+    assert.equal(unreached.skippedBecause, failed.name);
+  });
+
   await check("installed hook rejects staged conflict markers before using any project scripts", () => {
     const root = cliFixture();
     installHook(root);

@@ -445,6 +445,7 @@
     "test:validation-root-build-reuse": "node tests/validation-root-build-reuse.acceptance.mjs",
     "check:inventory": "node scripts/run-current-acceptance.mjs --preflight",
     "check:full": "node scripts/run-current-acceptance.mjs full",
+    "check:sweep": "node scripts/run-current-acceptance.mjs sweep",
     "check:extended": "node scripts/run-current-acceptance.mjs extended",
     "test:suite-metadata-static": "node tests/suite-metadata-static.acceptance.mjs",
     "test:test-events": "node tests/test-events.acceptance.mjs",
