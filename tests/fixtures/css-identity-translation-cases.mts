@@ -75,7 +75,7 @@ export function css_identity_translation_cases(check: (name: string, run: () => 
     const before = map.capture(), overlay = aggregate.documentOverlay(library), ledger = aggregate.identityEpoch().issued();
     const input = sheet(`${runtime}{color:red}`), portable = translate(input, "outbound", { associations, assertCurrent });
     assert.equal(portable.rules[0]!.selector, quad);
-    const snapshot = { ...before, libraries: before.libraries.map(entry => ({ ...entry, quads })) };
+    const snapshot = { ...before, libraries: before.libraries.map(entry => entry.mode === "document" ? { ...entry, quads } : entry) };
     const received = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } }), receiver = owner(received);
     set_livemap_quid_candidate_source_for_tests(receiver.identityEpoch().owner, () => receiving);
     let restoration;
@@ -97,7 +97,8 @@ export function css_identity_translation_cases(check: (name: string, run: () => 
     const portable = translate(sheet(`${selector_for_quid(subject.quid)}{color:red}`), "outbound",
       { associations: [{ ...subject, disposition: "authored" }], assertCurrent: aggregate.captureFence() });
     assert.equal(portable.rules[0]!.selector, '[hson\\:quad="_xxxxxxxxx"]');
-    const snapshot = { ...map.capture(), libraries: map.capture().libraries.map(entry => ({ ...entry, quads })) };
+    const before = map.capture();
+    const snapshot = { ...before, libraries: before.libraries.map(entry => entry.mode === "document" ? { ...entry, quads } : entry) };
     const receivingMap = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } }), receiver = owner(receivingMap);
     set_livemap_quid_candidate_source_for_tests(receiver.identityEpoch().owner, () => "xxxxxxxxx");
     let restored;
@@ -298,8 +299,9 @@ export function css_identity_translation_cases(check: (name: string, run: () => 
   });
   check("CSS checked receiving correspondence invalidates after identity acquisition and topology restoration", () => {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button/> <aside/>/>' } }), aggregate = owner(map);
-    const candidate = { ...map.capture(), libraries: map.capture().libraries.map(entry => ({ ...entry,
-      quads: [{ name: `_${quid}`, path: validate_document_path([0, 0, 0]), disposition: "disposable" as const }] })) };
+    const before = map.capture();
+    const candidate = { ...before, libraries: before.libraries.map(entry => entry.mode === "document" ? { ...entry,
+      quads: [{ name: `_${quid}`, path: validate_document_path([0, 0, 0]), disposition: "disposable" as const }] } : entry) };
     const restoration = aggregate.restorePortableLibrariesWithCorrespondence(candidate);
     const input = sheet(`${quad}{color:red}`), saved = structuredClone(input);
     translate(input, "inbound", restoration);

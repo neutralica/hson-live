@@ -12,6 +12,7 @@ import { decode_hosted_root } from "../../src/api/livemap/livemap.hosted.ts";
 import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.ts";
 import { realize_document } from "../../src/internal/document-cut.ts";
 import { DocumentSsrError } from "../../src/internal/document-cut.error.ts";
+import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../src/internal/interaction-storage.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 import type { LiveMap, LiveMapCutOptions, LiveMapDynamicLibrary } from "../../src/types/livemap.types.ts";
 import type { InternalLiveMapAggregateAuthority } from "../../src/api/livemap/livemap.internal.ts";
@@ -360,7 +361,8 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
       };
     };
     const before = observe(), result = cut(map,{html:"final",documents:["final"],data:[]},demanded);
-    assert.deepEqual(result.libs.libraries.map(library=>library.name),["final"]);
+    const expectedNames = ["final", INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME];
+    assert.deepEqual(result.libs.libraries.map(library => library.name), expectedNames);
     assert.equal((result.html.match(/ hson:quad=/g) ?? []).length,2);
     for (const quid of demanded) {
       assert.ok(result.html.includes(`hson:quad="_${quid}"`));
@@ -372,7 +374,7 @@ export function document_ssr_subject_cases(check: (name: string, run: () => void
     const receiving = install_libraries_snapshot(result.libs).map;
     assert.throws(() => receiving.data.must("components")); assert.throws(() => receiving.doc.must("layout"));
     for (const quid of sourceQuids) assert.equal(owner(receiving).identityEpoch().issued().has(quid),false);
-    assert.equal(receiving.capture().libraries.length,1);
+    assert.deepEqual(receiving.capture().libraries.map(library => library.name), expectedNames);
     // Portable state admission is tested here; projected-marker graft/CSS rebinding is outside this cut.
   });
   check("portable carrier never grants incoming QUID authority and graft remains a later cut", () => {

@@ -7,6 +7,7 @@ import { internal_livemap_aggregate_authority as owner } from "../../src/api/liv
 import { lookup_document_quad_internal as lookup } from "../../src/api/livemap/livemap.document.quad.ts";
 import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.identity-epoch.ts";
 import { hsonTransform } from "../../src/index.ts";
+import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../src/internal/interaction-storage.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
 
 function fixture() {
@@ -68,10 +69,10 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
   check("unsupported unresolved opaque and mixed CSS reject before authoritative translation", () => {
     for (const selector of ['[hson\\:quad="absent"]', '[hson\\:quad^="first"]', '[hson\\:quid="012345678"]', ':future([hson\\:quad="first"])']) {
       const f = fixture();
-      const snapshot: LiveMapSnapshot = { ...f.cut.libs, libraries: f.cut.libs.libraries.map(entry => ({ ...entry, css: {
+      const snapshot: LiveMapSnapshot = { ...f.cut.libs, libraries: f.cut.libs.libraries.map(entry => entry.mode === "document" ? { ...entry, css: {
         rules: [{ ruleKey: "test", selector, scopes: [], declarations: [["color", "red"]] }],
         properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: "test", scopes: [] }],
-      } })) };
+      } } : entry) };
       const before = f.map.capture();
       assert.throws(() => f.aggregate.restorePortableLibrariesWithCorrespondence(snapshot));
       assert.deepEqual(f.map.capture(), before);
@@ -109,7 +110,9 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
       assert.ok(candidate.receivingCss.join("\n\n").includes(entry.quid)); assert.equal(demanded.includes(entry.quid), false);
     }
     const next = install_libraries_snapshot(receiver.map.cut({ documents: ["final"], data: [] }).libs).map;
-    assert.equal(next.capture().libraries.length, 1); assert.equal(next.capture().libraries[0]!.quads!.length, 2);
+    const snapshot = next.capture();
+    assert.deepEqual(snapshot.libraries.map(entry => entry.name), ["final", INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME]);
+    assert.equal(snapshot.libraries[0]!.quads!.length, 2);
     assert.throws(() => next.data.must("components")); assert.throws(() => next.doc.must("layout"));
     const nextLibrary = next.doc.must("final"); if (nextLibrary.mode !== "document") throw Error("document");
     for (const entry of receiver.correspondence.associations) assert.equal(nextLibrary.css.snapshot().includes(entry.quid), false);
@@ -122,7 +125,8 @@ export function document_portable_graft_cases(check: (name: string, run: () => v
       entries.map((entry, index) => index === 1 ? {...entry, path:entries[0]!.path} : entry),
       entries.map((entry, index) => index === 0 ? {...entry, path:validate_document_path([0,0])} : entry),
     ]) {
-      const snapshot: LiveMapSnapshot = {...f.cut.libs, libraries:f.cut.libs.libraries.map(entry => ({...entry,quads}))};
+      const snapshot: LiveMapSnapshot = { ...f.cut.libs,
+        libraries: f.cut.libs.libraries.map(entry => entry.mode === "document" ? { ...entry, quads } : entry) };
       assert.throws(() => f.aggregate.restorePortableLibrariesWithCorrespondence(snapshot));
       assert.deepEqual(f.map.capture(), before); assert.equal(f.aggregate.identityEpoch().issued(), ledger);
     }

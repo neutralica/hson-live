@@ -105,7 +105,8 @@ export function managed_stylesheet_cases(check: (name: string, run: () => void) 
     for(const entries of malformed) {
       const record={rules:[],properties:[],keyframes:[],order:[{kind:"group",header:"@layer",entries}]};
       assert.throws(()=>decode_portable_document_stylesheet(record), /array|storage/i);
-      const capture={...before,libraries:before.libraries.map(item => { const altered={...item}; Object.defineProperty(altered,"css",{value:record,enumerable:true});return altered; })};
+      const capture = { ...before, libraries: before.libraries.map(item => item.mode === "document"
+        ? Object.defineProperty({ ...item }, "css", { value: record, enumerable: true }) : item) };
       assert.throws(()=>map.restore(capture));
       assert.equal(map.doc.must("page").document,root);assert.equal(map.rev,rev);assert.equal(commits,0);assert.deepEqual(map.capture(),before);
       assert.throws(()=>install_libraries_snapshot(capture));
