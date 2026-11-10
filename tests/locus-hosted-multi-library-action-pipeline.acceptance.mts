@@ -727,7 +727,7 @@ await check("raw aggregate validation and dispatch independently require an own 
     }
     assert.equal(executions, 0);
     assert.equal(JSON.stringify(map.capture()), before);
-    assert.equal(await server.dispatch_action("valid"), 7);
+    assert.equal((await server.dispatch_action("valid"))?.scalar(), 7);
     assert.equal(executions, 1);
   } finally { server.dispose(); }
 });

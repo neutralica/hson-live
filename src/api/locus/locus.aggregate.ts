@@ -41,7 +41,7 @@ export type LocusHostedAggregateActionContext = Readonly<{
   origin: LocusActionOrigin;
   /**
    * Add work to this action's one aggregate candidate. Nothing becomes visible
-   * until the action returns and the single prepared transition is accepted.
+   * until the action's result is admitted and the single prepared transition is accepted.
    */
   stage: LocusHostedAggregateStageWriter;
 }>;
@@ -99,7 +99,7 @@ export type LocusHostedAggregate = Readonly<{
   add_owned_libraries_internal: (definitions: readonly OwnedLibraryDefinition[], afterInstall?: () => void,
     ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
-  dispatch_action: (name: string, payload?: HsonDataInput, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
+  dispatch_action: (name: string, payload?: HsonDataInput, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   /** Internal exact transition feed for retained authority history. */
@@ -205,21 +205,21 @@ export function create_locus_hosted_aggregate_internal(
     }
   };
 
-  const enqueue = <T>(
-    operation: (writer: LocusHostedAggregateStageWriter) => T | Promise<T>,
+  const enqueue = (
+    operation: (writer: LocusHostedAggregateStageWriter) => unknown,
     synchronous = false,
-  ): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
-    const run = async (): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
+  ) => {
+    const run = async () => {
       if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
       const accumulator = make_livemap_staged_writer<LiveMap>(aggregate);
-      let result: T;
+      let returned: unknown;
       try {
         const submitted = operation(accumulator.writer);
         if (synchronous && is_staged_thenable(submitted)) {
           void Promise.resolve(submitted).catch(() => {});
           throw new TypeError("Locus stage callback must be synchronous.");
         }
-        result = synchronous ? submitted as T : await submitted;
+        returned = synchronous ? undefined : await submitted;
       } catch (cause) {
         accumulator.discard();
         throw cause;
@@ -227,6 +227,8 @@ export function create_locus_hosted_aggregate_internal(
         accumulator.close();
       }
       const writes = accumulator.writes();
+      // Result reflection can run caller code. The writer is closed and no managed preparation has started.
+      const result = returned === undefined ? undefined : admit_data_input(returned);
       if (writes.length === 0) return Object.freeze({ result, commit: undefined });
 
       const scoped = options.scopedDocuments === true || options.scopedDocuments === "auto" && writes.some(write => {

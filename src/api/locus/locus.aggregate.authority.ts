@@ -1310,7 +1310,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
   ): Promise<LocusActionTerminalOutcome> {
     try {
-      let result: unknown | void;
+      let result: HsonDataValue | undefined;
       if (is_locus_document_action_name(request.name)) {
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
         const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: payload }) }), origin);
@@ -1323,12 +1323,11 @@ export function create_locus_hosted_aggregate_authority_internal<
         result = await locus.dispatch_action(request.name, payload, publicRequest, origin);
       }
       seq += 1;
-      const admittedResult = result === undefined ? undefined : admit_data_input(result);
       return Object.freeze({
         state: "succeeded",
         seq,
         completionRev: locus.rev,
-        ...(admittedResult === undefined ? {} : { result: admittedResult }),
+        ...(result === undefined ? {} : { result }),
       });
     } catch (cause) {
       return Object.freeze({

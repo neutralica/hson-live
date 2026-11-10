@@ -16,6 +16,8 @@ import { generate_hson_schema_types } from "../../src/internal/hson-schema/gener
 import { capture_document_css_command } from "../../src/internal/document-css-commands.js";
 import { capture_document_content } from "../../src/api/livemap/livemap.document.mutation.js";
 import { create_locus_hosted_aggregate_internal } from "../../src/api/locus/locus.aggregate.js";
+import { bind_locus_websocket, type LocusWebSocketLike } from "../../src/api/locus/locus.websocket.js";
+import { test_echo_transport } from "../helpers/echo-websocket-transport.mts";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 
 type Check = (name: string, run: () => void | Promise<void>) => Promise<void>;
@@ -84,7 +86,136 @@ function invalid_values(): unknown[] {
     Object.assign({}, owned), Object.create(HsonDataValue.prototype), { "$_meta": "000009001" }, { "_hson_obj": 1 }];
 }
 
+function action_result_echo(locus: object) {
+  type Receive = (raw: string) => void;
+  const toClient = new Set<Receive>(), toServer = new Set<Receive>();
+  const received: { type: string; requestId?: string }[] = [];
+  const socket = (incoming: Set<Receive>, outgoing: Set<Receive>, record?: Receive): LocusWebSocketLike => ({
+    send(raw) { record?.(raw); for (const listener of [...outgoing]) listener(raw); },
+    close() {},
+    onMessage(listener) { incoming.add(listener); return () => { incoming.delete(listener); }; },
+    onClose() { return () => {}; },
+  });
+  const stop = bind_locus_websocket(locus, socket(toServer, toClient, raw => received.push(JSON.parse(raw))),
+    { principalId: "result-tester" });
+  const echo = hsonLiveMap.echo.create({ transport: test_echo_transport(socket(toClient, toServer)) });
+  return { echo, received, stop };
+}
+
+async function action_result_admission_cases(check: Check): Promise<void> {
+  const schema = Hson.schema`<type "data" content <saved "boolean">>`;
+  const exact = Hson.data.parse`<'10' -0 '2' <__proto__ true>>`;
+  type ResultFactory = (lateWrite: () => void) => unknown;
+  for (const route of ["direct", "Echo"] as const) {
+    await check(`${route} admits action results before any durable append or publication`, async () => {
+      let respond: ResultFactory = () => undefined;
+      let calls = 0, authorized = 0, reflected = 0, getterCalls = 0;
+      const persistence = new MemoryCheckpointAdapter();
+      const locus = await hsonLiveMap.locus.resume({ state: { json: { saved: false }, schema, access: "shared" } }, {
+        logicalMapId: `action-result-${route}`, persistence,
+        authorizeAction({ action, connection }) {
+          authorized++;
+          return action === "save" && connection?.principalId === "result-tester";
+        },
+        actions: {
+          // @ts-expect-error Exercise runtime admission of untyped JavaScript handler results.
+          save(context) {
+            calls++;
+            const saved = context.data.must("state").snap(["saved"]) === true;
+            const write = context.stage.data.must("state").at(["saved"]);
+            write.set(!saved);
+            return respond(() => write.set(saved));
+          },
+        },
+      });
+      const remote = route === "Echo" ? action_result_echo(locus) : undefined;
+      const map = locus_map_internal(locus);
+      const native = { score: -0 };
+      const publications: number[] = [];
+      const stop = locus.commits.observe(commit => { publications.push(commit.rev); native.score = 1; });
+      let expectedRev = 0;
+      try {
+        if (remote !== undefined) {
+          remote.echo.connect();
+          await remote.echo.session.create();
+        }
+        const cases: readonly ({ respond: ResultFactory } & ({ error: RegExp } | { result: HsonDataValue | undefined }))[] = [
+          { respond: () => new Date(0), error: /object prototype/ },
+          { respond: () => NaN, error: /number must be finite/ },
+          { respond: () => { throw new Error("handler threw after staging"); }, error: /handler threw after staging/ },
+          { respond: async () => { await Promise.resolve(); return new Date(0); }, error: /object prototype/ },
+          { respond: () => ({ get score() { getterCalls++; return 1; } }), error: /must be a data property/ },
+          { respond: lateWrite => new Proxy(native, {
+            getOwnPropertyDescriptor(target, key) {
+              reflected++;
+              assert.equal(locus.rev, expectedRev);
+              assert.throws(lateWrite, /Expired staged authoring scope/);
+              assert.throws(() => map.data.must("state").at(["saved"]).set(true), /exclusive Locus authority/);
+              return Reflect.getOwnPropertyDescriptor(target, key);
+            },
+          }), result: Hson.data.from({ score: -0 }) },
+          { respond: () => null, result: Hson.data.from(null) },
+          { respond: () => {}, result: undefined },
+          { respond: () => exact, result: exact },
+        ];
+        for (const test of cases) {
+          respond = test.respond;
+          const beforeCalls = calls, beforeAuthorized = authorized;
+          const pending = remote?.echo.action("save");
+          const result = await (pending ?? locus.dispatchAction({ type: "action", id: `save-${beforeCalls}`, name: "save" }));
+          assert.equal(calls, beforeCalls + 1);
+          assert.equal(authorized, beforeAuthorized + (remote === undefined ? 0 : 1));
+          if ("error" in test) {
+            assert.ok(result.type === "error" && !result.ok);
+            assert.equal(result.error.code, "LOCUS_ACTION_FAILED");
+            assert.match(result.error.message, test.error);
+            assert.equal(locus.rev, expectedRev, "a rejected action advanced the authority revision");
+            assert.equal(Object.hasOwn(result, "result"), false);
+            if (remote !== undefined && pending !== undefined) {
+              assert.equal(result.delivery, "executed");
+              const { request } = pending;
+              const status = await remote.echo.actionStatus(request.requestId);
+              assert.equal(status.state, "failed");
+              assert.ok(status.outcome?.state === "failed");
+              assert.equal(status.outcome.completionRev, expectedRev);
+              assert.deepEqual(status.outcome.error, result.error);
+              const retry = await remote.echo.retryAction(request);
+              assert.ok(retry.type === "error");
+              assert.equal(retry.delivery, "cached");
+              assert.equal(retry.completionRev, expectedRev);
+              assert.deepEqual(retry.error, result.error);
+              assert.equal(calls, beforeCalls + 1);
+              assert.deepEqual(remote.received.filter(frame => frame.requestId === request.requestId).map(frame => frame.type),
+                ["error", "action-status", "error"]);
+            }
+          } else {
+            assert.ok(result.type === "ack" && result.ok);
+            assert.equal(Object.hasOwn(result, "result"), test.result !== undefined);
+            if (test.result !== undefined) assert.ok(result.result?.equals(test.result));
+            if (route === "direct" && test.result === exact) assert.equal(result.result, exact);
+            expectedRev++;
+          }
+          assert.equal(result.completionRev, expectedRev);
+          assert.equal(result.seq, expectedRev);
+          assert.equal(locus.rev, expectedRev);
+          assert.equal(locus.data.must("state").snap(["saved"]), expectedRev % 2 === 1);
+          assert.equal(publications.length, expectedRev);
+          assert.equal(persistence.appendCalls.length, expectedRev);
+        }
+        assert.equal(getterCalls, 0);
+        assert.equal(reflected, 1);
+      } finally {
+        remote?.echo.dispose();
+        remote?.stop();
+        stop();
+        locus.dispose();
+      }
+    });
+  }
+}
+
 export async function locus_submission_ownership_cases(check: Check): Promise<void> {
+  await action_result_admission_cases(check);
   for (const route of ["root", "nested", "derived"] as const) for (const method of ["set", "replace"] as const) {
     await check(`${route} ${method} captures exact Data on an idle queue before mutation and revocation`, async () => {
       const locus = create(false);
@@ -382,7 +513,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
       value.revoke(); css.page.order[0]!.text = "p{color:blue}"; await adding;
       assert.ok(Object.is(map.data.must("added").snap(["n"]), -0)); assert.equal(map.doc.must("page").css.snapshot(), "p{color:red}");
       const payload = Proxy.revocable({ count: 1 }, {}), dispatched = aggregate.dispatch_action("capture", payload.proxy);
-      assert.equal(called, false); payload.revoke(); assert.deepEqual(await dispatched, { count: 1 });
+      assert.equal(called, false); payload.revoke(); assert.deepEqual((await dispatched)?.materialize(), { count: 1 });
       const before = map.capture(); await rejected(() => Reflect.apply(aggregate.add_libraries_internal, aggregate, [{ bad: { json: new Date() } }]));
       assert.deepEqual(map.capture(), before);
     } finally { aggregate.dispose(); }
