@@ -8,7 +8,11 @@ import { isMainThread, threadId } from "node:worker_threads";
 import { promisify } from "node:util";
 
 const eventFile = process.env.HSON_VALIDATION_EVENTS;
-if (eventFile) {
+const observerInstalled = Symbol.for("hson.validation.observer.installed");
+// A nested validation run can inherit the caller's preload and add its own
+// checkout copy. Both copies share one process, so install only one observer.
+if (eventFile && !process[observerInstalled]) {
+  process[observerInstalled] = true;
   let sequence = 0;
   const started = performance.now();
   const root = process.env.HSON_VALIDATION_ROOT;
