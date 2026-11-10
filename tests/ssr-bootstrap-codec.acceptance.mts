@@ -7,6 +7,7 @@ import {
 } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { ViewStateSnapshotCodecError } from "../src/api/livemap/livemap.document.view-state-codec.error.ts";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const utf8 = new TextEncoder();
@@ -67,7 +68,10 @@ assert.throws(() => encode_ssr_bootstrap({ ...equivalentSource,
   libraries: equivalentSource.libraries.map(entry => ({ ...entry, schemaDigest: "0".repeat(64) })) }),
   (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
 assert.equal(decoded.bootstrap.revision, 0);
-assert.equal(decoded.bootstrap.libraries.length, 2);
+assert.deepEqual(decoded.bootstrap.libraries.map(library => library.name), [
+  "state", "page", INTERACTION_RESERVED_LIBRARY_KEY,
+]);
+assert.equal(decoded.bootstrap.registry.libraries[2]?.scope, "hson-internal");
 const installedState = install_libraries_snapshot(decoded.bootstrap).map.data.must("state");
 if (String(installedState.mode) === "document") throw new Error("Expected data library.");
 assert.equal(Object.is((installedState.snap() as { value: number }).value, -0), true);
@@ -75,7 +79,9 @@ assert.equal(Object.is((installedState.snap() as { value: number }).value, -0), 
 const canonicalJson = decodeText(encoded);
 const parsed = JSON.parse(canonicalJson) as Record<string, unknown>;
 const beforeMalformed = map.capture();
-const existingLibraries = bootstrap.libraries.map(entry => require_livemap_library_internal(map, entry.name));
+const existingLibraries = bootstrap.libraries
+  .filter(entry => entry.name !== INTERACTION_RESERVED_LIBRARY_KEY)
+  .map(entry => ({ name: entry.name, handle: require_livemap_library_internal(map, entry.name) }));
 let malformedPublications = 0;
 const stopMalformed = map.commits.observe(() => { malformedPublications += 1; });
 for (const name of ["state", "page"]) {
@@ -104,7 +110,7 @@ for (const name of ["state", "page"]) {
       && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
     assert.throws(() => install_libraries_snapshot(malformed));
     assert.deepEqual(map.capture(), beforeMalformed);
-    bootstrap.libraries.forEach((library, index) => assert.equal(require_livemap_library_internal(map, library.name), existingLibraries[index]));
+    existingLibraries.forEach(({ name, handle }) => assert.equal(require_livemap_library_internal(map, name), handle));
     assert.equal(malformedPublications, 0);
   }
 }
