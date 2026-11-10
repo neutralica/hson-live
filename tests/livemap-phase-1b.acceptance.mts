@@ -8,6 +8,7 @@ import { ANY_DATA, ANY_DOCUMENT, Hson, add_interaction, enable_interactions, hso
 import { install_libraries_snapshot, type LiveMapCommit } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -91,7 +92,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
   assert.equal(commit.operations.length, 1);
   const operation = commit.operations[0]?.operation;
   assert.equal(operation !== undefined && "kind" in operation && operation.kind, "library-add");
-  assert.deepEqual(observations, [{ rev: 1, names: ["page", "state"] }]);
+  assert.deepEqual(observations, [{ rev: 1, names: ["page", "state", INTERACTION_RESERVED_LIBRARY_KEY] }]);
   assert.equal(map.doc.must("page").schema.get(), ANY_DOCUMENT);
   assert.equal(map.data.must("state").schema.get(), ANY_DATA);
   const explicit = hsonLiveMap.create();

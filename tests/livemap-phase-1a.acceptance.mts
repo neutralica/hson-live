@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, enable_interactions, hsonLiveMap } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -109,8 +110,10 @@ check("empty maps are complete runtimes with capture, restore, and ordinary fail
     assert.equal(map.rev, 0);
     const capture = map.capture();
     assert.equal(capture.revision, 0);
-    assert.deepEqual(capture.registry.libraries, []);
-    assert.deepEqual(capture.libraries, []);
+    assert.deepEqual(capture.registry.libraries.map(entry => [entry.name, entry.scope]), [
+      [INTERACTION_RESERVED_LIBRARY_KEY, "hson-internal"],
+    ]);
+    assert.deepEqual(capture.libraries.map(entry => entry.name), [INTERACTION_RESERVED_LIBRARY_KEY]);
     assert.deepEqual(install_libraries_snapshot(capture).map.capture(), capture);
     const commits: number[] = [];
     const stop = map.commits.observe((commit) => commits.push(commit.rev));

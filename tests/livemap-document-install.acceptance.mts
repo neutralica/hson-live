@@ -7,6 +7,7 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import type { LiveMapSnapshot } from "../src/types/livemap.types.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-install",
@@ -50,8 +51,9 @@ check("portable registry restore replaces document content and captured revision
 
 check("one-library registries use the same capture shape as multi-library registries", () => {
   const capture = registry('<main <item "one"/>/>').capture();
-  assert.equal(capture.libraries.length, 1);
+  assert.deepEqual(capture.libraries.map(entry => entry.name), ["page", INTERACTION_RESERVED_LIBRARY_KEY]);
   assert.equal(capture.libraries[0]?.name, "page");
+  assert.equal(capture.registry.libraries[1]?.scope, "hson-internal");
 });
 
 check("a detached snapshot can be restored after serialization", () => {

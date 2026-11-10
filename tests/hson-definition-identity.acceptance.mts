@@ -79,7 +79,8 @@ try {
   const sourceMap = hsonLiveMap.fromLibraries({ state: { json: { value: "x" }, schema: HsonSchema.fromHson(a) } });
   const snapshot = sourceMap.capture();
   const presentedSnapshot = { ...snapshot, registry: { ...snapshot.registry,
-    libraries: snapshot.registry.libraries.map(entry => ({ ...entry, schema: b as typeof entry.schema })) } };
+    libraries: snapshot.registry.libraries.map(entry => entry.name === "state"
+      ? { ...entry, schema: b as typeof entry.schema } : entry) } };
   const installed = install_libraries_snapshot(presentedSnapshot).map;
   assert.equal(installed.capture().registryDigest, snapshot.registryDigest);
   const installedLibrary = installed.data.must("state");
