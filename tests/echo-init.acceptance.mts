@@ -660,7 +660,9 @@ for (const stage of ["message", "close"] as const) {
   const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport: test_echo_transport(pair.client) });
   assert.equal("map" in echo, false);
   assert.equal(echo.sync.appliedRev, locus.rev);
-  assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible"]);
+  // Echo's composed registry always binds the internal interaction store;
+  // this is not an authority projection of that store or its descriptors.
+  assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible", "@hson/canonical-interactions"]);
   const composedCommits: number[] = [];
   const stopComposedCommits = echo.commits.observe((commit) => composedCommits.push(commit.rev));
 
@@ -683,7 +685,7 @@ for (const stage of ["message", "close"] as const) {
   assert.equal(echo.rev, beforeGrantRev + 1, "late initializer installs client-local topology");
   assert.equal(echo.sync.appliedRev, beforeGrantApplied);
   assert.equal(locus.rev, beforeGrantAuthority);
-  assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible", "local"]);
+  assert.deepEqual(echo.cut().libs.libraries.map((entry) => entry.name), ["visible", "local", "@hson/canonical-interactions"]);
 
   const local = echo.data.must("local");
   if (local.source !== "client-local" || String(local.mode) === "document") throw new Error("Expected local data handle.");
