@@ -15,7 +15,8 @@ events.case_begin("http1", "HTTP/1 finite operations and continuing synchronizat
 
 const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 } } });
 const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" },
-  { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["state", "ui"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }), actions: { echo: (_context, payload) => payload } });
+  { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["state", "ui"] }, authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }),
+  authorizeAction: ({ action }) => action === "echo", actions: { echo: (_context, payload) => payload } });
 const binding = bind_locus_http(locus, { endpoint: "/_hson" });
 const application: LiveHostApplication = {
   name: "echo-http",

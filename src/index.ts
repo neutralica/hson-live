@@ -201,6 +201,7 @@ export type {
   LocusSessionNow,
   LocusSessionHtmlNow,
   LocusActionContext,
+  LocusTriggerResult,
   LocusActionHandler,
   LocusActions,
   LocusLibraryDefinition,

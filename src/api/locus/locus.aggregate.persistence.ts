@@ -36,6 +36,7 @@ import {
   type LocusHostedAggregate,
   type LocusHostedAggregateOptions,
 } from "./locus.aggregate.js";
+import { capture_locus_action_definitions } from "./locus.action-validation.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 
 export type LocusDurableAggregateCommit = Readonly<Omit<PortableAggregateCommit, "format" | "operations"> & {
@@ -97,7 +98,7 @@ export type LocusHostedAggregatePersistedState = Readonly<{
 }>;
 
 /** Internal durable aggregate authority; it never lowers into solo Locus. */
-export type PersistentLocusHostedAggregate = Omit<LocusHostedAggregate, "run_exclusive"> & Readonly<{
+export type PersistentLocusHostedAggregate = Omit<LocusHostedAggregate, "run_exclusive" | "actionDefinition" | "defineAction" | "executeAction"> & Readonly<{
   checkpoint: () => Promise<void>;
   runtimeOwnership: readonly LocusDurableOwnershipEntry[];
 }>;
@@ -769,6 +770,7 @@ function persistent_view(
 export async function create_persistent_locus_hosted_aggregate_internal(
   options: PersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate> {
+  const definitions = capture_locus_action_definitions(options.actions);
   const aggregate = internal_livemap_aggregate_authority(options.map);
   if (options.scopedDocuments !== true && aggregate.libraries().some(id => aggregate.documentScopes(id) !== undefined)) {
     throw new Error("Scoped durable authority requires explicit private scoped preparation.");
@@ -780,7 +782,7 @@ export async function create_persistent_locus_hosted_aggregate_internal(
     ...hostedOptions,
     ...durability,
     uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
-  });
+  }, undefined, definitions);
   try {
     const snapshot = internal_livemap_aggregate_authority(locus.map).captureSemanticCheckpoint();
     await write_semantic_checkpoint(snapshot, persistence);
@@ -803,6 +805,7 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
   logicalMapId: string,
   state: LocusHostedAggregatePersistedState,
   options: RestorePersistentLocusHostedAggregateOptions,
+  definitions = capture_locus_action_definitions(options.actions),
 ): Promise<PersistentLocusHostedAggregate> {
   const validated = await validate_hosted_aggregate_state(logicalMapId, state, options.persistence);
   const validatedPosition = internal_livemap_aggregate_authority(validated.map).hostedPosition();
@@ -813,7 +816,7 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
     map: validated.map,
     ...durability,
     uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
-  });
+  }, undefined, definitions);
   if (locus.logicalMapId !== validated.checkpoint.logicalMapId
     || locus.incarnationId !== validated.checkpoint.incarnationId
     || locus.registryDigest !== validatedPosition.registryDigest
@@ -829,6 +832,7 @@ export async function load_persistent_locus_hosted_aggregate_internal(
   logicalMapId: string,
   options: RestorePersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate | undefined> {
+  const definitions = capture_locus_action_definitions(options.actions);
   let state: LocusHostedAggregatePersistedState | undefined;
   try {
     state = await options.persistence.load(logicalMapId);
@@ -840,5 +844,5 @@ export async function load_persistent_locus_hosted_aggregate_internal(
     );
   }
   if (state === undefined) return undefined;
-  return restore_persistent_locus_hosted_aggregate_internal(logicalMapId, state, options);
+  return restore_persistent_locus_hosted_aggregate_internal(logicalMapId, state, options, definitions);
 }

@@ -365,7 +365,8 @@ function socketPair(): Readonly<{
   add_interaction(authority, descriptor);
   let handled: HsonDataValue | undefined;
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
-      { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }), actions: { save: (_context, payload) => { handled = payload; } } });
+      { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }),
+    authorizeAction: ({ action }) => action === "save", actions: { save: (_context, payload) => { handled = payload; } } });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
   const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,

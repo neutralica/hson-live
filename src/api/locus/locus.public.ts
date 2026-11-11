@@ -23,7 +23,12 @@ function capture_configuration<T extends object>(input: T, durable: boolean): T 
   const captured: T = Object.create(null);
   for (const key of Reflect.ownKeys(input)) {
     if (typeof key !== "string" || !fields.includes(key)) throw new TypeError("Locus configuration contains an unsupported field.");
-    Object.defineProperty(captured, key, { value: Reflect.get(input, key), enumerable: true });
+    const value = Reflect.get(input, key);
+    if (key === "schema" && value !== undefined && (typeof value !== "object" || value === null
+      || Array.isArray(value) || Reflect.ownKeys(value).some(field => field !== "state"))) {
+      throw new TypeError("Locus schema options may contain only state. Configure action input in its definition.");
+    }
+    Object.defineProperty(captured, key, { value, enumerable: true });
   }
   return Object.freeze(captured);
 }

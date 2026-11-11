@@ -76,7 +76,25 @@ The first argument to `locus.create(definitions, configuration?)` and `locus.res
 
 A resumed durable authority gives reconnecting clients a projected snapshot for cursors at or before its loaded revision. This reestablishes client identity after restart even when durable authority revision and incarnation are unchanged.
 
-Configured actions receive authenticated `HsonDataValue` payloads in handlers, validators, authorizers, and normalized messages. Requests and handler/decoder results accept supported JavaScript values or carriers; strings are literal Data. Use `Hson.data.fromSource()` for encoded JSON/Hson. Wire encoding, replay, and deduplication retain the established exact encoding.
+## Application actions
+
+`locus.actions.define(name, handler, options?)` adds a function to the owning Locus. Names are nonempty strings. Duplicate names and reserved built-in Document action names throw. Construction and resume seed the same registry from `configuration.actions`. Registration leaves the authority revision and canonical state unchanged. Snapshots and checkpoints carry symbolic Descriptor references. Application setup supplies executable definitions each time a runtime starts.
+
+```ts
+const advanceSchema = Hson.schema`<type "data" content <step "number">>`;
+locus.actions.define("deck.advance", advanceSlide, {
+  input: { required: true, schema: advanceSchema },
+});
+const execution = await locus.actions.trigger("deck.advance", { step: 1 });
+```
+
+The equivalent startup configuration is `actions: { "deck.advance": { handler: advanceSlide, input: { required: true, schema: advanceSchema } }, "deck.reset": resetSlide }`. Durable resume captures and validates these definitions before it loads or writes persisted state.
+
+Input is optional unless `input.required` is true. A supplied Data Schema validates present input, including explicit `null`, on the exact Data carrier. Handlers receive a governed read context and staged writer, `HsonDataValue | undefined` for input, and the normalized action message. Requests and handler results accept supported JavaScript values or exact carriers. Strings are literal Data. Use `Hson.data.fromSource()` to admit encoded JSON or Hson. Omitted input reaches the handler as `undefined`.
+
+`trigger` submits the registered action through the trusted direct queue. Use `context.stage` for writes that belong to the invocation. The next queued operation can start after the handler finishes and the aggregate makes its acceptance decision. The returned `LocusTriggerResult` carries `id`, `ok`, `seq`, and `completionRev` and either an `ack` with optional exact `result` or an `error`. A successful invocation can complete at the existing revision. An uncertain durable append fences the authority and is reported through the existing `error.cause` field as a `LocusPersistenceError` with code `LOCUS_PERSISTENCE_APPEND_UNCERTAIN`.
+
+Remote custom actions require `authorizeAction` to return `true` for the validated submission and its session context. A projected Descriptor supplies a symbolic action reference. Built-in Document actions require a current session write grant both at admission and when execution begins. They also pass through `authorizeAction` when it is configured. Trusted direct actions run under the owning Locus without a remote session.
 
 ## Persistence
 

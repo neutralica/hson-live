@@ -109,7 +109,8 @@ try {
   let httpCalls = 0;
   let setupCalls = 0;
   locus = hsonLiveMap.locus.create({ "page": { document:
-      '<html <head <script src="/bundle.js" defer/>/> <main <button "Save"/>/>/>', access: "shared" } }, { interactions: [interaction], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }), actions: { save: () => { handled += 1; } } });
+      '<html <head <script src="/bundle.js" defer/>/> <main <button "Save"/>/>/>', access: "shared" } }, { interactions: [interaction], defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
+    authorizeAction: ({ action }) => action === "save", actions: { save: () => { handled += 1; } } });
   const map = locus_map_internal(locus);
   socketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {

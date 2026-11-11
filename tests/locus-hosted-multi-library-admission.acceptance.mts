@@ -57,7 +57,8 @@ other.at(["value"]).set(value); })();
 
 await check("aggregate whole-action FIFO remains ahead of the common admission seam", async () => {
   const map = make_map(), gate = deferred<void>(), entered: number[] = [];
-  const server = create_locus_hosted_aggregate_authority_internal<TestActions>({ libraries: test_application_catalog(map), map, actions: {
+  const server = create_locus_hosted_aggregate_authority_internal<TestActions>({ libraries: test_application_catalog(map), map,
+    authorizeAction: ({ action }) => action === "held", actions: {
     held: async (context, payload) => {
       const value = payload?.scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
       entered.push(value); if (value === 1) await gate.promise;

@@ -1,6 +1,11 @@
 import { require_interaction_system_internal } from "../../internal/interaction-storage.js";
 import { assert_locus_interaction_binding } from "./locus.projection.js";
-import { registered_locus_action } from "./locus.action-validation.js";
+import {
+  capture_locus_action_definitions,
+  locus_action_input_error,
+  type LocusActionDefinition,
+  type LocusActionRegistration,
+} from "./locus.action-validation.js";
 import { is_Node } from "../../core/node-guards.js";
 import { has_part_connector } from "../livemap/livemap.document.composition.js";
 import { prepare_locus_scoped_commit_internal } from "./locus.scoped-preparation.internal.js";
@@ -13,7 +18,10 @@ import type {
   LiveMapStagedWriter,
   LiveMapSynchronousAuthoring,
 } from "../../types/livemap.types.js";
-import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
+import type {
+  LocusActionOrigin,
+  LocusClientActionMessage,
+} from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
   type HostedAggregateCommit,
@@ -71,7 +79,7 @@ export type LocusHostedAggregateOptions = Readonly<{
   map: LiveMap;
   /** Public delivery selects scoped preparation only when the transaction needs it. @internal */
   scopedDocuments?: true | "auto";
-  actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
+  actions?: Readonly<Record<string, LocusActionRegistration<LocusHostedAggregateAction>>>;
   /** The existing Locus pre-accept/durability boundary, at aggregate granularity. */
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
   /** Validate and retain the portable record before the session roster cut. @internal */
@@ -99,6 +107,10 @@ export type LocusHostedAggregate = Readonly<{
   add_owned_libraries_internal: (definitions: readonly OwnedLibraryDefinition[], afterInstall?: () => void,
     ownership?: readonly Readonly<{ name: string; ownership: "private" | "shared" }>[],
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
+  actionDefinition: (name: string) => LocusActionDefinition<LocusHostedAggregateAction> | undefined;
+  defineAction: (capture: () => LocusActionDefinition<LocusHostedAggregateAction>) => void;
+  executeAction: (definition: LocusActionDefinition<LocusHostedAggregateAction>, payload: HsonDataValue | undefined,
+    message: LocusClientActionMessage | undefined, origin: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
   dispatch_action: (name: string, payload?: HsonDataInput, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -114,6 +126,7 @@ export type LocusHostedAggregate = Readonly<{
 export function create_locus_hosted_aggregate_internal(
   options: LocusHostedAggregateOptions,
   recovery?: Readonly<{ owner: object; authority: HostedAggregateCommit["authority"] }>,
+  definitions = capture_locus_action_definitions(options.actions),
 ): LocusHostedAggregate {
   const aggregate = internal_livemap_aggregate_authority(options.map);
   require_interaction_system_internal(aggregate);
@@ -121,6 +134,10 @@ export function create_locus_hosted_aggregate_internal(
   const authority = recovery?.authority ?? aggregate.hostedPosition().authority;
   const owner = recovery?.owner ?? Object.freeze({});
   const commitListeners = new Set<(commit: HostedAggregateCommit) => void>();
+  // Initial configuration is captured into the same runtime catalog as later
+  // definitions. Exact names are keys, including own names such as __proto__.
+  const actions = new Map(definitions.map(definition => [definition.name, definition]));
+  const actionDefinition = (name: string) => actions.get(name);
   let disposed = false;
   let faulted = false;
   let reservedDecision = false;
@@ -259,6 +276,20 @@ export function create_locus_hosted_aggregate_internal(
     return next;
   }
 
+  async function executeAction(
+    definition: LocusActionDefinition<LocusHostedAggregateAction>,
+    payload: HsonDataValue | undefined,
+    message: LocusClientActionMessage | undefined,
+    origin: LocusActionOrigin,
+  ): Promise<HsonDataValue | undefined> {
+    // Admission owns the definition and exact payload. The queue only supplies the writer.
+    return (await enqueue(writer => definition.handler(Object.freeze({
+      map: options.map,
+      origin,
+      stage: writer,
+    }), payload, message))).result;
+  }
+
   return Object.freeze({
     map: options.map,
     logicalMapId: authority.logicalMapId,
@@ -277,18 +308,30 @@ export function create_locus_hosted_aggregate_internal(
     }),
     add_owned_libraries_internal: (definitions, afterInstall, ownership, css) => enqueue_libraries(
       () => prepare_hosted_admitted_libraries_internal(options.map, owner, definitions, css), afterInstall, ownership),
+    actionDefinition,
+    defineAction(capture) {
+      if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
+      const definition = capture();
+      // Capture can call configuration getters. Check liveness and membership again before insertion.
+      if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
+      if (actions.has(definition.name)) throw new TypeError(`Locus action ${JSON.stringify(definition.name)} is already defined.`);
+      actions.set(definition.name, definition);
+    },
+    executeAction,
     async dispatch_action(name, payload, message, origin = directOrigin) {
-      const action = registered_locus_action(options.actions, name);
-      if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
+      if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
+      const definition = actionDefinition(name);
+      if (definition === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
+      const captured = message === undefined ? undefined : { ...message, name };
       const admittedPayload = payload === undefined ? undefined : admit_data_input(payload);
-      return (await enqueue(async (writer) => {
-        const context: LocusHostedAggregateActionContext = Object.freeze({
-          map: options.map,
-          origin,
-          stage: writer,
-        });
-        return action(context, admittedPayload, message);
-      })).result;
+      const error = locus_action_input_error(definition.input, admittedPayload);
+      if (error !== undefined) throw new Error(error);
+      if (captured !== undefined) {
+        if (admittedPayload === undefined) delete captured.payload;
+        else captured.payload = admittedPayload;
+        Object.freeze(captured);
+      }
+      return executeAction(definition, admittedPayload, captured, origin);
     },
     run_exclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
       const run = async (): Promise<TResult> => {

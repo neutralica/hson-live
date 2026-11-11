@@ -139,7 +139,8 @@ install_fake_document();
 
 await check("aggregate application handlers receive session origin externally and direct origin for trusted dispatch", async () => {
   const origins: unknown[] = [];
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }),
+    authorizeAction: ({ action }) => action === "probe", actions: {
       probe(context) { origins.push(context.origin); },
     } });
   const pair = socket_pair();
@@ -206,7 +207,8 @@ await check("independent aggregate endpoints use reload-safe client and request 
 });
 
 await check("aggregate retry request payloads detach nested records and arrays from caller mutation", async () => {
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(make_map()), map: make_map() }),
+    authorizeAction: ({ action }) => action === "stable", actions: {
       stable: (_context, payload) => payload,
     } });
   const pair = socket_pair();
@@ -303,21 +305,22 @@ await check("named document denial is terminal without mutation and the next que
   locus.dispose();
 });
 
-await check("application payload decoding precedes authorization and mutation", async () => {
+await check("application Data Schema validation precedes authorization and mutation", async () => {
   const authority = make_map();
   let authorizations = 0;
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, schema: {
-      actions: {
-        validated: {
-          payload: (value: unknown): value is HsonDataValue => value instanceof HsonDataValue && typeof (value.materialize() as { value?: unknown }).value === "number",
+  const locus = create_locus_fixture({
+    ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority,
+      authorizeAction() { authorizations += 1; return true; } }),
+    actions: {
+      validated: {
+        input: { schema: StateSchema, required: true },
+        handler(context, payload) {
+          const value = payload?.materialize() as { value: number };
+          context.stage.data.must("state").at(["value"]).set(value.value);
         },
       },
-    }, authorizeAction() { authorizations += 1; return true; } }), actions: {
-      validated: async (context, payload) => {
-        const value = (payload === undefined ? undefined : (payload).materialize()) as { value: number };
-        await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
-      },
-    } });
+    },
+  });
   const pair = socket_pair();
   bind_locus_websocket(locus, pair.server);
   const echo = create_recovery_test_driver({ transport: test_echo_transport(pair.client), map: make_projected_map(locus_map_internal(locus)) });
@@ -338,7 +341,8 @@ await check("application payload decoding precedes authorization and mutation", 
 await check("resumable session reattachment retains one projected aggregate authority domain", async () => {
   const authority = make_map();
   let sessionNumber = 0;
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessionId: () => `aggregate-session-${++sessionNumber}`, sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" } }),
+    authorizeAction: ({ action }) => action === "state.set", actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : (payload).materialize()) as { value: number };
         await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(value.value); })();
@@ -379,7 +383,8 @@ await check("resumable session reattachment retains one projected aggregate auth
 await check("retry, dedupe conflict, and action status use the hosted request contract", async () => {
   const authority = make_map();
   let executions = 0;
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" } }),
+    authorizeAction: ({ action }) => action === "state.set", actions: {
       "state.set": async (context, payload) => {
         const value = (payload === undefined ? undefined : (payload).materialize()) as { value: number };
         executions += 1;
@@ -424,7 +429,8 @@ await check("retry, dedupe conflict, and action status use the hosted request co
 await check("aggregate retained action lineage enforces exact principal continuity", async () => {
   const authority = make_map();
   let executions = 0;
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }),
+    authorizeAction: ({ action }) => action === "owned", actions: {
       owned() {
         executions += 1;
         return { owner: "alice" };
@@ -475,7 +481,8 @@ await check("aggregate retained action lineage enforces exact principal continui
 await check("built-ins and single- or cross-library application actions share one FIFO and revision stream", async () => {
   const authority = make_map();
   const order: string[] = [];
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority }),
+    authorizeAction: ({ action }) => ["state.only", "document.attrs.set", "cross.library"].includes(action), actions: {
       "state.only": async (context) => {
         order.push("state");
         await (() => { const draft = context.stage; draft.data.must("state").at(["value"]).set(1); })();
@@ -557,7 +564,8 @@ await check("replacement after admission retains the outcome but fences late del
   const handlerEntered = deferred();
   const handlerRelease = deferred();
   const authority = make_map();
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" } }),
+    authorizeAction: ({ action }) => action === "held", actions: {
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
@@ -604,7 +612,8 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const handlerEntered = deferred();
   const handlerRelease = deferred();
   const authority = make_map();
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" } }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(authority), map: authority, sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" } }),
+    authorizeAction: ({ action }) => action === "held", actions: {
       held: async (context) => {
         handlerEntered.resolve();
         await handlerRelease.promise;
@@ -712,21 +721,24 @@ await check("catalog admission ignores inherited entries and rejects non-executa
   assert.throws(() => hsonLiveMap.locus.create(definition, { actions }), /executable handler/);
 });
 
-await check("raw aggregate validation and dispatch independently require an own executable entry", async () => {
+await check("raw aggregate rejects invalid startup entries and admits only own executable definitions", async () => {
   const map = make_map();
   let executions = 0;
   const actions = { valid: () => { executions++; return 7; } };
-  Reflect.set(actions, "invalid", 42);
-  const server = create_locus_hosted_aggregate_authority_internal({ map, libraries: test_application_catalog(map), actions });
+  const options = { map, libraries: test_application_catalog(map) };
+  const before = map.capture();
+  assert.throws(() => create_locus_hosted_aggregate_authority_internal({ ...options, actions: { ...actions, invalid: 42 as never } }),
+    /executable handler/);
+  assert.deepEqual(map.capture(), before);
+  const server = create_locus_hosted_aggregate_authority_internal({ ...options, actions });
   try {
-    const before = JSON.stringify(map.capture());
     for (const name of ["toString", "constructor", "valueOf", "missing", "invalid"]) {
       await assert.rejects(server.dispatch_action(name), /Unknown hosted aggregate Locus action/);
       const result = await server.dispatch_message({ type: "action", id: name, name });
       assert.ok(result.type === "error" && result.error.code === "LOCUS_UNKNOWN_ACTION");
     }
     assert.equal(executions, 0);
-    assert.equal(JSON.stringify(map.capture()), before);
+    assert.deepEqual(map.capture(), before);
     assert.equal((await server.dispatch_action("valid"))?.scalar(), 7);
     assert.equal(executions, 1);
   } finally { server.dispose(); }

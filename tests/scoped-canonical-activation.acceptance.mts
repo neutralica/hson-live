@@ -46,6 +46,7 @@ for (const selected of ["control", "page", "flat"] as const) {
     hidden: { access: "private", document: scopedPage },
     data: { access: "shared", json: { count: 0 } },
   }, { interactions: descriptors, authorizeProjection: ({ requested }) => requested,
+    authorizeAction: ({ action }) => action === "save",
     actions: { save: (_context, payload) => { actions.push(payload); } } });
   const binding = bind_locus_http(locus, { endpoint: "/scoped-interactions" });
   const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://scoped.test/scoped-interactions",

@@ -193,7 +193,9 @@ function page_item(map: ReturnType<typeof make_map>): import("../src/core/types.
 await check("the public Locus and Echo paths bootstrap one typed aggregate mirror and replay atomic named-library actions", async () => {
   install_fake_document();
   let serverMap = make_map();
-  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }), actions: {
+  const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap }),
+    authorizeAction: ({ action }) => ["theme.all", "state.only", "invalid", "document.attrs.set", "document.content.replace"].includes(action),
+    actions: {
       "theme.all": async (context) => {
         await (() => { const draft = context.stage; draft.data.must("state").at(["theme"]).set("dark");
 draft.data.must("colors").at(["theme"]).set("blue");
@@ -531,7 +533,8 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   install_fake_document();
   const persistence = new MemoryPersistence();
   let serverMap = make_map();
-  const host = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
+  const host = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(serverMap), map: serverMap, logicalMapId: "h5-persisted-map", persistence }),
+    authorizeAction: ({ action }) => action === "state.page" || action === "page.retire", actions: {
       "state.page": async (context) => {
         await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set(2);
 draft.doc.must("page").graph(insert_item()); })();
@@ -581,7 +584,8 @@ draft.doc.must("page").graph(insert_item()); })();
 
   let restoredMap = make_map();
   const restartStarted = performance.now();
-  const restored = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(restoredMap), map: restoredMap, logicalMapId: "h5-persisted-map", persistence }), actions: {
+  const restored = await resume_locus_fixture({ ...authority_definition_from_fixture_options({ ...test_public_projection(restoredMap), map: restoredMap, logicalMapId: "h5-persisted-map", persistence }),
+    authorizeAction: ({ action }) => action === "state.page", actions: {
       "state.page": async (context) => {
         await (() => { const draft = context.stage; draft.data.must("state").at(["count"]).set(3);
 draft.doc.must("page").graph(insert_item()); })();

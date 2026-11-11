@@ -1075,6 +1075,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const configured = test_public_projection(authorityMap);
   const locus = create_locus_fixture({ ...authority_definition_from_fixture_options({ ...configured, map: authorityMap }),
     interactions: [authoritative("echo", "save", exact)],
+    authorizeAction: ({ action }) => action === "save",
     actions: { save: (_context: LocusActionContext, payload: HsonDataValue | undefined) => { handled = payload; } } });
   const captured = internal_livemap_aggregate_authority(locus_map_internal(locus)).captureHosted();
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,

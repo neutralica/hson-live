@@ -17,6 +17,7 @@ import type {
 import type { JsonValue } from "../core/types.js";
 import type { LibraryCut, LibraryCommits } from "./governor.types.js";
 import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
+import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -24,6 +25,7 @@ import type {
   LocusActionStatusState,
   LocusActionTerminalOutcome,
   LocusClientActionResult,
+  LocusTriggerResult,
   LocusClientActionMessage,
   LocusConnectionContext,
   LocusDocumentActionFn,
@@ -79,7 +81,18 @@ export type LocusActions<
   TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
+  [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>
+    | (LocusActionDefinitionOptions & Readonly<{ handler: LocusActionHandler<TActions[TName], TMap, TActions> }>);
+}>;
+
+/** Input admission shared by startup and additive action definitions. */
+export type LocusActionDefinitionOptions = Readonly<{
+  input?: Readonly<{
+    /** Defaults to false, including when a Schema is supplied. */
+    required?: boolean;
+    /** A public Hson Schema handle compiled in Data mode. */
+    schema?: HsonSchema;
+  }>;
 }>;
 
 type LocusConfigurationOptions<
@@ -97,7 +110,8 @@ type LocusConfigurationOptions<
   sessionId?: LocusSessionId | (() => LocusSessionId);
   sessions?: LocusSessionOptions;
   actionDedupe?: LocusActionDedupeOptions;
-  schema?: Pick<LocusSchema<JsonValue | undefined, TActions>, "actions">;
+  schema?: LocusSchema;
+  /** Remote application actions require an affirmative decision. */
   authorizeAction?: LocusActionAuthorizer<TActions>;
 }>;
 
@@ -472,6 +486,13 @@ export type Locus<
   readonly rev: number;
   activity: LocusActivity;
   session: LocusSessionApi;
+  actions: Readonly<{
+    /** Add an executable definition to this Locus runtime. */
+    define: (name: string, handler: LocusActionHandler<HsonDataInput | undefined, TMap>,
+      options?: LocusActionDefinitionOptions) => void;
+    /** Submit a registered action through trusted direct authority. */
+    trigger: (name: string, input?: HsonDataInput) => Promise<LocusTriggerResult>;
+  }>;
   actionRequests: LocusActionDedupeInspector;
   stage: LocusStage<TMap>;
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusClientActionResult>;

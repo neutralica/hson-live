@@ -16,6 +16,9 @@ import {
   type LocusHostedAggregatePersistenceAdapter,
   type LocusDurableOwnershipEntry,
 } from "./locus.aggregate.persistence.js";
+import { capture_locus_action_definitions, type LocusActionDefinition } from "./locus.action-validation.js";
+import type { LocusActionHandler } from "../../types/locus.types.js";
+import type { HsonDataInput } from "../data/hson-data.js";
 import { create_registry_locus_internal } from "./locus.registry.js";
 import type { LocusHostedAggregateRecovery } from "./locus.aggregate.authority.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
@@ -83,6 +86,7 @@ async function persistent_view<
   TActions extends LocusActionPayloads,
 >(
   options: DurableRegistryOptions<TMap, TActions>,
+  definitions: readonly LocusActionDefinition<LocusActionHandler<HsonDataInput | undefined, TMap, TActions>>[],
   scopedDocuments?: true | "auto",
   recovery?: LocusHostedAggregateRecovery,
   runtimeOwnership = new Map<string, "private" | "shared">(),
@@ -133,7 +137,7 @@ async function persistent_view<
       if (record === undefined) throw new Error("Prepared durable aggregate record is unavailable.");
       return append_durable_commit(persistence, record);
     },
-    }); } catch (cause) {
+    }, definitions); } catch (cause) {
       if (recovery === undefined && exposureAuthority.hostedPosition().revision === 0) {
         exposureAuthority.setInitialHostedAuthority(suppliedAuthority);
       }
@@ -178,6 +182,8 @@ export async function resume_registry_locus<
   options: DurableRegistryOptions<TMap, TActions>,
   internal: Readonly<{ scopedDocuments?: true | "auto" }> = {},
 ): Promise<Locus<TMap, TActions>> {
+  // Admit executable configuration before even calling the adapter's load method.
+  const definitions = capture_locus_action_definitions(options.actions);
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
   const probe = Object.freeze({});
   initialAuthority.claimManagement(probe);
@@ -198,7 +204,7 @@ export async function resume_registry_locus<
   });
   if (restored === undefined) {
     assertInitialCurrent();
-    return persistent_view(options, internal.scopedDocuments);
+    return persistent_view(options, definitions, internal.scopedDocuments);
   }
   try {
     assertInitialCurrent();
@@ -239,7 +245,7 @@ export async function resume_registry_locus<
     assertInitialCurrent();
     // Build the durable owner at the prepared position, then install and publish.
     const checkpoint = prepare_livemap_semantic_checkpoint_internal(options.map, restoredCheckpoint);
-    return persistent_view({ ...options, libraries: combinedCatalog }, internal.scopedDocuments,
+    return persistent_view({ ...options, libraries: combinedCatalog }, definitions, internal.scopedDocuments,
       { checkpoint, owner: Object.freeze({}), projectionPolicy }, runtimeOwnership);
   } finally { restored.dispose(); }
 }

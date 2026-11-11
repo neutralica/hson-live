@@ -10,7 +10,6 @@ import type {
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
-import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LocusActionId,
   LocusActionRequestId,
@@ -151,16 +150,15 @@ export type LocusConnectionContext = Readonly<{
 
 export type LocusActionAuthorizationContext<
   TActions extends LocusActionPayloads = LocusActionPayloads,
-> = {
-  [TName in keyof TActions & string]: Readonly<{
-    action: TName;
-    session: LocusActionAuthorizationSession;
-    payload: HsonDataValue | undefined;
-    logicalMapId: LocusLogicalMapId;
-    incarnationId: LocusIncarnationId;
-    connection?: LocusConnectionContext;
-  }>;
-}[keyof TActions & string];
+> = Readonly<{
+  /** Startup names are suggested, and additive registration can supply any string. */
+  action: (keyof TActions & string) | (string & {});
+  session: LocusActionAuthorizationSession;
+  payload: HsonDataValue | undefined;
+  logicalMapId: LocusLogicalMapId;
+  incarnationId: LocusIncarnationId;
+  connection?: LocusConnectionContext;
+}>;
 
 export type LocusActionAuthorizer<
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -168,18 +166,8 @@ export type LocusActionAuthorizer<
   context: LocusActionAuthorizationContext<TActions>,
 ) => boolean | Promise<boolean>;
 
-export type LocusActionSchema<TPayload extends HsonDataInput | undefined = HsonDataInput | undefined> = Readonly<{
-  payload?: HsonSchema | LocusValidator<HsonDataValue | undefined> | LocusSchemaDecoder<unknown>;
-}>;
-
-export type LocusSchema<
-  TState = JsonValue | undefined,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = Readonly<{
+export type LocusSchema<TState = JsonValue | undefined> = Readonly<{
   state?: LocusValidator<TState> | LocusSchemaDecoder<TState>;
-  actions?: Readonly<{
-    [TName in keyof TActions & string]?: LocusActionSchema<TActions[TName]>;
-  }>;
 }>;
 
 export type LocusClientActionMessageFor<
@@ -284,6 +272,11 @@ export type LocusServerErrorMessage = Readonly<{
 }>;
 
 export type LocusClientActionResult = LocusServerAckMessage | LocusServerErrorMessage;
+
+/** Local execution always reports the invocation identity and completion position. */
+export type LocusTriggerResult =
+  | (LocusServerAckMessage & Required<Pick<LocusServerAckMessage, "completionRev">>)
+  | (LocusServerErrorMessage & Required<Pick<LocusServerErrorMessage, "id" | "ok" | "completionRev">>);
 
 export type LocusActionDelivery = "executed" | "joined" | "cached" | "rejected";
 

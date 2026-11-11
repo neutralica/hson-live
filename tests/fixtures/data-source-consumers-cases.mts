@@ -4,7 +4,7 @@ import { admit_data_input, decode_hson_data_internal, encode_hson_data_internal,
 import { admit_echo_action_payload } from "../../src/api/echo/echo.request.js";
 import { decodeEndpointMessage, encodeEndpointMessage } from "../../src/api/echo/echo.semantic-codec.internal.js";
 import { decode_locus_message, encode_locus_client_message } from "../../src/api/locus/locus.protocol.js";
-import { decode_locus_action_payload } from "../../src/api/locus/locus.action-validation.js";
+import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.remote-action.internal.js";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.js";
 import { document_composition_options } from "../../src/api/livemap/livemap.document.composition.js";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.js";
@@ -291,29 +291,34 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     assert.equal(publications, 0); assert.equal(map.rev, 0);
   });
 
-  await check("Locus payloads, validators, authorizers, decoder output and results use authenticated values", async () => {
-    const received: HsonDataValue[] = [], validated: HsonDataValue[] = [];
-    let resultValue: HsonDataInput = {}, decoderValue: HsonDataInput = {};
+  await check("Locus Schema admission, authorizers, handlers and results use authenticated values", async () => {
+    const received: HsonDataValue[] = [], authorized: HsonDataValue[] = [];
+    let resultValue: HsonDataInput = {};
     const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {
-      actions: { probe: (_context, payload) => { received.push(payload!); return resultValue; }, decoded: (_context, payload) => { received.push(payload!); } },
-      schema: { actions: { decoded: { payload: input => {
-        if (input !== undefined) { assert.ok(input instanceof HsonDataValue); validated.push(input); }
-        return { ok: true, value: decoderValue };
-      } } } },
+      actions: {
+        probe: { input: { schema: ANY_DATA }, handler: (_context, payload) => { received.push(payload!); return resultValue; } },
+      },
+      authorizeAction: ({ action, payload }) => {
+        assert.ok(payload instanceof HsonDataValue);
+        authorized.push(payload);
+        return action === "probe";
+      },
     });
     let publications = 0; locus.commits.observe(() => { publications++; });
     const publicFrom = HsonDataValue.from;
     try {
       HsonDataValue.from = () => { throw new Error("A public factory cannot control action admission."); };
       for (const value of [...literals, Hson.data.fromSource(orderedJson), Hson.data.fromSource(orderedHson)]) {
-        const expected = Hson.data.from(value); resultValue = value; decoderValue = value;
+        const expected = Hson.data.from(value); resultValue = value;
         const result = await locus.dispatchAction({ type: "action", id: "value", name: "probe", payload: value });
-        assert.equal(result.type, "ack"); if (result.type !== "ack") throw new Error("Missing acknowledgment.");
-        assert.ok(result.result?.equals(expected)); assert.ok(received.at(-1)?.equals(expected));
-        assert.equal((await locus.dispatchAction({ type: "action", id: "decoder", name: "decoded", payload: expected })).type, "ack");
-        assert.strictEqual(validated.at(-1), expected); assert.ok(received.at(-1)?.equals(expected));
-        const decoded = decode_locus_action_payload(() => ({ ok: true, value }), undefined);
-        assert.ok(decoded.ok); assert.ok(decoded.value?.equals(expected));
+        assert.ok(result.type === "ack" && result.result?.equals(expected));
+        assert.ok(received.at(-1)?.equals(expected));
+        const remote = await admit_locus_remote_action_internal(locus, {
+          message: { type: "action", id: "exact", name: "probe", payload: expected },
+        });
+        assert.ok(remote.type === "ack" && remote.result?.equals(expected));
+        assert.strictEqual(authorized.at(-1), expected);
+        assert.strictEqual(received.at(-1), expected);
       }
       const count = received.length;
       for (const payload of invalidValues) {

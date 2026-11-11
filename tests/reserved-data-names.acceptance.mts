@@ -144,16 +144,14 @@ await check("D2 direct Part Data rejects before writing; source validation stays
   assert.match(map.doc.must("valid").render(), /<p>\$_meta _hson_root<\/p>/);
 });
 
-await check("action payloads and decoder outputs reject before handlers; results cannot certify success", async () => {
-  let executions = 0, decoderValue: unknown = null, resultValue: unknown = null;
+await check("action input rejects before handlers and invalid computed results cannot certify success", async () => {
+  let executions = 0, computations = 0, resultValue: unknown = null;
   const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {
     actions: {
       probe: () => { executions++; },
-      decoded: () => { executions++; },
       // @ts-expect-error Deliberately invalid output exercises runtime admission.
-      result: () => resultValue,
+      result: () => { computations++; return resultValue; },
     },
-    schema: { actions: { decoded: { payload: () => ({ ok: true, value: decoderValue }) } } },
   });
   let publications = 0;
   locus.commits.observe(() => { publications++; });
@@ -163,15 +161,12 @@ await check("action payloads and decoder outputs reject before handlers; results
       assert.equal(rejected.type, "error");
       assert.equal(rejected.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
       assert.equal(executions, 0);
-      decoderValue = payload;
-      const decoded = await locus.dispatchAction({ type: "action", id: "decoded", name: "decoded" });
-      assert.equal(decoded.type, "error");
-      assert.equal(executions, 0);
       resultValue = payload;
       const result = await locus.dispatchAction({ type: "action", id: "result", name: "result" });
       assert.equal(result.type, "error");
       if (result.type === "error") assert.equal(result.error.code, "LOCUS_ACTION_FAILED");
     }
+    assert.equal(computations, invalidValues.length);
     for (const source of sources) assert.throws(() => Hson.data.fromSource(source));
     assert.equal(locus.rev, 0); assert.equal(publications, 0);
     assert.deepEqual(locus.data.must("state").snap(), { value: 0 });

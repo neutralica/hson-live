@@ -1,6 +1,5 @@
 import type { PreparedLiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
 import type { LocusHostedProjectionPolicy } from "./locus.projection.js";
-import { registered_locus_action } from "./locus.action-validation.js";
 import { is_locus_document_action_name } from "./locus.document-actions.js";
 import type { OwnedLibraryDefinition } from "../livemap/livemap.libraries.js";
 import { own_document_quads } from "../livemap/livemap.document.quad.js";
@@ -22,12 +21,12 @@ import type {
   LocusActionTerminalOutcome,
   LocusClientActionMessage,
   LocusClientActionResult,
+  LocusTriggerResult,
   LocusConnectionContext,
   LocusDisposer,
   LocusSessionId,
   LocusSessionOptions,
   LocusActionDedupeOptions,
-  LocusSchema,
   LocusLibraryCatalogEntry,
   LocusLibraryOwnership,
   LocusProjectionAuthorizer,
@@ -41,13 +40,14 @@ import { locus_client_error_message } from "./locus.client-error.js";
 import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
+import { make_locus_action_response } from "./locus.action-response.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_ownership_entries, snapshot_locus_requested_projection, type LocusEffectiveProjection } from "./locus.projection.js";
 import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, projected_registry_digest, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
 import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal, authority_projection_state_fingerprint_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { require_interaction_system_internal } from "../../internal/interaction-storage.js";
-import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
+import { capture_locus_action_definitions, locus_action_input_error, type LocusActionRegistration } from "./locus.action-validation.js";
 import {
   resolve_locus_document_action,
   type LocusDocumentActionTarget,
@@ -67,7 +67,10 @@ import {
 } from "./locus.aggregate.js";
 import {
   admit_locus_aggregate_external_action,
+  capture_locus_action_message,
   type LocusAggregateExternalActionAttempt,
+  type LocusAggregateAdmittedAction,
+  type LocusAggregateValidatedAction,
   type LocusAggregateActionAuthorityInternals,
 } from "./locus.aggregate.action-admission.js";
 import {
@@ -256,7 +259,7 @@ export type LocusHostedAggregateAuthorityOptions<
   libraries: readonly LocusLibraryCatalogEntry[];
   defaultProjection?: LocusRequestedProjection;
   authorizeProjection?: LocusProjectionAuthorizer;
-  actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
+  actions?: Readonly<Record<string, LocusActionRegistration<LocusHostedAggregateAction>>>;
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
   prepareGate?: (input: LocusHostedAggregateGateInput) => void;
   maxWireBytes?: number;
@@ -267,7 +270,6 @@ export type LocusHostedAggregateAuthorityOptions<
   sessionId?: LocusSessionId | (() => LocusSessionId);
   sessions?: LocusSessionOptions;
   actionDedupe?: LocusActionDedupeOptions;
-  schema?: Pick<LocusSchema<JsonValue | undefined, TActions>, "actions">;
   /** Internal deterministic interleave seam for pending-live proof coverage. */
   internal?: Readonly<{
     /** A restored runtime cannot accept an old client's equal-revision identity as current. */
@@ -303,8 +305,9 @@ export type LocusHostedAggregateSocketServer<
   /** @internal Continue sources already owned by public admission. */
   add_owned_libraries: (definitions: readonly OwnedLibraryDefinition[], ownership?: Readonly<Record<string, Exclude<LocusLibraryOwnership, "local">>>,
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<void>;
+  defineAction: LocusHostedAggregate["defineAction"];
   dispatch_action: LocusHostedAggregate["dispatch_action"];
-  dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
+  dispatch_message: (message: LocusClientActionMessage, fromTrigger?: boolean) => Promise<LocusTriggerResult>;
   create_session: (request: LocusRequestedProjection, options?: import("../../types/locus.types.js").LocusSessionCreateOptions) => Promise<LocusSessionId>;
   sessions: Readonly<{ key: ReturnType<typeof make_locus_session_manager>["key"]; binding: ReturnType<typeof make_locus_session_manager>["binding"]; credential: ReturnType<typeof make_locus_session_manager>["credential"]; debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection, context?: LocusConnectionContext, expectedKey?: object) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
@@ -329,6 +332,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: LocusHostedAggregateAuthorityOptions<TActions>,
+  definitions = capture_locus_action_definitions(options.actions),
 ): LocusHostedAggregateSocketServer<TActions> {
   const maxWireBytes = bounded(
     options.maxWireBytes,
@@ -372,12 +376,12 @@ export function create_locus_hosted_aggregate_authority_internal<
   let releaseOnConstructionFailure: (() => void) | undefined;
   let releaseSessionsOnConstructionFailure: (() => void) | undefined;
   let releaseActionsOnConstructionFailure: (() => void) | undefined;
+  let uncertainAppendCause: LocusPersistenceError | undefined;
   try {
   let sessions!: ReturnType<typeof make_locus_session_manager>;
   const locus = create_locus_hosted_aggregate_internal({
     map: options.map,
     ...(options.scopedDocuments === undefined ? {} : { scopedDocuments: options.scopedDocuments }),
-    ...(options.actions === undefined ? {} : { actions: options.actions }),
     ...(options.gate === undefined ? {} : { gate: options.gate }),
     ...(options.prepareGate === undefined ? {} : { prepareGate: options.prepareGate }),
     beforeAccept({ transition, commit }) {
@@ -425,8 +429,12 @@ export function create_locus_hosted_aggregate_authority_internal<
       });
     },
     onFault: () => fault_authority(),
-    uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
-  }, recovery === undefined ? undefined : { owner: recovery.owner, authority: initial.authority });
+    uncertainGateFailure(cause) {
+      if (!(cause instanceof LocusPersistenceError) || cause.code !== "LOCUS_PERSISTENCE_APPEND_UNCERTAIN") return false;
+      uncertainAppendCause = cause;
+      return true;
+    },
+  }, recovery === undefined ? undefined : { owner: recovery.owner, authority: initial.authority }, definitions);
   releaseOnConstructionFailure = locus.dispose;
   let seq = 0;
   let generatedSessionId = 0;
@@ -1305,23 +1313,11 @@ export function create_locus_hosted_aggregate_authority_internal<
   }
 
   async function execute_action(
-    request: Extract<HostedRequest, { type: "action" }>,
-    payload: HsonDataValue | undefined,
-    origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
+    admitted: LocusAggregateAdmittedAction,
+    fromTrigger = false,
   ): Promise<LocusActionTerminalOutcome> {
     try {
-      let result: HsonDataValue | undefined;
-      if (is_locus_document_action_name(request.name)) {
-        const { payload: _wirePayload, ...requestWithoutPayload } = request;
-        const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: payload }) }), origin);
-        if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
-        await locus.stage(validated.executeDocument);
-        result = undefined;
-      } else {
-        const { payload: _wirePayload, ...requestWithoutPayload } = request;
-        const publicRequest = Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: payload }) });
-        result = await locus.dispatch_action(request.name, payload, publicRequest, origin);
-      }
+      const result = await admitted.run();
       seq += 1;
       return Object.freeze({
         state: "succeeded",
@@ -1330,6 +1326,9 @@ export function create_locus_hosted_aggregate_authority_internal<
         ...(result === undefined ? {} : { result }),
       });
     } catch (cause) {
+      // Only the durable gate can establish uncertainty. Preserve its safe
+      // error as the cause for a local trigger, with the existing action code.
+      const uncertain = fromTrigger && cause === uncertainAppendCause ? uncertainAppendCause : undefined;
       return Object.freeze({
         state: "failed",
         seq,
@@ -1337,6 +1336,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         error: Object.freeze({
           code: "LOCUS_ACTION_FAILED",
           message: locus_client_error_message(cause, "Hosted aggregate action failed."),
+          ...(uncertain === undefined ? {} : { cause: new LocusPersistenceError(uncertain.code, uncertain.message) }),
         }),
       });
     }
@@ -1355,7 +1355,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   });
 
   function admit_external_action(
-    attempt: LocusAggregateExternalActionAttempt<TActions>,
+    attempt: LocusAggregateExternalActionAttempt,
   ) {
     return admit_locus_aggregate_external_action(actionAuthority, attempt);
   }
@@ -1363,7 +1363,7 @@ export function create_locus_hosted_aggregate_authority_internal<
   async function admit_ephemeral_remote_action(
     ingress: LocusRemoteActionIngress<TActions>,
   ): Promise<LocusClientActionResult> {
-    const message = ingress.message;
+    const message = capture_locus_action_message(ingress.message);
     const connection = ingress.connection === undefined
       ? undefined
       : Object.freeze({
@@ -1374,10 +1374,7 @@ export function create_locus_hosted_aggregate_authority_internal<
         });
     let live = true;
     const attachment = Object.freeze({ fence: () => { live = false; } });
-    const effectiveProjection = await normalize_locus_effective_projection(projectionPolicy, { libraries: [] }, connection);
-    if (admissionBarrier !== undefined) await admissionBarrier;
-    const created = sessions.create(next_ephemeral_session_id(), false, attachment, () => {}, () => 0, connection, effectiveProjection);
-    if (!created.ok) {
+    const unavailable = (): LocusClientActionResult => {
       return Object.freeze({
         type: "error",
         id: message.id,
@@ -1391,7 +1388,12 @@ export function create_locus_hosted_aggregate_authority_internal<
           : {}),
         error: Object.freeze({ code: "LOCUS_DISPOSED", message: "Locus is disposed." }),
       });
-    }
+    };
+    if (disposed) return unavailable();
+    const effectiveProjection = await normalize_locus_effective_projection(projectionPolicy, { libraries: [] }, connection);
+    if (admissionBarrier !== undefined) await admissionBarrier;
+    const created = sessions.create(next_ephemeral_session_id(), false, attachment, () => {}, () => 0, connection, effectiveProjection);
+    if (!created.ok) return unavailable();
     const origin = Object.freeze({
       kind: "session" as const,
       sessionId: created.value.sessionId,
@@ -1430,7 +1432,7 @@ export function create_locus_hosted_aggregate_authority_internal<
       resumable: connection.sessionResumable,
     });
     const admitted = await admit_external_action({
-      message: request as LocusClientActionMessage<TActions>,
+      message: request,
       origin,
       ...(connection.context === undefined ? {} : { connection: connection.context }),
       attachmentCurrent: () => attachment_current(connection, capturedSessionId, capturedEpoch),
@@ -1442,10 +1444,15 @@ export function create_locus_hosted_aggregate_authority_internal<
   function validate_action_request(
     request: Extract<HostedRequest, { type: "action" }>,
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
-  ): Readonly<{ ok: true; payload: HsonDataValue | undefined; executeDocument?: (draft: LocusHostedAggregateStageWriter) => void }> | Readonly<{ ok: false; code: string; message: string }> {
+    registeredOnly = false,
+  ): LocusAggregateValidatedAction {
+    if (disposed) return uncertainAppendCause === undefined
+      ? Object.freeze({ ok: false, code: "LOCUS_DISPOSED", message: "Locus is disposed." })
+      : Object.freeze({ ok: false, code: "LOCUS_ACTION_FAILED", message: "Hosted aggregate Locus authority is closed or faulted." });
     try {
-      const admittedPayload = request.payload === undefined ? undefined : admit_data_input(request.payload);
-      if (is_locus_document_action_name(request.name)) {
+      const { payload, ...envelope } = request;
+      const admittedPayload = payload === undefined ? undefined : admit_data_input(payload);
+      if (!registeredOnly && is_locus_document_action_name(request.name)) {
         const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
         const libraryName = required_string(record.library);
         if (origin.kind === "session" && (libraryName === undefined
@@ -1466,45 +1473,52 @@ export function create_locus_hosted_aggregate_authority_internal<
         const normalizedCandidate = Object.freeze({ library: libraryName, ...normalizedRecord });
         if (!is_locus_json_value(normalizedCandidate)) throw new Error("Hosted document action payload is not canonical JSON.");
         const normalized: JsonValue = normalizedCandidate;
+        const executeDocument = (draft: LocusHostedAggregateStageWriter) => {
+          // Check the current grant when authority work starts. Transport detach alone
+          // does not cancel an admitted write, but a revoked session or grant does.
+          const projection = origin.kind === "session" ? sessions.projection(origin.sessionId) : undefined;
+          if (origin.kind === "session" && (projection === undefined
+            || !projection.includesLibrary(libraryName) || !projection.canAuthorDocument(libraryName))) {
+            throw new Error("Document authoring is unavailable for this session.");
+          }
+          const target = draft.doc.must(libraryName);
+          if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
+          const actionTarget = document_action_target(target, aggregate, identity);
+          resolution.execute({ ...actionTarget, css: (operation, subjectContext) => {
+            if (subjectContext === undefined) return target.css(operation);
+            const at = subjectContext.at;
+            if (origin.kind !== "session" || at.sessionId !== origin.sessionId || projection === undefined
+              || at.logicalMapId !== locus.logicalMapId || at.incarnationId !== locus.incarnationId
+              || at.projectionSequence !== sessions.projection_sequence(origin.sessionId) || at.revision !== locus.rev) {
+              throw new Error("Document CSS subject correspondence position is stale or unauthorized.");
+            }
+            const assertCurrent = aggregate.captureFence();
+            const translated = resolve_document_css_action_subjects(operation, subjectContext, {
+              owner: identity, root: aggregate.root(identity), overlay: aggregate.documentOverlay(identity),
+              issued: aggregate.identityEpoch().issued(), scopes: aggregate.documentScopes(identity), assertCurrent,
+            });
+            assertCurrent();
+            return target.css(translated);
+          } });
+        };
         return Object.freeze({
           ok: true,
           payload: admit_data_input(normalized),
-          executeDocument: (draft: LocusHostedAggregateStageWriter) => {
-            const target = draft.doc.must(libraryName);
-            if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
-            const actionTarget = document_action_target(target, aggregate, identity);
-            resolution.execute({ ...actionTarget, css: (operation, subjectContext) => {
-              // Authority work survives transport detach, but never session revocation
-              // or removal of the selected Library's current projection/write grant.
-              const projection = origin.kind === "session" ? sessions.projection(origin.sessionId) : undefined;
-              if (origin.kind === "session" && (projection === undefined
-                || !projection.includesLibrary(libraryName) || !projection.canAuthorDocument(libraryName))) {
-                throw new Error("Document CSS authoring is unavailable for this session.");
-              }
-              if (subjectContext === undefined) return target.css(operation);
-              const at = subjectContext.at;
-              if (origin.kind !== "session" || at.sessionId !== origin.sessionId || projection === undefined
-                || at.logicalMapId !== locus.logicalMapId || at.incarnationId !== locus.incarnationId
-                || at.projectionSequence !== sessions.projection_sequence(origin.sessionId) || at.revision !== locus.rev) {
-                throw new Error("Document CSS subject correspondence position is stale or unauthorized.");
-              }
-              const assertCurrent = aggregate.captureFence();
-              const translated = resolve_document_css_action_subjects(operation, subjectContext, {
-                owner: identity, root: aggregate.root(identity), overlay: aggregate.documentOverlay(identity),
-                issued: aggregate.identityEpoch().issued(), scopes: aggregate.documentScopes(identity), assertCurrent,
-              });
-              assertCurrent();
-              return target.css(translated);
-            } });
-          },
+          run: async () => { await locus.stage(executeDocument); return undefined; },
         });
-      } else if (registered_locus_action(options.actions, request.name) === undefined) {
-        return Object.freeze({ ok: false, code: "LOCUS_UNKNOWN_ACTION", message: `Unknown Locus action: ${request.name}` });
-      } else {
-        const decoded = decode_locus_action_payload(options.schema?.actions?.[request.name]?.payload, admittedPayload);
-        if (!decoded.ok) return Object.freeze({ ok: false, code: "LOCUS_SCHEMA_INVALID_PAYLOAD", message: locus_schema_error_message(decoded.issues) });
-        return Object.freeze({ ok: true, payload: decoded.value });
       }
+      const definition = locus.actionDefinition(request.name);
+      if (definition === undefined) {
+        return Object.freeze({ ok: false, code: "LOCUS_UNKNOWN_ACTION", message: `Unknown Locus action: ${request.name}` });
+      }
+      const error = locus_action_input_error(definition.input, admittedPayload);
+      if (error !== undefined) return Object.freeze({ ok: false, code: "LOCUS_SCHEMA_INVALID_PAYLOAD", message: error });
+      const message = Object.freeze({ ...envelope, ...(admittedPayload === undefined ? {} : { payload: admittedPayload }) });
+      return Object.freeze({
+        ok: true,
+        payload: admittedPayload,
+        run: () => locus.executeAction(definition, admittedPayload, message, origin),
+      });
     } catch (cause) {
       return Object.freeze({
         ok: false,
@@ -1512,33 +1526,27 @@ export function create_locus_hosted_aggregate_authority_internal<
         message: locus_client_error_message(cause, "Locus action payload is invalid."),
       });
     }
-    return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : admit_data_input(request.payload) });
   }
 
-  async function dispatch_message(message: import("../../types/locus.types.js").LocusClientActionMessage): Promise<LocusClientActionResult> {
-    const request: Extract<HostedRequest, { type: "action" }> = message;
-    const validation = validate_action_request(request);
-    if (!validation.ok) {
-      return Object.freeze({
-        type: "error",
-        id: request.id,
-        ok: false,
-        seq,
-        completionRev: locus.rev,
-        delivery: "rejected",
-        error: validation,
-      });
-    }
-    const outcome = await execute_action(request, validation.payload);
-    if (outcome.state === "succeeded") return Object.freeze({
-      type: "ack",
-      id: request.id,
-      ok: true,
-      seq: outcome.seq,
-      completionRev: outcome.completionRev,
-      ...(outcome.result === undefined ? {} : { result: outcome.result }),
-    });
-    return Object.freeze({ type: "error", id: request.id, ok: false, seq: outcome.seq, completionRev: outcome.completionRev, error: outcome.error });
+  async function dispatch_message(message: LocusClientActionMessage, fromTrigger = false): Promise<LocusTriggerResult> {
+    const request = capture_locus_action_message(message);
+    const release = acquireActionActivity();
+    try {
+      const validation = validate_action_request(request, undefined, fromTrigger);
+      if (!validation.ok) {
+        return Object.freeze({
+          type: "error",
+          id: request.id,
+          ok: false,
+          seq,
+          completionRev: locus.rev,
+          delivery: "rejected",
+          error: validation,
+        });
+      }
+      const outcome = await execute_action(validation, fromTrigger);
+      return Object.freeze(make_locus_action_response(request.id, outcome));
+    } finally { release(); }
   }
 
   async function action_status(connection: HostedAttachment, request: Extract<HostedRequest, { type: "action-status" }>): Promise<void> {
@@ -1684,12 +1692,13 @@ export function create_locus_hosted_aggregate_authority_internal<
       operations: Object.freeze({
         submit(request: LocusFiniteOperationRequest<TActions>): Promise<LocusFiniteOperationOutcome> {
           if (connection.closed) return Promise.reject(new Error("Locus attachment closed."));
-          const id = request.id;
+          const supplied = request.type === "action" ? capture_locus_action_message(request) : request;
+          const id = supplied.id;
           if (connection.pendingFinite.has(id)) return Promise.reject(new Error("Duplicate Locus operation ID."));
           return new Promise((resolve, reject) => {
             connection.pendingFinite.set(id, Object.freeze({ resolve, reject }));
             try {
-              void Promise.resolve(dispatch_request(connection, request as Exclude<HostedRequest, { type: "recover" }>)).catch((cause) => {
+              void Promise.resolve(dispatch_request(connection, supplied)).catch((cause) => {
                 if (connection.pendingFinite.get(id) === undefined) return;
                 connection.pendingFinite.delete(id);
                 reject(cause);
@@ -1739,6 +1748,7 @@ export function create_locus_hosted_aggregate_authority_internal<
     stage: locus.stage,
     add_libraries,
     add_owned_libraries,
+    defineAction: locus.defineAction,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
     create_session,

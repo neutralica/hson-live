@@ -32,9 +32,10 @@ export type {
   LocusProjectionAuthorization,
   LocusProjectionAuthorizer,
 } from "../../types/locus.projection.types.js";
-export type { LocusActionPayloads, LocusClientActionMessage } from "../../types/locus.protocol.types.js";
+export type { LocusActionPayloads, LocusClientActionMessage, LocusClientActionResult, LocusTriggerResult } from "../../types/locus.protocol.types.js";
 export type {
   LocusActionContext,
+  LocusActionDefinitionOptions,
   LocusActionHandler,
   LocusActions,
   LocusLibraryDefinition,

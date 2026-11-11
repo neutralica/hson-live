@@ -114,7 +114,8 @@ try {
     key: "state.interaction",
     payload: Hson.data.from(null),
   });
-  librariesLocus = hsonLiveMap.locus.create({ "state": { json: { count: 0 }, schema: StateSchema, access: "shared" }, "page": { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema, access: "shared" }, "admin": { document: "<aside/>", schema: AdminSchema, access: "shared" } }, { sessions: {}, interactions: [browserInteraction, authorityInteraction], defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }), actions: {
+  librariesLocus = hsonLiveMap.locus.create({ "state": { json: { count: 0 }, schema: StateSchema, access: "shared" }, "page": { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema, access: "shared" }, "admin": { document: "<aside/>", schema: AdminSchema, access: "shared" } }, { sessions: {}, interactions: [browserInteraction, authorityInteraction], defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
+    authorizeAction: ({ action }) => ["state.increment", "state.interaction", "document.attrs.set"].includes(action), actions: {
       "state.increment": (context) => context.stage.data.must("state").at(["count"]).set(2),
       "state.interaction": (context) => context.stage.data.must("state").at(["count"]).set(5),
     } });

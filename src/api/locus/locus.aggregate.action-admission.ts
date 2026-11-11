@@ -14,8 +14,15 @@ import { authorize_locus_action } from "./locus.action-authorization.js";
 import type { LocusActionDedupeStore } from "./locus.actions.js";
 import { make_locus_action_response } from "./locus.action-response.js";
 
+/** The queued operation closes over the validated definition, origin and exact input. */
+export type LocusAggregateAdmittedAction = Readonly<{
+  ok: true;
+  payload: HsonDataValue | undefined;
+  run: () => Promise<HsonDataValue | undefined>;
+}>;
+
 export type LocusAggregateValidatedAction =
-  | Readonly<{ ok: true; payload: HsonDataValue | undefined }>
+  | LocusAggregateAdmittedAction
   | Readonly<{ ok: false; code: string; message: string }>;
 
 /** Internal authority capture installed only by the owning aggregate Locus runtime. */
@@ -26,17 +33,15 @@ export type LocusAggregateActionAuthorityInternals<TActions extends LocusActionP
   incarnationId: string;
   currentSeq: () => number;
   headRev: () => number;
-  validateAction: (message: LocusClientActionMessage<TActions>, origin: LocusActionOrigin) => LocusAggregateValidatedAction;
+  validateAction: (message: LocusClientActionMessage, origin: LocusActionOrigin) => LocusAggregateValidatedAction;
   executeAction: (
-    message: LocusClientActionMessage<TActions>,
-    payload: HsonDataValue | undefined,
-    origin: LocusActionOrigin,
+    admitted: LocusAggregateAdmittedAction,
   ) => Promise<LocusActionTerminalOutcome>;
   acquireActionActivity: () => LocusDisposer;
 }>;
 
-export type LocusAggregateExternalActionAttempt<TActions extends LocusActionPayloads> = Readonly<{
-  message: LocusClientActionMessage<TActions>;
+export type LocusAggregateExternalActionAttempt = Readonly<{
+  message: LocusClientActionMessage;
   origin: Extract<LocusActionOrigin, { kind: "session" }>;
   connection?: LocusConnectionContext;
   attachmentCurrent: () => boolean;
@@ -52,7 +57,7 @@ export type LocusAggregateActionAdmissionResult =
 
 function rejectionResponse<TActions extends LocusActionPayloads>(
   authority: LocusAggregateActionAuthorityInternals<TActions>,
-  message: LocusClientActionMessage<TActions>,
+  message: LocusClientActionMessage,
   code: string,
   errorMessage: string,
   stable: boolean,
@@ -70,12 +75,18 @@ function rejectionResponse<TActions extends LocusActionPayloads>(
   });
 }
 
-/** Authority-owned admission for one decoded fixed-registry aggregate action attempt. */
+/** Capture identity before reading the caller's payload or doing attachment work. */
+export function capture_locus_action_message(message: LocusClientActionMessage): LocusClientActionMessage {
+  const { id, name, ...fields } = message;
+  return Object.freeze({ ...fields, id, name });
+}
+
+/** Authority-owned admission for one decoded remote action attempt. */
 export async function admit_locus_aggregate_external_action<
   TActions extends LocusActionPayloads,
 >(
   authority: LocusAggregateActionAuthorityInternals<TActions>,
-  attempt: LocusAggregateExternalActionAttempt<TActions>,
+  attempt: LocusAggregateExternalActionAttempt,
 ): Promise<LocusAggregateActionAdmissionResult> {
   const { message } = attempt;
   const stable = message.requestId !== undefined && message.clientId !== undefined;
@@ -100,6 +111,9 @@ export async function admit_locus_aggregate_external_action<
     });
   }
 
+  // Data reflection may have fenced the attachment before application authorization.
+  if (!attempt.attachmentCurrent()) return rejectStaleAttachment();
+
   const authorization = authorize_locus_action<TActions>({
     authorizer: authority.authorizer,
     action: message.name,
@@ -121,7 +135,7 @@ export async function admit_locus_aggregate_external_action<
   // is installed, aggregate authority work is independent of its transport.
   if (!attempt.attachmentCurrent()) return rejectStaleAttachment();
 
-  const run = () => authority.executeAction(message, authorized.payload, attempt.origin);
+  const run = () => authority.executeAction(validated);
   if (!stable) {
     const releaseActivity = authority.acquireActionActivity();
     try {
@@ -139,7 +153,7 @@ export async function admit_locus_aggregate_external_action<
     requestId: message.requestId,
     ownerPrincipalId: attempt.connection?.principalId,
     actionName: message.name,
-    payload: authorized.payload,
+    payload: validated.payload,
     retry: message.retry === true,
     acquireExecutionActivity: authority.acquireActionActivity,
     run,

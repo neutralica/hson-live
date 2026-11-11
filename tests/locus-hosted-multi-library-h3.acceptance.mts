@@ -259,6 +259,7 @@ await check("custom socket action preserves one global projected commit", async 
   const server = create_locus_hosted_aggregate_authority_internal({
     ...test_public_projection(map),
     map,
+    authorizeAction: ({ action }) => action === "theme.all",
     actions: {
       "theme.all": async (context) => (() => { const draft = context.stage; data(draft, "state").at(["theme"]).set("dark");
 data(draft, "colors").at(["theme"]).set("blue"); })(),

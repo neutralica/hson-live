@@ -1,14 +1,14 @@
 import type {
   LocusActionDelivery,
   LocusActionTerminalOutcome,
-  LocusClientActionResult,
+  LocusTriggerResult,
 } from "../../types/locus.protocol.types.js";
 
 /** Shared terminal action response construction for the registry Locus. */
 export function make_locus_action_response(
   id: string, outcome: LocusActionTerminalOutcome, requestId?: string,
   delivery?: LocusActionDelivery, attemptId?: string,
-): LocusClientActionResult {
+): LocusTriggerResult {
   if (outcome.state === "succeeded") {
     return {
       type: "ack", id, ok: true, seq: outcome.seq, completionRev: outcome.completionRev,

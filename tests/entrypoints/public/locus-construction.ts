@@ -1,7 +1,7 @@
-import { Hson } from "hson-live/hson";
+import { Hson, type HsonDataValue } from "hson-live/hson";
 import * as hsonLiveMap from "hson-live/livemap";
 
-import type { LocusActionContext, LocusPersistenceAdapter } from "hson-live/locus";
+import type { LocusActionContext, LocusActionDefinitionOptions, LocusClientActionResult, LocusPersistenceAdapter, LocusTriggerResult } from "hson-live/locus";
 import type { HsonSchema } from "hson-live";
 
 const Count = Hson.schema`<type "data" content <value "number">>`;
@@ -79,3 +79,51 @@ const resumedName = resumed.doc.must("page");
 void [resumedName, hsonLiveMap.locus.checkpoint(resumed)];
 // @ts-expect-error Checkpointing is a Locus namespace operation.
 void resumed.checkpoint;
+
+const actionOptions: LocusActionDefinitionOptions = { input: { schema: Count, required: true } };
+locus.actions.define("count.advance", (context, input, message) => {
+  const exact: HsonDataValue | undefined = input;
+  const received: HsonDataValue | undefined = message.payload;
+  const schema: typeof Count = context.data.must("count").schema.get();
+  context.stage.data.must("count").at(["value"]).set(2);
+  void [received, schema];
+  return exact;
+}, actionOptions);
+resumed.actions.define("ready", () => true);
+const execution: LocusTriggerResult = await locus.actions.trigger("count.advance", { value: 2 });
+const wireResult: LocusClientActionResult = execution;
+const id: string = execution.id;
+const ok: boolean = execution.ok;
+const completion: number = execution.completionRev;
+void [wireResult, id, ok, completion];
+if (execution.type === "ack") {
+  const result: HsonDataValue | undefined = execution.result;
+  void result;
+}
+void resumed.actions.trigger("ready");
+void locus.actions.trigger("count.advance", Hson.data.from({ value: 3 }));
+// @ts-expect-error Trigger accepts Data input.
+void locus.actions.trigger("count.advance", new Date());
+// @ts-expect-error Dynamic definitions accept a Schema handle as the input schema.
+locus.actions.define("decoder", () => {}, { input: { schema: () => true } });
+
+const typed = hsonLiveMap.locus.create<typeof definitions, { startup: { readonly value: number } }>(definitions, {
+  actions: {
+    startup: {
+      input: { schema: Count, required: true },
+      handler(context, input, message) {
+        const name: "startup" = message.name;
+        const exact: HsonDataValue | undefined = input;
+        const schema: typeof Count = context.data.must("count").schema.get();
+        void [name, schema];
+        return exact;
+      },
+    },
+  },
+  authorizeAction: ({ action }) => action === "startup" || action === "added.later",
+});
+typed.actions.define("added.later", () => null);
+// @ts-expect-error Action input belongs in the action definition.
+void hsonLiveMap.locus.create(definitions, { schema: { actions: {} } });
+// @ts-expect-error Startup action Schemas must be handles.
+void hsonLiveMap.locus.create(definitions, { actions: { probe: { handler: () => {}, input: { schema: () => true } } } });

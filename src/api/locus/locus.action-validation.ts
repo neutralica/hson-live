@@ -1,64 +1,78 @@
-import type {
-  LocusSchemaDecoder,
-  LocusSchemaResult,
-  LocusValidator,
-} from "../../types/locus.types.js";
-import { type HsonDataValue, admit_data_input } from "../data/hson-data.js";
-import { hson_data_value } from "../data/hson-data.js";
-import type { HsonSchema } from "../transform/transform.types.js";
-import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
-import { compile_hson_schema } from "../../internal/hson-schema/compiler.js";
+import type { LocusActionDefinitionOptions } from "../../types/locus.types.js";
+import { type HsonDataValue, hson_data_value } from "../data/hson-data.js";
+import { compiled_hson_schema_of } from "../schema/hson-schema.js";
 import { evaluate_canonical_projected_schema } from "../../internal/canonical-schema/evaluate.js";
+import { is_locus_document_action_name } from "./locus.document-actions.js";
 
-function is_schema_result<TValue>(value: unknown): value is LocusSchemaResult<TValue> {
-  return typeof value === "object"
-    && value !== null
-    && "ok" in value
-    && typeof (value as { ok?: unknown }).ok === "boolean";
-}
+export type LocusActionDefinition<THandler> = Readonly<{
+  name: string;
+  handler: THandler;
+  input: Readonly<{
+    required: boolean;
+    schema: ReturnType<typeof compiled_hson_schema_of>["graph"] | undefined;
+  }> | undefined;
+}>;
 
-export function decode_locus_action_payload<TValue>(
-  schema: HsonSchema | LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
-  value: HsonDataValue | undefined,
-): LocusSchemaResult<HsonDataValue | undefined> {
-  if (!schema) return { ok: true, value };
-  if (schema instanceof HsonSchemaHandle) {
-    if (value === undefined) return { ok: false, issues: ["Hson Schema requires present action data."] };
-    const compiled = compiled_hson_schema_of(schema);
-    if (compiled.graph.capabilities.projectedRoot === undefined) {
-      return { ok: false, issues: ["Configured action Hson Schema must compile in data mode."] };
-    }
-    const evaluated = evaluate_canonical_projected_schema(compiled.graph, hson_data_value(value));
-    return evaluated.ok
-      ? { ok: true, value }
-      : { ok: false, issues: evaluated.issues.map((issue) => (
-          `${issue.code} at ${JSON.stringify(issue.path)}`
-        )) };
-  }
-  const result = schema(value === undefined ? undefined : value);
-  if (is_schema_result<TValue>(result)) {
-    if (!result.ok) return result;
-    if (result.value === undefined) return { ok: true, value: undefined };
-    try {
-      return { ok: true, value: admit_data_input(result.value) };
-    } catch {
-      return { ok: false, issues: ["Schema decoder output is not canonical Hson data."] };
-    }
-  }
-  if (result === true) return { ok: true, value };
-  return { ok: false, issues: ["Value failed Locus schema validation."] };
-}
+export type LocusActionRegistration<THandler> = THandler | (LocusActionDefinitionOptions & Readonly<{ handler: THandler }>);
 
-export function locus_schema_error_message(issues: readonly string[]): string {
-  return issues.length ? issues.join("; ") : "Value failed Locus schema validation.";
-}
-
-/** One application catalog membership rule for validation and execution. @internal */
-export function registered_locus_action<TAction>(
-  actions: Readonly<Record<string, TAction>> | undefined,
+/** Both startup and additive registration capture the executable and its Data contract here. */
+export function capture_locus_action_definition<THandler>(
   name: string,
-): TAction | undefined {
-  if (actions === undefined || !Object.hasOwn(actions, name)) return undefined;
-  const action = actions[name];
-  return typeof action === "function" ? action : undefined;
+  handler: THandler,
+  options?: LocusActionDefinitionOptions,
+): LocusActionDefinition<THandler> {
+  if (typeof name !== "string" || name.length === 0) throw new TypeError("Locus action name must be a nonempty string.");
+  if (is_locus_document_action_name(name)) throw new TypeError(`Locus action ${JSON.stringify(name)} is reserved for a built-in document action.`);
+  if (typeof handler !== "function") throw new TypeError(`Locus action ${JSON.stringify(name)} requires an executable handler.`);
+  if (options !== undefined && (typeof options !== "object" || options === null || Array.isArray(options)
+    || Reflect.ownKeys(options).some(key => key !== "input"))) {
+    throw new TypeError("Locus action options may contain only input.");
+  }
+  const input = options !== undefined && Object.hasOwn(options, "input") ? options.input : undefined;
+  if (input === undefined) return Object.freeze({ name, handler, input: undefined });
+  if (typeof input !== "object" || input === null || Array.isArray(input)
+    || Reflect.ownKeys(input).some(key => key !== "required" && key !== "schema")) {
+    throw new TypeError("Locus action input options may contain only required and schema.");
+  }
+  const required = Object.hasOwn(input, "required") ? input.required : undefined;
+  if (required !== undefined && typeof required !== "boolean") {
+    throw new TypeError("Locus action input.required must be a boolean.");
+  }
+  const schema = Object.hasOwn(input, "schema") ? input.schema : undefined;
+  const graph = schema === undefined ? undefined : compiled_hson_schema_of(schema).graph;
+  if (graph !== undefined && graph.capabilities.projectedRoot === undefined) {
+    throw new TypeError("Configured action Hson Schema must compile in data mode.");
+  }
+  return Object.freeze({ name, handler, input: Object.freeze({ required: required === true, schema: graph }) });
+}
+
+export function capture_locus_action_definitions<THandler extends (...args: never[]) => unknown>(
+  actions: Readonly<Record<string, LocusActionRegistration<THandler> | undefined>> | undefined,
+): readonly LocusActionDefinition<THandler>[] {
+  if (actions === undefined) return Object.freeze([]);
+  if (typeof actions !== "object" || actions === null || Array.isArray(actions)) {
+    throw new TypeError("Locus actions must be a keyed collection.");
+  }
+  return Object.freeze(Object.entries(actions).map(([name, definition]) => {
+    if (typeof definition === "function") return capture_locus_action_definition(name, definition);
+    if (typeof definition !== "object" || definition === null || !Object.hasOwn(definition, "handler")) {
+      throw new TypeError(`Locus action ${JSON.stringify(name)} requires an executable handler.`);
+    }
+    if (Reflect.ownKeys(definition).some(key => key !== "handler" && key !== "input")) {
+      throw new TypeError("Locus action definitions may contain only handler and input.");
+    }
+    return capture_locus_action_definition(name, definition.handler,
+      Object.hasOwn(definition, "input") ? { input: definition.input } : undefined);
+  }));
+}
+
+/** Evaluate present input against the compiled Schema on its exact Data carrier. */
+export function locus_action_input_error(
+  contract: LocusActionDefinition<unknown>["input"],
+  value: HsonDataValue | undefined,
+): string | undefined {
+  if (value === undefined) return contract?.required ? "Locus action requires input." : undefined;
+  if (contract?.schema === undefined) return undefined;
+  const evaluated = evaluate_canonical_projected_schema(contract.schema, hson_data_value(value));
+  return evaluated.ok ? undefined : evaluated.issues.map(issue => `${issue.code} at ${JSON.stringify(issue.path)}`).join("; ");
 }

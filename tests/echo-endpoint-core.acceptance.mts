@@ -105,7 +105,8 @@ await check("public endpoint-only Echo accepts the actual hosted Locus reply and
     state: { json: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
   });
   let actions = 0;
-  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] }, actions: { probe() { actions += 1; } } });
+  const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] },
+    authorizeAction: ({ action }) => action === "probe", actions: { probe() { actions += 1; } } });
   const pair = socket_pair(true);
   const detach = bind_locus_websocket(locus, pair.server);
   const echo = hsonLiveMap.echo.create({ transport: test_echo_transport(pair.client) });

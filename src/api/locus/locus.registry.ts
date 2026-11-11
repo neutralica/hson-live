@@ -1,4 +1,8 @@
-import { is_locus_document_action_name } from "./locus.document-actions.js";
+import {
+  capture_locus_action_definition,
+  capture_locus_action_definitions,
+  type LocusActionDefinition,
+} from "./locus.action-validation.js";
 import { register_scout_session, register_scout_capture } from "../../internal/scout-delivery-session.js";
 import { required_reads } from "../../internal/required-reads.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
@@ -8,13 +12,14 @@ import { read_document_quad } from "../../internal/governed-document.js";
 import { document_css_reads } from "../../internal/document-css-commands.js";
 import { live_observation, live_subscription, read_data_location, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
-import { type HsonDataValue } from "../data/hson-data.js";
+import type { HsonDataInput } from "../data/hson-data.js";
 import type {
   LiveMap,
   LiveMapStagedWriter,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
+  LocusActionHandler,
   LocusClientActionMessage,
   LocusConnectionContext,
   Locus,
@@ -34,7 +39,7 @@ import {
   create_locus_hosted_aggregate_authority_internal,
   type LocusHostedAggregateRecovery,
 } from "./locus.aggregate.authority.js";
-import type { LocusHostedAggregateGateInput } from "./locus.aggregate.js";
+import type { LocusHostedAggregateAction, LocusHostedAggregateGateInput } from "./locus.aggregate.js";
 import { cut_hosted_projection } from "../../internal/document-cut.js";
 import { capture_selected_authority_projection_snapshot } from "./locus.authority-projection-snapshot.js";
 import { LocusProjectionUnavailableError } from "./locus.projection.js";
@@ -92,6 +97,7 @@ export function create_registry_locus_internal<
     runtimeOwnership?: Map<string, "private" | "shared">;
     onDispose?: (locus: Locus<TMap, TActions>) => void;
   }> = {},
+  definitions = capture_locus_action_definitions(options.actions),
 ): Readonly<{
   locus: Locus<TMap, TActions>;
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -112,14 +118,10 @@ export function create_registry_locus_internal<
   const activity = make_locus_activity_controller();
   activityForCleanup = activity;
   let actionSequence = 0;
+  let triggerSequence = 0;
   let disposed = false;
   const assertReadable = () => { if (disposed) throw new Error("Disposed Locus authority."); };
   const observe = live_observation(assertReadable);
-  const actions: Record<string, (
-    context: unknown,
-    payload: HsonDataValue | undefined,
-    message?: LocusClientActionMessage,
-  ) => unknown | void | Promise<unknown | void>> = Object.create(null);
   const readFacades = new WeakMap<object, ReturnType<typeof readLib>>();
   const readLib = (selected: import("../../types/livemap.types.js").LiveMapDataLibrary | import("../../types/livemap.types.js").LiveMapDocumentLibrary, parts: boolean) => {
     if (selected.mode !== "document") {
@@ -157,22 +159,19 @@ export function create_registry_locus_internal<
     return { ...binding, handle };
   });
 
-  for (const [name, handler] of Object.entries(options.actions ?? {})) {
-    if (handler === undefined) continue;
-    if (is_locus_document_action_name(name)) throw new TypeError(`Locus action ${JSON.stringify(name)} is reserved for a built-in document action.`);
-    if (typeof handler !== "function") throw new TypeError(`Locus action ${JSON.stringify(name)} requires an executable handler.`);
-    actions[name] = async (context, payload, actionMessage) => {
+  // Both setup and runtime definitions receive the same governed context and
+  // contribute their writes to the aggregate's single staged decision.
+  function wrapAction<A extends LocusActionPayloads>(
+    definition: LocusActionDefinition<LocusActionHandler<HsonDataInput | undefined, TMap, A>>,
+  ): LocusActionDefinition<LocusHostedAggregateAction> {
+    const { name, handler } = definition;
+    const execute: LocusHostedAggregateAction = (context, payload, actionMessage) => {
       actionSequence += 1;
-      const aggregateContext = context as Readonly<{
-        map: LiveMap;
-        origin: LocusActionContext<TMap>["origin"];
-        stage: LiveMapStagedWriter<LiveMap, void>;
-      }>;
       const publicContext = Object.freeze({
         ...readNamespaces,
-        stage: aggregateContext.stage as LiveMapStagedWriter<TMap, void>,
+        stage: context.stage as LiveMapStagedWriter<TMap, void>,
         seq: actionSequence,
-        origin: aggregateContext.origin,
+        origin: context.origin,
         // Aggregate transport does not carry application events. Keep the
         // established action context callable without fabricating a stream.
         emitEvent: () => false,
@@ -181,14 +180,11 @@ export function create_registry_locus_internal<
         type: "action",
         id: `locus-action-${actionSequence}`,
         name,
-        ...(payload === undefined ? {} : { payload: payload }),
+        ...(payload === undefined ? {} : { payload }),
       })) as Parameters<typeof handler>[2];
-      return handler(
-        publicContext,
-        payload === undefined ? undefined : payload,
-        message,
-      );
+      return handler(publicContext, payload, message);
     };
+    return Object.freeze({ ...definition, handler: execute });
   }
 
   const authority = create_locus_hosted_aggregate_authority_internal({
@@ -198,7 +194,6 @@ export function create_registry_locus_internal<
     libraries: options.libraries,
     ...(options.defaultProjection === undefined ? {} : { defaultProjection: options.defaultProjection }),
     ...(options.authorizeProjection === undefined ? {} : { authorizeProjection: options.authorizeProjection }),
-    ...(Object.keys(actions).length === 0 ? {} : { actions }),
     ...(internal.gate === undefined ? {} : { gate: internal.gate }),
     ...(internal.prepareGate === undefined ? {} : { prepareGate: internal.prepareGate }),
     ...(internal.maxHistoryBytes === undefined ? {} : { maxHistoryBytes: internal.maxHistoryBytes }),
@@ -206,7 +201,6 @@ export function create_registry_locus_internal<
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
     ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
     ...(options.actionDedupe === undefined ? {} : { actionDedupe: options.actionDedupe }),
-    ...(options.schema === undefined ? {} : { schema: options.schema }),
     internal: Object.freeze({
       ...(internal.recovery === undefined ? {} : { recovery: internal.recovery, recoveryFloorRevision: internal.recovery.checkpoint.revision }),
       ...(internal.afterRecoveryCut === undefined ? {} : { afterRecoveryCut: internal.afterRecoveryCut }),
@@ -215,7 +209,7 @@ export function create_registry_locus_internal<
       acquireConnectionActivity: () => activity.acquire("connection"),
       acquireRecoveryActivity: () => activity.acquire("recovery"),
     }),
-  });
+  }, definitions.map(wrapAction));
   authorityForCleanup = authority;
   const capabilities = new Map<LocusSessionId, LocusSession>();
   const retainedSessionReleases = new Map<string, () => void>();
@@ -252,14 +246,15 @@ export function create_registry_locus_internal<
   const governed = make_locus_stage(options.map, submitStage,
     (definitions, ownership, css) => authority.add_owned_libraries(definitions, ownership, css), assertStageSubmissionAllowed, assertReadable);
 
-  const dispatchAction: Locus<TMap, TActions>["dispatchAction"] = async (message) => {
-    const release = activity.acquire("action");
-    try {
-      return await authority.dispatch_message(message);
-    } finally {
-      release();
-    }
-  };
+  const actions: Locus<TMap, TActions>["actions"] = Object.freeze({
+    define: (name, handler, configuration) => authority.defineAction(() => wrapAction(capture_locus_action_definition(name, handler, configuration))),
+    trigger: (name, input) => authority.dispatch_message({
+      type: "action",
+      id: `locus-trigger-${++triggerSequence}`,
+      name,
+      ...(input === undefined ? {} : { payload: input }),
+    }, true),
+  });
 
   function with_client_capture<TResult>(sessionId: LocusSessionId, key: object,
     consume: (snapshot: AuthorityProjectionSnapshot, effective: import("./locus.projection.js").LocusEffectiveProjection) => TResult): TResult {
@@ -378,9 +373,10 @@ export function create_registry_locus_internal<
       onChange: authority.sessions.onChange,
       dispose: authority.sessions.dispose,
     }),
+    actions,
     actionRequests: authority.actionRequests,
     stage: governed.stage,
-    dispatchAction,
+    dispatchAction: (message: LocusClientActionMessage<TActions>) => authority.dispatch_message(message),
     dispose: () => {
       if (disposed) return;
       disposed = true;

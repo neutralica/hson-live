@@ -67,6 +67,7 @@ function options(map: ReturnType<typeof make_map>): LocusRegistryOptions<typeof 
     libraries: [{ name: "game", ownership: "shared" },
       { name: "private", ownership: "private" }, { name: "page", ownership: "shared" }],
     defaultProjection: { libraries: ["game"] }, authorizeProjection: () => ({ libraries: ["game", "page"] }),
+    authorizeAction: ({ action }) => action === "noop",
     actions: { noop: async context => {
       await (() => { const draft = context.stage; data_draft(draft, "game").at(["ready"]).set(true); })();
     } },

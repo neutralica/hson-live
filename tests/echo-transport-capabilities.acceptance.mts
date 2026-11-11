@@ -120,6 +120,7 @@ await check("Locus logical attachment keeps finite admission separate from repla
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema } });
   const authority = create_locus_hosted_aggregate_authority_internal({ ...test_public_projection(map), map,
+    authorizeAction: ({ action }) => action === "echo",
     actions: { echo: (_context, payload) => payload } });
   const notices: string[] = [];
   const attachment = authority.attach((notice) => { notices.push(notice.type); }, { principalId: "alice" });

@@ -334,6 +334,7 @@
     "test:locus-hosted-cut-worker-6e": "node --import=tsx tests/locus-hosted-cut-worker-6e.acceptance.mts",
     "test:locus-projection-6a": "node --import=tsx tests/locus-projection-6a.acceptance.mts",
     "test:locus-construction": "node --import=tsx tests/locus-construction.acceptance.mts",
+    "test:locus-action-registry": "node --import=tsx tests/locus-action-registry.acceptance.mts",
     "test:locus-final-model": "node --import=tsx tests/locus-final-model.acceptance.mts",
     "test:locus-hosted-multi-library-action-pipeline": "node --import=tsx tests/locus-hosted-multi-library-action-pipeline.acceptance.mts",
     "test:locus-hosted-multi-library-recovery-fencing": "node --import=tsx tests/locus-hosted-multi-library-recovery-fencing.acceptance.mts",

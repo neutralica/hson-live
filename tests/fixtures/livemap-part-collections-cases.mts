@@ -671,7 +671,9 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
   await check("hosted managed actions Echo acceptance durable replay and restart enforce the same collection contract", async () => {
     const adapter = new MemoryCheckpointAdapter();
-    const options = [{ "collection": { parts: parts(), access: "shared" }, "hidden": { parts: { secret: { kind: "document", document: '<secret-only hson:part/>' } }, access: "private" } }, { logicalMapId: "part-collection-durable", persistence: adapter, authorizeProjection: () => ({ libraries: ["collection", "hidden"] }), actions: {
+    const options = [{ "collection": { parts: parts(), access: "shared" }, "hidden": { parts: { secret: { kind: "document", document: '<secret-only hson:part/>' } }, access: "private" } }, { logicalMapId: "part-collection-durable", persistence: adapter, authorizeProjection: () => ({ libraries: ["collection", "hidden"] }),
+      authorizeAction: ({ action }: { action: string }) => action === "valid" || action === "invalid",
+      actions: {
         valid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at([]).object.setKey("durableAdded", {kind:"document",document:'<p hson:part @:label/>'}); },
         invalid(context: import("../../src/types/locus.types.ts").LocusActionContext<ReturnType<typeof fixture>>) { context.stage.parts.must("collection").at(["二"]).replace({ ...parts()["二"], stylesheet: 42 as never }); },
       } }] as const;
@@ -683,7 +685,10 @@ export async function part_collection_cases(check: (name: string, run: () => voi
       assert.equal(echo.parts.must("collection").mode, "data-object"); assert.throws(() => echo.data.must("hidden"));
       assert.equal(JSON.stringify(session.now()).includes('secret-only'), false);
       const before = map.capture(), appended = adapter.appendCalls.length;
-      const rejected = await echo.action("invalid"); assert.equal(rejected.type, "error");
+      const rejected = await echo.action("invalid");
+      assert.ok(rejected.type === "error");
+      assert.equal(rejected.error.code, "LOCUS_ACTION_FAILED");
+      assert.match(rejected.error.message, /Immutable Part \["collection","二"\] rejects replace/);
       assert.deepEqual(map.capture(), before); assert.equal(adapter.appendCalls.length, appended);
       const accepted = await echo.action("valid"); assert.equal(accepted.type, "ack");
       assert.equal(adapter.appendCalls.length, appended + 1);
@@ -698,7 +703,10 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     try {
       assert.equal(data(locus_map_internal(restarted)).snap(["durableAdded", "document"]), '<p hson:part @:label/>');
       const rev = restarted.rev, appended = adapter.appendCalls.length;
-      assert.equal((await restarted.dispatchAction({ type: "action", id: "restart-invalid", name: "invalid" })).type, "error");
+      const rejected = await restarted.dispatchAction({ type: "action", id: "restart-invalid", name: "invalid" });
+      assert.ok(rejected.type === "error");
+      assert.equal(rejected.error.code, "LOCUS_ACTION_FAILED");
+      assert.match(rejected.error.message, /Immutable Part \["collection","二"\] rejects replace/);
       assert.equal(restarted.rev, rev); assert.equal(adapter.appendCalls.length, appended);
       await hsonLiveMap.locus.checkpoint(restarted);
       const manifest = adapter.state(options[1].logicalMapId)!.checkpoint;

@@ -162,6 +162,7 @@
       };
       const locus = hsonLiveMap.locus.create({ anchor: { access: "shared", document: "<aside/>" } }, {
         authorizeProjection: ({ requested }) => requested,
+        authorizeAction: ({ action }) => action === "deck.advance",
         actions: { "deck.advance": (_context, payload) => { payloads.push(payload); } },
       });
       const binding = bind_locus_http(locus, { endpoint: "/authored-events" });

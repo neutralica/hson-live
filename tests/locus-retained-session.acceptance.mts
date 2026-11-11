@@ -147,7 +147,8 @@ assert.equal(requests.length, 2);
   let recycledId: string | undefined;
   let released: import("../src/types/locus.types.ts").LocusSession | undefined;
   const sessionMap = hsonLiveMap.fromLibraries({ state: { json: {} } });
-  const host: import("../src/types/locus.types.ts").Locus<typeof sessionMap> = create_locus_fixture({ ...authority_definitions_from_map_fixture(sessionMap, [{ name: "state", ownership: "shared" }]), sessionId: () => recycledId ?? "unused", authorizeProjection: () => ({ libraries: ["state"] }), actions: { remember: context => {
+  const host: import("../src/types/locus.types.ts").Locus<typeof sessionMap> = create_locus_fixture({ ...authority_definitions_from_map_fixture(sessionMap, [{ name: "state", ownership: "shared" }]), sessionId: () => recycledId ?? "unused", authorizeProjection: () => ({ libraries: ["state"] }),
+    authorizeAction: ({ action }) => action === "remember", actions: { remember: context => {
       if (context.origin.kind !== "session") throw new Error("Expected an operation session.");
       recycledId = context.origin.sessionId;
       released = host.session.get(recycledId);
