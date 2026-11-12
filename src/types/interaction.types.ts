@@ -10,14 +10,6 @@ export type {
   InteractionDescriptor,
 } from "./interaction.descriptor.types.js";
 
-export type InteractionLocalBehavior = (
-  event: Event,
-  subject: LiveTree,
-  args: HsonDataValue,
-) => void | Promise<void>;
-
-export type InteractionLocalBehaviors = Readonly<Record<string, InteractionLocalBehavior>>;
-
 export type InteractionActionDispatcher = (
   actionKey: string,
   payload: HsonDataValue,
@@ -40,7 +32,6 @@ export type InteractionActivationOptions = Readonly<{
   tree: LiveTree;
   /** Name of the selected document Library; inferred only for a single document Library. */
   document?: string;
-  local: InteractionLocalBehaviors;
   dispatch?: InteractionActionDispatcher;
   onFailure?: (failure: InteractionFailure) => void;
 }>;

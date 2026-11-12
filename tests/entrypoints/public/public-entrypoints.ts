@@ -25,6 +25,7 @@ void quadLocation;
 quadLibrary.data.must("state").q("unknown");
 import { configure_scout, type ScoutProvider } from "hson-live/scout";
 import {
+  ANY_DATA,
   Hson,
   HsonData,
   HsonDataValue,
@@ -64,6 +65,10 @@ import {
   type InteractionListener,
   type InteractionLocalBehavior,
   type InteractionLocalBehaviors,
+  type LocalBehaviorContext,
+  type LocalBehaviorDefinitionOptions,
+  type LocalBehaviorMessage,
+  type LocalBehaviorResult,
   type BrowserInteractionDescriptor,
   type LocusInteractionDescriptor,
 } from "hson-live";
@@ -162,7 +167,12 @@ void hostedLibrariesCut.document;
 // @ts-expect-error Continuation requires an explicit Element, never a selector.
 continue_document({ map: continuationRegistry, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.
-continue_hosted_document({ echo: continuationEcho, root: continuationRoot, interactions: { local: {}, dispatch: async () => {} } });
+continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport, root: continuationRoot, interactions: { dispatch: async () => {} } });
+void continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport,
+  root: continuationRoot, interactions: { registerBehaviors: behaviors => { behaviors.define("reveal", () => {}); } } });
+void continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport,
+  // @ts-expect-error Registration completes synchronously before listener installation.
+  root: continuationRoot, interactions: { registerBehaviors: async () => {} } });
 
 declare const genuineHsonData: HsonDataValue;
 const retainedHsonData: HsonDataValue = genuineHsonData;
@@ -409,6 +419,24 @@ declare const interactionActivation: InteractionActivationOptions;
 void [interactionListener, interactionDescriptor, localInteractionDescriptor,
   authoritativeInteractionDescriptor, localInteractionBehavior, localInteractionBehaviors,
   interactionDispatcher, interactionFailure, interactionActivation];
+const behaviorOptions: LocalBehaviorDefinitionOptions = { input: { required: true, schema: ANY_DATA } };
+const behaviors: InteractionLocalBehaviors = continuationRegistry.behaviors;
+behaviors.define("reveal", (context, data, message) => {
+  const ctx: LocalBehaviorContext = context;
+  const invocation: LocalBehaviorMessage = message;
+  const event: Event | undefined = ctx.event;
+  const subject: LiveTree | undefined = ctx.subject;
+  void [invocation.id, invocation.name, ctx.map, event, subject];
+  return data;
+}, behaviorOptions);
+const behaviorResult: LocalBehaviorResult = await behaviors.trigger("reveal", null);
+if (behaviorResult.ok) void behaviorResult.result?.scalar();
+else void behaviorResult.error.message;
+void behaviors.trigger("reveal");
+// @ts-expect-error Triggering accepts HSON Data input.
+void behaviors.trigger("reveal", new Date());
+// @ts-expect-error Interaction activation uses its LiveMap's registry.
+void activate_interactions({ ...interactionActivation, local: { reveal: localInteractionBehavior } });
 // @ts-expect-error Refinement vocabulary was hard-replaced by constraint vocabulary.
 import type { LiveMapSchemaRefinement } from "hson-live/livemap";
 // @ts-expect-error Named schema definition aliases were hard-removed.

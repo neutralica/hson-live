@@ -46,13 +46,21 @@ async function withoutObservationReads(run) {
 }
 
 try {
+  const applicationNames = capture => capture.registry.libraries
+    .filter(entry => entry.scope !== "hson-internal").map(entry => entry.name);
   const emptyMap = hsonLiveMap.create();
   const emptyCapture = emptyMap.capture();
   emptyMap.restore(emptyCapture);
-  check("browser empty LiveMap captures and restores", emptyMap.rev === 0 && emptyCapture.libraries.length === 0);
+  check("browser empty LiveMap captures and restores", emptyMap.rev === 0
+    && applicationNames(emptyCapture).length === 0
+    && JSON.stringify(emptyMap.capture()) === JSON.stringify(emptyCapture));
   const primitiveMap = hsonLiveMap.fromLibraries({ value: { json: 7, schema: ANY_DATA } });
-  check("browser primitive data root admits and captures", primitiveMap.data.must("value").mode === "data-number"
-    && primitiveMap.data.must("value").snap() === 7 && primitiveMap.capture().libraries.length === 1);
+  const primitiveCapture = primitiveMap.capture();
+  const restoredPrimitive = install_libraries_snapshot(primitiveCapture).map;
+  check("browser primitive data root admits and captures", applicationNames(primitiveCapture).join(",") === "value"
+    && restoredPrimitive.data.must("value").mode === "data-number"
+    && restoredPrimitive.data.must("value").snap() === 7
+    && JSON.stringify(restoredPrimitive.capture()) === JSON.stringify(primitiveCapture));
   const broadDocument = Hson.document`<main <p "browser"/>/>`;
   check("browser document family top certifies nested content", ANY_DOCUMENT.certify(broadDocument) === broadDocument);
   const state = await fetch("/__state").then((response) => response.json());
@@ -160,10 +168,10 @@ try {
     if (point === "after-tree") obsoleteRoot = create_linked_livetree_in_runtime(get_node_for_el(quadRoot), continuation_runtime_for_document(quadFrame.contentDocument));
   });
   let rootClicks = 0, lastClickSubject, interactionFailures = [];
-  const rootInteractions = { local: { rootClick: (_event, subject) => { rootClicks++; lastClickSubject = subject; } },
-    onFailure: failure => interactionFailures.push(failure) };
+  const rootInteractions = { onFailure: failure => interactionFailures.push(failure) };
   const quadGrafted = await continue_hosted_document({ now: state.quadHostedCut, credential: state.quadCredential,
-    transport: quadTransport, document: "page", root: quadRoot, interactions: rootInteractions });
+    transport: quadTransport, document: "page", root: quadRoot, interactions: { ...rootInteractions,
+      registerBehaviors: behaviors => behaviors.define("rootClick", ctx => { rootClicks++; lastClickSubject = ctx.subject; }) } });
   set_document_adoption_fault_hook_for_tests(undefined);
   const quadPage = echo_map_internal(quadGrafted.echo).doc.must("page");
   let privateRejected = false;
@@ -265,14 +273,14 @@ try {
     const failureStyle = failureRoot.querySelector("style[data-hson-managed-document-css]");
     const failureTransport = hsonLiveMap.echo.transport.websocket({ url: state.quadSocketUrl });
     let calls = 0;
-    const interactions = { local: { rootClick: () => { calls++; } } };
     const hosted = await continue_hosted_document({ now: failureCut, credential: state.quadCredential,
-      transport: failureTransport, document: "page", root: failureRoot, interactions });
+      transport: failureTransport, document: "page", root: failureRoot,
+      interactions: { registerBehaviors: behaviors => behaviors.define("rootClick", () => { calls++; }) } });
     const client = echo_map_internal(hosted.echo), page = client.doc.must("page");
     let binding = hosted;
     if (provider === "local") {
       hosted.dispose();
-      binding = continue_document({ map: client, document: page, root: failureRoot, interactions });
+      binding = continue_document({ map: client, document: page, root: failureRoot, interactions: {} });
     }
     const failureButton = failureRoot.querySelector("#hosted-quad");
     failureRoot.click();
@@ -633,7 +641,7 @@ try {
     transport: librariesTransport,
     document: state.libraries.document,
     root: librariesRoot,
-    interactions: { local: { clicker: () => { interactionCalls += 1; } } },
+    interactions: { registerBehaviors: behaviors => behaviors.define("clicker", () => { interactionCalls += 1; }) },
   }));
   const hostedSubject = subject_for_tree(librariesContinuation.tree);
   const hostedBefore = librariesContinuation.tree.node;

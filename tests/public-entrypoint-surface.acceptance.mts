@@ -30,6 +30,7 @@ EchoActionStatusResult EchoAttachmentEvent EchoEndpointTransport EchoReplicaTran
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusLocalInitializer LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionNow LocusSessionHtmlNow Hson HsonCanonical
 HsonAuthored HsonData HsonDataValue HsonDataInput HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
+LocalBehaviorContext LocalBehaviorDefinitionOptions LocalBehaviorMessage LocalBehaviorResult
 LiveHostApplication LiveHostApplicationContext LiveHostRuntime LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
 LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
 LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentLocation LiveMapDocumentQuadLocation LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
@@ -120,6 +121,47 @@ function check(name: string, run: () => void | Promise<void>): Promise<void> {
     },
   );
 }
+
+await check("LiveMap behavior declarations type-check without a platform Event", () => {
+  const temporaryParent = join(repositoryRoot, "tmp");
+  mkdirSync(temporaryParent, { recursive: true });
+  const temporary = mkdtempSync(join(temporaryParent, "livemap-portable-behavior-"));
+  try {
+    const entry = join(temporary, "consumer.mts");
+    writeFileSync(entry, `
+      import { hsonLiveMap, type LiveMap, type LocalBehaviorResult } from "hson-live/livemap";
+      const hasGlobalEvent: "Event" extends keyof typeof globalThis ? true : false = false;
+      const map = hsonLiveMap.create();
+      map.behaviors.define("compute", (ctx, input, message) => {
+        ctx.map satisfies LiveMap;
+        message.name satisfies string;
+        // @ts-expect-error No platform Event declaration is in scope.
+        ctx.event?.preventDefault();
+        // @ts-expect-error The LiveTree entrypoint is outside this declaration boundary.
+        ctx.subject?.dom.el();
+        return input;
+      });
+      map.behaviors.trigger("compute", -0) satisfies Promise<LocalBehaviorResult>;
+    `);
+    const consumer = ts.createProgram([entry], {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext,
+      lib: ["lib.es2022.d.ts", "lib.esnext.disposable.d.ts"],
+      types: [], strict: true, skipLibCheck: false, noEmit: true,
+    });
+    const echoHttp = join(repositoryRoot, "dist/api/echo/echo.http.d.ts");
+    const diagnostics = ts.getPreEmitDiagnostics(consumer).filter(diagnostic => {
+      const { file, start, length, code } = diagnostic;
+      if (file === undefined || resolve(file.fileName) !== echoHttp || start === undefined || length === undefined) return true;
+      // Echo HTTP still needs fetch and RequestCredentials in an otherwise platform-neutral consumer.
+      const reference = file.text.slice(start, start + length);
+      return !(code === 7017 && reference === "fetch") && !(code === 2304 && reference === "RequestCredentials");
+    });
+    assert.equal(diagnostics.length, 0, ts.formatDiagnostics(diagnostics, {
+      getCanonicalFileName: path => path, getCurrentDirectory: () => repositoryRoot, getNewLine: () => "\n",
+    }));
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
+});
 
 await check("internal CSS identity declarations emit and consume without private re-export leaks", () => {
   const temporary = mkdtempSync(join(tmpdir(), "hson-css-identity-declarations-"));

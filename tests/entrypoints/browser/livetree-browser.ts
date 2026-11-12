@@ -1,4 +1,5 @@
-import { hsonLiveTree, type ListenerSub, type ListenerBuilder, type TreeSelector } from "hson-live/livetree";
+import { hsonLiveMap } from "hson-live/livemap";
+import { hsonLiveTree, type LiveTree, type ListenerSub, type ListenerBuilder, type TreeSelector } from "hson-live/livetree";
 
 void hsonLiveTree.fromTrustedHtml("<main></main>");
 void hsonLiveTree.fromJson({ ready: true });
@@ -28,3 +29,15 @@ click.once();
 selection.listen.on("invented-event", () => {});
 // @ts-expect-error Convenience handlers retain their event types.
 selection.listen.onClick((event: KeyboardEvent) => {});
+
+hsonLiveMap.create().behaviors.define("click", (ctx, input, message) => {
+  ctx.event satisfies Event | undefined;
+  ctx.subject satisfies LiveTree | undefined;
+  ctx.event?.preventDefault();
+  if (ctx.event instanceof MouseEvent) ctx.event.clientX satisfies number;
+  // @ts-expect-error Mouse coordinates require narrowing the native event.
+  ctx.event?.clientX;
+  ctx.subject?.dom.el() satisfies Element | undefined;
+  message.id satisfies string;
+  return input;
+});

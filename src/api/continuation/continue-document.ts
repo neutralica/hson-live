@@ -6,7 +6,6 @@ import { prepare_portable_native_handoff } from "./continuation.portable.js";
 import type {
   InteractionActionDispatcher,
   InteractionFailure,
-  InteractionLocalBehaviors,
 } from "../../types/interaction.types.js";
 import type {
   LiveMapDocumentLibrary,
@@ -33,7 +32,6 @@ import { DocumentContinuationError } from "./continuation.error.js";
 import type { DocumentContinuation } from "./continuation.types.js";
 
 type LocalInteractions = Readonly<{
-  local: InteractionLocalBehaviors;
   dispatch?: InteractionActionDispatcher;
   onFailure?: (failure: InteractionFailure) => void;
 }>;
@@ -126,7 +124,6 @@ function continue_document_impl(options: Readonly<{
           map: resolved.aggregate,
           tree: reflect.tree,
           document: continuation_document_library_name(resolved.aggregate, resolved.selected),
-          local: options.interactions.local,
           ...(options.interactions.dispatch === undefined ? {} : { dispatch: options.interactions.dispatch }),
           ...(options.interactions.onFailure === undefined ? {} : { onFailure: options.interactions.onFailure }),
         }, () => {

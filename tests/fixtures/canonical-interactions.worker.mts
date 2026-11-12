@@ -19,6 +19,9 @@ import { acquire_document_identity } from "../helpers/livemap-identity-internal.
 import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { authored_event_cases } from "./authored-event-cases.mts";
+import { local_behavior_cases } from "./local-behavior-cases.mts";
+
+await local_behavior_cases();
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
@@ -96,7 +99,6 @@ link_node_to_el(retained_subject(subject), target as unknown as Element);
 const dispose = activate_interactions({
   map: replicaMap,
   tree: reflection.tree,
-  local: {},
   dispatch: async (key, payload) => {
     const result = await echo.action(key, payload);
     if (result.type !== "ack") throw result.error;

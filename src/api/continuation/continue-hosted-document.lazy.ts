@@ -1,9 +1,11 @@
-import type { InteractionFailure, InteractionLocalBehaviors } from "../../types/interaction.types.js";
+import type { InteractionFailure } from "../../types/interaction.types.js";
+import type { InteractionLocalBehaviors } from "../../types/local-behavior.types.js";
 import type { EchoReplicaOptions } from "../../types/locus.types.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
 
 type HostedInteractions = Readonly<{
-  local: InteractionLocalBehaviors;
+  /** Synchronously register on the composed client LiveMap before its listeners activate. */
+  registerBehaviors?: (behaviors: InteractionLocalBehaviors) => void | undefined;
   onFailure?: (failure: InteractionFailure) => void;
 }>;
 

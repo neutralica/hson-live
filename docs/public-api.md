@@ -222,22 +222,23 @@ its Mirror and interaction arrangements without disposing Echo.
 ```ts
 import { Hson, activate_interactions, add_interaction } from "hson-live";
 
+libraries.behaviors.define("reveal", ({ subject }, args) => {
+  if (subject) show(subject, args?.materialize());
+});
 add_interaction(libraries, descriptor);
 const dispose = activate_interactions({
   map: libraries,
   tree,
-  local: { reveal: (event, subject, args) => show(subject, args.materialize()) },
   dispatch: async (key, payload) => { await echo.action(key, payload); },
 });
 dispose();
 ```
 
-Supply the executable behavior at its owning runtime, describe event binding
-and symbolic behavior/data canonically, activate on the intended tree, then
-dispose activation resources when appropriate. `kind: "browser"` invokes the
-activation-side behavior table; `kind: "locus"` invokes the dispatcher. Subject
+Define executable behavior on the operating LiveMap and activate portable
+descriptors on the intended tree. `kind: "browser"` resolves through `map.behaviors`.
+`kind: "locus"` invokes the dispatcher. Subject
 Library ownership, independently of kind, decides whether Locus or the client
-owns canonical descriptor state. The runtime behavior table grants no Locus
+owns canonical descriptor state. The runtime behavior registry grants no Locus
 action authorization. Descriptors
 do not serialize callbacks, auto-generate registrations, mint subject identity,
 or intrinsically require Echo. Runtime coverage: canonical-interactions tests.

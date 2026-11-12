@@ -7,6 +7,7 @@
   <script type="module">
     import {
       Hson,
+      ANY_DATA,
       activate_interactions,
       add_interaction,
       assertCanonicalClosure,
@@ -58,20 +59,15 @@
     const treeButtonQuid = tree.find.must.byId("subject").quid;
     const calls = { element: 0, document: 0, window: 0, passive: 0 };
     let exactArgs = false;
-    const dispose = activate_interactions({
-      map,
-      tree,
-      local: {
-        element: (_event, subject, args) => {
-          calls.element += 1;
-          exactArgs = subject.node.$_meta?.quid === treeButtonQuid
-            && treeButtonQuid !== QUID && Object.is(args.materialize(), -0);
-        },
-        document: () => { calls.document += 1; },
-        window: () => { calls.window += 1; },
-        passive: () => { calls.passive += 1; },
-      },
+    let nativeClick;
+    map.behaviors.define("element", (ctx, args) => {
+      calls.element += 1;
+      nativeClick = ctx.event;
+      exactArgs = ctx.map === map && ctx.subject?.node.$_meta?.quid === treeButtonQuid
+        && treeButtonQuid !== QUID && Object.is(args?.materialize(), -0);
     });
+    for (const name of ["document", "window", "passive"]) map.behaviors.define(name, () => { calls[name] += 1; });
+    const dispose = activate_interactions({ map, tree });
 
     const button = subjectDocument.querySelector("#subject");
     let afterImmediateStop = 0;
@@ -85,6 +81,10 @@
     button.dispatchEvent(passive);
 
     const runtimeMap = hsonLiveMap.create();
+    runtimeMap.behaviors.define("standalone", (ctx, input) =>
+      ctx.map === runtimeMap && ctx.event === undefined && ctx.subject === undefined ? input : undefined,
+    { input: { required: true, schema: ANY_DATA } });
+    const direct = await runtimeMap.behaviors.trigger("standalone", -0);
     const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
       runtimeData: { json: true } });
     const runtimeReplica = hsonLiveMap.create();
@@ -100,6 +100,8 @@
       && click.defaultPrevented
       && !passive.defaultPrevented
       && afterImmediateStop === 1
+      && nativeClick === click
+      && direct.ok && Object.is(direct.result?.scalar(), -0)
       && exactArgs;
     dispose();
     dispose();
@@ -206,7 +208,10 @@
             if (request.type === "action") submissions++;
             return transport.operations.submit(request, options);
           } } },
-          interactions: { local: { "deck.panel": (_event, subject, data) => { args.push([subject.dom.el(), data]); } },
+          interactions: { registerBehaviors(behaviors) {
+            behaviors.define("deck.panel", (ctx, data) => { args.push([ctx.subject?.dom.el(), data]); },
+              { input: { required: true, schema: ANY_DATA } });
+          },
             onFailure: failure => failures.push(failure) },
         });
         const advance = page.querySelector("#advance"), panel = page.querySelector("#panel");

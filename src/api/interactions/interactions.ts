@@ -3,6 +3,7 @@ import { ROOT_TAG } from "../../core/constants.js";
 import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
 import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { resolve_livemap_behavior_internal } from "../livemap/livemap.behaviors.js";
 import { kind_live_path, project_live_path } from "../livemap/livemap.editor.js";
 import {
   is_ordered_projected_object,
@@ -26,7 +27,6 @@ import type {
   InteractionDescriptor,
   InteractionFailure,
   InteractionListener,
-  InteractionLocalBehavior,
   BrowserInteractionDescriptor,
 } from "../../types/interaction.types.js";
 import {
@@ -53,6 +53,10 @@ type RuntimeRecord = Readonly<{
   state: { consumed: boolean };
 }>;
 
+type UnresolvedBehavior = Readonly<{
+  fingerprint: string;
+  node: object | undefined;
+}>;
 type RuntimeBrowserDescriptor = Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args: HsonDataValue }>;
 type RuntimeLocusDescriptor = Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload: HsonDataValue }>;
 type RuntimeDescriptor = RuntimeBrowserDescriptor | RuntimeLocusDescriptor;
@@ -62,7 +66,6 @@ type ActivationSnapshot = Readonly<{
   map: LiveMap;
   tree: LiveTree;
   document: string;
-  local: ReadonlyMap<string, InteractionLocalBehavior>;
   dispatch: InteractionActivationOptions["dispatch"];
   onFailure: InteractionActivationOptions["onFailure"];
 }>;
@@ -144,6 +147,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
   const aggregate = internal_livemap_aggregate_authority(activation.map);
   const system = require_interaction_system_internal(aggregate);
   const records = new Map<string, RuntimeRecord>();
+  let unresolvedBehaviors = new Map<string, UnresolvedBehavior>();
   let disposed = false;
   let reconciling = false;
   let pending = false;
@@ -184,17 +188,37 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
         // the longest desired active prefix already in installation order,
         // then move only the remaining active records. A consumed once record
         // has no installed listener and keeps its state across a reorder.
-        const installable = desired.filter(({ descriptor }) => {
+        const nextUnresolved = new Map<string, UnresolvedBehavior>();
+        const installable = desired.filter(({ descriptor, data }) => {
           if (descriptor.subject.library !== activation.document) return false;
           if (records.has(descriptor.id)) return true;
+          let subject: LiveTree | undefined;
+          let node: object | undefined;
           try {
-            const subject = resolve_local_subject(activation, descriptor);
+            subject = resolve_local_subject(activation, descriptor);
+            if (subject !== undefined) node = active_subject_for_tree(subject);
+          } catch { subject = undefined; }
+          if (descriptor.kind === "browser") {
+            const previous = unresolvedBehaviors.get(descriptor.id);
+            const defined = resolve_livemap_behavior_internal(activation.map, descriptor.key) !== undefined;
+            if (previous !== undefined || !defined) {
+              const fingerprint = descriptor_fingerprint(descriptor, data);
+              const sameIntent = previous?.fingerprint === fingerprint ? previous : undefined;
+              // Follow the exact subject through path rewrites and temporary loss of
+              // realization. A different resolved subject gets a new binding attempt.
+              if (!defined || (sameIntent !== undefined && (node === undefined || sameIntent.node === node))) {
+                nextUnresolved.set(descriptor.id, { fingerprint, node: node ?? sameIntent?.node });
+                return false;
+              }
+            }
+          }
+          try {
             return subject !== undefined
-              && (descriptor.kind !== "browser" || activation.local.has(descriptor.key))
               && (descriptor.kind !== "locus" || activation.dispatch !== undefined)
               && resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length > 0;
           } catch { return false; }
         }).map(({ descriptor }) => descriptor.id);
+        unresolvedBehaviors = nextUnresolved;
         const desiredActive = installable.filter((id) => !records.get(id)?.state.consumed);
         const installedActive = [...records].filter(([, record]) => !record.state.consumed)
           .map(([id]) => id);
@@ -223,8 +247,12 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
             report(descriptor, "subject-resolution", new Error("Canonical interaction subject is not currently realized."));
             continue;
           }
-          if (descriptor.kind === "browser" && !activation.local.has(descriptor.key)) {
-            report(descriptor, "browser-capability-resolution", new Error(`Unknown local interaction behavior ${JSON.stringify(descriptor.key)}.`));
+          const invoke = descriptor.kind === "browser" && !unresolvedBehaviors.has(descriptor.id)
+            ? resolve_livemap_behavior_internal(activation.map, descriptor.key) : undefined;
+          if (descriptor.kind === "browser" && invoke === undefined) {
+            report(descriptor, "browser-capability-resolution", new Error(
+              `Unknown local interaction behavior ${JSON.stringify(descriptor.key)} at resolution. Define it on map.behaviors before activating this descriptor.`,
+            ));
             continue;
           }
           if (descriptor.kind === "locus" && activation.dispatch === undefined) {
@@ -250,20 +278,14 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
               }
               if (descriptor.listener.once) state.consumed = true;
-              if (descriptor.kind === "browser") {
-                const behavior = activation.local.get(descriptor.key);
-                if (behavior === undefined) return;
-                try {
-                  Promise.resolve(behavior(event, subject, descriptor.args)).catch((cause) => {
-                    report(descriptor, "browser-invocation", cause);
-                  });
-                } catch (cause) { report(descriptor, "browser-invocation", cause); }
+              if (invoke !== undefined) {
+                void invoke(data, { subject, event, onFailure: cause => report(descriptor, "browser-invocation", cause) });
                 return;
               }
               const dispatch = activation.dispatch;
               if (dispatch === undefined) return;
               try {
-                Promise.resolve(dispatch(descriptor.key, descriptor.payload)).catch((cause) => {
+                Promise.resolve(dispatch(descriptor.key, data)).catch((cause) => {
                   report(descriptor, "locus-invocation", cause);
                 });
               } catch (cause) { report(descriptor, "locus-invocation", cause); }
@@ -304,6 +326,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
     stopRealizations = undefined;
     for (const record of records.values()) release(() => record.sub.off());
     records.clear();
+    unresolvedBehaviors.clear();
     if (failures.length > 0) throw failures[0];
   };
 
@@ -331,7 +354,6 @@ function snapshot_activation(options: InteractionActivationOptions, currentTree?
   if (document === undefined || !documentNames.includes(document)) {
     throw new TypeError("Canonical interaction activation requires a selected document Library.");
   }
-  const local = snapshot_local_behaviors(options.local);
   const dispatch = options.dispatch;
   const onFailure = options.onFailure;
   if (dispatch !== undefined && typeof dispatch !== "function") {
@@ -345,7 +367,7 @@ function snapshot_activation(options: InteractionActivationOptions, currentTree?
     const current = currentTree === undefined ? tree : currentTree();
     if (runtime_for_tree(current) !== runtime) throw new Error("Document interaction provider changed its owning runtime.");
     return current;
-  }, document, local, dispatch, onFailure });
+  }, document, dispatch, onFailure });
 }
 
 function resolve_local_subject(activation: ActivationSnapshot, descriptor: InteractionDescriptor): LiveTree | undefined {
@@ -357,27 +379,6 @@ function resolve_local_subject(activation: ActivationSnapshot, descriptor: Inter
   try { node = resolve_document_path(root, "document", path); }
   catch { return undefined; }
   return is_Node(node) ? wrap_in_tree(tree, node) : undefined;
-}
-
-function snapshot_local_behaviors(
-  input: InteractionActivationOptions["local"],
-): ReadonlyMap<string, InteractionLocalBehavior> {
-  if (typeof input !== "object" || input === null) {
-    throw new TypeError("Canonical interaction local capabilities must be an object.");
-  }
-  const snapshot = new Map<string, InteractionLocalBehavior>();
-  for (const key of Reflect.ownKeys(input)) {
-    if (typeof key !== "string") continue;
-    const property = Object.getOwnPropertyDescriptor(input, key);
-    if (property === undefined || !("value" in property)) {
-      throw new TypeError(`Canonical interaction local capability ${JSON.stringify(key)} must be a data property.`);
-    }
-    if (typeof property.value !== "function") {
-      throw new TypeError(`Canonical interaction local capability ${JSON.stringify(key)} must be a function.`);
-    }
-    snapshot.set(key, property.value);
-  }
-  return snapshot;
 }
 
 /** Read only the selected installed system member; drafts keep their ordered authority. */

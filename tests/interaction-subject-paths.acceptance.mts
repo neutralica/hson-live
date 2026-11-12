@@ -2,7 +2,7 @@ import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type InteractionDescriptor } from "../src/index.ts";
+import { Hson, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, replace_interaction, type InteractionDescriptor, type LocalBehaviorContext } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_portable_aggregate_commit } from "../src/api/livemap/livemap.hosted.ts";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
@@ -67,7 +67,8 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const localNode = retained_subject(localSubject);
   const localElement = get_el_for_node(localNode);
   if (localElement === undefined) throw new Error("Expected local subject element.");
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } });
+  map.behaviors.define("run", () => undefined);
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.get("click")?.size, 2);
   const revision = map.rev;
   const seen: Record<string, readonly number[]>[] = [];
@@ -95,6 +96,55 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   assert.deepEqual(paths(map), {});
   stop();
   dispose(); reflection.dispose();
+}
+
+{
+  const map = admit_exact_runtime_livemap_libraries({
+    state: { json: { count: 0 } },
+    page: { document: parse_hson_exact_runtime("<html <head/> <body <main <button @000007111/> <button @000007112/>/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+  });
+  const main = { kind: "path" as const, path: [0, 0, 1, 0, 0, 0] };
+  const pending = { ...descriptor("retarget", [...main.path, 0]), listener: { ...listener, once: true } };
+  add_interaction(map, pending);
+  const page = map.doc.must("page");
+  const reflection = hsonMirror(page);
+  project_livetree(retained_subject(reflection.tree));
+  const a = reflection.tree.find.must.byQuid("000007111");
+  const b = reflection.tree.find.must.byQuid("000007112");
+  const aNode = retained_subject(a);
+  const aElement = a.dom.must.el();
+  const bElement = b.dom.must.el();
+  const calls: LocalBehaviorContext[] = [];
+  const phases: string[] = [];
+  const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => phases.push(failure.phase) });
+  try {
+    assert.deepEqual(phases, ["browser-capability-resolution"]);
+    map.behaviors.define("run", ctx => { calls.push(ctx); });
+    aElement.dispatchEvent(new Event("click"));
+    map.data.must("state").at(["count"]).set(1);
+    aElement.dispatchEvent(new Event("click"));
+    assert.equal(calls.length, 0, "registration and an unrelated commit leave the relationship unresolved");
+
+    page.document.content.move(main, 0, 1);
+    assert.deepEqual(paths(map), { retarget: [...main.path, 1] });
+    assert.equal(retained_subject(reflection.tree.find.must.byQuid("000007111")), aNode);
+    aElement.dispatchEvent(new Event("click"));
+    bElement.dispatchEvent(new Event("click"));
+    assert.equal(calls.length, 0, "moving the exact subject does not retry resolution");
+
+    // B now occupies the original path. Only the subject of the current Descriptor changes.
+    replace_interaction(map, pending);
+    const event = new Event("click");
+    aElement.dispatchEvent(new Event("click"));
+    bElement.dispatchEvent(event);
+    bElement.dispatchEvent(new Event("click"));
+    assert.equal(calls.length, 1, "the retarget resolves the existing definition and observes once");
+    assert.equal(calls[0]?.event, event);
+    const subject = calls[0]?.subject;
+    assert.ok(subject);
+    assert.equal(retained_subject(subject), retained_subject(b));
+    assert.equal(subject.dom.must.el(), bElement);
+  } finally { dispose(); reflection.dispose(); }
 }
 
 {
@@ -165,7 +215,8 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const reflection = hsonMirror(map.doc.must("page"));
   project_livetree(retained_subject(reflection.tree));
   let calls = 0;
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
+  map.behaviors.define("run", () => { calls += 1; });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   const node = resolve_document_path(retained_subject(reflection.tree), "document", validate_document_path([0, 0, 1, 0, 0, 0, 1]));
   assert.equal(is_Node(node), true);
   if (!is_Node(node)) throw new Error("Expected realized subject.");

@@ -16,7 +16,7 @@
       const button = root.querySelector("button");
       transport = hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
       continuation = await continue_hosted_document({ now: setup.now, credential: setup.credential,
-        transport, root, interactions: { local: {} } });
+        transport, root, interactions: {} });
       if (continuation.echo.sync.status !== "caught_up" || continuation.mirror.status !== "active") {
         throw new Error("HTTP continuation did not converge.");
       }

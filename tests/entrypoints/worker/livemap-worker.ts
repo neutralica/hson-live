@@ -9,6 +9,7 @@ import {
   type LiveMapDocumentQuadLocation,
   type LiveMapDocumentIdentityProvenanceErrorCode,
   type LiveMapDocumentInstallFailureCode,
+  type LocalBehaviorResult,
   type LiveMapProjectedIdentityErrorCode,
   type LiveMapProjectedMutationErrorCode,
 } from "hson-live/livemap";
@@ -42,6 +43,9 @@ const capture: LiveMapSnapshot = map.capture();
 void projectedAcquisitionIsPublic;
 void capture.libraries;
 const empty = hsonLiveMap.create();
+empty.behaviors.define("compute", async (_ctx, input, message) => ({ name: message.name, value: input?.scalar() ?? null }));
+const execution: Promise<LocalBehaviorResult> = empty.behaviors.trigger("compute", -0);
+void execution;
 void empty.capture();
 const added = empty.addLibraries({ runtimePage: { document: Hson.document`<main/>` }, runtimeState: { json: 1 } });
 void added.commit.operations;

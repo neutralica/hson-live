@@ -72,14 +72,12 @@ void retained.now({ html: "page" });
 void continue_hosted_document({ echo, root });
 
 add_interaction(libraries, descriptor);
+libraries.behaviors.define("reveal", ({ event, subject }, args) => {
+  void [event, subject, args?.materialize()];
+});
 const disposeInteractions = activate_interactions({
   map: libraries,
   tree,
-  local: {
-    reveal(event, subject, args) {
-      void [event, subject, (args).materialize()];
-    },
-  },
   dispatch: async (key, payload) => {
     await echo.action(key, payload);
   },

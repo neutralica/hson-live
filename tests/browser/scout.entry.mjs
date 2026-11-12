@@ -85,7 +85,7 @@ async function main() {
       ? hsonLiveMap.echo.transport.websocket({ url: setup.websocketUrl })
       : hsonLiveMap.echo.transport.http({ endpoint: "/_hson" });
     const options = { now: setup.now, credential: setup.credential, transport, root: html,
-      interactions: { local: {} },
+      interactions: {},
       ...(scenario === "preparation-failure" ? { document: "absent" } : {}) };
     if (scenario === "manual-collision") manualOptions = options;
     suppliedOptions = options;

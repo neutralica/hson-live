@@ -17,7 +17,7 @@ import type {
 import type { JsonValue } from "../core/types.js";
 import type { LibraryCut, LibraryCommits } from "./governor.types.js";
 import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
-import type { HsonSchema } from "../api/transform/transform.types.js";
+import type { ExecutionInputOptions } from "../internal/execution-input.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -86,14 +86,7 @@ export type LocusActions<
 }>;
 
 /** Input admission shared by startup and additive action definitions. */
-export type LocusActionDefinitionOptions = Readonly<{
-  input?: Readonly<{
-    /** Defaults to false, including when a Schema is supplied. */
-    required?: boolean;
-    /** A public Hson Schema handle compiled in Data mode. */
-    schema?: HsonSchema;
-  }>;
-}>;
+export type LocusActionDefinitionOptions = ExecutionInputOptions;
 
 type LocusConfigurationOptions<
   TMap extends LiveMap,

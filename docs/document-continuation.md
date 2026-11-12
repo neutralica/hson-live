@@ -79,15 +79,15 @@ continue_document({ map: installed.map, document: selected, root });
 ```
 
 Every LiveMap has canonical interaction storage from construction. An Echo map
-can hold local Descriptors independently of the authority interaction grant. Pass
-activation capabilities when continuing a Document.
+can hold local Descriptors independently of the authority interaction grant.
+Define behaviors on the map and pass `interactions` to activate a Document.
 
 ```ts
+aggregate.behaviors.define("reveal", () => showPanel());
 const continuation = continue_document({
   map: aggregate,
   root,
   interactions: {
-    local: { reveal: () => showPanel() },
     dispatch: async (actionKey, payload) => dispatchDomainAction(actionKey, payload),
     onFailure: reportInteractionFailure,
   },
@@ -132,9 +132,9 @@ revision. Compatible replay therefore advances the already-adopted nodes in
 place. An incompatible root epoch fails closed through existing Mirror
 continuity rules.
 
-Hosted interactions are activated once, after that readiness boundary. Their
-authoritative dispatcher is derived from the prepared Echo; callers provide
-only local capabilities and an optional failure observer:
+Hosted interactions activate after Echo catches up. The optional synchronous
+`registerBehaviors` callback receives the composed LiveMap's registry before
+listener installation. Hosted descriptors dispatch through that continuation's Echo.
 
 ```ts
 const continuation = await continue_hosted_document({
@@ -143,7 +143,9 @@ const continuation = await continue_hosted_document({
   transport,
   root,
   interactions: {
-    local: { reveal: () => showPanel() },
+    registerBehaviors(behaviors) {
+      behaviors.define("reveal", () => showPanel());
+    },
     onFailure: reportInteractionFailure,
   },
 });

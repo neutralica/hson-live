@@ -126,6 +126,8 @@ import type { LiveMapSemanticCheckpoint, PreparedLiveMapSemanticCheckpoint } fro
 import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js";
 import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "./livemap.staged.js";
+import { make_livemap_behaviors } from "./livemap.behaviors.js";
+import type { InteractionLocalBehaviors } from "../../types/local-behavior.types.js";
 import type { LiveMapAggregateWrite } from "./livemap.library.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
 import { normalize_document_scoped_library_subjects, own_document_scopes, own_topology_document_scopes } from "./livemap.document.scoped-portable.js";
@@ -986,7 +988,10 @@ function make_livemap_library_receiver(
     return public_commit(accepted);
   };
 
+  // Definitions belong to the receiver even when its canonical state is restored in place.
+  let behaviors: InteractionLocalBehaviors | undefined;
   const libraries = Object.freeze({
+    get behaviors(): InteractionLocalBehaviors { return behaviors ??= make_livemap_behaviors(map); },
     get rev() { return aggregate.hostedPosition().revision; },
     ...make_family_selectors(resolve),
     batch,
@@ -1036,6 +1041,7 @@ function make_livemap_library_receiver(
         aggregate.observe((commit) => listener(public_commit(commit))),
     }),
   });
+  const map = libraries as unknown as LiveMap;
   register_internal_livemap_aggregate_owner(libraries, aggregate);
   DOCUMENT_SSR_CUT.set(libraries, (options, demanded) => {
     if (!Array.isArray(demanded)) throw new Error("SSR subject cut requires an exact demand array.");
@@ -1218,7 +1224,7 @@ function make_livemap_library_receiver(
       }
     }, scoped, assertAcceptance);
   });
-  return libraries as unknown as LiveMap;
+  return map;
 }
 
 /**

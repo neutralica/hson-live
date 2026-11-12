@@ -75,6 +75,14 @@ import {
 } from "./runtime/livetree-runtime.js";
 import { admit_public_livetree_branch } from "./livetree.node-admission.js";
 
+// Attach the browser subject type without pulling LiveTree's DOM declarations
+// into portable LiveMap entrypoints.
+declare module "../../types/local-behavior.types.js" {
+  interface LocalBehaviorSubjectTypes {
+    subject: LiveTree;
+  }
+}
+
 // This capability is scoped to internal construction calls, never to a node's
 // provenance. Public `new LiveTree(node)` captures a private QUID-free branch.
 const EXACT_NODE_CONSTRUCTION = new WeakSet<HsonNode>();

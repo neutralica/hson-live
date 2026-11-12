@@ -63,7 +63,6 @@ for (const selected of ["control", "page", "flat"] as const) {
   const document = selected === "flat" ? "flat" : "page";
   const { root, body, buttons } = nativePage(document === "flat" ? 1 : 2);
   const calls: string[] = [], failures: InteractionFailure[] = [];
-  const local = Object.fromEntries(["left", "right", "flat-click", "other-click"].map(id => [id, () => { calls.push(id); }]));
   try {
     const session = await locus.session.create({ libraries: ["page", "other", "flat", "data"], systemFeatures: ["interactions"] });
     const now = session.now({ html: document });
@@ -71,7 +70,12 @@ for (const selected of ["control", "page", "flat"] as const) {
     assert.throws(() => locus_map_internal(locus).capture(), /scoped/i);
     const continuation = await continue_hosted_document({ now, document, credential: session.credential!,
       root: root as unknown as Element, transport: testedTransport,
-      ...(selected === "control" ? {} : { interactions: { local, onFailure: failure => { failures.push(failure); } } }) });
+      ...(selected === "control" ? {} : { interactions: {
+        registerBehaviors(behaviors) {
+          for (const id of ["left", "right", "flat-click", "other-click"]) behaviors.define(id, () => { calls.push(id); });
+        },
+        onFailure: failure => { failures.push(failure); },
+      } }) });
     try {
       const map = echo_map_internal(continuation.echo);
       assert.throws(() => map.capture(), /scoped/i, "activation must not relax portable capture");
@@ -86,7 +90,7 @@ for (const selected of ["control", "page", "flat"] as const) {
         continue;
       }
       for (const document of [undefined, "missing", "data", "parts", "hidden"]) {
-        assert.throws(() => activate_interactions({ map, tree: continuation.tree, document, local }), /selected document Library/);
+        assert.throws(() => activate_interactions({ map, tree: continuation.tree, document }), /selected document Library/);
       }
       for (const button of buttons) button.dispatchEvent(new Event("click"));
       assert.deepEqual(calls, selected === "page" ? ["left", "right"] : ["flat-click"]);
@@ -146,7 +150,8 @@ for (const selected of ["control", "page", "flat"] as const) {
   } }, page: { access: "shared", document: scopedPage } }, { interactions: [browser("left", "page", 0)] });
   const map = locus_map_internal(locus);
   const mirror = hsonMirror(map.doc.must("page"));
-  const dispose = activate_interactions({ map, tree: mirror.tree, local: { left: () => {} } });
+  map.behaviors.define("left", () => {});
+  const dispose = activate_interactions({ map, tree: mirror.tree });
   dispose(); mirror.dispose(); locus.dispose();
   console.log("PASS sole scoped Document implicit selection");
 }

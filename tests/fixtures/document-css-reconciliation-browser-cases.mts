@@ -143,7 +143,8 @@ export async function document_css_reconciliation_browser_cases(): Promise<{ nam
       const carriers = () => Array.from(root.querySelectorAll<HTMLStyleElement>('style[data-hson-managed-document-css]'));
       const expected = render_portable_document_stylesheet_carriers(document_css_state_internal(page));
       let calls = 0;
-      const interactions = { local: { click: () => { calls++; } } };
+      map.behaviors.define('click', () => { calls++; });
+      const interactions = {};
       let binding = continue_document({ map, document: page, root, interactions });
       const tree = binding.tree, runtime = runtime_for_tree(tree), old = carriers();
       const foreign = doc.head.querySelector('style:not([data-hson-managed-document-css])')!;

@@ -152,8 +152,8 @@ for (const sharedFeature of [true, false]) {
   const target = new EventTarget();
   link_node_to_el(retained_subject(subject), target as unknown as Element);
   let calls = 0;
-  const dispose = activate_interactions({ map: client, tree: reflection.tree, document: "panel",
-    local: { run: () => { calls += 1; } } });
+  client.behaviors.define("run", () => { calls += 1; });
+  const dispose = activate_interactions({ map: client, tree: reflection.tree, document: "panel" });
   target.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);
   dispose(); reflection.dispose(); replica.dispose();
@@ -170,10 +170,9 @@ for (const sharedFeature of [true, false]) {
   link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
   link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
-  const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
-    local: () => { calls.push("local"); } };
-  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local });
-  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", local });
+  for (const name of ["shared", "next", "local"]) client.behaviors.define(name, () => { calls.push(name); });
+  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page" });
+  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel" });
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
   assert.deepEqual(calls, ["shared", "local"]);
@@ -236,10 +235,9 @@ for (const sharedFeature of [true, false]) {
   link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
   link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
-  const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
-    local: () => { calls.push("local"); } };
-  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local });
-  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", local });
+  for (const name of ["shared", "next", "local"]) client.behaviors.define(name, () => { calls.push(name); });
+  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page" });
+  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel" });
   panelTarget.dispatchEvent(new Event("click"));
   assert.deepEqual(calls, ["local"]);
   replace_interaction(authority, descriptor("shared", "page", "next"));
@@ -267,10 +265,9 @@ for (const sharedFeature of [true, false]) {
   link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
   link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
-  const local = { shared: () => { calls.push("shared"); }, next: () => { calls.push("next"); },
-    local: () => { calls.push("local"); }, "local-next": () => { calls.push("local-next"); } };
-  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local });
-  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", local });
+  for (const name of ["shared", "next", "local", "local-next"]) client.behaviors.define(name, () => { calls.push(name); });
+  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page" });
+  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel" });
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
   assert.deepEqual(calls, ["shared", "local", "local-next"]);
@@ -304,9 +301,10 @@ for (const sharedFeature of [true, false]) {
   link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
   link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   let shared = 0, localCalls = 0;
-  const local = { shared: () => { shared += 1; }, local: () => { localCalls += 1; } };
-  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local });
-  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", local });
+  client.behaviors.define("shared", () => { shared += 1; });
+  client.behaviors.define("local", () => { localCalls += 1; });
+  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page" });
+  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel" });
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
   replica.restoreHosted(await projected_snapshot(authority, false, []));
@@ -342,8 +340,8 @@ for (const sharedFeature of [true, false]) {
   const target = new EventTarget();
   link_node_to_el(retained_subject(reflection.tree.find.must.byTag("button")), target as unknown as Element);
   let calls = 0;
-  const dispose = activate_interactions({ map: client, tree: reflection.tree, document: "panel",
-    local: { run: () => { calls += 1; } } });
+  client.behaviors.define("run", () => { calls += 1; });
+  const dispose = activate_interactions({ map: client, tree: reflection.tree, document: "panel" });
   target.dispatchEvent(new Event("click"));
   // A local initializer leaving scope does not remove its already installed Library.
   replica.restoreHosted(initial);
@@ -390,11 +388,10 @@ for (const sharedFeature of [true, false]) {
   link_node_to_el(retained_subject(pageMirror.tree.find.must.byTag("button")), pageTarget as unknown as Element);
   link_node_to_el(retained_subject(panelMirror.tree.find.must.byTag("button")), panelTarget as unknown as Element);
   const calls: string[] = [];
-  const local = { "shared-browser": () => { calls.push("shared-browser"); },
-    "local-browser": () => { calls.push("local-browser"); } };
+  for (const name of ["shared-browser", "local-browser"]) client.behaviors.define(name, () => { calls.push(name); });
   const dispatch = async (key: string) => { calls.push(key); };
-  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", local, dispatch });
-  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", local, dispatch });
+  const disposePage = activate_interactions({ map: client, tree: pageMirror.tree, document: "page", dispatch });
+  const disposePanel = activate_interactions({ map: client, tree: panelMirror.tree, document: "panel", dispatch });
   pageTarget.dispatchEvent(new Event("click"));
   panelTarget.dispatchEvent(new Event("click"));
   assert.deepEqual(calls, ["shared-browser", "save", "local-browser", "save"]);
@@ -440,8 +437,9 @@ for (const sharedFeature of [true, false]) {
   const target = new EventTarget();
   link_node_to_el(retained_subject(reflection.tree.find.must.byTag("button")), target as unknown as Element);
   let calls = 0;
-  const dispose = activate_interactions({ map: echo_map_internal(echo), tree: reflection.tree, document: "panel",
-    local: { run: () => { calls += 1; } } });
+  const map = echo_map_internal(echo);
+  map.behaviors.define("run", () => { calls += 1; });
+  const dispose = activate_interactions({ map, tree: reflection.tree, document: "panel" });
   target.dispatchEvent(new Event("click"));
   await session.update({ libraries: ["page"] });
   await session.update({ libraries: ["page", "panel"] });

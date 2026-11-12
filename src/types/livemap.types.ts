@@ -2,6 +2,7 @@ import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
 import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
+import type { InteractionLocalBehaviors } from "./local-behavior.types.js";
 // livemap.types.ts
 
 import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
@@ -1938,6 +1939,8 @@ export type LiveMapLibraryAdmission<TDefinitions extends LiveMapDefinitions> = R
  * A collection of canonical Libraries with a local topology transition.
  */
 export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
+  /** Local executable definitions for this map's lifetime. */
+  readonly behaviors: InteractionLocalBehaviors;
   /** Private type evidence; it has no runtime property or public selector. */
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;

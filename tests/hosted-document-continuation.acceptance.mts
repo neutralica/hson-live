@@ -7,7 +7,7 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { DocumentContinuationError, Hson, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocusWebSocketLike } from "../src/index.ts";
+import { DocumentContinuationError, Hson, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocalBehaviorContext, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
@@ -274,8 +274,9 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
   if (page.mode !== "document") throw Error("Document");
   const { root, body, button } = native_button_page();
   let calls = 0;
+  client.behaviors.define("run", () => { calls++; });
   const grafted = continue_document({ map: client, document: page, root: root as unknown as Element,
-    interactions: { local: { run: () => { calls++; } } } });
+    interactions: {} });
   const prior = grafted.tree, oldQuid = lookup_document_quad_internal(page, "root")!.quid;
   const runtime = runtime_for_tree(prior), claims = new Map(runtime.quidToNode);
   const owner = internal_livemap_aggregate_authority(client), manager = {};
@@ -400,7 +401,7 @@ function socketPair(): Readonly<{
       ...wire.shared,
       now: cut,
       root: root as unknown as Element,
-      interactions: { local: null as unknown as InteractionLocalBehaviors },
+      interactions: { registerBehaviors: null as never },
     }),
     (cause) => cause instanceof DocumentContinuationError
       && cause.phase === "interactions"
@@ -412,7 +413,7 @@ function socketPair(): Readonly<{
     ...wire.shared,
     now: cut,
     root: root as unknown as Element,
-    interactions: { local: {} },
+    interactions: {},
   });
   assert.equal(continuation.map, continuation.echo.doc.must("page"));
   assert.equal(continuation.echo.data.must("ui").mode, "data-object");
@@ -518,8 +519,15 @@ function socketPair(): Readonly<{
   page.body.appendChild(sentinel);
   const connection = wire();
   let clicks = 0;
+  let registeredOn: InteractionLocalBehaviors | undefined;
+  let localContext: LocalBehaviorContext | undefined;
   const options = { now, credential: session.credential!, transport: connection.transport,
-    root: page.root as unknown as Element, interactions: { local: { clicker: () => { clicks += 1; } } } };
+    root: page.root as unknown as Element, interactions: {
+      registerBehaviors(behaviors: InteractionLocalBehaviors) {
+        registeredOn = behaviors;
+        behaviors.define("clicker", ctx => { clicks += 1; localContext = ctx; });
+      },
+    } };
 
   const bodyChildren = page.body.childNodes;
   Object.defineProperty(page.body, "childNodes", { configurable: true, get() {
@@ -556,12 +564,22 @@ function socketPair(): Readonly<{
   assert.equal(continuation.tree.find.byTag("hson-scout"), undefined);
   assert.equal(get_node_for_el(sentinel as unknown as Element), undefined);
   assert.equal(continuation.mirror.status, "active");
-  page.button.dispatchEvent(new Event("click"));
+  const event = new Event("click");
+  page.button.dispatchEvent(event);
   assert.equal(clicks, 1);
+  const clientMap = echo_map_internal(continuation.echo);
+  assert.equal(registeredOn, clientMap.behaviors);
+  assert.equal(localContext?.map, clientMap);
+  assert.equal(localContext?.event, event);
+  assert.equal(localContext?.subject?.dom.el(), page.button);
   await assert.rejects(prepared.start(), /started state/);
   assert.throws(() => prepared.dispose(), /started state/);
   await assert.rejects(continue_hosted_document(options), /already has an active document continuation/);
   continuation.dispose();
+  page.button.dispatchEvent(new Event("click"));
+  assert.equal(clicks, 1);
+  assert.deepEqual(await clientMap.behaviors.trigger("clicker"), { ok: true });
+  assert.equal(clicks, 2);
   assert.equal(continuation.echo.session.status, "attached");
   continuation.echo.dispose();
   connection.transport.dispose();

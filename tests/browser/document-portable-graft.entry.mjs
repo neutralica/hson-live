@@ -137,7 +137,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     unchanged(f, before, elements);
     f.frame.remove(); other.frame.remove();
   });
-  for (const kind of ['metadata', 'wrong-metadata', 'style', 'silent-style', 'carrier-removal', 'silent-removal', 'adoption', 'late-interaction']) await check(`${kind} native failure rolls back and permits safe retry`, async () => {
+  for (const kind of ['metadata', 'wrong-metadata', 'style', 'silent-style', 'carrier-removal', 'silent-removal', 'adoption']) await check(`${kind} native failure rolls back and permits safe retry`, async () => {
     const f = await page(html, libs), before = snapshot(f.root), elements = [...f.root.querySelectorAll('*')], computed = visual(f.doc);
     const style = f.doc.querySelector(marker), element = f.doc.getElementById('second-child');
     let once = false;
@@ -149,7 +149,7 @@ globalThis.runPortableGraftAcceptance = async ({ html, libs, sourceQuids, compos
     if (kind === 'carrier-removal') element.removeAttribute = function(name) { remove.call(this, name); if (!once && name === 'hson:quad') { once = true; throw Error('carrier removal fault'); } };
     if (kind === 'style') Object.defineProperty(style.firstChild, 'nodeValue', { configurable:true, get() {return text.get.call(this);}, set(value) { text.set.call(this,value); if (!once) { once=true; throw Error('style realization fault'); } } });
     if (kind === 'adoption') fault(point => { if (point === 'after-links') throw Error('adoption fault'); });
-    try { rejects(kind === 'late-interaction' ? () => graft({map:f.map,document:f.selected,root:f.root,interactions:{local:{}}}, f.handoff) : f.run, 'injected fault must reject'); }
+    try { rejects(f.run, 'injected fault must reject'); }
     finally { delete element.setAttribute; delete element.removeAttribute; delete style.firstChild.nodeValue; fault(undefined); }
     unchanged(f, before, elements); equal(visual(f.doc), computed, 'rollback preserves usable styling');
     equal(f.selected.css.snapshot(), f.handoff.receivingCss.join("\n\n"), 'accepted CSS authority retained');

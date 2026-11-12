@@ -197,7 +197,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
 {
   const map = documentMap(source());
   const fixture = mainFixture();
-  const options = { map, root: fixture.root as unknown as Element, interactions: { local: {} } };
+  const options = { map, root: fixture.root as unknown as Element, interactions: {} };
   const failure = new Error("interaction activation initialization failed");
   set_interaction_activation_initialization_hook_for_tests(() => { throw failure; });
   try {
@@ -257,10 +257,11 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   const button = new FakeElement("button");
   root.appendChild(button);
   let calls = 0;
+  map.behaviors.define("click", () => { calls += 1; });
   const continuation = continue_document({
     map,
     root: fullPage(root) as unknown as Element,
-    interactions: { local: { click: () => { calls += 1; } } },
+    interactions: {},
   });
   button.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);

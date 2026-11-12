@@ -62,10 +62,16 @@ export type {
   InteractionDescriptor,
   InteractionFailure,
   InteractionListener,
-  InteractionLocalBehavior,
-  InteractionLocalBehaviors,
   BrowserInteractionDescriptor,
 } from "./types/interaction.types.js";
+export type {
+  InteractionLocalBehavior,
+  InteractionLocalBehaviors,
+  LocalBehaviorContext,
+  LocalBehaviorDefinitionOptions,
+  LocalBehaviorMessage,
+  LocalBehaviorResult,
+} from "./types/local-behavior.types.js";
 
 export {
   decode_ssr_bootstrap,

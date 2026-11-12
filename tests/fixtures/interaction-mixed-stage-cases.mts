@@ -108,9 +108,9 @@ export async function mixed_stage_interaction_cases(): Promise<void> {
   const oneEl = get_el_for_node(oneNode), twoEl = get_el_for_node(twoNode);
   assert.ok(oneEl instanceof FakeElement && twoEl instanceof FakeElement);
   const calls: string[] = [];
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: {
-    existing: () => { calls.push("one"); }, new: () => { calls.push("two"); },
-  } });
+  map.behaviors.define("existing", () => { calls.push("one"); });
+  map.behaviors.define("new", () => { calls.push("two"); });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   const beforeFailure = JSON.stringify(internal_livemap_aggregate_authority(map).captureHosted());
   await assert.rejects(locus.stage(stage => {
     stage.doc.must("page").content.move({ kind: "path", path: parent }, 0, 1);

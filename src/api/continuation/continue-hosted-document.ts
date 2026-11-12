@@ -7,6 +7,7 @@ import { echo_receiving_document_handoff_internal, prepare_echo_replica_internal
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { admit_authority_projection_snapshot, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { is_staged_thenable } from "../livemap/livemap.staged.js";
 import { activate_document_interactions_internal } from "../interactions/interactions.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 import { bind_document_css_tree } from "../livetree/managers/bound-document-css.js";
@@ -217,6 +218,17 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
     startupFaultHook?.("recovered", echo);
     if (interactions !== undefined) {
       try {
+        // Echo reconciles the composed LiveMap in place. Register on that same
+        // receiver before deriving installations from the recovered descriptors.
+        const registerBehaviors = interactions.registerBehaviors;
+        if (registerBehaviors !== undefined) {
+          if (typeof registerBehaviors !== "function") throw new TypeError("registerBehaviors must be a function.");
+          const configured = registerBehaviors(resolved.aggregate.behaviors);
+          if (is_staged_thenable(configured)) {
+            void Promise.resolve(configured).catch(() => {});
+            throw new TypeError("registerBehaviors must be synchronous.");
+          }
+        }
         const dispatch = async (actionKey: string, payload: HsonDataValue): Promise<void> => {
           const outcome = await echo.action(actionKey, payload);
           if (outcome.type === "ack" && outcome.ok === true) return;
@@ -230,7 +242,6 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
           map: resolved.aggregate,
           tree: reflect.tree,
           document: continuation_document_library_name(resolved.aggregate, resolved.selected),
-          local: interactions.local,
           dispatch,
           ...(interactions.onFailure === undefined ? {} : { onFailure: interactions.onFailure }),
         }, () => {

@@ -1,6 +1,8 @@
 import { mixed_stage_interaction_cases } from "./fixtures/interaction-mixed-stage-cases.mts";
+import { local_behavior_cases } from "./fixtures/local-behavior-cases.mts";
 import { activate_document_interactions_internal } from "../src/api/interactions/interactions.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
+import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { locus_map_internal } from "../src/internal/governor-maps.js";
 import { create_locus_fixture, authority_definitions_from_catalog_fixture, authority_definitions_from_map_fixture, authority_definition_from_fixture_options } from "./helpers/locus-definition-fixture.mts";
 import type { LocusActionContext } from "../src/types/locus.core.types.ts";
@@ -11,7 +13,7 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionListener, type InteractionLocalBehavior } from "../src/index.ts";
+import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocalBehaviorContext, type LocalBehaviorMessage } from "../src/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -237,6 +239,33 @@ await check("portable restore rejects duplicate descriptor IDs atomically", () =
   assert.equal(canonical_descriptors(map).descriptors.length, 1);
 });
 
+await check("LiveMap behavior registry owns eventless execution and exact Data admission", local_behavior_cases);
+
+await check("local registration leaves canonical Descriptors and durable records unchanged", async () => {
+  const persistence = new MemoryCheckpointAdapter();
+  const logicalMapId = "local-behavior-registration";
+  const definitions = { page: { document: "<main <button/>/>", access: "shared" } } as const;
+  const options = { logicalMapId, persistence, interactions: [local("durable-intent", "run")] };
+  const locus = await hsonLiveMap.locus.resume(definitions, options);
+  try {
+    const map = locus_map_internal(locus);
+    const cut = locus.cut(), revision = locus.rev, stored = persistence.state(logicalMapId);
+    map.behaviors.define("run", () => undefined);
+    assert.deepEqual(locus.cut(), cut);
+    assert.equal(locus.rev, revision);
+    assert.deepEqual(persistence.state(logicalMapId), stored);
+    assert.equal(persistence.appendCalls.length, 0);
+    assert.equal(persistence.checkpointCalls.length, 1);
+  } finally { locus.dispose(); }
+
+  const restored = await hsonLiveMap.locus.resume(definitions, options);
+  try {
+    const result = await locus_map_internal(restored).behaviors.trigger("run");
+    assert.equal(result.ok, false);
+    assert.match(result.error.message, /Unknown local behavior/);
+  } finally { restored.dispose(); }
+});
+
 await check("canonical reorder changes listener order within one activation", () => {
   const map = map_fixture();
   add_interaction(map, local("first", "first"));
@@ -245,8 +274,9 @@ await check("canonical reorder changes listener order within one activation", ()
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   const calls: string[] = [];
-  const dispose = activate_interactions({ map, tree: reflection.tree,
-    local: { first: () => { calls.push("first"); }, second: () => { calls.push("second"); } } });
+  map.behaviors.define("first", () => { calls.push("first"); });
+  map.behaviors.define("second", () => { calls.push("second"); });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   const firstListener = target.registrations[0]?.listener;
   const secondListener = target.registrations[1]?.listener;
   target.fire();
@@ -272,9 +302,8 @@ await check("unaffected consumed once survives an active descriptor reorder", ()
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   const calls: string[] = [];
-  const dispose = activate_interactions({ map, tree: reflection.tree,
-    local: { a: () => { calls.push("a"); }, b: () => { calls.push("b"); },
-      c: () => { calls.push("c"); } } });
+  for (const name of ["a", "b", "c"]) map.behaviors.define(name, () => { calls.push(name); });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   target.fire();
   assert.deepEqual(calls, ["a", "b", "c"]);
   assert.equal(target.registrations.length, 2);
@@ -297,9 +326,8 @@ await check("moved consumed once stays consumed until its descriptor changes", (
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   const calls: string[] = [];
-  const dispose = activate_interactions({ map, tree: reflection.tree,
-    local: { a: () => { calls.push("a"); }, b: () => { calls.push("b"); },
-      c: () => { calls.push("c"); } } });
+  for (const name of ["a", "b", "c"]) map.behaviors.define(name, () => { calls.push(name); });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   target.fire();
   assert.deepEqual(calls, ["a", "b", "c"]);
   const { aggregate, system, descriptors } = canonical_descriptors(map);
@@ -339,7 +367,8 @@ await check("revoking shared interaction feature removes installed listeners", a
   const subject = reflection.tree.find.must.byTag("button");
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   const failures: unknown[] = [];
-  const dispose = activate_interactions({ map: client, tree: reflection.tree, local: { run: () => undefined },
+  client.behaviors.define("run", () => undefined);
+  const dispose = activate_interactions({ map: client, tree: reflection.tree,
     onFailure: (failure) => { failures.push(failure); } });
   assert.equal(target.registrations.length, 1);
   replica.restoreHosted(authority_projection_as_client_composition_internal(project_authority_snapshot(captured, revoked)));
@@ -447,19 +476,27 @@ await check("local to local to authoritative reconciliation owns one exact subje
   const issuedBeforeActivation = aggregate.identityEpoch().issued().size;
   let a = 0, b = 0, authority = 0;
   let received: HsonDataValue | undefined;
+  let context: LocalBehaviorContext | undefined;
+  let invocation: LocalBehaviorMessage | undefined;
+  map.behaviors.define("a", (ctx, args, message) => { a += 1; received = args; context = ctx; invocation = message; }, {
+    input: { required: true, schema: ANY_DATA },
+  });
+  map.behaviors.define("b", () => { b += 1; });
   const dispose = activate_interactions({
     map,
     tree: reflection.tree,
-    local: {
-      a: (_event, exactSubject, args) => { a += 1; received = args; assert.equal(retained_subject(exactSubject), retained_subject(subject)); },
-      b: () => { b += 1; },
-    },
     dispatch: async (_key, payload) => { authority += 1; received = payload; },
   });
   assert.equal(target.registrations.length, 1);
   assert.deepEqual(target.registrations[0]?.options, { capture: true, once: false, passive: false });
-  target.fire();
+  const event = new Event("click");
+  target.fire(event);
   assert.equal(a, 1);
+  assert.equal(context?.map, map);
+  assert.equal(context?.event, event);
+  assert.ok(context?.subject);
+  assert.equal(retained_subject(context.subject), retained_subject(subject));
+  assert.equal(invocation?.name, "a");
   assert.equal(Object.is(received === undefined ? undefined : (received).materialize(), -0), true);
   assert.equal(map.rev, revisionBeforeActivation);
   assert.equal(aggregate.identityEpoch().issued().size, issuedBeforeActivation);
@@ -496,7 +533,8 @@ await check("fingerprinting retains owned exact data without parsing or material
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
-  const received: HsonDataValue[] = [];
+  const received: (HsonDataValue | undefined)[] = [];
+  map.behaviors.define("run", (_ctx, args) => { received.push(args); });
   const fromHson = HsonDataValue.fromSource;
   const toHson = HsonDataValue.prototype.toHson, materialize = HsonDataValue.prototype.materialize;
   let serializations = 0;
@@ -507,7 +545,6 @@ await check("fingerprinting retains owned exact data without parsing or material
     HsonDataValue.prototype.toHson = function () { serializations += 1; return toHson.call(this); };
     dispose = activate_interactions({
       map, tree: reflection.tree,
-      local: { run: (_event, _subject, args) => { received.push(args); } },
       dispatch: async (_key, payload) => { received.push(payload); },
     });
     assert.equal(serializations, 0, "public descriptor projection retains carriers");
@@ -528,8 +565,45 @@ await check("fingerprinting retains owned exact data without parsing or material
     dispose?.(); reflection.dispose();
   }
   const expected = values.flatMap((value) => [value, value]);
-  assert.deepEqual(received.map(value => value.toHson()), [...expected, ...expected].map(value => value.toHson()));
+  assert.deepEqual(received.map(value => value?.toHson()), [...expected, ...expected].map(value => value.toHson()));
   assert.ok(received.every(value => value instanceof HsonDataValue));
+});
+
+await check("native and direct invocations enforce the same input contract and report rejections", async () => {
+  const map = map_fixture();
+  add_interaction(map, local("typed-once", "typed", Hson.data.from(null), { once: true }));
+  const reflection = hsonMirror(map.doc.must("page"));
+  const target = new Target();
+  link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
+  const failures: InteractionFailure[] = [];
+  let calls = 0;
+  const rejected = new Error("native behavior rejection");
+  map.behaviors.define("typed", async ({ event }, input) => {
+    calls++;
+    if (event !== undefined) throw rejected;
+    return input;
+  }, { input: { required: true, schema: Hson.schema`<type "data" content <value "number">>` } });
+  const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
+  try {
+    const directFailure = await map.behaviors.trigger("typed", null);
+    assert.equal(directFailure.ok, false);
+    target.fire();
+    assert.equal(failures[0]?.phase, "browser-invocation");
+    assert.ok(failures[0].cause instanceof Error);
+    assert.equal(failures[0].cause.message, directFailure.error.message);
+    assert.equal(calls, 0);
+    map.data.must("state").at(["count"]).set(1);
+    assert.equal(target.registrations.length, 0, "a failed invocation still consumes its native once registration");
+
+    replace_interaction(map, local("typed-once", "typed", Hson.data.from({ value: -0 }), { once: true }));
+    target.fire();
+    await Promise.resolve();
+    assert.equal(failures[1]?.phase, "browser-invocation");
+    assert.equal(failures[1]?.cause, rejected);
+    const direct = await map.behaviors.trigger("typed", { value: -0 });
+    assert.ok(direct.ok && Object.is(direct.result?.entries()?.[0]?.[1].scalar(), -0));
+    assert.equal(calls, 2);
+  } finally { dispose(); reflection.dispose(); }
 });
 
 await check("fingerprints normalize descriptor fields and distinguish exact data changes", () => {
@@ -539,9 +613,8 @@ await check("fingerprints normalize descriptor fields and distinguish exact data
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
   let received: HsonDataValue | undefined;
-  const dispose = activate_interactions({ map, tree: reflection.tree,
-    local: { run: (_event, _subject, args) => { received = args; } },
-  });
+  map.behaviors.define("run", (_ctx, args) => { received = args; });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   try {
     let installed = target.registrations[0]?.listener;
     assert.ok(installed);
@@ -574,10 +647,10 @@ await check("failure observers receive frozen public descriptors with authentica
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
-  const failures: import("../src/types/interaction.types.ts").InteractionFailure[] = [];
+  const failures: InteractionFailure[] = [];
   const cause = new Error("invocation failed");
+  map.behaviors.define("run", (_ctx, args) => { assert.ok(args?.equals(data)); throw cause; });
   const dispose = activate_interactions({ map, tree: reflection.tree,
-    local: { run: (_event, _subject, args) => { assert.ok(args.equals(data)); throw cause; } },
     dispatch: (_key, payload) => { assert.ok(payload.equals(data)); throw cause; },
     onFailure: (failure) => { failures.push(failure); },
   });
@@ -638,7 +711,8 @@ await check("once is retained per materialization and reset by replacement/react
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   let calls = 0;
-  let dispose = activate_interactions({ map, tree: reflection.tree, local: { a: () => { calls += 1; } } });
+  map.behaviors.define("a", () => { calls += 1; });
+  let dispose = activate_interactions({ map, tree: reflection.tree });
   target.fire(); target.fire();
   assert.equal(calls, 1);
   const afterFirstInvocation = map.rev;
@@ -653,7 +727,7 @@ await check("once is retained per materialization and reset by replacement/react
   assert.equal(target.registrations.length, 1);
   target.fire(); assert.equal(calls, 3);
   dispose();
-  dispose = activate_interactions({ map, tree: reflection.tree, local: { a: () => { calls += 1; } } });
+  dispose = activate_interactions({ map, tree: reflection.tree });
   target.fire(); assert.equal(calls, 4);
   dispose(); reflection.dispose();
 });
@@ -665,8 +739,9 @@ await check("authoritative to local replacement uses no cross-capability fallbac
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   let dispatched = 0, localCalls = 0;
+  map.behaviors.define("run", () => { localCalls += 1; });
   const dispose = activate_interactions({
-    map, tree: reflection.tree, local: { run: () => { localCalls += 1; } },
+    map, tree: reflection.tree,
     dispatch: async () => { dispatched += 1; },
   });
   target.fire(); await Promise.resolve();
@@ -681,14 +756,15 @@ await check("activation observation precedes its deterministic initialization tr
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
+  map.behaviors.define("run", () => undefined);
   set_interaction_activation_initialization_hook_for_tests(() => add_interaction(map, local("race", "run")));
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   set_interaction_activation_initialization_hook_for_tests(undefined);
   assert.equal(target.registrations.length, 1);
   dispose(); reflection.dispose();
 });
 
-await check("activation snapshots every caller-owned runtime option and cannot implicitly rebind", async () => {
+await check("activation keeps its tree and diagnostics while late registration serves new descriptors", async () => {
   const map = map_fixture();
   add_interaction(map, local("fixed-local", "run"));
   add_interaction(map, local("fixed-removal", "removable", Hson.data.from(null), { event: "removal" }));
@@ -709,27 +785,21 @@ await check("activation snapshots every caller-owned runtime option and cannot i
   const alternateSubject = alternateReflection.tree.find.must.byQuid(currentQ);
   const alternateTarget = new Target(); link_node_to_el(retained_subject(alternateSubject), alternateTarget as unknown as Element);
 
-  let localA = 0, localB = 0, removable = 0, added = 0;
+  let localA = 0, removable = 0, added = 0;
   let dispatchA = 0, dispatchB = 0, failureA = 0, failureB = 0;
-  const localTable: Record<string, InteractionLocalBehavior> = {
-    run: () => { localA += 1; },
-    removable: () => { removable += 1; },
-  };
+  map.behaviors.define("run", () => { localA += 1; });
+  map.behaviors.define("removable", () => { removable += 1; });
   const options = {
     map,
     tree: reflection.tree,
-    local: localTable,
     dispatch: async () => { dispatchA += 1; },
     onFailure: () => { failureA += 1; },
   };
   const dispose = activate_interactions(options);
   const failuresAfterActivation = failureA;
 
-  localTable.run = () => { localB += 1; };
-  delete localTable.removable;
-  localTable.added = () => { added += 1; };
+  map.behaviors.define("added", () => { added += 1; });
   options.tree = alternateReflection.tree;
-  options.local = { run: () => { localB += 1; } };
   options.dispatch = async () => { dispatchB += 1; };
   options.onFailure = () => { failureB += 1; };
 
@@ -741,29 +811,31 @@ await check("activation snapshots every caller-owned runtime option and cannot i
   alternateTarget.fire(new Event("click"));
   await Promise.resolve();
 
-  assert.deepEqual([localA, localB, removable, added], [1, 0, 1, 0]);
+  assert.deepEqual([localA, removable, added], [1, 1, 0]);
   assert.deepEqual([dispatchA, dispatchB], [1, 0]);
   assert.equal(failureA > failuresAfterActivation, true);
   assert.equal(failureB, 0);
   assert.equal(alternateTarget.registrations.length, 0);
+  add_interaction(map, local("new-local", "added", Hson.data.from(null), { event: "addition" }));
+  firstTarget.fire(new Event("addition"));
+  assert.equal(added, 1, "only the new descriptor resolves the late definition");
   dispose(); reflection.dispose(); alternateReflection.dispose();
 });
 
-await check("document current-tree provider fails safely without changing capability snapshots", () => {
+await check("document current-tree provider fails safely while retaining its registered behavior", () => {
   const map = map_fixture();
   add_interaction(map, local("current-provider", "run"));
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
   let available = true, calls = 0, failures = 0;
-  const localTable = { run: () => { calls++; } };
-  const dispose = activate_document_interactions_internal({ map, tree: reflection.tree, local: localTable,
+  map.behaviors.define("run", () => { calls++; });
+  const dispose = activate_document_interactions_internal({ map, tree: reflection.tree,
     onFailure: () => { failures++; } }, () => {
     if (!available) throw new Error("current document tree unavailable");
     return reflection.tree;
   });
   target.fire(new Event("click")); assert.equal(calls, 1);
-  localTable.run = () => { calls += 100; };
   available = false;
   target.fire(new Event("click")); assert.equal(calls, 1); assert.ok(failures > 0);
   map.data.must("state").at(["count"]).set(1);
@@ -775,7 +847,7 @@ await check("document current-tree provider fails safely without changing capabi
   reflection.dispose();
 });
 
-await check("local capability snapshot is own-data-property-only and validates before side effects", () => {
+await check("prototype names require explicit registration and missing behavior is actionable", () => {
   const map = map_fixture();
   add_interaction(map, local("prototype-only", "inherited"));
   add_interaction(map, local("prototype-to-string", "toString", Hson.data.from(null), { event: "to-string" }));
@@ -784,34 +856,25 @@ await check("local capability snapshot is own-data-property-only and validates b
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
 
-  let inheritedCalls = 0;
-  const inheritedTable = Object.create({ inherited: () => { inheritedCalls += 1; } }) as Record<string, () => void>;
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: inheritedTable });
+  const failures: InteractionFailure[] = [];
+  const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
   assert.equal(target.registrations.length, 0);
   target.fire();
-  assert.equal(inheritedCalls, 0);
+  assert.deepEqual(failures.map(failure => failure.descriptor.key), ["inherited", "toString", "constructor"]);
+  for (const failure of failures) {
+    assert.equal(failure.phase, "browser-capability-resolution");
+    assert.ok(failure.cause instanceof Error);
+    assert.match(failure.cause.message, /map\.behaviors/);
+  }
   dispose();
 
-  let getterCalls = 0;
-  const getterTable: Record<string, unknown> = { valid: () => undefined };
-  Object.defineProperty(getterTable, "getter", {
-    enumerable: true,
-    get: () => { getterCalls += 1; return () => undefined; },
-  });
-  const beforeGetter = map.rev;
-  assert.throws(
-    () => activate_interactions({ map, tree: reflection.tree, local: getterTable as never }),
-    /data property/,
-  );
-  assert.equal(getterCalls, 0);
-  assert.equal(target.registrations.length, 0);
-  map.data.must("state").at(["count"]).set(1);
-  assert.equal(map.rev, beforeGetter + 1);
-
-  assert.throws(
-    () => activate_interactions({ map, tree: reflection.tree, local: { inherited: 1 } as never }),
-    /must be a function/,
-  );
+  let calls = 0;
+  map.behaviors.define("constructor", () => { calls++; });
+  const reactivate = activate_interactions({ map, tree: reflection.tree });
+  assert.equal(target.registrations.length, 1);
+  target.fire(new Event("constructor"));
+  assert.equal(calls, 1);
+  reactivate();
   assert.equal(target.registrations.length, 0);
   reflection.dispose();
 });
@@ -826,9 +889,8 @@ await check("an activation created without a dispatcher cannot gain one by optio
   const options: {
     map: typeof map;
     tree: typeof reflection.tree;
-    local: Record<string, InteractionLocalBehavior>;
     dispatch?: InteractionActionDispatcher;
-  } = { map, tree: reflection.tree, local: {} };
+  } = { map, tree: reflection.tree };
   const dispose = activate_interactions(options);
   options.dispatch = async () => { dispatched += 1; };
   map.data.must("state").at(["count"]).set(1);
@@ -841,6 +903,7 @@ await check("an activation created without a dispatcher cannot gain one by optio
 
 await check("failed initialization rolls back installed listeners and every observer", () => {
   const map = map_fixture();
+  map.behaviors.define("run", () => undefined);
   add_interaction(map, local("rollback-a", "run"));
   add_interaction(map, local("rollback-b", "run"));
   const reflection = hsonMirror(map.doc.must("page"));
@@ -856,7 +919,7 @@ await check("failed initialization rolls back installed listeners and every obse
   });
   try {
     assert.throws(
-      () => activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } }),
+      () => activate_interactions({ map, tree: reflection.tree }),
       /forced post-materialization/,
     );
   } finally {
@@ -875,7 +938,7 @@ await check("failed initialization rolls back installed listeners and every obse
   set_interaction_activation_initialization_hook_for_tests(() => { throw new Error("forced initialization barrier failure"); });
   try {
     assert.throws(
-      () => activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } }),
+      () => activate_interactions({ map, tree: reflection.tree }),
       /forced initialization barrier/,
     );
   } finally {
@@ -887,36 +950,38 @@ await check("failed initialization rolls back installed listeners and every obse
   imperativeSub.off(); reflection.dispose();
 });
 
-await check("concurrent activations own independent capabilities failures listeners and disposal", async () => {
+await check("concurrent activations share definitions and own independent listeners and diagnostics", async () => {
   const map = map_fixture();
   add_interaction(map, local("concurrent", "run"));
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
-  let imperative = 0, a = 0, aReplacement = 0, b = 0, failureA = 0, failureB = 0;
+  let imperative = 0, failureA = 0, failureB = 0;
+  const ids: string[] = [];
   const imperativeSub = subject.listen.onCustom("click", () => { imperative += 1; });
-  const tableA: Record<string, InteractionLocalBehavior> = {
-    run: () => { a += 1; throw new Error("activation A failure"); },
-  };
+  map.behaviors.define("run", (_ctx, _data, message) => {
+    ids.push(message.id);
+    if (ids.length === 1) throw new Error("activation A failure");
+  });
   const disposeA = activate_interactions({
-    map, tree: reflection.tree, local: tableA,
+    map, tree: reflection.tree,
     onFailure: () => { failureA += 1; },
   });
   const disposeB = activate_interactions({
-    map, tree: reflection.tree, local: { run: () => { b += 1; } },
+    map, tree: reflection.tree,
     onFailure: () => { failureB += 1; },
   });
-  tableA.run = () => { aReplacement += 1; };
-
   target.fire(); await Promise.resolve(); await Promise.resolve();
-  assert.deepEqual([imperative, a, aReplacement, b, failureA, failureB], [1, 1, 0, 1, 1, 0]);
+  assert.deepEqual([imperative, ids.length, failureA, failureB], [1, 2, 1, 0]);
   disposeA();
   target.fire(); await Promise.resolve();
-  assert.deepEqual([imperative, a, aReplacement, b], [2, 1, 0, 2]);
+  assert.deepEqual([imperative, ids.length], [2, 3]);
   disposeB();
   target.fire();
-  assert.deepEqual([imperative, a, aReplacement, b], [3, 1, 0, 2]);
+  assert.deepEqual([imperative, ids.length], [3, 3]);
   assert.equal(target.registrations.length, 1);
+  assert.deepEqual(await map.behaviors.trigger("run"), { ok: true });
+  assert.equal(new Set(ids).size, 4);
   imperativeSub.off(); reflection.dispose();
 });
 
@@ -927,8 +992,8 @@ await check("concurrent authoritative activations retain independent dispatchers
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   let a = 0, b = 0;
-  const disposeA = activate_interactions({ map, tree: reflection.tree, local: {}, dispatch: async () => { a += 1; } });
-  const disposeB = activate_interactions({ map, tree: reflection.tree, local: {}, dispatch: async () => { b += 1; } });
+  const disposeA = activate_interactions({ map, tree: reflection.tree, dispatch: async () => { a += 1; } });
+  const disposeB = activate_interactions({ map, tree: reflection.tree, dispatch: async () => { b += 1; } });
   target.fire(); await Promise.resolve();
   assert.deepEqual([a, b], [1, 1]);
   disposeA(); target.fire(); await Promise.resolve();
@@ -942,7 +1007,8 @@ await check("an ignored missing listener target remains eligible for later reali
   add_interaction(map, local("late-target", "run", Hson.data.from(null), { missingTarget: "ignore" }));
   const reflection = hsonMirror(map.doc.must("page"));
   let calls = 0;
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
+  map.behaviors.define("run", () => { calls += 1; });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   const subject = reflection.tree.find.must.byQuid(currentQ);
   assert.equal(subject.dom.el(), undefined);
   project_livetree(retained_subject(reflection.tree));
@@ -966,7 +1032,8 @@ await check("exact subject replacement disposes A and materializes once on B", (
   const firstNode = retained_subject(first);
   const firstElement = first.dom.el() as unknown as import("./helpers/fake-document.mts").FakeElement;
   let calls = 0;
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
+  map.behaviors.define("run", () => { calls += 1; });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   assert.equal(firstElement.listeners.get("click")?.size, 1);
   firstElement.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);
@@ -999,7 +1066,9 @@ await check("snapshot restore makes current hidden descriptors reconciliation tr
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   let a = 0, b = 0;
-  const dispose = activate_interactions({ map, tree: reflection.tree, local: { a: () => { a += 1; }, b: () => { b += 1; } } });
+  map.behaviors.define("a", () => { a += 1; });
+  map.behaviors.define("b", () => { b += 1; });
+  const dispose = activate_interactions({ map, tree: reflection.tree });
   target.fire();
   aggregate.restoreHosted(snapshot);
   assert.equal(target.registrations.length, 1);
@@ -1020,8 +1089,9 @@ await check("runtime failures are isolated and canonical descriptors remain", as
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   const phases: string[] = [];
   let calls = 0;
+  map.behaviors.define("ok", () => { calls += 1; });
   const dispose = activate_interactions({
-    map, tree: reflection.tree, local: { ok: () => { calls += 1; } },
+    map, tree: reflection.tree,
     onFailure: (failure) => { phases.push(failure.phase); },
   });
   target.fire(); await Promise.resolve();
@@ -1044,7 +1114,7 @@ await check("invocation rejection is isolated and disposal leaves imperative lis
   const imperativeSub = subject.listen.onCustom("click", () => { imperative += 1; });
   const phases: string[] = [];
   const dispose = activate_interactions({
-    map, tree: reflection.tree, local: {}, dispatch: async () => { throw new Error("rejected"); },
+    map, tree: reflection.tree, dispatch: async () => { throw new Error("rejected"); },
     onFailure: (failure) => { phases.push(failure.phase); },
   });
   target.fire(); await Promise.resolve(); await Promise.resolve();
@@ -1098,10 +1168,10 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const subject = reflection.tree.find.must.byQuid(localQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   let localCalls = 0;
+  echoMap.behaviors.define("save", () => { localCalls += 1; });
   const dispose = activate_interactions({
     map: echoMap,
     tree: reflection.tree,
-    local: { save: () => { localCalls += 1; } },
     dispatch: async (key, payload) => {
       const result = await echo.action(key, payload);
       if (result.type !== "ack") throw result.error;

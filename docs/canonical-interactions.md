@@ -1,6 +1,6 @@
 # Canonical interactions
 
-Canonical interactions store portable interaction intent in one canonical `LiveMap` system root: `{ descriptors: [...] }`. A descriptor contains no executable capability. Activation combines the current descriptors with an active `LiveTree`, a fixed behavior table, and an optional application-supplied dispatcher to derive listeners.
+Canonical interactions store portable interaction intent in one canonical `LiveMap` system root. Activation combines the current descriptors with an active `LiveTree`, the map's local behavior registry, and an optional application-supplied dispatcher to derive listeners.
 
 The current public functions are:
 
@@ -83,7 +83,7 @@ Descriptor ownership comes solely from `descriptor.subject.library`:
 
 There is one interaction system root. Its shared partition `S` contains descriptors for projected shared documents; its local partition `L` contains descriptors for local documents. Echo exposes `S + L`. Direct client authoring may change only `L`; Locus drafts may change private or shared descriptors in the authority map. Locus has no local document Library, so it rejects local subjects. A shared descriptor remains authority-owned even when `kind` is `"browser"`.
 
-`kind` chooses execution, independently of ownership. `"browser"` calls the activation-side behavior table (named `local` in the current activation options); it does not assert a browser-only platform. `"locus"` calls the supplied dispatcher. Hosted Echo composition normally dispatches through `echo.action`, where Locus authorizes the action independently. Shared/browser, shared/locus, local/browser, and local/locus are all valid.
+`kind` chooses execution, independently of ownership. `"browser"` resolves the behavior name through `map.behaviors`. `"locus"` calls the supplied dispatcher. Hosted Echo composition normally dispatches through `echo.action`, where Locus authorizes the action independently. Shared/browser, shared/locus, local/browser, and local/locus are all valid.
 
 Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. Shared authoring belongs in a Locus `stage` or action `ctx.stage`, where document edits and descriptor maintenance can commit atomically.
 
@@ -97,7 +97,20 @@ Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and 
 
 Descriptor inputs accept supported JavaScript values or authenticated carriers. Ordinary strings are literal Data; encoded JSON/Hson requires explicit `Hson.data.fromSource()`. Browser `args` and locus `payload` use Schema `"any"` and represent canonical data-mode values. The interaction layer retains exact `HsonDataValue`; it does not materialize through ordinary JavaScript or stringify and reparse during reconciliation or dispatch. Signed zero, object member order, integer-like member order, dangerous valid names such as `__proto__`, and nested combinations therefore retain their semantics. Shared `args` and `payload` are shared canonical data: no general taint tracking redacts values an authority author places there. Private-subject descriptors are filtered from projection.
 
-A local behavior receives the native `Event`, the exact resolved `LiveTree` subject, and exact `HsonDataValue` args. Activation snapshots only explicitly supplied own string-keyed data properties whose values are behavior functions. Prototype members are not capabilities, and accessor-backed or non-function capability entries are invalid activation configuration. The resulting behavior table is fixed for one activation and application context normally comes from closure.
+Register local behaviors on the operating map before activation. Each `define` adds one function for the life of that map. Invalid definitions and duplicate names throw before insertion. Executable definitions stay in memory across Document and activation disposal and are omitted from canonical state and captures.
+
+```ts
+map.behaviors.define("panel.set", (ctx, input, message) => {
+  updatePanel(ctx.map, ctx.subject, input?.materialize());
+  return { behavior: message.name };
+}, { input: { required: true, schema: panelSchema } });
+
+const result = await map.behaviors.trigger("panel.set", { open: true });
+```
+
+Both invocation paths call `(ctx, input, message)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `input` is `HsonDataValue | undefined`, and `message` carries the behavior name and a runtime-local invocation ID. A supplied Schema validates present exact Data. Requiredness defaults to `false`. Explicit `null` counts as present input. Canonical Descriptors still supply Data in their existing `args` or `payload` field.
+
+`trigger` starts execution immediately. The Promise resolves to `{ ok: true, result? }` with optional exact returned Data or `{ ok: false, error }` with the failure message and original cause. Functions may return Data synchronously or asynchronously.
 
 A locus descriptor invokes only the optional generic dispatcher:
 
@@ -106,7 +119,6 @@ const dispose = activate_interactions({
   map,
   tree,
   document: "page",
-  local: localBehaviors,
   dispatch: async (actionKey, payload) => {
     const result = await echo.action(actionKey, payload);
     if (result.type !== "ack") throw result.error;
@@ -114,7 +126,7 @@ const dispose = activate_interactions({
 });
 ```
 
-The interaction subsystem has no Echo dependency and no action-handler registry. Locus remains the configured action authority. Locus dispatch never consults browser behaviors and has no fallback to them.
+The supplied dispatcher provides hosted transport. Locus remains the configured action authority.
 
 ## Listener realization
 
@@ -124,9 +136,11 @@ Activation observes before its initial read, then reconciles the canonical store
 
 Within one selected document activation, canonical descriptor order is listener installation order. A reorder retains the longest active listener prefix already in canonical order and reattaches only active listeners that must move after it. An unchanged descriptor keeps consumed `once` state even if its canonical position moves; changing or replacing the descriptor starts a new materialization. Separate activations remain independent, including when their `document` or `window` listeners share an EventTarget; their relative order follows activation/install timing and has no global canonical guarantee.
 
-Each activation captures one tree/root, one local capability table, one optional authoritative dispatcher, and one optional failure observer. Later mutation of the caller-owned options object or capability table has no effect. There is no rebind operation: moving realization to another tree requires disposing the activation and creating another one.
+Each public activation captures one tree/root, an optional authoritative dispatcher, and an optional failure observer. Later mutation of the caller-owned options object has no effect. To switch trees, dispose the activation and create another one.
 
-Multiple activations against the same map and tree are allowed and independent. Each owns its capability snapshot, dispatcher, failure observer, runtime records, native listeners, and disposer. If two activations materialize the same descriptor on the same subject and event, both listeners may run; each activation must be disposed independently.
+Each LiveMap owns one executable behavior registry. Activations on that map share its definitions, and the functions stay outside canonical state. Each activation installs and disposes its own native listeners. If two activations materialize the same descriptor on the same subject and event, both listeners may run.
+
+A missing definition reports `browser-capability-resolution` with the behavior name. After registration, new descriptors can resolve the behavior. An unchanged relationship stays unresolved, even if its subject moves. A fresh activation, a retarget to a different subject, or a change to the invocation intent can resolve the registered behavior.
 
 Each installed listener belongs to the exact current HsonNode realization. The descriptor ID and QUID are lookup evidence, not runtime-resource owners. If a QUID later resolves to a fresh exact realization, the outgoing node's listener is disposed and a new listener is installed on the replacement. Listener materialization never mints a QUID or changes canonical state.
 
@@ -140,7 +154,7 @@ Activation construction is exception-safe. Input capture and validation happen b
 
 Locus commits, checkpoints, and replay history contain only private/shared authority interaction state. Echo replay applies `S → S′` to `S + L` as `S′ + L`; reconcile installs current authority `S` while retaining `L`. Both reject shared/local ID collisions before publication. `current` sync compares authority state alone, so local descriptor edits do not force replay or reconcile. Shared feature revocation removes `S` and its listeners while keeping `L` in the composed store; regrant adds current `S` back without resetting unchanged local listeners. Shared document scope removal similarly removes its shared descriptors while local descriptors survive. Local initializer scope removal and re-add retain existing client Library and descriptor state.
 
-An Echo-composed `map.cut()` or capture may contain both partitions because it is a snapshot of the actual client map. Installing that artifact as a standalone map does not preserve former Echo ownership provenance. Runtime records are never replayed and are reconstructed from canonical state, fixed application capabilities, and the active tree.
+An Echo-composed `map.cut()` or capture may contain both partitions because it is a snapshot of the actual client map. Installing that artifact as a standalone map does not preserve former Echo ownership provenance. Fresh activation derives runtime records from canonical state, the operating map's registered behaviors, and the active tree.
 
 The activation disposer is idempotent. It stops observation and removes only listeners owned by that activation. Canonical descriptors, the `LiveTree`, Mirror, and unrelated imperative listeners remain intact. Mirror and interaction activation have independent lifecycles.
 

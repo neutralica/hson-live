@@ -80,10 +80,10 @@ for (const kind of ['array', 'object']) {
   ];
   const items = kind === 'array' ? entries : { heading: entries[0], text: entries[1] };
   const iteration = hsonLiveMap.fromLibraries({ parts: { parts: {
-    Column: { kind: 'document', document: `<section hson:part items:data="%{items}" <hson-part ${kind === 'array' ? 'for:item:i' : 'per:i:item'}="^{items}" at="^{item.kind}" data:item="^{item}"/> <ul <li for:label="^{items${kind === 'array' ? '[0]' : '.heading'}.labels}" "^{label}"/>/>/>`, css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
-    Heading: { kind: 'document', document: '<h1 hson:part @:root item:data="%{item}" id="^{item.id}" class="content" "^{item.text}"/>', css: { color: 'red' } },
-    Text: { kind: 'document', document: '<p hson:part @:root item:data="%{item}" id="^{item.id}" class="content" "^{item.text}"/>', css: { color: 'blue' } },
-  } }, page: { document: Hson.document`<html <head/> <body <hson-part lib="parts" at="Column" data:items="${Hson.data.from(items)}"/> <p class="content" id="iter-outside" "Outside"/>/>/>` } });
+    Column: { kind: 'document', document: `<section hson:part data:items="%{items}" <hson-part ${kind === 'array' ? 'for:item:i' : 'per:i:item'}="^{items}" at="^{item.kind}" item:data="^{item}"/> <ul <li for:label="^{items${kind === 'array' ? '[0]' : '.heading'}.labels}" "^{label}"/>/>/>`, css: { '& .content': { paddingLeft: '7px' }, '& li': { marginLeft: '9px' } } },
+    Heading: { kind: 'document', document: '<h1 hson:part @:root data:item="%{item}" id="^{item.id}" class="content" "^{item.text}"/>', css: { color: 'red' } },
+    Text: { kind: 'document', document: '<p hson:part @:root data:item="%{item}" id="^{item.id}" class="content" "^{item.text}"/>', css: { color: 'blue' } },
+  } }, page: { document: Hson.document`<html <head/> <body <hson-part lib="parts" at="Column" items:data="${Hson.data.from(items).toHson()}"/> <p class="content" id="iter-outside" "Outside"/>/>/>` } });
   const iterationOwner = internal_livemap_aggregate_authority(iteration);
   iterationPages.set(`/iteration-${kind}`, iteration.doc.page.render());
   iterationPages.set(`/iteration-${kind}-restored`,
@@ -377,7 +377,7 @@ try {
   const graftResult = await command("Runtime.evaluate", { expression: `runPortableGraftAcceptance(${JSON.stringify(payload)})`,
     awaitPromise:true, returnByValue:true });
   assert.equal(graftResult.exceptionDetails, undefined, JSON.stringify(graftResult.exceptionDetails));
-  assert.equal(graftResult.result.value.passed, 22);
+  assert.equal(graftResult.result.value.passed, 21);
   console.log(`Chrome JavaScript-enabled portable graft passed: ${JSON.stringify(graftResult.result.value)}`);
 
   }
