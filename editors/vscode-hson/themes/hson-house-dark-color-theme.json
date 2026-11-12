@@ -34,10 +34,10 @@
     "list.activeSelectionBackground": "#30485E",
     "list.activeSelectionForeground": "#D8DEE8",
     "editorBracketHighlight.foreground1": "#7f718b",
-    "editorBracketHighlight.foreground2": "#dd97cc",
+    "editorBracketHighlight.foreground2": "#d99db5",
     "editorBracketHighlight.foreground3": "#9989b6",
     "editorBracketHighlight.foreground4": "#7f718b",
-    "editorBracketHighlight.foreground5": "#dd97cc",
+    "editorBracketHighlight.foreground5": "#d99db5",
     "editorBracketHighlight.foreground6": "#9989b6"
   },
   "tokenColors": [
@@ -54,7 +54,7 @@
         "string"
       ],
       "settings": {
-        "foreground": "#abb0b0"
+        "foreground": "#a2a4a4"
       }
     },
     {
@@ -81,7 +81,7 @@
         "support.type"
       ],
       "settings": {
-        "foreground": "#c4d0fb"
+        "foreground": "#c6caca"
       }
     },
     {
@@ -90,7 +90,7 @@
         "support.function"
       ],
       "settings": {
-        "foreground": "#9d8452"
+        "foreground": "#b579ac"
       }
     },
     {
@@ -132,7 +132,7 @@
         "entity.name.type.quoted.hson"
       ],
       "settings": {
-        "foreground": "#c4d0fb"
+        "foreground": "#c6caca"
       }
     },
     {
@@ -148,7 +148,7 @@
         "entity.other.attribute-name.system.hson"
       ],
       "settings": {
-        "foreground": "#898a8b"
+        "foreground": "#86b7c6"
       }
     },
     {
@@ -156,7 +156,7 @@
         "meta.part.selector.library.hson"
       ],
       "settings": {
-        "foreground": "#758e82"
+        "foreground": "#648e98"
       }
     },
     {
@@ -164,7 +164,7 @@
         "meta.part.selector.member.hson"
       ],
       "settings": {
-        "foreground": "#80a894"
+        "foreground": "#86b7c6"
       }
     },
     {
@@ -172,7 +172,7 @@
         "punctuation.separator.part-selector.hson"
       ],
       "settings": {
-        "foreground": "#a093a8"
+        "foreground": "#8f9395"
       }
     },
     {
@@ -196,7 +196,7 @@
         "entity.other.attribute-name.receiving.hson"
       ],
       "settings": {
-        "foreground": "#dd97cc"
+        "foreground": "#d99db5"
       }
     },
     {
@@ -204,7 +204,7 @@
         "entity.other.attribute-name.sending.hson"
       ],
       "settings": {
-        "foreground": "#9d8452"
+        "foreground": "#b579ac"
       }
     },
     {
@@ -212,7 +212,7 @@
         "keyword.control.iteration.hson"
       ],
       "settings": {
-        "foreground": "#b685af"
+        "foreground": "#7983af"
       }
     },
     {
@@ -237,7 +237,7 @@
         "string.unquoted.attribute-value.hson"
       ],
       "settings": {
-        "foreground": "#abb0b0"
+        "foreground": "#a2a4a4"
       }
     },
     {
@@ -270,7 +270,7 @@
         "constant.other.quid.hson"
       ],
       "settings": {
-        "foreground": "#b691de"
+        "foreground": "#b193d2"
       }
     },
     {
@@ -278,7 +278,7 @@
         "constant.other.quad.hson"
       ],
       "settings": {
-        "foreground": "#b691de"
+        "foreground": "#b193d2"
       }
     },
     {
@@ -286,7 +286,7 @@
         "punctuation.definition.identity.hson"
       ],
       "settings": {
-        "foreground": "#898a8b"
+        "foreground": "#db82d6"
       }
     },
     {
@@ -317,7 +317,7 @@
         "keyword.operator.interpolation.dollar.hson"
       ],
       "settings": {
-        "foreground": "#a093a8"
+        "foreground": "#877c8f"
       }
     },
     {
@@ -350,7 +350,7 @@
         "variable.parameter.incoming.hson"
       ],
       "settings": {
-        "foreground": "#bda065"
+        "foreground": "#b775b6"
       }
     },
     {
@@ -370,7 +370,7 @@
         "punctuation.definition.template-expression.end.hson"
       ],
       "settings": {
-        "foreground": "#7f718b"
+        "foreground": "#628fba"
       }
     },
     {
@@ -395,7 +395,7 @@
         "entity.other.attribute-name.sending.hson meta.attribute.qualifier.hson"
       ],
       "settings": {
-        "foreground": "#9d8452"
+        "foreground": "#b579ac"
       }
     },
     {
@@ -411,7 +411,7 @@
         "entity.other.attribute-name.receiving.hson meta.attribute.local-name.hson"
       ],
       "settings": {
-        "foreground": "#dd97cc"
+        "foreground": "#d99db5"
       }
     },
     {
@@ -427,7 +427,7 @@
         "meta.reference.member.hson"
       ],
       "settings": {
-        "foreground": "#aba89f"
+        "foreground": "#b18296"
       }
     },
     {
@@ -435,59 +435,68 @@
         "keyword.operator.interpolation.dollar.hson"
       ],
       "settings": {
-        "foreground": "#4e81b1"
+        "foreground": "#5994cc"
+      }
+    },
+    {
+      "scope": [
+        "punctuation.definition.tag.self-closing.hson"
+      ],
+      "settings": {
+        "foreground": "#b193d2"
       }
     }
   ],
   "semanticTokenColors": {
-    "type": "#c4d0fb",
-    "class": "#c4d0fb",
-    "interface": "#c4d0fb",
-    "enum": "#c4d0fb",
-    "typeParameter": "#c4d0fb",
-    "namespace": "#c4d0fb",
+    "type": "#c6caca",
+    "class": "#c6caca",
+    "interface": "#c6caca",
+    "enum": "#c6caca",
+    "typeParameter": "#c6caca",
+    "namespace": "#c6caca",
     "variable": "#84a9d6",
     "parameter": "#84a9d6",
     "property": "#84a9d6",
-    "function": "#9d8452",
-    "method": "#9d8452",
+    "function": "#b579ac",
+    "method": "#b579ac",
     "enumMember": "#d8b78f",
-    "hsonType": "#c4d0fb",
+    "hsonType": "#c6caca",
     "hsonProperty": "#84a9d6",
-    "hsonPartSystemAttribute": "#898a8b",
-    "hsonPartLibrary": "#758e82",
-    "hsonPartMember": "#80a894",
-    "hsonPartSeparator": "#a093a8",
+    "hsonPartSystemAttribute": "#86b7c6",
+    "hsonPartLibrary": "#648e98",
+    "hsonPartMember": "#86b7c6",
+    "hsonPartSeparator": "#8f9395",
     "hsonFlag": "#6891c2",
     "hsonDirective": "#9989b6",
-    "hsonReceiving": "#dd97cc",
-    "hsonSending": "#9d8452",
-    "hsonIteration": "#b685af",
+    "hsonReceiving": "#d99db5",
+    "hsonSending": "#b579ac",
+    "hsonIteration": "#7983af",
     "hsonLocalReferenceSigil": "#cec9bd",
     "hsonIncomingReferenceSigil": "#c7bfad",
-    "hsonString": "#abb0b0",
+    "hsonString": "#a2a4a4",
     "hsonNumber": "#d8b78f",
     "hsonKeyword": "#b8b5dd",
     "hsonDeclaration": "#9989b6",
-    "hsonQuid": "#b691de",
-    "hsonQuad": "#b691de",
-    "hsonIdentityMarker": "#898a8b",
+    "hsonQuid": "#b193d2",
+    "hsonQuad": "#b193d2",
+    "hsonIdentityMarker": "#db82d6",
     "hsonComment": "#939daa",
     "hsonDelimiter": "#7f718b",
-    "hsonOperator": "#a093a8",
+    "hsonOperator": "#877c8f",
     "hsonColon": "#658fa5",
     "hsonEscape": "#d4ba86",
     "hsonInvalid": "#f08b94",
-    "hsonIncomingReference": "#bda065",
+    "hsonIncomingReference": "#b775b6",
     "hsonReference": "#d99db5",
-    "hsonInterpolationDelimiter": "#7f718b",
+    "hsonInterpolationDelimiter": "#628fba",
     "hsonQuote": "#778571",
     "*.hsonQualifier": "#898a8b",
-    "hsonReceiving.hsonLocalName": "#dd97cc",
+    "hsonReceiving.hsonLocalName": "#d99db5",
     "hsonReceiving.hsonQualifier": "#898a8b",
-    "hsonSending.hsonQualifier": "#9d8452",
+    "hsonSending.hsonQualifier": "#b579ac",
     "hsonSending.hsonLocalName": "#898a8b",
-    "hsonReference.hsonMember": "#aba89f",
-    "hsonOperator.hsonInterpolationSigil": "#4e81b1"
+    "hsonReference.hsonMember": "#b18296",
+    "hsonOperator.hsonInterpolationSigil": "#5994cc",
+    "hsonDelimiter.hsonSelfClosing": "#b193d2"
   }
 }

@@ -14,23 +14,42 @@
  * generation rejects divergence rather than promising unavailable distinctions.
  * Iteration classification and native bracket behavior are deliberately unchanged.
  */
+
+const OLDtag = { dark: { foreground: "#c6caca" }, light: { foreground: "#245C70" } };
+const OLDattribute = { dark: { foreground: "#84a9d6" }, light: { foreground: "#465467" } };
+const OLDsending = { dark: { foreground: "#b579ac" }, light: { foreground: "#405F83" } };
+const OLDslide_coral = { dark: { foreground: "#d99db5" }, light: { foreground: "#28313D" } };
+const OLDquad = { dark: { foreground: "#C4ADE2" }, light: { foreground: "#70518F" } };
+const OLDlocal = { dark: { foreground: "#86b7c6" }, light: { foreground: "#236A67" } };
 const basicBlue = "#84a9d6";
 const basicGreen = "#80a894";
-const basicYellow = "#bda065";
-const basicPink = "#dd97cc";
+const basicYellow = "#b5a179";
+const basicPink = "#d99db5";
 
-const _tag = { dark: { foreground: "#c4d0fb" }, light: { foreground: "#245C70" } };
+
+const _tag = OLDtag;
+// const _tag = { dark: { foreground: "#c4d0fb" }, light: { foreground: "#245C70" } };
 const _faded = { dark: { foreground: "#898a8b" }, light: { foreground: "#687482" } };
-const _outgoing = { dark: "#9d8452", light: "#7A602B" };
-const _each = { dark: "#b685af", light: "#405F83" };
-const _local = { dark: { foreground: basicPink}, light: { foreground: "#28313D" } }
-const _placeholder = { dark: { foreground: basicYellow }, light: { foreground: "#6c7d75" } }
-const _quad = { dark: { foreground: "#b691de" }, light: { foreground: "#70518F" } };
-const _at = { dark: { foreground: basicGreen }, light: { foreground: "#6F4F8F" } };
-const _component = { dark: { foreground: "#758e82" }, light: { foreground: "#536E61" } };
-const _key = { dark: { foreground: "#80a894" }, light: { foreground: "#536E61" } };
+const _outgoing = OLDsending;
+// const _outgoing = { dark: "#9d8452", light: "#7A602B" };
+const _each = { dark: { foreground: "#7983af" }, light: { foreground: "#28313D" } };
+// const _each = { dark: "#8f75b7", light: "#405F83" };
+const _local = OLDslide_coral;
+const _placeholder = { dark: { foreground: "#b775b6" }, light: { foreground: "#405F83" } };
+// const _placeholder = { dark: { foreground: basicYellow }, light: { foreground: "#6c7d75" } };
+const _quad = { dark: { foreground: "#b193d2" }, light: { foreground: "#70518F" } };
+const _at_mark = { dark: { foreground: "#db82d6" }, light: { foreground: "#70518F" } };
+// const _at_mark = { dark: { foreground: "#e64ede" }, light: { foreground: "#70518F" } };
+const _at = OLDlocal;
+const _component = { dark: { foreground: "#648e98" }, light: { foreground: "#536E61" } };
+// const _key = { dark: { foreground: "#6aa4a4" }, light: { foreground: "#536E61" } };
+const _key = OLDlocal;
 const _percent = { dark: { foreground: "#c7bfad", }, light: { foreground: "#3D434B", } };
 const _carat = { dark: { foreground: "#cec9bd", }, light: { foreground: "#3D434B", } };
+const _braces = { dark: { foreground: "#86c3ff", intensity: 0.7 }, light: { foreground: "#3D434B", intensity: 0.7 } };
+
+const _attrs = OLDattribute;
+// const _attrs = { dark: { foreground: "#8390d5" }, light: { foreground: "#465467" } };
 
 export const HSON_APPEARANCE = {
   syntax: {
@@ -51,10 +70,7 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: '<button class="primary"/>', highlight: "class" }
           ],
-          house: {
-            dark: { foreground: basicBlue},
-            light: { foreground: "#465467" }
-          }
+          house: _attrs,
         },
         qualifier: {
           label: "Attribute qualifier",
@@ -88,8 +104,8 @@ export const HSON_APPEARANCE = {
               { code: '<hson-part at=^{each.kind}/>', highlight: "at" },
               { code: '<hson-part at="components/%{member}"/>', highlight: "at" }
             ],
-            inherits: "attribute.name",
-            house: { dark: { ..._faded.dark }, light: { ..._faded.light } }
+            // inherits: "attribute.name",
+            house: _at
           }
         },
         selector: {
@@ -120,7 +136,9 @@ export const HSON_APPEARANCE = {
               { code: '<hson-part at="components/foo"/>', highlight: "/", occurrence: 1 },
               { code: '<hson-part at=components/foo/>', highlight: "/", occurrence: 1 }
             ],
-            inherits: "punctuation.assignment"
+            inherits: "punctuation.assignment",
+            house: _tag
+
           }
         },
         declaration: {
@@ -159,10 +177,7 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: "<hson-part slide:data=^{currentSlide}/>", highlight: "slide", occurrence: 1 }
           ],
-          house: {
-            dark: { foreground: _outgoing.dark },
-            light: { foreground: _outgoing.light }
-          }
+          house: _outgoing
         }
       },
       iteration: {
@@ -172,10 +187,7 @@ export const HSON_APPEARANCE = {
             { code: "<section for:row=^{rows}/>", highlight: "row", occurrence: 1 },
             { code: "<section per:item=^{items}/>", highlight: "item", occurrence: 1 }
           ],
-          house: {
-            dark: { foreground: _each.dark },
-            light: { foreground: _each.light }
-          }
+          house: _each
         }
       },
       reference: {
@@ -200,10 +212,7 @@ export const HSON_APPEARANCE = {
             examples: [
               { code: "<p \"^{slide.title}\"/>", highlight: "slide" }
             ],
-            house: {
-              dark: { foreground: "#d99db5" },
-              light: { foreground: "#28313D" }
-            }
+            house: _local
           },
 
           marker: {
@@ -221,8 +230,8 @@ export const HSON_APPEARANCE = {
           ],
           // inherits: "reference.local.content",
           house: {
-            dark: { foreground: "#eee7d8", intensity: 0.7 },
-            light: { foreground: "#3D434B", intensity: 0.7 }
+            dark: { foreground: _local.dark.foreground, intensity: 0.8 },
+            light: { foreground: _local.light.foreground, intensity: 0.8 }
           }
         },
         separator: {
@@ -256,7 +265,7 @@ export const HSON_APPEARANCE = {
             { code: '<hson-part at="components/%{member}"/>', highlight: "components/" }
           ],
           house: {
-            dark: { foreground: "#abb0b0" },
+            dark: { foreground: "#a2a4a4" },
             light: { foreground: "#435B35" }
           }
         },
@@ -306,7 +315,7 @@ export const HSON_APPEARANCE = {
               { code: "<p @012345678/>", highlight: "@" }
             ],
             inherits: "identity.quad",
-            house: { dark: { ..._faded.dark }, light: { ..._faded.light } },
+            house: _at_mark,
 
           },
           colon: {
@@ -339,8 +348,8 @@ export const HSON_APPEARANCE = {
             { code: "<button class=\"primary\"/>", highlight: "=" }
           ],
           house: {
-            dark: { foreground: "#baa9c1", intensity: 0.85 },
-            light: { foreground: "#344154", intensity: 0.85 }
+            dark: { foreground: "#baa9c1", intensity: 0.7 },
+            light: { foreground: "#344154", intensity: 0.7 }
           }
         },
         interpolation: {
@@ -348,7 +357,7 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: "<p ${title}/>", highlight: "$" }
           ],
-          inherits: "punctuation.assignment",
+          // inherits: "punctuation.assignment",
           house: {
             dark: { foreground: "#5994cc" },
             light: { foreground: "#2766a0" }
@@ -376,7 +385,8 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: "<section/>", highlight: "/" }
           ],
-          inherits: "punctuation.tagOpen"
+          inherits: "punctuation.tagOpen",
+          house: _quad
         },
         arrayOpen: {
           label: "Opening array delimiter",
@@ -404,14 +414,16 @@ export const HSON_APPEARANCE = {
           examples: [
             { code: "<p \"%{title}\"/>", highlight: "{" }
           ],
-          inherits: "punctuation.tagOpen"
+          inherits: "punctuation.tagOpen",
+          house: _braces
         },
         referenceClose: {
           label: "Closing reference or interpolation brace",
           examples: [
             { code: "<p \"%{title}\"/>", highlight: "}" }
           ],
-          inherits: "punctuation.tagOpen"
+          inherits: "punctuation.tagOpen",
+          house: _braces
         },
         quoteOpen: {
           label: "Opening quote",

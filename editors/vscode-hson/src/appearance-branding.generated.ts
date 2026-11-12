@@ -2,8 +2,8 @@
 export const HSON_BRANDING = {
   "colors": {
     "blue": "#84a9d6",
-    "yellow": "#bda065",
-    "pink": "#dd97cc",
+    "yellow": "#b5a179",
+    "pink": "#d99db5",
     "green": "#80a894"
   },
   "libraryOpacity": 1,

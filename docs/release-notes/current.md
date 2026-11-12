@@ -282,3 +282,185 @@ October 2026 · Integrated baseline `8e0101fe`
 - TypeScript: Address the pre-existing optional nested-union validation gap.
 - Dependencies: Complete removal of the remaining `css-tree` dependency.
 - LiveDemo: The new frozen Hson package is validated locally; public deployment and hosted TOWL verification remain outstanding.
+
+# hson-live — Development Release Notes
+
+## Data API and source admission
+
+### Direct Data values
+- Added direct admission of JavaScript Data values to Part writing and Schema certification, removing the requirement to serialize values before supplying them.
+- Unified JSON and HSON Data-source parsing through a shared admission path.
+- Added explicit `Hson.data.fromSource(source)` for serialized JSON or HSON Data.
+- Changed `Hson.data.from(value)` to return an authenticated `HsonDataValue` rather than a serialized string.
+- Made ordinary JavaScript strings literal Data values across Data Libraries, Parts, Schema, Locus, Echo, and interaction APIs.
+- Preserved explicit serialization through `.toHson()`.
+- Removed obsolete Data-source admission APIs and redundant serialization paths.
+
+### Data correctness
+- Preserved exact ordering of numeric-looking object members through LiveMap setters and mutation propagation.
+- Preserved signed zero, primitive types, empty strings, arrays, and object structure through exact Data admission.
+- Corrected reserved-name validation so restrictions apply to Data structure without unnecessarily restricting Document element names.
+- Strengthened rejection of invalid, forged, or noncanonical Data inputs.
+- Preserved exact Data semantics across Node and Worker execution.
+
+**Breaking API change:** Code previously passing JSON/HSON source strings directly to value-taking APIs must use explicit source admission. A string such as `'"hello"'` is now treated as literal Data, including its quotation marks.
+
+## Parts and Document authoring
+
+- Updated Part `.write()` to accept exact Data values directly.
+- Preserved detached Part authoring without eager composition, DOM identity creation, or publication.
+- Verified that `.write()` rejects missing required scalar, Data, and Document inputs while preserving optional inputs and valid falsy values.
+- Added consistent structured `CssMap` admission for Document stylesheets alongside opaque CSS strings.
+- Preserved typed `data:` and `doc:` argument channels and authored Part receiving bindings.
+- Improved Part occurrence and scoped Document correspondence through composition and restoration.
+- Preserved Document and Part authoring distinctions through canonical admission and serialization.
+
+## LiveMap Data architecture
+
+### Graph authority
+- Moved installed Data reads directly onto canonical HsonNode graphs.
+- Removed redundant retained complete-value Data mirrors.
+- Updated mutation preparation to operate on detached graph candidates.
+- Preserved one canonical installed graph as the current semantic Data authority.
+- Retained exact temporary values and historical snapshots only for their distinct admission, planning, and evidence responsibilities.
+- Released preparation scratch and retained closures after completed or rejected transitions.
+
+### Mutation behavior
+- Corrected setter propagation to preserve exact member ordering.
+- Captured submitted values before asynchronous operation queues execute, preventing subsequent caller mutations from changing submitted intent.
+- Preserved ordered multi-operation batches and atomic final-candidate validation.
+- Preserved identity retirement for eligible equal-content container replacement and splice operations.
+- Maintained stable identity for surviving elements across supported moves.
+- Improved rejection and recovery behavior for stale preparation and invalid mutations.
+
+### Performance
+- Reduced measured installed Data heap usage by approximately half in the tested large-Library scenario.
+- Substantially reduced retained memory from discarded mutation preparations.
+- Improved narrow graph-backed reads and avoided unnecessary full-Library materialization.
+- Reduced redundant Schema reconstruction in repeated Locus transitions.
+- Documented tradeoffs: some whole-Library snapshot and mutation paths became slower after graph-authority convergence, despite lower memory usage.
+
+## Locus and Echo
+
+### Submission and projection
+- Standardized synchronous capture of submitted Data, Document, CSS, Part, and related action values.
+- Reduced repeated Schema admission for authentic immutable effective projections.
+- Preserved independent authorization checks rather than caching permission decisions.
+- Maintained authority and management fences through preparation, installation, and publication.
+- Preserved initial Echo endpoint dependency isolation while accommodating the graph-authority implementation.
+
+### Replay integrity
+- Corrected acceptance of replay operations whose submitted removal evidence did not match the actual mutation.
+- Added exact comparison between submitted replay evidence and the accepted planned operation.
+- Rejected unchanged interaction-system replacements and moves that previously advanced revision without changing system state.
+- Preserved legitimate Data operations with identity effects even when resulting values are structurally equal.
+- Improved rejection atomicity across hosted, durable, and Echo replay.
+- Preserved accurate source-operation indices through Document-effect expansion and filtering.
+- Corrected false error attribution caused by Echo's synthetic composition operations.
+- Made final-state error attribution conservative when structural edits prevent reliable identification of a responsible operation.
+- Preserved original error classes and causes through replay and durable-recovery failures.
+- Expanded Node and real Worker coverage for replay, restoration, identity retirement, and recovery.
+
+## Schema contracts and TypeScript
+
+### Immutable Library Schemas
+- Made governing Schema bindings immutable for the lifetime of an admitted Data or Document Library.
+- Established omitted Schemas as actual family-top bindings rather than placeholders for later tightening.
+- Preserved admission-time Schema selection.
+- Allowed canonically equal `schema.use()` calls as no-ops without revision or authority changes.
+- Rejected post-admission Schema tightening, loosening, or replacement.
+- Prevented public restoration from bypassing governing Schema immutability.
+- Updated restoration to capture and validate owned snapshot evidence consistently before installation.
+- Preserved original Library records, governing Schema objects, handles, and authority on compatible restoration.
+- Restored portable-only snapshot admission restrictions.
+
+**Breaking behavior change:** Post-admission `.schema.use()` no longer changes a Library's governing contract. Applications must choose the governing Schema when constructing or admitting the Library.
+
+### Compiler and editor
+- Removed obsolete post-admission Schema-proof strengthening from the HSON Schema compiler.
+- Removed the corresponding unsound public proof type.
+- Preserved legitimate Schema inference during initial Library admission and certification.
+- Updated generated declarations and public type tests to reflect immutable governing bindings.
+- Reconciled compiler and VS Code diagnostics with the new Schema contract.
+- Improved diagnostic accuracy for broad or optional values used where a certified type is required.
+- Corrected declaration portability and compiler/editor observability regressions.
+- Updated Schema and multi-Library documentation to reflect admission-time binding and literal Data strings.
+
+## Document identity and restoration
+
+- Strengthened restoration against caller-owned snapshots whose properties change between validation and installation.
+- Preserved same-binding Data restoration without replacing established Library records.
+- Preserved retained and reacquired handles after rejected restoration.
+- Maintained identity epochs, issued-ledger protections, and stale-handle rejection.
+- Preserved scoped Document correspondence through portable restoration, replay, and hosted receiving.
+- Corrected portable QUAD admission to reject hosted-only snapshot representations.
+- Preserved management grants and prepared transactions across rejected operations.
+
+## Validation and compatibility
+
+- Expanded acceptance coverage across Node and real Workers.
+- Added regression coverage for exact Data values, graph mutations, replay evidence, Schema binding, restoration, and scoped Document identity.
+- Improved validation of compiler-generated declarations and public package entrypoints.
+- Corrected source-pin inventory metadata for changed Worker/subprocess test fixtures.
+- Maintained strict Echo dependency-ownership validation.
+- Increased the temporary Echo initial-endpoint gzip ceiling to 90,000 bytes while retaining size measurements and dependency checks.
+- Recorded the separate outstanding authoring-bundle size limitation.
+
+---
+
+# In progress — Scoped QUAD navigation (Q1)
+
+The following work is implemented but, at the latest checkpoint, remains uncommitted and under independent review.
+
+### Nested navigation
+- Added `.q(name)` to LiveMap Document QUAD handles, enabling chained selections such as `page.q("nav")?.q("buttonOne")`.
+- Added occurrence-relative lookup through nested named Part instances.
+- Preserved distinct namespaces for repeated Part occurrences using identical local QUAD names.
+- Maintained uniqueness of authored QUAD names within each Library Document or Part definition.
+- Distinguished Part bindings, which enter a child occurrence namespace, from ordinary element bindings, which do not.
+
+### Unnamed occurrences
+- Added transparent lookup through unnamed Part occurrences.
+- Preserved direct local-binding precedence.
+- Stopped transparent traversal at named occurrence boundaries.
+- Returned `undefined` for ambiguous matches rather than selecting an arbitrary occurrence.
+
+### Selection lifetime
+- Added occurrence-aware lifetime checks to nested selections.
+- Preserved handles across supported moves.
+- Invalidated selections when their binding or occurrence retires.
+- Prevented recreated names, equal-content replacements, or surviving root QUIDs from reviving retired handles.
+- Made independently acquired child selections independent of parent-handle disposal.
+- Preserved relative `.at()` coordinates and their existing disposal behavior.
+
+### API containment
+- Updated public LiveMap selection types for nested `.q()` navigation.
+- Prevented premature exposure of unwrapped nested navigation through Echo client-local facades.
+- Preserved existing Locus/Echo permission boundaries pending Q2.
+
+---
+
+# Planned next work
+
+## Q2 — Hosted scoped QUAD navigation
+
+Extend nested navigation and lifetime behavior through Locus, Echo, hosted continuation, and browser adoption. Preserve authenticated occurrence identity across reconciliation, replay, recovery, movement, retirement, and reconnection.
+
+## Post-Q2 simplification
+
+- Consolidate redundant `opIndex` and `operationIndex` public diagnostic naming.
+- Simplify overly elaborate error-attribution machinery.
+- Consolidate repetitive tests without reducing correctness coverage.
+- Remove demonstrated redundant graph validation and obsolete helpers.
+- Revisit public action-payload typing consistency.
+- Reconcile generated distribution and remaining packaging debt.
+
+## Longer-term directions
+
+- HSON Queries and maintained derived Data.
+- Reactive Data-to-Document composition through Parts.
+- Living Document dependencies and explicit snapshot-versus-live arguments.
+- Progressive enhancement and native no-JavaScript behavior.
+- Further hosted application/server development.
+- Richer editor, Schema, debugging, and semantic-validation tooling.
+- Canonical verification and potential cryptographic integrity features.

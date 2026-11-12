@@ -118,7 +118,7 @@
           },
           "hson.appearance.yellow": {
             "type": "string",
-            "default": "#bda065",
+            "default": "#b5a179",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #c9d100.",
             "scope": "window",
@@ -128,7 +128,7 @@
           },
           "hson.appearance.pink": {
             "type": "string",
-            "default": "#dd97cc",
+            "default": "#d99db5",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #ff4a8c.",
             "scope": "window",
@@ -332,8 +332,8 @@
         "id": "hson.libraryMarker.s",
         "description": "Hson library facade marker: s (strong yellow).",
         "defaults": {
-          "dark": "#bda065",
-          "light": "#bda065",
+          "dark": "#b5a179",
+          "light": "#b5a179",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -342,8 +342,8 @@
         "id": "hson.libraryMarker.o",
         "description": "Hson library facade marker: o (strong pink).",
         "defaults": {
-          "dark": "#dd97cc",
-          "light": "#dd97cc",
+          "dark": "#d99db5",
+          "light": "#d99db5",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -372,8 +372,8 @@
         "id": "hson.authoringMarker.s",
         "description": "Hson notation marker: S (soft yellow).",
         "defaults": {
-          "dark": "#bda065",
-          "light": "#bda065",
+          "dark": "#b5a179",
+          "light": "#b5a179",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -382,8 +382,8 @@
         "id": "hson.authoringMarker.o",
         "description": "Hson notation marker: O (soft pink).",
         "defaults": {
-          "dark": "#dd97cc",
-          "light": "#dd97cc",
+          "dark": "#d99db5",
+          "light": "#d99db5",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
