@@ -46,7 +46,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
     >>
     kind <exact "browser">
     key "string"
-    args "any"
+    args <optional "any">
   >>,
   <content <
     id "string"
@@ -64,7 +64,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
     >>
     kind <exact "locus">
     key "string"
-    payload "any"
+    payload <optional "any">
   >>
 ]>>>>
 ```
@@ -85,7 +85,9 @@ There is one interaction system root. Its shared partition `S` contains descript
 
 `kind` chooses execution, independently of ownership. `"browser"` resolves the action name through `map.actions`. `"locus"` calls the supplied dispatcher. Hosted Echo composition normally dispatches through `echo.action`, where Locus authorizes the action independently. Shared/browser, shared/locus, local/browser, and local/locus are all valid.
 
-On writable, element-qualified Document `.at()` and `.q()` handles, `.listen.local.onClick(key, input)` and `.listen.host.onClick(key, input)` author a click Descriptor. Standalone LiveMap and Echo client-local calls return the accepted Descriptor ID synchronously. Locus-governed calls return `Promise<string>` resolving to that ID after authoritative acceptance. Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. A Locus `stage` or action `ctx.stage` can commit grouped document edits and Descriptor changes atomically.
+On writable, element-qualified Document `.at()` and `.q()` handles, `.listen.local.onClick(key, input?)` and `.listen.host.onClick(key, input?)` author a click Descriptor. Standalone LiveMap and Echo client-local calls return the accepted Descriptor ID synchronously. Locus-governed calls return `Promise<string>` resolving to that ID after authoritative acceptance. Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. A Locus `stage` or action `ctx.stage` can commit grouped document edits and Descriptor changes atomically.
+
+Part event declarations can omit `input:data`, as in `<hson:event on:click host:deck.reset <> >`. The empty outcome `<>` is required. A Part reference supplied as `input:data` must resolve to present Data for each realized attachment.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 
@@ -95,7 +97,7 @@ Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and 
 
 ## Exact interaction data
 
-Descriptor inputs accept supported JavaScript values or authenticated carriers. Ordinary strings are literal Data; encoded JSON/Hson requires explicit `Hson.data.fromSource()`. Browser `args` and locus `payload` use Schema `"any"` and represent canonical data-mode values. The interaction layer retains exact `HsonDataValue`; it does not materialize through ordinary JavaScript or stringify and reparse during reconciliation or dispatch. Signed zero, object member order, integer-like member order, dangerous valid names such as `__proto__`, and nested combinations therefore retain their semantics. Shared `args` and `payload` are shared canonical data: no general taint tracking redacts values an authority author places there. Private-subject descriptors are filtered from projection.
+Descriptor inputs accept supported JavaScript values or authenticated carriers. Ordinary strings are literal Data; encoded JSON/Hson requires explicit `Hson.data.fromSource()`. Browser `args` and locus `payload` are optional canonical Data fields. When input is `undefined`, the field is absent from canonical storage and transport. Explicit `null` is stored as Data. The interaction layer retains exact `HsonDataValue`; it does not materialize through ordinary JavaScript or stringify and reparse during reconciliation or dispatch. Signed zero, object member order, integer-like member order, dangerous valid names such as `__proto__`, and nested combinations therefore retain their semantics. Shared `args` and `payload` are shared canonical data: no general taint tracking redacts values an authority author places there. Private-subject descriptors are filtered from projection.
 
 Register local actions on the operating map before activation. Each `define` adds one function for the life of that map. Invalid definitions and duplicate names throw before insertion. Executable definitions stay in memory across Document and activation disposal and are omitted from canonical state and captures.
 
@@ -108,7 +110,7 @@ map.actions.define("panel.set", (ctx, input, message) => {
 const result = await map.actions.trigger("panel.set", { open: true });
 ```
 
-Both invocation paths call `(ctx, input, message)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `input` is `HsonDataValue | undefined`, and `message` carries the action name and a runtime-local invocation ID. A supplied Schema validates present exact Data. Requiredness defaults to `false`. Explicit `null` counts as present input. Canonical Descriptors still supply Data in their existing `args` or `payload` field.
+Both invocation paths call `(ctx, input, message)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `input` is `HsonDataValue | undefined`, and `message` carries the action name and a runtime-local invocation ID. A supplied Schema validates present exact Data. Requiredness defaults to `false`. Explicit `null` counts as present input.
 
 `trigger` starts execution immediately. The Promise resolves to `{ ok: true, result? }` with optional exact returned Data or `{ ok: false, error }` with the failure message and original cause. Functions may return Data synchronously or asynchronously.
 

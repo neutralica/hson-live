@@ -1,4 +1,5 @@
-import { parse_part_event } from "../part-events.js";
+import { parse_authored_event } from "../authored-events.js";
+import { parse_part_event, type PartEvent } from "../part-events.js";
 import { is_event_attachment_attribute } from "../../core/authored-event-names.js";
 import { read_transform_error_details } from "../../core/errors.js";
 import { is_hson_bare_name_char } from "../../core/hson-name.js";
@@ -7,7 +8,7 @@ import { analyze_part_definition, transform_part_parameter_strings, type PartEve
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
-import { hson_package_declaration_path, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_package_declaration_path, hson_source_alias_eligible, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
@@ -17,9 +18,10 @@ import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-att
 import { qualify_authored_document_source } from "../../api/document/hson-authored.js";
 import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
+import { is_locus_document_action_name } from "../../api/locus/locus.document-actions.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { PART_DECLARATION, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
-import { library_source_admission, library_source_field_candidates, library_source_fields, is_object_literal_prototype_setter } from "./library-source.js";
+import { library_source_admission, library_source_field_candidates, library_source_fields, is_object_literal_prototype_setter, literal_member } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_provenance, resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
@@ -32,6 +34,16 @@ import { project_part_bindings, parse_part_binding_source, type PartBindingSourc
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
 type PartReferenceIssueSource = { location: PartSourceLocation; message: string; declaration?: PartSourceLocation; attachment?: PartSourceLocation };
+type EventInputSource = Readonly<{ kind: PartEvent["kind"]; key: string; location: PartSourceLocation; attachment?: PartSourceLocation }>;
+type MissingEventInputSource = EventInputSource & Readonly<{ contract: PartSourceLocation }>;
+type LocusActionSources = Readonly<{ actions: ReadonlyMap<string, PartSourceLocation | undefined>; complete: boolean }>;
+type LocusEventSources = Readonly<{
+  owner: ts.CallExpression;
+  operation: "create" | "resume" | "admit";
+  initialActions: LocusActionSources;
+  omissions: EventInputSource[];
+  definitions: ts.Expression;
+}>;
 export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }>[] }>;
 export type PartLocalSource = Readonly<{ name: string; kind: "scalar" | "data" | "doc"; location: PartSourceLocation; incoming?: string;
   dataOrigin?: Readonly<{ incoming: string; path: SchemaDataPath }> }>;
@@ -154,6 +166,7 @@ export type PartSourceFacts = Readonly<{
   batches: readonly PartSourceBatch[];
   documents: readonly PartDocumentSource[];
   writes: readonly PartWriteSource[];
+  missingEventInputs: readonly MissingEventInputSource[];
   /** Known declaration roots whose receiving Part did not establish a full set of uses. */
   unavailableEventReferences: readonly PartSourceLocation[];
 }>;
@@ -271,13 +284,63 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   type EventSources = Readonly<{
     events: PartEventEvidence | null;
     ranges: ReadonlyMap<PartReference, SourceRangeMap>;
+    omitted: ReadonlyMap<PartEvent, PartSourceLocation>;
     issues: readonly PartDocumentSource["referenceIssues"][number][];
   }>;
-  const missingEvents: EventSources = { events: null, ranges: new Map(), issues: [] };
+  const missingEvents: EventSources = { events: null, ranges: new Map(), omitted: new Map(), issues: [] };
   const adjacent = new Map<ts.Expression, EventSources>();
   const contextual = new Map<ts.Expression, Map<EventSources, PartDocumentSource>>();
+  const omittedEventInputs = new Map<PartDocumentSource, readonly EventInputSource[]>();
+  const localEventInputs = new Map<ts.CallExpression, EventInputSource[]>();
+  const locusEventSources = new Map<ts.CallExpression, LocusEventSources>();
+  const missingEventInputs: MissingEventInputSource[] = [];
   const unavailableEventReferences: PartSourceLocation[] = [];
   const reachable: { reachableOnly: true } = { reachableOnly: true };
+  const knownRecord = (input: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined => {
+    if (input === undefined) return undefined;
+    const evidence = sources.alternatives(input, "json", reachable);
+    const only = evidence.complete && evidence.nodes.length === 1 ? evidence.nodes[0] : undefined;
+    return only !== undefined && typescript.isObjectLiteralExpression(only) ? only : undefined;
+  };
+  const knownFields = (input: ts.Expression | undefined): ReadonlyMap<string, ts.Expression> | undefined => {
+    const record = knownRecord(input);
+    return record === undefined ? undefined : library_source_fields(record, typescript);
+  };
+  const requiredInput = (input: ts.Expression | undefined): PartSourceLocation | undefined => {
+    const fields = knownFields(input);
+    if (fields === undefined || [...fields.keys()].some(key => key !== "required" && key !== "schema")) return undefined;
+    const flag = fields.get("required");
+    if (flag === undefined) return undefined;
+    const evidence = sources.alternatives(flag, "json", reachable);
+    return evidence.complete && evidence.nodes.length > 0 && evidence.nodes.every(node => node.kind === typescript.SyntaxKind.TrueKeyword)
+      ? location(flag) : undefined;
+  };
+  const readInitialActions = (configuration: ts.Expression | undefined): LocusActionSources => {
+    const actions = new Map<string, PartSourceLocation | undefined>();
+    if (configuration === undefined) return { actions, complete: true };
+    const config = knownRecord(configuration);
+    const choices: { methods: true } = { methods: true };
+    const fields = config === undefined ? undefined : library_source_field_candidates(config, typescript, choices);
+    if (!fields?.complete) return { actions, complete: false };
+    const tableField = fields.fields.find(field => field.name === "actions");
+    if (tableField === undefined) return { actions, complete: true };
+    const table = knownRecord(tableField.value);
+    if (table === undefined) return { actions, complete: false };
+    const entries = library_source_field_candidates(table, typescript, choices);
+    // An opaque later assignment can overwrite earlier entries. A final
+    // explicit key still supplies its own contract in an otherwise open table.
+    for (const { name, value } of entries.fields.reverse()) {
+      if (name === undefined) break;
+      if (name.length === 0 || is_locus_document_action_name(name) || actions.has(name)) continue;
+      const record = knownRecord(value);
+      const definition = record === undefined ? undefined : library_source_field_candidates(record, typescript, choices);
+      const flag = definition?.complete && definition.fields.some(field => field.name === "handler")
+        && definition.fields.every(field => field.name === "handler" || field.name === "input")
+        ? requiredInput(definition.fields.find(field => field.name === "input")?.value) : undefined;
+      actions.set(name, flag);
+    }
+    return { actions, complete: entries.complete };
+  };
   const unavailable = (reference: PartReference, map: SourceRangeMap): void => {
     const root = map({ start: reference.start + 2, end: reference.start + 2 + reference.name.length });
     if (root !== undefined) unavailableEventReferences.push(root);
@@ -286,6 +349,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const cached = adjacent.get(input);
     if (cached !== undefined) return cached;
     const ranges = new Map<PartReference, SourceRangeMap>();
+    const omitted = new Map<PartEvent, PartSourceLocation>();
     const issues: PartDocumentSource["referenceIssues"][number][] = [];
     const parsed = new Map<ts.Expression, PartEventAlternative>();
     const declaration = (literal: ts.Expression): PartEventAlternative => {
@@ -300,7 +364,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       try {
         const event = parse_part_event(literal.text);
         parsed.set(literal, event);
-        if (event.input.kind === "reference") ranges.set(event.input.reference, map);
+        if (event.input?.kind === "reference") ranges.set(event.input.reference, map);
+        if (event.input === undefined) omitted.set(event, location(literal));
         return event;
       } catch (cause) {
         // Preserve the key while the malformed declaration supplies no use evidence.
@@ -349,7 +414,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         return options.size === 1 && options.has("absent") ? undefined : [...options];
       },
     };
-    const result = { events, ranges, issues };
+    const result = { events, ranges, omitted, issues };
     adjacent.set(input, result);
     return result;
   };
@@ -546,6 +611,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     let parameterCompleteness: "complete" | "unknown" = "unknown";
     let signature: PartDocumentSource["signature"];
     let bindingSources: PartBindingSources | undefined;
+    const omissions: EventInputSource[] = [];
     const completeAnalysis = qualified && scanned;
     // Quoted slots cannot add structural declarations. Their values remain
     // opaque, so local lexical facts survive without proving an input interface.
@@ -590,7 +656,13 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           const diagnostic: (typeof referenceIssues)[number] = { location: owner, message: issue.message };
           referenceIssues.push(diagnostic);
           if (issue.use !== undefined) useIssues.push([issue.use, diagnostic]);
-        }, adjacentEvents?.events);
+        }, adjacentEvents?.events, (node, attribute, alternatives) => {
+          if (!lexicalComplete || alternatives.length !== 1) return;
+          const event = alternatives[0];
+          if (event === undefined || typeof event === "string") return;
+          const declaration = adjacentEvents?.omitted.get(event);
+          if (declaration !== undefined) omissions.push({ kind: event.kind, key: event.key, location: declaration, attachment: nodeLocation(node, attribute) });
+        });
         if (analysisText === text && spellingEligible) {
           const projected = project_part_bindings(root, analysis, provenance, text, map,
             (reference, range) => adjacentEvents?.ranges.get(reference)?.(range));
@@ -736,6 +808,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       contextual.set(producer, contexts);
     }
     relationships.set(result, receivers);
+    if (omissions.length > 0) omittedEventInputs.set(result, omissions);
     return result;
   };
   const alternatives = (input: ts.Expression, adjacentEvents?: EventSources) => {
@@ -765,6 +838,13 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           const eligible = admission.eligible && sources.eligible(admission.definitions);
           const definitions = object(admission.definitions);
           const fields = definitions === undefined ? undefined : library_source_field_candidates(definitions.node, typescript);
+          const owner = eligible ? admission.locusOwner : undefined;
+          let hosted: LocusEventSources | undefined;
+          if (owner !== undefined && (admission.operation === "create" || admission.operation === "resume" || admission.operation === "admit")) {
+            hosted = { owner, operation: admission.operation, initialActions: locusEventSources.get(owner)?.initialActions
+              ?? readInitialActions(owner.arguments[1]), omissions: [], definitions: admission.definitions };
+            locusEventSources.set(node, hosted);
+          }
           const libraries: PartLibrarySource[] = [];
           for (const entry of fields?.fields ?? []) {
             const definition = entry.value === undefined ? undefined : object(entry.value);
@@ -815,6 +895,17 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
                 && [...fields.keys()].every(key => ["kind", "document", "events", "css", "stylesheet"].includes(key))
                 && kind !== undefined && sources.candidates(kind, "json")?.every(candidate => "json" in candidate && candidate.json === "document"))
                 ? selected : undefined;
+              if (contractSource !== undefined) for (const omission of omittedEventInputs.get(contractSource) ?? []) {
+                if (omission.kind === "locus") {
+                  hosted?.omissions.push(omission);
+                  const contract = hosted?.initialActions.actions.get(omission.key);
+                  if (contract !== undefined) missingEventInputs.push({ ...omission, contract });
+                } else if (admission.operation === "fromLibraries") {
+                  const inputs = localEventInputs.get(node) ?? [];
+                  inputs.push(omission);
+                  localEventInputs.set(node, inputs);
+                }
+              }
               return [{ name: member.name, declaration: location(member.declaration), fresh: record?.fresh === true,
                 qualified, contractSource, evidence: memberEvidence }];
             });
@@ -881,9 +972,212 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     }
     if (supported) writes.push({ call, location: location(call), ...target, arguments: arguments_ });
   }
-  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, unavailableEventReferences };
+  for (const issue of direct_event_input_issues(typescript, program, sources, localEventInputs,
+    locusEventSources, options => {
+      const fields = knownFields(options);
+      const input = fields?.get("input");
+      // Capture can run application getters when the options or the input record are opaque.
+      if (fields === undefined || input !== undefined && knownFields(input) === undefined) return undefined;
+      return { contract: fields.size === 1 ? requiredInput(input) : undefined };
+    })) missingEventInputs.push(issue);
+  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, missingEventInputs, unavailableEventReferences };
   sourceFacts.set(program, facts);
   return facts;
+}
+
+/** Straight-line evidence from direct registrations on provable owners. */
+function direct_event_input_issues(typescript: typeof ts, program: ts.Program, sources: Candidates,
+  localEventInputs: ReadonlyMap<ts.CallExpression, readonly EventInputSource[]>,
+  locusEventSources: ReadonlyMap<ts.CallExpression, LocusEventSources>,
+  readOptions: (options: ts.Expression) => Readonly<{ contract: PartSourceLocation | undefined }> | undefined): readonly MissingEventInputSource[] {
+  const checker = program.getTypeChecker();
+  const output: MissingEventInputSource[] = [];
+  const receivingFiles = new Set([...localEventInputs.keys(), ...locusEventSources.keys()].map(call => call.getSourceFile()));
+  // A small syntax whitelist allows ordinary arguments and deferred function
+  // bodies. Calls, property reads, computed keys and spreads can execute code.
+  const inertValue = (expression: ts.Expression, depth = 0, admission = false): boolean => {
+    if (depth > 16) return false;
+    const value = sources.unwrap(expression);
+    if (typescript.isIdentifier(value)) {
+      if (!admission) return true;
+      // Admission reads the supplied records. Follow leaf aliases only, since
+      // an aliased object could have acquired accessors before this call.
+      const found = immutable_source_declaration(typescript, checker, value, sources.eligible);
+      const initializer = found?.declaration.initializer;
+      return found?.eligible === true && initializer !== undefined && !typescript.isObjectLiteralExpression(sources.unwrap(initializer))
+        && inertValue(initializer, depth + 1, true);
+    }
+    if (typescript.isStringLiteral(value) || typescript.isNoSubstitutionTemplateLiteral(value) || typescript.isNumericLiteral(value)
+      || value.kind === typescript.SyntaxKind.TrueKeyword || value.kind === typescript.SyntaxKind.FalseKeyword
+      || value.kind === typescript.SyntaxKind.NullKeyword) return true;
+    if (typescript.isArrowFunction(value) || typescript.isFunctionExpression(value)) return !admission;
+    if (typescript.isConditionalExpression(value)) return [value.condition, value.whenTrue, value.whenFalse]
+      .every(branch => inertValue(branch, depth + 1, admission));
+    if (typescript.isObjectLiteralExpression(value)) return value.properties.every(property =>
+      typescript.isPropertyAssignment(property) && !typescript.isComputedPropertyName(property.name)
+        && (!admission || !is_object_literal_prototype_setter(property, typescript)) && inertValue(property.initializer, depth + 1, admission)
+      || typescript.isShorthandPropertyAssignment(property) && property.objectAssignmentInitializer === undefined && inertValue(property.name, depth + 1, admission)
+      || !admission && typescript.isMethodDeclaration(property) && !typescript.isComputedPropertyName(property.name));
+    return typescript.isTaggedTemplateExpression(value) && typescript.isNoSubstitutionTemplateLiteral(value.template)
+      && typescript.isPropertyAccessExpression(value.tag) && typescript.isIdentifier(value.tag.expression)
+      && (value.tag.name.text === "document" || value.tag.name.text === "schema")
+      && is_official_hson_package_binding(value.tag.expression, "Hson", checker, true, typescript, sources.eligible);
+  };
+  for (const file of program.getSourceFiles()) {
+    if (file.isDeclarationFile || program.isSourceFileFromExternalLibrary(file) || file.fileName.replaceAll("\\", "/").split("/").includes(".hson")) continue;
+    const trees = read_supported_hson_import_symbols(file, checker, [], "hsonLiveTree", typescript);
+    const roots = read_supported_hson_import_symbols(file, checker, [], "hson", typescript);
+    if (trees.size === 0 && roots.size === 0 && !receivingFiles.has(file)) continue;
+    const officialFacade = (expression: ts.Expression, root: boolean): boolean => {
+      if (!typescript.isIdentifier(expression)) return false;
+      const symbol = checker.getSymbolAtLocation(expression);
+      if (symbol === undefined || !(root ? roots : trees).has(symbol)
+        || !hson_source_alias_eligible(symbol, checker, sources.eligible, typescript, true)) return false;
+      const value = checker.getAliasedSymbol(symbol).valueDeclaration;
+      const origin = value === undefined ? undefined : hson_package_declaration_path(value.getSourceFile().fileName);
+      return root ? origin === "src/hson.ts" || origin === "dist/hson.d.ts"
+        : origin === "src/api/livetree/livetree.facade.ts" || origin === "dist/api/livetree/livetree.facade.d.ts";
+    };
+    const freshTree = (expression: ts.Expression): boolean => {
+      const node = sources.unwrap(expression);
+      if (!typescript.isCallExpression(node) || !sources.eligible(node)) return false;
+      const call = literal_member(node.expression, typescript);
+      if (call === undefined) return false;
+      const create = literal_member(call.owner, typescript);
+      if (create?.name !== "create" && !["fromHson", "fromJson", "fromNode", "fromTrustedHtml", "fromUntrustedHtml"].includes(call.name)) return false;
+      const facade = create?.name === "create" ? create.owner : call.owner;
+      const umbrella = literal_member(facade, typescript);
+      return officialFacade(facade, false) || (umbrella?.name === "liveTree" && officialFacade(umbrella.owner, true));
+    };
+    const literal = (input: ts.Expression | undefined) => {
+      if (input === undefined) return undefined;
+      const evidence = sources.alternatives(input, "json", { reachableOnly: true });
+      const only = evidence.complete && evidence.nodes.length === 1 ? evidence.nodes[0] : undefined;
+      return only !== undefined && (typescript.isStringLiteral(only) || typescript.isNoSubstitutionTemplateLiteral(only)) ? only : undefined;
+    };
+    const report = (omissions: readonly EventInputSource[], actions: ReadonlyMap<string, PartSourceLocation | undefined>): void => {
+      for (const omission of omissions) {
+        const contract = actions.get(omission.key);
+        if (contract !== undefined) output.push({ ...omission, contract });
+      }
+    };
+    const directCall = (input: ts.Expression | undefined): ts.CallExpression | undefined => {
+      const expression = input === undefined ? undefined : sources.unwrap(input);
+      if (expression === undefined || !typescript.isCallExpression(expression)
+        || (expression.flags & typescript.NodeFlags.OptionalChain) !== 0) return undefined;
+      return expression;
+    };
+    const visit = (node: ts.Node): void => {
+      if (typescript.isSourceFile(node) || typescript.isBlock(node)) {
+        type Owner = {
+          family: "tree" | "local" | "locus";
+          actions: Map<string, PartSourceLocation | undefined>;
+          inputs: EventInputSource[];
+          openActions?: true;
+        };
+        const owners = new Map<ts.VariableDeclaration, Owner>();
+        const loci = new Map<ts.CallExpression, Owner>();
+        const withdraw = (): void => { owners.clear(); loci.clear(); };
+        const receiver = (identifier: ts.Identifier) => {
+          const found = immutable_source_declaration(typescript, checker, identifier, sources.eligible);
+          return found?.eligible ? owners.get(found.declaration) : undefined;
+        };
+        for (const statement of node.statements) {
+          if (!sources.eligible(statement)) { withdraw(); continue; }
+          const declaration = typescript.isVariableStatement(statement) && statement.declarationList.declarations.length === 1
+            ? statement.declarationList.declarations[0] : undefined;
+          const binding = declaration !== undefined
+            && (declaration.parent.flags & typescript.NodeFlags.Const) !== 0 ? declaration : undefined;
+          const initializer = declaration?.initializer === undefined ? undefined : sources.unwrap(declaration.initializer);
+          if (binding !== undefined && initializer !== undefined && typescript.isIdentifier(binding.name)) {
+            const alias = typescript.isIdentifier(initializer) ? receiver(initializer) : undefined;
+            if (alias !== undefined) { owners.set(binding, alias); continue; }
+            const awaited = typescript.isAwaitExpression(initializer);
+            const construction = directCall(awaited ? initializer.expression : initializer);
+            const hosted = construction === undefined ? undefined : locusEventSources.get(construction);
+            const parts = awaited || construction === undefined ? undefined : localEventInputs.get(construction);
+            const tree = freshTree(initializer);
+            if (construction !== undefined && (hosted?.owner === construction || parts !== undefined || tree)) {
+              // Construction arguments can invalidate earlier facts before
+              // establishing the new owner.
+              if (awaited || (tree ? !construction.arguments.every(argument => inertValue(argument))
+                : construction.arguments.some(argument => !inertValue(argument, 0, true)))) withdraw();
+              if (tree) owners.set(binding, { family: "tree", actions: new Map(), inputs: [] });
+              else if (parts !== undefined) owners.set(binding, { family: "local", actions: new Map(), inputs: [...parts] });
+              else if (hosted?.initialActions.complete && (hosted.operation === "resume") === awaited) {
+                const owner: Owner = { family: "locus", actions: new Map(hosted.initialActions.actions), inputs: [...hosted.omissions] };
+                owners.set(binding, owner);
+                loci.set(construction, owner);
+              }
+              continue;
+            }
+          }
+          const expression = typescript.isExpressionStatement(statement) ? sources.unwrap(statement.expression) : initializer;
+          const call = directCall(expression !== undefined && typescript.isAwaitExpression(expression) ? expression.expression : expression);
+          if (call === undefined) {
+            const inertDeclaration = typescript.isVariableStatement(statement) && statement.declarationList.declarations.every(declaration =>
+              typescript.isIdentifier(declaration.name) && (declaration.initializer === undefined || inertValue(declaration.initializer)));
+            if (!inertDeclaration && !typescript.isImportDeclaration(statement) && !typescript.isFunctionDeclaration(statement)
+              && !typescript.isTypeAliasDeclaration(statement) && !typescript.isInterfaceDeclaration(statement)) withdraw();
+            continue;
+          }
+          const admission = locusEventSources.get(call);
+          if (admission?.operation === "admit") {
+            const definitions = sources.unwrap(admission.definitions);
+            if (!typescript.isObjectLiteralExpression(definitions) || !inertValue(definitions, 0, true)) { withdraw(); continue; }
+            const locus = loci.get(admission.owner);
+            if (locus !== undefined) {
+              report(admission.omissions, locus.actions);
+              locus.inputs.push(...admission.omissions);
+            }
+            // Suspension can change the registry before a subsequent define.
+            if (expression !== undefined && typescript.isAwaitExpression(expression)) withdraw();
+            continue;
+          }
+          if (expression !== undefined && typescript.isAwaitExpression(expression)) { withdraw(); continue; }
+          const method = literal_member(call.expression, typescript);
+          const namespace = method === undefined ? undefined : literal_member(method.owner, typescript);
+          const owner = namespace !== undefined && typescript.isIdentifier(namespace.owner) ? receiver(namespace.owner) : undefined;
+          if (owner === undefined || !call.arguments.every(argument => inertValue(argument))) {
+            // Argument evaluation and opaque statements can change a tree's
+            // registry owner or introduce an unobserved registration.
+            withdraw();
+            continue;
+          }
+          if (method?.name === "define" && namespace?.name === "actions") {
+            const name = literal(call.arguments[0]);
+            const options = call.arguments[2];
+            const evidence = options === undefined ? { contract: undefined } : readOptions(options);
+            if (evidence === undefined) { withdraw(); continue; }
+            if (name === undefined) {
+              // An unknown key may already occupy the slot a later call names.
+              owner.actions.clear();
+              owner.openActions = true;
+              continue;
+            }
+            if (name.text.length === 0 || call.arguments.length < 2 || call.arguments.length > 3) continue;
+            if (owner.openActions || owner.actions.has(name.text) || owner.family === "locus" && is_locus_document_action_name(name.text)) continue;
+            owner.actions.set(name.text, evidence.contract);
+            if (evidence.contract !== undefined) for (const omission of owner.inputs) {
+              if (omission.key === name.text) output.push({ ...omission, contract: evidence.contract });
+            }
+          } else if (method?.name === "event" && namespace?.name === "listen" && owner.family === "tree") {
+            const source = literal(call.arguments[0]);
+            if (source === undefined || call.arguments.length !== 1) continue;
+            let event;
+            try { event = parse_authored_event(source.text); }
+            catch { continue; }
+            if (event.kind !== "browser" || event.input !== undefined) continue;
+            const contract = owner.actions.get(event.key);
+            if (contract !== undefined) output.push({ kind: event.kind, key: event.key, location: location(source), contract });
+          } else withdraw();
+        }
+      }
+      typescript.forEachChild(node, visit);
+    };
+    visit(file);
+  }
+  return output;
 }
 
 /** Shared immutable coordinate resolution for write-key completion and ingress. */

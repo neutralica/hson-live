@@ -7,7 +7,7 @@ import { DOCUMENT_CLICK_LISTENER } from "../../internal/listener-config.js";
 import { interaction_descriptor, new_interaction_id } from "./interactions.descriptor.js";
 
 type Destination = keyof DocumentListener<unknown>;
-type AuthorClick<TResult> = (destination: Destination, key: string, input: HsonDataInput) => TResult;
+type AuthorClick<TResult> = (destination: Destination, key: string, input: HsonDataInput | undefined) => TResult;
 
 /** A writable coordinate can carry element qualification in its runtime facade. @internal */
 export type WritableDocumentLocation = ReturnType<LiveMapDocumentLibrary["at"]> & Readonly<{
@@ -16,8 +16,8 @@ export type WritableDocumentLocation = ReturnType<LiveMapDocumentLibrary["at"]> 
 
 export function document_listener<TResult>(author: AuthorClick<TResult>): DocumentListener<TResult> {
   return Object.freeze({
-    local: Object.freeze({ onClick: (key: string, input: HsonDataInput) => author("local", key, input) }),
-    host: Object.freeze({ onClick: (key: string, input: HsonDataInput) => author("host", key, input) }),
+    local: Object.freeze({ onClick: (key: string, input?: HsonDataInput) => author("local", key, input) }),
+    host: Object.freeze({ onClick: (key: string, input?: HsonDataInput) => author("host", key, input) }),
   });
 }
 
@@ -25,7 +25,7 @@ const listenerGuards = new WeakMap<DocumentElementListener<string>, (guard: () =
 
 /** Let the governing facade check its owner at the actual capture and commit boundaries. @internal */
 export function synchronous_document_listener(
-  author: (destination: Destination, key: string, input: HsonDataInput, assertReadable: () => void) => string,
+  author: (destination: Destination, key: string, input: HsonDataInput | undefined, assertReadable: () => void) => string,
   callbacks: (assertReadable: () => void) => DocumentCallbackListener,
 ): DocumentElementListener<string> {
   const bind = (guard: () => void): DocumentElementListener<string> => Object.freeze(Object.assign(
@@ -45,10 +45,10 @@ export function guard_document_listener(listener: DocumentElementListener<string
 
 /** Own the subject and Data before any queued submission. Only the lowered path enters the Descriptor. */
 export function capture_document_click(owner: object, library: string, select: () => readonly number[],
-  destination: Destination, key: string, input: HsonDataInput, assertLifetime?: () => void) {
+  destination: Destination, key: string, input: HsonDataInput | undefined, assertLifetime?: () => void) {
   const path = capture_livemap_document_element(owner, select, assertLifetime);
   if (typeof key !== "string" || key.length === 0) throw new TypeError("Document click requires an action name.");
-  const data = admit_data_input(input);
+  const data = input === undefined ? undefined : admit_data_input(input);
   const id = new_interaction_id();
   const kind = destination === "local" ? "browser" : "locus";
   return { id, descriptor: () => interaction_descriptor(id, { library, path: path() }, DOCUMENT_CLICK_LISTENER, kind, key, data) };

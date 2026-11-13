@@ -34,6 +34,7 @@ if (quad !== undefined) {
   quad.attrs.set("title", "ready"); quad.at([0]).replace("Next"); quad.insert(0, "text");
   quad.flags.set("disabled"); quad.move(0, 1); quad.snap(); quad.delete(); quad.dispose();
   quad.listen.local.onClick("worker.behavior", null) satisfies string;
+  quad.listen.host.onClick("worker.host") satisfies string;
   quad.listen.onClick(event => { event satisfies unknown; }).off();
   void active; void path;
   // @ts-expect-error QUID acquisition is not part of the returned capability.

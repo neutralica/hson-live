@@ -29,7 +29,7 @@ export type BrowserInteractionDescriptor = Readonly<{
   listener: InteractionListener;
   kind: "browser";
   key: string;
-  args: InteractionDataInput;
+  args?: InteractionDataInput | undefined;
 }>;
 
 export type LocusInteractionDescriptor = Readonly<{
@@ -38,15 +38,15 @@ export type LocusInteractionDescriptor = Readonly<{
   listener: InteractionListener;
   kind: "locus";
   key: string;
-  payload: InteractionDataInput;
+  payload?: InteractionDataInput | undefined;
 }>;
 
 export type InteractionDescriptor = BrowserInteractionDescriptor | LocusInteractionDescriptor;
 
 /** Author one canonical click relationship and return its accepted Descriptor ID. */
 export type DocumentListener<TResult> = Readonly<{
-  local: Readonly<{ onClick: (key: string, input: HsonDataInput) => TResult }>;
-  host: Readonly<{ onClick: (key: string, input: HsonDataInput) => TResult }>;
+  local: Readonly<{ onClick: (key: string, input?: HsonDataInput) => TResult }>;
+  host: Readonly<{ onClick: (key: string, input?: HsonDataInput) => TResult }>;
 }>;
 
 export type DocumentElementListener<TResult> = DocumentListener<TResult> & DocumentCallbackListener;

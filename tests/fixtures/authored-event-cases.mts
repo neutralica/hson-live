@@ -30,7 +30,8 @@ const typed = { kind: "document", document: Hson.document`<section hson:part dat
   events: { advance: "<hson:event on:click local:OPEN_PANEL input:data=^{args} <> >" } } satisfies LiveMapDocumentPart;
 const incoming = { kind: "document", document: Hson.document`<button hson:part event:advance id="incoming"/>`,
   events: { advance: "<hson:event on:click local:OPEN_PANEL input:data=%{text} <> >" } } satisfies LiveMapDocumentPart;
-const collection = { parts: { literal, typed, incoming } };
+const withoutInput = { ...literal, events: { advance: "<hson:event on:click local:RESET_PANEL <> >" } };
+const collection = { parts: { literal, typed, incoming, withoutInput } };
 const invocation = '<hson-part lib="parts" at="literal"/>';
 const connector = (source: string) => {
   const node = hsonTransform.fromHson(source).toNode().$_content[0];
@@ -81,6 +82,15 @@ function grammar_cases() {
   assert.equal(descriptors(admit(advance.replace("{<step 3>}", "{null}")))[0]?.data?.scalar(), null);
   assert.equal(descriptors(admit(advance.replace("{<step 3>}", '{"<step 3>"}')))[0]?.data?.scalar(), "<step 3>");
   assert.equal(descriptors(admit(advance.replace("{<step 3>}", "{-0}")))[0]?.data?.scalar(), -0);
+  for (const [destination, inputField] of [["host", "payload"], ["local", "args"]]) {
+    const omission = advance.replace("host:", `${destination}:`).replace(" input:data={<step 3>}", "");
+    const map = admit(omission);
+    assert.equal(descriptors(map)[0]?.data, undefined);
+    const aggregate = authority(map);
+    const root = aggregate.systemRoot(aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+    assert.equal(new Map(descriptor_data(root)[0]?.entries()).has(inputField), false);
+    assert.throws(() => admit(omission.replace("<> ", "")), /requires an outcome object/);
+  }
 
   for (const [source, diagnostic] of [
     [advance.replace("once", "capture"), /Unsupported authored event header/],
@@ -92,7 +102,6 @@ function grammar_cases() {
     [advance.replace("<> ", ""), /requires an outcome object/],
     [advance.replace("<>", "<> <>"), /single authored event outcome object/],
     [advance.replace("<>", "<success local:SHOW_SAVED>"), /Nonempty authored event outcomes.*Use <>/],
-    [advance.replace("input:data={<step 3>} ", ""), /requires explicit input:data/],
     [advance.replace("{<step 3>}", '"<step 3>"'), /one whole Part reference/],
     [advance.replace("{<step 3>}", "{1 2}"), /one Hson Data value/],
     [advance.replace("{<step 3>}", "{<button/>}"), /element-mode value/],
@@ -731,8 +740,9 @@ async function durable_cases() {
       await fresh.stage(writer => writer.doc.page.content.insert(parent, 0, connector(invocation)));
       const firstId = descriptors(activeMap)[0]?.id;
       assert.ok(firstId);
-      await fresh.stage(writer => writer.doc.page.content.insert(parent, 1, connector(invocation)));
+      await fresh.stage(writer => writer.doc.page.content.insert(parent, 1, connector(invocation.replace('at="literal"', 'at="withoutInput"'))));
       assert.deepEqual(descriptors(activeMap).map(entry => entry.id === firstId), [true, false]);
+      assert.equal(descriptors(activeMap)[1]?.data, undefined);
       return authority(activeMap).captureSemanticCheckpoint();
     } finally { fresh.dispose(); }
   })();
@@ -763,13 +773,17 @@ async function durable_cases() {
       assert.equal(reads, 2);
       assert.equal(persistence.loads, loads + 1);
       assert.deepEqual(authority(locus_map_internal(again)).captureSemanticCheckpoint(), first);
+      assert.equal(descriptors(locus_map_internal(again))[1]?.data, undefined);
       assert.deepEqual(persistence.state(activeConfig.logicalMapId), before);
       if (explicit) await hsonLiveMap.locus.checkpoint(again);
     } finally { again.dispose(); }
   }
   assert.deepEqual(persistence.state(activeConfig.logicalMapId)?.commits, []);
   const compacted = await hsonLiveMap.locus.resume(subset, activeConfig);
-  try { assert.deepEqual(authority(locus_map_internal(compacted)).captureSemanticCheckpoint(), first); }
+  try {
+    assert.deepEqual(authority(locus_map_internal(compacted)).captureSemanticCheckpoint(), first);
+    assert.equal(descriptors(locus_map_internal(compacted))[1]?.data, undefined);
+  }
   finally { compacted.dispose(); }
 }
 

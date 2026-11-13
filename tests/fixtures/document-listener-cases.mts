@@ -66,8 +66,13 @@ export async function document_listener_cases(): Promise<void> {
       assert.equal(record.get("kind")?.scalar(), "browser");
       assert.ok(record.get("args")?.equals(exact));
     }
+    const noLocalInput = at.listen.local.onClick("panel.toggle");
+    const noHostInput = quad.listen.host.onClick("deck.advance", undefined);
+    const ids = [pathId, quadId, noLocalInput, noHostInput];
+    const records = assert_subjects(map, ids, 0);
+    assert.equal(records[2]?.has("args"), false);
+    assert.equal(records[3]?.has("payload"), false);
     const saved = map.capture();
-    assert.throws(() => Reflect.apply(at.listen.local.onClick, undefined, ["panel.toggle"]), TypeError);
     assert.throws(() => quad.at([0]).listen.local.onClick("panel.toggle", exact), /ordinary element/);
     assert.throws(() => map.batch(stage => {
       const parent = stage.doc.must("page").at([1, 0]).asElement();
@@ -75,10 +80,10 @@ export async function document_listener_cases(): Promise<void> {
       parent.move(0, 1);
       at.listen.local.onClick("panel.toggle", exact);
     }), /active batch/);
-    assert_subjects(map, [pathId, quadId], 0);
+    assert_subjects(map, ids, 0);
     page.at([1, 0]).asElement()!.move(0, 1);
     assert.deepEqual(quad.path(), second);
-    assert_subjects(map, [pathId, quadId], 1);
+    assert_subjects(map, ids, 1);
     const textCoordinate = page.at(second);
     const turnedText = textCoordinate.asElement()!;
     quad.replace("Retired");
@@ -99,7 +104,9 @@ export async function document_listener_cases(): Promise<void> {
     assert.deepEqual(descriptors(map), []);
     map.restore(saved);
     assert.deepEqual(map.capture(), saved);
-    assert_subjects(map, [pathId, quadId], 0);
+    const restored = assert_subjects(map, ids, 0);
+    assert.equal(restored[2]?.has("args"), false);
+    assert.equal(restored[3]?.has("payload"), false);
     assert.equal("listen" in missing, false);
     assert.deepEqual(coordinate.snap(), page.at(first).snap());
     assert.ok(coordinate_listener<string>(page.at(first)));
@@ -159,14 +166,14 @@ export async function document_listener_cases(): Promise<void> {
   try {
     const page = locus.doc.must("page"), coordinate = page.at(first), at = coordinate.asElement()!, quad = page.q("selected")!;
     let accepted: string | undefined;
-    const pending = coordinate_listener<Promise<string>>(coordinate).local.onClick("panel.toggle", exact)
+    const pending = coordinate_listener<Promise<string>>(coordinate).local.onClick("panel.toggle")
       .then(id => { accepted = id; return id; });
     await Promise.race([entered.promise, pending.then(() => assert.fail("Listener accepted before the gate released"))]);
     assert.equal(accepted, undefined);
     assert.deepEqual(descriptors(map), []);
     released.resolve();
     const firstId = await pending;
-    assert_subjects(map, [firstId], 0);
+    assert.equal(assert_subjects(map, [firstId], 0)[0]?.has("args"), false);
     gate = () => { throw new Error("Rejected listener submission"); };
     await assert.rejects(quad.listen.host.onClick("deck.advance", exact), /Rejected listener submission/);
     assert_subjects(map, [firstId], 0);
@@ -195,12 +202,13 @@ export async function document_listener_cases(): Promise<void> {
     const action = locus.actions.trigger("hold", null);
     await actionEntered.promise;
     const update = locus.data.must("state").at(["count"]).replace(1);
-    const independent = page.at(first).asElement()!.listen.local.onClick("unnamed", exact);
+    const independent = page.at(first).asElement()!.listen.host.onClick("unnamed");
     assert_subjects(map, ids, 1);
     actionReleased.resolve();
     assert.equal((await action).type, "ack");
     await update;
     const unnamedId = await independent;
+    assert.equal(descriptors(map).at(-1)?.has("payload"), false);
     assert.equal(map.data.must("state").at(["count"]).snap(), 1);
     assert.deepEqual(descriptors(map).at(-1)?.get("subject")?.materialize(), { library: "page", path: structural(0) });
     const textCoordinate = page.at(first);
@@ -279,8 +287,9 @@ export async function document_listener_cases(): Promise<void> {
         }, /Shared canonical interactions require Locus/);
         receiver.data.must("ui").at(["count"]).set(1);
         receiver.doc.must("panel").q("button")!.attrs.set("title", "local");
-        localId = coordinate_listener<string>(panel.at(second)).local.onClick("panel.toggle", exact);
+        localId = coordinate_listener<string>(panel.at(second)).local.onClick("panel.toggle");
         assert.deepEqual(descriptors(receiver).map(record => record.get("id")?.scalar()), [...ids, localId]);
+        assert.equal(descriptors(receiver).at(-1)?.has("args"), false);
       });
       const stop = echo.commits.observe(() => {
         stop();

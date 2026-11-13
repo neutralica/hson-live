@@ -14,7 +14,7 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocalBehaviorContext, type LocalBehaviorMessage } from "../src/index.ts";
+import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type BrowserInteractionDescriptor, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocusInteractionDescriptor, type LocalBehaviorContext, type LocalBehaviorMessage } from "../src/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -117,11 +117,12 @@ async function activate_echo(echo: Readonly<{
   await echo.completeRecovery();
 }
 
-function local(id: string, key: string, args: HsonDataValue = Hson.data.from(null), override: Partial<InteractionListener> = {}): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }), listener: Object.freeze({ ...listener, ...override }), kind: "browser", key, args });
+const buttonSubject = Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] });
+function local(id: string, key: string, args: HsonDataValue = Hson.data.from(null), override: Partial<InteractionListener> = {}): BrowserInteractionDescriptor {
+  return Object.freeze({ id, subject: buttonSubject, listener: Object.freeze({ ...listener, ...override }), kind: "browser", key, args });
 }
-function authoritative(id: string, key: string, payload: HsonDataValue): InteractionDescriptor {
-  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }), listener, kind: "locus", key, payload });
+function authoritative(id: string, key: string, payload?: HsonDataValue): LocusInteractionDescriptor {
+  return Object.freeze({ id, subject: buttonSubject, listener, kind: "locus", key, ...(payload === undefined ? {} : { payload }) });
 }
 
 function canonical_descriptors(map: ReturnType<typeof map_fixture>) {
@@ -201,6 +202,9 @@ await check("strict Schema and authoring semantics reject before revision moveme
   } as unknown as InteractionDescriptor), /Schema/);
   assert.throws(() => add_interaction(map, {
     ...local("hybrid", "run"), payload: Hson.data.from(null),
+  } as unknown as InteractionDescriptor), /unknown or missing/);
+  assert.throws(() => add_interaction(map, {
+    ...local("hybrid-absent", "run"), args: undefined, payload: undefined,
   } as unknown as InteractionDescriptor), /unknown or missing/);
   assert.throws(() => add_interaction(map, local("reserved", "run", { _hson_bad: 1 } as never)), /Reserved Hson prefix/);
   assert.throws(() => Hson.data.fromSource(Hson.canonical`<main/>`), /data/i);
@@ -520,6 +524,7 @@ await check("local to local to authoritative reconciliation owns one exact subje
 
 await check("fingerprinting retains owned exact data without parsing or materialization", () => {
   const values = [
+    undefined,
     Hson.data.from({ nested: [null, [], {}, "", "123", "true", "null", -0, Number.MIN_VALUE, Number.MAX_VALUE] }),
     Hson.data.parse`<'10' -0 '2' <__proto__ true constructor null> '1' []>`,
     Hson.data.from(-0), Hson.data.from("123"), Hson.data.from("true"), Hson.data.from("null"),
@@ -528,7 +533,7 @@ await check("fingerprinting retains owned exact data without parsing or material
   ];
   const map = map_fixture();
   for (const [index, value] of values.entries()) {
-    add_interaction(map, local(`browser-${index}`, "run", value));
+    add_interaction(map, { ...local(`browser-${index}`, "run"), args: value });
     add_interaction(map, authoritative(`locus-${index}`, "save", value));
   }
   const reflection = hsonMirror(map.doc.must("page"));
@@ -566,8 +571,8 @@ await check("fingerprinting retains owned exact data without parsing or material
     dispose?.(); reflection.dispose();
   }
   const expected = values.flatMap((value) => [value, value]);
-  assert.deepEqual(received.map(value => value?.toHson()), [...expected, ...expected].map(value => value.toHson()));
-  assert.ok(received.every(value => value instanceof HsonDataValue));
+  assert.deepEqual(received.map(value => value?.toHson()), [...expected, ...expected].map(value => value?.toHson()));
+  assert.ok(received.every(value => value === undefined || value instanceof HsonDataValue));
 });
 
 await check("native and direct invocations enforce the same input contract and report rejections", async () => {
@@ -604,6 +609,36 @@ await check("native and direct invocations enforce the same input contract and r
     const direct = await map.actions.trigger("typed", { value: -0 });
     assert.ok(direct.ok && Object.is(direct.result?.entries()?.[0]?.[1].scalar(), -0));
     assert.equal(calls, 2);
+  } finally { dispose(); reflection.dispose(); }
+});
+
+await check("canonical local clicks validate optional and required input at invocation", () => {
+  const map = map_fixture();
+  const schema = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
+  const reflection = hsonMirror(map.doc.must("page"));
+  const target = new Target();
+  link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
+  const seen: unknown[] = [];
+  const failures: InteractionFailure[] = [];
+  const record: Parameters<typeof map.actions.define>[1] = (_ctx, input) => { seen.push(input?.scalar()); };
+  map.actions.define("optional", record, { input: { schema } });
+  map.actions.define("required", record, { input: { required: true, schema } });
+  const base = { id: "presence", subject: buttonSubject, listener: { ...listener, once: true }, kind: "browser" as const };
+  add_interaction(map, { ...base, key: "optional" });
+  const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
+  try {
+    target.fire();
+    assert.equal(target.registrations.length, 0);
+    replace_interaction(map, { ...base, key: "optional", args: null });
+    target.fire();
+    replace_interaction(map, { ...base, key: "required" });
+    target.fire();
+    assert.deepEqual(seen, [undefined, null]);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0]?.phase, "browser-invocation");
+    assert.equal(Object.hasOwn(failures[0]!.descriptor, "args"), false);
+    assert.match(String(failures[0]?.cause), /requires input/);
+    assert.equal(target.registrations.length, 0);
   } finally { dispose(); reflection.dispose(); }
 });
 
@@ -652,7 +687,7 @@ await check("failure observers receive frozen public descriptors with authentica
   const cause = new Error("invocation failed");
   map.actions.define("run", (_ctx, args) => { assert.ok(args?.equals(data)); throw cause; });
   const dispose = activate_interactions({ map, tree: reflection.tree,
-    dispatch: (_key, payload) => { assert.ok(payload.equals(data)); throw cause; },
+    dispatch: (_key, payload) => { assert.ok(payload?.equals(data)); throw cause; },
     onFailure: (failure) => { failures.push(failure); },
   });
   try {

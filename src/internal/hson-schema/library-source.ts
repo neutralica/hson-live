@@ -86,23 +86,28 @@ export function library_source_admission(
   expression: ts.Expression, checker: ts.TypeChecker, mapSymbols: ReadonlySet<ts.Symbol>,
   localConstructionOnly = false, ts: typeof defaultTs = defaultTs,
   eligible = hson_source_syntactic_eligibility(ts),
-): Readonly<{ call: ts.CallExpression; operation: "fromLibraries" | "create" | "resume" | "admit" | "addLibraries"; receiver: ts.Expression; definitions: ts.Expression; eligible: boolean }> | undefined {
+): Readonly<{ call: ts.CallExpression; operation: "fromLibraries" | "create" | "resume" | "admit" | "addLibraries";
+  receiver: ts.Expression; definitions: ts.Expression; eligible: boolean; locusOwner?: ts.CallExpression }> | undefined {
   if (!ts.isCallExpression(expression) || (expression.flags & ts.NodeFlags.OptionalChain) !== 0) return undefined;
   const member = literal_member(expression.expression, ts);
   const definitions = expression.arguments[0];
   if (member === undefined || definitions === undefined) return undefined;
   if (!["fromLibraries", "create", "resume", "admit", "addLibraries"].includes(member.name)) return undefined;
-  const result = (operation: "fromLibraries" | "create" | "resume" | "admit" | "addLibraries", provenanceEligible: boolean) =>
-    ({ call: expression, operation, receiver: member.owner, definitions, eligible: eligible(expression) && provenanceEligible });
+  const result = (operation: "fromLibraries" | "create" | "resume" | "admit" | "addLibraries", provenanceEligible: boolean,
+    locusOwner?: ts.CallExpression) => ({ call: expression, operation, receiver: member.owner, definitions,
+    eligible: eligible(expression) && provenanceEligible, ...(locusOwner === undefined ? {} : { locusOwner }) });
   const constructor = official_constructor(expression, checker, mapSymbols, ts, eligible);
-  if (constructor !== undefined && (constructor.operation === "fromLibraries" || !localConstructionOnly)) return result(constructor.operation, constructor.eligible);
+  if (constructor !== undefined && (constructor.operation === "fromLibraries" || !localConstructionOnly)) {
+    return result(constructor.operation, constructor.eligible, constructor.family === "locus" ? expression : undefined);
+  }
   if (localConstructionOnly || expression.arguments.length !== 1 || (member.name !== "admit" && member.name !== "addLibraries")) return undefined;
   const declaration = checker.getResolvedSignature(expression)?.getDeclaration();
   if (declaration !== undefined
     && (member.name === "admit" && official_library_source(declaration, "locus.core.types")
       || member.name === "addLibraries" && official_library_source(declaration, "livemap.types"))) {
     const receiver = official_receiving_value(member.owner, member.name === "admit" ? "locus" : "local", checker, ts, eligible);
-    if (receiver !== undefined) return result(member.name, receiver.eligible && eligible(declaration));
+    if (receiver !== undefined) return result(member.name, receiver.eligible && eligible(declaration),
+      member.name === "admit" ? receiver.call : undefined);
   }
   return undefined;
 }
@@ -173,9 +178,9 @@ function official_constructor(expression: ts.Expression, checker: ts.TypeChecker
 
 /** A compatible method type does not prove that its owner is an official receiving value. */
 function official_receiving_value(input: ts.Expression, family: "locus" | "local", checker: ts.TypeChecker, ts: typeof defaultTs,
-  eligible: (node: ts.Node) => boolean): Readonly<{ eligible: boolean }> | undefined {
+  eligible: (node: ts.Node) => boolean): Readonly<{ eligible: boolean; call: ts.CallExpression }> | undefined {
   const seen = new Set<ts.Declaration>();
-  const construction = (value: ts.Expression, awaited = false): Readonly<{ eligible: boolean }> | undefined => {
+  const construction = (value: ts.Expression, awaited = false): Readonly<{ eligible: boolean; call: ts.CallExpression }> | undefined => {
     const syntaxEligible = eligible(value);
     while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isAwaitExpression(value)) {
       if (ts.isAwaitExpression(value)) awaited = true;
@@ -186,11 +191,12 @@ function official_receiving_value(input: ts.Expression, family: "locus" | "local
       if (found === undefined || found.declaration.initializer === undefined || seen.has(found.declaration) || seen.size >= 16) return undefined;
       seen.add(found.declaration);
       const next = construction(found.declaration.initializer, awaited);
-      return next === undefined ? undefined : { eligible: syntaxEligible && found.eligible && next.eligible };
+      return next === undefined ? undefined : { call: next.call, eligible: syntaxEligible && found.eligible && next.eligible };
     }
+    if (!ts.isCallExpression(value)) return undefined;
     const symbols = read_supported_hson_import_symbols(value.getSourceFile(), checker, [], "hsonLiveMap", ts);
     const found = official_constructor(value, checker, symbols, ts, eligible);
-    return found?.family === family && (found.operation !== "resume" || awaited) ? { eligible: syntaxEligible && found.eligible } : undefined;
+    return found?.family === family && (found.operation !== "resume" || awaited) ? { call: value, eligible: syntaxEligible && found.eligible } : undefined;
   };
   return construction(input);
 }
@@ -208,8 +214,9 @@ export function library_source_fields(node: ts.ObjectLiteralExpression, ts: type
 }
 
 /** Partial fields are suggestion evidence only. Dynamic keys and overwrites retain uncertainty. */
-export function library_source_field_candidates(node: ts.ObjectLiteralExpression, ts: typeof defaultTs = defaultTs) {
-  const fields = new Map<string, ts.Expression>();
+export function library_source_field_candidates(node: ts.ObjectLiteralExpression, ts: typeof defaultTs = defaultTs,
+  options: Readonly<{ methods?: true }> = {}) {
+  const keys = new Set<string>();
   const candidates: { name?: string; value?: ts.Expression; declaration: ts.ObjectLiteralElementLike }[] = [];
   let complete = true;
   for (const property of node.properties) {
@@ -218,16 +225,16 @@ export function library_source_field_candidates(node: ts.ObjectLiteralExpression
     const key = name !== undefined && (ts.isIdentifier(name) || ts.isStringLiteral(name)) ? name.text
       : name !== undefined && ts.isComputedPropertyName(name) && (ts.isStringLiteral(name.expression) || ts.isNoSubstitutionTemplateLiteral(name.expression))
         ? name.expression.text : undefined;
-    if ((!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property))
-      || key === undefined
-      || ts.isShorthandPropertyAssignment(property) && property.objectAssignmentInitializer !== undefined
-      || fields.has(key)) {
+    const value = ts.isPropertyAssignment(property) ? property.initializer
+      : ts.isShorthandPropertyAssignment(property) && property.objectAssignmentInitializer === undefined ? property.name : undefined;
+    const method = options.methods && ts.isMethodDeclaration(property) && !ts.isComputedPropertyName(property.name);
+    if (key === undefined || keys.has(key) || value === undefined && !method) {
       complete = false;
       candidates.push({ declaration: property, ...(ts.isPropertyAssignment(property) ? { value: property.initializer } : {}) });
       continue;
     }
-    fields.set(key, ts.isPropertyAssignment(property) ? property.initializer : property.name);
-    candidates.push({ name: key, value: fields.get(key)!, declaration: property });
+    keys.add(key);
+    candidates.push({ name: key, ...(value === undefined ? {} : { value }), declaration: property });
   }
   return { fields: candidates, complete };
 }

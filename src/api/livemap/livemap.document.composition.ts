@@ -182,7 +182,7 @@ export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: Porta
 /** An operation-local contribution addressed in the composition output. */
 export type DocumentCompositionInteraction = Readonly<Omit<PartEvent, "input"> & {
   path: LiveMapDocumentPath;
-  data: OrderedProjectedValue;
+  data: OrderedProjectedValue | undefined;
 }>;
 /** Detached occurrence coordinates, consumed only by ordinary destination preparation. @internal */
 export type DocumentCompositionStyle = Readonly<{
@@ -758,10 +758,9 @@ export function expand_document_composition(
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
     for (const { attribute, declaration: { input, ...event } } of attached) {
-      const data = input.kind === "literal" ? input.value
-        : resolve_part_event_reference(input, item, attribute, environment);
+      const data = input?.kind === "reference" ? resolve_part_event_reference(input, item, attribute, environment) : input?.value;
       charge(event.key);
-      charge(JSON.stringify(data));
+      if (data !== undefined) charge(JSON.stringify(data));
       interactions.push({ ...event, path: scopedPath(outputPath), data });
     }
     frame.output.push(copy);
@@ -976,7 +975,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
   }, observe, undefined, {
     event(node, attribute) {
       const event = part_event_attachment(node, attribute, source.events);
-      if (event.input.kind === "reference"
+      if (event.input?.kind === "reference"
         && resolve_part_event_reference(event.input, node, attribute, environment, true) !== undefined) present.add(node);
     },
     enter(node, parent) {

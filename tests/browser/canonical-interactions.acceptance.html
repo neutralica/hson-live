@@ -175,7 +175,12 @@
         check(clicks.length === 3 && !(await registry.trigger("ordinaryCallback")).ok,
           "Listener disposal or callback registration altered the action registry.");
 
-        const surviving = subject.listen.event(source("panel"));
+        const required = "<hson:event on:click local:required <> >";
+        let requiredCalls = 0, rejected = false;
+        registry.define("required", () => { requiredCalls++; }, { input: { required: true, schema: ANY_DATA } });
+        try { subject.listen.event(required); } catch (error) { rejected = /requires input/.test(error.message); }
+        check(rejected, "Native installation accepted a missing required input.");
+        const surviving = subject.listen.event("<hson:event on:click local:panel <> >");
         check(subject.detach() === 1 && subject.dom.el() === button && !button.isConnected, "Detach lost the native subject.");
         button.dispatchEvent(click());
         root.append(subject);
@@ -184,8 +189,9 @@
         subject.remove();
         button.dispatchEvent(click());
         surviving.off();
-        check(clicks.length === 5 && clicks.slice(3).every(call => call.ctx.tree === root && call.ctx.subject === subject),
-          "Reversible detach or terminal removal changed listener lifetime.");
+        check(clicks.length === 5 && requiredCalls === 0 && clicks.slice(3).every(call =>
+          call.ctx.tree === root && call.ctx.subject === subject && call.input === undefined),
+          "Reversible detach or terminal removal changed listener lifetime or omitted input.");
         const direct = await registry.trigger("panel", -0);
         check(direct.ok && Object.is(direct.result.scalar(), -0) && clicks[5].ctx.event === undefined
           && new Set(clicks.map(call => call.message.id)).size === 6, "Direct triggering lost exact Data or invocation identity.");
@@ -764,6 +770,7 @@
             document: Hson.document`<main hson:part
               ${serialized}
               <button id="panel" event:panel "Panel"/>
+              <button id="reset" event:reset "Reset"/>
               <button id="ordinary" event:advance="event:advance" event:phase="ready" "Ordinary"/>
               ${observed}
               ${Hson.document`<section ${oracleObserved} ${oracleTransplanted}/>`}
@@ -771,6 +778,7 @@
             events: {
               advance: "<hson:event once stopProp on:click host:deck.advance input:data={<step 3>} <> >",
               panel: "<hson:event on:click local:deck.panel input:data={-0} <> >",
+              reset: "<hson:event on:click host:deck.reset <> >",
             },
           },
           extra: {
@@ -782,8 +790,11 @@
       };
       const locus = hsonLiveMap.locus.create({ anchor: { access: "shared", document: "<aside/>" } }, {
         authorizeProjection: ({ requested }) => requested,
-        authorizeAction: ({ action }) => action === "deck.advance",
-        actions: { "deck.advance": (_context, payload) => { payloads.push(payload); } },
+        authorizeAction: ({ action }) => action === "deck.advance" || action === "deck.reset",
+        actions: {
+          "deck.advance": (_context, payload) => { payloads.push(payload); },
+          "deck.reset": { input: { schema: ANY_DATA }, handler: (_context, payload) => { payloads.push(payload); } },
+        },
       });
       const binding = bind_locus_http(locus, { endpoint: "/authored-events" });
       const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/authored-events",
@@ -809,7 +820,7 @@
         check(count() === 0 && reconciled.length === 0, "The anchor session received interactions before authorization.");
         await anchor.update({ libraries: ["anchor", "page"], systemFeatures: ["interactions"] });
         await until(() => reconciled.length !== 0, "The active Echo did not reconcile the admitted Document.");
-        check(JSON.stringify(reconciled) === '[["document",2]]', "The first Document publication lacked its complete interaction state.");
+        check(JSON.stringify(reconciled) === '[["document",3]]', "The first Document publication lacked its complete interaction state.");
         const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
         const now = session.now({ html: "page" });
         const state = decode_hosted_root(now.libs.system.interactions).$_content[0];
@@ -868,12 +879,16 @@
         oracleButton.click();
         transplantedButton.click();
         if (submissions > 1) await until(() => payloads.length > 1 || failures.length > 0, "Extra action did not settle.");
-        check(descriptorCount === 2 && submissions === 1 && payloads.length === 1
+        check(descriptorCount === 3 && submissions === 1 && payloads.length === 1
           && observedButton.getAttribute("event:advance") === "event:advance"
           && oracleButton.getAttribute("event:advance") === "event:advance"
           && transplantedButton.getAttribute("event:advance") === "event:advance"
           && observed === '<button event:advance="event:advance" id="observed"/>',
         `Mutable flag round trip changed executable intent: ${JSON.stringify({ observed, oracleObserved, oracleTransplanted, descriptorCount, submissions, hostedActions: payloads.length })}`);
+        page.querySelector("#reset").click();
+        await until(() => payloads.length === 2 || failures.length > 0, "The input-free hosted action did not settle.");
+        check(payloads.length === 2 && payloads[1] === undefined && submissions === 2 && failures.length === 0,
+          "Hosted continuation did not preserve omitted input.");
       } finally {
         stopRestore?.();
         anchorEcho?.dispose();

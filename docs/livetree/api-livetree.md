@@ -885,8 +885,9 @@ outlast individual listeners and child removal. Removing the owning root
 retires its registry.
 
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
-one `local:` action, explicit `input:data={…}`, and the required empty outcome
-object `<>`. The declaration may include `once` and `stopProp`. Unsupported
+one `local:` action, and the required empty outcome object `<>`. The declaration
+may include `input:data={…}`, `once`, and `stopProp`. Omit `input:data` for
+an action that accepts absent input. Unsupported
 flags, Part references, `host:` actions, nonempty outcomes, and pending fluent
 builder settings reject. The action and input are checked before native
 attachment. A missing action throws and requires a fresh registration attempt.

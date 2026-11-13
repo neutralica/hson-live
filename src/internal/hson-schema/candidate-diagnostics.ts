@@ -29,18 +29,21 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
   const reported = new Set<string>();
   const memberInvocations = new Set<object>();
   const report = (where: PartSourceLocation | undefined, code: string, message: string,
-    declaration?: PartSourceLocation, attachment?: PartSourceLocation): void => {
+    declaration?: PartSourceLocation, attachment?: PartSourceLocation, declarationMessage = "Relevant Part declaration."): void => {
     if (where?.precision !== "exact") return;
     const key = JSON.stringify([where.file, where.start, where.end, code, message, attachment]);
     if (reported.has(key)) return;
     reported.add(key);
     const related: StaticSchemaDiagnosticLocation[] = [];
     if (declaration?.precision === "exact") related.push({ file: declaration.file, start: declaration.start, end: declaration.end,
-      message: "Relevant Part declaration." });
+      message: declarationMessage });
     if (attachment?.precision === "exact") related.push({ file: attachment.file, start: attachment.start, end: attachment.end,
       message: "Part event attachment." });
     output.push({ file: where.file, start: where.start, end: where.end, code, message, ...(related.length === 0 ? {} : { related }) });
   };
+  for (const issue of facts.missingEventInputs) report(issue.location, "HSON_EVENT_INPUT_REQUIRED",
+    `Action ${JSON.stringify(issue.key)} requires input. Supply input:data in this event declaration.`,
+    issue.contract, issue.attachment, "This action declares required input.");
   for (const document of facts.documents) {
     // Grammar and declared-name conflicts are local facts; they require no receiver shape.
     const isDefinition = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"

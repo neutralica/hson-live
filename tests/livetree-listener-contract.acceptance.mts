@@ -676,7 +676,7 @@ await check("invalid standalone declarations and missing actions fail before nat
       [valid.replace("<> ", ""), /requires an outcome object/],
       [valid.replace("<> ", "<value 1> "), /Nonempty authored event outcomes are unsupported/],
       [valid.replace("<> ", "<> <> "), /single authored event outcome object/],
-      [valid.replace(" input:data={<open true>}", ""), /requires explicit input:data/],
+      [valid.replace(" input:data={<open true>}", ""), /Local action requires input/],
       [valid.replace("input:data=", "input:data:name="), /Only input:data takes a value/],
       [valid.replace("local:run", "host:run"), /cannot dispatch host: actions/],
       [valid.replace("local:run", "local:run local:other"), /exactly one host: or local:/],
@@ -696,6 +696,32 @@ await check("invalid standalone declarations and missing actions fail before nat
     element.dispatch("click", new Event("click"));
     assert.equal(calls, 1);
     sub.off();
+  } finally { tree.remove(); }
+});
+
+await check("standalone optional action input distinguishes omission from null before native attachment", () => {
+  const { tree, element } = fixture();
+  const optional = "<hson:event on:click local:optional <> >";
+  const nullInput = optional.replace("<>", "input:data={null} <>");
+  const numbers = Hson.schema`<type "data" defs <Value "number"> content <ref "Value">>`;
+  const nulls = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
+  const seen: unknown[] = [];
+  const record: Parameters<typeof tree.actions.define>[1] =
+    (_ctx, input) => { seen.push(input?.scalar()); };
+  try {
+    tree.actions.define("optional", record, { input: { schema: numbers } });
+    tree.actions.define("nullable", record, { input: { required: true, schema: nulls } });
+    const required = optional.replace("local:optional", "local:nullable");
+    assert.throws(() => tree.listen.event(required), /requires input/);
+    assert.throws(() => tree.listen.event(nullInput), /at \[\]/);
+    assert.equal(element.registrations.length, 0);
+    const absent = tree.listen.event(optional);
+    const present = tree.listen.event(nullInput.replace("local:optional", "local:nullable"));
+    const number = tree.listen.event(nullInput.replace("{null}", "{-0}"));
+    element.dispatch("click", new Event("click"));
+    assert.deepEqual(seen, [undefined, null, -0]);
+    for (const sub of [absent, present, number]) sub.off();
+    assert.equal(element.listeners.size, 0);
   } finally { tree.remove(); }
 });
 

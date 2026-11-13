@@ -14,6 +14,8 @@ function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression 
 import { capture_schema_compiler_project, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
 import { check_schema_project } from "../src/internal/hson-schema/compiler-project-build.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
+import { static_part_reference_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -434,13 +436,35 @@ check("existing Schema fixtures use the same evidence and transformation without
 
 check("Part reference editor errors do not change compiler Project or CLI exit policy", () => {
   const directory = prepare("part-reference-policy");
-  writeFileSync(join(directory, "part-references.ts"), 'import { Hson, hsonLiveMap } from "hson-live";\n'
+  const consumer = join(directory, "part-references.ts");
+  const localEvent = '"<hson:event on:click local:run <> >"';
+  const event = '"<hson:event on:click host:run <> >"';
+  const definitions = '{ components: { parts: { button: { kind: "document", document: "<button hson:part event:run/>", events: { run: ' + event
+    + ' } } } }, page: { document: \'<hson-part at="components/button"/>\' } }';
+  const source = 'import { Hson, hsonLiveMap } from "hson-live";\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="absent" at="heading"/>` } });\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="absent"/>` }, components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });\n'
-    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });\n');
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });\n'
+    + 'const map = hsonLiveMap.fromLibraries({ components: { parts: { button: { kind: "document", document: "<button hson:part event:run/>", events: { run: ' + localEvent + ' } } } }, page: { document: \'<hson-part at="components/button"/>\' } });\n'
+    + 'map.actions.define("run", () => {}, { input: { required: true } });\n'
+    + 'const locus = hsonLiveMap.locus.create(' + definitions + ', { authorizeAction() { return true; }, actions: { cancel() {} } });\n'
+    + 'locus.actions.define("run", () => {}, { input: { required: true } });\n';
+  writeFileSync(consumer, source);
+  const config = join(directory, "tsconfig.json");
+  const parsed = ts.getParsedCommandLineOfConfigFile(config, {}, {
+    ...ts.sys, onUnRecoverableConfigFileDiagnostic: issue => assert.fail(String(issue.messageText)),
+  });
+  assert.ok(parsed);
+  assert.deepEqual(parsed.errors, []);
+  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  const diagnostics = static_part_reference_diagnostics(collect_part_source_facts(ts, program));
+  assert.deepEqual(diagnostics.filter(issue => issue.code === "HSON_EVENT_INPUT_REQUIRED")
+    .map(issue => [issue.file, issue.start, issue.end]), [localEvent, event].map(declaration => {
+    const start = source.indexOf(declaration);
+    return [consumer, start, start + declaration.length];
+  }));
   const before = snapshot(directory);
   succeed(generate(directory));
-  const config = join(directory, "tsconfig.json");
   assert.deepEqual(verify_schema_compiler_project(config).manifest.diagnostics, []);
   check_schema_project(config, verify_schema_compiler_project(config), false);
   const cli = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "check", "--project", config], { cwd: root, encoding: "utf8", timeout: 120_000 });

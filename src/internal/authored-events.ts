@@ -11,12 +11,12 @@ import type { PartReference } from "./part-placeholder.js";
 
 export type AuthoredEventReferenceInput = Readonly<{ kind: "reference"; reference: PartReference; start: Position; end: Position }>;
 type EventInput = Readonly<{ kind: "literal"; value: OrderedProjectedValue }> | AuthoredEventReferenceInput;
-export type AuthoredEvent = Readonly<{ kind: "locus" | "browser"; key: string; listener: InteractionListener; input: EventInput }>;
+export type AuthoredEvent = Readonly<{ kind: "locus" | "browser"; key: string; listener: InteractionListener; input: EventInput | undefined }>;
 
 /** Parse and normalize one declaration, leaving lexical references unresolved. */
 export function parse_authored_event(source: string, operation = "Authored event declaration"): AuthoredEvent {
   if (typeof source !== "string") throw new TypeError(`${operation} requires Hson source text.`);
-  const { flags, input } = tokenize_authored_event(source);
+  const { start, flags, input } = tokenize_authored_event(source);
   let eventPosition: Position | undefined;
   let destination: (Pick<AuthoredEvent, "kind" | "key"> & { position: Position }) | undefined;
   const fail = (message: string, position: Position, first?: Position): never =>
@@ -37,18 +37,22 @@ export function parse_authored_event(source: string, operation = "Authored event
       destination = { kind: flag.startsWith("host:") ? "locus" : "browser", key, position };
     } else fail(`Unsupported authored event header item ${JSON.stringify(flag)}.`, position);
   }
-  if (eventPosition === undefined || destination === undefined) return fail("An authored event requires on:click and one host: or local: action.", input.start);
-  let argument: EventInput;
-  if (Array.isArray(input.value)) {
-    reject_portable_quid_tokens(input.value);
-    const root = assemble_hson_tokens(input.value, attrs => {
-      if (attrs.length !== 0) throw new TypeError("input:data cannot carry attributes or metadata.");
-      return { attrs: {}, meta: {} };
-    });
-    argument = { kind: "literal", value: canonical_hson_data_from_node(root) };
-  } else argument = { kind: "reference", reference: input.value, start: input.start, end: input.end };
+  if (eventPosition === undefined || destination === undefined) {
+    return fail("An authored event requires on:click and one host: or local: action.", input?.start ?? start);
+  }
   return { kind: destination.kind, key: destination.key, listener: { ...DOCUMENT_CLICK_LISTENER,
-    once: flags.has("once"), stopPropagation: flags.has("stopProp") }, input: argument };
+    once: flags.has("once"), stopPropagation: flags.has("stopProp") }, input: read_event_input(input) };
+}
+
+function read_event_input(input: ReturnType<typeof tokenize_authored_event>["input"]): EventInput | undefined {
+  if (input === undefined) return undefined;
+  if (!Array.isArray(input.value)) return { kind: "reference", reference: input.value, start: input.start, end: input.end };
+  reject_portable_quid_tokens(input.value);
+  const root = assemble_hson_tokens(input.value, attrs => {
+    if (attrs.length !== 0) throw new TypeError("input:data cannot carry attributes or metadata.");
+    return { attrs: {}, meta: {} };
+  });
+  return { kind: "literal", value: canonical_hson_data_from_node(root) };
 }
 
 export function event_source_position(position: Position) {

@@ -257,12 +257,14 @@ class HsonScanner {
   private editorAttribute: string | undefined;
 
   public scanEventDeclaration(): Readonly<{
+    start: Position;
     flags: ReadonlyMap<string, Position>;
-    input: Readonly<{ value: Tokens[] | PartReference; start: Position; end: Position }>;
+    input: Readonly<{ value: Tokens[] | PartReference; start: Position; end: Position }> | undefined;
   }> {
     const code = "HSON_EVENT_DECLARATION_INVALID";
     const invalid = (message: string, at = this.position()): never => this.fail(message, at, code);
     this.skipTrivia();
+    const start = this.position();
     if (this.peek() !== "<") invalid("Expected one literal <hson:event declaration.");
     this.consumeExpected("<");
     this.skipTrivia();
@@ -289,7 +291,7 @@ class HsonScanner {
       if (this.peek() !== "=") invalid("Expected input:data={Hson Data} or one whole Part reference.");
       this.consumeExpected("=");
       this.skipTrivia();
-      const start = this.position();
+      const inputStart = this.position();
       let value: Tokens[] | PartReference;
       if (this.peek() === "{") {
         this.consumeExpected("{");
@@ -301,18 +303,18 @@ class HsonScanner {
         this.consumeExpected("}");
         value = this.tokens;
       } else {
-        const reference = scan_part_reference(this.source, start.index);
+        const reference = scan_part_reference(this.source, inputStart.index);
         if (reference === undefined) {
           const message = this.startsWith("#{") ? PART_LOCAL_REFERENCE_MIGRATION
             : "Expected input:data={Hson Data} or one whole Part reference.";
-          const { end } = classifyAttributeOperand(this.source, start.index);
-          return this.fail(message, start, code, end > start.index
+          const { end } = classifyAttributeOperand(this.source, inputStart.index);
+          return this.fail(message, inputStart, code, end > inputStart.index
             ? [{ role: "value-end", pos: this.positionAt(end) }] : undefined);
         }
         while (this.index < reference.end) this.consume();
         value = reference;
       }
-      input = { value, start, end: this.position() };
+      input = { value, start: inputStart, end: this.position() };
       separated = this.skipTrivia();
     }
     this.consumeExpected("<");
@@ -324,9 +326,8 @@ class HsonScanner {
     this.consumeExpected(">");
     this.skipTrivia();
     if (!this.atEnd()) invalid("Expected exactly one authored event declaration.");
-    if (input === undefined) return invalid("An authored event requires explicit input:data. Use {null} for null Data.");
     flags.delete("input:data");
-    return { flags, input };
+    return { start, flags, input };
   }
 
   private slotHere(): HsonTemplateSlot | undefined {

@@ -5,7 +5,7 @@ import { capture_execution_input, execution_input_error } from "./execution-inpu
 type EventInvocation<Source> = Source & Readonly<{ onFailure: (cause: unknown) => void }>;
 type LocalActionDefinition<Source> = Readonly<{
   invoke: (input: HsonDataInput | undefined, source?: EventInvocation<Source>) => Promise<LocalActionResult>;
-  bindInput: (input: HsonDataInput) => (source: EventInvocation<Source>) => Promise<LocalActionResult>;
+  bindInput: (input: HsonDataInput | undefined) => (source: EventInvocation<Source>) => Promise<LocalActionResult>;
 }>;
 
 /** One local executor for immediate calls and listener-bound capabilities. */

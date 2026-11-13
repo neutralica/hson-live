@@ -75,14 +75,14 @@ export function parse_livetree_authored_event(source: string): Readonly<{
   if (kind !== "browser") {
     throw new TypeError("LiveTree.listen.event requires a local: action. A standalone LiveTree cannot dispatch host: actions.");
   }
-  if (input.kind === "reference") {
+  if (input?.kind === "reference") {
     return _throw_transform_err("Standalone event input cannot resolve %{} or ^{} references. Supply a Data literal.",
       "LiveTree.listen.event", undefined, undefined, {
         code: "HSON_EVENT_REFERENCE_INVALID", stage: "source-admission", source: event_source_position(input.start),
         related: [{ role: "value-end", source: event_source_position(input.end) }],
       });
   }
-  const data = hson_data_from_value(input.value);
+  const data = input === undefined ? undefined : hson_data_from_value(input.value);
   const onFailure = (cause: unknown) =>
     report_livetree_runtime_failure(`LiveTree action ${JSON.stringify(key)} failed during event dispatch.`, cause);
   return {

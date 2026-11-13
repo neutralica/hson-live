@@ -22,6 +22,7 @@ import { validate_document_path } from "../../src/api/livemap/livemap.document.p
 import { authored_event_cases } from "./authored-event-cases.mts";
 import { local_behavior_cases } from "./local-behavior-cases.mts";
 import { document_listener_cases } from "./document-listener-cases.mts";
+import { FakeElement } from "../helpers/fake-document.mts";
 
 await local_behavior_cases();
 await document_listener_cases();
@@ -38,6 +39,16 @@ try {
   assert.ok(result.ok && result.result === exact);
   const sub = subject.listen.event("<hson:event on:click local:echo input:data={null} <> >");
   sub.off();
+  assert.throws(() => subject.listen.event("<hson:event on:click local:echo <> >"), /requires input/);
+  const workerButton = new FakeElement("button");
+  link_node_to_el(retained_subject(subject), workerButton as unknown as Element);
+  const seen: unknown[] = [];
+  standalone.actions.define("optional", (_context, input) => { seen.push(input?.scalar()); });
+  const omitted = subject.listen.event("<hson:event on:click local:optional <> >");
+  const explicit = subject.listen.event("<hson:event on:click local:optional input:data={null} <> >");
+  workerButton.dispatchEvent(new Event("click"));
+  assert.deepEqual(seen, [undefined, null]);
+  omitted.off(); explicit.off();
 } finally { standalone.remove(); }
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;

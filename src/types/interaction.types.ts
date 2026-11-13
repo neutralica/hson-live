@@ -12,7 +12,7 @@ export type {
 
 export type InteractionActionDispatcher = (
   actionKey: string,
-  payload: HsonDataValue,
+  payload?: HsonDataValue,
 ) => Promise<void>;
 
 export type InteractionFailure = Readonly<{

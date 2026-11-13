@@ -164,7 +164,8 @@ const opaqueEventCollection: PartEventEvidence = { get: () => ["opaque"] };
 
 /** Shared semantic analysis for receiving interfaces, execution and source facts.
  * Reporting consumers can retain precise local issues; execution fails closed. */
-export function analyze_part_definition(root: HsonNode, report?: (issue: PartDefinitionIssue) => void, events?: PartEventEvidence | null): PartDefinitionAnalysis {
+export function analyze_part_definition(root: HsonNode, report?: (issue: PartDefinitionIssue) => void, events?: PartEventEvidence | null,
+  observeEvent?: (node: HsonNode, attribute: string, alternatives: readonly PartEventAlternative[]) => void): PartDefinitionAnalysis {
   const parameters = new Map<string, PartArgumentKind>();
   const receiving: PartReceivingLocal[] = [], uses: PartReferenceUse[] = [];
   const used = new Set<PartLocalDeclaration>();
@@ -236,13 +237,14 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         return;
       }
       const alternatives = "input" in event ? [event] : event;
+      observeEvent?.(node, attribute, alternatives);
       if (alternatives.includes("opaque")) {
         const attributes = opaqueEvents.get(node) ?? new Set<string>();
         attributes.add(attribute);
         opaqueEvents.set(node, attributes);
       }
       const conditional = alternatives.length > 1 ? true : undefined;
-      const reads = alternatives.flatMap(event => typeof event !== "string" && event.input.kind === "reference"
+      const reads = alternatives.flatMap(event => typeof event !== "string" && event.input?.kind === "reference"
         ? [observe(event.input.reference, node, "event", undefined, attribute, event.input, conditional)] : []);
       const first = reads[0];
       // Distinct operands can agree on the same strict demand at this attachment.

@@ -15,19 +15,16 @@ import {
 import {
   encode_hson_data_internal,
   hson_data_from_value,
-  type HsonDataValue,
 } from "../data/hson-data.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import type { ListenerSub } from "../../types/listen.types.js";
 import { install_livetree_listener, resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
 import type {
-  LocusInteractionDescriptor,
   InteractionActivationOptions,
   InteractionDescriptor,
   InteractionFailure,
   InteractionListener,
-  BrowserInteractionDescriptor,
 } from "../../types/interaction.types.js";
 import {
   commit_interaction_edit_internal,
@@ -40,7 +37,7 @@ import {
   runtime_for_tree,
 } from "../livetree/runtime/livetree-runtime.js";
 
-import { descriptor_array, descriptor_id, descriptor_to_value, interaction_addition } from "./interactions.descriptor.js";
+import { descriptor_array, descriptor_id, descriptor_to_value, interaction_addition, interaction_descriptor } from "./interactions.descriptor.js";
 
 type Storage = Readonly<{
   update: (edit: (current: OrderedProjectedValue) => OrderedProjectedValue) => void;
@@ -58,10 +55,7 @@ type UnresolvedBehavior = Readonly<{
   fingerprint: string;
   node: object | undefined;
 }>;
-type RuntimeBrowserDescriptor = Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args: HsonDataValue }>;
-type RuntimeLocusDescriptor = Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload: HsonDataValue }>;
-type RuntimeDescriptor = RuntimeBrowserDescriptor | RuntimeLocusDescriptor;
-type PreparedRuntimeDescriptor = Readonly<{ descriptor: RuntimeDescriptor; data: HsonDataValue }>;
+type RuntimeDescriptor = ReturnType<typeof interaction_descriptor>;
 
 type ActivationSnapshot = Readonly<{
   map: LiveMap;
@@ -161,15 +155,14 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
       do {
         pending = false;
         const desired = read_descriptors(installed_descriptors(aggregate.systemRoot(system)));
-        const desiredById = new Map(desired.map((prepared) => [prepared.descriptor.id, prepared] as const));
+        const desiredById = new Map(desired.map((descriptor) => [descriptor.id, descriptor] as const));
 
         for (const [id, record] of [...records]) {
-          const prepared = desiredById.get(id);
-          const descriptor = prepared?.descriptor;
+          const descriptor = desiredById.get(id);
           let subject: LiveTree | undefined;
           try { subject = descriptor === undefined ? undefined : resolve_local_subject(activation, descriptor); }
           catch { subject = undefined; }
-          const fingerprint = prepared === undefined ? undefined : descriptor_fingerprint(prepared.descriptor, prepared.data);
+          const fingerprint = descriptor === undefined ? undefined : descriptor_fingerprint(descriptor);
           if (descriptor === undefined || subject === undefined
             || active_subject_for_tree(subject) !== record.node || fingerprint !== record.fingerprint) {
             record.sub.off();
@@ -182,7 +175,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
         // then move only the remaining active records. A consumed once record
         // has no installed listener and keeps its state across a reorder.
         const nextUnresolved = new Map<string, UnresolvedBehavior>();
-        const installable = desired.filter(({ descriptor, data }) => {
+        const installable = desired.filter((descriptor) => {
           if (descriptor.subject.library !== activation.document) return false;
           if (records.has(descriptor.id)) return true;
           let subject: LiveTree | undefined;
@@ -195,7 +188,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
             const previous = unresolvedBehaviors.get(descriptor.id);
             const defined = resolve_livemap_action_internal(activation.map, descriptor.key) !== undefined;
             if (previous !== undefined || !defined) {
-              const fingerprint = descriptor_fingerprint(descriptor, data);
+              const fingerprint = descriptor_fingerprint(descriptor);
               const sameIntent = previous?.fingerprint === fingerprint ? previous : undefined;
               // Follow the exact subject through path rewrites and temporary loss of
               // realization. A different resolved subject gets a new binding attempt.
@@ -210,7 +203,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
               && (descriptor.kind !== "locus" || activation.dispatch !== undefined)
               && resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length > 0;
           } catch { return false; }
-        }).map(({ descriptor }) => descriptor.id);
+        }).map(({ id }) => id);
         unresolvedBehaviors = nextUnresolved;
         const desiredActive = installable.filter((id) => !records.get(id)?.state.consumed);
         const installedActive = [...records].filter(([, record]) => !record.state.consumed)
@@ -229,7 +222,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
           records.delete(id);
         }
 
-        for (const { descriptor, data } of desired) {
+        for (const descriptor of desired) {
           if (records.has(descriptor.id)) continue;
           let subject: LiveTree | undefined;
           try { subject = resolve_local_subject(activation, descriptor); } catch (cause) {
@@ -253,9 +246,10 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
             continue;
           }
           const state = { consumed: false };
+          const data = descriptor.kind === "browser" ? descriptor.args : descriptor.payload;
           let materialized = false;
           try {
-            const fingerprint = descriptor_fingerprint(descriptor, data);
+            const fingerprint = descriptor_fingerprint(descriptor);
             const handler = (event: Event): void => {
               if (disposed) return;
               if (currentTree !== undefined) {
@@ -263,10 +257,10 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 // movement. A transition must never fall back to an obsolete handle.
                 try {
                   const currentDescriptor = read_descriptors(installed_descriptors(aggregate.systemRoot(system)))
-                    .find(candidate => candidate.descriptor.id === descriptor.id);
+                    .find(candidate => candidate.id === descriptor.id);
                   const current = currentDescriptor === undefined
-                    || descriptor_fingerprint(currentDescriptor.descriptor, currentDescriptor.data) !== fingerprint
-                    ? undefined : resolve_local_subject(activation, currentDescriptor.descriptor);
+                    || descriptor_fingerprint(currentDescriptor) !== fingerprint
+                    ? undefined : resolve_local_subject(activation, currentDescriptor);
                   if (current === undefined || active_subject_for_tree(current) !== active_subject_for_tree(subject)) return;
                 } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
               }
@@ -391,8 +385,8 @@ function interaction_storage(target: object): Storage {
   });
 }
 
-function read_descriptors(value: OrderedProjectedValue): readonly PreparedRuntimeDescriptor[] {
-  return Object.freeze(descriptor_array(value).map((entry): PreparedRuntimeDescriptor => {
+function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescriptor[] {
+  return Object.freeze(descriptor_array(value).map((entry) => {
     const kind = member(entry, "kind");
     const base = {
       id: require_string(member(entry, "id")),
@@ -401,12 +395,9 @@ function read_descriptors(value: OrderedProjectedValue): readonly PreparedRuntim
       key: require_string(member(entry, "key")),
     };
     if (kind !== "browser" && kind !== "locus") throw new Error("Canonical interaction descriptor discriminant is malformed.");
-    const data = hson_data_from_value(require_member(entry, kind === "browser" ? "args" : "payload"));
-    const descriptor: RuntimeDescriptor = Object.freeze(kind === "browser"
-      ? { ...base, kind, args: data }
-      : { ...base, kind, payload: data });
-    // Keep the owned value beside its public projection for internal fingerprinting.
-    return Object.freeze({ descriptor, data });
+    const input = member(entry, kind === "browser" ? "args" : "payload");
+    const data = input === undefined ? undefined : hson_data_from_value(input);
+    return Object.freeze(interaction_descriptor(base.id, base.subject, base.listener, kind, base.key, data));
   }));
 }
 
@@ -433,11 +424,6 @@ function read_listener(value: OrderedProjectedObject): InteractionListener {
 function member(value: OrderedProjectedObject, name: string): OrderedProjectedValue | undefined {
   return value.entries.find(([key]) => key === name)?.[1];
 }
-function require_member(value: OrderedProjectedObject, name: string): OrderedProjectedValue {
-  const found = member(value, name);
-  if (found === undefined) throw new Error(`Canonical interaction member ${name} is missing.`);
-  return found;
-}
 function require_object(value: OrderedProjectedValue | undefined): OrderedProjectedObject {
   if (!is_ordered_projected_object(value)) throw new Error("Canonical interaction object is malformed.");
   return value;
@@ -461,8 +447,8 @@ function require_missing_policy(value: OrderedProjectedValue | undefined): Inter
   throw new Error("Canonical interaction missing-target policy is malformed.");
 }
 
-function descriptor_fingerprint(descriptor: RuntimeDescriptor, data: HsonDataValue): string {
-  const value = descriptor_to_value(descriptor, data);
+function descriptor_fingerprint(descriptor: InteractionDescriptor): string {
+  const value = descriptor_to_value(descriptor);
   // A canonical path rewrite follows the same local subject. It must not
   // replace that subject's listener or reset once/resource ownership.
   return encode_hson_data_internal(hson_data_from_value(ordered_projected_object(

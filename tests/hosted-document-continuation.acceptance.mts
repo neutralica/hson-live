@@ -7,7 +7,7 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { DocumentContinuationError, Hson, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionLocalBehaviors, type LocalBehaviorContext, type LocusWebSocketLike } from "../src/index.ts";
+import { DocumentContinuationError, Hson, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionFailure, type InteractionLocalBehaviors, type LocalBehaviorContext, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
@@ -311,7 +311,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
 }
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 
-function socketPair(): Readonly<{
+function socketPair(observeSend?: (raw: string) => void): Readonly<{
   client: LocusWebSocketLike;
   server: LocusWebSocketLike;
   delivered: readonly Readonly<{ type?: string; completionRev?: number }>[];
@@ -323,7 +323,7 @@ function socketPair(): Readonly<{
   const delivered: Readonly<{ type?: string; completionRev?: number }>[] = [];
   return Object.freeze({
     client: Object.freeze({
-      send(raw: string) { for (const listener of [...serverMessages]) listener(raw); },
+      send(raw: string) { observeSend?.(raw); for (const listener of [...serverMessages]) listener(raw); },
       close() { for (const listener of [...clientClose]) listener(); },
       onMessage(listener: (raw: string) => void) {
         clientMessages.add((raw) => {
@@ -350,9 +350,10 @@ function socketPair(): Readonly<{
     state: { json: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime("<html <head/> <body <button/>/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
+  const subject = Object.freeze({ library: "page", path: [0, 0, 1, 0, 0] });
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "authoritative-click",
-    subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0] }),
+    subject,
     kind: "locus",
     key: "save",
     payload: Hson.data.from({ exact: true }),
@@ -364,10 +365,20 @@ function socketPair(): Readonly<{
   const authority = makeMap();
   enable_interactions(authority);
   add_interaction(authority, descriptor);
+  for (const key of ["omitted", "null", "required"]) add_interaction(authority, {
+    id: key, subject, kind: "locus", key, listener: descriptor.listener, ...(key === "null" ? { payload: null } : {}),
+  });
   let handled: HsonDataValue | undefined;
+  const optionalInput = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
+  const inputs = new Map<string, readonly [HsonDataValue | undefined, boolean]>();
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
       { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }),
-    authorizeAction: ({ action }) => action === "save", actions: { save: (_context, payload) => { handled = payload; } } });
+    authorizeAction: ({ action }) => ["save", "omitted", "null", "required"].includes(action), actions: {
+      save: (_context, payload) => { handled = payload; },
+      omitted: { input: { schema: optionalInput }, handler: (_context, payload, message) => { inputs.set("omitted", [payload, Object.hasOwn(message, "payload")]); } },
+      null: { input: { required: true, schema: optionalInput }, handler: (_context, payload, message) => { inputs.set("null", [payload, Object.hasOwn(message, "payload")]); } },
+      required: { input: { required: true, schema: optionalInput }, handler: () => { assert.fail("Required action received absent input."); } },
+    } });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
   const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
@@ -378,8 +389,12 @@ function socketPair(): Readonly<{
   const session = await locus.session.create({ libraries: ["page", "ui"], systemFeatures: ["interactions"] });
   const cut = session.now();
   assert.deepEqual(cut.local.map((entry) => entry.name), ["ui"]);
+  const actionFrames: { name: string; payloadData?: string }[] = [];
   const fresh = () => {
-    const pair = socketPair();
+    const pair = socketPair(raw => {
+      const frame = JSON.parse(raw);
+      if (frame.type === "action") actionFrames.push(frame);
+    });
     const detach = bind_locus_websocket(locus, pair.server);
     return { shared: { credential: session.credential!, transport: test_echo_transport(pair.client) }, detach };
   };
@@ -410,22 +425,38 @@ function socketPair(): Readonly<{
   );
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
   wire.detach(); wire = fresh();
+  const failures: InteractionFailure[] = [];
   const continuation = await continue_hosted_document({
     ...wire.shared,
     now: cut,
     root: root as unknown as Element,
-    interactions: {},
+    interactions: { onFailure: failure => { failures.push(failure); } },
   });
   assert.equal(continuation.map, continuation.echo.doc.must("page"));
   assert.equal(continuation.echo.data.must("ui").mode, "data-object");
   button.dispatchEvent(new Event("click"));
-  for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
+  for (let attempt = 0; attempt < 100 && (inputs.size < 2 || failures.length === 0); attempt += 1) await Promise.resolve();
   assert.equal(handled?.equals(Hson.data.from({ exact: true })), true);
+  assert.deepEqual(inputs.get("omitted"), [undefined, false]);
+  assert.equal(inputs.get("null")?.[0]?.scalar(), null);
+  assert.equal(inputs.get("null")?.[1], true);
+  assert.deepEqual(actionFrames.map(frame => [frame.name, Object.hasOwn(frame, "payloadData"), frame.payloadData]), [
+    ["save", true, '{\n  "exact": true\n}'], ["omitted", false, undefined], ["null", true, "null"], ["required", false, undefined],
+  ]);
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0]?.phase, "locus-invocation");
+  assert.equal(failures[0]?.descriptor.id, "required");
+  assert.equal(Object.hasOwn(failures[0]!.descriptor, "payload"), false);
+  assert.match(String(failures[0]?.cause), /requires input/);
+  const cause = failures[0]?.cause;
+  assert.ok(cause instanceof Error);
+  assert.equal(Reflect.get(cause, "code"), "LOCUS_SCHEMA_INVALID_PAYLOAD");
   continuation.dispose();
   handled = undefined;
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 5; attempt += 1) await Promise.resolve();
   assert.equal(handled, undefined);
+  assert.equal(actionFrames.length, 4);
   assert.equal(continuation.echo.session.status, "attached");
   continuation.echo.dispose();
   wire.detach();

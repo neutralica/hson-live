@@ -1,4 +1,4 @@
-import { add_interaction, replace_interaction, remove_interaction, type HsonSchema, type InteractionDescriptor } from "hson-live";
+import { add_interaction, replace_interaction, remove_interaction, type BrowserInteractionDescriptor, type HsonDataValue, type HsonSchema, type InteractionActionDispatcher, type InteractionDescriptor, type LocusInteractionDescriptor } from "hson-live";
 import { hsonLiveMap, type LiveMap, type LiveMapStagedWriter } from "hson-live/livemap";
 import type { Locus, LocusActionContext } from "hson-live/locus";
 import type { Echo, EchoLocalDocumentLibrary, EchoProjectedDocumentLibrary } from "hson-live/echo";
@@ -11,6 +11,21 @@ declare const endpoint: Echo;
 declare const replica: Echo<LiveMap>;
 declare const action: LocusActionContext;
 declare const writer: LiveMapStagedWriter<LiveMap, void>;
+declare const listener: InteractionDescriptor["listener"];
+
+const intent = { id: "no-input", subject: { library: "page", path: [0] }, key: "panel.reset", listener };
+const browser: BrowserInteractionDescriptor = { ...intent, kind: "browser" };
+const host: LocusInteractionDescriptor = { ...intent, kind: "locus" };
+add_interaction(map, browser);
+add_interaction(map, host);
+add_interaction(map, { ...browser, args: undefined });
+add_interaction(map, { ...host, payload: null });
+// @ts-expect-error A browser Descriptor cannot supply a hosted payload.
+add_interaction(map, { ...browser, payload: null });
+// @ts-expect-error A locus Descriptor cannot supply browser args.
+add_interaction(map, { ...host, args: null });
+const dispatch: InteractionActionDispatcher = async (_key, payload) => { payload satisfies HsonDataValue | undefined; };
+void dispatch("panel.reset");
 
 for (const helper of [add_interaction, replace_interaction]) {
   helper(map, descriptor);
@@ -60,8 +75,9 @@ const governedQuadId: Promise<string> = governed.doc.must("page").q("panel")!.li
 const localPathId: string = localDocument.at([1, 0]).asElement()!.listen.local.onClick("panel.toggle", true);
 const localQuadId: string = localDocument.q("panel")!.listen.host.onClick("deck.advance", null);
 void [pathId, quadId, governedPathId, governedQuadId, localPathId, localQuadId];
-// @ts-expect-error Canonical click input is required.
-pathElement.listen.local.onClick("panel.toggle");
+pathElement.listen.local.onClick("panel.toggle") satisfies string;
+governed.doc.must("page").q("panel")!.listen.host.onClick("deck.advance") satisfies Promise<string>;
+localDocument.q("panel")!.listen.host.onClick("deck.advance") satisfies string;
 // @ts-expect-error Canonical authoring returns the Descriptor ID.
 pathId.off();
 // @ts-expect-error Path locations have no QUAD scope lookup.
