@@ -1,17 +1,55 @@
 import { validate_document_path } from "../livemap/livemap.document.path.js";
-import { ordered_projected_array, ordered_projected_object, type OrderedProjectedObject, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_array, ordered_projected_object, type OrderedProjectedObject, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { admit_data_input, hson_data_from_value, hson_data_value, type HsonDataValue } from "../data/hson-data.js";
-import type { InteractionDescriptor } from "../../types/interaction.descriptor.types.js";
+import type { InteractionDescriptor, InteractionListener, InteractionSubject } from "../../types/interaction.descriptor.types.js";
 import type { DocumentCompositionInteraction } from "../livemap/livemap.document.composition.js";
+
+export const DOCUMENT_CLICK_LISTENER: InteractionListener = Object.freeze({
+  event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "ignore",
+  preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
+});
+
+export function new_interaction_id(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  return `event-${Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export function interaction_descriptor(id: string, subject: InteractionSubject, listener: InteractionListener,
+  kind: InteractionDescriptor["kind"], key: string, input: HsonDataValue): InteractionDescriptor {
+  const common = { id, subject, listener, key };
+  return kind === "browser" ? { ...common, kind, args: input } : { ...common, kind, payload: input };
+}
 
 /** Normalize a resolved authored attachment through the same Descriptor admission as an imperative edit. */
 export function composed_interaction_value(library: string, attachment: DocumentCompositionInteraction): OrderedProjectedObject {
   const { path, listener, kind, key, data } = attachment;
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const id = `event-${Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("")}`;
-  const common = { id, subject: { library, path }, listener, key };
-  const argument = hson_data_from_value(data);
-  return descriptor_to_value(kind === "browser" ? { ...common, kind, args: argument } : { ...common, kind, payload: argument });
+  return descriptor_to_value(interaction_descriptor(new_interaction_id(), { library, path }, listener, kind, key,
+    hson_data_from_value(data)));
+}
+
+export function descriptor_array(value: OrderedProjectedValue): readonly OrderedProjectedObject[] {
+  if (!Array.isArray(value) || value.some((entry) => !is_ordered_projected_object(entry))) {
+    throw new Error("Canonical interaction Library state is malformed.");
+  }
+  return value;
+}
+
+export function descriptor_id(value: OrderedProjectedObject): string {
+  const id = value.entries.find(([key]) => key === "id")?.[1];
+  if (typeof id !== "string") throw new Error("Canonical interaction descriptor ID is malformed.");
+  return id;
+}
+
+export function interaction_addition(descriptor: InteractionDescriptor): (current: OrderedProjectedValue) => OrderedProjectedValue {
+  const value = descriptor_to_value(descriptor);
+  const id = descriptor.id;
+  return (descriptors) => {
+    const current = descriptor_array(descriptors);
+    if (current.some((entry) => descriptor_id(entry) === id)) {
+      throw new Error(`Canonical interaction ${JSON.stringify(id)} already exists.`);
+    }
+    return ordered_projected_array([...current, value]);
+  };
 }
 
 export function descriptor_to_value(descriptor: InteractionDescriptor, data?: HsonDataValue): OrderedProjectedObject {

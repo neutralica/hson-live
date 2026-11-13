@@ -9,6 +9,7 @@ import { assemble_hson_tokens } from "../api/transform/parsers/assemble-hson-tok
 import { reject_portable_quid_tokens } from "../api/transform/parsers/parse-hson-source.js";
 import { tokenize_authored_event } from "../api/transform/parsers/tokenize-hson.js";
 import type { InteractionListener } from "../types/interaction.descriptor.types.js";
+import { DOCUMENT_CLICK_LISTENER } from "../api/interactions/interactions.descriptor.js";
 import { is_part_parameter_name, type PartReference } from "./part-placeholder.js";
 
 export type PartEventReferenceInput = Readonly<{ kind: "reference"; reference: PartReference; start: Position; end: Position }>;
@@ -64,9 +65,8 @@ export function parse_part_event(source: string): PartEvent {
     });
     argument = { kind: "literal", value: canonical_hson_data_from_node(root) };
   } else argument = { kind: "reference", reference: input.value, start: input.start, end: input.end };
-  return { kind: destination.kind, key: destination.key, listener: { event, target: "element", capture: false, once: flags.has("once"),
-    passive: false, missingTarget: "ignore", preventDefault: false, stopPropagation: flags.has("stopProp"),
-    stopImmediatePropagation: false }, input: argument };
+  return { kind: destination.kind, key: destination.key, listener: { ...DOCUMENT_CLICK_LISTENER, event,
+    once: flags.has("once"), stopPropagation: flags.has("stopProp") }, input: argument };
 }
 
 function source_position(position: Position) {

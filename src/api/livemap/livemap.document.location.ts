@@ -1,6 +1,7 @@
 import { required_reads } from "../../internal/required-reads.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import { STR_TAG } from "../../core/constants.js";
+import type { DocumentListener } from "../../types/interaction.descriptor.types.js";
 import type {
   LiveMapDocumentAttrsApi,
   LiveMapDocumentFlagsApi,
@@ -108,6 +109,7 @@ export function make_livemap_document_quad_location(
   commit: (value: LiveMapGraphCommit) => LiveMapCommit,
   revision: () => number,
   guardedEdit: <T>(run: () => T, assertSubject: () => void) => T,
+  listen: (path: () => readonly number[], assertLifetime: () => void) => DocumentListener<string>,
   representations: (path: readonly number[]) => Pick<LiveMapDocumentQuadLocation, "snap" | "hson">,
   select: LiveMapDocumentQuadLocation["q"],
 ): LiveMapDocumentQuadLocation {
@@ -129,11 +131,13 @@ export function make_livemap_document_quad_location(
     };
     const snap = () => { const resolved = path(); return resolved === undefined ? undefined : representations(resolved).snap(); };
     const hson = () => { const resolved = path(); return resolved === undefined ? undefined : representations(resolved).hson(); };
+    const selectedPath = () => current("get-attr").path();
     return Object.freeze({
       get active() { return currentPath() !== undefined; },
       get rev() { current("get-attr"); return revision(); },
-      path: () => current("get-attr").path(),
+      path: selectedPath,
       snap, hson, must: required_reads(snap, hson),
+      listen: listen(selectedPath, selectedPath),
       at: (child) => { current("get-attr"); return relative([...offset, ...must_document_logical_path(child)]); },
       q: (name) => {
         if (typeof name !== "string") throw new TypeError("LiveMap document QUAD name is not a string");

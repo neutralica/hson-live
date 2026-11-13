@@ -1,7 +1,7 @@
-import { add_interaction, replace_interaction, remove_interaction, type InteractionDescriptor } from "hson-live";
+import { add_interaction, replace_interaction, remove_interaction, type HsonSchema, type InteractionDescriptor } from "hson-live";
 import { hsonLiveMap, type LiveMap, type LiveMapStagedWriter } from "hson-live/livemap";
 import type { Locus, LocusActionContext } from "hson-live/locus";
-import type { Echo } from "hson-live/echo";
+import type { Echo, EchoLocalDocumentLibrary, EchoProjectedDocumentLibrary } from "hson-live/echo";
 
 declare const descriptor: InteractionDescriptor;
 declare const map: LiveMap;
@@ -48,3 +48,66 @@ concrete.batch(draft => { add_interaction(draft, descriptor); replace_interactio
 governed.stage(draft => { add_interaction(draft, descriptor); replace_interaction(draft, descriptor); remove_interaction(draft, "id"); });
 // @ts-expect-error Specialized Locus facades are also unsupported.
 add_interaction(governed, descriptor);
+
+declare const localDocument: EchoLocalDocumentLibrary;
+declare const projectedDocument: EchoProjectedDocumentLibrary;
+const pathElement = concrete.doc.must("page").at([1, 0]).asElement()!;
+const pathId: string = pathElement.listen.local.onClick("panel.toggle", -0);
+const quadId: string = concrete.doc.must("page").q("panel")!.listen.host.onClick("deck.advance", null);
+const governedPathId: Promise<string> = governed.doc.must("page").at([1, 0]).asElement()!.listen.host.onClick("deck.advance", {});
+const governedQuadId: Promise<string> = governed.doc.must("page").q("panel")!.listen.local.onClick("panel.toggle", []);
+const localPathId: string = localDocument.at([1, 0]).asElement()!.listen.local.onClick("panel.toggle", true);
+const localQuadId: string = localDocument.q("panel")!.listen.host.onClick("deck.advance", null);
+void [pathId, quadId, governedPathId, governedQuadId, localPathId, localQuadId];
+// @ts-expect-error Canonical click input is required.
+pathElement.listen.local.onClick("panel.toggle");
+// @ts-expect-error Canonical authoring returns the Descriptor ID.
+pathId.off();
+// @ts-expect-error Path locations have no QUAD scope lookup.
+pathElement.q("panel");
+// @ts-expect-error A text refinement exposes no element listener.
+concrete.doc.must("page").at([1, 0]).asText()!.listen;
+// @ts-expect-error An Echo-local text refinement exposes no element listener.
+localDocument.at([1, 0]).asText()!.listen;
+// @ts-expect-error A Locus text refinement exposes no element listener.
+governed.doc.must("page").at([1, 0]).asText()!.listen;
+// @ts-expect-error A projected element has no Descriptor write surface.
+projectedDocument.at([1, 0]).asElement()!.listen;
+// @ts-expect-error A projected QUAD stays read-only.
+projectedDocument.q("panel")!.listen;
+// @ts-expect-error Action-context element reads have no write authority.
+action.doc.must("page").at([1, 0]).asElement()!.listen;
+// @ts-expect-error Action-context QUADs stay read-only.
+action.doc.must("page").q("panel")!.listen;
+// @ts-expect-error A staged writer has no selected listener authoring.
+writer.doc.must("page").at([1, 0]).asElement().listen;
+
+type PageGraph = Readonly<{
+  $_tag: "_hson_root";
+  $_content: readonly [Readonly<{ $_tag: "main"; $_content: readonly [] }>];
+}>;
+declare const pageSchema: HsonSchema<PageGraph, "document">;
+declare const preciseEcho: EchoLocalDocumentLibrary<PageGraph, typeof pageSchema>;
+const preciseDefinition = { page: { document: "<main/>", schema: pageSchema } };
+const preciseStandalone = hsonLiveMap.fromLibraries(preciseDefinition).doc.must("page").at([]);
+const preciseLocus = hsonLiveMap.locus.create(preciseDefinition).doc.must("page").at([]);
+const preciseLocal = preciseEcho.at([]);
+
+preciseStandalone.listen.local.onClick("toggle", null) satisfies string;
+preciseLocus.listen.host.onClick("advance", null) satisfies Promise<string>;
+preciseLocal.listen.local.onClick("toggle", null) satisfies string;
+preciseStandalone.asElement()!.listen.local.onClick("toggle", null) satisfies string;
+preciseLocus.asElement()!.listen.host.onClick("advance", null) satisfies Promise<string>;
+preciseLocal.asElement()!.listen.local.onClick("toggle", null) satisfies string;
+// @ts-expect-error A text refinement of an element coordinate exposes no listener.
+preciseStandalone.asText()!.listen;
+// @ts-expect-error A precise Locus text refinement exposes no listener.
+preciseLocus.asText()!.listen;
+// @ts-expect-error A precise Echo-local text refinement exposes no listener.
+preciseLocal.asText()!.listen;
+// @ts-expect-error A presence check preserves the text refinement.
+preciseStandalone.asText()!.present()!.listen;
+// @ts-expect-error A presence check preserves the text refinement.
+preciseLocus.asText()!.present()!.listen;
+// @ts-expect-error A presence check preserves the text refinement.
+preciseLocal.asText()!.present()!.listen;

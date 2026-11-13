@@ -23,6 +23,8 @@ import { must_live_path, must_ordered_projected_value } from "../livemap/livemap
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { register_governed_document, write_document_quad } from "../../internal/governed-document.js";
+import { capture_document_click, document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
+import { add_interaction } from "../interactions/interactions.js";
 
 type Writer = LiveMapStagedWriter<LiveMap, void>;
 type Selected = ReturnType<Writer["doc"]["must"]> | ReturnType<Writer["data"]["must"]>;
@@ -46,6 +48,19 @@ export function make_locus_stage<TMap extends LiveMap>(
     const selected = resolve_livemap_library_internal(map, name)?.family === "parts" ? writer.parts.must(name) : writer.data.must(name);
     return selected;
   };
+  const listenAt = (name: string, document: LiveMapDocumentLibrary, select: () => readonly number[], assertLifetime?: () => void) =>
+    document_listener(async (destination, key, input) => {
+      assertSubmissionAllowed();
+      assertReadable();
+      const captured = capture_document_click(document.document, name, select, destination, key, input, assertLifetime);
+      await submit(writer => {
+        assertReadable();
+        if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
+        // This submission has no graph commands ahead of the addition in its candidate.
+        add_interaction(writer, captured.descriptor());
+      });
+      return captured.id;
+    });
   const data_path = (name: string, path: LivePath, owner: LiveMapDataLibrary, retained?: import("../../internal/library-observation.js").DataLocationObservations): import("../../types/governor.types.js").LocusDataLocation => {
     assertReadable();
     const stable = must_live_path(path);
@@ -94,7 +109,7 @@ export function make_locus_stage<TMap extends LiveMap>(
   const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary, retained?: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
     assertReadable();
     const stable = validate_document_path(path);
-    const raw = retained ?? document.at(stable);
+    const raw: WritableDocumentLocation = retained ?? document.at(stable);
     const read = read_document_location(raw, assertReadable);
     const edit = (run: (location: import("../livemap/livemap.staged.js").StagedDocumentLocation) => void) => submit(writer => {
       if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
@@ -102,8 +117,13 @@ export function make_locus_stage<TMap extends LiveMap>(
       run(selected_document(writer, name).at(stable) as import("../livemap/livemap.staged.js").StagedDocumentLocation);
     });
     const commands = document_location_commands(edit);
-    return Object.freeze({
+    const listener = raw.listen === undefined ? undefined : listenAt(name, document, () => {
+      if (raw.kind() !== "element") throw new TypeError("Document listener subject must be an ordinary element.");
+      return raw.path();
+    });
+    const facade = Object.freeze({
       ...read, ...commands,
+      ...(listener === undefined ? {} : { listen: listener }),
       get rev() { return read.rev; },
       present: observe(() => { const checked = raw.present(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
       asElement: observe(() => { const checked = raw.asElement(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
@@ -114,6 +134,7 @@ export function make_locus_stage<TMap extends LiveMap>(
       attrs: Object.freeze({ ...read.attrs, ...commands.attrs }),
       flags: Object.freeze({ ...read.flags, ...commands.flags }),
     });
+    return facade as NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>>;
   };
   const admit = async (definitions: LocusDefinitions): Promise<void> => {
     assertSubmissionAllowed();
@@ -194,12 +215,12 @@ export function make_locus_stage<TMap extends LiveMap>(
           commits: Object.freeze({ observe: live_subscription(document.commits.observe, () => { assertReadable(); void document.rev; }) }),
           schema: Object.freeze({ get: observe(() => document.schema.get()) }),
           at: observe((path: readonly number[]) => document_location(name, path, document)),
-          q: observe((name: string) => {
-            const subject = document.q(name);
+          q: observe((quadName: string) => {
+            const subject = document.q(quadName);
             return subject === undefined ? undefined : write_document_quad(subject, (current, run) => edit(draft => {
               run(draft.at(current.path()) as import("../livemap/livemap.staged.js").StagedDocumentLocation);
               current.path(); // Reject retirement or disposal during argument capture.
-            }), assertReadable);
+            }), path => listenAt(name, document, path, path), assertReadable);
           }),
           css,
           document: Object.freeze({ root: observe(() => document.document.root()),

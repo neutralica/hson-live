@@ -20,8 +20,10 @@ import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { authored_event_cases } from "./authored-event-cases.mts";
 import { local_behavior_cases } from "./local-behavior-cases.mts";
+import { document_listener_cases } from "./document-listener-cases.mts";
 
 await local_behavior_cases();
+await document_listener_cases();
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;

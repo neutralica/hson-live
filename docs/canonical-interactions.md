@@ -85,7 +85,7 @@ There is one interaction system root. Its shared partition `S` contains descript
 
 `kind` chooses execution, independently of ownership. `"browser"` resolves the behavior name through `map.behaviors`. `"locus"` calls the supplied dispatcher. Hosted Echo composition normally dispatches through `echo.action`, where Locus authorizes the action independently. Shared/browser, shared/locus, local/browser, and local/locus are all valid.
 
-Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. Shared authoring belongs in a Locus `stage` or action `ctx.stage`, where document edits and descriptor maintenance can commit atomically.
+On writable, element-qualified Document `.at()` and `.q()` handles, `.listen.local.onClick(key, input)` and `.listen.host.onClick(key, input)` author a click Descriptor. Standalone LiveMap and Echo client-local calls return the accepted Descriptor ID synchronously. Locus-governed calls return `Promise<string>` resolving to that ID after authoritative acceptance. Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. A Locus `stage` or action `ctx.stage` can commit grouped document edits and Descriptor changes atomically.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 

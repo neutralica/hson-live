@@ -360,11 +360,12 @@ function make_livemap_registry_engine(
         const next = publicationQueue[publicationCursor];
         publicationCursor += 1;
         if (next === undefined) continue;
-        try {
-          next();
-        } catch (error) {
-          report_livemap_observer_failure("publication", error);
-        }
+        // Deliver in the existing FIFO, with the management grant still held
+        // but without lending its execution privilege to callbacks.
+        transitionController.runUnmanaged(() => {
+          try { next(); }
+          catch (error) { report_livemap_observer_failure("publication", error); }
+        });
       }
     } finally {
       publicationQueue.length = 0;
@@ -419,18 +420,19 @@ function make_livemap_registry_engine(
   }>> = [];
   const publishAuthorityPosition = (revision = mapRevision): void => {
     releaseInitialHandoff();
-    deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "published"),
-      observer => observer.listener(revision), "authority-position");
+    transitionController.runUnmanaged(() =>
+      deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "published"),
+        observer => observer.listener(revision), "authority-position"));
   };
   // Reuse the owner position signal for q's private terminal latch. Publication
   // can be queued/reentrant, so its live-state observers are too late to prove
   // that a subject was never absent between two exact restorations.
   const publishInstalledPosition = (): void => {
     releaseInitialHandoff();
-    deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "installed"),
-      // Reentrant observers can accept a newer authority cut. Each remaining
-      // observer sees that installed cut, including progress without graph work.
-      observer => observer.listener(clientComposition?.revision ?? mapRevision), "identity-installation");
+    transitionController.runUnmanaged(() =>
+      deliver_livemap_observers(aggregatePositionObservers.filter(observer => observer.phase === "installed"),
+        // Each observer sees the installed cut, including reentrant advances.
+        observer => observer.listener(clientComposition?.revision ?? mapRevision), "identity-installation"));
   };
   const aggregateRestoreObservers: Array<(event: Readonly<{
     previousRevision: number;
@@ -705,6 +707,15 @@ function make_livemap_registry_engine(
       if (localIdentityTransactionActive || revision !== mapRevision || generation !== identityGeneration
         || registry !== hostedRegistry || authority !== hostedFence) throw new Error("LiveMap identity or authority changed during capture.");
     };
+  }
+
+  function assert_uncomposed_mutation_allowed(): void {
+    // Client composition survives release of the temporary management lease.
+    if (clientComposition !== undefined) throw new LiveMapTransitionError(
+      "LIVEMAP_MANAGED_MUTATION_REJECTED",
+      "Client-composed LiveMap mutation requires Echo authority.",
+    );
+    transitionController.assertPublicMutationAllowed();
   }
 
   function capture_managed_restoration_fence(owner: object): () => void {
@@ -2617,7 +2628,7 @@ function make_livemap_registry_engine(
 
   function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
     beforeInstall?: () => void, parts: readonly (PartLibraryCandidate | undefined)[] = []): LiveMapAggregateCommit {
-    transitionController.assertPublicMutationAllowed();
+    assert_uncomposed_mutation_allowed();
     if (definitions.length === 0) return Object.freeze({
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
@@ -2625,7 +2636,7 @@ function make_livemap_registry_engine(
     // A source-derived candidate retains its original capture fence through all admission validation.
     beforeInstall?.();
     // Serialization may acquire exclusive management after the initial admission permission check.
-    transitionController.assertPublicMutationAllowed();
+    assert_uncomposed_mutation_allowed();
     return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
       afterInstall?.(prepared.identities)).commit;
   }
@@ -3152,7 +3163,7 @@ function make_livemap_registry_engine(
     const grant = owner === undefined ? undefined : transitionController.captureManagementFence(owner);
     const checkRestore = () => {
       position(); grant?.();
-      transitionController.assertPublicMutationAllowed();
+      assert_uncomposed_mutation_allowed();
       transitionController.assertLocalIdentityAllowed();
       if (generation !== transitionController.generation) throw new Error("Restoration authority changed during preparation.");
     };
@@ -3600,9 +3611,9 @@ function make_livemap_registry_engine(
     transitionController.invalidate();
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     publishInstalledPosition();
-    afterTopologyInstall?.(Object.freeze(candidates.map((candidate) => Object.freeze({
+    transitionController.runUnmanaged(() => afterTopologyInstall?.(Object.freeze(candidates.map((candidate) => Object.freeze({
       name: candidate.name, identity: candidate.state.identity,
-    }))), Object.freeze(retired));
+    }))), Object.freeze(retired)));
     const event = Object.freeze({
       previousRevision,
       revision: mapRevision,
@@ -3871,7 +3882,7 @@ function make_livemap_registry_engine(
     addOwnedLibraries: (definitions, afterInstall, beforeInstall) =>
       add_libraries(definitions, afterInstall, beforeInstall, definitions.map(definition => definition.part)),
     addClientLocalLibraries: add_client_local_libraries,
-    assertPublicMutationAllowed: transitionController.assertPublicMutationAllowed,
+    assertPublicMutationAllowed: () => transitionController.runUnmanaged(assert_uncomposed_mutation_allowed),
     captureFence: capture_fence,
     prepareScopedDocument: (identity, source) => {
       const authority = scoped_preparation_authority(), library = require_library(identity);
@@ -4125,7 +4136,8 @@ function make_livemap_registry_engine(
     captureSemanticCheckpoint: capture_semantic_checkpoint,
     prepareSemanticCheckpoint: prepare_semantic_checkpoint,
     installSemanticCheckpoint: (checkpoint) => prepare_semantic_checkpoint(checkpoint).install(),
-    restoreLibraries: (snapshot, afterTopologyInstall, currentTopologyOnly) => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall, currentTopologyOnly),
+    restoreLibraries: (snapshot, afterTopologyInstall, currentTopologyOnly) => transitionController.runUnmanaged(
+      () => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall, currentTopologyOnly)),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restorePortableLibrariesWithCorrespondence: (snapshot) => {
       return restore_libraries_aggregate(snapshot, undefined, undefined, false, "portable");
@@ -4339,8 +4351,11 @@ function make_livemap_registry_engine(
       transitionController.releaseManagement(owner);
       if (clientManagementOwner === owner) { releaseInitialHandoff(); clientManagementOwner = undefined; }
     },
-    commit: (writes) => transitionController.acceptAuthority(prepare_authority_transition(writes)).commit,
-    commitDocumentMutation: commit_aggregate_document_mutation,
+    // Direct Data, interaction and Document commits never enter as replay.
+    commit: (writes) => transitionController.runUnmanaged(
+      () => transitionController.acceptAuthority(prepare_authority_transition(writes)).commit),
+    commitDocumentMutation: (library, candidate) => transitionController.runUnmanaged(
+      () => commit_aggregate_document_mutation(library, candidate)),
     documentCommitFor: (library, commit) => documentCommitByAggregate.get(commit)?.get(library),
     documentRootFor: (library, commit) => documentRootByAggregate.get(commit)?.get(library),
     aggregateCommitForDocument: (commit) => aggregateByDocumentCommit.get(commit),

@@ -95,6 +95,9 @@ operations without ending the session or releasing map management. The Echo may
 reconnect. `echo.dispose()` is terminal and, for a replica-bearing Echo, releases
 exclusive management and clears its retained client credential. The caller
 separately calls `transport.dispose()` to close adapter-owned physical resources.
+A retained client-composed LiveMap keeps its shared and client-local ownership
+after session or Echo disposal. Full `map.restore()` applies to standalone
+LiveMaps. Shared replica state uses managed projection recovery.
 For HTTP, Echo disposal also stops attachment heartbeat and stream maintenance
 for its permanently claimed transport. Transport disposal interrupts Echo's
 attachment observation and settles in-flight requests conservatively.

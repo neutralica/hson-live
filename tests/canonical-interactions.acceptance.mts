@@ -1,5 +1,6 @@
 import { mixed_stage_interaction_cases } from "./fixtures/interaction-mixed-stage-cases.mts";
 import { local_behavior_cases } from "./fixtures/local-behavior-cases.mts";
+import { document_listener_cases } from "./fixtures/document-listener-cases.mts";
 import { activate_document_interactions_internal } from "../src/api/interactions/interactions.ts";
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
@@ -1186,5 +1187,6 @@ await check("public Echo dispatcher preserves exact payload through configured L
   dispose(); reflection.dispose(); echo.dispose(); locus.dispose();
 });
 
+await check("selected document listeners use their governing authority and exact subject", document_listener_cases);
 testEvents.terminal("pass");
 process.stdout.write(`1..${checks}\n`);

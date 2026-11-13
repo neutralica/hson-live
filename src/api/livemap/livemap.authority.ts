@@ -100,6 +100,7 @@ export type LiveMapTransitionController = Readonly<{
   releaseManagement: (owner: object) => void;
   /** Run a preparation owned by the current exclusive manager. @internal */
   runManaged: <T>(owner: object, operation: () => T) => T;
+  runUnmanaged: <T>(operation: () => T) => T;
   scheduleManaged: (
     mutation: (draft: object) => LiveMapCoreCommit<LiveMapAnyOp>,
   ) => Promise<LiveMapCoreCommit<LiveMapAnyOp>> | undefined;
@@ -354,6 +355,12 @@ export function make_livemap_transition_controller(
       } finally {
         managedExecutionOwner = previous;
       }
+    },
+    runUnmanaged<T>(operation: () => T): T {
+      const previous = managedExecutionOwner;
+      managedExecutionOwner = undefined;
+      try { return operation(); }
+      finally { managedExecutionOwner = previous; }
     },
     scheduleManaged(mutation) {
       return management?.schedule(mutation);

@@ -41,3 +41,9 @@ export type LocusInteractionDescriptor = Readonly<{
 }>;
 
 export type InteractionDescriptor = BrowserInteractionDescriptor | LocusInteractionDescriptor;
+
+/** Author one canonical click relationship and return its accepted Descriptor ID. */
+export type DocumentListener<TResult> = Readonly<{
+  local: Readonly<{ onClick: (key: string, input: HsonDataInput) => TResult }>;
+  host: Readonly<{ onClick: (key: string, input: HsonDataInput) => TResult }>;
+}>;

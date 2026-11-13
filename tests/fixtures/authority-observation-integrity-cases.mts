@@ -9,8 +9,10 @@ import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.id
 import { live_subscription, read_data_location } from "../../src/internal/library-observation.js";
 import { admit_authority_projection_snapshot as admit, encode_authority_projection_snapshot as encode,
   decode_authority_projection_snapshot as decode } from "../../src/api/locus/locus.authority-projection-snapshot.js";
+import { install_client_local_initializers_internal } from "../../src/api/locus/locus.local-initializer.js";
 import { encode_portable_document_stylesheet } from "../../src/internal/css/portable-document-stylesheet.js";
 import { merge_part_stylesheets } from "../../src/internal/css/part-stylesheet.js";
+import { local_initializers } from "../helpers/client-projection.mts";
 import { structured_css_fixture } from "../helpers/structured-css-fixture.mts";
 import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import type { DocumentCssRecord } from "../../src/types/document-css.types.js";
@@ -123,7 +125,10 @@ export async function data_watch_preparation_cases() {
         const sourceAuthority = internal_livemap_aggregate_authority(source);
         const snapshot = make_portable_aggregate_snapshot(sourceAuthority.captureHosted());
         const client = make_livemap_client_composition_from_portable_aggregate_internal(snapshot);
-        client.addLibraries({ local: { json: { n: 0 } }, page: { document: '<main @:kept title="unchanged"/>' } });
+        install_client_local_initializers_internal(client, local_initializers({
+          local: { json: { n: 0 } },
+          page: { document: '<main @:kept title="unchanged"/>' },
+        }));
         const authority = internal_livemap_aggregate_authority(client), manager = {};
         const empty = hsonLiveMap.create();
         internal_livemap_aggregate_authority(empty).setInitialHostedAuthority(snapshot.authority);

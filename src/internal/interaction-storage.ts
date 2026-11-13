@@ -18,6 +18,12 @@ export function require_interaction_system_internal(aggregate: InternalLiveMapAg
   return identity;
 }
 
+export function commit_interaction_edit_internal(aggregate: InternalLiveMapAggregateAuthority,
+  edit: (current: OrderedProjectedValue) => OrderedProjectedValue): void {
+  const system = require_interaction_system_internal(aggregate);
+  aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "interaction", edit }]);
+}
+
 export function register_interaction_draft_internal(
   draft: object,
   system: LiveMapSystemIdentity,

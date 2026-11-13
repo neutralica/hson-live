@@ -30,6 +30,7 @@ import type {
   BrowserInteractionDescriptor,
 } from "../../types/interaction.types.js";
 import {
+  commit_interaction_edit_internal,
   interaction_draft_capability_internal,
   require_interaction_system_internal,
 } from "../../internal/interaction-storage.js";
@@ -39,7 +40,7 @@ import {
   runtime_for_tree,
 } from "../livetree/runtime/livetree-runtime.js";
 
-import { descriptor_to_value } from "./interactions.descriptor.js";
+import { descriptor_array, descriptor_id, descriptor_to_value, interaction_addition } from "./interactions.descriptor.js";
 
 type Storage = Readonly<{
   update: (edit: (current: OrderedProjectedValue) => OrderedProjectedValue) => void;
@@ -94,15 +95,7 @@ export function enable_interactions(map: LiveMap): void {
 
 export function add_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
   const storage = interaction_storage(target);
-  const value = descriptor_to_value(descriptor);
-  const id = descriptor.id;
-  storage.update((descriptors) => {
-    const current = descriptor_array(descriptors);
-    if (current.some((entry) => descriptor_id(entry) === id)) {
-      throw new Error(`Canonical interaction ${JSON.stringify(id)} already exists.`);
-    }
-    return ordered_projected_array([...current, value]);
-  });
+  storage.update(interaction_addition(descriptor));
 }
 
 export function replace_interaction(target: LiveMap | LiveMapStagedWriter<LiveMap, void>, descriptor: InteractionDescriptor): void {
@@ -393,27 +386,9 @@ function interaction_storage(target: object): Storage {
   const draft = interaction_draft_capability_internal(target);
   if (draft !== undefined) return Object.freeze({ update: draft.update });
   const aggregate = internal_livemap_aggregate_authority(target);
-  const system = require_interaction_system_internal(aggregate);
   return Object.freeze({
-    update: (edit) => { aggregate.commit([{
-      target: aggregate.systemTarget(system, ["descriptors"]),
-      kind: "interaction",
-      edit,
-    }]); },
+    update: (edit) => commit_interaction_edit_internal(aggregate, edit),
   });
-}
-
-function descriptor_array(value: OrderedProjectedValue): readonly OrderedProjectedObject[] {
-  if (!Array.isArray(value) || value.some((entry) => !is_ordered_projected_object(entry))) {
-    throw new Error("Canonical interaction Library state is malformed.");
-  }
-  return value;
-}
-
-function descriptor_id(value: OrderedProjectedObject): string {
-  const id = member(value, "id");
-  if (typeof id !== "string") throw new Error("Canonical interaction descriptor ID is malformed.");
-  return id;
 }
 
 function read_descriptors(value: OrderedProjectedValue): readonly PreparedRuntimeDescriptor[] {

@@ -20,6 +20,7 @@ import { read_document_quad, register_governed_document, governed_document_eleme
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { guard_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
 
 /** The selected map library stays private; source determines which writes exist. */
 export function make_echo_library_selector(
@@ -42,11 +43,13 @@ export function make_echo_library_selector(
       asObject: () => refine(raw.asObject()), asScalar: () => refine(raw.asScalar()),
     }, raw, assertReadable)) as T;
   };
-  const local_document_location = (raw: ReturnType<LiveMapDocumentLibrary["at"]>): ReturnType<LiveMapDocumentLibrary["at"]> => {
-    const refine = (checked: ReturnType<LiveMapDocumentLibrary["at"]> | undefined) =>
+  const local_document_location = (raw: WritableDocumentLocation): ReturnType<LiveMapDocumentLibrary["at"]> => {
+    const refine = (checked: WritableDocumentLocation | undefined) =>
       checked === undefined ? undefined : local_document_location(checked);
+    const { listen, ...location } = raw;
     return Object.freeze({
-      ...raw, get rev() { return raw.rev; }, ...representations(raw),
+      ...location, get rev() { return raw.rev; }, ...representations(raw),
+      ...(listen === undefined ? {} : { listen: guard_document_listener(listen, assertReadable) }),
       at: (path: readonly number[]) => local_document_location(raw.at(path)),
       id: (id: string) => refine(raw.id(id)), present: () => refine(raw.present()),
       asElement: () => refine(raw.asElement()), asRoot: () => refine(raw.asRoot()), asText: () => refine(raw.asText()),
@@ -73,6 +76,7 @@ export function make_echo_library_selector(
     };
     return Object.freeze({
       ...read, get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
+      listen: guard_document_listener(raw.listen, assertReadable),
       at: observe((path: readonly number[]) => local_quad(raw.at(path))),
       q: observe((name: string) => { const child = raw.q(name); return child === undefined ? undefined : local_quad(child); }),
       replace: (value: LiveMapDocumentContent) => edit(() => capture_document_content(value, "replace-content"), raw.replace),

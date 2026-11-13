@@ -1,6 +1,7 @@
 import { document_location_commands } from "./document-location-commands.js";
 import { live_observation } from "./library-observation.js";
 import { required_reads } from "./required-reads.js";
+import type { DocumentListener } from "../types/interaction.descriptor.types.js";
 import type { LiveMapDocumentLibrary, LiveMapDocumentContent, LiveMapDocumentRequestTarget,
   LiveMapDocumentCommitTarget } from "../types/livemap.types.js";
 import { validate_document_path } from "../api/livemap/livemap.document.path.js";
@@ -104,6 +105,7 @@ export function write_document_quad(
   raw: import("../types/livemap.types.js").LiveMapDocumentQuadLocation,
   edit: (subject: import("../types/livemap.types.js").LiveMapDocumentQuadLocation,
     run: (location: import("../api/livemap/livemap.staged.js").StagedDocumentLocation) => void) => Promise<void>,
+  listen: (path: () => readonly number[]) => DocumentListener<Promise<string>>,
   assertReadable: () => void = () => {},
 ): import("../types/livemap.types.js").AuthorityDocumentQuadLocation {
   const read = read_document_quad(raw, assertReadable);
@@ -111,10 +113,11 @@ export function write_document_quad(
   const commands = document_location_commands(run => edit(raw, run));
   return Object.freeze({
     ...read, ...commands, get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
-    at: observe((path: readonly number[]) => write_document_quad(raw.at(path), edit, assertReadable)),
+    listen: listen(raw.path),
+    at: observe((path: readonly number[]) => write_document_quad(raw.at(path), edit, listen, assertReadable)),
     q: observe((name: string) => {
       const child = raw.q(name);
-      return child === undefined ? undefined : write_document_quad(child, edit, assertReadable);
+      return child === undefined ? undefined : write_document_quad(child, edit, listen, assertReadable);
     }),
     attrs: Object.freeze({ ...read.attrs, ...commands.attrs }),
     flags: Object.freeze({ ...read.flags, ...commands.flags }),

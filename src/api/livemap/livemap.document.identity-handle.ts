@@ -8,6 +8,7 @@ import { clone_livemap_document_exact_view } from "./livemap.document.identity.j
 import type { LiveMapDocumentMutationController } from "./livemap.document.mutation.js";
 import { normalize_document_request_target } from "./livemap.document.target.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
+import { lower_internal_document_element_target, resolve_internal_document_location } from "./livemap.document.logical.js";
 
 type IdentityHandleController = LiveMapDocumentMutationController & Readonly<{
   identityEpoch: LiveMapDocumentIdentityEpochController;
@@ -20,6 +21,7 @@ export type LiveMapDocumentIdentityTargetInternal = Readonly<{
 
 type LiveMapDocumentIdentityApi = Readonly<{
   acquire: (target: LiveMapDocumentIdentityTargetInternal) => LiveMapDocumentIdentityHandle;
+  captureElement: (select: () => readonly number[], assertLifetime?: () => void) => () => LiveMapDocumentPath;
 }>;
 
 const documentIdentityApiForOwner = new WeakMap<object, LiveMapDocumentIdentityApi>();
@@ -30,6 +32,32 @@ export function make_livemap_document_identity_api(
   controller: IdentityHandleController,
 ): LiveMapDocumentIdentityApi {
   return Object.freeze({
+    captureElement: (select, assertLifetime) => {
+      const assertCapture = controller.captureFence();
+      const logical = select();
+      assertCapture();
+      const root = controller.root();
+      const resolution = resolve_internal_document_location(root, controller.mode,
+        logical.map(index => ({ kind: "content", index })));
+      const path = validate_document_path(lower_internal_document_element_target(resolution).path);
+      const epoch = controller.identityEpoch.current();
+      const quid = controller.overlay().quidAtPath(path);
+      const identity = quid === undefined ? undefined : make_identity_handle(controller, quid, epoch);
+      return () => {
+        // A QUAD must still own its lifetime. A coordinate only selects once,
+        // since a continuing keyed element can vacate that coordinate.
+        controller.captureFence()();
+        assertLifetime?.();
+        if (identity === undefined) {
+          // An unkeyed subject has proof of continuity only in the captured graph.
+          if (controller.root() === root && controller.identityEpoch.current() === epoch) return path;
+        } else {
+          const current = identity.path();
+          if (current !== undefined) return current;
+        }
+        throw new Error("Document listener subject changed before acceptance.");
+      };
+    },
     acquire: (targetInput) => {
       const request = normalize_document_request_target(targetInput, "ensure-quid");
       if (request.kind !== "path") {
@@ -47,6 +75,13 @@ export function make_livemap_document_identity_api(
       return make_identity_handle(controller, quid, controller.identityEpoch.current());
     },
   });
+}
+
+/** Capture a selected element for one authoring submission. Any existing identity stays runtime-local. @internal */
+export function capture_livemap_document_element(owner: object, select: () => readonly number[], assertLifetime?: () => void): () => LiveMapDocumentPath {
+  const api = documentIdentityApiForOwner.get(owner);
+  if (api === undefined) throw new Error("LiveMap document has no internal identity authority.");
+  return api.captureElement(select, assertLifetime);
 }
 
 /** Register internal document identity acquisition without extending the public document façade. */

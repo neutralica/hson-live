@@ -12,6 +12,7 @@
       add_interaction,
       assertCanonicalClosure,
       bind_locus_http,
+      continue_document,
       continue_hosted_document,
       decode_hosted_root,
       echo_map_internal,
@@ -108,12 +109,133 @@
     const result = document.querySelector("#result");
     try {
       await checkAuthoredEvents();
+      checkSelectedLocalListeners();
+      await checkSelectedHostedListener();
       window.__HSON_CANONICAL_INTERACTIONS_BROWSER__ = Object.freeze({ passed, calls, exactArgs });
       result.textContent = passed ? "pass" : `fail ${JSON.stringify(window.__HSON_CANONICAL_INTERACTIONS_BROWSER__)}`;
       result.dataset.status = passed ? "pass" : "fail";
     } catch (cause) {
       result.textContent = cause.stack ?? String(cause);
       result.dataset.status = "fail";
+    }
+
+    function checkSelectedLocalListeners() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const solo = document.createElement("button");
+      document.body.append(solo);
+      const tree = graft(solo, { unsafe: false });
+      let direct = 0, once = 0, teardown = 0;
+      try {
+        const sub = tree.listen.onClick(event => { if (event.currentTarget === solo) direct++; });
+        tree.listen.once().onClick(() => once++);
+        solo.click(); solo.click();
+        check(direct === 2 && once === 1, "Solo LiveTree did not install ordinary callbacks immediately.");
+        sub.off();
+        tree.listen.onClick(() => teardown++);
+        solo.click();
+        check(direct === 2 && teardown === 1, "Solo LiveTree .off() did not remove its callback.");
+        tree.remove();
+        solo.click();
+        check(teardown === 1, "Retiring the solo subject left a native callback installed.");
+      } finally { solo.remove(); }
+
+      const map = hsonLiveMap.fromLibraries({ page: {
+        document: '<main <button @:panel id="panel"/> <button id="other"/>/>',
+      } });
+      const page = map.doc.must("page");
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      const panel = root.querySelector("#panel"), other = root.querySelector("#other");
+      const exact = Hson.data.fromSource(Hson.canonical`<'10' -0 '2' 2 __proto__ <safe true>>`);
+      const calls = [], failures = [];
+      map.behaviors.define("panel.toggle", (ctx, data) => { calls.push({ element: ctx.subject?.dom.el(), data }); },
+        { input: { required: true, schema: ANY_DATA } });
+      const continued = continue_document({ map, document: page, root, interactions: { onFailure: failure => failures.push(failure) } });
+      try {
+        const at = page.at([1, 0, 0]).asElement(), quad = page.q("panel");
+        const first = at.listen.local.onClick("panel.toggle", exact);
+        const second = quad.listen.local.onClick("panel.toggle", exact);
+        check(typeof first === "string" && typeof second === "string" && first !== second && calls.length === 0,
+          "Path and QUAD authoring did not return independent synchronous Descriptor IDs.");
+        panel.click(); other.click();
+        check(calls.length === 2 && calls.every(call => call.element === panel && call.data.equals(exact)),
+          "Native listeners did not independently invoke the exact local behavior input.");
+        page.at([1, 0]).asElement().move(0, 1);
+        check(root.querySelector("main").lastElementChild === panel, "Move replaced the intended native subject.");
+        other.click(); panel.click();
+        check(calls.length === 4 && calls.every(call => call.element === panel), "Move redirected a canonical listener.");
+        const retainedCoordinate = page.at([1, 0, 1]);
+        const retained = retainedCoordinate.asElement();
+        quad.delete();
+        panel.click(); other.click();
+        check(!quad.active && calls.length === 4 && failures.length === 0, "Retiring the subject left a canonical listener installed.");
+        const revision = map.rev;
+        let targetError;
+        try { retained.listen.local.onClick("panel.toggle", exact); } catch (error) { targetError = error; }
+        check(/ordinary element/.test(targetError?.message) && map.rev === revision,
+          "The retained element handle lost its listener interface after deletion.");
+        let coordinateError;
+        try { retainedCoordinate.listen.local.onClick("panel.toggle", exact); } catch (error) { coordinateError = error; }
+        check(/outside/.test(coordinateError?.message) && map.rev === revision,
+          "First listener access on the retained coordinate did not reach subject validation.");
+      } finally { continued.dispose(); }
+    }
+
+    async function checkSelectedHostedListener() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const payloads = [], failures = [];
+      const locus = hsonLiveMap.locus.create({ page: {
+        access: "shared", document: '<main <button @:advance id="advance"/>/>',
+      } }, {
+        authorizeProjection: ({ requested }) => requested,
+        authorizeAction: ({ action }) => action === "deck.advance",
+        actions: { "deck.advance": (_context, payload) => { payloads.push(payload); } },
+      });
+      const binding = bind_locus_http(locus, { endpoint: "/selected-listener" });
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://listen.test/selected-listener",
+        fetch: (input, init) => binding.handle(new Request(input, init), {}) });
+      const frame = document.createElement("iframe");
+      let continued;
+      let behaviors, receiver;
+      const until = async (condition, message) => {
+        for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+        check(condition(), message);
+      };
+      try {
+        const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+        const now = session.now({ html: "page" });
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = now.html;
+        document.body.append(frame);
+        await loaded;
+        const root = frame.contentDocument.documentElement, button = root.querySelector("#advance");
+        continued = await continue_hosted_document({ now, credential: session.credential, root, transport,
+          interactions: { onFailure: failure => failures.push(failure), registerBehaviors(registry) {
+            behaviors = registry;
+            registry.define("rememberReceiver", ({ map }) => { receiver = map; });
+          } } });
+        check((await behaviors.trigger("rememberReceiver")).ok && receiver, "The local behavior did not receive its operating map.");
+        const earlier = receiver.capture();
+        const projected = continued.echo.doc.must("page");
+        check(!("listen" in projected.q("advance")), "Projected QUAD acquired canonical write authority.");
+        const input = Hson.data.fromSource(Hson.canonical`<step -0>`);
+        const pending = locus.doc.must("page").q("advance").listen.host.onClick("deck.advance", input);
+        check(pending instanceof Promise && typeof await pending === "string" && payloads.length === 0,
+          "Locus listener authoring did not report asynchronous acceptance without dispatch.");
+        await until(() => continued.echo.sync.appliedRev === locus.rev, "Echo did not apply the accepted Descriptor.");
+        button.click();
+        await until(() => payloads.length !== 0 || failures.length !== 0, "The native click did not dispatch through Echo.");
+        check(payloads.length === 1 && payloads[0].equals(input) && failures.length === 0,
+          "The authorized Locus action did not receive the exact authored input.");
+        const latest = receiver.capture();
+        check(latest.revision > earlier.revision, "The authoritative Descriptor did not reach the composed map.");
+        continued.echo.session.dispose();
+        let restoreError;
+        try { receiver.restore(earlier); } catch (error) { restoreError = error; }
+        check(/Echo authority/.test(restoreError?.message) && JSON.stringify(receiver.capture()) === JSON.stringify(latest),
+          "A retained behavior map restored shared state after session disposal.");
+      } finally {
+        continued?.dispose(); continued?.echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); frame.remove();
+      }
     }
 
     async function checkAuthoredEvents() {

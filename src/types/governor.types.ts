@@ -2,7 +2,7 @@ import type { RequiredReads, EndpointRepresentation } from "./livemap.types.js";
 import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayBranch, LiveMapObjectBranch, LiveMapScalarBranch } from "./livemap.types.js";
-import type { JsonValue, HsonNode } from "../core/types.js";
+import type { JsonValue, HsonNode, Primitive } from "../core/types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LiveMapPathValue, LiveMapSetValue,
@@ -157,13 +157,13 @@ export type EchoLocalDataLibrary<TValue = JsonValue, TSchema extends HsonSchema 
   source: "client-local";
 }>;
 
-export type EchoDocumentLocation = import("./livemap.types.js").AuthorityDocumentLocation<unknown, Promise<void>, "set">;
+export type EchoDocumentLocation = import("./livemap.types.js").AuthorityDocumentLocation<unknown, Promise<void>, "set", HsonNode | Primitive | undefined, never>;
 export type EchoProjectedDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Omit<LocusDocumentLibrary<TEvidence, TSchema>, "at" | "document" | "css" | "q"> & Readonly<{
   source: "authority-projected";
   css: ((operation: LiveMapCssOp) => Promise<void>) & import("./document-css.types.js").DocumentCssRead
     & Pick<import("./document-css.types.js").DocumentCssCommands<Promise<void>>, "clearAll" | "atProperty" | "keyframes">
     & Readonly<{ stylesheet: (text: string) => Promise<void> }>;
-  at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, Promise<void>, "set">;
+  at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, Promise<void>, "set", never>;
   q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never> | undefined;
   document: Omit<LocusDocumentLibrary["document"], "flags"> & Readonly<{
     flags: Pick<LocusDocumentLibrary["document"]["flags"], "has" | "set">;

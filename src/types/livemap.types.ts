@@ -3,6 +3,7 @@ import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { InteractionLocalBehaviors } from "./local-behavior.types.js";
+import type { DocumentListener } from "./interaction.descriptor.types.js";
 // livemap.types.ts
 
 import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
@@ -1448,9 +1449,10 @@ type LiveMapLibraryDocumentLocationInternal<
   TLibrary extends string,
   TValue = InternalDocumentLegacyEndpoint,
   TDescriptor = unknown,
-> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>
+  TListen extends boolean = true,
+> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor, TListen>
   & ([TDescriptor] extends [Readonly<{ kind: "element" }>]
-    ? LiveMapLibraryDocumentElementCapabilities<TLibrary, TDescriptor>
+    ? LiveMapLibraryDocumentElementCapabilities<TLibrary, TDescriptor, TListen>
     : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>]
       ? LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>
       : Readonly<Record<never, never>>) >;
@@ -1466,6 +1468,7 @@ interface LiveMapLibraryDocumentLocationBase<
   TLibrary extends string,
   TValue,
   TDescriptor,
+  TListen extends boolean = true,
 > {
   readonly rev: number;
   path: () => readonly number[];
@@ -1484,11 +1487,12 @@ interface LiveMapLibraryDocumentLocationBase<
     DocumentChildRead<TValue, InternalDocumentDescriptorEndpoint<
       InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
     >>,
-    InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
+    InternalDocumentResolveDescriptorPath<TDescriptor, TPath>,
+    TListen
   >;
   id: (value: string) => LiveMapLibraryDocumentLocationInternal<TLibrary> | undefined;
   kind: () => "missing" | "root" | "element" | "text";
-  present: () => LiveMapLibraryDocumentLocationInternal<TLibrary, TValue, TDescriptor> | undefined;
+  present: () => LiveMapLibraryDocumentLocationInternal<TLibrary, TValue, TDescriptor, TListen> | undefined;
   asElement: () => LiveMapLibraryDocumentElementLocation<TLibrary, DocumentRefinedRead<TValue, TDescriptor, { kind: "element" }>, TDescriptor> | undefined;
   asRoot: () => LiveMapLibraryDocumentRootLocation<TLibrary, DocumentRootRefinedRead<TValue, TDescriptor>, TDescriptor> | undefined;
   asText: () => LiveMapLibraryDocumentTextLocation<TLibrary, DocumentRefinedRead<TValue, TDescriptor, { kind: "text" }>, TDescriptor> | undefined;
@@ -1501,7 +1505,9 @@ interface LiveMapLibraryDocumentLocationBase<
 type LiveMapLibraryDocumentElementCapabilities<
   TLibrary extends string,
   TDescriptor,
-> = LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor> & Readonly<{
+  TListen extends boolean = true,
+> = LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>
+  & (TListen extends true ? Readonly<{ listen: DocumentListener<string> }> : {}) & Readonly<{
   attrs: InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
     ? Readonly<{
         get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => InternalAttrRead<TAttrs, TName>;
@@ -1562,7 +1568,7 @@ type LiveMapLibraryDocumentTextLocation<
   TLibrary extends string,
   TValue,
   TDescriptor,
-> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>>;
+> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor, false>>;
 
 type LiveMapLibraryDocumentRootLocation<
   TLibrary extends string,
@@ -1592,7 +1598,7 @@ export type LiveMapDocumentLocation<
  */
 export type LiveMapDocumentQuadLocation<TLibrary extends string = string> = Readonly<
   Pick<LiveMapLibraryDocumentElementLocation<TLibrary, HsonNode | Primitive | undefined, unknown>,
-    "rev" | "path" | "snap" | "hson" | "must" | "attrs" | "flags" | "replace" | "delete" | "insert" | "move">
+    "rev" | "path" | "snap" | "hson" | "must" | "attrs" | "flags" | "replace" | "delete" | "insert" | "move" | "listen">
   & {
     readonly active: boolean;
     /** Enter a selected Part namespace; element bindings have no child namespace.
@@ -1794,9 +1800,12 @@ type LiveMapStagedDocumentAttrs<TDescriptor, TResult> =
       }> }>
     : never;
 
+type AuthorityDocumentRead<TDescriptor> = unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>;
+type AuthorityDocumentListenerResult<TResult> = [TResult] extends [never] ? never : Promise<string>;
+
 /** Schema-preserving selected document observations and authority-safe commands. */
 export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear",
-  TRead = unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>> = Readonly<{
+  TRead = AuthorityDocumentRead<TDescriptor>, TListen = AuthorityDocumentListenerResult<TResult>> = Readonly<{
   readonly rev: number;
   path: () => readonly number[];
   snap: () => EndpointRepresentation<TRead, string>;
@@ -1807,19 +1816,20 @@ export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<v
   at: <const TPath extends readonly number[]>(path: TPath &
     ([InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>] extends [never] ? never : unknown)) =>
       AuthorityDocumentLocation<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>, TResult, TFlagCommands,
-        DocumentChildRead<TRead, InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>>>;
-  id: (value: string) => AuthorityDocumentLocation<unknown, TResult, TFlagCommands> | undefined;
-  present: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, TRead> | undefined;
-  asElement: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRefinedRead<TRead, TDescriptor, { kind: "element" }>> & AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands> | undefined;
-  asRoot: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRootRefinedRead<TRead, TDescriptor>> & AuthorityDocumentContent<TDescriptor, TResult> | undefined;
-  asText: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRefinedRead<TRead, TDescriptor, { kind: "text" }>> | undefined;
+        DocumentChildRead<TRead, InternalDocumentDescriptorEndpoint<InternalDocumentResolveDescriptorPath<TDescriptor, TPath>>>, TListen>;
+  id: (value: string) => AuthorityDocumentLocation<unknown, TResult, TFlagCommands, InternalDocumentLegacyEndpoint, TListen> | undefined;
+  present: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, TRead, TListen> | undefined;
+  asElement: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRefinedRead<TRead, TDescriptor, { kind: "element" }>, TListen> & AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands, TListen> | undefined;
+  asRoot: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRootRefinedRead<TRead, TDescriptor>, TListen> & AuthorityDocumentContent<TDescriptor, TResult> | undefined;
+  asText: () => AuthorityDocumentLocation<TDescriptor, TResult, TFlagCommands, DocumentRefinedRead<TRead, TDescriptor, { kind: "text" }>, never> | undefined;
 }> & ([TResult] extends [never] ? {} : Readonly<{ replace: (value: InternalDocumentWritableItem<TDescriptor>) => TResult; delete: () => TResult }>)
-  & ([TDescriptor] extends [{ kind: "element" }] ? AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands>
+  & ([TDescriptor] extends [{ kind: "element" }] ? AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands, TListen>
       : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>] ? AuthorityDocumentContent<TDescriptor, TResult> : {});
 
 type AuthorityDocumentContent<TDescriptor, TResult> = [TResult] extends [never] ? {}
   : LiveMapStagedDocumentContent<TDescriptor, TResult>;
-type AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands extends "set" | "clear"> = AuthorityDocumentContent<TDescriptor, TResult> & {
+type AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands extends "set" | "clear", TListen> = AuthorityDocumentContent<TDescriptor, TResult>
+  & ([TListen] extends [never] ? {} : Readonly<{ listen: DocumentListener<TListen> }>) & {
   readonly attrs: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["attrs"], "get" | "has" | "keys" | "must">
     & ([TResult] extends [never] ? {} : LiveMapStagedDocumentAttrs<TDescriptor, TResult>["attrs"]);
   readonly flags: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["flags"], "has">
@@ -1828,7 +1838,7 @@ type AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands extends "set" 
 /** An existing runtime QUAD lifetime; nested navigation remains relative to that subject. */
 export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
   Pick<LiveMapDocumentQuadLocation, "active" | "rev" | "path" | "snap" | "hson" | "must" | "dispose">
-  & AuthorityDocumentElement<unknown, TResult, "set" | "clear">
+  & AuthorityDocumentElement<unknown, TResult, "set" | "clear", AuthorityDocumentListenerResult<TResult>>
   & ([TResult] extends [never] ? {} : Readonly<{
     replace: (value: LiveMapDocumentContent) => TResult;
     delete: () => TResult;
@@ -1837,9 +1847,11 @@ export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
     q: (name: string) => AuthorityDocumentQuadLocation<TResult> | undefined;
   }>;
 
-export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear"> =
+export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear",
+  TListen = AuthorityDocumentListenerResult<TResult>> =
   <const TPath extends readonly number[]>(path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never] ? never : unknown)) =>
-    AuthorityDocumentLocation<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>, TResult, TFlagCommands>;
+    AuthorityDocumentLocation<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>, TResult, TFlagCommands,
+      AuthorityDocumentRead<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>>, TListen>;
 
 type LiveMapStagedDocumentGraphOperation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
 

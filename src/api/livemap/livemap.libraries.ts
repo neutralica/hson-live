@@ -20,7 +20,8 @@ import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
-import { composed_interaction_value } from "../interactions/interactions.descriptor.js";
+import { composed_interaction_value, interaction_addition } from "../interactions/interactions.descriptor.js";
+import { capture_document_click, synchronous_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
 import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
@@ -29,7 +30,7 @@ import { apply_portable_document_css_op, canonical_portable_document_css_op } fr
 import { portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
-import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, require_interaction_system_internal } from "../../internal/interaction-storage.js";
+import { commit_interaction_edit_internal, INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, require_interaction_system_internal } from "../../internal/interaction-storage.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
@@ -1715,7 +1716,8 @@ function make_document_library(
       };
     },
   );
-  const wrappedLocations = new WeakMap<object, object>();
+  const elementLocations = new WeakMap<object, WritableDocumentLocation>();
+  const otherLocations = new WeakMap<object, WritableDocumentLocation>();
   const quad_at = make_livemap_document_location_factory(
     Object.freeze({ get rev() { return controller.rev(); }, root }), "document",
     Object.freeze({
@@ -1726,14 +1728,31 @@ function make_document_library(
     }),
     (path, listener) => raw_at(path).watch(listener),
   );
-  const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean): ReturnType<LiveMapDocumentLibrary["at"]> => {
-    const existing = check === undefined ? wrappedLocations.get(raw) : undefined;
-    if (existing !== undefined) return existing as ReturnType<LiveMapDocumentLibrary["at"]>;
+  const listenAt = (select: () => readonly number[], assertLifetime?: () => void) => synchronous_document_listener((destination, key, input, assertReadable) => {
+    assertReadable();
+    const authority = aggregate.documentAuthority(library.identity);
+    if (authority !== undefined) aggregate.assertPublicMutationAllowed();
+    const captured = capture_document_click(document, library.name, select, destination, key, input, assertLifetime);
+    // Data reflection can reenter. Check the owner and use the captured
+    // subject's continuity against the installed graph at the commit boundary.
+    assertReadable();
+    if (aggregate.documentAuthority(library.identity) !== authority) throw new Error("Document listener authority changed before acceptance.");
+    const edit = interaction_addition(captured.descriptor());
+    commit_interaction_edit_internal(aggregate, edit);
+    return captured.id;
+  });
+  const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean, qualified?: boolean): WritableDocumentLocation => {
     const read = () => check?.() === false ? undefined : raw.snap();
+    // Cache by coordinate and qualification so a fresh selection can reflect the
+    // current endpoint without changing any retained handle's capabilities.
+    const elementQualified = qualified ?? is_ordinary_element_node(read());
+    const cache = elementQualified ? elementLocations : otherLocations;
+    const existing = check === undefined ? cache.get(raw) : undefined;
+    if (existing !== undefined) return existing;
     const snap = () => check?.() === false ? undefined : document_markup(root(), raw.path());
     const hson = () => document_hson(read());
-    const refine = (predicate: (value: HsonNode | Primitive | undefined) => boolean) =>
-      wrap_location(raw, () => check?.() !== false && predicate(raw.snap()));
+    const refine = (predicate: (value: HsonNode | Primitive | undefined) => boolean, element: boolean) =>
+      wrap_location(raw, () => check?.() !== false && predicate(raw.snap()), element);
     const wrapped = Object.freeze({
       get rev() { return raw.rev; },
       path: () => raw.path(),
@@ -1750,20 +1769,27 @@ function make_document_library(
         if (is_ordinary_element_node(value)) return "element" as const;
         return is_Node(value) ? "root" as const : "text" as const;
       },
-      present: () => read() === undefined ? undefined : refine(value => value !== undefined),
-      asElement: () => is_ordinary_element_node(read()) ? refine(is_ordinary_element_node) : undefined,
+      present: () => {
+        const value = read();
+        return value === undefined ? undefined : refine(next => next !== undefined, is_ordinary_element_node(value));
+      },
+      asElement: () => is_ordinary_element_node(read()) ? refine(is_ordinary_element_node, true) : undefined,
       asRoot: () => {
         const value = read();
-        return is_Node(value) && !is_ordinary_element_node(value) ? refine(value => is_Node(value) && !is_ordinary_element_node(value)) : undefined;
+        return is_Node(value) && !is_ordinary_element_node(value) ? refine(value => is_Node(value) && !is_ordinary_element_node(value), false) : undefined;
       },
       asText: () => {
         const value = read();
-        return value !== undefined && !is_Node(value) ? refine(value => value !== undefined && !is_Node(value)) : undefined;
+        return value !== undefined && !is_Node(value) ? refine(value => value !== undefined && !is_Node(value), false) : undefined;
       },
       replace: (value: LiveMapDocumentContent) => multi_commit(raw.replace(value)),
       delete: () => multi_commit(raw.delete()),
       insert: (index: number, value: LiveMapDocumentContent) => multi_commit(raw.insert(index, value)),
       move: (from: number, to: number) => multi_commit(raw.move(from, to)),
+      ...(elementQualified ? { listen: listenAt(() => {
+        if (check?.() === false) throw new TypeError("Document listener subject must be an ordinary element.");
+        return raw.path();
+      }) } : {}),
       attrs: Object.freeze({
         get: (name: string) => raw.attrs.get(name),
         has: (name: string) => raw.attrs.has(name),
@@ -1782,8 +1808,9 @@ function make_document_library(
         clear: (...names: string[]) => multi_commit(raw.flags.clear(...names)),
       }),
     });
-    if (check === undefined) wrappedLocations.set(raw, wrapped);
-    return wrapped as ReturnType<LiveMapDocumentLibrary["at"]>;
+    const location = wrapped as WritableDocumentLocation;
+    if (check === undefined) cache.set(raw, location);
+    return location;
   };
 
   const attrs = Object.freeze({
@@ -1917,6 +1944,7 @@ function make_document_library(
     return make_livemap_document_quad_location(
       () => guard.path(),
       retire, quad_at, multi_commit, () => aggregate.hostedPosition().revision, quad_edit,
+      listenAt,
       path => ({ snap: () => document_markup(root(), path), hson: () => document_hson(quad_at(path).snap()) }),
       name => selected.enter === undefined ? undefined : select_quad(name, selected.enter),
     );
