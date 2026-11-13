@@ -49,6 +49,12 @@ export async function document_listener_cases(): Promise<void> {
   {
     const map = hsonLiveMap.fromLibraries({ page: { document: source } });
     const page = map.doc.must("page"), coordinate = page.at(first), at = coordinate.asElement()!, quad = page.q("selected")!;
+    const beforeCallbacks = map.capture();
+    const callback = () => assert.fail("A portable Document invoked a native callback.");
+    assert.throws(() => at.listen.onClick(callback), /active browser realization/);
+    assert.throws(() => quad.listen.document.once().onClick(callback), /active browser realization/);
+    assert.deepEqual(map.capture(), beforeCallbacks);
+    assert.deepEqual(descriptors(map), []);
     let invoked = 0;
     map.behaviors.define("panel.toggle", () => { invoked++; }, { input: { required: true, schema: ANY_DATA } });
     const pathId = coordinate_listener<string>(coordinate).local.onClick("panel.toggle", exact);
@@ -232,8 +238,13 @@ export async function document_listener_cases(): Promise<void> {
     const echo = await hsonLiveMap.echo.create({ now: session.now(), credential: session.credential!, transport });
     try {
       const projected = echo.doc.must("page"), panel = echo.doc.must("panel");
-      assert.equal("listen" in projected.at(second).asElement()!, false);
-      assert.equal("listen" in projected.q("selected")!, false);
+      const projectedElement = projected.at(second).asElement()!;
+      const projectedQuad = projected.q("selected")!;
+      for (const subject of [projectedElement, projectedQuad]) {
+        assert.equal("local" in subject.listen, false);
+        assert.equal("host" in subject.listen, false);
+        assert.throws(() => subject.listen.onClick(() => assert.fail("Unexpected browser callback.")), /active browser realization/);
+      }
       if (panel.source !== "client-local") throw new Error("Expected a client-local panel.");
       const client = echo_map_internal(echo);
       const earlier = client.capture();

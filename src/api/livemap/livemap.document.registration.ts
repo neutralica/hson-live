@@ -1,5 +1,6 @@
 import { livemap_document_identity_effects_for } from "./livemap.document.identity.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
+import type { HsonNode } from "../../core/types.js";
 import {
   read_hson_node_quid,
 } from "../../core/hson-node-quid.js";
@@ -25,6 +26,7 @@ import {
   set_livemap_quid_candidate_source_for_tests,
 } from "./livemap.quid-allocation.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
+import type { DocumentCallbackListener, NativeListenerSub } from "../../types/native-listener.types.js";
 
 export const LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT = LIVEMAP_QUID_MINT_RETRY_LIMIT;
 
@@ -42,8 +44,14 @@ export type LiveMapDocumentIdentityCommitReservation = Readonly<{
   release: () => void;
 }>;
 
+export type AttachDocumentCallback = (
+  path: LiveMapDocumentPath,
+  install: (builder: DocumentCallbackListener) => NativeListenerSub,
+) => NativeListenerSub;
+
 /** One active local projection participant; never serialized or exposed publicly. */
 export type LiveMapDocumentIdentityParticipant = Readonly<{
+  attachCallback?: AttachDocumentCallback;
   /** Existing runtime namespace, including retired/pending identities. @internal */
   quidUnavailable?: (quid: string) => boolean;
   preflight: (operations: readonly LiveMapGraphOp[], introduced?: ReadonlySet<string>) => LiveMapDocumentIdentityCommitReservation;
@@ -106,6 +114,17 @@ export function register_livemap_document_identity_participant(
 export function livemap_document_identity_quid_unavailable(owner: object, quid: string): boolean {
   const authority = authorityForOwner.get(owner);
   return authority === undefined ? false : participantForAuthority.get(authority)?.quidUnavailable?.(quid) ?? false;
+}
+
+/** Resolve the sole explicitly bound Mirror without acquiring canonical identity. @internal */
+export function livemap_document_callback_realization(owner: object): AttachDocumentCallback | undefined {
+  const authority = authorityForOwner.get(owner);
+  return authority === undefined ? undefined : participantForAuthority.get(authority)?.attachCallback;
+}
+
+/** Exact installed graph evidence for Mirror's subject correspondence. @internal */
+export function livemap_document_root_for_realization(owner: object): HsonNode {
+  return require_authority(owner).root();
 }
 
 /** Narrow deterministic allocator seam for authoritative tests only. @internal */

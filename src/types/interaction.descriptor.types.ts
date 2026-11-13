@@ -1,5 +1,6 @@
 import type { HsonDataInput } from "../api/data/hson-data.js";
 import type { LiveMapDocumentPathInput } from "./livemap.types.js";
+import type { DocumentCallbackListener } from "./native-listener.types.js";
 
 /** Complete normalized portable semantics of one LiveTree listener registration. */
 export type InteractionListener = Readonly<{
@@ -47,3 +48,5 @@ export type DocumentListener<TResult> = Readonly<{
   local: Readonly<{ onClick: (key: string, input: HsonDataInput) => TResult }>;
   host: Readonly<{ onClick: (key: string, input: HsonDataInput) => TResult }>;
 }>;
+
+export type DocumentElementListener<TResult> = DocumentListener<TResult> & DocumentCallbackListener;

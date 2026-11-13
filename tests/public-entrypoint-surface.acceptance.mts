@@ -122,7 +122,7 @@ function check(name: string, run: () => void | Promise<void>): Promise<void> {
   );
 }
 
-await check("LiveMap behavior declarations type-check without a platform Event", () => {
+await check("LiveMap behavior and callback declarations type-check without a platform Event", () => {
   const temporaryParent = join(repositoryRoot, "tmp");
   mkdirSync(temporaryParent, { recursive: true });
   const temporary = mkdtempSync(join(temporaryParent, "livemap-portable-behavior-"));
@@ -142,6 +142,13 @@ await check("LiveMap behavior declarations type-check without a platform Event",
         return input;
       });
       map.behaviors.trigger("compute", -0) satisfies Promise<LocalBehaviorResult>;
+      const page = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }).doc.must("page");
+      const listener = page.at([1, 0]).asElement()!.listen;
+      listener.local.onClick("compute", null) satisfies string;
+      listener.onClick(event => {
+        // @ts-expect-error No platform MouseEvent declaration is in scope.
+        event.preventDefault();
+      }).off();
     `);
     const consumer = ts.createProgram([entry], {
       target: ts.ScriptTarget.ES2022,

@@ -21,6 +21,7 @@ import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { must_live_path } from "../livemap/livemap.guard.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { guard_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
+import { document_callback_listener } from "../livemap/livemap.document.native-listener.js";
 
 /** The selected map library stays private; source determines which writes exist. */
 export function make_echo_library_selector(
@@ -47,13 +48,14 @@ export function make_echo_library_selector(
     const refine = (checked: WritableDocumentLocation | undefined) =>
       checked === undefined ? undefined : local_document_location(checked);
     const { listen, ...location } = raw;
-    return Object.freeze({
+    const facade = {
       ...location, get rev() { return raw.rev; }, ...representations(raw),
-      ...(listen === undefined ? {} : { listen: guard_document_listener(listen, assertReadable) }),
       at: (path: readonly number[]) => local_document_location(raw.at(path)),
       id: (id: string) => refine(raw.id(id)), present: () => refine(raw.present()),
       asElement: () => refine(raw.asElement()), asRoot: () => refine(raw.asRoot()), asText: () => refine(raw.asText()),
-    }) as ReturnType<LiveMapDocumentLibrary["at"]>;
+    };
+    if (listen !== undefined) Object.defineProperty(facade, "listen", { enumerable: true, get: () => guard_document_listener(listen, assertReadable) });
+    return Object.freeze(facade) as ReturnType<LiveMapDocumentLibrary["at"]>;
   };
   const observe = live_observation(assertReadable);
   const local_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): NonNullable<ReturnType<EchoLocalDocumentLibrary["q"]>> => {
@@ -76,7 +78,7 @@ export function make_echo_library_selector(
     };
     return Object.freeze({
       ...read, get active() { assertReadable(); return raw.active; }, get rev() { assertReadable(); return raw.rev; },
-      listen: guard_document_listener(raw.listen, assertReadable),
+      get listen() { return guard_document_listener(raw.listen, assertReadable); },
       at: observe((path: readonly number[]) => local_quad(raw.at(path))),
       q: observe((name: string) => { const child = raw.q(name); return child === undefined ? undefined : local_quad(child); }),
       replace: (value: LiveMapDocumentContent) => edit(() => capture_document_content(value, "replace-content"), raw.replace),
@@ -143,14 +145,30 @@ export function make_echo_library_selector(
       if (command.kind === "setMany") throw new Error("Expected semantic flag names.");
       return Object.freeze(Object.fromEntries(command.names.map(name => [name, name])));
     };
-    const location = (path: readonly number[], retained?: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<import("../../types/governor.types.js").EchoDocumentLocation["asElement"]>> => {
-      const stable = validate_document_path(path);
-      const rawLocation = retained ?? document.at(stable);
+    const callbackListener = (select: () => readonly number[]) =>
+      Object.freeze(document_callback_listener(document.document, select, assertReadable));
+    type ProjectedQuad = NonNullable<ReturnType<import("../../types/governor.types.js").EchoProjectedDocumentLibrary["q"]>>;
+    const projected_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): ProjectedQuad => {
+      const read = read_document_quad(raw, assertReadable);
       return Object.freeze({
+        ...read, get active() { return read.active; }, get rev() { return read.rev; },
+        get listen() { return callbackListener(raw.path); },
+        at: observe((path: readonly number[]) => projected_quad(raw.at(path))),
+        q: observe((name: string) => { const child = raw.q(name); return child === undefined ? undefined : projected_quad(child); }),
+      });
+    };
+    type ProjectedLocation = import("../../types/governor.types.js").EchoDocumentLocation;
+    const location = (path: readonly number[], retained?: WritableDocumentLocation): ProjectedLocation => {
+      const stable = validate_document_path(path);
+      const rawLocation: WritableDocumentLocation = retained ?? document.at(stable);
+      const facade = {
         get rev() { return rawLocation.rev; }, path: () => rawLocation.path(),
         ...representations(rawLocation), watch: rawLocation.watch.bind(rawLocation), kind: () => rawLocation.kind(),
         present: () => { const checked = rawLocation.present(); return checked === undefined ? undefined : location(stable, checked); },
-        asElement: () => { const checked = rawLocation.asElement(); return checked === undefined ? undefined : location(stable, checked); },
+        asElement: () => {
+          const checked = rawLocation.asElement();
+          return checked === undefined ? undefined : location(stable, checked) as NonNullable<ReturnType<ProjectedLocation["asElement"]>>;
+        },
         asRoot: () => { const checked = rawLocation.asRoot(); return checked === undefined ? undefined : location(stable, checked); },
         asText: () => { const checked = rawLocation.asText(); return checked === undefined ? undefined : location(stable, checked); },
         at: (child: readonly number[]) => location([...stable, ...child], rawLocation.at(child)),
@@ -199,7 +217,12 @@ export function make_echo_library_selector(
             payload: { target: governed_document_element_target(document, stable), values },
           })),
         }),
-      });
+      };
+      if ("listen" in rawLocation) Object.defineProperty(facade, "listen", { enumerable: true, get: () => callbackListener(() => {
+        if (rawLocation.kind() !== "element") throw new TypeError("Document listener subject must be an ordinary element.");
+        return rawLocation.path();
+      }) });
+      return Object.freeze(facade) as ProjectedLocation;
     };
     // These commands author complete units and need no projected-state read/modify/write.
     const cssCommands = document_css_commands(command => enqueue(() => {
@@ -237,7 +260,10 @@ export function make_echo_library_selector(
       render: mark_browser_html_producer(() => document.render()),
       commits: document.commits, schema: Object.freeze({ get: () => document.schema.get() }),
       at: location, css,
-      q: (name: string) => { const subject = document.q(name); return subject === undefined ? undefined : read_document_quad(subject, assertReadable); },
+      q: (name: string) => {
+        const subject = document.q(name);
+        return subject === undefined ? undefined : projected_quad(subject);
+      },
       document: Object.freeze({ root: () => document.document.root(),
         content, flags: Object.freeze({ has: document.document.flags.has,
           set: (target: LiveMapDocumentRequestTarget, ...names: string[]) => enqueue(() => {

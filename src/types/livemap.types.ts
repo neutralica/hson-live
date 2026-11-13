@@ -3,7 +3,8 @@ import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { InteractionLocalBehaviors } from "./local-behavior.types.js";
-import type { DocumentListener } from "./interaction.descriptor.types.js";
+import type { DocumentElementListener, DocumentListener } from "./interaction.descriptor.types.js";
+import type { DocumentCallbackListener } from "./native-listener.types.js";
 // livemap.types.ts
 
 import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
@@ -1507,7 +1508,7 @@ type LiveMapLibraryDocumentElementCapabilities<
   TDescriptor,
   TListen extends boolean = true,
 > = LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>
-  & (TListen extends true ? Readonly<{ listen: DocumentListener<string> }> : {}) & Readonly<{
+  & (TListen extends true ? Readonly<{ listen: DocumentElementListener<string> }> : {}) & Readonly<{
   attrs: InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
     ? Readonly<{
         get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => InternalAttrRead<TAttrs, TName>;
@@ -1802,6 +1803,8 @@ type LiveMapStagedDocumentAttrs<TDescriptor, TResult> =
 
 type AuthorityDocumentRead<TDescriptor> = unknown extends TDescriptor ? InternalDocumentLegacyEndpoint : InternalDocumentDescriptorEndpoint<TDescriptor>;
 type AuthorityDocumentListenerResult<TResult> = [TResult] extends [never] ? never : Promise<string>;
+type AuthorityDocumentListener<TListen> = [TListen] extends [never] ? {}
+  : Readonly<{ listen: TListen extends DocumentCallbackListener ? TListen : DocumentListener<TListen> }>;
 
 /** Schema-preserving selected document observations and authority-safe commands. */
 export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear",
@@ -1829,22 +1832,22 @@ export type AuthorityDocumentLocation<TDescriptor = unknown, TResult = Promise<v
 type AuthorityDocumentContent<TDescriptor, TResult> = [TResult] extends [never] ? {}
   : LiveMapStagedDocumentContent<TDescriptor, TResult>;
 type AuthorityDocumentElement<TDescriptor, TResult, TFlagCommands extends "set" | "clear", TListen> = AuthorityDocumentContent<TDescriptor, TResult>
-  & ([TListen] extends [never] ? {} : Readonly<{ listen: DocumentListener<TListen> }>) & {
+  & AuthorityDocumentListener<TListen> & {
   readonly attrs: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["attrs"], "get" | "has" | "keys" | "must">
     & ([TResult] extends [never] ? {} : LiveMapStagedDocumentAttrs<TDescriptor, TResult>["attrs"]);
   readonly flags: Pick<LiveMapLibraryDocumentElementCapabilities<string, TDescriptor>["flags"], "has">
     & ([TResult] extends [never] ? {} : Pick<LiveMapStagedDocumentAttrs<TDescriptor, TResult>["flags"], TFlagCommands>);
 };
 /** An existing runtime QUAD lifetime; nested navigation remains relative to that subject. */
-export type AuthorityDocumentQuadLocation<TResult = Promise<void>> =
+export type AuthorityDocumentQuadLocation<TResult = Promise<void>, TListen = AuthorityDocumentListenerResult<TResult>> =
   Pick<LiveMapDocumentQuadLocation, "active" | "rev" | "path" | "snap" | "hson" | "must" | "dispose">
-  & AuthorityDocumentElement<unknown, TResult, "set" | "clear", AuthorityDocumentListenerResult<TResult>>
+  & AuthorityDocumentElement<unknown, TResult, "set" | "clear", TListen>
   & ([TResult] extends [never] ? {} : Readonly<{
     replace: (value: LiveMapDocumentContent) => TResult;
     delete: () => TResult;
   }>) & Readonly<{
-    at: (path: readonly number[]) => AuthorityDocumentQuadLocation<TResult>;
-    q: (name: string) => AuthorityDocumentQuadLocation<TResult> | undefined;
+    at: (path: readonly number[]) => AuthorityDocumentQuadLocation<TResult, TListen>;
+    q: (name: string) => AuthorityDocumentQuadLocation<TResult, TListen> | undefined;
   }>;
 
 export type AuthorityDocumentSelector<TEvidence, TResult = Promise<void>, TFlagCommands extends "set" | "clear" = "set" | "clear",

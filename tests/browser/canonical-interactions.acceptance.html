@@ -20,6 +20,7 @@
       hsonLiveMap,
       hsonTransform,
       internal_livemap_aggregate_authority,
+      livemap_document_observation_evidence,
       INTERACTION_RESERVED_LIBRARY_KEY,
       graft,
       admit_exact_runtime_livemap_libraries,
@@ -109,8 +110,12 @@
     const result = document.querySelector("#result");
     try {
       await checkAuthoredEvents();
+      checkNativeDocumentCallbacks();
       checkSelectedLocalListeners();
       await checkSelectedHostedListener();
+      checkNativeDuringExactRestore();
+      checkNativeDuringQueuedRestores();
+      checkNativeDisposalDuringRegistration();
       window.__HSON_CANONICAL_INTERACTIONS_BROWSER__ = Object.freeze({ passed, calls, exactArgs });
       result.textContent = passed ? "pass" : `fail ${JSON.stringify(window.__HSON_CANONICAL_INTERACTIONS_BROWSER__)}`;
       result.dataset.status = passed ? "pass" : "fail";
@@ -119,25 +124,159 @@
       result.dataset.status = "fail";
     }
 
+    function checkNativeDocumentCallbacks() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const togglePanel = ({ currentTarget }) => currentTarget.nextElementSibling.classList.toggle("open");
+      const solo = document.createElement("button");
+      const soloPanel = document.createElement("section");
+      document.body.append(solo, soloPanel);
+      const tree = graft(solo, { unsafe: false });
+      try {
+        const sub = tree.listen.onClick(togglePanel);
+        solo.click();
+        check(soloPanel.classList.contains("open"), "The standalone LiveTree click did not open the panel.");
+        sub.off();
+        solo.click();
+        check(soloPanel.classList.contains("open"), "Standalone .off() left its callback installed.");
+        tree.remove();
+      } finally { solo.remove(); soloPanel.remove(); }
+
+      const map = hsonLiveMap.fromLibraries({
+        page: { document: '<main <button @:toggle id="toggle" "Toggle"/> <section id="panel"/> <button id="other" "Other"/>/>' },
+        state: { json: 0 },
+      });
+      const page = map.doc.must("page");
+      const parent = page.at([1, 0]).asElement(), quad = page.q("toggle");
+      const coordinate = parent.at([0]).asElement(), builder = coordinate.listen;
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      const button = root.querySelector("#toggle"), panel = root.querySelector("#panel"), other = root.querySelector("#other");
+      const before = JSON.stringify(map.capture());
+      const authority = internal_livemap_aggregate_authority(map);
+      const interactions = authority.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+      const beforeInteractions = JSON.stringify(authority.systemRoot(interactions));
+      let staleAttempt;
+      const stopEarlyObserver = map.commits.observe(() => {
+        if (staleAttempt === undefined) return;
+        const attempt = staleAttempt;
+        staleAttempt = undefined;
+        attempt();
+      });
+      const continued = continue_document({ map, document: page, root });
+      try {
+        const anotherRoot = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+        let overlapError;
+        try { continue_document({ map, document: page, root: anotherRoot }).dispose(); } catch (error) { overlapError = error; }
+        check(/already has an active document projection/.test(String(overlapError?.cause)), "A second root gained correspondence for the same Document.");
+
+        // Use a browsing context for capture/passive ordering and leave the
+        // detached Document fixture below in place for lifecycle assertions.
+        const frame = document.createElement("iframe");
+        document.body.append(frame);
+        let scoped;
+        try {
+          const independent = hsonLiveMap.fromLibraries({ page: { document: '<button @:target id="option-target"/>' } });
+          const selected = independent.doc.must("page"), owner = frame.contentDocument;
+          owner.open(); owner.write(selected.render()); owner.close();
+          const target = owner.querySelector("#option-target");
+          scoped = continue_document({ map: independent, root: owner.documentElement });
+          checkIndependentNativeBuilders(() => selected.at([1, 0]).asElement(), target);
+          checkIndependentNativeBuilders(() => selected.q("target"), target);
+        } finally { scoped?.dispose(); frame.remove(); }
+
+        const toggle = builder.onClick(togglePanel);
+        const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+        let delivered, once = 0, peerCalls = 0;
+        builder.once().capture().preventDefault().onClick(event => { delivered = event; once++; });
+        const peer = builder.onClick(() => { peerCalls++; });
+        button.dispatchEvent(click);
+        check(panel.classList.contains("open") && delivered === click && click.defaultPrevented, "LiveMap did not deliver the same native click and options.");
+        toggle.off(); toggle.off();
+        button.click();
+        check(once === 1 && peerCalls === 2 && panel.classList.contains("open"), "Native once or .off() did not retire the exact registration.");
+        peer.off();
+        check(JSON.stringify(map.capture()) === before && JSON.stringify(authority.systemRoot(interactions)) === beforeInteractions,
+          "Native registration or dispatch changed canonical state.");
+
+        let moved = 0, currentCoordinate = 0;
+        const panelSub = quad.listen.onClick(() => { panel.classList.toggle("open"); moved++; });
+        map.data.must("state").at([]).set(1);
+        let staleError, staleCalls = 0;
+        staleAttempt = () => {
+          try { builder.onClick(() => { staleCalls++; }); } catch (error) { staleError = error; }
+        };
+        parent.move(2, 0);
+        check(root.querySelector("main").children[1] === button && quad.path().at(-1) === 1, "Movement lost the native or QUAD subject.");
+        const coordinateSub = builder.onClick(() => { currentCoordinate++; });
+        button.click();
+        check(moved === 1 && currentCoordinate === 0 && !panel.classList.contains("open"), "Movement duplicated or redirected a callback.");
+        other.click();
+        check(currentCoordinate === 1, "The retained coordinate did not select its current occupant.");
+        check(/current browser realization/.test(staleError?.message) && staleCalls === 0, "A listener attached while Mirror was behind the canonical coordinate.");
+        panelSub.off();
+        button.click();
+        check(moved === 1, "Moved subscription did not detach from its original button.");
+
+        let destroyed = 0, ambient = 0;
+        const retired = quad.listen.onClick(() => { destroyed++; });
+        quad.listen.document.onClick(() => { ambient++; });
+        const replacement = { $_tag: "button", $_attrs: { id: "replacement" }, $_content: [] };
+        quad.replace(replacement);
+        const incoming = root.querySelector("#replacement");
+        button.click(); incoming.click();
+        root.ownerDocument.dispatchEvent(new MouseEvent("click"));
+        check(incoming !== button && !quad.active && destroyed === 0 && ambient === 0, "Replacement retained a listener on the outgoing or incoming node.");
+        retired.off();
+        let retiredError;
+        try { quad.listen.onClick(() => {}); } catch (error) { retiredError = error; }
+        check(/no longer active/.test(retiredError?.message), "A retired QUAD could attach to its replacement.");
+
+        let standalone = 0;
+        const independent = continued.tree.find.must.byId("other").listen.onClick(() => { standalone++; });
+        continued.dispose();
+        other.click();
+        check(currentCoordinate === 1 && standalone === 1, "Continuation disposal did not release only its own callbacks.");
+        coordinateSub.off(); independent.off();
+        let disposedError;
+        try { builder.onClick(() => {}); } catch (error) { disposedError = error; }
+        check(/active browser realization/.test(disposedError?.message), "A disposed continuation still accepted callbacks.");
+      } finally { stopEarlyObserver(); continued.dispose(); }
+    }
+
+    function checkIndependentNativeBuilders(select, button) {
+      const owner = button.ownerDocument;
+      const subject = select();
+      const calls = [];
+      const click = () => button.dispatchEvent(new owner.defaultView.MouseEvent("click", { bubbles: true, cancelable: true }));
+      const ambient = subject.listen.document.capture().passive().once();
+      const direct = subject.listen.preventDefault();
+      const elementSub = direct.onClick(event => {
+        calls.push(["element", event.currentTarget === button, event.defaultPrevented]);
+      });
+      const ambientSub = ambient.onClick(event => {
+        event.preventDefault();
+        calls.push(["document", event.currentTarget === owner, event.defaultPrevented]);
+      });
+      const peerSub = subject.listen.document.onClick(event => {
+        calls.push(["bubble", event.currentTarget === owner, event.defaultPrevented]);
+      });
+      try {
+        click(); click();
+        elementSub.off(); elementSub.off();
+        click();
+        peerSub.off();
+        click();
+        const expected = [
+          ["document", true, false], ["element", true, true], ["bubble", true, true],
+          ["element", true, true], ["bubble", true, true], ["bubble", true, false],
+        ];
+        if (JSON.stringify(calls) !== JSON.stringify(expected)) {
+          throw new Error(`Native listener builders shared options or cleanup: ${JSON.stringify(calls)}`);
+        }
+      } finally { ambientSub.off(); elementSub.off(); peerSub.off(); }
+    }
+
     function checkSelectedLocalListeners() {
       const check = (condition, message) => { if (!condition) throw new Error(message); };
-      const solo = document.createElement("button");
-      document.body.append(solo);
-      const tree = graft(solo, { unsafe: false });
-      let direct = 0, once = 0, teardown = 0;
-      try {
-        const sub = tree.listen.onClick(event => { if (event.currentTarget === solo) direct++; });
-        tree.listen.once().onClick(() => once++);
-        solo.click(); solo.click();
-        check(direct === 2 && once === 1, "Solo LiveTree did not install ordinary callbacks immediately.");
-        sub.off();
-        tree.listen.onClick(() => teardown++);
-        solo.click();
-        check(direct === 2 && teardown === 1, "Solo LiveTree .off() did not remove its callback.");
-        tree.remove();
-        solo.click();
-        check(teardown === 1, "Retiring the solo subject left a native callback installed.");
-      } finally { solo.remove(); }
 
       const map = hsonLiveMap.fromLibraries({ page: {
         document: '<main <button @:panel id="panel"/> <button id="other"/>/>',
@@ -180,6 +319,103 @@
       } finally { continued.dispose(); }
     }
 
+    function checkNativeDuringExactRestore() {
+      const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button id="first"/> <button id="second"/>/>' } });
+      const authority = internal_livemap_aggregate_authority(map);
+      const page = map.doc.must("page"), parent = page.at([1, 0]).asElement();
+      const initial = authority.captureHosted();
+      parent.move(0, 1);
+      const moved = authority.captureHosted();
+      authority.restoreHosted(initial);
+      parent.attrs.set("title", "Ready");
+      const builder = parent.at([0]).asElement().listen;
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      let rejected = false, staleCalls = 0;
+      const stop = authority.observeRestore(() => {
+        try { builder.onClick(() => { staleCalls++; }); }
+        catch (cause) { rejected = /current browser realization/.test(cause.message); }
+      });
+      const continued = continue_document({ map, root });
+      try {
+        if (map.rev !== moved.revision) throw new Error("Exact restore fixture must reuse the current revision.");
+        authority.restoreHosted(moved);
+        const first = root.querySelector("#first"), second = root.querySelector("#second");
+        let subject;
+        builder.onClick(event => { subject = event.currentTarget; });
+        first.click(); second.click();
+        if (!rejected || staleCalls !== 0 || subject !== second) throw new Error("Same-revision restoration attached a callback through stale correspondence.");
+      } finally { stop(); continued.dispose(); }
+    }
+
+    function checkNativeDuringQueuedRestores() {
+      const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button @:first id="first"/> <button @:second id="second"/>/>' } });
+      const page = map.doc.must("page"), parent = page.at([1, 0]).asElement();
+      const authority = internal_livemap_aggregate_authority(map);
+      const initial = authority.captureHosted();
+      parent.move(0, 1);
+      const reordered = authority.captureHosted();
+      authority.restoreHosted(initial);
+      parent.attrs.set("title", "ready");
+      const unchanged = authority.captureHosted();
+      if (unchanged.revision !== reordered.revision) throw new Error("Queued restore fixtures must share a revision.");
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      const first = root.querySelector("#first"), second = root.querySelector("#second");
+      const builder = parent.at([0]).asElement().listen;
+      const evidence = [], delivered = [];
+      let firstWave = true, rejected = false, earlyDom, earlyUpdates;
+      const stopEarly = authority.observeRestore(() => {
+        if (!firstWave) return;
+        firstWave = false;
+        authority.restoreHosted(reordered);
+      });
+      const continued = continue_document({ map, root });
+      const updatesBefore = continued.mirror.diagnostics().updatesApplied;
+      const stopEvidence = page.commits.observe(observation => {
+        const state = livemap_document_observation_evidence(observation);
+        const main = state.root.$_content[0].$_content[0].$_content[1].$_content[0].$_content[0];
+        evidence.push([state.revision, main.$_attrs?.title, main.$_content[0].$_content[0].$_attrs.id]);
+      });
+      let waves = 0, settled;
+      const stopLate = authority.observeRestore(() => {
+        if (++waves === 1) {
+          earlyDom = root.querySelector("main").firstElementChild;
+          earlyUpdates = continued.mirror.diagnostics().updatesApplied;
+          try { builder.onClick(event => { delivered.push(event.currentTarget); }); }
+          catch (cause) { rejected = /current browser realization/.test(cause.message); }
+        } else {
+          settled = builder.onClick(event => { delivered.push(event.currentTarget); });
+        }
+      });
+      try {
+        authority.restoreHosted(unchanged);
+        first.click(); second.click();
+        if (JSON.stringify(evidence) !== JSON.stringify([[unchanged.revision, "ready", "first"], [reordered.revision, undefined, "second"]])
+          || !rejected || earlyDom !== first || earlyUpdates !== updatesBefore || !settled || continued.mirror.status !== "active"
+          || continued.mirror.diagnostics().updatesApplied !== updatesBefore + 1 || root.querySelector("main").firstElementChild !== second
+          || parent.at([0]).asElement().attrs.get("id") !== "second" || delivered.length !== 1 || delivered[0] !== second) {
+          throw new Error("Queued same-revision restorations lost their individual Document correspondence.");
+        }
+      } finally { stopEarly(); stopEvidence(); stopLate(); settled?.off(); continued.dispose(); }
+    }
+
+    function checkNativeDisposalDuringRegistration() {
+      const map = hsonLiveMap.fromLibraries({ page: { document: '<button id="dispose-binding"/>' } });
+      const page = map.doc.must("page");
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      const button = root.querySelector("button");
+      const continued = continue_document({ map, root });
+      let calls = 0, failure;
+      const addEventListener = button.addEventListener.bind(button);
+      button.addEventListener = (...args) => { continued.dispose(); addEventListener(...args); };
+      try {
+        try { page.at([1, 0]).asElement().listen.onClick(() => { calls++; }); } catch (error) { failure = error; }
+        button.click();
+        if (!/closed during registration/.test(failure?.message) || calls !== 0) {
+          throw new Error("Disposal during native registration left a late listener installed.");
+        }
+      } finally { continued.dispose(); }
+    }
+
     async function checkSelectedHostedListener() {
       const check = (condition, message) => { if (!condition) throw new Error(message); };
       const payloads = [], failures = [];
@@ -216,7 +452,27 @@
         check((await behaviors.trigger("rememberReceiver")).ok && receiver, "The local behavior did not receive its operating map.");
         const earlier = receiver.capture();
         const projected = continued.echo.doc.must("page");
-        check(!("listen" in projected.q("advance")), "Projected QUAD acquired canonical write authority.");
+        const selected = continued.map.q("advance"), projectedQuad = projected.q("advance");
+        const element = projected.at([1, 0, 0]).asElement();
+        check([selected, projectedQuad, element].every(subject => !("local" in subject.listen) && !("host" in subject.listen))
+          && !("set" in selected.attrs),
+          "Projected callback attachment exposed canonical write authority.");
+        checkIndependentNativeBuilders(() => element, button);
+        checkIndependentNativeBuilders(() => projectedQuad, button);
+        const authorityRevision = locus.rev;
+        let directCalls = 0, ambientCalls = 0, coordinateCalls = 0;
+        const native = selected.listen.onClick(function projectedCallback(event) {
+          if (event instanceof frame.contentWindow.MouseEvent && event.currentTarget === button) directCalls++;
+        });
+        element.listen.window.once().onClick(event => {
+          if (event.currentTarget === frame.contentWindow) ambientCalls++;
+        });
+        const coordinate = element.listen.onClick(() => { coordinateCalls++; });
+        button.click(); button.click();
+        check(directCalls === 2 && ambientCalls === 1 && coordinateCalls === 2 && payloads.length === 0 && locus.rev === authorityRevision
+          && JSON.stringify(receiver.capture()) === JSON.stringify(earlier), "Hosted native callbacks crossed the authority boundary.");
+        check(!(await behaviors.trigger("projectedCallback")).ok, "Native attachment registered a named behavior.");
+        native.off();
         const input = Hson.data.fromSource(Hson.canonical`<step -0>`);
         const pending = locus.doc.must("page").q("advance").listen.host.onClick("deck.advance", input);
         check(pending instanceof Promise && typeof await pending === "string" && payloads.length === 0,
@@ -224,7 +480,7 @@
         await until(() => continued.echo.sync.appliedRev === locus.rev, "Echo did not apply the accepted Descriptor.");
         button.click();
         await until(() => payloads.length !== 0 || failures.length !== 0, "The native click did not dispatch through Echo.");
-        check(payloads.length === 1 && payloads[0].equals(input) && failures.length === 0,
+        check(payloads.length === 1 && payloads[0].equals(input) && failures.length === 0 && directCalls === 2 && coordinateCalls === 3,
           "The authorized Locus action did not receive the exact authored input.");
         const latest = receiver.capture();
         check(latest.revision > earlier.revision, "The authoritative Descriptor did not reach the composed map.");
@@ -233,6 +489,10 @@
         try { receiver.restore(earlier); } catch (error) { restoreError = error; }
         check(/Echo authority/.test(restoreError?.message) && JSON.stringify(receiver.capture()) === JSON.stringify(latest),
           "A retained behavior map restored shared state after session disposal.");
+        continued.dispose();
+        button.click();
+        check(coordinateCalls === 3, "Hosted continuation disposal left a native callback installed.");
+        coordinate.off();
       } finally {
         continued?.dispose(); continued?.echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); frame.remove();
       }

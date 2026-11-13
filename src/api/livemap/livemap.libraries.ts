@@ -22,6 +22,7 @@ import { require_data_location, type DataLocationCheck } from "./livemap.data-re
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { composed_interaction_value, interaction_addition } from "../interactions/interactions.descriptor.js";
 import { capture_document_click, synchronous_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
+import { document_callback_listener } from "./livemap.document.native-listener.js";
 import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
@@ -1586,6 +1587,8 @@ function make_document_library(
       });
       const stopRestore = live_subscription(aggregate.observeRestore, () => { aggregate.librarySchema(library.identity); })((event) => {
         if (!event.libraries.includes(library.identity)) return;
+        const installed = event.documentState(library.identity);
+        if (installed === undefined) throw new Error("Restored Document Library has no installed-state evidence.");
         if (!event.changedLibraries.includes(library.identity) && event.continuity === "same-epoch") {
           const commit: LiveMapGraphCommit = Object.freeze({
             changed: false,
@@ -1601,7 +1604,8 @@ function make_document_library(
           register_livemap_document_observation_evidence(observation, Object.freeze({
             mode: "document" as const,
             revision: event.revision,
-            root: root(),
+            root: installed.root,
+            restoreOverlay: installed.overlay,
             continuity: event.continuity,
           }));
           listener(observation);
@@ -1615,7 +1619,8 @@ function make_document_library(
         register_livemap_document_observation_evidence(observation, Object.freeze({
           mode: "document" as const,
           revision: event.revision,
-          root: root(),
+          root: installed.root,
+          restoreOverlay: installed.overlay,
           continuity: event.continuity,
           rootRebase: (() => {
             const rebase = event.documentRootRebases?.find(entry => entry.library === library.identity);
@@ -1740,7 +1745,7 @@ function make_document_library(
     const edit = interaction_addition(captured.descriptor());
     commit_interaction_edit_internal(aggregate, edit);
     return captured.id;
-  });
+  }, guard => document_callback_listener(document, select, guard));
   const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean, qualified?: boolean): WritableDocumentLocation => {
     const read = () => check?.() === false ? undefined : raw.snap();
     // Cache by coordinate and qualification so a fresh selection can reflect the
@@ -1753,7 +1758,7 @@ function make_document_library(
     const hson = () => document_hson(read());
     const refine = (predicate: (value: HsonNode | Primitive | undefined) => boolean, element: boolean) =>
       wrap_location(raw, () => check?.() !== false && predicate(raw.snap()), element);
-    const wrapped = Object.freeze({
+    const wrapped = {
       get rev() { return raw.rev; },
       path: () => raw.path(),
       snap, hson, must: required_reads(snap, hson),
@@ -1786,10 +1791,6 @@ function make_document_library(
       delete: () => multi_commit(raw.delete()),
       insert: (index: number, value: LiveMapDocumentContent) => multi_commit(raw.insert(index, value)),
       move: (from: number, to: number) => multi_commit(raw.move(from, to)),
-      ...(elementQualified ? { listen: listenAt(() => {
-        if (check?.() === false) throw new TypeError("Document listener subject must be an ordinary element.");
-        return raw.path();
-      }) } : {}),
       attrs: Object.freeze({
         get: (name: string) => raw.attrs.get(name),
         has: (name: string) => raw.attrs.has(name),
@@ -1807,8 +1808,12 @@ function make_document_library(
         set: (...names: string[]) => multi_commit(raw.flags.set(...names)),
         clear: (...names: string[]) => multi_commit(raw.flags.clear(...names)),
       }),
-    });
-    const location = wrapped as WritableDocumentLocation;
+    };
+    if (elementQualified) Object.defineProperty(wrapped, "listen", { enumerable: true, get: () => listenAt(() => {
+      if (check?.() === false) throw new TypeError("Document listener subject must be an ordinary element.");
+      return raw.path();
+    }) });
+    const location = Object.freeze(wrapped) as WritableDocumentLocation;
     if (check === undefined) cache.set(raw, location);
     return location;
   };

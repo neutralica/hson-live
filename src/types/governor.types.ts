@@ -12,6 +12,7 @@ import type {
   LiveMapRegistryCommitObserverApi, LiveMapDocumentLibrary, LiveMapDataLibrary,
 } from "./livemap.types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
+import type { DocumentCallbackListener } from "./native-listener.types.js";
 
 export type LocusDataLocation<TValue = JsonValue | undefined, TRead = TValue> = Readonly<{
   readonly rev: number;
@@ -157,14 +158,14 @@ export type EchoLocalDataLibrary<TValue = JsonValue, TSchema extends HsonSchema 
   source: "client-local";
 }>;
 
-export type EchoDocumentLocation = import("./livemap.types.js").AuthorityDocumentLocation<unknown, Promise<void>, "set", HsonNode | Primitive | undefined, never>;
+export type EchoDocumentLocation = import("./livemap.types.js").AuthorityDocumentLocation<unknown, Promise<void>, "set", HsonNode | Primitive | undefined, DocumentCallbackListener>;
 export type EchoProjectedDocumentLibrary<TEvidence = unknown, TSchema extends HsonSchema = HsonSchema> = Omit<LocusDocumentLibrary<TEvidence, TSchema>, "at" | "document" | "css" | "q"> & Readonly<{
   source: "authority-projected";
   css: ((operation: LiveMapCssOp) => Promise<void>) & import("./document-css.types.js").DocumentCssRead
     & Pick<import("./document-css.types.js").DocumentCssCommands<Promise<void>>, "clearAll" | "atProperty" | "keyframes">
     & Readonly<{ stylesheet: (text: string) => Promise<void> }>;
-  at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, Promise<void>, "set", never>;
-  q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never> | undefined;
+  at: import("./livemap.types.js").AuthorityDocumentSelector<TEvidence, Promise<void>, "set", DocumentCallbackListener>;
+  q: (name: string) => import("./livemap.types.js").AuthorityDocumentQuadLocation<never, DocumentCallbackListener> | undefined;
   document: Omit<LocusDocumentLibrary["document"], "flags"> & Readonly<{
     flags: Pick<LocusDocumentLibrary["document"]["flags"], "has" | "set">;
   }>;

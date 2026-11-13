@@ -13,9 +13,10 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
-import { create_linked_livetree_in_runtime } from "../livetree/creation/create-livetree.js";
+import { create_linked_livetree_in_runtime, wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import { project_linked_livetree } from "../livetree/creation/project-live-tree.js";
 import type { LiveTree } from "../livetree/livetree.js";
+import { build_listener } from "../livetree/managers/listener-builder.js";
 import {
   document_binding_for_node,
   LiveTreeLinkedIdentityRequiredError,
@@ -101,16 +102,19 @@ import {
   livemap_document_identity_overlay_for,
   clone_livemap_document_exact_view,
   type LiveMapDocumentIdentityEffect,
+  type LiveMapDocumentIdentityOverlay,
 } from "../livemap/livemap.document.identity.js";
 import {
   LiveMapDocumentIdentityParticipantCollisionError,
   livemap_document_identity_reservation_for,
+  livemap_document_root_for_realization,
   register_livemap_document_identity_participant,
   require_livemap_document_canonical_identity,
+  type AttachDocumentCallback,
   type LiveMapDocumentIdentityAppliedClaim,
   type LiveMapDocumentIdentityCommitReservation,
 } from "../livemap/livemap.document.registration.js";
-import { livemap_document_observation_evidence } from "../livemap/livemap.document.capture.js";
+import { livemap_document_observation_evidence, type LiveMapDocumentObservationEvidence } from "../livemap/livemap.document.capture.js";
 import { internal_authority_position_observer } from "../livemap/livemap.internal.js";
 import { observe_client_library_retirement_internal } from "../livemap/livemap.libraries.js";
 import {
@@ -194,8 +198,10 @@ function reflect_document_binding_in_runtime(
 
   let capturedRevision: number;
   let sourceRoot: HsonNode;
+  let acceptedRoot: HsonNode;
   try {
     capturedRevision = map.rev;
+    acceptedRoot = livemap_document_root_for_realization(map.document);
     sourceRoot = clone_livemap_document_exact_view(
       map.root(),
       "document",
@@ -247,6 +253,16 @@ function reflect_document_binding_in_runtime(
   let offIdentityParticipant: (() => void) | undefined;
   let offRetirement: (() => void) | undefined;
   let rootRegistration: DocumentBindingNodeRegistration | undefined;
+  // LiveTree removes entries on off(), once, and subject retirement.
+  const callbackListeners = new Set<() => void>();
+
+  const release_callback_listeners = (): void => {
+    const failures: unknown[] = [];
+    for (const release of callbackListeners) {
+      try { release(); } catch (cause) { failures.push(cause); }
+    }
+    if (failures.length) throw new AggregateError(failures, "Document native listener disposal failed.");
+  };
 
   const release_borrowed_carrier = (): void => {
     if (borrowedCarrier === undefined) return;
@@ -273,6 +289,7 @@ function reflect_document_binding_in_runtime(
     offIdentityParticipant = undefined;
     offRetirement?.();
     offRetirement = undefined;
+    try { release_callback_listeners(); } catch { /* Preserve the binding failure. */ }
   };
 
   const assert_delegation_ready = (registration: ProjectedRegistration): void => {
@@ -496,7 +513,7 @@ function reflect_document_binding_in_runtime(
     currentStatus = "disposed";
     const failures: unknown[] = [];
     const clean = (run: () => void): void => { try { run(); } catch (cause) { failures.push(cause); } };
-    const callbacks = [off, offAuthorityPosition, offIdentityParticipant, offRetirement];
+    const callbacks = [off, offAuthorityPosition, offIdentityParticipant, offRetirement, release_callback_listeners];
     off = offAuthorityPosition = offIdentityParticipant = offRetirement = undefined;
     for (const callback of callbacks) if (callback !== undefined) clean(callback);
     for (const registration of registrations) clean(() => unregister_document_binding_node(registration.node, owner));
@@ -613,12 +630,12 @@ function reflect_document_binding_in_runtime(
     register_document_binding_node(root, rootRegistration);
   };
 
-  const register = (node: HsonNode, canonicalPath: readonly number[]): void => {
+  const register = (node: HsonNode, canonicalPath: readonly number[],
+    overlay = livemap_document_identity_overlay_for(map.document)): void => {
     if (!is_ordinary_element_node(node)) return;
     const path = validate_document_path(canonicalPath);
     const pathKey = path_key(path);
-    const persistedQuid = livemap_document_identity_overlay_for(map.document)
-      .quidAtPath(path);
+    const persistedQuid = overlay.quidAtPath(path);
     if (node.$_meta?.[HSON_META_QUID] !== undefined
       && node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
       throw new DocumentMirrorError(
@@ -679,11 +696,11 @@ function reflect_document_binding_in_runtime(
     }
   };
 
-  const walk = (node: HsonNode, path: readonly number[]): void => {
-    register(node, path);
+  const walk = (node: HsonNode, path: readonly number[], overlay?: LiveMapDocumentIdentityOverlay): void => {
+    register(node, path, overlay);
     for (let index = 0; index < node.$_content.length; index += 1) {
       const child = node.$_content[index];
-      if (is_Node(child)) walk(child, [...path, index]);
+      if (is_Node(child)) walk(child, [...path, index], overlay);
     }
   };
 
@@ -696,12 +713,12 @@ function reflect_document_binding_in_runtime(
     registrations = surviving;
   };
 
-  const rebuild_correspondence = (): void => {
+  const rebuild_correspondence = (overlay: LiveMapDocumentIdentityOverlay): void => {
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     registrations = [];
     byPath.clear();
     byQuid.clear();
-    walk(projectedRoot, []);
+    walk(projectedRoot, [], overlay);
     wholeCorrespondenceBuilds += 1;
   };
 
@@ -1113,11 +1130,44 @@ function reflect_document_binding_in_runtime(
     validate_registration(registration, mountedElements, observedDomIdentity, borrowed);
   };
 
+  const attach_callback: AttachDocumentCallback = (path, install) => {
+    const assertCurrent = (): void => {
+      // An exact restore can replace the accepted graph at the same revision.
+      if (map.rev !== currentRevision
+        || livemap_document_root_for_realization(map.document) !== acceptedRoot
+        || currentStatus !== "active") {
+        throw new Error("Document native listener requires a current browser realization.");
+      }
+    };
+    assertCurrent();
+    const key = path_key(path);
+    const registration = byPath.get(key);
+    const element = registration === undefined ? undefined : get_el_for_node(registration.node);
+    if (registration === undefined || element === undefined) {
+      throw new Error("Document native listener subject has no browser realization.");
+    }
+    validate_bound_registration(registration);
+    assertCurrent();
+    if (byPath.get(key) !== registration || get_el_for_node(registration.node) !== element) {
+      throw new Error("Document native listener subject changed during registration.");
+    }
+    const subject = wrap_in_tree(tree, registration.node);
+    const sub = install(build_listener(subject, callbackListeners));
+    try {
+      if (currentStatus !== "active" || subject.isDisposed || subject.dom.el() !== element) {
+        throw new Error("Document native listener realization closed during registration.");
+      }
+      assertCurrent();
+      if (byPath.get(key) !== registration) throw new Error("Document native listener subject changed during registration.");
+      return sub;
+    } catch (error) {
+      sub.off();
+      throw error;
+    }
+  };
+
   /** Cross the approved hard owner-epoch boundary with a fresh exact projection lineage. */
-  const reconstruct_new_epoch = (
-    canonicalMaterial: DocumentRootMaterial,
-    targetRevision: number,
-  ): void => {
+  const reconstruct_new_epoch = (evidence: LiveMapDocumentObservationEvidence): void => {
     if (borrowed) {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE,
@@ -1126,7 +1176,9 @@ function reflect_document_binding_in_runtime(
     }
     for (const registration of registrations) validate_bound_registration(registration);
     const outgoingRoot = projectedRoot;
-    const incomingRoot = clone_node(document_root_from_root(canonicalMaterial.root));
+    const root = document_root_from_root(evidence.root);
+    const incomingRoot = evidence.restoreOverlay === undefined ? clone_node(root)
+      : clone_livemap_document_exact_view(root, "document", evidence.restoreOverlay);
     try {
       preflight_livetree_quid_epoch_replacement(
         incomingRoot,
@@ -1167,7 +1219,7 @@ function reflect_document_binding_in_runtime(
     tree = create_linked_livetree_in_runtime(incomingRoot, runtime);
     projectedRoot = active_subject_for_tree(tree);
     register_root_lifecycle();
-    walk(projectedRoot, []);
+    walk(projectedRoot, [], evidence.restoreOverlay);
     wholeCorrespondenceBuilds += 1;
     if (ownerDocument !== undefined) {
       const incomingElement = project_linked_livetree(
@@ -1181,24 +1233,21 @@ function reflect_document_binding_in_runtime(
       }
     }
     for (const registration of registrations) validate_bound_registration(registration);
-    currentRevision = targetRevision;
+    currentRevision = evidence.revision;
+    acceptedRoot = evidence.root;
     updatesApplied += 1;
     currentStatus = "active";
   };
 
   const converge_compatible_root = (
-    canonicalMaterial: DocumentRootMaterial,
+    evidence: LiveMapDocumentObservationEvidence,
     observedMaterial: DocumentRootMaterial,
-    targetRevision: number,
     rootRebase?: Readonly<{ from: string | undefined; to: string | undefined }>,
   ): void => {
     for (const registration of registrations) validate_bound_registration(registration);
     const priorRootQuid = byPath.get(path_key([]))?.persistedQuid;
-    const exactRoot = clone_livemap_document_exact_view(
-      canonicalMaterial.root,
-      "document",
-      livemap_document_identity_overlay_for(map.document),
-    );
+    const overlay = evidence.restoreOverlay ?? livemap_document_identity_overlay_for(map.document);
+    const exactRoot = clone_livemap_document_exact_view(evidence.root, "document", overlay);
     const convergence = plan_document_root_convergence(
       projectedRoot,
       exactRoot,
@@ -1217,7 +1266,7 @@ function reflect_document_binding_in_runtime(
     try {
       apply_document_structural_transaction(convergence.structural, () => {
         prune_removed_registrations(convergence.structural.finalNodes);
-        rebuild_correspondence();
+        rebuild_correspondence(overlay);
         if (convergence.structural.borrowedRootRebase !== undefined) {
           tree = create_linked_livetree_in_runtime(convergence.structural.borrowedRootRebase.to, runtime);
         }
@@ -1241,7 +1290,8 @@ function reflect_document_binding_in_runtime(
         "Compatible root convergence was interrupted before correspondence publication.",
       );
     }
-    currentRevision = targetRevision;
+    currentRevision = evidence.revision;
+    acceptedRoot = evidence.root;
     updatesApplied += 1;
     currentStatus = "active";
     if (convergence.structural.affectedOwners.length > 0) notify_livetree_realizations_internal(runtime);
@@ -1263,22 +1313,19 @@ function reflect_document_binding_in_runtime(
         );
       }
       if (evidence.continuity === "new-epoch") {
-        reconstruct_new_epoch(evidence, observation.revision);
+        reconstruct_new_epoch(evidence);
       } else {
-        if (borrowed && evidence.rootRebase === undefined) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree),
-          livemap_document_identity_overlay_for(map.document).quidAtPath(validate_document_path([0])));
+        const rootQuid = (evidence.restoreOverlay ?? livemap_document_identity_overlay_for(map.document)).quidAtPath(validate_document_path([0]));
+        if (borrowed && evidence.rootRebase === undefined) {
+          assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree), rootQuid);
+        }
         const rootRebase = borrowed ? evidence.rootRebase : undefined;
         if (rootRebase !== undefined
           && (rootRebase.library !== map || rootRebase.from !== byPath.get(path_key([0]))?.persistedQuid
-            || rootRebase.to !== livemap_document_identity_overlay_for(map.document).quidAtPath(validate_document_path([0])))) {
+            || rootRebase.to !== rootQuid)) {
           throw new DocumentMirrorError(DOCUMENT_MIRROR_QUID_MISMATCH_ERROR_CODE, "Authorized root rebase does not match the binding and owning overlay.");
         }
-        converge_compatible_root(
-          evidence,
-          evidence,
-          observation.revision,
-          rootRebase,
-        );
+        converge_compatible_root(evidence, evidence, rootRebase);
       }
       return;
     }
@@ -1300,6 +1347,7 @@ function reflect_document_binding_in_runtime(
     // still continuity evidence for this binding's next selected transition.
     if (!commit.changed || commit.ops.length === 0) {
       currentRevision = commit.rev;
+      acceptedRoot = evidence.root;
       return;
     }
     if (borrowed) assert_borrowed_root_continuity(evidence.root, active_subject_for_tree(tree),
@@ -1318,9 +1366,9 @@ function reflect_document_binding_in_runtime(
       : undefined;
     if (replaceRoot !== undefined) {
       if (evidence.continuity === "new-epoch") {
-        reconstruct_new_epoch(evidence, commit.rev);
+        reconstruct_new_epoch(evidence);
       } else {
-        converge_compatible_root(evidence, replaceRoot, commit.rev);
+        converge_compatible_root(evidence, replaceRoot);
       }
       return;
     }
@@ -1377,6 +1425,7 @@ function reflect_document_binding_in_runtime(
         throw cause;
       }
       currentRevision = commit.rev;
+      acceptedRoot = evidence.root;
       updatesApplied += 1;
       if (plan.affectedOwners.length > 0) notify_livetree_realizations_internal(runtime);
       return;
@@ -1408,6 +1457,7 @@ function reflect_document_binding_in_runtime(
       validate_dom_attrs(registration, attrs);
     }
     currentRevision = commit.rev;
+    acceptedRoot = evidence.root;
     updatesApplied += 1;
   };
 
@@ -1434,6 +1484,7 @@ function reflect_document_binding_in_runtime(
     // Identity preflight must exist before commit observation begins. The
     // revision recheck then closes the capture-to-subscribe initialization gap.
     offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
+      attachCallback: attach_callback,
       quidUnavailable: (quid: string) => runtime.issuedQuids.has(quid) || runtime.pendingQuidClaims.has(quid) || runtime.quidToNode.has(quid),
       preflight: (operations, introduced) => preflight_identity_operations(operations, undefined, introduced),
       preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) =>
@@ -1458,7 +1509,7 @@ function reflect_document_binding_in_runtime(
       }
       currentRevision = revision; // Progress has no document or DOM work.
     });
-    if (map.rev !== capturedRevision) {
+    if (map.rev !== capturedRevision || livemap_document_root_for_realization(map.document) !== acceptedRoot) {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_REVISION_GAP_ERROR_CODE,
         "LiveMapDocument revision changed during document binding initialization.",

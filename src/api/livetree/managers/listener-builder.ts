@@ -179,9 +179,10 @@ export function _listeners_debug_hard_reset(): void {
  * so cleanup never demands canonical QUID identity.
  *
  * @param tree - The owning `LiveTree`.
+ * @param owningListeners - Optional binding scope that shares the native release functions.
  * @returns A fluent listener-registration surface.
  */
-export function build_listener(tree: LiveTree): ListenerBuilder {
+export function build_listener(tree: LiveTree, owningListeners: Set<() => void> | undefined = undefined): ListenerBuilder {
   let opts: ListenOpts = {};
   let missingPolicy: MissingPolicy = "warn";
   let _prevent = false;
@@ -249,10 +250,12 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       for (const tgt of targets) {
         let off: () => void = () => undefined;
         off = addWithOff(tgt, String(type), wrapped, aelo, active_subject_for_tree(tree), tree, () => {
+          owningListeners?.delete(off);
           const index = offs.indexOf(off);
           if (index >= 0) offs.splice(index, 1);
         });
         offs.push(off);
+        owningListeners?.add(off);
       }
     } catch (error) {
       sub.off();

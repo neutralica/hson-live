@@ -1,6 +1,7 @@
 // listen.types.ts
 
-
+import type { NativeListenerOptions, NativeListenerSub } from "./native-listener.types.js";
+export type { MissingPolicy } from "./native-listener.types.js";
 
 // one canonical map for convenience methods -> DOM event name
 const LISTEN_CONVENIENCE = {
@@ -124,41 +125,11 @@ export type ListenOpts = {
   target?: "element" | "window" | "document";
 };
 
-/**************************************************************
- * Policy for how to react when the intended EventTarget cannot
- * be resolved at attach time.
- *
- *   - "ignore" → silently skip attachment.
- *   - "warn"   → log a console warning but continue running.
- *   - "throw"  → throw immediately, treating missing targets
- *                as a hard configuration error.
- *
- * Used by `.strict(...)` on the ListenerBuilder to control
- * how brittle or forgiving listener setup should be.
- **************************************************************/
-export type MissingPolicy = "ignore" | "warn" | "throw";
+/** Idempotently remove the native registration from its event target. */
+export interface ListenerSub extends NativeListenerSub {}
 
-/**************************************************************
- * Handle returned by a listener registration.
- *
- * Represents the concrete attachment(s) made from a builder:
- *
- *   - `off()` → idempotently remove the underlying listener from
- *               its EventTarget.
- *
- * This is the low-level, side-effectful counterpart to the
- * fluent ListenerBuilder configuration surface.
- **************************************************************/
-export interface ListenerSub {
-  off(): void;
-}
-
-export interface ListenerBuilder {
+export interface ListenerBuilder extends NativeListenerOptions<ListenerBuilder> {
   on<K extends keyof ElemMap>(type: K, handler: (ev: ElemMap[K]) => void): ListenerSub;
-
-  document: ListenerBuilder;
-  window:  ListenerBuilder;
-  element:  ListenerBuilder;
 
   // Form / input
   onInput(fn: (ev: InputEvent) => void): ListenerSub;
@@ -229,19 +200,4 @@ export interface ListenerBuilder {
   // Custom events / escape hatches
   onCustom<E extends Event = Event>(type: string, handler: (ev: E) => void): ListenerSub;
   onCustomDetail<D>(type: string, handler: (ev: CustomEvent<D>) => void): ListenerSub;
-
-  // option modifiers: these return a configured builder for the next registration
-  once(): ListenerBuilder;
-  passive(): ListenerBuilder;
-  capture(): ListenerBuilder;
-  toWindow(): ListenerBuilder;
-  toDocument(): ListenerBuilder;
-
-  strict(policy?: MissingPolicy): ListenerBuilder;
-
-  preventDefault(): ListenerBuilder;
-  stopProp(): ListenerBuilder;
-  stopImmediateProp(): ListenerBuilder;
-  stopAll(): ListenerBuilder;
-  clearStops(): ListenerBuilder;
 }

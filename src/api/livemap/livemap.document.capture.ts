@@ -60,6 +60,8 @@ export type LiveMapDocumentObservationEvidence = Readonly<{
   revision: number;
   root: HsonNode;
   continuity: "same-epoch" | "new-epoch";
+  /** Identity correspondence captured alongside the root at restore installation. */
+  restoreOverlay?: LiveMapDocumentIdentityOverlay;
   /** Owner-proven receiving identity reset from an authorized retained-Library snapshot. */
   rootRebase?: Readonly<{ library: LiveMapDocumentLibrary; from: string | undefined; to: string | undefined }>;
 }>;

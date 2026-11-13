@@ -2,6 +2,7 @@ import { add_interaction, replace_interaction, remove_interaction, type HsonSche
 import { hsonLiveMap, type LiveMap, type LiveMapStagedWriter } from "hson-live/livemap";
 import type { Locus, LocusActionContext } from "hson-live/locus";
 import type { Echo, EchoLocalDocumentLibrary, EchoProjectedDocumentLibrary } from "hson-live/echo";
+import type { ListenerSub } from "hson-live/livetree";
 
 declare const descriptor: InteractionDescriptor;
 declare const map: LiveMap;
@@ -71,10 +72,27 @@ concrete.doc.must("page").at([1, 0]).asText()!.listen;
 localDocument.at([1, 0]).asText()!.listen;
 // @ts-expect-error A Locus text refinement exposes no element listener.
 governed.doc.must("page").at([1, 0]).asText()!.listen;
-// @ts-expect-error A projected element has no Descriptor write surface.
-projectedDocument.at([1, 0]).asElement()!.listen;
+const native = (event: MouseEvent) => { void event.clientX; };
+const pathSub: ListenerSub = pathElement.listen.onClick(native);
+const quadSub: ListenerSub = concrete.doc.must("page").q("panel")!.listen.once().onClick(native);
+const localSub: ListenerSub = localDocument.at([1, 0]).asElement()!.listen.onClick(native);
+const projectedElement = projectedDocument.at([1, 0]).asElement()!;
+const projectedQuad = projectedDocument.q("panel")!;
+const projectedSub: ListenerSub = projectedElement.listen.document.capture().onClick(native);
+const projectedQuadSub: ListenerSub = projectedQuad.at([0]).listen.onClick(event => { event satisfies MouseEvent; });
+for (const sub of [pathSub, quadSub, localSub, projectedSub, projectedQuadSub]) sub.off();
+// @ts-expect-error Native click expects the LiveTree mouse callback signature.
+pathElement.listen.onClick((event: KeyboardEvent) => {});
+// @ts-expect-error Native click expects a callback.
+pathElement.listen.onClick("panel.toggle");
+// @ts-expect-error A projected element has no local Descriptor write surface.
+projectedElement.listen.local;
+// @ts-expect-error A projected QUAD has no host Descriptor write surface.
+projectedQuad.listen.host;
 // @ts-expect-error A projected QUAD stays read-only.
-projectedDocument.q("panel")!.listen;
+projectedQuad.attrs.set("title", "blocked");
+// @ts-expect-error A projected text refinement exposes no native listener.
+projectedDocument.at([1, 0]).asText()!.listen;
 // @ts-expect-error Action-context element reads have no write authority.
 action.doc.must("page").at([1, 0]).asElement()!.listen;
 // @ts-expect-error Action-context QUADs stay read-only.

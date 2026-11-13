@@ -134,6 +134,19 @@ export function internal_authority_position_observer(
   return INTERNAL_AUTHORITY_POSITION_OBSERVERS.get(owner);
 }
 
+export type LiveMapAggregateRestore = Readonly<{
+  previousRevision: number;
+  revision: number;
+  libraries: readonly LiveMapLibraryIdentity[];
+  changedLibraries: readonly LiveMapLibraryIdentity[];
+  continuity: "same-epoch" | "new-epoch";
+  documentState: (library: LiveMapLibraryIdentity) => Readonly<{
+    root: HsonNode;
+    overlay: LiveMapDocumentIdentityOverlay;
+  }> | undefined;
+  documentRootRebases?: readonly Readonly<{ library: LiveMapLibraryIdentity; from: string | undefined; to: string | undefined }>[];
+}>;
+
 /** Non-public aggregate capability used only by architecture acceptance tests. @internal */
 export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Insertion-ordered opaque identities; this is an in-package test seam, not a selector API. */
@@ -392,15 +405,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
    * global revisions and has no operation sequence to replay.
    * @internal
    */
-  observeRestore: (listener: (event: Readonly<{
-    previousRevision: number;
-    revision: number;
-    libraries: readonly LiveMapLibraryIdentity[];
-    /** Libraries whose canonical roots actually changed at this boundary. */
-    changedLibraries: readonly LiveMapLibraryIdentity[];
-    continuity: "same-epoch" | "new-epoch";
-    documentRootRebases?: readonly Readonly<{ library: LiveMapLibraryIdentity; from: string | undefined; to: string | undefined }>[];
-  }>) => void) => () => void;
+  observeRestore: (listener: (event: LiveMapAggregateRestore) => void) => () => void;
   watch: (
     library: LiveMapLibraryIdentity,
     path: LivePath,

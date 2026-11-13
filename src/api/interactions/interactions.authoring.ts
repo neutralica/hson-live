@@ -1,4 +1,5 @@
-import type { DocumentListener } from "../../types/interaction.descriptor.types.js";
+import type { DocumentElementListener, DocumentListener } from "../../types/interaction.descriptor.types.js";
+import type { DocumentCallbackListener } from "../../types/native-listener.types.js";
 import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import { admit_data_input, type HsonDataInput } from "../data/hson-data.js";
 import { capture_livemap_document_element } from "../livemap/livemap.document.identity-handle.js";
@@ -9,7 +10,7 @@ type AuthorClick<TResult> = (destination: Destination, key: string, input: HsonD
 
 /** A writable coordinate can carry element qualification in its runtime facade. @internal */
 export type WritableDocumentLocation = ReturnType<LiveMapDocumentLibrary["at"]> & Readonly<{
-  listen?: DocumentListener<string> | undefined;
+  listen?: DocumentElementListener<string> | undefined;
 }>;
 
 export function document_listener<TResult>(author: AuthorClick<TResult>): DocumentListener<TResult> {
@@ -19,19 +20,23 @@ export function document_listener<TResult>(author: AuthorClick<TResult>): Docume
   });
 }
 
-const listenerGuards = new WeakMap<DocumentListener<string>, (guard: () => void) => DocumentListener<string>>();
+const listenerGuards = new WeakMap<DocumentElementListener<string>, (guard: () => void) => DocumentElementListener<string>>();
 
 /** Let the governing facade check its owner at the actual capture and commit boundaries. @internal */
 export function synchronous_document_listener(
   author: (destination: Destination, key: string, input: HsonDataInput, assertReadable: () => void) => string,
-): DocumentListener<string> {
-  const bind = (guard: () => void) => document_listener((destination, key, input) => author(destination, key, input, guard));
+  callbacks: (assertReadable: () => void) => DocumentCallbackListener,
+): DocumentElementListener<string> {
+  const bind = (guard: () => void): DocumentElementListener<string> => Object.freeze(Object.assign(
+    callbacks(guard),
+    document_listener((destination, key, input) => author(destination, key, input, guard)),
+  ));
   const listener = bind(() => {});
   listenerGuards.set(listener, bind);
   return listener;
 }
 
-export function guard_document_listener(listener: DocumentListener<string>, guard: () => void): DocumentListener<string> {
+export function guard_document_listener(listener: DocumentElementListener<string>, guard: () => void): DocumentElementListener<string> {
   const bind = listenerGuards.get(listener);
   if (bind === undefined) throw new Error("Unknown Document listener capability.");
   return bind(guard);

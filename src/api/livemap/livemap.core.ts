@@ -148,7 +148,7 @@ import {
   stage_livemap_identity_epoch,
   type LiveMapIssuedQuidLedger
 } from "./livemap.identity-epoch.js";
-import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
+import type { LiveMapAggregateRestore, LiveMapSemanticCheckpoint } from "./livemap.internal.js";
 import {
   type InternalLiveMapAggregateAuthority
 } from "./livemap.internal.js";
@@ -434,14 +434,16 @@ function make_livemap_registry_engine(
         // Each observer sees the installed cut, including reentrant advances.
         observer => observer.listener(clientComposition?.revision ?? mapRevision), "identity-installation"));
   };
-  const aggregateRestoreObservers: Array<(event: Readonly<{
-    previousRevision: number;
-    revision: number;
-    libraries: readonly LiveMapLibraryIdentity[];
-    changedLibraries: readonly LiveMapLibraryIdentity[];
-    continuity: "same-epoch" | "new-epoch";
-    documentRootRebases?: readonly Readonly<{ library: LiveMapLibraryIdentity; from: string | undefined; to: string | undefined }>[];
-  }>) => void> = [];
+  const aggregateRestoreObservers: Array<(event: LiveMapAggregateRestore) => void> = [];
+  // Document roots are replaced on installation. Keep each root and its sparse
+  // overlay together until its own notification is delivered.
+  const capture_restore_documents = (): LiveMapAggregateRestore["documentState"] => {
+    const documents = new Map<LiveMapLibraryIdentity, NonNullable<ReturnType<LiveMapAggregateRestore["documentState"]>>>();
+    for (const { identity, root, documentOverlay } of libraryRegistry.all()) {
+      if (documentOverlay !== undefined) documents.set(identity, Object.freeze({ root, overlay: documentOverlay }));
+    }
+    return library => documents.get(library);
+  };
   const aggregateWatches: AggregateWatch[] = [];
   const aggregateFeeds: AggregateFeed[] = [];
   const internalPathAuthorities = new WeakMap<object, Map<string, ReturnType<typeof make_internal_path_authority>>>();
@@ -2595,6 +2597,8 @@ function make_livemap_registry_engine(
       operations: Object.freeze([]), topology,
       hosted: make_hosted_topology_commit(hosted.fence, hosted.registry, nextRegistry, topology, prevRev),
     });
+    const documentRoots = new Map(libraryRegistry.all().filter(state => state.mode === "document").map(state => [state.identity, state.root]));
+    documentRootByAggregate.set(commit, documentRoots);
     const transition = transitionController.prepareAuthority({
       commit,
       assertManagementCurrent,
@@ -2723,6 +2727,8 @@ function make_livemap_registry_engine(
     const commit: LiveMapAggregateCommit = Object.freeze({ kind: "aggregate", changed: true,
       prevRev, rev: prevRev + 1, operations: Object.freeze([]),
       css: Object.freeze({ library: libraryIdentity, operation: normalizedOp }) });
+    const documentRoots = new Map(libraryRegistry.all().filter(library => library.mode === "document").map(library => [library.identity, library.root]));
+    documentRootByAggregate.set(commit, documentRoots);
     const prepared = transitionController.prepareAuthority({
       commit, libraryModes: Object.freeze(["document"]),
       baseStillCurrent: () => mapRevision === prevRev && state.stylesheet === current,
@@ -2994,18 +3000,19 @@ function make_livemap_registry_engine(
         hostedFence = Object.freeze({ ...checkpoint.authority });
         for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
         transitionController.invalidate();
-        afterTopologyInstall?.(bindings);
-        publishInstalledPosition();
+        const documentState = capture_restore_documents();
         const event = Object.freeze({
           previousRevision,
           revision: checkpoint.revision,
           libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
-          changedLibraries: Object.freeze(changedLibraries),
+          changedLibraries: Object.freeze(changedLibraries), documentState,
           continuity: "new-epoch" as const,
         });
+        afterTopologyInstall?.(bindings);
+        publishInstalledPosition();
         enqueuePublication(() => {
           deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
-          publishAuthorityPosition();
+          publishAuthorityPosition(event.revision);
         });
       },
     });
@@ -3137,16 +3144,17 @@ function make_livemap_registry_engine(
     mapRevision = snapshot.revision;
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
     transitionController.invalidate();
+    const documentState = capture_restore_documents();
     publishInstalledPosition();
     const restored = Object.freeze(candidates.map(({ state }) => state.identity));
     const correspondence = Object.freeze({ associations: Object.freeze(associations), assertCurrent: capture_fence() });
     portableRestorations.set(correspondence, portableStylesheets);
     afterTopologyInstall?.(restored);
-    const event = Object.freeze({ previousRevision, revision: mapRevision, libraries: restored,
-      changedLibraries, continuity: "new-epoch" as const });
+    const event = Object.freeze({ previousRevision, revision: snapshot.revision, libraries: restored,
+      changedLibraries, documentState, continuity: "new-epoch" as const });
     enqueuePublication(() => {
       deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
-      publishAuthorityPosition();
+      publishAuthorityPosition(event.revision);
     });
     return correspondence;
   }
@@ -3321,6 +3329,8 @@ function make_livemap_registry_engine(
       : "new-epoch" as const;
     const changedLibraries = Object.freeze(candidates
       .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root)
+        || (candidate.documentOverlay !== undefined && !livemap_document_identity_overlay_equal(
+          require_document_overlay(candidate.library.documentOverlay), candidate.documentOverlay))
         || (candidate.css !== undefined && !portable_document_stylesheet_equal(stylesheet(candidate.library.identity), candidate.css)))
       .map((candidate) => candidate.library.identity));
     if (systemCandidate === undefined) {
@@ -3348,6 +3358,7 @@ function make_livemap_registry_engine(
     if (authority !== undefined) hostedFence = Object.freeze({ ...authority });
     transitionController.invalidate();
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
+    const documentState = capture_restore_documents();
     publishInstalledPosition();
     // A hosted recovery snapshot is an atomic replacement boundary, not a
     // fabricated operation commit.  Selected document libraries use this to
@@ -3361,12 +3372,12 @@ function make_livemap_registry_engine(
       previousRevision,
       revision: snapshot.revision,
       libraries: restored,
-      changedLibraries,
+      changedLibraries, documentState,
       continuity,
     });
     enqueuePublication(() => {
       deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
-      publishAuthorityPosition();
+      publishAuthorityPosition(event.revision);
     });
     return correspondence;
   }
@@ -3610,22 +3621,24 @@ function make_livemap_registry_engine(
         .map((binding) => [binding.name, binding])) });
     transitionController.invalidate();
     for (const state of libraryRegistry.all()) mark_quad_document_root(state.root, state.documentQuads);
+    const revision = mapRevision;
+    const documentState = capture_restore_documents();
     publishInstalledPosition();
     transitionController.runUnmanaged(() => afterTopologyInstall?.(Object.freeze(candidates.map((candidate) => Object.freeze({
       name: candidate.name, identity: candidate.state.identity,
     }))), Object.freeze(retired)));
     const event = Object.freeze({
       previousRevision,
-      revision: mapRevision,
+      revision,
       libraries: Object.freeze(candidates.filter((candidate) => candidate.retained)
         .map((candidate) => candidate.state.identity)),
-      changedLibraries,
+      changedLibraries, documentState,
       continuity: "same-epoch" as const,
       documentRootRebases,
     });
     enqueuePublication(() => {
       deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
-      publishAuthorityPosition();
+      publishAuthorityPosition(event.revision);
     });
   }
 
@@ -4051,15 +4064,16 @@ function make_livemap_registry_engine(
       }
       hostedFence = Object.freeze({ ...authority });
       transitionController.invalidate();
-      publishInstalledPosition();
+      const documentState = capture_restore_documents();
       const continuity = hosted.fence.logicalMapId === authority.logicalMapId
         && hosted.fence.incarnationId === authority.incarnationId ? "same-epoch" as const : "new-epoch" as const;
       const event = Object.freeze({ previousRevision: mapRevision, revision: mapRevision,
         libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
-        changedLibraries: Object.freeze([]), continuity });
+        changedLibraries: Object.freeze([]), documentState, continuity });
+      publishInstalledPosition();
       enqueuePublication(() => {
         deliver_livemap_observers(aggregateRestoreObservers, observer => observer(event), "restore");
-        publishAuthorityPosition();
+        publishAuthorityPosition(event.revision);
       });
     },
     captureSelectedHosted: capture_selected_hosted,
