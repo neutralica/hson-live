@@ -1,5 +1,7 @@
 export { hsonLiveTree } from "./livetree.facade.js";
 export { LiveTree } from "./livetree.js";
+export type { LiveTreeActionContext, LiveTreeActionHandler, LiveTreeActions } from "../../types/livetree-action.types.js";
+export type { LocalActionMessage, LocalActionResult } from "../../types/local-action.types.js";
 export type {
   AsyncLiveTree,
   AsyncLiveTreeAttrs,

@@ -1,5 +1,8 @@
 import { hsonLiveMap } from "hson-live/livemap";
-import { hsonLiveTree, type LiveTree, type ListenerSub, type ListenerBuilder, type TreeSelector } from "hson-live/livetree";
+import { Hson, type HsonDataValue } from "hson-live/hson";
+import { hsonLiveTree, type LiveTree, type ListenerSub, type ListenerBuilder, type TreeSelector,
+  type LiveTreeActionContext, type LiveTreeActionHandler, type LiveTreeActions,
+  type LocalActionMessage, type LocalActionResult } from "hson-live/livetree";
 
 void hsonLiveTree.fromTrustedHtml("<main></main>");
 void hsonLiveTree.fromJson({ ready: true });
@@ -30,7 +33,7 @@ selection.listen.on("invented-event", () => {});
 // @ts-expect-error Convenience handlers retain their event types.
 selection.listen.onClick((event: KeyboardEvent) => {});
 
-hsonLiveMap.create().behaviors.define("click", (ctx, input, message) => {
+hsonLiveMap.create().actions.define("click", (ctx, input, message) => {
   ctx.event satisfies Event | undefined;
   ctx.subject satisfies LiveTree | undefined;
   ctx.event?.preventDefault();
@@ -41,3 +44,27 @@ hsonLiveMap.create().behaviors.define("click", (ctx, input, message) => {
   message.id satisfies string;
   return input;
 });
+
+const tree = hsonLiveTree.fromHson("<button/>");
+const actions: LiveTreeActions = tree.actions;
+const inputSchema = Hson.schema`<type "data" content <open "boolean">>`;
+const toggle: LiveTreeActionHandler = async (ctx, input, message) => {
+  ctx satisfies LiveTreeActionContext;
+  ctx.tree satisfies LiveTree;
+  ctx.subject satisfies LiveTree | undefined;
+  ctx.event satisfies Event | undefined;
+  input satisfies HsonDataValue | undefined;
+  message satisfies LocalActionMessage;
+  return input;
+};
+actions.define("PANEL_TOGGLE", toggle, { input: { required: true, schema: inputSchema } });
+const result: Promise<LocalActionResult> = actions.trigger("PANEL_TOGGLE", { open: true });
+void result;
+const authored: ListenerSub = tree.listen.event("<hson:event on:click local:PANEL_TOGGLE input:data={<open true>} <> >");
+authored.off() satisfies void;
+// @ts-expect-error A declaration requires Hson source text.
+tree.listen.event(() => {});
+// @ts-expect-error Public trigger does not accept a native event as input.
+actions.trigger("PANEL_TOGGLE", new MouseEvent("click"));
+// @ts-expect-error Registrations are additive.
+actions.unregister("PANEL_TOGGLE");

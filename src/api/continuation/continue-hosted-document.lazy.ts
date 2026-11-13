@@ -5,7 +5,7 @@ import type { HostedDocumentContinuation } from "./continuation.types.js";
 
 type HostedInteractions = Readonly<{
   /** Synchronously register on the composed client LiveMap before its listeners activate. */
-  registerBehaviors?: (behaviors: InteractionLocalBehaviors) => void | undefined;
+  registerActions?: (actions: InteractionLocalBehaviors) => void | undefined;
   onFailure?: (failure: InteractionFailure) => void;
 }>;
 

@@ -171,7 +171,7 @@ try {
   const rootInteractions = { onFailure: failure => interactionFailures.push(failure) };
   const quadGrafted = await continue_hosted_document({ now: state.quadHostedCut, credential: state.quadCredential,
     transport: quadTransport, document: "page", root: quadRoot, interactions: { ...rootInteractions,
-      registerBehaviors: behaviors => behaviors.define("rootClick", ctx => { rootClicks++; lastClickSubject = ctx.subject; }) } });
+      registerActions: actions => actions.define("rootClick", ctx => { rootClicks++; lastClickSubject = ctx.subject; }) } });
   set_document_adoption_fault_hook_for_tests(undefined);
   const quadPage = echo_map_internal(quadGrafted.echo).doc.must("page");
   let privateRejected = false;
@@ -275,7 +275,7 @@ try {
     let calls = 0;
     const hosted = await continue_hosted_document({ now: failureCut, credential: state.quadCredential,
       transport: failureTransport, document: "page", root: failureRoot,
-      interactions: { registerBehaviors: behaviors => behaviors.define("rootClick", () => { calls++; }) } });
+      interactions: { registerActions: actions => actions.define("rootClick", () => { calls++; }) } });
     const client = echo_map_internal(hosted.echo), page = client.doc.must("page");
     let binding = hosted;
     if (provider === "local") {
@@ -641,7 +641,7 @@ try {
     transport: librariesTransport,
     document: state.libraries.document,
     root: librariesRoot,
-    interactions: { registerBehaviors: behaviors => behaviors.define("clicker", () => { interactionCalls += 1; }) },
+    interactions: { registerActions: actions => actions.define("clicker", () => { interactionCalls += 1; }) },
   }));
   const hostedSubject = subject_for_tree(librariesContinuation.tree);
   const hostedBefore = librariesContinuation.tree.node;

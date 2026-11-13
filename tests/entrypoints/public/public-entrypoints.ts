@@ -169,10 +169,13 @@ continue_document({ map: continuationRegistry, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.
 continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport, root: continuationRoot, interactions: { dispatch: async () => {} } });
 void continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport,
-  root: continuationRoot, interactions: { registerBehaviors: behaviors => { behaviors.define("reveal", () => {}); } } });
+  root: continuationRoot, interactions: { registerActions: actions => { actions.define("reveal", () => {}); } } });
 void continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport,
   // @ts-expect-error Registration completes synchronously before listener installation.
-  root: continuationRoot, interactions: { registerBehaviors: async () => {} } });
+  root: continuationRoot, interactions: { registerActions: async () => {} } });
+void continue_hosted_document({ now: continuationCut, credential: continuationCredential, transport: continuationTransport,
+  // @ts-expect-error Only registerActions is available.
+  root: continuationRoot, interactions: { registerBehaviors: () => {} } });
 
 declare const genuineHsonData: HsonDataValue;
 const retainedHsonData: HsonDataValue = genuineHsonData;
@@ -420,8 +423,10 @@ void [interactionListener, interactionDescriptor, localInteractionDescriptor,
   authoritativeInteractionDescriptor, localInteractionBehavior, localInteractionBehaviors,
   interactionDispatcher, interactionFailure, interactionActivation];
 const behaviorOptions: LocalBehaviorDefinitionOptions = { input: { required: true, schema: ANY_DATA } };
-const behaviors: InteractionLocalBehaviors = continuationRegistry.behaviors;
-behaviors.define("reveal", (context, data, message) => {
+// @ts-expect-error The pre-release behaviors receiver was removed.
+continuationRegistry.behaviors;
+const actions: InteractionLocalBehaviors = continuationRegistry.actions;
+actions.define("reveal", (context, data, message) => {
   const ctx: LocalBehaviorContext = context;
   const invocation: LocalBehaviorMessage = message;
   const event: Event | undefined = ctx.event;
@@ -429,12 +434,12 @@ behaviors.define("reveal", (context, data, message) => {
   void [invocation.id, invocation.name, ctx.map, event, subject];
   return data;
 }, behaviorOptions);
-const behaviorResult: LocalBehaviorResult = await behaviors.trigger("reveal", null);
+const behaviorResult: LocalBehaviorResult = await actions.trigger("reveal", null);
 if (behaviorResult.ok) void behaviorResult.result?.scalar();
 else void behaviorResult.error.message;
-void behaviors.trigger("reveal");
+void actions.trigger("reveal");
 // @ts-expect-error Triggering accepts HSON Data input.
-void behaviors.trigger("reveal", new Date());
+void actions.trigger("reveal", new Date());
 // @ts-expect-error Interaction activation uses its LiveMap's registry.
 void activate_interactions({ ...interactionActivation, local: { reveal: localInteractionBehavior } });
 // @ts-expect-error Refinement vocabulary was hard-replaced by constraint vocabulary.

@@ -102,10 +102,10 @@ tree.attrs.set("data-ready", "yes");
 tree.css.set.color("rebeccapurple");
 ```
 
-LiveTree callbacks registered through `tree.listen` are imperative runtime
-callbacks. They are appropriate when portable/recoverable event intent is not
-needed. Runtime coverage: LiveTree listener and CSS public-API acceptance
-tests.
+`tree.listen.onClick(callback)` attaches a native callback. For named runtime
+execution, define an action on `tree.actions`, trigger it directly, or attach
+an authored Hson declaration with `tree.listen.event(source)`. See [LiveTree
+actions and authored clicks](livetree/api-livetree.md#local-actions-and-authored-clicks).
 
 ### 4. LiveMap + Mirror — local document projection
 
@@ -222,7 +222,7 @@ its Mirror and interaction arrangements without disposing Echo.
 ```ts
 import { Hson, activate_interactions, add_interaction } from "hson-live";
 
-libraries.behaviors.define("reveal", ({ subject }, args) => {
+libraries.actions.define("reveal", ({ subject }, args) => {
   if (subject) show(subject, args?.materialize());
 });
 add_interaction(libraries, descriptor);
@@ -234,11 +234,11 @@ const dispose = activate_interactions({
 dispose();
 ```
 
-Define executable behavior on the operating LiveMap and activate portable
-descriptors on the intended tree. `kind: "browser"` resolves through `map.behaviors`.
+Define executable actions on the operating LiveMap and activate portable
+descriptors on the intended tree. `kind: "browser"` resolves through `map.actions`.
 `kind: "locus"` invokes the dispatcher. Subject
 Library ownership, independently of kind, decides whether Locus or the client
-owns canonical descriptor state. The runtime behavior registry grants no Locus
+owns canonical descriptor state. The runtime action registry grants no Locus
 action authorization. Descriptors
 do not serialize callbacks, auto-generate registrations, mint subject identity,
 or intrinsically require Echo. Runtime coverage: canonical-interactions tests.

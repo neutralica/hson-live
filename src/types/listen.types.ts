@@ -130,6 +130,8 @@ export interface ListenerSub extends NativeListenerSub {}
 
 export interface ListenerBuilder extends NativeListenerOptions<ListenerBuilder> {
   on<K extends keyof ElemMap>(type: K, handler: (ev: ElemMap[K]) => void): ListenerSub;
+  /** Attach one authored Hson click declaration using a registered local action. */
+  event(source: string): ListenerSub;
 
   // Form / input
   onInput(fn: (ev: InputEvent) => void): ListenerSub;

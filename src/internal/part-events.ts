@@ -1,20 +1,13 @@
 import { event_attachment_position } from "../core/authored-event-names.js";
-import type { Position } from "../api/transform/token.types.js";
 import { _throw_transform_err } from "../core/errors.js";
-import { canonical_hson_data_from_node } from "../core/hson-data-canonical-codec.js";
 import { is_ordinary_element_node } from "../core/node-guards.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../core/ordered-projected-value.js";
 import type { HsonNode } from "../core/types.js";
-import { assemble_hson_tokens } from "../api/transform/parsers/assemble-hson-tokens.js";
-import { reject_portable_quid_tokens } from "../api/transform/parsers/parse-hson-source.js";
-import { tokenize_authored_event } from "../api/transform/parsers/tokenize-hson.js";
-import type { InteractionListener } from "../types/interaction.descriptor.types.js";
-import { DOCUMENT_CLICK_LISTENER } from "../api/interactions/interactions.descriptor.js";
-import { is_part_parameter_name, type PartReference } from "./part-placeholder.js";
+import { event_source_position, parse_authored_event, type AuthoredEvent, type AuthoredEventReferenceInput } from "./authored-events.js";
+import { is_part_parameter_name } from "./part-placeholder.js";
 
-export type PartEventReferenceInput = Readonly<{ kind: "reference"; reference: PartReference; start: Position; end: Position }>;
-type EventInput = Readonly<{ kind: "literal"; value: OrderedProjectedValue }> | PartEventReferenceInput;
-export type PartEvent = Readonly<{ kind: "locus" | "browser"; key: string; listener: InteractionListener; input: EventInput }>;
+export type PartEventReferenceInput = AuthoredEventReferenceInput;
+export type PartEvent = AuthoredEvent;
 export type PartEvents = ReadonlyMap<string, PartEvent>;
 
 export function read_part_events(value: OrderedProjectedValue): PartEvents {
@@ -33,51 +26,14 @@ export function read_part_events(value: OrderedProjectedValue): PartEvents {
 }
 
 export function parse_part_event(source: string): PartEvent {
-  const { flags, input } = tokenize_authored_event(source);
-  let event: string | undefined, eventPosition: Position | undefined;
-  let destination: (Pick<PartEvent, "kind" | "key"> & { position: Position }) | undefined;
-  const fail = (message: string, position: Position, first?: Position): never =>
-    _throw_transform_err(message, "Part event declaration", undefined, undefined, {
-      code: "HSON_EVENT_DECLARATION_INVALID", stage: "source-admission", source: source_position(position),
-      ...(first === undefined ? {} : { related: [{ role: "first-declaration", source: source_position(first) }] }),
-    });
-  for (const [flag, position] of flags) {
-    if (flag === "once" || flag === "stopProp") continue;
-    if (flag.startsWith("on:")) {
-      if (eventPosition !== undefined) fail("An authored event requires exactly one on: selector.", position, eventPosition);
-      event = flag.slice(3);
-      eventPosition = position;
-      if (event !== "click") fail("This authored event slice supports only on:click.", position);
-    } else if (flag.startsWith("host:") || flag.startsWith("local:")) {
-      if (destination !== undefined) fail("Choose exactly one host: or local: behavior.", position, destination.position);
-      const key = flag.slice(flag.indexOf(":") + 1);
-      if (key.length === 0) fail("Expected a behavior name after host: or local:.", position);
-      destination = { kind: flag.startsWith("host:") ? "locus" : "browser", key, position };
-    } else fail(`Unsupported authored event header item ${JSON.stringify(flag)}.`, position);
-  }
-  if (event === undefined || destination === undefined) return fail("An authored event requires on:click and one host: or local: behavior.", input.start);
-  let argument: EventInput;
-  if (Array.isArray(input.value)) {
-    reject_portable_quid_tokens(input.value);
-    const root = assemble_hson_tokens(input.value, attrs => {
-      if (attrs.length !== 0) throw new TypeError("input:data cannot carry attributes or metadata.");
-      return { attrs: {}, meta: {} };
-    });
-    argument = { kind: "literal", value: canonical_hson_data_from_node(root) };
-  } else argument = { kind: "reference", reference: input.value, start: input.start, end: input.end };
-  return { kind: destination.kind, key: destination.key, listener: { ...DOCUMENT_CLICK_LISTENER, event,
-    once: flags.has("once"), stopPropagation: flags.has("stopProp") }, input: argument };
-}
-
-function source_position(position: Position) {
-  return { index: position.index, line: position.line, column: position.col };
+  return parse_authored_event(source, "Part event declaration");
 }
 
 export function fail_part_event_reference(message: string, input: PartEventReferenceInput, node: HsonNode, attribute: string, cause?: unknown): never {
   const attachment = event_attachment_position(node, attribute);
   return _throw_transform_err(message, "Part event input", undefined, cause, {
-    code: "HSON_EVENT_REFERENCE_INVALID", stage: "source-admission", source: source_position(input.start),
-    related: [{ role: "value-end", source: source_position(input.end) },
+    code: "HSON_EVENT_REFERENCE_INVALID", stage: "source-admission", source: event_source_position(input.start),
+    related: [{ role: "value-end", source: event_source_position(input.end) },
       ...(attachment === undefined ? [] : [{ role: "event-attachment", source: attachment }])],
   });
 }

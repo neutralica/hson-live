@@ -192,18 +192,18 @@ export function observe_livetree_realizations_internal(
 export function notify_livetree_realizations_internal(runtime: LiveTreeRuntime): void {
   for (const listener of [...runtime.realizationListeners]) {
     try { listener(); }
-    catch (cause) { report_realization_observer_failure(cause); }
+    catch (cause) { report_livetree_runtime_failure("LiveTree realization observer failed after publication.", cause); }
   }
 }
 
-/** Post-commit observer failures never participate in mutation rollback. */
-function report_realization_observer_failure(cause: unknown): void {
-  let error: Error = new Error("LiveTree realization observer failed after publication.", { cause });
+/** Deliver runtime failures outside operations that have no caller to receive them. @internal */
+export function report_livetree_runtime_failure(message: string, cause: unknown): void {
+  let error: Error = new Error(message, { cause });
   try {
     const reporter = (globalThis as typeof globalThis & { reportError?: (error: unknown) => void }).reportError;
     if (typeof reporter === "function") { Reflect.apply(reporter, globalThis, [error]); return; }
   } catch (reportingFailure) {
-    error = new AggregateError([error, reportingFailure], "LiveTree realization error reporter failed.");
+    error = new AggregateError([error, reportingFailure], "LiveTree runtime error reporter failed.");
   }
   // Node and Workers without reportError use the existing runtime-manager
   // console reporting convention. If every reporting facility fails, host

@@ -264,6 +264,19 @@ check("specialist /echo and /locus resolve in browser bundles without Node adapt
   browser_graph("root-livemap-public.mjs", 'import { hsonLiveMap } from "hson-live"; globalThis.map = hsonLiveMap.create();');
 });
 
+check("standalone LiveTree actions exclude canonical activation and hosted execution", () => {
+  const graph = browser_graph("livetree-local-actions.mjs", `
+    import { hsonLiveTree } from "hson-live/livetree";
+    const tree = hsonLiveTree.fromHson("<button/>");
+    tree.actions.define("run", (_context, input) => input);
+    globalThis.actionSub = tree.listen.event("<hson:event on:click local:run input:data={null} <> >");
+  `);
+  const prohibited = graph.inputs.filter(path => /\/api\/(?:interactions|locus|livehost)\//.test(path)
+    || /\/internal\/interaction-storage\.js$/.test(path)
+    || /\/api\/echo\/(?!echo\.document-authority-registry\.js$)/.test(path));
+  assert.deepEqual(prohibited, [], "Standalone actions retained canonical activation or hosted execution.");
+});
+
 check("local document continuation tree-shakes hosted Echo and Locus machinery", () => {
   const build = esbuild.buildSync({
     absWorkingDir: repositoryRoot,

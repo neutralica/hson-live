@@ -220,13 +220,13 @@ async function start_hosted_document(context: HostedStart): Promise<HostedDocume
       try {
         // Echo reconciles the composed LiveMap in place. Register on that same
         // receiver before deriving installations from the recovered descriptors.
-        const registerBehaviors = interactions.registerBehaviors;
-        if (registerBehaviors !== undefined) {
-          if (typeof registerBehaviors !== "function") throw new TypeError("registerBehaviors must be a function.");
-          const configured = registerBehaviors(resolved.aggregate.behaviors);
+        const registerActions = interactions.registerActions;
+        if (registerActions !== undefined) {
+          if (typeof registerActions !== "function") throw new TypeError("registerActions must be a function.");
+          const configured = registerActions(resolved.aggregate.actions);
           if (is_staged_thenable(configured)) {
             void Promise.resolve(configured).catch(() => {});
-            throw new TypeError("registerBehaviors must be synchronous.");
+            throw new TypeError("registerActions must be synchronous.");
           }
         }
         const dispatch = async (actionKey: string, payload: HsonDataValue): Promise<void> => {

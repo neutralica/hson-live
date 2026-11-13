@@ -257,7 +257,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   const button = new FakeElement("button");
   root.appendChild(button);
   let calls = 0;
-  map.behaviors.define("click", () => { calls += 1; });
+  map.actions.define("click", () => { calls += 1; });
   const continuation = continue_document({
     map,
     root: fullPage(root) as unknown as Element,

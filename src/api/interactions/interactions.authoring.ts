@@ -3,7 +3,8 @@ import type { DocumentCallbackListener } from "../../types/native-listener.types
 import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import { admit_data_input, type HsonDataInput } from "../data/hson-data.js";
 import { capture_livemap_document_element } from "../livemap/livemap.document.identity-handle.js";
-import { DOCUMENT_CLICK_LISTENER, interaction_descriptor, new_interaction_id } from "./interactions.descriptor.js";
+import { DOCUMENT_CLICK_LISTENER } from "../../internal/listener-config.js";
+import { interaction_descriptor, new_interaction_id } from "./interactions.descriptor.js";
 
 type Destination = keyof DocumentListener<unknown>;
 type AuthorClick<TResult> = (destination: Destination, key: string, input: HsonDataInput) => TResult;
@@ -46,7 +47,7 @@ export function guard_document_listener(listener: DocumentElementListener<string
 export function capture_document_click(owner: object, library: string, select: () => readonly number[],
   destination: Destination, key: string, input: HsonDataInput, assertLifetime?: () => void) {
   const path = capture_livemap_document_element(owner, select, assertLifetime);
-  if (typeof key !== "string" || key.length === 0) throw new TypeError("Document click requires a behavior name.");
+  if (typeof key !== "string" || key.length === 0) throw new TypeError("Document click requires an action name.");
   const data = admit_data_input(input);
   const id = new_interaction_id();
   const kind = destination === "local" ? "browser" : "locus";

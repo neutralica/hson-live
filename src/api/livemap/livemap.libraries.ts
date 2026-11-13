@@ -128,7 +128,7 @@ import type { LiveMapSemanticCheckpoint, PreparedLiveMapSemanticCheckpoint } fro
 import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js";
 import { deliver_livemap_observers } from "./livemap.observer-delivery.js";
 import { is_staged_thenable, make_livemap_staged_writer } from "./livemap.staged.js";
-import { make_livemap_behaviors } from "./livemap.behaviors.js";
+import { make_livemap_actions } from "./livemap.actions.js";
 import type { InteractionLocalBehaviors } from "../../types/local-behavior.types.js";
 import type { LiveMapAggregateWrite } from "./livemap.library.js";
 import { decode_document_scoped_quads, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
@@ -991,9 +991,9 @@ function make_livemap_library_receiver(
   };
 
   // Definitions belong to the receiver even when its canonical state is restored in place.
-  let behaviors: InteractionLocalBehaviors | undefined;
+  let actions: InteractionLocalBehaviors | undefined;
   const libraries = Object.freeze({
-    get behaviors(): InteractionLocalBehaviors { return behaviors ??= make_livemap_behaviors(map); },
+    get actions(): InteractionLocalBehaviors { return actions ??= make_livemap_actions(map); },
     get rev() { return aggregate.hostedPosition().revision; },
     ...make_family_selectors(resolve),
     batch,

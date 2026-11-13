@@ -71,8 +71,8 @@ for (const selected of ["control", "page", "flat"] as const) {
     const continuation = await continue_hosted_document({ now, document, credential: session.credential!,
       root: root as unknown as Element, transport: testedTransport,
       ...(selected === "control" ? {} : { interactions: {
-        registerBehaviors(behaviors) {
-          for (const id of ["left", "right", "flat-click", "other-click"]) behaviors.define(id, () => { calls.push(id); });
+        registerActions(actions) {
+          for (const id of ["left", "right", "flat-click", "other-click"]) actions.define(id, () => { calls.push(id); });
         },
         onFailure: failure => { failures.push(failure); },
       } }) });
@@ -150,7 +150,7 @@ for (const selected of ["control", "page", "flat"] as const) {
   } }, page: { access: "shared", document: scopedPage } }, { interactions: [browser("left", "page", 0)] });
   const map = locus_map_internal(locus);
   const mirror = hsonMirror(map.doc.must("page"));
-  map.behaviors.define("left", () => {});
+  map.actions.define("left", () => {});
   const dispose = activate_interactions({ map, tree: mirror.tree });
   dispose(); mirror.dispose(); locus.dispose();
   console.log("PASS sole scoped Document implicit selection");

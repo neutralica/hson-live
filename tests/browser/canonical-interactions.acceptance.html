@@ -62,13 +62,13 @@
     const calls = { element: 0, document: 0, window: 0, passive: 0 };
     let exactArgs = false;
     let nativeClick;
-    map.behaviors.define("element", (ctx, args) => {
+    map.actions.define("element", (ctx, args) => {
       calls.element += 1;
       nativeClick = ctx.event;
       exactArgs = ctx.map === map && ctx.subject?.node.$_meta?.quid === treeButtonQuid
         && treeButtonQuid !== QUID && Object.is(args?.materialize(), -0);
     });
-    for (const name of ["document", "window", "passive"]) map.behaviors.define(name, () => { calls[name] += 1; });
+    for (const name of ["document", "window", "passive"]) map.actions.define(name, () => { calls[name] += 1; });
     const dispose = activate_interactions({ map, tree });
 
     const button = subjectDocument.querySelector("#subject");
@@ -83,10 +83,10 @@
     button.dispatchEvent(passive);
 
     const runtimeMap = hsonLiveMap.create();
-    runtimeMap.behaviors.define("standalone", (ctx, input) =>
+    runtimeMap.actions.define("standalone", (ctx, input) =>
       ctx.map === runtimeMap && ctx.event === undefined && ctx.subject === undefined ? input : undefined,
     { input: { required: true, schema: ANY_DATA } });
-    const direct = await runtimeMap.behaviors.trigger("standalone", -0);
+    const direct = await runtimeMap.actions.trigger("standalone", -0);
     const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
       runtimeData: { json: true } });
     const runtimeReplica = hsonLiveMap.create();
@@ -109,6 +109,9 @@
     dispose();
     const result = document.querySelector("#result");
     try {
+      await checkStandaloneActions();
+      await checkCrossRootActionOwner();
+      checkStandaloneNativeLifecycle();
       await checkAuthoredEvents();
       checkNativeDocumentCallbacks();
       checkSelectedLocalListeners();
@@ -122,6 +125,238 @@
     } catch (cause) {
       result.textContent = cause.stack ?? String(cause);
       result.dataset.status = "fail";
+    }
+
+    async function checkStandaloneActions() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const container = subjectDocument.createElement("section");
+      container.innerHTML = '<button id="action-subject"></button><button id="other-subject"></button>';
+      subjectDocument.body.append(container);
+      const root = graft(container, { unsafe: false });
+      const subject = root.find.must.byId("action-subject");
+      const button = subject.dom.must.el();
+      const otherElement = root.find.must.byId("other-subject").dom.must.el();
+      const click = () => new subjectWindow.MouseEvent("click", { bubbles: true, cancelable: true });
+      const clicks = [], reports = [], unhandled = [];
+      const errors = event => {
+        if (event.error?.message?.startsWith("LiveTree action ")) { reports.push(event.error); event.preventDefault(); }
+      };
+      const rejections = event => { unhandled.push(event.reason); event.preventDefault(); };
+      window.addEventListener("error", errors);
+      window.addEventListener("unhandledrejection", rejections);
+      let bubbles = 0, callbacks = 0;
+      container.addEventListener("click", () => { bubbles++; });
+      const source = (action, flags = "", input = "null") =>
+        `<hson:event on:click local:${action} ${flags} input:data={${input}} <> >`;
+      try {
+        const registry = root.actions;
+        check(subject.actions === registry && graft(button, { unsafe: false }).actions === registry,
+          "Handles for the same owned tree did not share its actions.");
+        root.actions.define("panel", (ctx, input, message) => { clicks.push({ ctx, input, message }); return input; });
+        const pending = subject.listen.once().capture();
+        const first = subject.listen.event(source("panel", "once stopProp", "<'10' -0 '2' null>"));
+        const repeated = subject.listen.event(source("panel"));
+        pending.onClick(function ordinaryCallback(event) {
+          if (event instanceof subjectWindow.MouseEvent && event.currentTarget === button) callbacks++;
+        });
+        const native = click();
+        button.dispatchEvent(native);
+        button.dispatchEvent(click());
+        const firstCall = clicks[0];
+        const entries = firstCall.input.entries();
+        check(clicks.length === 3 && callbacks === 1 && bubbles === 1 && firstCall.ctx.tree === root
+          && firstCall.ctx.subject === subject && firstCall.ctx.event === native && native instanceof subjectWindow.MouseEvent
+          && entries.map(([name]) => name).join() === "10,2" && Object.is(entries[0][1].scalar(), -0)
+          && entries[1][1].scalar() === null && clicks[1].input.scalar() === null,
+        "Authored click lost exact input, native realm, propagation, once, or builder isolation.");
+        first.off();
+        repeated.off(); repeated.off();
+        button.dispatchEvent(click());
+        check(clicks.length === 3 && !(await registry.trigger("ordinaryCallback")).ok,
+          "Listener disposal or callback registration altered the action registry.");
+
+        const surviving = subject.listen.event(source("panel"));
+        check(subject.detach() === 1 && subject.dom.el() === button && !button.isConnected, "Detach lost the native subject.");
+        button.dispatchEvent(click());
+        root.append(subject);
+        check(subject.actions === registry && subject.dom.el() === button && button.isConnected, "Reattachment lost the root registry.");
+        button.dispatchEvent(click());
+        subject.remove();
+        button.dispatchEvent(click());
+        surviving.off();
+        check(clicks.length === 5 && clicks.slice(3).every(call => call.ctx.tree === root && call.ctx.subject === subject),
+          "Reversible detach or terminal removal changed listener lifetime.");
+        const direct = await registry.trigger("panel", -0);
+        check(direct.ok && Object.is(direct.result.scalar(), -0) && clicks[5].ctx.event === undefined
+          && new Set(clicks.map(call => call.message.id)).size === 6, "Direct triggering lost exact Data or invocation identity.");
+
+        const other = root.find.must.byId("other-subject");
+        const sync = new Error("sync"), async = new Error("async");
+        registry.define("sync", () => { throw sync; });
+        registry.define("async", async () => { throw async; });
+        other.listen.event(source("sync"));
+        other.listen.event(source("async"));
+        otherElement.dispatchEvent(click());
+        await new Promise(resolve => setTimeout(resolve, 0));
+        check(reports.length === 2 && reports[0].cause === sync && reports[1].cause === async && unhandled.length === 0,
+          "Native action failures escaped runtime reporting.");
+        root.remove();
+        otherElement.dispatchEvent(click());
+        check(reports.length === 2 && !(await registry.trigger("panel")).ok, "Terminal removal left actions or listeners callable.");
+      } finally {
+        root.remove();
+        window.removeEventListener("error", errors);
+        window.removeEventListener("unhandledrejection", rejections);
+        container.remove();
+      }
+    }
+
+    async function checkCrossRootActionOwner() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const sourceElement = subjectDocument.createElement("section");
+      sourceElement.append(subjectDocument.createElement("button"));
+      const destinationElement = subjectDocument.createElement("aside");
+      subjectDocument.body.append(sourceElement, destinationElement);
+      const source = graft(sourceElement, { unsafe: false });
+      const destination = graft(destinationElement, { unsafe: false });
+      const subject = source.find.must.byTag("button"), button = subject.dom.must.el();
+      const click = () => button.dispatchEvent(new subjectWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
+      const sourceActions = source.actions, destinationActions = destination.actions;
+      const declaration = "<hson:event on:click local:panel input:data={null} <> >";
+      let sourceCalls = 0, destinationCalls = 0, unrelatedCalls = 0, callbacks = 0, bubbles = 0;
+      const reports = [];
+      const onError = event => {
+        if (event.error?.message?.startsWith("LiveTree action ")) { reports.push(event.error); event.preventDefault(); }
+      };
+      window.addEventListener("error", onError);
+      try {
+        sourceActions.define("panel", ctx => { if (ctx.event) sourceCalls++; return "source"; });
+        destinationActions.define("panel", ctx => { if (ctx.event) destinationCalls++; return "destination"; });
+        destinationActions.define("observe", () => { unrelatedCalls++; });
+        const original = subject.listen.event(declaration.replace("on:click", "on:click stopProp"));
+        const ordinary = subject.listen.onClick(() => { callbacks++; });
+        const parent = destination.listen.onClick(() => { bubbles++; });
+        check(subject.detach() === 1, "The original subject could not detach.");
+        click();
+        source.append(subject);
+        click();
+        check(subject.actions === sourceActions && sourceCalls === 2 && callbacks === 2,
+          "Detach or same-root reattachment released the declaration.");
+        check(subject.detach() === 1, "The subject could not detach for the cross-root move.");
+        destination.append(subject);
+        click();
+        check(subject.actions === destinationActions && sourceCalls === 3 && destinationCalls === 0 && callbacks === 3 && bubbles === 0,
+          "Moving the subject changed its installed action or propagation settings.");
+        check((await sourceActions.trigger("panel")).result?.scalar() === "source", "Moving the subject retired its source registry.");
+        const unrelated = subject.listen.event(declaration.replace("local:panel", "local:observe"));
+
+        const removeListener = button.removeEventListener;
+        const releaseFailure = new Error("native cleanup failed");
+        let retirementError;
+        button.removeEventListener = () => { throw releaseFailure; };
+        try { source.remove(); }
+        catch (cause) { retirementError = cause; }
+        finally { button.removeEventListener = removeListener; }
+        check(retirementError === releaseFailure && !source.isDisposed && sourceElement.isConnected,
+          "Failed native cleanup retired or unmounted the action owner.");
+        click();
+        check(sourceCalls === 4 && destinationCalls === 0 && unrelatedCalls === 1 && callbacks === 4 && bubbles === 0 && reports.length === 0,
+          "Failed native cleanup lost the original action or disturbed other listeners.");
+
+        source.remove();
+        check(!subject.isDisposed && subject.dom.el() === button, "Removing the source retired the moved subject.");
+        click();
+        check(sourceCalls === 4 && destinationCalls === 0 && unrelatedCalls === 2 && callbacks === 5 && bubbles === 1 && reports.length === 0,
+          "Retiring the source left an active native declaration or implicitly rebound it.");
+
+        const local = subject.listen.event(declaration);
+        original.off(); original.off();
+        click();
+        check(sourceCalls === 4 && destinationCalls === 1 && unrelatedCalls === 3 && callbacks === 6 && bubbles === 2 && reports.length === 0,
+          "Source cleanup disturbed a destination declaration or an ordinary callback.");
+        check(!(await sourceActions.trigger("panel")).ok && (await destinationActions.trigger("panel")).result?.scalar() === "destination",
+          "Retirement affected the wrong registry.");
+        subject.remove();
+        click();
+        check(destinationCalls === 1 && unrelatedCalls === 3 && callbacks === 6 && reports.length === 0,
+          "Subject teardown left a native registration.");
+        local.off(); local.off(); unrelated.off(); ordinary.off(); parent.off();
+      } finally {
+        source.remove(); destination.remove();
+        window.removeEventListener("error", onError);
+      }
+    }
+
+    function checkStandaloneNativeLifecycle() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const parent = subjectDocument.createElement("section");
+      const button = subjectDocument.createElement("button");
+      parent.append(button);
+      subjectDocument.body.append(parent);
+      const tree = graft(parent, { unsafe: false });
+      const subject = tree.find.must.byTag("button");
+      const add = button.addEventListener, remove = button.removeEventListener;
+      const click = () => button.dispatchEvent(new subjectWindow.MouseEvent("click", { bubbles: true }));
+      const declaration = "<hson:event on:click once stopProp local:run input:data={null} <> >";
+      const order = [];
+      try {
+        tree.actions.define("run", () => { order.push("action"); });
+        tree.listen.capture().onClick(() => { order.push("capture"); });
+        tree.listen.onClick(() => { order.push("bubble"); });
+        subject.listen.onClick(() => { order.push("first"); });
+        const once = subject.listen.event(declaration);
+        subject.listen.onClick(() => { order.push("last"); });
+        click();
+        check(order.splice(0).join() === "capture,first,action,last", "Native registration or propagation order changed.");
+        once.off(); once.off();
+        click();
+        check(order.splice(0).join() === "capture,first,last,bubble", "Native once disturbed the remaining listeners.");
+
+        button.addEventListener = function (...args) { add.apply(this, args); click(); };
+        let earlyFailure;
+        try { subject.listen.event(declaration); } catch (cause) { earlyFailure = cause; }
+        button.addEventListener = add;
+        check(/consumed during native installation/.test(earlyFailure?.message)
+          && order.splice(0).join() === "capture,first,last,bubble",
+          "Reentrant native add invoked or applied modifiers for an unpublished action.");
+        const retry = subject.listen.event(declaration);
+        click();
+        check(order.splice(0).join() === "capture,first,last,action", "Reentrant add left a stale action or changed peer order.");
+        retry.off();
+
+        const retained = subject.listen.event(declaration.replace("once ", ""));
+        const removalFailure = new Error("remove failed before reaching the DOM");
+        let removalAttempts = 0, offError;
+        button.removeEventListener = () => { removalAttempts++; throw removalFailure; };
+        try { retained.off(); } catch (cause) { offError = cause; }
+        click();
+        check(offError === removalFailure && order.splice(0).join() === "capture,first,last,bubble",
+          "Failed off left the action or its propagation modifier active.");
+        button.removeEventListener = function (...args) { removalAttempts++; remove.apply(this, args); };
+        retained.off(); retained.off();
+        check(removalAttempts === 2, "Repeated off did not retry the exact native wrapper once.");
+
+        const afterEffect = new Error("remove failed after reaching the DOM");
+        let terminalError;
+        button.removeEventListener = function (...args) { remove.apply(this, args); throw afterEffect; };
+        try { tree.remove(); } catch (cause) { terminalError = cause; }
+        button.removeEventListener = remove;
+        check(terminalError === afterEffect && !tree.isDisposed && button.isConnected,
+          "A remove-then-throw failure retired or detached the subtree.");
+        click();
+        const restored = order.splice(0);
+        check(restored[0] === "capture" && restored[3] === "bubble"
+          && restored.slice(1, 3).sort().join() === "first,last",
+          "Terminal rollback lost or duplicated a native callback.");
+        tree.remove();
+        click();
+        check(order.length === 0, "Terminal subtree cleanup left a native callback.");
+      } finally {
+        button.addEventListener = add;
+        button.removeEventListener = remove;
+        tree.remove();
+        parent.remove();
+      }
     }
 
     function checkNativeDocumentCallbacks() {
@@ -286,7 +521,7 @@
       const panel = root.querySelector("#panel"), other = root.querySelector("#other");
       const exact = Hson.data.fromSource(Hson.canonical`<'10' -0 '2' 2 __proto__ <safe true>>`);
       const calls = [], failures = [];
-      map.behaviors.define("panel.toggle", (ctx, data) => { calls.push({ element: ctx.subject?.dom.el(), data }); },
+      map.actions.define("panel.toggle", (ctx, data) => { calls.push({ element: ctx.subject?.dom.el(), data }); },
         { input: { required: true, schema: ANY_DATA } });
       const continued = continue_document({ map, document: page, root, interactions: { onFailure: failure => failures.push(failure) } });
       try {
@@ -431,7 +666,7 @@
         fetch: (input, init) => binding.handle(new Request(input, init), {}) });
       const frame = document.createElement("iframe");
       let continued;
-      let behaviors, receiver;
+      let actions, receiver;
       const until = async (condition, message) => {
         for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
         check(condition(), message);
@@ -445,11 +680,12 @@
         await loaded;
         const root = frame.contentDocument.documentElement, button = root.querySelector("#advance");
         continued = await continue_hosted_document({ now, credential: session.credential, root, transport,
-          interactions: { onFailure: failure => failures.push(failure), registerBehaviors(registry) {
-            behaviors = registry;
+          interactions: { onFailure: failure => failures.push(failure), registerActions(registry) {
+            actions = registry;
             registry.define("rememberReceiver", ({ map }) => { receiver = map; });
           } } });
-        check((await behaviors.trigger("rememberReceiver")).ok && receiver, "The local behavior did not receive its operating map.");
+        check((await actions.trigger("rememberReceiver")).ok && receiver?.actions === actions,
+          "The action hook did not receive the operating map registry.");
         const earlier = receiver.capture();
         const projected = continued.echo.doc.must("page");
         const selected = continued.map.q("advance"), projectedQuad = projected.q("advance");
@@ -471,7 +707,7 @@
         button.click(); button.click();
         check(directCalls === 2 && ambientCalls === 1 && coordinateCalls === 2 && payloads.length === 0 && locus.rev === authorityRevision
           && JSON.stringify(receiver.capture()) === JSON.stringify(earlier), "Hosted native callbacks crossed the authority boundary.");
-        check(!(await behaviors.trigger("projectedCallback")).ok, "Native attachment registered a named behavior.");
+        check(!(await actions.trigger("projectedCallback")).ok, "Native attachment registered a named action.");
         native.off();
         const input = Hson.data.fromSource(Hson.canonical`<step -0>`);
         const pending = locus.doc.must("page").q("advance").listen.host.onClick("deck.advance", input);
@@ -590,8 +826,8 @@
             if (request.type === "action") submissions++;
             return transport.operations.submit(request, options);
           } } },
-          interactions: { registerBehaviors(behaviors) {
-            behaviors.define("deck.panel", (ctx, data) => { args.push([ctx.subject?.dom.el(), data]); },
+          interactions: { registerActions(actions) {
+            actions.define("deck.panel", (ctx, data) => { args.push([ctx.subject?.dom.el(), data]); },
               { input: { required: true, schema: ANY_DATA } });
           },
             onFailure: failure => failures.push(failure) },

@@ -18,7 +18,7 @@ export type ExecutionInputContract = Readonly<{
   schema: VerifiedCanonicalSchemaGraph | undefined;
 }>;
 
-/** Capture the same immutable Data contract for hosted actions and local behaviors. */
+/** Capture the same immutable Data contract for hosted and local actions. */
 export function capture_execution_input(
   options: ExecutionInputOptions | undefined, label: string, schemaLabel: string,
 ): ExecutionInputContract | undefined {

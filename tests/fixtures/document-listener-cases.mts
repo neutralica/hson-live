@@ -56,7 +56,7 @@ export async function document_listener_cases(): Promise<void> {
     assert.deepEqual(map.capture(), beforeCallbacks);
     assert.deepEqual(descriptors(map), []);
     let invoked = 0;
-    map.behaviors.define("panel.toggle", () => { invoked++; }, { input: { required: true, schema: ANY_DATA } });
+    map.actions.define("panel.toggle", () => { invoked++; }, { input: { required: true, schema: ANY_DATA } });
     const pathId = coordinate_listener<string>(coordinate).local.onClick("panel.toggle", exact);
     const quadId = quad.listen.local.onClick("panel.toggle", exact);
     assert.equal(typeof pathId, "string");
@@ -251,10 +251,10 @@ export async function document_listener_cases(): Promise<void> {
       const observed = deferred();
       const beforeReplay = echo.rev;
       const replayPublications: number[] = [];
-      let behavior: ReturnType<LiveMap["behaviors"]["trigger"]> | undefined;
+      let action: ReturnType<LiveMap["actions"]["trigger"]> | undefined;
       let localId: string | undefined;
       let retained: LiveMap | undefined;
-      client.behaviors.define("observeReplay", ({ map: receiver }) => {
+      client.actions.define("observeReplay", ({ map: receiver }) => {
         retained = receiver;
         const selected = receiver.doc.must("page").q("selected")!;
         assert.throws(() => selected.listen.local.onClick("shared", exact), /authority/);
@@ -284,14 +284,14 @@ export async function document_listener_cases(): Promise<void> {
       });
       const stop = echo.commits.observe(() => {
         stop();
-        behavior = client.behaviors.trigger("observeReplay");
+        action = client.actions.trigger("observeReplay");
         observed.resolve();
       });
       const stopPublications = echo.commits.observe(commit => replayPublications.push(commit.rev));
       try {
         await locus.data.must("state").at(["count"]).replace(2);
         await observed.promise;
-        assert.deepEqual(await behavior, { ok: true });
+        assert.deepEqual(await action, { ok: true });
         assert.deepEqual(replayPublications, [beforeReplay + 1, beforeReplay + 2, beforeReplay + 3, beforeReplay + 4]);
       } finally {
         stop();

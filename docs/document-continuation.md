@@ -80,10 +80,10 @@ continue_document({ map: installed.map, document: selected, root });
 
 Every LiveMap has canonical interaction storage from construction. An Echo map
 can hold local Descriptors independently of the authority interaction grant.
-Define behaviors on the map and pass `interactions` to activate a Document.
+Define actions on the map and pass `interactions` to activate a Document.
 
 ```ts
-aggregate.behaviors.define("reveal", () => showPanel());
+aggregate.actions.define("reveal", () => showPanel());
 const continuation = continue_document({
   map: aggregate,
   root,
@@ -133,8 +133,9 @@ place. An incompatible root epoch fails closed through existing Mirror
 continuity rules.
 
 Hosted interactions activate after Echo catches up. The optional synchronous
-`registerBehaviors` callback receives the composed LiveMap's registry before
-listener installation. Hosted descriptors dispatch through that continuation's Echo.
+`registerActions` callback receives the composed client LiveMap's `actions`
+registry before listener installation. Hosted descriptors dispatch through that
+continuation's Echo.
 
 ```ts
 const continuation = await continue_hosted_document({
@@ -143,8 +144,8 @@ const continuation = await continue_hosted_document({
   transport,
   root,
   interactions: {
-    registerBehaviors(behaviors) {
-      behaviors.define("reveal", () => showPanel());
+    registerActions(actions) {
+      actions.define("reveal", () => showPanel());
     },
     onFailure: reportInteractionFailure,
   },

@@ -72,7 +72,7 @@ void retained.now({ html: "page" });
 void continue_hosted_document({ echo, root });
 
 add_interaction(libraries, descriptor);
-libraries.behaviors.define("reveal", ({ event, subject }, args) => {
+libraries.actions.define("reveal", ({ event, subject }, args) => {
   void [event, subject, args?.materialize()];
 });
 const disposeInteractions = activate_interactions({

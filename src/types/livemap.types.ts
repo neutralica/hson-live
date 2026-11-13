@@ -1955,7 +1955,7 @@ export type LiveMapLibraryAdmission<TDefinitions extends LiveMapDefinitions> = R
  */
 export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   /** Local executable definitions for this map's lifetime. */
-  readonly behaviors: InteractionLocalBehaviors;
+  readonly actions: InteractionLocalBehaviors;
   /** Private type evidence; it has no runtime property or public selector. */
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;

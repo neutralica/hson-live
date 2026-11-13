@@ -3,7 +3,7 @@ import { ROOT_TAG } from "../../core/constants.js";
 import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
 import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { resolve_livemap_behavior_internal } from "../livemap/livemap.behaviors.js";
+import { resolve_livemap_action_internal } from "../livemap/livemap.actions.js";
 import { kind_live_path, project_live_path } from "../livemap/livemap.editor.js";
 import {
   is_ordered_projected_object,
@@ -19,8 +19,8 @@ import {
 } from "../data/hson-data.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
-import type { ListenerBuilder, ListenerSub } from "../../types/listen.types.js";
-import { resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
+import type { ListenerSub } from "../../types/listen.types.js";
+import { install_livetree_listener, resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
 import type {
   LocusInteractionDescriptor,
   InteractionActivationOptions,
@@ -193,7 +193,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
           } catch { subject = undefined; }
           if (descriptor.kind === "browser") {
             const previous = unresolvedBehaviors.get(descriptor.id);
-            const defined = resolve_livemap_behavior_internal(activation.map, descriptor.key) !== undefined;
+            const defined = resolve_livemap_action_internal(activation.map, descriptor.key) !== undefined;
             if (previous !== undefined || !defined) {
               const fingerprint = descriptor_fingerprint(descriptor, data);
               const sameIntent = previous?.fingerprint === fingerprint ? previous : undefined;
@@ -241,10 +241,10 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
             continue;
           }
           const invoke = descriptor.kind === "browser" && !unresolvedBehaviors.has(descriptor.id)
-            ? resolve_livemap_behavior_internal(activation.map, descriptor.key) : undefined;
+            ? resolve_livemap_action_internal(activation.map, descriptor.key) : undefined;
           if (descriptor.kind === "browser" && invoke === undefined) {
             report(descriptor, "browser-capability-resolution", new Error(
-              `Unknown local interaction behavior ${JSON.stringify(descriptor.key)} at resolution. Define it on map.behaviors before activating this descriptor.`,
+              `Unknown local interaction action ${JSON.stringify(descriptor.key)} at resolution. Define it on map.actions before activating this descriptor.`,
             ));
             continue;
           }
@@ -283,7 +283,7 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 });
               } catch (cause) { report(descriptor, "locus-invocation", cause); }
             };
-            const sub = install_listener(subject, descriptor.listener, handler);
+            const sub = install_livetree_listener(subject, descriptor.listener, handler);
             if (resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length === 0) {
               sub.off();
               continue;
@@ -468,19 +468,4 @@ function descriptor_fingerprint(descriptor: RuntimeDescriptor, data: HsonDataVal
   return encode_hson_data_internal(hson_data_from_value(ordered_projected_object(
     value.entries.filter(([name]) => name !== "subject"),
   )));
-}
-
-function install_listener(subject: LiveTree, listener: InteractionListener, handler: (event: Event) => void): ListenerSub {
-  let builder: ListenerBuilder = subject.listen;
-  if (listener.target === "document") builder = builder.document;
-  else if (listener.target === "window") builder = builder.window;
-  else builder = builder.element;
-  if (listener.capture) builder = builder.capture();
-  if (listener.once) builder = builder.once();
-  if (listener.passive) builder = builder.passive();
-  builder = builder.strict(listener.missingTarget);
-  if (listener.preventDefault) builder = builder.preventDefault();
-  if (listener.stopPropagation) builder = builder.stopProp();
-  if (listener.stopImmediatePropagation) builder = builder.stopImmediateProp();
-  return builder.onCustom(listener.event, handler);
 }

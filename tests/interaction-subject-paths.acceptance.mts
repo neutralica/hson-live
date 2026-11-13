@@ -67,7 +67,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const localNode = retained_subject(localSubject);
   const localElement = get_el_for_node(localNode);
   if (localElement === undefined) throw new Error("Expected local subject element.");
-  map.behaviors.define("run", () => undefined);
+  map.actions.define("run", () => undefined);
   const dispose = activate_interactions({ map, tree: reflection.tree });
   assert.equal((localElement as unknown as { listeners: Map<string, Set<unknown>> }).listeners.get("click")?.size, 2);
   const revision = map.rev;
@@ -119,7 +119,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => phases.push(failure.phase) });
   try {
     assert.deepEqual(phases, ["browser-capability-resolution"]);
-    map.behaviors.define("run", ctx => { calls.push(ctx); });
+    map.actions.define("run", ctx => { calls.push(ctx); });
     aElement.dispatchEvent(new Event("click"));
     map.data.must("state").at(["count"]).set(1);
     aElement.dispatchEvent(new Event("click"));
@@ -215,7 +215,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   const reflection = hsonMirror(map.doc.must("page"));
   project_livetree(retained_subject(reflection.tree));
   let calls = 0;
-  map.behaviors.define("run", () => { calls += 1; });
+  map.actions.define("run", () => { calls += 1; });
   const dispose = activate_interactions({ map, tree: reflection.tree });
   const node = resolve_document_path(retained_subject(reflection.tree), "document", validate_document_path([0, 0, 1, 0, 0, 0, 1]));
   assert.equal(is_Node(node), true);

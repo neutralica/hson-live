@@ -88,7 +88,6 @@ function makeBroadcastProxy<T extends object>(
 
 export class TreeSelector implements TreeSelectorType {
   private readonly contents: LiveTree[];
-  private listenInternal: LiveTreeListen | undefined;
   private styleInternal: LiveTreeStyle | undefined;
   private cssInternal: LiveTreeCss | undefined;
   private dataInternal: LiveTree["data"] | undefined;
@@ -99,7 +98,7 @@ export class TreeSelector implements TreeSelectorType {
 
   }
   public get listen(): LiveTreeListen {
-    return this.listenInternal ??= build_selection_listener(this.contents);
+    return build_selection_listener(this.contents);
   }
   public get style(): LiveTreeStyle {
     return this.styleInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.style);

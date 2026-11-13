@@ -12,7 +12,7 @@ import type { LocusRequestedProjection } from "../src/types/locus.projection.typ
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
 import { runtime_for_tree, subject_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
-import { prepare_hosted_document_internal } from "../src/api/continuation/continue-hosted-document.ts";
+import { prepare_hosted_document_internal, set_hosted_startup_fault_hook_for_tests } from "../src/api/continuation/continue-hosted-document.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -274,7 +274,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
   if (page.mode !== "document") throw Error("Document");
   const { root, body, button } = native_button_page();
   let calls = 0;
-  client.behaviors.define("run", () => { calls++; });
+  client.actions.define("run", () => { calls++; });
   const grafted = continue_document({ map: client, document: page, root: root as unknown as Element,
     interactions: {} });
   const prior = grafted.tree, oldQuid = lookup_document_quad_internal(page, "root")!.quid;
@@ -401,11 +401,12 @@ function socketPair(): Readonly<{
       ...wire.shared,
       now: cut,
       root: root as unknown as Element,
-      interactions: { registerBehaviors: null as never },
+      interactions: { registerActions: null as never },
     }),
     (cause) => cause instanceof DocumentContinuationError
       && cause.phase === "interactions"
-      && cause.cause !== undefined,
+      && cause.cause instanceof TypeError
+      && /registerActions must be a function/.test(cause.cause.message),
   );
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
   wire.detach(); wire = fresh();
@@ -521,11 +522,15 @@ function socketPair(): Readonly<{
   let clicks = 0;
   let registeredOn: InteractionLocalBehaviors | undefined;
   let localContext: LocalBehaviorContext | undefined;
+  const startup: string[] = [];
   const options = { now, credential: session.credential!, transport: connection.transport,
     root: page.root as unknown as Element, interactions: {
-      registerBehaviors(behaviors: InteractionLocalBehaviors) {
-        registeredOn = behaviors;
-        behaviors.define("clicker", ctx => { clicks += 1; localContext = ctx; });
+      registerActions(actions: InteractionLocalBehaviors) {
+        startup.push("register");
+        page.button.dispatchEvent(new Event("click"));
+        assert.equal(clicks, 0, "listeners attach after action registration");
+        registeredOn = actions;
+        actions.define("clicker", ctx => { clicks += 1; localContext = ctx; });
       },
     } };
 
@@ -537,6 +542,7 @@ function socketPair(): Readonly<{
     try { return prepare_hosted_document_internal(options); }
     finally { Object.defineProperty(page.body, "childNodes", { configurable: true, writable: true, value: bodyChildren }); }
   })();
+  assert.equal(registeredOn, undefined);
   assert.equal(page.body.childNodes.at(-1), sentinel);
   assert.equal(get_node_for_el(page.root as unknown as Element), undefined);
   assert.equal(get_node_for_el(page.button as unknown as Element), undefined);
@@ -553,12 +559,22 @@ function socketPair(): Readonly<{
   set_document_adoption_fault_hook_for_tests((point) => {
     if (point === "after-first-link") adoptionStarts += 1;
   });
+  set_hosted_startup_fault_hook_for_tests((point, echo) => {
+    if (point === "recovered") {
+      assert.equal(echo.sync.status, "caught_up");
+      startup.push(point);
+    }
+  });
   const starting = prepared.start();
   await assert.rejects(prepared.start(), /starting state/);
   let continuation: Awaited<typeof starting>;
   try { continuation = await starting; }
-  finally { set_document_adoption_fault_hook_for_tests(undefined); }
+  finally {
+    set_document_adoption_fault_hook_for_tests(undefined);
+    set_hosted_startup_fault_hook_for_tests(undefined);
+  }
   assert.equal(adoptionStarts, 1);
+  assert.deepEqual(startup, ["recovered", "register"]);
   assert.equal(continuation.tree.dom.el(), page.root as unknown as Element);
   assert.equal(continuation.tree.find.byTag("button")?.dom.el(), page.button as unknown as Element);
   assert.equal(continuation.tree.find.byTag("hson-scout"), undefined);
@@ -568,7 +584,7 @@ function socketPair(): Readonly<{
   page.button.dispatchEvent(event);
   assert.equal(clicks, 1);
   const clientMap = echo_map_internal(continuation.echo);
-  assert.equal(registeredOn, clientMap.behaviors);
+  assert.equal(registeredOn, clientMap.actions);
   assert.equal(localContext?.map, clientMap);
   assert.equal(localContext?.event, event);
   assert.equal(localContext?.subject?.dom.el(), page.button);
@@ -578,7 +594,7 @@ function socketPair(): Readonly<{
   continuation.dispose();
   page.button.dispatchEvent(new Event("click"));
   assert.equal(clicks, 1);
-  assert.deepEqual(await clientMap.behaviors.trigger("clicker"), { ok: true });
+  assert.deepEqual(await clientMap.actions.trigger("clicker"), { ok: true });
   assert.equal(clicks, 2);
   assert.equal(continuation.echo.session.status, "attached");
   continuation.echo.dispose();

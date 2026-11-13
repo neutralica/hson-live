@@ -4,11 +4,6 @@ import { admit_data_input, hson_data_from_value, hson_data_value, type HsonDataV
 import type { InteractionDescriptor, InteractionListener, InteractionSubject } from "../../types/interaction.descriptor.types.js";
 import type { DocumentCompositionInteraction } from "../livemap/livemap.document.composition.js";
 
-export const DOCUMENT_CLICK_LISTENER: InteractionListener = Object.freeze({
-  event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "ignore",
-  preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
-});
-
 export function new_interaction_id(): string {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
   return `event-${Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("")}`;

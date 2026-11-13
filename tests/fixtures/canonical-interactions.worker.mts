@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { create_locus_fixture } from "../helpers/locus-definition-fixture.mts";
 import { retained_subject } from "../helpers/retained-livetree-subject.mts";
 import { locus_map_internal } from "../../src/internal/governor-maps.js";
@@ -9,7 +10,7 @@ import { create_recovery_test_driver } from "../helpers/replica-driver.mts";
 import { client_projection_map } from "../helpers/client-projection.mts";
 import { parentPort } from "node:worker_threads";
 import { test_public_projection } from "../helpers/hosted-catalog.mts";
-import { Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type InteractionDescriptor, type InteractionListener } from "../../src/index.ts";
+import { Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonLiveTree, hsonMirror, type HsonSchema, type InteractionDescriptor, type InteractionListener } from "../../src/index.ts";
 import type { LocusWebSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
@@ -24,6 +25,20 @@ import { document_listener_cases } from "./document-listener-cases.mts";
 
 await local_behavior_cases();
 await document_listener_cases();
+
+const standalone = hsonLiveTree.fromHson("<main <button/>/>");
+try {
+  const subject = standalone.find.must.byTag("button");
+  const exact = Hson.data.parse`<'10' -0 '2' null>`;
+  standalone.actions.define("echo", async (context, input) => {
+    assert.deepEqual(context, { tree: standalone });
+    return input;
+  }, { input: { required: true } });
+  const result = await subject.actions.trigger("echo", exact);
+  assert.ok(result.ok && result.result === exact);
+  const sub = subject.listen.event("<hson:event on:click local:echo input:data={null} <> >");
+  sub.off();
+} finally { standalone.remove(); }
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;

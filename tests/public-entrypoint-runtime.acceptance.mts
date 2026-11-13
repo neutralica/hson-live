@@ -277,12 +277,26 @@ const directHsonDataSources = new Map<string, string>([
 
     const schema = Hson.schema\`<type "data" content <value "number">>\`;
     const map = hsonLiveMap.fromLibraries({ state: { json: { value: -0 }, schema } });
+    if ("behaviors" in map || map.behaviors !== undefined) throw new Error("LiveMap exposes the retired receiver");
     const value = Hson.data.from(map.data.must("state").snap());
     const roundTrip = hsonLiveMap.fromLibraries({ state: { json: value.materialize(), schema } });
     if (!Object.is(roundTrip.data.must("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
-    map.behaviors.define("probe", (ctx, input) => ctx.map === map ? input : undefined, { input: { schema } });
-    const result = await map.behaviors.trigger("probe", value);
-    if (!result.ok || result.result !== value) throw new Error("LiveMap behavior lost the exact Data carrier");
+    map.actions.define("probe", (ctx, input) => ctx.map === map ? input : undefined, { input: { schema } });
+    const result = await map.actions.trigger("probe", value);
+    if (!result.ok || result.result !== value) throw new Error("LiveMap action lost the exact Data carrier");
+  `],
+  ["livetree", `
+    import { hsonLiveTree, LiveTree } from "hson-live/livetree";
+    import { Hson } from "hson-live/hson";
+    const tree = hsonLiveTree.fromHson("<main <button/>/>");
+    const child = new LiveTree(tree.find.must.byTag("button"));
+    const value = Hson.data.parse\`<'10' -0 '2' null>\`;
+    tree.actions.define("probe", (ctx, input) => ctx.tree === tree && !("event" in ctx) ? input : undefined);
+    const result = await child.actions.trigger("probe", value);
+    if (tree.actions !== child.actions || !result.ok || result.result !== value) {
+      throw new Error("LiveTree action lost its owner or exact Data carrier");
+    }
+    tree.remove();
   `],
   ["echo", `
     import { hsonLiveMap } from "hson-live/livemap";

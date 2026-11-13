@@ -122,7 +122,7 @@ function check(name: string, run: () => void | Promise<void>): Promise<void> {
   );
 }
 
-await check("LiveMap behavior and callback declarations type-check without a platform Event", () => {
+await check("LiveMap action and callback declarations type-check without a platform Event", () => {
   const temporaryParent = join(repositoryRoot, "tmp");
   mkdirSync(temporaryParent, { recursive: true });
   const temporary = mkdtempSync(join(temporaryParent, "livemap-portable-behavior-"));
@@ -132,7 +132,9 @@ await check("LiveMap behavior and callback declarations type-check without a pla
       import { hsonLiveMap, type LiveMap, type LocalBehaviorResult } from "hson-live/livemap";
       const hasGlobalEvent: "Event" extends keyof typeof globalThis ? true : false = false;
       const map = hsonLiveMap.create();
-      map.behaviors.define("compute", (ctx, input, message) => {
+      // @ts-expect-error The pre-release behaviors receiver was removed.
+      map.behaviors;
+      map.actions.define("compute", (ctx, input, message) => {
         ctx.map satisfies LiveMap;
         message.name satisfies string;
         // @ts-expect-error No platform Event declaration is in scope.
@@ -141,7 +143,7 @@ await check("LiveMap behavior and callback declarations type-check without a pla
         ctx.subject?.dom.el();
         return input;
       });
-      map.behaviors.trigger("compute", -0) satisfies Promise<LocalBehaviorResult>;
+      map.actions.trigger("compute", -0) satisfies Promise<LocalBehaviorResult>;
       const page = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }).doc.must("page");
       const listener = page.at([1, 0]).asElement()!.listen;
       listener.local.onClick("compute", null) satisfies string;
@@ -307,7 +309,8 @@ await check("LiveTree declarations expose styling capabilities without runtime m
 const ownerProofs = Object.freeze({
   "dist/index.d.ts": ["ReadonlyHsonNode"],
   "dist/hson-authoring.d.ts": ["HsonAuthored", "HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
-  "dist/api/livetree/index.d.ts": ["CssMap", "ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
+  "dist/api/livetree/index.d.ts": ["CssMap", "ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE",
+    "LiveTreeActionContext", "LiveTreeActionHandler", "LiveTreeActions", "LocalActionMessage", "LocalActionResult"],
   "dist/api/livemap/index.d.ts": ["CssMap", "LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],

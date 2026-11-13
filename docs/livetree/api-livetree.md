@@ -843,6 +843,72 @@ for one same-map commit.
 
 ## Events
 
+### Local actions and authored clicks
+
+`tree.actions.define(name, handler, options?)` adds a local action to the owning
+tree. Descendants and aliases of the same graph share its registry. Independently
+created roots have separate registries. A detached subtree uses its own root
+for new registry access, and reattachment restores access to the destination's
+registry. Installed subscriptions keep their resolved action across detach and
+reattachment. Terminal removal of the original action owner releases those
+subscriptions, including on subjects that have moved to another root.
+
+```ts
+const tree = hsonLiveTree.queryDom("#panel-controls").graft();
+const button = tree.find.must.byTag("button");
+const panelSchema = Hson.schema`<type "data" content <open "boolean">>`;
+
+tree.actions.define("PANEL_TOGGLE", ({ tree }, input) => {
+  const open = input?.entries()?.find(([name]) => name === "open")?.[1].scalar();
+  tree.attrs.set("data-open", open === true ? "yes" : "no");
+  return input;
+}, { input: { required: true, schema: panelSchema } });
+
+const result = await tree.actions.trigger("PANEL_TOGGLE", { open: true });
+const subscription = button.listen.event(`
+  <hson:event on:click local:PANEL_TOGGLE input:data={<open true>} <> >
+`);
+subscription.off();
+```
+
+Handlers receive `(context, input, message)`. `context.tree` is the owning root
+handle. An authored listener also supplies the receiving handle as
+`context.subject` and the native `context.event`. The message contains the action
+name and a registry-local invocation ID. Input is exact `HsonDataValue` when
+present and `undefined` when omitted. Explicit `null` is present Data. A Schema
+checks present input, and `required: true` requires it. Duplicate names throw.
+
+`trigger` starts execution immediately and resolves to `{ ok: true, result? }`
+or `{ ok: false, error: { message, cause } }`. Both synchronous and asynchronous
+return values are admitted as exact Data. Definitions live in memory and
+outlast individual listeners and child removal. Removing the owning root
+retires its registry.
+
+`listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
+one `local:` action, explicit `input:data={…}`, and the required empty outcome
+object `<>`. The declaration may include `once` and `stopProp`. Unsupported
+flags, Part references, `host:` actions, nonempty outcomes, and pending fluent
+builder settings reject. The action and input are checked before native
+attachment. A missing action throws and requires a fresh registration attempt.
+If the subject has no DOM target, the call returns an inert subscription.
+Events dispatched synchronously by an overridden `addEventListener` are
+ignored during installation. If such a dispatch consumes a native `once`
+listener, installation throws and leaves no subscription.
+
+`off()` removes that native registration. If native removal throws, the
+listener stops dispatching immediately. A later `off()` or terminal cleanup
+of either owner retries removal. If an overridden `removeEventListener`
+removes a listener and then throws during terminal cleanup, rollback can
+restore that listener only at the end of the native listener list.
+
+Event-driven failures reach LiveTree's
+runtime reporter through `globalThis.reportError` where available, with the
+original cause. The runtime uses its console fallback on platforms without
+that reporter. Ordinary `tree.listen.onClick(callback)` remains a native
+callback registration.
+
+### Native callback builders
+
 Base listener calls:
 
 ```ts

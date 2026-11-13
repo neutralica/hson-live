@@ -12,6 +12,7 @@ import { StyleHandle, CssTreeHandle } from "./css.types.js";
 import { LiveTreeDom, IdApi, ClassApi } from "./dom.types.js";
 import { TreeEvents } from "./events.types.js";
 import { ListenerBuilder } from "./listen.types.js";
+import type { LiveTreeActions } from "./livetree-action.types.js";
 import { FindWithById, HtmlCreateHelper } from "./livetree.types.js";
 import { HsonNode, type ReadonlyHsonNode } from "../core/types.js";
 import type { DetachedLiveContent, LiveTreeLifecycleResult } from "./lifecycle.types.js";
@@ -239,6 +240,9 @@ export interface LiveTreeEvents {
      * `EventTarget` is involved.
      */
     readonly events: TreeEvents;
+
+    /** Local executable definitions for this owned LiveTree graph. */
+    readonly actions: LiveTreeActions;
 
     /**
      * Event-listener builder for this tree.

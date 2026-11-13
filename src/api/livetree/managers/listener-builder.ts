@@ -2,8 +2,12 @@ import { assert_mutation_publication_available } from "../lifecycle/mutation-pub
 // listener-builder.ts
 
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
-import { LiveTree } from "../livetree.js";
-import { own_disposable_for_subject } from "./lifecycle-registry.js";
+import type { HsonNode } from "../../../core/types.js";
+import type { InteractionListener } from "../../../types/interaction.descriptor.types.js";
+import type { LiveTree } from "../livetree.js";
+import { parse_livetree_authored_event } from "../livetree.actions.js";
+import { assert_livetree_node_active, is_livetree_node_disposed } from "../livetree-state.js";
+import { disposable_add_for_subject, disposable_remove_for_subject } from "./lifecycle-registry.js";
 import {
   type LiveTreeRuntime,
   runtime_for_tree,
@@ -17,20 +21,30 @@ type RegistrationConfig = Readonly<{
   preventDefault: boolean;
   stopPropagation: boolean;
   stopImmediatePropagation: boolean;
+  actionOwner?: HsonNode;
 }>;
 
 const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
-type NativeListenerRelease = { detached: boolean; remove: () => void; restore: () => void };
+type NativeListenerRelease = {
+  type: string;
+  detached: boolean;
+  retired: boolean;
+  remove: () => void;
+  restore: () => void;
+};
 const NATIVE_RELEASE_FOR_OFF = new WeakMap<() => void, NativeListenerRelease>();
 
-/** Stage only native listener release; ownership callbacks remain active until
- * terminal acceptance. Failed native cleanup restores every staged listener. @internal */
-export function prepare_native_listener_release(nodes: readonly import("../../../core/types.js").HsonNode[], runtime: LiveTreeRuntime): () => void {
-  const releases = nodes.flatMap(node => [...(runtime.ownerDisposables.get(node) ?? [])])
+/** Stage native release before terminal acceptance. Rollback restores active
+ * registrations. A target that removes and then throws can change their order:
+ * EventTarget can re-add a listener only at the end of its listener list. @internal */
+export function prepare_native_listener_release(nodes: readonly HsonNode[], runtime: LiveTreeRuntime): () => void {
+  // An authored listener can be indexed by both its subject and its action owner.
+  const disposers = new Set(nodes.flatMap(node => [...(runtime.ownerDisposables.get(node) ?? [])]));
+  const releases = [...disposers]
     .flatMap(off => { const release = NATIVE_RELEASE_FOR_OFF.get(off); return release && !release.detached ? [release] : []; });
   const completed = new Set<NativeListenerRelease>();
-  const restore = (): void => { for (const release of completed) { release.restore(); release.detached = false; } completed.clear(); };
-  try { for (const release of releases) { completed.add(release); release.remove(); release.detached = true; } }
+  const restore = (): void => { for (const release of completed) release.restore(); completed.clear(); };
+  try { for (const release of releases) { completed.add(release); release.remove(); } }
   catch (cause) { restore(); throw cause; }
   return restore;
 }
@@ -94,39 +108,98 @@ function addWithOff(
   type: string,
   handler: EventListener,
   opts: AddEventListenerOptions,
-  owner: import("../../../core/types.js").HsonNode,
+  owner: HsonNode,
   tree: LiveTree,
   onOff: () => void,
-): () => void {
-  let off: () => void = () => undefined;
+  actionOwner?: HsonNode,
+): (() => void) | undefined {
+  const runtime = runtime_for_tree(tree);
+  const additionalOwner = actionOwner === owner ? undefined : actionOwner;
+  // A failed install has no subscription to retry. Clear retired wrappers for
+  // this target and event before adding another one.
+  for (const off of [...(TARGET_LISTENER_REG.get(target) ?? [])]) {
+    const release = NATIVE_RELEASE_FOR_OFF.get(off);
+    if (release?.retired && release.type === type) {
+      off();
+      if (NATIVE_RELEASE_FOR_OFF.has(off)) throw new Error("LiveTree native listener removal is already in progress.");
+    }
+  }
+
+  const addNative = target.addEventListener.bind(target);
+  let installing = true;
+  let removing = false;
+  let released = false;
   const nativeHandler: EventListener = (event) => {
+    if (opts.once) {
+      // Native once removes the wrapper before invoking it.
+      nativeRelease.detached = true;
+    }
+    if (nativeRelease.retired || (installing && actionOwner !== undefined)) return;
     try {
       handler(event);
     } finally {
-      if (opts.once) off();
+      if (opts.once && !installing) off();
     }
   };
 
-  target.addEventListener(type, nativeHandler, opts);
-  let set = TARGET_LISTENER_REG.get(target);
-  if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
-
-  const restoreNative = target.addEventListener.bind(target);
   const nativeRelease: NativeListenerRelease = {
+    type,
     detached: false,
-    remove: () => { target.removeEventListener(type, nativeHandler, opts); },
-    restore: () => { restoreNative(type, nativeHandler, opts); },
+    retired: false,
+    remove() {
+      if (nativeRelease.detached) return;
+      if (removing) throw new Error("LiveTree native listener removal is already in progress.");
+      removing = true;
+      try {
+        target.removeEventListener(type, nativeHandler, opts);
+        nativeRelease.detached = true;
+      } finally { removing = false; }
+    },
+    restore() {
+      if (nativeRelease.retired) return;
+      nativeRelease.detached = false;
+      addNative(type, nativeHandler, opts);
+    },
   };
-  off = own_disposable_for_subject(owner, () => {
-    if (!nativeRelease.detached) nativeRelease.remove();
+  const off = (): void => {
+    nativeRelease.retired = true;
+    if (released || removing) return;
+    // Keep every cleanup entry until native removal has completed.
+    nativeRelease.remove();
+    released = true;
+    disposable_remove_for_subject(owner, off, runtime);
+    if (additionalOwner !== undefined) disposable_remove_for_subject(additionalOwner, off, runtime);
     NATIVE_RELEASE_FOR_OFF.delete(off);
+    const set = TARGET_LISTENER_REG.get(target);
     set?.delete(off);
     if (set?.size === 0) TARGET_LISTENER_REG.delete(target);
     onOff();
-  }, "listener", runtime_for_tree(tree));
+  };
+  const track = (): void => {
+    let set = TARGET_LISTENER_REG.get(target);
+    if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
+    set.add(off);
+    NATIVE_RELEASE_FOR_OFF.set(off, nativeRelease);
+    if (!is_livetree_node_disposed(owner)) disposable_add_for_subject(owner, off, "listener", runtime);
+    if (additionalOwner !== undefined && !is_livetree_node_disposed(additionalOwner)) {
+      disposable_add_for_subject(additionalOwner, off, "listener", runtime);
+    }
+  };
 
-  NATIVE_RELEASE_FOR_OFF.set(off, nativeRelease);
-  set.add(off);
+  try {
+    addNative(type, nativeHandler, opts);
+    assert_livetree_node_active(owner, "install listener");
+    if (actionOwner !== undefined) {
+      assert_livetree_node_active(actionOwner, "install authored listener");
+      if (nativeRelease.detached) throw new Error("Authored once listener was consumed during native installation.");
+    }
+  } catch (cause) {
+    try { off(); }
+    catch { track(); }
+    throw cause;
+  } finally { installing = false; }
+  if (nativeRelease.detached) return undefined;
+  track();
   return off;
 }
 
@@ -149,7 +222,6 @@ export function _listeners_off_for_target(target: EventTarget): void {
   if (!set) return;
 
   for (const off of [...set]) off();
-  TARGET_LISTENER_REG.delete(target);
 }
 
 export function _listeners_debug_hard_reset(): void {
@@ -160,6 +232,78 @@ export function _listeners_debug_hard_reset(): void {
   if (typeof window !== "undefined") {
     _listeners_off_for_target(window);
   }
+}
+
+/** Authored and canonical listeners use the same normalized native registration. @internal */
+export function install_livetree_listener(
+  tree: LiveTree, listener: InteractionListener, handler: EventListener,
+  { actionOwner, owningListeners }: { actionOwner?: HsonNode; owningListeners?: Set<() => void> } = {},
+): ListenerSub {
+  assert_mutation_publication_available(active_subject_for_tree(tree));
+  if (actionOwner !== undefined) assert_livetree_node_active(actionOwner, "install authored listener");
+  return attachListener(tree, listener.event, handler, {
+    opts: listener,
+    missingPolicy: listener.missingTarget,
+    preventDefault: listener.preventDefault,
+    stopPropagation: listener.stopPropagation,
+    stopImmediatePropagation: listener.stopImmediatePropagation,
+    actionOwner,
+  }, owningListeners);
+}
+
+function attachListener(
+  tree: LiveTree, type: string, handler: EventListener, config: RegistrationConfig, owningListeners?: Set<() => void>,
+): ListenerSub {
+  const wrapped: EventListener = event => {
+    if (config.stopImmediatePropagation) event.stopImmediatePropagation();
+    if (config.stopPropagation) event.stopPropagation();
+    if (config.preventDefault && !config.opts.passive) event.preventDefault();
+    handler(event);
+  };
+
+  const targets = resolve_livetree_listener_targets_internal(tree, config.opts.target);
+  for (const target of targets) {
+    if (!is_event_target(target)) throw new Error("listen.attach(): non-EventTarget in selection");
+  }
+  if (targets.length === 0) {
+    const message = "listen.attach(): no targets in selection";
+    const missingPolicy = config.missingPolicy;
+    if (missingPolicy === "throw") throw new Error(message);
+    if (missingPolicy === "warn") console.warn(message, { tree });
+    return new ListenerSubscription(() => undefined);
+  }
+
+  const options: AddEventListenerOptions = Object.freeze({
+    capture: !!config.opts.capture,
+    once: !!config.opts.once,
+    passive: !!config.opts.passive,
+  });
+  const offs: Array<() => void> = [];
+  const sub = new ListenerSubscription(() => {
+    for (const off of [...offs]) off();
+    offs.length = 0;
+  });
+
+  try {
+    for (const target of targets) {
+      let off: (() => void) | undefined;
+      off = addWithOff(target, String(type), wrapped, options, active_subject_for_tree(tree), tree, () => {
+        if (off === undefined) return;
+        owningListeners?.delete(off);
+        const index = offs.indexOf(off);
+        if (index >= 0) offs.splice(index, 1);
+      }, config.actionOwner);
+      if (off !== undefined) {
+        offs.push(off);
+        owningListeners?.add(off);
+      }
+    }
+  } catch (error) {
+    try { sub.off(); }
+    catch { /* Preserve the installation failure. Pending removal is still tracked. */ }
+    throw error;
+  }
+  return sub;
 }
 
 /**
@@ -185,24 +329,26 @@ export function _listeners_debug_hard_reset(): void {
 export function build_listener(tree: LiveTree, owningListeners: Set<() => void> | undefined = undefined): ListenerBuilder {
   let opts: ListenOpts = {};
   let missingPolicy: MissingPolicy = "warn";
-  let _prevent = false;
-  let _stop = false;
-  let _stopImmediate = false;
+  let hasMissingPolicy = false;
+  let stops: Partial<Pick<RegistrationConfig, "preventDefault" | "stopPropagation" | "stopImmediatePropagation">> = {};
+
+  const reset = (): void => {
+    opts = {};
+    missingPolicy = "warn";
+    hasMissingPolicy = false;
+    stops = {};
+  };
 
   const takeRegistrationConfig = (): RegistrationConfig => {
     // Snapshot all registration behavior, then retire it before resolution can fail.
     const config: RegistrationConfig = Object.freeze({
       opts: Object.freeze({ ...opts }),
       missingPolicy,
-      preventDefault: _prevent,
-      stopPropagation: _stop,
-      stopImmediatePropagation: _stopImmediate,
+      preventDefault: stops.preventDefault ?? false,
+      stopPropagation: stops.stopPropagation ?? false,
+      stopImmediatePropagation: stops.stopImmediatePropagation ?? false,
     });
-    opts = {};
-    missingPolicy = "warn";
-    _prevent = false;
-    _stop = false;
-    _stopImmediate = false;
+    reset();
     return config;
   };
 
@@ -212,63 +358,21 @@ export function build_listener(tree: LiveTree, owningListeners: Set<() => void> 
   ): ListenerSub => {
     assert_mutation_publication_available(active_subject_for_tree(tree));
     const config = takeRegistrationConfig();
-    const wrapped: EventListener = (ev: Event) => {
-      if (config.stopImmediatePropagation) ev.stopImmediatePropagation();
-      if (config.stopPropagation) ev.stopPropagation();
-      if (config.preventDefault && !config.opts.passive) ev.preventDefault();
-
-      handler(ev as ElemMap[K]);
-    };
-
-    const targets = resolve_livetree_listener_targets_internal(tree, config.opts.target);
-
-    for (const tgt of targets) {
-      if (!is_event_target(tgt)) {
-        throw new Error("listen.attach(): non-EventTarget in selection");
-      }
-    }
-
-    if (targets.length === 0) {
-      const msg = `listen.attach(): no targets in selection`;
-      if (config.missingPolicy === "throw") throw new Error(msg);
-      if (config.missingPolicy === "warn") console.warn(msg, { tree });
-      return new ListenerSubscription(() => undefined);
-    }
-
-    const aelo: AddEventListenerOptions = Object.freeze({
-      capture: !!config.opts.capture,
-      once: !!config.opts.once,
-      passive: !!config.opts.passive,
-    });
-    const offs: Array<() => void> = [];
-    const sub = new ListenerSubscription(() => {
-      for (const off of [...offs]) off();
-      offs.length = 0;
-    });
-
-    try {
-      for (const tgt of targets) {
-        let off: () => void = () => undefined;
-        off = addWithOff(tgt, String(type), wrapped, aelo, active_subject_for_tree(tree), tree, () => {
-          owningListeners?.delete(off);
-          const index = offs.indexOf(off);
-          if (index >= 0) offs.splice(index, 1);
-        });
-        offs.push(off);
-        owningListeners?.add(off);
-      }
-    } catch (error) {
-      sub.off();
-      throw error;
-    }
-
-    return sub;
+    return attachListener(tree, type, event => handler(event as ElemMap[K]), config, owningListeners);
   };
   let api: ListenerBuilder;
 
   // add convenience wrappers so api satisfies ListenerBuilder
   api = {
     on,
+    event(source) {
+      const hasPending = Object.keys(opts).length !== 0 || hasMissingPolicy || Object.keys(stops).length !== 0;
+      reset();
+      if (hasPending) throw new TypeError("listen.event() cannot combine fluent listener options with an authored declaration.");
+      const { listener, bind } = parse_livetree_authored_event(source);
+      const { actionOwner, handler } = bind(tree);
+      return install_livetree_listener(tree, listener, handler, { actionOwner, owningListeners });
+    },
 
     // target selection
     get document() {
@@ -376,13 +480,13 @@ export function build_listener(tree: LiveTree, owningListeners: Set<() => void> 
     toWindow: () => { opts = { ...opts, target: "window" }; return api; },
     toDocument: () => { opts = { ...opts, target: "document" }; return api; },
 
-    strict(policy: MissingPolicy = "warn") { missingPolicy = policy; return api; },
+    strict(policy: MissingPolicy = "warn") { missingPolicy = policy; hasMissingPolicy = true; return api; },
 
-    preventDefault(): ListenerBuilder { _prevent = true; return api; },
-    stopProp(): ListenerBuilder { _stop = true; return api; },
-    stopImmediateProp(): ListenerBuilder { _stopImmediate = true; return api; },
-    stopAll(): ListenerBuilder { _stopImmediate = _stop = _prevent = true; return api; },
-    clearStops(): ListenerBuilder { _stopImmediate = _stop = _prevent = false; return api; },
+    preventDefault(): ListenerBuilder { stops = { ...stops, preventDefault: true }; return api; },
+    stopProp(): ListenerBuilder { stops = { ...stops, stopPropagation: true }; return api; },
+    stopImmediateProp(): ListenerBuilder { stops = { ...stops, stopImmediatePropagation: true }; return api; },
+    stopAll(): ListenerBuilder { stops = { stopImmediatePropagation: true, stopPropagation: true, preventDefault: true }; return api; },
+    clearStops(): ListenerBuilder { stops = { stopImmediatePropagation: false, stopPropagation: false, preventDefault: false }; return api; },
   };
 
   return api;

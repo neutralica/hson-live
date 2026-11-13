@@ -12,6 +12,7 @@ import {
 import { HsonNode, type ReadonlyHsonNode } from "../../core/types.js";
 import { observe_exact_hson_graph } from "../../internal/exact-node-qualification.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
+import type { LiveTreeActions } from "../../types/livetree-action.types.js";
 import { get_el_for_node } from "./utils/node-map-helpers.js";
 import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
 import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content, make_text_api, make_form_api } from "./managers/text-form-values.js";
@@ -74,6 +75,7 @@ import {
   active_subject_for_tree,
 } from "./runtime/livetree-runtime.js";
 import { admit_public_livetree_branch } from "./livetree.node-admission.js";
+import { livetree_actions_for, remember_livetree_action_root } from "./livetree.actions.js";
 
 // Attach the browser subject type without pulling LiveTree's DOM declarations
 // into portable LiveMap entrypoints.
@@ -304,6 +306,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     const node = this.nodeRef.resolveNode();
     if (!node) throw new Error("LiveTree constructor: ref did not resolve");
     index_subtree_ownership(node);
+    remember_livetree_action_root(this, node);
   }
 
   //  the underlying bound element can change during lifetime:
@@ -555,6 +558,11 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
       );
     }
     return this.eventsInternal;
+  }
+
+  /** Executable definitions shared by handles in this owned graph. */
+  public get actions(): LiveTreeActions {
+    return livetree_actions_for(this);
   }
 
   /** Fluent event-listener builder bound to this branch.

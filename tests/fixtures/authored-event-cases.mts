@@ -193,7 +193,7 @@ function grammar_cases() {
     read_transform_error_details(error)?.source?.index === "<button hson:part ".length);
   const qualified = descriptors(admit(advance.replace("ADVANCE_SLIDE", "deck.advance")));
   assert.equal(qualified[0]?.key, "deck.advance");
-  assert.throws(() => admit(advance.replace("host:ADVANCE_SLIDE", "host:")), /Expected a behavior name/);
+  assert.throws(() => admit(advance.replace("host:ADVANCE_SLIDE", "host:")), /Expected an action name/);
   assert.throws(() => admit(advance.replace("host:", "remote:")), /Unsupported authored event header/);
   assert.throws(() => hsonLiveMap.locus.create({}, { actions: { "document.attrs.set": () => {} } }), /reserved for a built-in/);
   assert.throws(() => admit(advance, '<div hson:part <hson-part event:advance at="literal"/>/>'), /ordinary Part element/);
