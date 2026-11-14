@@ -2,7 +2,7 @@ import { require_interaction_system_internal } from "../../internal/interaction-
 import { assert_locus_interaction_binding } from "./locus.projection.js";
 import {
   capture_locus_action_definitions,
-  locus_action_input_error,
+  locus_action_args_error,
   type LocusActionDefinition,
   type LocusActionRegistration,
 } from "./locus.action-validation.js";
@@ -20,7 +20,6 @@ import type {
 } from "../../types/livemap.types.js";
 import type {
   LocusActionOrigin,
-  LocusClientActionMessage,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
@@ -56,8 +55,7 @@ export type LocusHostedAggregateActionContext = Readonly<{
 
 export type LocusHostedAggregateAction = (
   context: LocusHostedAggregateActionContext,
-  payload: HsonDataValue | undefined,
-  message?: LocusClientActionMessage,
+  args: HsonDataValue | undefined,
 ) => unknown | void | Promise<unknown | void>;
 
 export type LocusHostedAggregateGateInput = Readonly<{
@@ -109,9 +107,9 @@ export type LocusHostedAggregate = Readonly<{
     css?: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>) => Promise<HostedAggregateCommit>;
   actionDefinition: (name: string) => LocusActionDefinition<LocusHostedAggregateAction> | undefined;
   defineAction: (capture: () => LocusActionDefinition<LocusHostedAggregateAction>) => void;
-  executeAction: (definition: LocusActionDefinition<LocusHostedAggregateAction>, payload: HsonDataValue | undefined,
-    message: LocusClientActionMessage | undefined, origin: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
-  dispatch_action: (name: string, payload?: HsonDataInput, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
+  executeAction: (definition: LocusActionDefinition<LocusHostedAggregateAction>, args: HsonDataValue | undefined,
+    origin: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
+  dispatch_action: (name: string, args?: HsonDataInput, origin?: LocusActionOrigin) => Promise<HsonDataValue | undefined>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   /** Internal exact transition feed for retained authority history. */
@@ -278,16 +276,15 @@ export function create_locus_hosted_aggregate_internal(
 
   async function executeAction(
     definition: LocusActionDefinition<LocusHostedAggregateAction>,
-    payload: HsonDataValue | undefined,
-    message: LocusClientActionMessage | undefined,
+    args: HsonDataValue | undefined,
     origin: LocusActionOrigin,
   ): Promise<HsonDataValue | undefined> {
-    // Admission owns the definition and exact payload. The queue only supplies the writer.
+    // Admission owns the definition and exact arguments. The queue only supplies the writer.
     return (await enqueue(writer => definition.handler(Object.freeze({
       map: options.map,
       origin,
       stage: writer,
-    }), payload, message))).result;
+    }), args))).result;
   }
 
   return Object.freeze({
@@ -318,20 +315,14 @@ export function create_locus_hosted_aggregate_internal(
       actions.set(definition.name, definition);
     },
     executeAction,
-    async dispatch_action(name, payload, message, origin = directOrigin) {
+    async dispatch_action(name, args, origin = directOrigin) {
       if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
       const definition = actionDefinition(name);
       if (definition === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
-      const captured = message === undefined ? undefined : { ...message, name };
-      const admittedPayload = payload === undefined ? undefined : admit_data_input(payload);
-      const error = locus_action_input_error(definition.input, admittedPayload);
+      const admittedArgs = args === undefined ? undefined : admit_data_input(args);
+      const error = locus_action_args_error(definition.args, admittedArgs);
       if (error !== undefined) throw new Error(error);
-      if (captured !== undefined) {
-        if (admittedPayload === undefined) delete captured.payload;
-        else captured.payload = admittedPayload;
-        Object.freeze(captured);
-      }
-      return executeAction(definition, admittedPayload, captured, origin);
+      return executeAction(definition, admittedArgs, origin);
     },
     run_exclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
       const run = async (): Promise<TResult> => {

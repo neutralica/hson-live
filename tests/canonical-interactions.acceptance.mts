@@ -14,7 +14,7 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type BrowserInteractionDescriptor, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocusInteractionDescriptor, type LocalBehaviorContext, type LocalBehaviorMessage } from "../src/index.ts";
+import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type BrowserInteractionDescriptor, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocusInteractionDescriptor, type LocalBehaviorContext } from "../src/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -482,9 +482,11 @@ await check("local to local to authoritative reconciliation owns one exact subje
   let a = 0, b = 0, authority = 0;
   let received: HsonDataValue | undefined;
   let context: LocalBehaviorContext | undefined;
-  let invocation: LocalBehaviorMessage | undefined;
-  map.actions.define("a", (ctx, args, message) => { a += 1; received = args; context = ctx; invocation = message; }, {
-    input: { required: true, schema: ANY_DATA },
+  map.actions.define("a", function (ctx, args) {
+    assert.equal(arguments.length, 2);
+    a += 1; received = args; context = ctx;
+  }, {
+    args: { required: true, schema: ANY_DATA },
   });
   map.actions.define("b", () => { b += 1; });
   const dispose = activate_interactions({
@@ -501,7 +503,6 @@ await check("local to local to authoritative reconciliation owns one exact subje
   assert.equal(context?.event, event);
   assert.ok(context?.subject);
   assert.equal(retained_subject(context.subject), retained_subject(subject));
-  assert.equal(invocation?.name, "a");
   assert.equal(Object.is(received === undefined ? undefined : (received).materialize(), -0), true);
   assert.equal(map.rev, revisionBeforeActivation);
   assert.equal(aggregate.identityEpoch().issued().size, issuedBeforeActivation);
@@ -588,7 +589,7 @@ await check("native and direct invocations enforce the same input contract and r
     calls++;
     if (event !== undefined) throw rejected;
     return input;
-  }, { input: { required: true, schema: Hson.schema`<type "data" content <value "number">>` } });
+  }, { args: { required: true, schema: Hson.schema`<type "data" content <value "number">>` } });
   const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
   try {
     const directFailure = await map.actions.trigger("typed", null);
@@ -621,8 +622,8 @@ await check("canonical local clicks validate optional and required input at invo
   const seen: unknown[] = [];
   const failures: InteractionFailure[] = [];
   const record: Parameters<typeof map.actions.define>[1] = (_ctx, input) => { seen.push(input?.scalar()); };
-  map.actions.define("optional", record, { input: { schema } });
-  map.actions.define("required", record, { input: { required: true, schema } });
+  map.actions.define("optional", record, { args: { schema } });
+  map.actions.define("required", record, { args: { required: true, schema } });
   const base = { id: "presence", subject: buttonSubject, listener: { ...listener, once: true }, kind: "browser" as const };
   add_interaction(map, { ...base, key: "optional" });
   const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
@@ -637,7 +638,7 @@ await check("canonical local clicks validate optional and required input at invo
     assert.equal(failures.length, 1);
     assert.equal(failures[0]?.phase, "browser-invocation");
     assert.equal(Object.hasOwn(failures[0]!.descriptor, "args"), false);
-    assert.match(String(failures[0]?.cause), /requires input/);
+    assert.match(String(failures[0]?.cause), /requires arguments/);
     assert.equal(target.registrations.length, 0);
   } finally { dispose(); reflection.dispose(); }
 });
@@ -993,11 +994,10 @@ await check("concurrent activations share definitions and own independent listen
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
   let imperative = 0, failureA = 0, failureB = 0;
-  const ids: string[] = [];
+  let calls = 0;
   const imperativeSub = subject.listen.onCustom("click", () => { imperative += 1; });
-  map.actions.define("run", (_ctx, _data, message) => {
-    ids.push(message.id);
-    if (ids.length === 1) throw new Error("activation A failure");
+  map.actions.define("run", () => {
+    if (++calls === 1) throw new Error("activation A failure");
   });
   const disposeA = activate_interactions({
     map, tree: reflection.tree,
@@ -1008,16 +1008,16 @@ await check("concurrent activations share definitions and own independent listen
     onFailure: () => { failureB += 1; },
   });
   target.fire(); await Promise.resolve(); await Promise.resolve();
-  assert.deepEqual([imperative, ids.length, failureA, failureB], [1, 2, 1, 0]);
+  assert.deepEqual([imperative, calls, failureA, failureB], [1, 2, 1, 0]);
   disposeA();
   target.fire(); await Promise.resolve();
-  assert.deepEqual([imperative, ids.length], [2, 3]);
+  assert.deepEqual([imperative, calls], [2, 3]);
   disposeB();
   target.fire();
-  assert.deepEqual([imperative, ids.length], [3, 3]);
+  assert.deepEqual([imperative, calls], [3, 3]);
   assert.equal(target.registrations.length, 1);
   assert.deepEqual(await map.actions.trigger("run"), { ok: true });
-  assert.equal(new Set(ids).size, 4);
+  assert.equal(calls, 4);
   imperativeSub.off(); reflection.dispose();
 });
 

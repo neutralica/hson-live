@@ -54,17 +54,17 @@ const advance: LocusInteractionDescriptor = {
 
 await check("bare definitions execute with governed reads, staged writes, and fresh invocation identities", async () => {
   const locus = hsonLiveMap.locus.create(definitions);
-  const ids: string[] = [];
+  let calls = 0;
   try {
     const before = locus.cut();
     const requests = locus.actionRequests.debug();
-    locus.actions.define("deck.advance", (context, input, message) => {
-      ids.push(message.id);
+    locus.actions.define("deck.advance", function (context, args) {
+      assert.equal(arguments.length, 2);
       assert.deepEqual(context.origin, { kind: "direct" });
-      assert.equal(context.data.must("state").snap(["value"]), ids.length - 1);
-      assert.strictEqual(message.payload, input);
-      context.stage.data.must("state").at(["value"]).set(ids.length);
-      return input;
+      assert.equal(context.data.must("state").snap(["value"]), calls);
+      assert.equal(context.seq, ++calls);
+      context.stage.data.must("state").at(["value"]).set(calls);
+      return args;
     });
     assert.deepEqual(locus.cut(), before);
     assert.equal(locus.rev, 0);
@@ -72,10 +72,10 @@ await check("bare definitions execute with governed reads, staged writes, and fr
     assert.ok(first.type === "ack" && first.ok);
     assert.deepEqual(first.result?.materialize(), { step: 1 });
     assert.deepEqual([first.seq, first.completionRev, locus.rev], [1, 1, 1]);
-    assert.equal(first.id, ids[0]);
     const second = await locus.actions.trigger("deck.advance", { step: 1 });
     assert.ok(second.type === "ack" && second.ok);
     assert.notEqual(first.id, second.id);
+    assert.equal(calls, 2);
     assert.deepEqual([second.seq, second.completionRev, locus.rev], [2, 2, 2]);
     assert.deepEqual(locus.actionRequests.debug(), requests);
     assert.equal(locus.session.debug().sessions.length, 0);
@@ -89,14 +89,14 @@ await check("input contracts distinguish omission, null, and Schema mismatch", a
     return input;
   };
   const locus = hsonLiveMap.locus.create({}, { actions: {
-    initialRequired: { handler: echoInput, input: { schema: countSchema, required: true } },
-    initialPresence: { handler: echoInput, input: { required: true } },
+    initialRequired: { handler: echoInput, args: { schema: countSchema, required: true } },
+    initialPresence: { handler: echoInput, args: { required: true } },
   } });
   try {
-    locus.actions.define("optional", echoInput, { input: { schema: countSchema } });
-    locus.actions.define("required", echoInput, { input: { schema: countSchema, required: true } });
-    locus.actions.define("presence", echoInput, { input: { required: true } });
-    locus.actions.define("nullable", echoInput, { input: { schema: ANY_DATA, required: true } });
+    locus.actions.define("optional", echoInput, { args: { schema: countSchema } });
+    locus.actions.define("required", echoInput, { args: { schema: countSchema, required: true } });
+    locus.actions.define("presence", echoInput, { args: { required: true } });
+    locus.actions.define("nullable", echoInput, { args: { schema: ANY_DATA, required: true } });
     const omitted = await locus.actions.trigger("optional");
     assert.ok(omitted.type === "ack");
     assert.equal(Object.hasOwn(omitted, "result"), false);
@@ -115,6 +115,8 @@ await check("input contracts distinguish omission, null, and Schema mismatch", a
       assert.equal(result.result?.scalar(), null);
       assert.equal(result.completionRev, 0);
     }
+    const empty = await locus.actions.trigger("presence", {});
+    assert.ok(empty.type === "ack" && empty.result?.equals(Hson.data.from({})));
     assert.equal(locus.rev, 0);
   } finally { locus.dispose(); }
 });
@@ -125,11 +127,10 @@ await check("Schema admission preserves the exact input and result carrier", asy
   const exact = Hson.data.fromSource('{"10":-0,"2":2}');
   const materialize = HsonDataValue.prototype.materialize;
   try {
-    locus.actions.define("exact", (_context, input, message) => {
-      assert.strictEqual(input, exact);
-      assert.strictEqual(message.payload, exact);
-      return input;
-    }, { input: { schema } });
+    locus.actions.define("exact", (_context, args) => {
+      assert.strictEqual(args, exact);
+      return args;
+    }, { args: { schema } });
     HsonDataValue.prototype.materialize = () => { throw new Error("Schema admission must use the exact carrier."); };
     const result = await locus.actions.trigger("exact", exact);
     assert.ok(result.type === "ack" && result.result === exact);
@@ -144,14 +145,14 @@ await check("Schema admission preserves the exact input and result carrier", asy
 
 await check("initial and additive definitions share membership and captured contracts", async () => {
   const handler = (_context: unknown, input: HsonDataValue | undefined) => input;
-  const initial = { handler, input: { schema: countSchema } };
+  const initial = { handler, args: { schema: countSchema } };
   const locus = hsonLiveMap.locus.create({}, { actions: { initial } });
   const documentSchema = Hson.schema`<type "document" tag "main" content "empty">`;
   try {
     const before = locus.cut();
-    const options = { input: { schema: countSchema } };
+    const options = { args: { schema: countSchema } };
     locus.actions.define("added", handler, options);
-    initial.input.schema = options.input.schema = ANY_DATA;
+    initial.args.schema = options.args.schema = ANY_DATA;
     for (const name of ["initial", "added"]) {
       assert.throws(() => locus.actions.define(name, handler), /already defined/);
       const omitted = await locus.actions.trigger(name);
@@ -167,23 +168,26 @@ await check("initial and additive definitions share membership and captured cont
       ["", handler],
       [3, handler],
       ["retry", "handler"],
-      ["retry", handler, { input: null }],
-      ["retry", handler, { input: { required: "yes" } }],
-      ["retry", handler, { input: { schema: {} } }],
-      ["retry", handler, { input: { schema: documentSchema } }],
-      ["retry", handler, { input: { decoder: handler } }],
+      ["retry", handler, { input: { required: true } }],
+      ["retry", handler, { args: null }],
+      ["retry", handler, { args: { required: "yes" } }],
+      ["retry", handler, { args: { schema: {} } }],
+      ["retry", handler, { args: { schema: documentSchema } }],
+      ["retry", handler, { args: { decoder: handler } }],
     ]) assert.throws(() => Reflect.apply(locus.actions.define, undefined, args), TypeError);
     actionError(await locus.actions.trigger("retry"), "LOCUS_UNKNOWN_ACTION");
     locus.actions.define("retry", handler);
     for (const schema of [{}, documentSchema, handler]) {
       assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined,
-        [{}, { actions: { valid: handler, bad: { handler, input: { schema } } } }]), TypeError);
+        [{}, { actions: { valid: handler, bad: { handler, args: { schema } } } }]), TypeError);
     }
+    assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined,
+      [{}, { actions: { bad: { handler, input: { required: true } } } }]), /only handler and args/);
     let legacyCalls = 0;
     assert.throws(() => Reflect.apply(hsonLiveMap.locus.create, undefined, [{}, {
       actions: { initial: handler },
       schema: { actions: { initial: { payload: () => { legacyCalls++; return true; } } } },
-    }]), /Configure action input in its definition/);
+    }]), /Configure action args in its definition/);
     assert.equal(legacyCalls, 0);
     for (const name of ["constructor", "__proto__", "toString", "document.custom"]) {
       actionError(await locus.actions.trigger(name), "LOCUS_UNKNOWN_ACTION");
@@ -209,15 +213,15 @@ await check("durable startup snapshots handler and input before a pending load",
     const logicalMapId = `registry-startup-${existing}`;
     if (existing) (await hsonLiveMap.locus.resume(definitions, { logicalMapId, persistence })).dispose();
     persistence.hold = true;
-    const input = { schema: countSchema, required: true };
-    const action = { handler: () => "captured", input };
+    const args = { schema: countSchema, required: true };
+    const action = { handler: () => "captured", args };
     const actions = { startup: action };
     const pending = hsonLiveMap.locus.resume(definitions, { logicalMapId, persistence, actions });
     await entered.promise;
     action.handler = () => "changed handler";
-    input.schema = ANY_DATA;
-    input.required = false;
-    actions.startup = { handler: () => "replaced entry", input };
+    args.schema = ANY_DATA;
+    args.required = false;
+    actions.startup = { handler: () => "replaced entry", args };
     release.resolve();
     const locus = await pending;
     try {
@@ -238,7 +242,7 @@ await check("invalid durable definitions reject before adapter load or checkpoin
   const document = Hson.schema`<type "document" tag "main" content "empty">`;
   await assert.rejects(hsonLiveMap.locus.resume(definitions, {
     logicalMapId: "registry-invalid", persistence,
-    actions: { valid: () => 1, invalid: { handler: () => 2, input: { schema: document } } },
+    actions: { valid: () => 1, invalid: { handler: () => 2, args: { schema: document } } },
   }), /compile in data mode/);
   assert.equal(loads, 0);
   assert.equal(persistence.chunks.size, 0);
@@ -261,19 +265,18 @@ await check("direct admission keeps the original name and input when payload ref
     }),
   };
   try {
-    locus.actions.define("validated", (context, input, admitted) => {
+    let validatedCalls = 0;
+    locus.actions.define("validated", (context, args) => {
       assert.deepEqual(context.origin, { kind: "direct" });
-      assert.equal(admitted.name, "validated");
-      assert.equal(admitted.id, "original-id");
-      assert.strictEqual(admitted.payload, input);
-      return input;
-    }, { input: { schema: countSchema, required: true } });
-    locus.actions.define("other", () => { otherCalls++; }, { input: { schema: Hson.schema`<type "data" content <value "string">>` } });
+      validatedCalls++;
+      return args;
+    }, { args: { schema: countSchema, required: true } });
+    locus.actions.define("other", () => { otherCalls++; }, { args: { schema: Hson.schema`<type "data" content <value "string">>` } });
     const result = await locus.dispatchAction(message);
     assert.equal(message.name, "other");
     assert.ok(result.type === "ack" && result.id === "original-id");
     assert.deepEqual(result.result?.materialize(), { value: 4 });
-    assert.equal(otherCalls, 0);
+    assert.deepEqual([validatedCalls, otherCalls], [1, 0]);
   } finally { locus.dispose(); }
 });
 
@@ -406,7 +409,7 @@ await check("affirmatively authorized attached and ephemeral submissions reach d
     locus.actions.define("probe", (context, payload) => {
       origins.push(context.origin.kind);
       return payload;
-    }, { input: { schema: ANY_DATA, required: true } });
+    }, { args: { schema: ANY_DATA, required: true } });
     assert.equal((await attached.operations.submit({ type: "session-create", id: "create" })).type, "session-created");
     const remote = await attached.operations.submit(message);
     actionError(await admit_locus_remote_action_internal(locus, { message }), "LOCUS_ACTION_FORBIDDEN");
@@ -423,7 +426,7 @@ await check("affirmatively authorized attached and ephemeral submissions reach d
     mutable.payload = Hson.data.from("changed input");
     releaseAuthorization.resolve();
     const captured = await pending;
-    assert.ok(captured.type === "ack" && captured.result === input);
+    assert.ok(captured.type === "ack" && captured.id === "held" && captured.result === input);
     assert.deepEqual(origins, ["session", "session", "session"]);
   } finally {
     releaseAuthorization.resolve();
@@ -437,7 +440,7 @@ await check("dynamic Schema failures precede authorization in both remote routes
   const locus = hsonLiveMap.locus.create({}, { authorizeAction: () => { authorizations++; return true; } });
   const attached = attach_locus_semantic_transport_internal(locus, { notice: () => {} });
   try {
-    locus.actions.define("validated", () => { executions++; }, { input: { schema: countSchema, required: true } });
+    locus.actions.define("validated", () => { executions++; }, { args: { schema: countSchema, required: true } });
     assert.equal((await attached.operations.submit({ type: "session-create", id: "create" })).type, "session-created");
     const message = { type: "action", id: "invalid", name: "validated", payload: { value: "wrong" } } as const;
     const received = await attached.operations.submit(message);

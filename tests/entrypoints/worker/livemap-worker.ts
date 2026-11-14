@@ -46,7 +46,7 @@ const capture: LiveMapSnapshot = map.capture();
 void projectedAcquisitionIsPublic;
 void capture.libraries;
 const empty = hsonLiveMap.create();
-empty.actions.define("compute", async (_ctx, input, message) => ({ name: message.name, value: input?.scalar() ?? null }));
+empty.actions.define("compute", async (_ctx, args) => ({ value: args?.scalar() ?? null }));
 const execution: Promise<LocalBehaviorResult> = empty.actions.trigger("compute", -0);
 void execution;
 void empty.capture();

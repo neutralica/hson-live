@@ -26,7 +26,7 @@ function capture_configuration<T extends object>(input: T, durable: boolean): T 
     const value = Reflect.get(input, key);
     if (key === "schema" && value !== undefined && (typeof value !== "object" || value === null
       || Array.isArray(value) || Reflect.ownKeys(value).some(field => field !== "state"))) {
-      throw new TypeError("Locus schema options may contain only state. Configure action input in its definition.");
+      throw new TypeError("Locus schema options may contain only state. Configure action args in its definition.");
     }
     Object.defineProperty(captured, key, { value, enumerable: true });
   }

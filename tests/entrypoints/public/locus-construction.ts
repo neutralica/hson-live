@@ -80,16 +80,19 @@ void [resumedName, hsonLiveMap.locus.checkpoint(resumed)];
 // @ts-expect-error Checkpointing is a Locus namespace operation.
 void resumed.checkpoint;
 
-const actionOptions: LocusActionDefinitionOptions = { input: { schema: Count, required: true } };
-locus.actions.define("count.advance", (context, input, message) => {
-  const exact: HsonDataValue | undefined = input;
-  const received: HsonDataValue | undefined = message.payload;
+const actionOptions: LocusActionDefinitionOptions = { args: { schema: Count, required: true } };
+locus.actions.define("count.advance", (context, args) => {
+  const exact: HsonDataValue | undefined = args;
   const schema: typeof Count = context.data.must("count").schema.get();
   context.stage.data.must("count").at(["value"]).set(2);
-  void [received, schema];
+  void schema;
   return exact;
 }, actionOptions);
 resumed.actions.define("ready", () => true);
+// @ts-expect-error Registered handlers receive two parameters.
+locus.actions.define("three", (_context: unknown, _args: unknown, _message: unknown) => {});
+// @ts-expect-error The registry options key is args.
+locus.actions.define("legacy", () => {}, { input: { required: true } });
 const execution: LocusTriggerResult = await locus.actions.trigger("count.advance", { value: 2 });
 const wireResult: LocusClientActionResult = execution;
 const id: string = execution.id;
@@ -104,18 +107,17 @@ void resumed.actions.trigger("ready");
 void locus.actions.trigger("count.advance", Hson.data.from({ value: 3 }));
 // @ts-expect-error Trigger accepts Data input.
 void locus.actions.trigger("count.advance", new Date());
-// @ts-expect-error Dynamic definitions accept a Schema handle as the input schema.
-locus.actions.define("decoder", () => {}, { input: { schema: () => true } });
+// @ts-expect-error Dynamic definitions require an HSON Schema handle.
+locus.actions.define("decoder", () => {}, { args: { schema: () => true } });
 
 const typed = hsonLiveMap.locus.create<typeof definitions, { startup: { readonly value: number } }>(definitions, {
   actions: {
     startup: {
-      input: { schema: Count, required: true },
-      handler(context, input, message) {
-        const name: "startup" = message.name;
-        const exact: HsonDataValue | undefined = input;
+      args: { schema: Count, required: true },
+      handler(context, args) {
+        const exact: HsonDataValue | undefined = args;
         const schema: typeof Count = context.data.must("count").schema.get();
-        void [name, schema];
+        void schema;
         return exact;
       },
     },
@@ -123,7 +125,7 @@ const typed = hsonLiveMap.locus.create<typeof definitions, { startup: { readonly
   authorizeAction: ({ action }) => action === "startup" || action === "added.later",
 });
 typed.actions.define("added.later", () => null);
-// @ts-expect-error Action input belongs in the action definition.
+// @ts-expect-error Action args belong in the action definition.
 void hsonLiveMap.locus.create(definitions, { schema: { actions: {} } });
 // @ts-expect-error Startup action Schemas must be handles.
-void hsonLiveMap.locus.create(definitions, { actions: { probe: { handler: () => {}, input: { schema: () => true } } } });
+void hsonLiveMap.locus.create(definitions, { actions: { probe: { handler: () => {}, args: { schema: () => true } } } });

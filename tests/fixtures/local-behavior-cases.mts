@@ -16,26 +16,26 @@ export async function local_behavior_cases() {
   let commits = 0;
   const stop = map.commits.observe(() => { commits++; });
   try {
-    const ids: string[] = [];
+    let bareCalls = 0;
     const echoInput = (_ctx: unknown, data: HsonDataValue | undefined) => data;
-    actions.define("bare", (ctx, data, message) => {
+    actions.define("bare", function (ctx, args) {
       assert.deepEqual(ctx, { map });
-      assert.equal(message.name, "bare");
-      ids.push(message.id);
-      return data;
+      assert.equal(arguments.length, 2);
+      bareCalls++;
+      return args;
     });
     const first = actions.trigger("bare");
-    assert.equal(ids.length, 1, "the handler starts in the calling turn");
+    assert.equal(bareCalls, 1, "the handler starts in the calling turn");
     assert.deepEqual(await first, { ok: true });
     const second = await actions.trigger("bare", "123");
     assert.ok(second.ok && second.result?.scalar() === "123");
-    assert.equal(new Set(ids).size, 2);
+    assert.equal(bareCalls, 2);
 
     const schema = Hson.schema`<type "data" content <'10' "number" '2' "number">>`;
     const exact = Hson.data.fromSource('{"10":-0,"2":2}');
-    const options = { input: { schema } };
+    const options = { args: { schema } };
     actions.define("schema", echoInput, options);
-    options.input.schema = ANY_DATA;
+    options.args.schema = ANY_DATA;
     assert.deepEqual(await actions.trigger("schema"), { ok: true });
     assert.equal((await actions.trigger("schema", null)).ok, false);
     assert.equal((await actions.trigger("schema", { "10": "wrong", "2": 2 })).ok, false);
@@ -48,28 +48,31 @@ export async function local_behavior_cases() {
       assert.ok(Object.is(result.result.entries()?.[0]?.[1].scalar(), -0));
     } finally { HsonDataValue.prototype.materialize = materialize; }
 
-    const presence = { input: { required: true } };
+    const presence = { args: { required: true } };
     actions.define("presence", echoInput, presence);
-    actions.define("required-schema", echoInput, { input: { required: true, schema } });
-    presence.input.required = false;
-    assert.match(behaviorError(await actions.trigger("presence")).message, /requires input/);
-    assert.match(behaviorError(await actions.trigger("required-schema")).message, /requires input/);
+    actions.define("required-schema", echoInput, { args: { required: true, schema } });
+    presence.args.required = false;
+    assert.match(behaviorError(await actions.trigger("presence")).message, /requires arguments/);
+    assert.match(behaviorError(await actions.trigger("required-schema")).message, /requires arguments/);
     const explicitNull = await actions.trigger("presence", null);
     assert.ok(explicitNull.ok && explicitNull.result?.scalar() === null);
+    const empty = await actions.trigger("presence", {});
+    assert.ok(empty.ok && empty.result?.equals(Hson.data.from({})));
 
     for (const args of [
       ["", echoInput], [3, echoInput], ["invalid", {}],
       ["invalid", echoInput, { unexpected: true }],
-      ["invalid", echoInput, { input: null }],
-      ["invalid", echoInput, { input: { required: "yes" } }],
-      ["invalid", echoInput, { input: { schema: {} } }],
-      ["invalid", echoInput, { input: { schema: ANY_DOCUMENT } }],
+      ["invalid", echoInput, { input: { required: true } }],
+      ["invalid", echoInput, { args: null }],
+      ["invalid", echoInput, { args: { required: "yes" } }],
+      ["invalid", echoInput, { args: { schema: {} } }],
+      ["invalid", echoInput, { args: { schema: ANY_DOCUMENT } }],
     ]) assert.throws(() => Reflect.apply(actions.define, undefined, args), TypeError);
     assert.match(behaviorError(await actions.trigger("invalid")).message, /Unknown local action/);
     actions.define("invalid", echoInput);
     assert.throws(() => actions.define("invalid", echoInput), /already defined/);
     assert.throws(() => actions.define("invalid", () => "replacement"), /already defined/);
-    const reentrantOptions = { get input() {
+    const reentrantOptions = { get args() {
       actions.define("reentrant", () => "first");
       return undefined;
     } };
@@ -139,7 +142,7 @@ export async function local_behavior_cases() {
     Reflect.apply(actions.define, undefined, ["throwing-then", () => ({ get then() { throw getterFailure; } })]);
     assert.equal(behaviorError(await actions.trigger("throwing-then")).cause, getterFailure);
     behaviorError(await Reflect.apply(actions.trigger, undefined, ["bare", new Date()]));
-    assert.equal(ids.length, 3, "invalid input never reaches the handler");
+    assert.equal(bareCalls, 3, "invalid arguments never reach the handler");
 
     assert.equal(map.actions, actions);
     assert.deepEqual(map.capture(), snapshot);

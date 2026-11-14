@@ -81,7 +81,7 @@ Authentication uses the original private WeakMap and construction authority. Ins
 | LiveMap Data setters and collections | Authentication precedes ordinary reflection. Whole carriers work in exact setters and applicable bulk collections; arbitrary nested carrier substitution is rejected. D4a exact capture remains in force. |
 | Part `.write()` | Admits each declared Data argument, then serializes into the existing authored attribute representation. Composition explicitly decodes that representation and preserves exact forwarding. Document/scalar arguments keep their contracts. |
 | Data Schema `.certify()` | Validates the private ordered value and returns the same genuine carrier with the specific Schema proof. Document certification still qualifies Document source and returns Document text. |
-| Locus | Requests accept values/carriers. Validators, decoders, authorizers, handlers and normalized handler messages receive carriers. Decoder output and handler results are re-admitted; acknowledgments/status results are carriers. |
+| Locus | Requests accept values/carriers. Action Schemas validate present arguments on the exact carrier. Authorizers and handlers receive the admitted carrier for present arguments. Handler results are admitted as Data. Acknowledgments and status results carry exact Data when present. |
 | Echo | Public requests accept values/carriers; retained request payloads and acknowledgment/status results are normalized carriers. Retry capture and ownership remain stable. |
 | Interactions | Descriptor Data inputs follow the same rule. Dispatch supplies authenticated Data values; canonical storage/fingerprinting avoids public text serialization/reparsing. |
 

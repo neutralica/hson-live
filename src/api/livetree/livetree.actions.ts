@@ -94,7 +94,7 @@ export function parse_livetree_authored_event(source: string): Readonly<{
         throw new Error(`Unknown local action ${JSON.stringify(key)}. Define it on tree.actions before calling tree.listen.event().`);
       }
       // The native registration retains the resolved capability through reversible detach.
-      const invoke = action.bindInput(data);
+      const invoke = action.bindArgs(data);
       return { actionOwner, handler: event => { void invoke({ subject: tree, event, onFailure }); } };
     },
   };

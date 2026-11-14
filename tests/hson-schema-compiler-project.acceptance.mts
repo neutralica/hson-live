@@ -447,9 +447,9 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part at=components/typed count:num="1e309"/>` }, components: { parts: { typed: { kind: "document", document: "<p hson:part num:n=%{count} \\"^{n}\\"/>" } } } });\n'
     + 'const map = hsonLiveMap.fromLibraries({ components: { parts: { button: { kind: "document", document: "<button hson:part event:run/>", events: { run: ' + localEvent + ' } } } }, page: { document: \'<hson-part at="components/button"/>\' } });\n'
-    + 'map.actions.define("run", () => {}, { input: { required: true } });\n'
+    + 'map.actions.define("run", () => {}, { args: { required: true } });\n'
     + 'const locus = hsonLiveMap.locus.create(' + definitions + ', { authorizeAction() { return true; }, actions: { cancel() {} } });\n'
-    + 'locus.actions.define("run", () => {}, { input: { required: true } });\n';
+    + 'locus.actions.define("run", () => {}, { args: { required: true } });\n';
   writeFileSync(consumer, source);
   const config = join(directory, "tsconfig.json");
   const parsed = ts.getParsedCommandLineOfConfigFile(config, {}, {

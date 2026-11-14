@@ -30,7 +30,7 @@ EchoActionStatusResult EchoAttachmentEvent EchoEndpointTransport EchoReplicaTran
 EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation LocusLocalInitializer LocusSessionApi LocusSession LocusSessionCreateOptions LocusSessionNow LocusSessionHtmlNow Hson HsonCanonical
 HsonAuthored HsonData HsonDataValue HsonDataInput HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData InteractionActionDispatcher
 InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LiveHost
-LocalBehaviorContext LocalBehaviorDefinitionOptions LocalBehaviorMessage LocalBehaviorResult
+LocalBehaviorContext LocalBehaviorDefinitionOptions LocalBehaviorResult
 LiveHostApplication LiveHostApplicationContext LiveHostRuntime LiveHostConnection LiveHostConnectionRoute LiveHostCreateInput LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
 LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
 LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentLocation LiveMapDocumentQuadLocation LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
@@ -134,14 +134,13 @@ await check("LiveMap action and callback declarations type-check without a platf
       const map = hsonLiveMap.create();
       // @ts-expect-error The pre-release behaviors receiver was removed.
       map.behaviors;
-      map.actions.define("compute", (ctx, input, message) => {
+      map.actions.define("compute", (ctx, args) => {
         ctx.map satisfies LiveMap;
-        message.name satisfies string;
         // @ts-expect-error No platform Event declaration is in scope.
         ctx.event?.preventDefault();
         // @ts-expect-error The LiveTree entrypoint is outside this declaration boundary.
         ctx.subject?.dom.el();
-        return input;
+        return args;
       });
       map.actions.trigger("compute", -0) satisfies Promise<LocalBehaviorResult>;
       const page = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }).doc.must("page");
@@ -310,7 +309,7 @@ const ownerProofs = Object.freeze({
   "dist/index.d.ts": ["ReadonlyHsonNode"],
   "dist/hson-authoring.d.ts": ["HsonAuthored", "HsonDocument", "HsonNode", "ReadonlyHsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["CssMap", "ReadonlyHsonNode", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE",
-    "LiveTreeActionContext", "LiveTreeActionHandler", "LiveTreeActions", "LocalActionMessage", "LocalActionResult"],
+    "LiveTreeActionContext", "LiveTreeActionHandler", "LiveTreeActions", "LocalActionResult"],
   "dist/api/livemap/index.d.ts": ["CssMap", "LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoSync", "EchoSyncStrategy"],
@@ -332,6 +331,14 @@ await check("specialist contracts remain available from owning entrypoints", () 
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }
+  }
+});
+
+await check("retired local Action message types are absent from public declarations", () => {
+  for (const file of ["dist/index.d.ts", "dist/api/livetree/index.d.ts", "dist/api/livemap/index.d.ts"]) {
+    const exports = declaration_exports(file);
+    assert.equal(exports.includes("LocalActionMessage"), false, file);
+    assert.equal(exports.includes("LocalBehaviorMessage"), false, file);
   }
 });
 

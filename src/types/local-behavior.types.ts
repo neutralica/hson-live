@@ -1,6 +1,6 @@
-import type { ExecutionInputOptions } from "../internal/execution-input.js";
+import type { ActionArgsOptions } from "../internal/action-args.js";
 import type { LiveMap } from "./livemap.types.js";
-import type { LocalActionHandler, LocalActionMessage, LocalActionRegistry, LocalActionResult } from "./local-action.types.js";
+import type { LocalActionHandler, LocalActionRegistry, LocalActionResult } from "./local-action.types.js";
 
 /** LiveTree supplies the subject type when its declarations are loaded. */
 export interface LocalBehaviorSubjectTypes {}
@@ -12,9 +12,8 @@ export type LocalBehaviorContext = Readonly<{
   event?: typeof globalThis extends { Event: { prototype: infer NativeEvent } } ? NativeEvent : unknown;
 }>;
 
-export type LocalBehaviorMessage = LocalActionMessage;
 export type InteractionLocalBehavior = LocalActionHandler<LocalBehaviorContext>;
-export type LocalBehaviorDefinitionOptions = ExecutionInputOptions;
+export type LocalBehaviorDefinitionOptions = ActionArgsOptions;
 export type LocalBehaviorResult = LocalActionResult;
 
 /** The additive executable registry owned by one LiveMap runtime. */

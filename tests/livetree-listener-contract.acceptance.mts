@@ -512,7 +512,6 @@ await check("standalone action definitions follow owned roots and preserve exact
   const other = hsonLiveTree.fromHson("<main/>");
   const child = tree.find.must.byTag("button");
   const alias = new LiveTree(child);
-  const ids: string[] = [];
   const contexts: LiveTreeActionContext[] = [];
   const fail = (result: LocalActionResult) => {
     assert.equal(result.ok, false);
@@ -527,23 +526,22 @@ await check("standalone action definitions follow owned roots and preserve exact
     assert.notEqual(other.actions, tree.actions);
     const before = tree.node;
 
-    const echo = (context: LiveTreeActionContext, input: HsonDataValue | undefined, message: { id: string; name: string }) => {
+    function echo(context: LiveTreeActionContext, args: HsonDataValue | undefined) {
       contexts.push(context);
-      assert.equal(Object.isFrozen(context) && Object.isFrozen(message), true);
-      assert.equal(message.name, "copy");
-      ids.push(message.id);
-      return input;
-    };
+      assert.equal(arguments.length, 2);
+      assert.equal(Object.isFrozen(context), true);
+      return args;
+    }
     const schema = Hson.schema`<type "data" content <'10' "number" '2' "number">>`;
-    const options = { input: { schema } };
+    const options = { args: { schema } };
     for (const args of [["", echo], ["copy", 42], ["copy", echo, { unknown: true }],
-      ["copy", echo, { input: { required: "yes" } }], ["copy", echo, { input: { schema: ANY_DOCUMENT } }]]) {
+      ["copy", echo, { args: { required: "yes" } }], ["copy", echo, { args: { schema: ANY_DOCUMENT } }]]) {
       assert.throws(() => Reflect.apply(child.actions.define, undefined, args), TypeError);
     }
     assert.match(fail(await tree.actions.trigger("copy")).message, /Unknown local action "copy"/);
     alias.actions.define("copy", echo, options);
     assert.throws(() => tree.actions.define("copy", echo, options), /already defined/);
-    options.input.schema = ANY_DATA;
+    options.args.schema = ANY_DATA;
     assert.match(fail(await other.actions.trigger("copy")).message, /Unknown local action "copy"/);
 
     const exact = Hson.data.fromSource('{"10":-0,"2":2}');
@@ -555,16 +553,18 @@ await check("standalone action definitions follow owned roots and preserve exact
     assert.ok(Object.is(result.result.entries()?.[0]?.[1].scalar(), -0));
     assert.deepEqual(await tree.actions.trigger("copy"), { ok: true });
     fail(await tree.actions.trigger("copy", null));
-    assert.equal(new Set(ids).size, 2);
+    assert.equal(contexts.length, 2);
     assert.ok(contexts.every(context => context.tree === tree && !("event" in context) && !("subject" in context)));
     assert.deepEqual(tree.node, before);
     assert.equal(lifecycle_resource_counts_for_subject(retained_subject(child)).listener, 0);
 
     const registry = tree.actions;
-    tree.actions.define("required", async (_context, input) => input, { input: { required: true, schema: ANY_DATA } });
-    assert.match(fail(await tree.actions.trigger("required")).message, /requires input/);
+    tree.actions.define("required", async (_context, input) => input, { args: { required: true, schema: ANY_DATA } });
+    assert.match(fail(await tree.actions.trigger("required")).message, /requires arguments/);
     const presentNull = await tree.actions.trigger("required", null);
     assert.ok(presentNull.ok && presentNull.result?.scalar() === null);
+    const empty = await tree.actions.trigger("required", {});
+    assert.ok(empty.ok && empty.result?.equals(Hson.data.from({})));
     const failure = new Error("async action failed");
     tree.actions.define("reject", async () => { throw failure; });
     tree.actions.define("invalid-return", () => Infinity);
@@ -584,14 +584,15 @@ await check("authored click binds exact Data, native options and the receiving s
   const { tree, selection, subjects, elements, listenerCounts } = selectionFixture();
   const [subject, sibling] = subjects;
   const [element, otherElement] = elements;
-  const calls: Array<{ context: LiveTreeActionContext; input: HsonDataValue | undefined; id: string }> = [];
+  const calls: Array<{ context: LiveTreeActionContext; input: HsonDataValue | undefined }> = [];
   const source = `<hson:event once stopProp on:click local:record input:data={<'10' -0 '2' null>} <> >`;
   const repeat = `<hson:event on:click local:record input:data={null} <> >`;
-  const record = (context: LiveTreeActionContext, input: HsonDataValue | undefined, message: { id: string }) => {
-    calls.push({ context, input, id: message.id });
-  };
+  function record(context: LiveTreeActionContext, input: HsonDataValue | undefined) {
+    assert.equal(arguments.length, 2);
+    calls.push({ context, input });
+  }
   try {
-    tree.actions.define("record", record, { input: { required: true, schema: ANY_DATA } });
+    tree.actions.define("record", record, { args: { required: true, schema: ANY_DATA } });
     assert.deepEqual(listenerCounts(), [0, 0]);
     const pending = subject.listen.capture().passive().once();
     const once = subject.listen.event(source);
@@ -625,7 +626,9 @@ await check("authored click binds exact Data, native options and the receiving s
     assert.equal(calls.length, 4);
     assert.equal(calls[3]?.context.subject, sibling);
     assert.deepEqual(await sibling.actions.trigger("record", null), { ok: true });
-    assert.equal(new Set(calls.map(call => call.id)).size, 5);
+    assert.equal(calls.length, 5);
+    assert.deepEqual(calls[4]?.context, { tree });
+    assert.equal(calls[4]?.input?.scalar(), null);
 
     const group = selection.filter(item => !item.isDisposed).listen.event(repeat);
     group.off(); group.off();
@@ -668,7 +671,7 @@ await check("invalid standalone declarations and missing actions fail before nat
     let calls = 0;
     const before = tree.node;
     assert.throws(() => tree.listen.event(valid), /Unknown local action "run".*tree\.actions/);
-    tree.actions.define("run", () => { calls++; }, { input: { required: true, schema } });
+    tree.actions.define("run", () => { calls++; }, { args: { required: true, schema } });
     assert.deepEqual(tree.node, before);
     element.dispatch("click", new Event("click"));
     assert.equal(calls, 0);
@@ -676,7 +679,7 @@ await check("invalid standalone declarations and missing actions fail before nat
       [valid.replace("<> ", ""), /requires an outcome object/],
       [valid.replace("<> ", "<value 1> "), /Nonempty authored event outcomes are unsupported/],
       [valid.replace("<> ", "<> <> "), /single authored event outcome object/],
-      [valid.replace(" input:data={<open true>}", ""), /Local action requires input/],
+      [valid.replace(" input:data={<open true>}", ""), /Local action requires arguments/],
       [valid.replace("input:data=", "input:data:name="), /Only input:data takes a value/],
       [valid.replace("local:run", "host:run"), /cannot dispatch host: actions/],
       [valid.replace("local:run", "local:run local:other"), /exactly one host: or local:/],
@@ -709,10 +712,10 @@ await check("standalone optional action input distinguishes omission from null b
   const record: Parameters<typeof tree.actions.define>[1] =
     (_ctx, input) => { seen.push(input?.scalar()); };
   try {
-    tree.actions.define("optional", record, { input: { schema: numbers } });
-    tree.actions.define("nullable", record, { input: { required: true, schema: nulls } });
+    tree.actions.define("optional", record, { args: { schema: numbers } });
+    tree.actions.define("nullable", record, { args: { required: true, schema: nulls } });
     const required = optional.replace("local:optional", "local:nullable");
-    assert.throws(() => tree.listen.event(required), /requires input/);
+    assert.throws(() => tree.listen.event(required), /requires arguments/);
     assert.throws(() => tree.listen.event(nullInput), /at \[\]/);
     assert.equal(element.registrations.length, 0);
     const absent = tree.listen.event(optional);

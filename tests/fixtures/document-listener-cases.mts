@@ -56,7 +56,7 @@ export async function document_listener_cases(): Promise<void> {
     assert.deepEqual(map.capture(), beforeCallbacks);
     assert.deepEqual(descriptors(map), []);
     let invoked = 0;
-    map.actions.define("panel.toggle", () => { invoked++; }, { input: { required: true, schema: ANY_DATA } });
+    map.actions.define("panel.toggle", () => { invoked++; }, { args: { required: true, schema: ANY_DATA } });
     const pathId = coordinate_listener<string>(coordinate).local.onClick("panel.toggle", exact);
     const quadId = quad.listen.local.onClick("panel.toggle", exact);
     assert.equal(typeof pathId, "string");

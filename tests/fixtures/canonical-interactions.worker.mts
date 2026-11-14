@@ -34,12 +34,12 @@ try {
   standalone.actions.define("echo", async (context, input) => {
     assert.deepEqual(context, { tree: standalone });
     return input;
-  }, { input: { required: true } });
+  }, { args: { required: true } });
   const result = await subject.actions.trigger("echo", exact);
   assert.ok(result.ok && result.result === exact);
   const sub = subject.listen.event("<hson:event on:click local:echo input:data={null} <> >");
   sub.off();
-  assert.throws(() => subject.listen.event("<hson:event on:click local:echo <> >"), /requires input/);
+  assert.throws(() => subject.listen.event("<hson:event on:click local:echo <> >"), /requires arguments/);
   const workerButton = new FakeElement("button");
   link_node_to_el(retained_subject(subject), workerButton as unknown as Element);
   const seen: unknown[] = [];

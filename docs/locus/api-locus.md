@@ -83,14 +83,14 @@ A resumed durable authority gives reconnecting clients a projected snapshot for 
 ```ts
 const advanceSchema = Hson.schema`<type "data" content <step "number">>`;
 locus.actions.define("deck.advance", advanceSlide, {
-  input: { required: true, schema: advanceSchema },
+  args: { required: true, schema: advanceSchema },
 });
 const execution = await locus.actions.trigger("deck.advance", { step: 1 });
 ```
 
-The equivalent startup configuration is `actions: { "deck.advance": { handler: advanceSlide, input: { required: true, schema: advanceSchema } }, "deck.reset": resetSlide }`. Durable resume captures and validates these definitions before it loads or writes persisted state.
+The equivalent startup configuration is `actions: { "deck.advance": { handler: advanceSlide, args: { required: true, schema: advanceSchema } }, "deck.reset": resetSlide }`. Durable resume captures and validates these definitions before it loads or writes persisted state.
 
-Input is optional unless `input.required` is true. A supplied Data Schema validates present input, including explicit `null`, on the exact Data carrier. Handlers receive a governed read context and staged writer, `HsonDataValue | undefined` for input, and the normalized action message. Requests and handler results accept supported JavaScript values or exact carriers. Strings are literal Data. Use `Hson.data.fromSource()` to admit encoded JSON or Hson. Omitted input reaches the handler as `undefined`.
+Arguments are optional unless `args.required` is true. A supplied Data Schema validates present arguments, including explicit `null` and `{}`, on the exact Data carrier. Handlers receive `(context, args)`, where `context` provides governed reads and a staged writer and `args` is `HsonDataValue | undefined`. Requests and handler results accept supported JavaScript values or exact carriers. Strings are literal Data. Use `Hson.data.fromSource()` to admit encoded JSON or Hson. Omitted arguments reach the handler as `undefined`.
 
 `trigger` submits the registered action through the trusted direct queue. The next queued operation can start after the handler finishes and the aggregate makes its acceptance decision. The returned `LocusTriggerResult` carries `id`, `ok`, `seq`, and `completionRev` and either an `ack` with optional exact `result` or an `error`. A successful invocation can complete at the existing revision. An uncertain durable append fences the authority and is reported through the existing `error.cause` field as a `LocusPersistenceError` with code `LOCUS_PERSISTENCE_APPEND_UNCERTAIN`.
 

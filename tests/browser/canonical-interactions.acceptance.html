@@ -85,7 +85,7 @@
     const runtimeMap = hsonLiveMap.create();
     runtimeMap.actions.define("standalone", (ctx, input) =>
       ctx.map === runtimeMap && ctx.event === undefined && ctx.subject === undefined ? input : undefined,
-    { input: { required: true, schema: ANY_DATA } });
+    { args: { required: true, schema: ANY_DATA } });
     const direct = await runtimeMap.actions.trigger("standalone", -0);
     const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
       runtimeData: { json: true } });
@@ -152,7 +152,10 @@
         const registry = root.actions;
         check(subject.actions === registry && graft(button, { unsafe: false }).actions === registry,
           "Handles for the same owned tree did not share its actions.");
-        root.actions.define("panel", (ctx, input, message) => { clicks.push({ ctx, input, message }); return input; });
+        root.actions.define("panel", function (ctx, input) {
+          clicks.push({ ctx, input, arity: arguments.length });
+          return input;
+        });
         const pending = subject.listen.once().capture();
         const first = subject.listen.event(source("panel", "once stopProp", "<'10' -0 '2' null>"));
         const repeated = subject.listen.event(source("panel"));
@@ -177,8 +180,8 @@
 
         const required = "<hson:event on:click local:required <> >";
         let requiredCalls = 0, rejected = false;
-        registry.define("required", () => { requiredCalls++; }, { input: { required: true, schema: ANY_DATA } });
-        try { subject.listen.event(required); } catch (error) { rejected = /requires input/.test(error.message); }
+        registry.define("required", () => { requiredCalls++; }, { args: { required: true, schema: ANY_DATA } });
+        try { subject.listen.event(required); } catch (error) { rejected = /requires arguments/.test(error.message); }
         check(rejected, "Native installation accepted a missing required input.");
         const surviving = subject.listen.event("<hson:event on:click local:panel <> >");
         check(subject.detach() === 1 && subject.dom.el() === button && !button.isConnected, "Detach lost the native subject.");
@@ -194,7 +197,7 @@
           "Reversible detach or terminal removal changed listener lifetime or omitted input.");
         const direct = await registry.trigger("panel", -0);
         check(direct.ok && Object.is(direct.result.scalar(), -0) && clicks[5].ctx.event === undefined
-          && new Set(clicks.map(call => call.message.id)).size === 6, "Direct triggering lost exact Data or invocation identity.");
+          && clicks.length === 6 && clicks.every(call => call.arity === 2), "Action dispatch lost exact Data or changed the handler signature.");
 
         const other = root.find.must.byId("other-subject");
         const sync = new Error("sync"), async = new Error("async");
@@ -528,7 +531,7 @@
       const exact = Hson.data.fromSource(Hson.canonical`<'10' -0 '2' 2 __proto__ <safe true>>`);
       const calls = [], failures = [];
       map.actions.define("panel.toggle", (ctx, data) => { calls.push({ element: ctx.subject?.dom.el(), data }); },
-        { input: { required: true, schema: ANY_DATA } });
+        { args: { required: true, schema: ANY_DATA } });
       const continued = continue_document({ map, document: page, root, interactions: { onFailure: failure => failures.push(failure) } });
       try {
         const at = page.at([1, 0, 0]).asElement(), quad = page.q("panel");
@@ -793,7 +796,7 @@
         authorizeAction: ({ action }) => action === "deck.advance" || action === "deck.reset",
         actions: {
           "deck.advance": (_context, payload) => { payloads.push(payload); },
-          "deck.reset": { input: { schema: ANY_DATA }, handler: (_context, payload) => { payloads.push(payload); } },
+          "deck.reset": { args: { schema: ANY_DATA }, handler: (_context, payload) => { payloads.push(payload); } },
         },
       });
       const binding = bind_locus_http(locus, { endpoint: "/authored-events" });
@@ -839,7 +842,7 @@
           } } },
           interactions: { registerActions(actions) {
             actions.define("deck.panel", (ctx, data) => { args.push([ctx.subject?.dom.el(), data]); },
-              { input: { required: true, schema: ANY_DATA } });
+              { args: { required: true, schema: ANY_DATA } });
           },
             onFailure: failure => failures.push(failure) },
         });

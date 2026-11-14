@@ -313,7 +313,7 @@ await check("application Data Schema validation precedes authorization and mutat
       authorizeAction() { authorizations += 1; return true; } }),
     actions: {
       validated: {
-        input: { schema: StateSchema, required: true },
+        args: { schema: StateSchema, required: true },
         handler(context, payload) {
           const value = payload?.materialize() as { value: number };
           context.stage.data.must("state").at(["value"]).set(value.value);

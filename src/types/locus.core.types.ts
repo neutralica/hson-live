@@ -17,7 +17,7 @@ import type {
 import type { JsonValue } from "../core/types.js";
 import type { LibraryCut, LibraryCommits } from "./governor.types.js";
 import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
-import type { ExecutionInputOptions } from "../internal/execution-input.js";
+import type { ActionArgsOptions } from "../internal/action-args.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -73,8 +73,7 @@ export type LocusActionHandler<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = (
   ctx: LocusActionContext<TMap>,
-  payload: HsonDataValue | undefined,
-  message: Omit<LocusClientActionMessage<TActions>, "payload"> & Readonly<{ payload?: HsonDataValue }>,
+  args: HsonDataValue | undefined,
 ) => HsonDataInput | void | Promise<HsonDataInput | void>;
 
 export type LocusActions<
@@ -85,8 +84,8 @@ export type LocusActions<
     | (LocusActionDefinitionOptions & Readonly<{ handler: LocusActionHandler<TActions[TName], TMap, TActions> }>);
 }>;
 
-/** Input admission shared by startup and additive action definitions. */
-export type LocusActionDefinitionOptions = ExecutionInputOptions;
+/** Argument admission shared by startup and additive action definitions. */
+export type LocusActionDefinitionOptions = ActionArgsOptions;
 
 type LocusConfigurationOptions<
   TMap extends LiveMap,
@@ -484,7 +483,7 @@ export type Locus<
     define: (name: string, handler: LocusActionHandler<HsonDataInput | undefined, TMap>,
       options?: LocusActionDefinitionOptions) => void;
     /** Submit a registered action through trusted direct authority. */
-    trigger: (name: string, input?: HsonDataInput) => Promise<LocusTriggerResult>;
+    trigger: (name: string, args?: HsonDataInput) => Promise<LocusTriggerResult>;
   }>;
   actionRequests: LocusActionDedupeInspector;
   stage: LocusStage<TMap>;

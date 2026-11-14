@@ -67,7 +67,6 @@ import {
   type InteractionLocalBehaviors,
   type LocalBehaviorContext,
   type LocalBehaviorDefinitionOptions,
-  type LocalBehaviorMessage,
   type LocalBehaviorResult,
   type BrowserInteractionDescriptor,
   type LocusInteractionDescriptor,
@@ -422,18 +421,21 @@ declare const interactionActivation: InteractionActivationOptions;
 void [interactionListener, interactionDescriptor, localInteractionDescriptor,
   authoritativeInteractionDescriptor, localInteractionBehavior, localInteractionBehaviors,
   interactionDispatcher, interactionFailure, interactionActivation];
-const behaviorOptions: LocalBehaviorDefinitionOptions = { input: { required: true, schema: ANY_DATA } };
+const behaviorOptions: LocalBehaviorDefinitionOptions = { args: { required: true, schema: ANY_DATA } };
 // @ts-expect-error The pre-release behaviors receiver was removed.
 continuationRegistry.behaviors;
 const actions: InteractionLocalBehaviors = continuationRegistry.actions;
-actions.define("reveal", (context, data, message) => {
+actions.define("reveal", (context, args) => {
   const ctx: LocalBehaviorContext = context;
-  const invocation: LocalBehaviorMessage = message;
   const event: Event | undefined = ctx.event;
   const subject: LiveTree | undefined = ctx.subject;
-  void [invocation.id, invocation.name, ctx.map, event, subject];
-  return data;
+  void [ctx.map, event, subject];
+  return args;
 }, behaviorOptions);
+// @ts-expect-error Registered handlers receive two parameters.
+actions.define("three", (_context: unknown, _args: unknown, _message: unknown) => {});
+// @ts-expect-error The registry options key is args.
+actions.define("legacy", () => {}, { input: { required: true } });
 const behaviorResult: LocalBehaviorResult = await actions.trigger("reveal", null);
 if (behaviorResult.ok) void behaviorResult.result?.scalar();
 else void behaviorResult.error.message;

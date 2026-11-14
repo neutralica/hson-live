@@ -2,7 +2,7 @@ import { hsonLiveMap } from "hson-live/livemap";
 import { Hson, type HsonDataValue } from "hson-live/hson";
 import { hsonLiveTree, type LiveTree, type ListenerSub, type ListenerBuilder, type TreeSelector,
   type LiveTreeActionContext, type LiveTreeActionHandler, type LiveTreeActions,
-  type LocalActionMessage, type LocalActionResult } from "hson-live/livetree";
+  type LocalActionResult } from "hson-live/livetree";
 
 void hsonLiveTree.fromTrustedHtml("<main></main>");
 void hsonLiveTree.fromJson({ ready: true });
@@ -33,7 +33,7 @@ selection.listen.on("invented-event", () => {});
 // @ts-expect-error Convenience handlers retain their event types.
 selection.listen.onClick((event: KeyboardEvent) => {});
 
-hsonLiveMap.create().actions.define("click", (ctx, input, message) => {
+hsonLiveMap.create().actions.define("click", (ctx, args) => {
   ctx.event satisfies Event | undefined;
   ctx.subject satisfies LiveTree | undefined;
   ctx.event?.preventDefault();
@@ -41,23 +41,25 @@ hsonLiveMap.create().actions.define("click", (ctx, input, message) => {
   // @ts-expect-error Mouse coordinates require narrowing the native event.
   ctx.event?.clientX;
   ctx.subject?.dom.el() satisfies Element | undefined;
-  message.id satisfies string;
-  return input;
+  return args;
 });
 
 const tree = hsonLiveTree.fromHson("<button/>");
 const actions: LiveTreeActions = tree.actions;
-const inputSchema = Hson.schema`<type "data" content <open "boolean">>`;
-const toggle: LiveTreeActionHandler = async (ctx, input, message) => {
+const argsSchema = Hson.schema`<type "data" content <open "boolean">>`;
+const toggle: LiveTreeActionHandler = async (ctx, args) => {
   ctx satisfies LiveTreeActionContext;
   ctx.tree satisfies LiveTree;
   ctx.subject satisfies LiveTree | undefined;
   ctx.event satisfies Event | undefined;
-  input satisfies HsonDataValue | undefined;
-  message satisfies LocalActionMessage;
-  return input;
+  args satisfies HsonDataValue | undefined;
+  return args;
 };
-actions.define("PANEL_TOGGLE", toggle, { input: { required: true, schema: inputSchema } });
+actions.define("PANEL_TOGGLE", toggle, { args: { required: true, schema: argsSchema } });
+// @ts-expect-error Registered handlers receive two parameters.
+actions.define("three", (_context: unknown, _args: unknown, _message: unknown) => {});
+// @ts-expect-error The registry options key is args.
+actions.define("legacy", () => {}, { input: { required: true } });
 const result: Promise<LocalActionResult> = actions.trigger("PANEL_TOGGLE", { open: true });
 void result;
 const authored: ListenerSub = tree.listen.event("<hson:event on:click local:PANEL_TOGGLE input:data={<open true>} <> >");

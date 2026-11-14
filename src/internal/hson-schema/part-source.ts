@@ -310,8 +310,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const record = knownRecord(input);
     return record === undefined ? undefined : library_source_fields(record, typescript);
   };
-  const requiredInput = (input: ts.Expression | undefined): PartSourceLocation | undefined => {
-    const fields = knownFields(input);
+  const requiredArgs = (args: ts.Expression | undefined): PartSourceLocation | undefined => {
+    const fields = knownFields(args);
     if (fields === undefined || [...fields.keys()].some(key => key !== "required" && key !== "schema")) return undefined;
     const flag = fields.get("required");
     if (flag === undefined) return undefined;
@@ -339,8 +339,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       const record = knownRecord(value);
       const definition = record === undefined ? undefined : library_source_field_candidates(record, typescript, choices);
       const flag = definition?.complete && definition.fields.some(field => field.name === "handler")
-        && definition.fields.every(field => field.name === "handler" || field.name === "input")
-        ? requiredInput(definition.fields.find(field => field.name === "input")?.value) : undefined;
+        && definition.fields.every(field => field.name === "handler" || field.name === "args")
+        ? requiredArgs(definition.fields.find(field => field.name === "args")?.value) : undefined;
       actions.set(name, flag);
     }
     return { actions, complete: entries.complete };
@@ -1006,10 +1006,10 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   for (const issue of direct_event_input_issues(typescript, program, sources, localEventInputs,
     locusEventSources, options => {
       const fields = knownFields(options);
-      const input = fields?.get("input");
-      // Capture can run application getters when the options or the input record are opaque.
-      if (fields === undefined || input !== undefined && knownFields(input) === undefined) return undefined;
-      return { contract: fields.size === 1 ? requiredInput(input) : undefined };
+      const args = fields?.get("args");
+      // Capture can run application getters when the options or the args record are opaque.
+      if (fields === undefined || args !== undefined && knownFields(args) === undefined) return undefined;
+      return { contract: fields.size === 1 ? requiredArgs(args) : undefined };
     })) missingEventInputs.push(issue);
   const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, missingEventInputs, unavailableEventReferences };
   sourceFacts.set(program, facts);

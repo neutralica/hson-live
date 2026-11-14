@@ -873,17 +873,18 @@ check("on-prefixed structured forwarding retains typed source facts and represen
   }
 });
 const eventDeclaration = (reference: string) => JSON.stringify(`<hson:event on:click local:go input:data=${reference} <> >`);
-check('event omissions only report proven required action input', () => {
+check('event omissions only report proven required action arguments', () => {
   const omitted = (destination: 'host' | 'local') => JSON.stringify(`<hson:event on:click ${destination}:go <> >`);
-  const hosted = (event = omitted('host'), input = '{required:true}', extras = '') => {
+  const hosted = (event = omitted('host'), args = '{required:true}', extras = '') => {
     const source = application('<hson-part at="components/card"/>',
       '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:' + event + '}}}', 'maps.locus.create');
-    return source.slice(0, -2) + ',{actions:{go:{handler:()=>{},input:' + input + '}' + extras + '}});';
+    return source.slice(0, -2) + ',{actions:{go:{handler:()=>{},args:' + args + '}' + extras + '}});';
   };
   const required = inspect(hosted());
   assert.deepEqual(required.codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(required.slices, [omitted('host')]);
   assert.deepEqual(required.diagnostics[0]!.related?.map(({ start, end }) => required.text.slice(start, end)), ['true', 'event:go']);
+  assert.deepEqual(inspect(hosted().replace('args:', 'input:')).codes, []);
   assert.deepEqual(inspect(hosted().replace('handler:()=>{}', 'handler(){}')).codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(inspect(hosted().replace('actions:{go', 'actions:{...dynamic,go')).codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(inspect(hosted(omitted('local'))).codes, [], 'a hosted contract supplies no evidence for a local action');
@@ -899,19 +900,20 @@ check('event omissions only report proven required action input', () => {
   const part = local.facts.batches[0]!.libraries[1]!.members[0]!.contractSource;
   assert.equal(part?.parameterCompleteness, 'complete');
   assert.equal(part?.signature?.parameters.size, 0);
-  const localDefinition = '\nloc.actions.define("go",()=>{},{input:{required:true}});';
+  const localDefinition = '\nloc.actions.define("go",()=>{},{args:{required:true}});';
   const localRequired = inspect(localSource + localDefinition);
   assert.deepEqual(localRequired.codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(localRequired.slices, [omitted('local')]);
   assert.deepEqual(inspect(localSource + localDefinition.replace('loc.actions', 'dynamic.actions')).codes, []);
 
   const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n';
-  const define = 'tree.actions.define("go",()=>{},{input:{required:true}});\n';
+  const define = 'tree.actions.define("go",()=>{},{args:{required:true}});\n';
   const listen = 'const sub=tree.listen.event(' + omitted('local') + ');\n';
   const standalone = inspect(tree + define + listen);
   assert.deepEqual(standalone.codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(standalone.slices, [omitted('local')]);
   assert.deepEqual(inspect(tree + listen + define).codes, []);
+  assert.deepEqual(inspect(tree + define.replace('args:', 'input:') + listen).codes, []);
   assert.deepEqual(inspect(tree + 'if (Math.random()) ' + define + listen).codes, []);
   assert.deepEqual(inspect(tree + define + 'other.append(tree);\n' + listen).codes, []);
   assert.deepEqual(inspect(tree + define.replace('required:true', 'required:false') + listen).codes, []);
@@ -922,7 +924,7 @@ check('event omissions only report proven required action input', () => {
   const editor = create_schema_language_service(ts, ts.createLanguageService(editorHost), editorHost, file('tsconfig.json'));
   try {
     assert.deepEqual(editor.getSemanticDiagnostics(file('app.ts')).filter(issue => issue.source === 'hson-schema')
-      .map(issue => issue.messageText), ['Action "go" requires input. Supply input:data in this event declaration.']);
+      .map(issue => issue.messageText), ['Action "go" requires arguments. Supply input:data in this event declaration.']);
   } finally { editor.dispose(); }
 });
 
@@ -936,9 +938,9 @@ function assertRequiredEventInput(result: ReturnType<typeof inspect>, event: str
   assert.deepEqual(result.diagnostics, [{
     ...at(event),
     code: 'HSON_EVENT_INPUT_REQUIRED',
-    message: 'Action "run" requires input. Supply input:data in this event declaration.',
+    message: 'Action "run" requires arguments. Supply input:data in this event declaration.',
     related: [
-      { ...at(flag, 'required: '), message: 'This action declares required input.' },
+      { ...at(flag, 'required: '), message: 'This action declares required arguments.' },
       ...(attachment === undefined ? [] : [{ ...at(attachment), message: 'Part event attachment.' }]),
     ],
   }]);
@@ -947,7 +949,7 @@ function assertRequiredEventInput(result: ReturnType<typeof inspect>, event: str
 check('tree action ownership must survive registration argument evaluation', () => {
   const setup = 'import { ANY_DATA, hsonLiveTree as trees } from "hson-live";\n'
     + 'const parent = trees.fromHson("<main/>");\nconst tree = trees.fromHson("<button/>");\nconst handler = () => {};\n';
-  const define = 'tree.actions.define("run", handler, { input: { required: true, schema: ANY_DATA } });\n';
+  const define = 'tree.actions.define("run", handler, { args: { required: true, schema: ANY_DATA } });\n';
   const event = JSON.stringify('<hson:event on:click local:run <> >');
   const listen = 'tree.listen.event(' + event + ');';
   const stable = inspect(setup + define + listen);
@@ -969,7 +971,7 @@ check('tree action ownership must survive registration argument evaluation', () 
 const hostedRunEvent = JSON.stringify('<hson:event on:click host:run <> >');
 const hostedRunPart = '{card:{kind:"document",document:Hson.document`<button hson:part event:run/>`,events:{run:' + hostedRunEvent + '}}}';
 const hostedRun = application('<hson-part at="components/card"/>', hostedRunPart, 'maps.locus.create');
-const defineHostedRun = '\nloc.actions.define("run", () => {}, { input: { required: true } });';
+const defineHostedRun = '\nloc.actions.define("run", () => {}, { args: { required: true } });';
 check('direct hosted registrations follow the owning Locus and lexical order', () => {
   const direct = inspect(hostedRun + defineHostedRun);
   assertRequiredEventInput(direct, hostedRunEvent, 'event:run');
@@ -1007,7 +1009,7 @@ check('direct hosted registrations follow the owning Locus and lexical order', (
 
 check('static hosted methods preserve neighboring contract evidence', () => {
   const configure = (configuration: string) => hostedRun.slice(0, -2) + ', ' + configuration + ');';
-  const run = 'run: { handler() {}, input: { required: true } }';
+  const run = 'run: { handler() {}, args: { required: true } }';
   assertRequiredEventInput(inspect(configure('{ actions: { ' + run + ' }, authorizeAction() { return true; } }')),
     hostedRunEvent, 'event:run');
   assertRequiredEventInput(inspect(configure('{ actions: { ' + run + ', cancel() {} } }')), hostedRunEvent, 'event:run');

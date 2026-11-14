@@ -82,10 +82,9 @@ map.parts.parts.p.write({ x: certified });
 map.parts.parts.p.write({ x: new Date() });
 // @ts-expect-error Library inputs do not accept arbitrary object instances.
 hsonLiveMap.fromLibraries({ state: { json: new Date() } });
-const locus = hsonLiveMap.locus.create({}, { actions: { forward(_context, payload, message) {
-  const input: HsonDataValue | undefined = payload;
-  const request: HsonDataValue | undefined = message.payload;
-  return request ?? input;
+const locus = hsonLiveMap.locus.create({}, { actions: { forward(_context, args) {
+  const input: HsonDataValue | undefined = args;
+  return input;
 } } });
 const acknowledgment = await locus.dispatchAction({ type: "action", id: "value", name: "forward", payload: certified });
 if (acknowledgment.type === "ack") { const output: HsonDataValue | undefined = acknowledgment.result; void output; }

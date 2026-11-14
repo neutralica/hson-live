@@ -164,8 +164,8 @@ export function create_registry_locus_internal<
   function wrapAction<A extends LocusActionPayloads>(
     definition: LocusActionDefinition<LocusActionHandler<HsonDataInput | undefined, TMap, A>>,
   ): LocusActionDefinition<LocusHostedAggregateAction> {
-    const { name, handler } = definition;
-    const execute: LocusHostedAggregateAction = (context, payload, actionMessage) => {
+    const { handler } = definition;
+    const execute: LocusHostedAggregateAction = (context, args) => {
       actionSequence += 1;
       const publicContext = Object.freeze({
         ...readNamespaces,
@@ -176,13 +176,7 @@ export function create_registry_locus_internal<
         // established action context callable without fabricating a stream.
         emitEvent: () => false,
       }) as unknown as LocusActionContext<TMap>;
-      const message: Parameters<typeof handler>[2] = (actionMessage ?? Object.freeze({
-        type: "action",
-        id: `locus-action-${actionSequence}`,
-        name,
-        ...(payload === undefined ? {} : { payload }),
-      })) as Parameters<typeof handler>[2];
-      return handler(publicContext, payload, message);
+      return handler(publicContext, args);
     };
     return Object.freeze({ ...definition, handler: execute });
   }
@@ -248,11 +242,11 @@ export function create_registry_locus_internal<
 
   const actions: Locus<TMap, TActions>["actions"] = Object.freeze({
     define: (name, handler, configuration) => authority.defineAction(() => wrapAction(capture_locus_action_definition(name, handler, configuration))),
-    trigger: (name, input) => authority.dispatch_message({
+    trigger: (name, args) => authority.dispatch_message({
       type: "action",
       id: `locus-trigger-${++triggerSequence}`,
       name,
-      ...(input === undefined ? {} : { payload: input }),
+      ...(args === undefined ? {} : { payload: args }),
     }, true),
   });
 

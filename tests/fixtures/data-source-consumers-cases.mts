@@ -296,7 +296,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     let resultValue: HsonDataInput = {};
     const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {
       actions: {
-        probe: { input: { schema: ANY_DATA }, handler: (_context, payload) => { received.push(payload!); return resultValue; } },
+        probe: { args: { schema: ANY_DATA }, handler: (_context, payload) => { received.push(payload!); return resultValue; } },
       },
       authorizeAction: ({ action, payload }) => {
         assert.ok(payload instanceof HsonDataValue);

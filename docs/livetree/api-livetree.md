@@ -858,11 +858,11 @@ const tree = hsonLiveTree.queryDom("#panel-controls").graft();
 const button = tree.find.must.byTag("button");
 const panelSchema = Hson.schema`<type "data" content <open "boolean">>`;
 
-tree.actions.define("PANEL_TOGGLE", ({ tree }, input) => {
-  const open = input?.entries()?.find(([name]) => name === "open")?.[1].scalar();
+tree.actions.define("PANEL_TOGGLE", ({ tree }, args) => {
+  const open = args?.entries()?.find(([name]) => name === "open")?.[1].scalar();
   tree.attrs.set("data-open", open === true ? "yes" : "no");
-  return input;
-}, { input: { required: true, schema: panelSchema } });
+  return args;
+}, { args: { required: true, schema: panelSchema } });
 
 const result = await tree.actions.trigger("PANEL_TOGGLE", { open: true });
 const subscription = button.listen.event(`
@@ -871,12 +871,12 @@ const subscription = button.listen.event(`
 subscription.off();
 ```
 
-Handlers receive `(context, input, message)`. `context.tree` is the owning root
-handle. An authored listener also supplies the receiving handle as
-`context.subject` and the native `context.event`. The message contains the action
-name and a registry-local invocation ID. Input is exact `HsonDataValue` when
-present and `undefined` when omitted. Explicit `null` is present Data. A Schema
-checks present input, and `required: true` requires it. Duplicate names throw.
+Handlers receive `(context, args)`. `context.tree` is the owning root handle.
+An authored listener also supplies the receiving handle as `context.subject`
+and the native `context.event`. Arguments arrive as exact `HsonDataValue` when
+present and `undefined` when omitted. Explicit `null` and `{}` are present
+Data. A Schema checks present arguments, and `args.required: true` rejects
+omission. Duplicate names throw.
 
 `trigger` starts execution immediately and resolves to `{ ok: true, result? }`
 or `{ ok: false, error: { message, cause } }`. Both synchronous and asynchronous
@@ -887,7 +887,7 @@ retires its registry.
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
 one `local:` action, and the required empty outcome object `<>`. The declaration
 may include `input:data={…}`, `once`, and `stopProp`. Omit `input:data` for
-an action that accepts absent input. Unsupported
+an action that accepts omitted arguments. Unsupported
 flags, Part references, `host:` actions, nonempty outcomes, and pending fluent
 builder settings reject. The action and input are checked before native
 attachment. A missing action throws and requires a fresh registration attempt.

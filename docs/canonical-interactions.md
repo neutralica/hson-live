@@ -102,15 +102,14 @@ Descriptor inputs accept supported JavaScript values or authenticated carriers. 
 Register local actions on the operating map before activation. Each `define` adds one function for the life of that map. Invalid definitions and duplicate names throw before insertion. Executable definitions stay in memory across Document and activation disposal and are omitted from canonical state and captures.
 
 ```ts
-map.actions.define("panel.set", (ctx, input, message) => {
-  updatePanel(ctx.map, ctx.subject, input?.materialize());
-  return { action: message.name };
-}, { input: { required: true, schema: panelSchema } });
+map.actions.define("panel.set", (ctx, args) => {
+  updatePanel(ctx.map, ctx.subject, args?.materialize());
+}, { args: { required: true, schema: panelSchema } });
 
 const result = await map.actions.trigger("panel.set", { open: true });
 ```
 
-Both invocation paths call `(ctx, input, message)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `input` is `HsonDataValue | undefined`, and `message` carries the action name and a runtime-local invocation ID. A supplied Schema validates present exact Data. Requiredness defaults to `false`. Explicit `null` counts as present input.
+Direct and native invocations call `(ctx, args)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `args` is `HsonDataValue | undefined`. A supplied Schema validates present exact Data. `args.required` defaults to `false`. Explicit `null` and `{}` both count as present arguments.
 
 `trigger` starts execution immediately. The Promise resolves to `{ ok: true, result? }` with optional exact returned Data or `{ ok: false, error }` with the failure message and original cause. Functions may return Data synchronously or asynchronously.
 

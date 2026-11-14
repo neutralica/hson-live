@@ -47,7 +47,7 @@ import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_interna
 import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal, authority_projection_state_fingerprint_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { require_interaction_system_internal } from "../../internal/interaction-storage.js";
-import { capture_locus_action_definitions, locus_action_input_error, type LocusActionRegistration } from "./locus.action-validation.js";
+import { capture_locus_action_definitions, locus_action_args_error, type LocusActionRegistration } from "./locus.action-validation.js";
 import {
   resolve_locus_document_action,
   type LocusDocumentActionTarget,
@@ -1450,7 +1450,7 @@ export function create_locus_hosted_aggregate_authority_internal<
       ? Object.freeze({ ok: false, code: "LOCUS_DISPOSED", message: "Locus is disposed." })
       : Object.freeze({ ok: false, code: "LOCUS_ACTION_FAILED", message: "Hosted aggregate Locus authority is closed or faulted." });
     try {
-      const { payload, ...envelope } = request;
+      const { payload } = request;
       const admittedPayload = payload === undefined ? undefined : admit_data_input(payload);
       if (!registeredOnly && is_locus_document_action_name(request.name)) {
         const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
@@ -1511,13 +1511,12 @@ export function create_locus_hosted_aggregate_authority_internal<
       if (definition === undefined) {
         return Object.freeze({ ok: false, code: "LOCUS_UNKNOWN_ACTION", message: `Unknown Locus action: ${request.name}` });
       }
-      const error = locus_action_input_error(definition.input, admittedPayload);
+      const error = locus_action_args_error(definition.args, admittedPayload);
       if (error !== undefined) return Object.freeze({ ok: false, code: "LOCUS_SCHEMA_INVALID_PAYLOAD", message: error });
-      const message = Object.freeze({ ...envelope, ...(admittedPayload === undefined ? {} : { payload: admittedPayload }) });
       return Object.freeze({
         ok: true,
         payload: admittedPayload,
-        run: () => locus.executeAction(definition, admittedPayload, message, origin),
+        run: () => locus.executeAction(definition, admittedPayload, origin),
       });
     } catch (cause) {
       return Object.freeze({

@@ -42,8 +42,8 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
     output.push({ file: where.file, start: where.start, end: where.end, code, message, ...(related.length === 0 ? {} : { related }) });
   };
   for (const issue of facts.missingEventInputs) report(issue.location, "HSON_EVENT_INPUT_REQUIRED",
-    `Action ${JSON.stringify(issue.key)} requires input. Supply input:data in this event declaration.`,
-    issue.contract, issue.attachment, "This action declares required input.");
+    `Action ${JSON.stringify(issue.key)} requires arguments. Supply input:data in this event declaration.`,
+    issue.contract, issue.attachment, "This action declares required arguments.");
   if (typescript !== undefined && checker !== undefined) for (const write of facts.writes) {
     for (const argument of write.arguments) {
       if (!is_part_scalar_qualifier(argument.kind)) continue;

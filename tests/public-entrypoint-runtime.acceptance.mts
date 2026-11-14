@@ -281,7 +281,7 @@ const directHsonDataSources = new Map<string, string>([
     const value = Hson.data.from(map.data.must("state").snap());
     const roundTrip = hsonLiveMap.fromLibraries({ state: { json: value.materialize(), schema } });
     if (!Object.is(roundTrip.data.must("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
-    map.actions.define("probe", (ctx, input) => ctx.map === map ? input : undefined, { input: { schema } });
+    map.actions.define("probe", (ctx, input) => ctx.map === map ? input : undefined, { args: { schema } });
     const result = await map.actions.trigger("probe", value);
     if (!result.ok || result.result !== value) throw new Error("LiveMap action lost the exact Data carrier");
   `],

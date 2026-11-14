@@ -1,16 +1,9 @@
 import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
-import type { ExecutionInputOptions } from "../internal/execution-input.js";
-
-export type LocalActionMessage = Readonly<{
-  name: string;
-  /** Identifies one invocation within its action registry. */
-  id: string;
-}>;
+import type { ActionArgsOptions } from "../internal/action-args.js";
 
 export type LocalActionHandler<Context> = (
   ctx: Context,
-  input: HsonDataValue | undefined,
-  message: LocalActionMessage,
+  args: HsonDataValue | undefined,
 ) => HsonDataInput | void | Promise<HsonDataInput | void>;
 
 export type LocalActionResult =
@@ -18,6 +11,6 @@ export type LocalActionResult =
   | Readonly<{ ok: false; error: Readonly<{ message: string; cause: unknown }> }>;
 
 export type LocalActionRegistry<Context> = Readonly<{
-  define: (name: string, handler: LocalActionHandler<Context>, options?: ExecutionInputOptions) => void;
-  trigger: (name: string, input?: HsonDataInput) => Promise<LocalActionResult>;
+  define: (name: string, handler: LocalActionHandler<Context>, options?: ActionArgsOptions) => void;
+  trigger: (name: string, args?: HsonDataInput) => Promise<LocalActionResult>;
 }>;

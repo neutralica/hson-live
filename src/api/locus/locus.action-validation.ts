@@ -1,12 +1,12 @@
 import type { LocusActionDefinitionOptions } from "../../types/locus.types.js";
 import type { HsonDataValue } from "../data/hson-data.js";
-import { capture_execution_input, execution_input_error, type ExecutionInputContract } from "../../internal/execution-input.js";
+import { capture_action_args, action_args_error, type ActionArgsContract } from "../../internal/action-args.js";
 import { is_locus_document_action_name } from "./locus.document-actions.js";
 
 export type LocusActionDefinition<THandler> = Readonly<{
   name: string;
   handler: THandler;
-  input: ExecutionInputContract | undefined;
+  args: ActionArgsContract | undefined;
 }>;
 
 export type LocusActionRegistration<THandler> = THandler | (LocusActionDefinitionOptions & Readonly<{ handler: THandler }>);
@@ -20,7 +20,7 @@ export function capture_locus_action_definition<THandler>(
   if (typeof name !== "string" || name.length === 0) throw new TypeError("Locus action name must be a nonempty string.");
   if (is_locus_document_action_name(name)) throw new TypeError(`Locus action ${JSON.stringify(name)} is reserved for a built-in document action.`);
   if (typeof handler !== "function") throw new TypeError(`Locus action ${JSON.stringify(name)} requires an executable handler.`);
-  return Object.freeze({ name, handler, input: capture_execution_input(options, "Locus action", "action") });
+  return Object.freeze({ name, handler, args: capture_action_args(options, "Locus action", "action") });
 }
 
 export function capture_locus_action_definitions<THandler extends (...args: never[]) => unknown>(
@@ -35,18 +35,18 @@ export function capture_locus_action_definitions<THandler extends (...args: neve
     if (typeof definition !== "object" || definition === null || !Object.hasOwn(definition, "handler")) {
       throw new TypeError(`Locus action ${JSON.stringify(name)} requires an executable handler.`);
     }
-    if (Reflect.ownKeys(definition).some(key => key !== "handler" && key !== "input")) {
-      throw new TypeError("Locus action definitions may contain only handler and input.");
+    if (Reflect.ownKeys(definition).some(key => key !== "handler" && key !== "args")) {
+      throw new TypeError("Locus action definitions may contain only handler and args.");
     }
     return capture_locus_action_definition(name, definition.handler,
-      Object.hasOwn(definition, "input") ? { input: definition.input } : undefined);
+      Object.hasOwn(definition, "args") ? { args: definition.args } : undefined);
   }));
 }
 
-/** Evaluate present input against the compiled Schema on its exact Data carrier. */
-export function locus_action_input_error(
-  contract: LocusActionDefinition<unknown>["input"],
+/** Evaluate present arguments against the compiled Schema on its exact Data carrier. */
+export function locus_action_args_error(
+  contract: LocusActionDefinition<unknown>["args"],
   value: HsonDataValue | undefined,
 ): string | undefined {
-  return execution_input_error(contract, value, "Locus action");
+  return action_args_error(contract, value, "Locus action");
 }

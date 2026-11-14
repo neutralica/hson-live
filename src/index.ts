@@ -69,7 +69,6 @@ export type {
   InteractionLocalBehaviors,
   LocalBehaviorContext,
   LocalBehaviorDefinitionOptions,
-  LocalBehaviorMessage,
   LocalBehaviorResult,
 } from "./types/local-behavior.types.js";
 

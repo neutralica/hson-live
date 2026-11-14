@@ -370,14 +370,20 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
   });
   let handled: HsonDataValue | undefined;
   const optionalInput = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
-  const inputs = new Map<string, readonly [HsonDataValue | undefined, boolean]>();
+  const inputs = new Map<string, HsonDataValue | undefined>();
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
       { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }),
     authorizeAction: ({ action }) => ["save", "omitted", "null", "required"].includes(action), actions: {
       save: (_context, payload) => { handled = payload; },
-      omitted: { input: { schema: optionalInput }, handler: (_context, payload, message) => { inputs.set("omitted", [payload, Object.hasOwn(message, "payload")]); } },
-      null: { input: { required: true, schema: optionalInput }, handler: (_context, payload, message) => { inputs.set("null", [payload, Object.hasOwn(message, "payload")]); } },
-      required: { input: { required: true, schema: optionalInput }, handler: () => { assert.fail("Required action received absent input."); } },
+      omitted: {
+        args: { schema: optionalInput },
+        handler(_context, args) {
+          assert.equal(arguments.length, 2);
+          inputs.set("omitted", args);
+        },
+      },
+      null: { args: { required: true, schema: optionalInput }, handler: (_context, args) => { inputs.set("null", args); } },
+      required: { args: { required: true, schema: optionalInput }, handler: () => { assert.fail("Required action received absent input."); } },
     } });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
   const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
@@ -437,9 +443,9 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 100 && (inputs.size < 2 || failures.length === 0); attempt += 1) await Promise.resolve();
   assert.equal(handled?.equals(Hson.data.from({ exact: true })), true);
-  assert.deepEqual(inputs.get("omitted"), [undefined, false]);
-  assert.equal(inputs.get("null")?.[0]?.scalar(), null);
-  assert.equal(inputs.get("null")?.[1], true);
+  assert.equal(inputs.has("omitted"), true);
+  assert.equal(inputs.get("omitted"), undefined);
+  assert.equal(inputs.get("null")?.scalar(), null);
   assert.deepEqual(actionFrames.map(frame => [frame.name, Object.hasOwn(frame, "payloadData"), frame.payloadData]), [
     ["save", true, '{\n  "exact": true\n}'], ["omitted", false, undefined], ["null", true, "null"], ["required", false, undefined],
   ]);
@@ -447,7 +453,7 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
   assert.equal(failures[0]?.phase, "locus-invocation");
   assert.equal(failures[0]?.descriptor.id, "required");
   assert.equal(Object.hasOwn(failures[0]!.descriptor, "payload"), false);
-  assert.match(String(failures[0]?.cause), /requires input/);
+  assert.match(String(failures[0]?.cause), /requires arguments/);
   const cause = failures[0]?.cause;
   assert.ok(cause instanceof Error);
   assert.equal(Reflect.get(cause, "code"), "LOCUS_SCHEMA_INVALID_PAYLOAD");
@@ -561,7 +567,13 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
         page.button.dispatchEvent(new Event("click"));
         assert.equal(clicks, 0, "listeners attach after action registration");
         registeredOn = actions;
-        actions.define("clicker", ctx => { clicks += 1; localContext = ctx; });
+        actions.define("clicker", function (ctx, args) {
+          assert.equal(arguments.length, 2);
+          if (ctx.event === undefined) assert.equal(args, undefined);
+          else assert.equal(args?.scalar(), null);
+          clicks += 1;
+          localContext = ctx;
+        });
       },
     } };
 

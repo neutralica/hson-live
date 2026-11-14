@@ -1,11 +1,11 @@
 import { admit_data_input, type HsonDataInput, type HsonDataValue } from "../api/data/hson-data.js";
 import type { LocalActionRegistry, LocalActionResult } from "../types/local-action.types.js";
-import { capture_execution_input, execution_input_error } from "./execution-input.js";
+import { capture_action_args, action_args_error } from "./action-args.js";
 
 type EventInvocation<Source> = Source & Readonly<{ onFailure: (cause: unknown) => void }>;
 type LocalActionDefinition<Source> = Readonly<{
-  invoke: (input: HsonDataInput | undefined, source?: EventInvocation<Source>) => Promise<LocalActionResult>;
-  bindInput: (input: HsonDataInput | undefined) => (source: EventInvocation<Source>) => Promise<LocalActionResult>;
+  invoke: (args: HsonDataInput | undefined, source?: EventInvocation<Source>) => Promise<LocalActionResult>;
+  bindArgs: (args: HsonDataInput | undefined) => (source: EventInvocation<Source>) => Promise<LocalActionResult>;
 }>;
 
 /** One local executor for immediate calls and listener-bound capabilities. */
@@ -14,30 +14,28 @@ export function make_local_actions<Context extends object, Source>(
   assertOwnerActive?: () => void,
 ) {
   const definitions = new Map<string, LocalActionDefinition<Source>>();
-  let invocationId = 0n;
   const registry: LocalActionRegistry<Context> = Object.freeze({
     define(name, handler, options) {
       assertOwnerActive?.();
       if (!validName(name)) throw new TypeError("Local action name must be a nonempty string.");
       if (typeof handler !== "function") throw new TypeError(`Local action ${JSON.stringify(name)} requires an executable handler.`);
-      const contract = capture_execution_input(options, "Local action", "local action");
+      const contract = capture_action_args(options, "Local action", "local action");
       // Options can call application getters that reenter registration or retire the owner.
       assertOwnerActive?.();
       if (definitions.has(name)) throw new TypeError(`Local action ${JSON.stringify(name)} is already defined.`);
 
-      const admitInput = (input: HsonDataInput | undefined): HsonDataValue | undefined => {
-        const data = input === undefined ? undefined : admit_data_input(input);
-        const error = execution_input_error(contract, data, "Local action");
+      const admitArgs = (args: HsonDataInput | undefined): HsonDataValue | undefined => {
+        const data = args === undefined ? undefined : admit_data_input(args);
+        const error = action_args_error(contract, data, "Local action");
         if (error !== undefined) throw new TypeError(error);
         return data;
       };
-      const execute = async (getInput: () => HsonDataValue | undefined, source?: EventInvocation<Source>): Promise<LocalActionResult> => {
+      const execute = async (getArgs: () => HsonDataValue | undefined, source?: EventInvocation<Source>): Promise<LocalActionResult> => {
         try {
-          const data = getInput();
+          const data = getArgs();
           assertOwnerActive?.();
           const context = Object.freeze(makeContext(source));
-          const message = Object.freeze({ name, id: String(++invocationId) });
-          const returned = handler(context, data, message);
+          const returned = handler(context, data);
           const pending = actionSettlement(returned);
           // Snapshot synchronous Data before application microtasks can change it.
           const value = pending === undefined ? returned : await pending;
@@ -50,21 +48,21 @@ export function make_local_actions<Context extends object, Source>(
         }
       };
       definitions.set(name, {
-        invoke: (input, source) => execute(() => admitInput(input), source),
-        bindInput(input) {
+        invoke: (args, source) => execute(() => admitArgs(args), source),
+        bindArgs(args) {
           // Authored listeners validate once, before touching a native target.
-          const data = admitInput(input);
+          const data = admitArgs(args);
           return source => execute(() => data, source);
         },
       });
     },
-    async trigger(name, input) {
+    async trigger(name, args) {
       try { assertOwnerActive?.(); }
       catch (cause) { return actionFailure(cause); }
       if (!validName(name)) return actionFailure(new TypeError("Local action name must be a nonempty string."));
       const definition = definitions.get(name);
       if (definition === undefined) return actionFailure(new Error(`Unknown local action ${JSON.stringify(name)}.`));
-      return definition.invoke(input);
+      return definition.invoke(args);
     },
   });
   return { registry, resolve: (name: string) => definitions.get(name) };
