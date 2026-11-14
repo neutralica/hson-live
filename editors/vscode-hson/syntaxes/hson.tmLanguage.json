@@ -162,7 +162,7 @@
           "end": "(?=[<>]|/>)|(?<=[^ \\t\\r\\n])(?=[ \\t\\r\\n])",
           "patterns": [
             {
-              "name": "string.quoted.double.hson",
+              "name": "meta.attribute.value.hson string.quoted.double.hson",
               "match": "(\")((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))*)(\")",
               "captures": {
                 "1": {
@@ -215,7 +215,7 @@
           "end": "(?=[<>]|/>)|(?<=[^ \\t\\r\\n])(?=[ \\t\\r\\n])",
           "patterns": [
             {
-              "name": "string.quoted.double.hson",
+              "name": "meta.attribute.value.hson string.quoted.double.hson",
               "match": "(\")((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))+)((?:/|\\\\/|\\\\u002[fF]))((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))+)(\")",
               "captures": {
                 "1": {
@@ -261,7 +261,7 @@
               }
             },
             {
-              "name": "string.quoted.double.hson",
+              "name": "meta.attribute.value.hson string.quoted.double.hson",
               "match": "(\")((?:(?!(?:[$%^]|\\\\u(?:002[45]|005[eE]))(?:\\{|\\\\u007[bB]))(?:\\\\(?:[\"\\\\bfnrt]|u(?!002[fF])[0-9A-Fa-f]{4})|[^\"\\\\/\\x00-\\x1f]))*)(\")",
               "captures": {
                 "1": {
@@ -400,7 +400,7 @@
       ]
     },
     "attribute-strings": {
-      "begin": "\"", "name": "string.quoted.double.hson",
+      "begin": "\"", "name": "meta.attribute.value.hson string.quoted.double.hson",
       "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.hson" } },
       "end": "\"|(?=\\r?$)",
       "endCaptures": { "0": { "name": "punctuation.definition.string.end.hson" } },
@@ -465,7 +465,7 @@
     "data-strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.hson",
+          "name": "meta.content.value.hson string.quoted.double.hson",
           "begin": "\"",
           "beginCaptures": {
             "0": { "name": "punctuation.definition.string.begin.hson" }

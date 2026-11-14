@@ -8,6 +8,8 @@ await rm(new URL("../.test-dist", import.meta.url), { recursive: true, force: tr
 await build({
   absWorkingDir: extensionRoot,
   entryPoints: {
+    appearance: "tests/appearance.test.ts",
+    "appearance-integration": "tests/integration/appearance.ts",
     house: "tests/house.test.ts",
     bindings: "tests/bindings.test.ts",
     "native-semantic": "tests/native-semantic-tokens.test.ts",

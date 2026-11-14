@@ -128,7 +128,7 @@ for (const [name, scope] of [['button', 'entity.name.type.hson'], ['model:data',
   ['data:model', 'entity.other.attribute-name.receiving.hson'], ['part:optional', 'keyword.other.directive.hson'],
   ['disabled', 'constant.language.flag.hson']]) assert.ok(has(header, name, scope), name);
 assert.equal(header.filter(token => token.text === ':' && token.scopes.at(-1) === 'punctuation.separator.attribute.hson').length, 4);
-for (const value of ['one', 'two', 'true']) assert.deepEqual(header.find(token => token.text === value)?.scopes, ['source.hson', 'string.quoted.double.hson']);
+for (const value of ['one', 'two', 'true']) assert.deepEqual(header.find(token => token.text === value)?.scopes, ['source.hson', 'meta.attribute.value.hson', 'string.quoted.double.hson']);
 assert.deepEqual((await tokenize('source.hson', '<button class=card disabled/>')).filter(token => ['class', 'card', 'disabled'].includes(token.text)).map(({ text, scopes }) => ({ text, scopes })), [
   { text: 'class', scopes: ['source.hson', 'entity.other.attribute-name.hson'] },
   { text: 'card', scopes: ['source.hson', 'string.unquoted.attribute-value.hson'] },
@@ -238,7 +238,7 @@ for (const sigil of ['%', '^', '$']) {
     const tail = tokens => tokens.slice(tokens.findIndex(token => token.text === 'next'));
     assert.deepEqual(tail(actual), tail(expected), source);
     const plain = actual.find(token => token.text === ' plain');
-    assert.deepEqual(plain?.scopes, ['source.hson', 'string.quoted.double.hson'], source);
+    assert.deepEqual(plain?.scopes, ['source.hson', 'meta.attribute.value.hson', 'string.quoted.double.hson'], source);
   }
   for (const unfinished of [`${sigil}{d`, `${sigil}{d[`, `${sigil}{d[\\"odd}key`]) {
     const source = `<p value="${unfinished}" next="after"/>\n<b/>`;
@@ -251,7 +251,7 @@ for (const sigil of ['%', '^', '$']) {
 for (const [sigil, scope] of [['$', 'dollar'], ['%', 'percent'], ['^', 'caret']]) {
   const actual = await tokenize('source.hson', `<p title="before ${sigil}{value} after"/>\n<b/>`);
   const meta = sigil === '$' ? 'meta.interpolation.hson' : sigil === '%' ? 'meta.part.incoming.hson' : 'meta.part.local.hson';
-  const base = ['source.hson', 'string.quoted.double.hson', meta];
+  const base = ['source.hson', 'meta.attribute.value.hson', 'string.quoted.double.hson', meta];
   assert.deepEqual(actual.slice(actual.findIndex(token => token.text === sigil), actual.findIndex(token => token.text === sigil) + 4).map(({ text, scopes }) => ({ text, scopes })), [
     { text: sigil, scopes: [...base, `keyword.operator.interpolation.${scope}.hson`] },
     { text: '{', scopes: [...base, 'punctuation.definition.template-expression.begin.hson'] },
@@ -264,7 +264,7 @@ for (const [sigil, scope] of [['$', 'dollar'], ['%', 'percent'], ['^', 'caret']]
   assert.ok(has(actual, '=', 'keyword.operator.assignment.hson'));
   assert.ok(has(actual, '"', 'punctuation.definition.string.begin.hson'));
   assert.ok(has(actual, '"', 'punctuation.definition.string.end.hson'));
-  assert.deepEqual(actual.find(token => token.text === ' after')?.scopes, ['source.hson', 'string.quoted.double.hson']);
+  assert.deepEqual(actual.find(token => token.text === ' after')?.scopes, ['source.hson', 'meta.attribute.value.hson', 'string.quoted.double.hson']);
   assert.deepEqual(actual.filter(token => token.line === 1), (await tokenize('source.hson', '<b/>')).map(token => ({ ...token, line: 1 })));
 }
 

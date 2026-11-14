@@ -236,9 +236,11 @@ const workerRoute = "Module-level test body launches the target through reposito
 const browserRoute = "Module-level setup bundles/serves the target, launches Chrome, navigates to the test page and awaits browser results.";
 const editorRoute = "Module-level VS Code launch selects the built extensionTestsPath and awaits completion; build-tests maps it to the declared source.";
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
-const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","481044d2398b6a059e38d087ce1b233aefbf6f9dc6a2617d53c043831f3a03bc"]];
+const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","5ff1488dd170145e980f630f135c21d976e89724bfb3e2489c71b57d4784e55c"]];
 
 export const declaredExecution = Object.freeze({
+  "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "d87dd374c63be4b4c9656a89583992faa80b777c722732b376b3fb6eedc55856", route: editorRoute,
+    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","1ee3f6779fa7a435c81a5fa7bb0c798a38bf62bb5eac6e1fe92086007a1686f2"]] },
   "tests/livemap-graph-mutations.acceptance.mts": { sha256: "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341", route: workerRoute,
     targets: [["tests/fixtures/livemap-graph-mutations.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/livemap-graph-reads.acceptance.mts": { sha256: "e458b4ecea665f09b1ef32a9ba459dfc7be7421871f9e77445bab826485ed2c3", route: workerRoute,

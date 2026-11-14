@@ -22,6 +22,7 @@ import {
   type WorkspaceSourceChange,
 } from "./workspace-diagnostics.js";
 import { load_hson_grammar } from "./highlighting.js";
+import { HsonAppearanceEditor } from "./appearance-editor.js";
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
   hson_identity_presentation,
@@ -516,6 +517,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(start_workspace_diagnostics(host, publisher));
   // Independent of Schema associations and completion providers.
   const grammar = load_hson_grammar(context.extensionPath);
+  const appearanceEditor = new HsonAppearanceEditor(context.extensionPath, grammar, bindingCache);
+  context.subscriptions.push(appearanceEditor, vscode.commands.registerCommand("hson.openAppearance", () =>
+    appearanceEditor.open().catch(error => { void vscode.window.showErrorMessage(`Hson Appearance: ${String(error)}`); })));
   const semanticChanges = new vscode.EventEmitter<void>();
   context.subscriptions.push(semanticChanges,
     vscode.workspace.onDidChangeTextDocument(() => semanticChanges.fire()),

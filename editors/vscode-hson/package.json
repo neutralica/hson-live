@@ -29,6 +29,8 @@
     "onLanguage:markdown"
   ],
   "scripts": {
+    "test:appearance": "npm run build && node scripts/build-tests.mjs && node .test-dist/appearance.cjs",
+    "test:appearance:integration": "npm run build && node scripts/build-tests.mjs && node tests/integration/run-appearance.mjs",
     "test:house": "npm run build && node scripts/build-tests.mjs && node .test-dist/house.cjs && node .test-dist/native-semantic.cjs && node tests/themes.test.mjs",
     "test:house:integration": "npm run build && node scripts/build-tests.mjs && node tests/integration/run-house.mjs",
     "themes:generate": "node ./scripts/generate-themes.mjs",
@@ -39,7 +41,7 @@
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
-    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/development-actions.cjs && node ./.test-dist/structural.cjs && node ./.test-dist/status-ui.cjs && node ./.test-dist/house.cjs && node ./.test-dist/bindings.cjs && node ./.test-dist/native-semantic.cjs && node ./tests/themes.test.mjs",
+    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/development-actions.cjs && node ./.test-dist/structural.cjs && node ./.test-dist/status-ui.cjs && node ./.test-dist/house.cjs && node ./.test-dist/appearance.cjs && node ./.test-dist/bindings.cjs && node ./.test-dist/native-semantic.cjs && node ./tests/themes.test.mjs",
     "test:local-host-process": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/local-host-process.cjs && node ./.test-dist/local-host-extension.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
@@ -247,6 +249,7 @@
       }
     ],
     "commands": [
+      { "command": "hson.openAppearance", "title": "Open Appearance", "category": "Hson" },
       { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
       { "command": "hson.formatDocument", "title": "Format Document", "category": "Hson", "enablement": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson" },
       { "command": "hson.formatSelection", "title": "Format Selection", "category": "Hson", "enablement": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)" },

@@ -46,6 +46,23 @@ function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined
   return undefined;
 }
 
+/** The same lexical classification for standalone documents and mapped islands. */
+export function hson_literal_highlights(grammar: IGrammar, text: string): readonly HsonHighlight[] {
+  const result: HsonHighlight[] = [];
+  let offset = 0, stack = INITIAL;
+  for (const { line, width } of physical_lines(text)) {
+    const tokens = grammar.tokenizeLine(line, stack);
+    for (const token of tokens.tokens) {
+      const type = tokenType(token.scopes);
+      const start = offset + token.startIndex, end = offset + Math.min(token.endIndex, line.length);
+      if (type && start < end) result.push({ range: { start, end }, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
+    }
+    stack = tokens.ruleStack;
+    offset += width;
+  }
+  return result;
+}
+
 export function hson_highlights(grammar: IGrammar, fileName: string, text: string,
   discovery?: Readonly<{ tags?: ReturnType<typeof discover_hson_tagged_templates>; calls?: ReturnType<typeof discover_static_from_hson_sources> }>): readonly HsonHighlight[] {
   const tags = discovery?.tags ?? discover_hson_tagged_templates(fileName, text);
@@ -73,25 +90,16 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
       offset = hole.end;
     }
     body += text.slice(offset, source.bodyRange.end);
-    offset = source.bodyRange.start;
-    let stack = INITIAL;
-    for (const { line, width } of physical_lines(body)) {
-      const tokens = grammar.tokenizeLine(line, stack);
-      for (const token of tokens.tokens) {
-        const type = tokenType(token.scopes);
-        if (!type) continue;
-        let start = offset + token.startIndex;
-        const end = offset + Math.min(token.endIndex, line.replace(/\r$/, "").length);
-        // A grammar token may span a masked hole; publish only literal pieces.
-        for (const hole of holes) {
-          if (hole.end <= start || hole.start >= end) continue;
-          if (start < hole.start) result.push({ range: { start, end: hole.start }, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
-          start = Math.max(start, hole.end);
-        }
-        if (start < end) result.push({ range: { start, end }, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
+    for (const token of hson_literal_highlights(grammar, body)) {
+      let start = source.bodyRange.start + token.range.start;
+      const end = source.bodyRange.start + token.range.end;
+      // A grammar token may span a masked hole; publish only literal pieces.
+      for (const hole of holes) {
+        if (hole.end <= start || hole.start >= end) continue;
+        if (start < hole.start) result.push({ ...token, range: { start, end: hole.start } });
+        start = Math.max(start, hole.end);
       }
-      stack = tokens.ruleStack;
-      offset += width;
+      if (start < end) result.push({ ...token, range: { start, end } });
     }
   }
   for (const source of calls.sources) {
@@ -99,24 +107,11 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     // Static diagnostic discovery may trace a same-scope const to its earlier
     // declaration, but that declaration is not itself an explicit host region.
     if (source.literalRange.start < source.callRange.start || source.literalRange.end > source.callRange.end) continue;
-    let runtimeOffset = 0;
-    let stack = INITIAL;
-    for (const { line, width } of physical_lines(source.runtimeText)) {
-      const tokens = grammar.tokenizeLine(line, stack);
-      for (const token of tokens.tokens) {
-        const type = tokenType(token.scopes);
-        if (!type) continue;
-        const runtimeRange = {
-          start: runtimeOffset + token.startIndex,
-          end: runtimeOffset + Math.min(token.endIndex, line.replace(/\r$/, "").length),
-        };
-        const range = map_static_hson_range(source, runtimeRange);
-        if (range !== undefined) for (const piece of physical_line_ranges(text, range)) {
-          result.push({ range: piece, type, scopes: token.scopes, modifiers: hsonModifiersForScopes(token.scopes) });
-        }
+    for (const token of hson_literal_highlights(grammar, source.runtimeText)) {
+      const range = map_static_hson_range(source, token.range);
+      if (range !== undefined) for (const piece of physical_line_ranges(text, range)) {
+        result.push({ ...token, range: piece });
       }
-      stack = tokens.ruleStack;
-      runtimeOffset += width;
     }
   }
   return result.sort((a, b) => a.range.start - b.range.start);

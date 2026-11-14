@@ -85,6 +85,7 @@ assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
 assert.deepEqual(languageConfiguration.colorizedBracketPairs, [["[", "]"], ["«", "»"], ["<", ">"]]);
 assert.equal(coreGrammar.repository["structural-punctuation"].patterns[1].captures[1].name, "punctuation.definition.tag.self-closing.hson");
 assert.deepEqual(manifest.contributes.commands.map(command => command.command), [
+  "hson.openAppearance",
   "hson.openSettings",
   "hson.formatDocument", "hson.formatSelection",
   "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",

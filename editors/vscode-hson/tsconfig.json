@@ -11,6 +11,8 @@
   },
   "include": [
     "src/**/*.ts",
+    "tests/appearance.test.ts",
+    "tests/integration/appearance.ts",
     "tests/runtime.test.ts",
     "tests/house.test.ts",
     "tests/bindings.test.ts",
