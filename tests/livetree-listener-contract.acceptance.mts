@@ -682,10 +682,10 @@ await check("invalid standalone declarations and missing actions fail before nat
       [valid.replace("open:data=", "open:data:name="), /Invalid Event argument/],
       [valid.replace("local:run", "host:run"), /cannot dispatch host: actions/],
       [valid.replace("local:run", "local:run local:other"), /exactly one host: or local:/],
-      [valid.replace("on:click", "on:pointerdown"), /only on:click/],
+      [valid.replace("on:click", "on:pointerdown"), /Unsupported Event selector.*on:pointer:down/],
       [valid.replace("on:click", "on:click capture passive"), /Unsupported authored event header item/],
-      [valid.replace("{true}", "^{value}"), /cannot resolve %\{\} or \^\{\} references/],
-      [valid.replace("{true}", "%{value}"), /cannot resolve %\{\} or \^\{\} references/],
+      [valid.replace("{true}", "^{value}"), /cannot resolve Part references/],
+      [valid.replace("{true}", "%{value}"), /cannot resolve Part references/],
       [valid.replace("{true}", "{1}"), /at \["open"\]/],
     ] as const) assert.throws(() => tree.listen.event(source), error, source);
     const builder = tree.listen;

@@ -125,13 +125,13 @@ function json_utf8_bytes(value: unknown): number {
   return 2 + Math.max(0, entries.length - 1)
     + entries.reduce((total, [key, item]) => total + json_utf8_bytes(key) + 1 + json_utf8_bytes(item), 0);
 }
-function root(value: unknown, schema: HsonSchema, mode: import("../../types/livemap.types.js").LiveMapRootMode): Root {
+function root(value: unknown, schema: HsonSchema | undefined, mode: import("../../types/livemap.types.js").LiveMapRootMode): Root {
   const raw = record(value, ["format", "payload"]);
   if (raw.format !== "hson-exact-value" || typeof raw.payload !== "string") return fail();
   const decoded = decode_hosted_root(raw, HOSTED_MAX_SNAPSHOT_BYTES);
   admit_portable_hson_node(decoded, "authority projection snapshot");
   if (classify_live_root_mode(decoded, mode === "document" ? "document" : "data") !== mode) return fail();
-  validate_hson_schema_graph(schema, decoded);
+  if (schema !== undefined) validate_hson_schema_graph(schema, decoded);
   return Object.freeze({ format: "hson-exact-value", payload: raw.payload });
 }
 
@@ -215,7 +215,7 @@ export function admit_authority_projection_snapshot(input: unknown, scoped = fal
     let system: AuthorityProjectionSnapshot["system"] = null;
     if (systemFeatures.length === 1) {
       const state = record(value.system, ["interactions"]);
-      const validatedRoot = root(state.interactions, interaction_schema_internal(), "data-object");
+      const validatedRoot = root(state.interactions, undefined, "data-object");
       const projected = project_interaction_state_internal(decode_hosted_root(validatedRoot, HOSTED_MAX_SNAPSHOT_BYTES), includedDocuments);
       if (encode_hosted_root(projected, HOSTED_MAX_SNAPSHOT_BYTES).payload !== validatedRoot.payload) return fail();
       system = Object.freeze({ interactions: validatedRoot });

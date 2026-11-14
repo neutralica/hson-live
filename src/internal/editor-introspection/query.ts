@@ -1,4 +1,4 @@
-import { hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonGrammarCheckpoint, type HsonInterpolationRole, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
+import { authored_event_lookup_checkpoint, hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonGrammarCheckpoint, type HsonInterpolationRole, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
 import { serialize_hson_tag_name } from "../../api/transform/utils/hson-utils/hson-tag-helpers.js";
 import { serialize_primitive_hson } from "../../api/transform/utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
@@ -6,6 +6,10 @@ import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDa
 import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
 import { part_candidates } from "./part-completion.js";
 import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
+import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
+import { authored_event_name } from "../authored-events.js";
+import { is_pointer_event_name, POINTER_EVENT_PROPERTIES } from "../event-argument-plan.js";
+import { scan_part_reference } from "../part-placeholder.js";
 
 /** Locate compiler source facts only; completion and reference diagnostics are separate consumers. */
 export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number, includeLiteralEnd = false): Readonly<{
@@ -35,6 +39,39 @@ export type HsonEditorContext = Readonly<{
   interpolationRoles: readonly (HsonInterpolationRole | undefined)[];
   expectedKinds: readonly string[];
 }>;
+
+/** Complete pointer property names inside a recognized authored Event literal. */
+export function query_hson_event_completion(facts: PartSourceFacts, file: string, offset: number): readonly Readonly<{
+  candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>;
+}>[] {
+  const literal = facts.eventLiterals.find(literal => literal.getSourceFile().fileName === file
+    && literal.getStart() < offset && offset < literal.getEnd());
+  if (literal === undefined) return [];
+  const host = literal.getSourceFile();
+  const correspondence = static_hson_literal_correspondence(host.text, host, literal);
+  if (correspondence === undefined) return [];
+  const cursor = offset === correspondence.bodyRange.end ? literal.text.length
+    : correspondence.spans.find(span => span.hostRange.start === offset)?.runtimeRange.start;
+  if (cursor === undefined) return [];
+  const checkpoint = authored_event_lookup_checkpoint(literal.text, cursor);
+  if (checkpoint === undefined || checkpoint.qualifier === "str") return [];
+  const selectors = [...checkpoint.flags.keys()].filter(flag => flag.startsWith("on:"));
+  if (selectors.length !== 1 || !is_pointer_event_name(authored_event_name(selectors[0]!))) return [];
+  const quoted = literal.text[checkpoint.start] === '"';
+  const start = quoted ? checkpoint.start + 1 : checkpoint.start;
+  const prefix = literal.text.slice(start, cursor);
+  if (!/^\^\{pointer\.[A-Za-z]*$/.test(prefix)) return [];
+  const reference = scan_part_reference(literal.text, start);
+  let end = cursor;
+  while (/[A-Za-z0-9_-]/.test(literal.text[end] ?? "")) end++;
+  const optional = reference?.optional ?? literal.text[end] === "?";
+  if (reference === undefined && optional) end++;
+  const range = map_static_hson_range(correspondence, { start: start + 2, end: reference?.end ?? end });
+  if (range === undefined) return [];
+  return POINTER_EVENT_PROPERTIES.map(name => `pointer.${name}`).filter(name => name.startsWith(prefix.slice(2)))
+    .map((name, index) => ({ candidate: { ...item(name, "reference", name + (optional ? "?}" : "}"), "PointerEvent finite number", index),
+      certainty: "certain" as const }, range }));
+}
 
 /** One editor-neutral compiler query for cursor and interpolation-slot consumers. */
 export function query_hson_editor_context(input: Readonly<{

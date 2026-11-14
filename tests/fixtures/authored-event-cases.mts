@@ -1,18 +1,24 @@
 import assert from "node:assert/strict";
-import { Hson, add_interaction, hsonLiveMap, hsonTransform, type LiveMap, type LiveMapDocumentPart } from "../../src/index.ts";
+import { Hson, add_interaction, hsonLiveMap, hsonTransform, replace_interaction, type LiveMap, type LiveMapDocumentPart } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { resolve_document_path, validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../src/internal/interaction-storage.ts";
 import { locus_map_internal } from "../../src/internal/governor-maps.ts";
-import { hson_data_from_value } from "../../src/api/data/hson-data.ts";
-import { projected_value_from_hson_node } from "../../src/core/projected-value-graph.ts";
+import { hson_data_from_value, hson_data_value } from "../../src/api/data/hson-data.ts";
+import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../src/core/projected-value-graph.ts";
+import { is_ordered_projected_object, ordered_projected_array, ordered_projected_object } from "../../src/core/ordered-projected-value.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { read_transform_error_details } from "../../src/core/errors.ts";
 import { deferred, MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
 import { write_semantic_checkpoint, type LocusHostedAggregatePersistedCommit } from "../../src/api/locus/locus.aggregate.persistence.ts";
-import { capture_selected_authority_projection_snapshot } from "../../src/api/locus/locus.authority-projection-snapshot.ts";
+import { hson_schema_digest } from "../../src/api/schema/hson-schema.ts";
+import { interaction_schema_internal } from "../../src/api/interactions/interactions.projection.ts";
+import { interaction_descriptors_from_root } from "../../src/internal/interaction-partitions.ts";
+import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
+import { decode_livemap_replay_payload, encode_livemap_replay_transport } from "../../src/api/livemap/livemap.transport.ts";
+import { admit_authority_projection_snapshot, capture_selected_authority_projection_snapshot } from "../../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../../src/api/locus/locus.projection.ts";
 import { decode_locus_live_projected_envelope_internal, LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal } from "../../src/api/locus/locus.live-projection.ts";
 import { create_echo_scoped_replica_internal } from "../../src/api/echo/echo.aggregate-replica.lifecycle.ts";
@@ -21,6 +27,7 @@ import { decode_hosted_root, encode_hosted_root, registry_from_entries, type Hos
 import { plan_browser_realization } from "../../src/internal/browser-realization/browser-realization-plan.ts";
 import { assertCanonicalClosure, assertCanonicalSerializedClosure, TransformOracleAssertionError } from "../../src/diagnostics/transform-test-oracle.ts";
 import type { HsonNode } from "../../src/core/types.ts";
+import type { LocusProjectionAuthorizer } from "../../src/types/locus.types.ts";
 
 const advance = "<hson:event once stopProp on:click host:ADVANCE_SLIDE step:num=\"3\" <> >";
 const literal = { kind: "document", document: Hson.document`<button hson:part event:advance id="literal" "Next"/>`,
@@ -330,6 +337,150 @@ function iterator_event_arguments() {
     button: { kind: "document", document: '<button hson:part doc:fragment=%{fragment} event:advance/>',
       events: { advance: '<hson:event on:click local:SELECT fragment:data=^{fragment} <> >' } },
   } } }), /Document bindings cannot be sent/);
+}
+
+async function pointer_event_cases() {
+  const move = '<hson:event on:pointer:move local:MOVE x:num=^{pointer.movementX} row:data=^{row} note:str=^{row.note?} y:data=^{pointer["clientY"]?} offset:num="-0" <> >';
+  const down = '<hson:event on:pointer:down host:DOWN x:num=^{pointer.clientX} y:num=^{pointer.movementY} <> >';
+  const control = { kind: "document", document: '<main hson:part data:rows=%{rows} <button for:row=^{rows} event:move event:down/>/>',
+    events: { move, down } } satisfies LiveMapDocumentPart;
+  const startup = { parts: { parts: { control } } };
+  const rows = '[<value -0 note "ready">,<value 2>]';
+  const composition = `<hson-part at=parts/control rows:data=${JSON.stringify(rows)}/>`;
+  const projectedState = (map: LiveMap) => {
+    const engine = authority(map);
+    return engine.systemRoot(engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+  };
+  const read = (root: HsonNode) => descriptor_data(root).map(entry => new Map(entry.entries()));
+  const map = hsonLiveMap.fromLibraries({ ...startup, page: { document: composition } });
+  const entries = read(projectedState(map));
+  assert.equal(entries.length, 4);
+  for (let index = 0; index < entries.length; index++) {
+    const descriptor = entries[index]!;
+    assert.equal(new Map(descriptor.get("listener")?.entries()).get("event")?.scalar(), index % 2 === 0 ? "pointermove" : "pointerdown");
+    assert.equal(descriptor.has("args") || descriptor.has("payload"), false);
+  }
+  const first = Hson.data.fromSource('[["x","num","pointer","movementX"],["row","data",{"value":-0,"note":"ready"}],["note","str","ready"],["y","data","pointer","clientY"],["offset","num",-0]]');
+  const second = Hson.data.fromSource('[["x","num","pointer","movementX"],["row","data",{"value":2}],["note","str"],["y","data","pointer","clientY"],["offset","num",-0]]');
+  assert.ok(entries[0]?.get("eventArgs")?.equals(first));
+  assert.ok(entries[2]?.get("eventArgs")?.equals(second));
+  assert.doesNotMatch(map.doc.page.render(), /event:|hson:event/);
+
+  const admit = (document: string, action: string) => hsonLiveMap.fromLibraries({ parts: { parts: {
+    control: { ...control, document, events: { move: action } },
+  } } });
+  const button = '<button hson:part event:move/>';
+  for (const property of ['pointer', 'pointer.pressure', 'pointer.clientX.foo', 'pointer[0]']) {
+    assert.throws(() => admit(button, move.replace('pointer.movementX', property)), /Unsupported pointer Event lookup/);
+  }
+  assert.throws(() => admit(button, move.replace('x:num=', 'x:str=')), /requires a whole :num or :data argument/);
+  assert.throws(() => admit(button, '<hson:event on:pointer:move local:MOVE x:str="x ^{pointer.clientX}" <> >'), /requires a whole/);
+  for (const selector of ['on:pointer:up', 'on:pointermove', 'on:wheel', 'on:keydown']) {
+    assert.throws(() => admit(button, move.replace('on:pointer:move', selector)), /Unsupported Event selector/);
+  }
+  assert.throws(() => admit(button, move.replace('on:pointer:move', 'on:click')), /native pointer binding requires/);
+  const conflict = '<button hson:part data:pointer=%{stored} event:move "^{pointer.label}"/>';
+  assert.throws(() => admit(conflict, move), error => {
+    assert.match(String(error), /Rename the Part local or its iterator alias/);
+    assert.equal(read_transform_error_details(error)?.related?.find(item => item.role === "event-attachment")?.source.index, conflict.indexOf("event:move"));
+    return true;
+  });
+  assert.throws(() => admit('<main hson:part data:rows=%{rows} <button for:pointer=^{rows} event:move/>/>',
+    '<hson:event on:pointer:move local:MOVE <> >'), /Part local "pointer" conflicts/);
+
+  const lexical = admit('<main hson:part data:rows=%{rows} num:stored=%{pointer} <b for:pointer=^{rows} "^{pointer.label}"/> <button event:move/>/>',
+    '<hson:event on:pointer:move local:MOVE x:num=^{pointer.clientX} copy:data=%{pointer?} <> >');
+  lexical.addLibraries({ page: { document: lexical.parts.parts.control.write({ rows: [{ label: "ordinary" }], pointer: -0 }) } });
+  assert.match(lexical.doc.must("page").render(), /<b>ordinary<\/b>/);
+  assert.ok(read(projectedState(lexical))[0]?.get("eventArgs")?.equals(Hson.data.fromSource('[["x","num","pointer","clientX"],["copy","data",-0]]')));
+  const click = admit('<button hson:part data:pointer=%{stored} event:move/>',
+    '<hson:event on:click local:MOVE x:num=^{pointer.clientX} <> >');
+  click.addLibraries({ page: { document: click.parts.parts.control.write({ stored: { clientX: -0 } }) } });
+  assert.ok(descriptors(click)[0]?.data?.equals(Hson.data.from({ x: -0 })));
+
+  // A portable capture of an ordinary document can also carry an admitted plan.
+  const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
+  const listener = { event: "pointermove", target: "element", capture: false, once: false, passive: false,
+    missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } as const;
+  add_interaction(plain, { id: "plan", subject: { library: "page", path: [0] }, kind: "browser", key: "MOVE", listener, eventArgs: first });
+  const snapshot = plain.capture();
+  assert.deepEqual(install_libraries_snapshot(structuredClone(snapshot)).map.capture(), snapshot);
+  const revision = plain.rev;
+  for (const [event, source] of [["click", '[["x","num","pointer","clientX"]]'], ["pointermove", '[]'],
+    ["pointermove", '[["x","str","pointer","clientX"]]'], ["pointermove", '[["x","num","pointer","pressure"]]'],
+    ["pointermove", '[["x","num","pointer","clientX"],["x","num",0]]'],
+    ["pointermove", '[["bad.name","num","pointer","clientX"]]'],
+    ["pointermove", '[["x","num","pointer","clientX"],["y","num","2"]]']] as const) {
+    assert.throws(() => add_interaction(plain, { id: "bad", subject: { library: "page", path: [0] },
+      kind: "locus", key: "DOWN", listener: { ...listener, event }, eventArgs: Hson.data.fromSource(source) }), /canonical event argument plan/i);
+  }
+  assert.throws(() => add_interaction(plain, { id: "hybrid", subject: { library: "page", path: [0] },
+    kind: "browser", key: "MOVE", listener, args: {}, eventArgs: first }), /cannot accompany/);
+  const badPlan = hson_data_value(Hson.data.fromSource('[["x","num","pointer","pressure"]]'));
+  const forge = (root: HsonNode) => ordered_projected_array(interaction_descriptors_from_root(projected_value_from_hson_node(root)).map(entry => {
+    assert.ok(is_ordered_projected_object(entry));
+    return ordered_projected_object(entry.entries.map(([key, value]) => [key, key === "eventArgs" ? badPlan : value]));
+  }));
+  const invalid = forge(projectedState(plain));
+  const engine = authority(plain);
+  assert.throws(() => engine.commit([{ target: engine.systemTarget(engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!, ["descriptors"]),
+    kind: "replace", value: invalid }]), /Invalid canonical event argument plan operand/);
+  const invalidRoot = projected_value_to_hson_root(ordered_projected_object([["descriptors", invalid]]));
+  const forged = { ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === INTERACTION_RESERVED_LIBRARY_KEY
+    ? { ...entry, root: encode_hosted_root(invalidRoot) } : entry) };
+  assert.throws(() => plain.restore(forged), /Invalid canonical event argument plan operand/);
+  assert.deepEqual(plain.capture(), snapshot);
+  assert.equal(plain.rev, revision);
+
+  // Original registry fences can recover the new state and existing click-only state.
+  assert.equal(hson_schema_digest(interaction_schema_internal()), 'ff3888042afcbbda80f45c417e2323db8fd6460a377ca38057d25449bc41042b');
+  const persistence = new MemoryCheckpointAdapter();
+  const authorizeProjection: LocusProjectionAuthorizer = ({ requested }) => requested;
+  const config = { persistence, logicalMapId: "pointer-event-checkpoint", authorizeProjection };
+  let locus = await hsonLiveMap.locus.resume(startup, config);
+  let expected: string;
+  try {
+    await locus.admit({ page: { document: composition, access: "shared" } });
+    expected = encode_hosted_root(projectedState(locus_map_internal(locus))).payload;
+  } finally { locus.dispose(); }
+  for (const compact of [true, false]) {
+    locus = await hsonLiveMap.locus.resume(startup, config);
+    try {
+      assert.equal(encode_hosted_root(projectedState(locus_map_internal(locus))).payload, expected);
+      const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+      const projection = session.now({ html: "page" }).libs;
+      assert.equal(projection.system?.interactions.payload, expected);
+      const malformed = projected_value_to_hson_root(ordered_projected_object([["descriptors", forge(decode_hosted_root(projection.system!.interactions))]]));
+      assert.throws(() => admit_authority_projection_snapshot({ ...projection, system: { interactions: encode_hosted_root(malformed) } }));
+      if (compact) await hsonLiveMap.locus.checkpoint(locus);
+    } finally { locus.dispose(); }
+  }
+
+  const persisted = new MemoryCheckpointAdapter();
+  const coveredConfig = { persistence: persisted, logicalMapId: "covered-pointer-plan" };
+  const flat = { page: { document: '<main/>' } } as const;
+  const hosted = await hsonLiveMap.locus.resume(flat, coveredConfig);
+  try {
+    const intent = { id: "retained-plan", subject: { library: "page", path: [0] }, kind: "browser", key: "MOVE", listener } as const;
+    await hosted.stage(stage => add_interaction(stage, { ...intent, eventArgs: first }));
+    const malformed = forge(projectedState(locus_map_internal(hosted)));
+    await hosted.stage(stage => replace_interaction(stage, { ...intent, eventArgs: second }));
+    persisted.failPrune = new Error("Fixture retained checkpoint-covered history.");
+    await assert.rejects(hsonLiveMap.locus.checkpoint(hosted), /checkpoint/i);
+    const checkpoint = persisted.state(coveredConfig.logicalMapId)!;
+    const [firstCommit, ...rest] = checkpoint.commits;
+    const write = firstCommit!.commit.operations[0]!;
+    assert.equal(write.domain, "data");
+    const edits = decode_livemap_replay_payload(write.payload);
+    const edit = edits[0]!;
+    assert.equal(edit.kind, "replace");
+    assert.deepEqual(edit.path, ["descriptors"]);
+    if (edit.kind !== "replace") throw new Error("Expected an exact Descriptor replacement.");
+    const payload = encode_livemap_replay_transport([{ ...edit, next: malformed }]).payload;
+    persisted.seed(coveredConfig.logicalMapId, { ...checkpoint, commits: [{ ...firstCommit!,
+      commit: { ...firstCommit!.commit, operations: [{ ...write, payload }] } }, ...rest] });
+    await assert.rejects(hsonLiveMap.locus.resume(flat, coveredConfig), { code: "LOCUS_PERSISTED_STATE_INVALID" });
+  } finally { hosted.dispose(); }
 }
 
 async function composition_cases() {
@@ -856,6 +1007,7 @@ export async function authored_event_cases(): Promise<void> {
   event_reference_comments();
   forwarded_event_cases();
   iterator_event_arguments();
+  await pointer_event_cases();
   await composition_cases();
   local_library_cases();
   await live_library_projection_cases();

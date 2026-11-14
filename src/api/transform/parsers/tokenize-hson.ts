@@ -238,6 +238,19 @@ export function tokenize_authored_event(source: string) {
   return new HsonScanner(source, 0).scanEventDeclaration();
 }
 
+/** Locate the authored value boundary for a lookup being edited. @internal */
+export function authored_event_lookup_checkpoint(source: string, cursor: number) {
+  let value: Readonly<{ flags: ReadonlyMap<string, Position>; qualifier: EventArgumentToken["qualifier"]; start: number }> | undefined;
+  const observe: EventValueObserver = (flags, qualifier, start) => {
+    if (start <= cursor) value = { flags, qualifier, start };
+  };
+  try { new HsonScanner(source, 0).scanEventDeclaration(observe); }
+  catch { /* The lookup and the Event envelope may still be under edit. */ }
+  return value;
+}
+
+type EventValueObserver = (flags: ReadonlyMap<string, Position>, qualifier: EventArgumentToken["qualifier"], start: number) => void;
+
 class HsonScanner {
   private readonly tokens: Tokens[] = [];
   private index = 0;
@@ -269,7 +282,7 @@ class HsonScanner {
   private editorElement: HsonGrammarCheckpoint["element"];
   private editorAttribute: string | undefined;
 
-  public scanEventDeclaration(): Readonly<{
+  public scanEventDeclaration(observeValue?: EventValueObserver): Readonly<{
     start: Position;
     flags: ReadonlyMap<string, Position>;
     args: readonly EventArgumentToken[];
@@ -317,6 +330,7 @@ class HsonScanner {
       this.consumeExpected("=");
       this.skipTrivia();
       const valueStart = this.position();
+      observeValue?.(flags, qualifier, valueStart.index);
       let operand: EventArgumentToken["operand"];
       if (qualifier === "data" && this.peek() === "{") {
         const firstToken = this.tokens.length;

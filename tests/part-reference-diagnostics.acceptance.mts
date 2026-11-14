@@ -7,6 +7,7 @@ import { static_part_reference_diagnostics, static_schema_candidate_diagnostics 
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { inspect_schema_data } from "../src/internal/hson-schema/data-projection.ts";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
+import { HsonEditorCompletionCache } from "../editors/vscode-hson/src/editor-completion.ts";
 import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.ts";
 import { Hson } from "../src/hson-authoring.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
@@ -1002,6 +1003,72 @@ check('known Event fields retain exact Schema evidence beside unresolved operand
   const union = '<type "data" defs <Left <content <kind <exact "left"> count <exact 0> label "string">> Right <content <kind <exact "right"> count <exact -0> label "string">> Choice <union [<ref "Left">, <ref "Right">]>> content <ref "Choice">>';
   assert.deepEqual(inspect(source('kind:str=%{kind} count:num="-0" label:str=%{label}', union)).codes, []);
   assert.deepEqual(inspect(source('kind:str=%{kind} count:num="1" label:str=%{label}', union)).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+});
+
+check('pointer Event diagnostics retain lexical, Action Schema, and source-range evidence', () => {
+  const event = (arguments_: string, family = 'pointer:move') => JSON.stringify(`<hson:event on:${family} local:go ${arguments_} <> >`);
+  const make = (args: string, body = '<button hson:part event:go/>', family?: string) => application('<main/>',
+    '{card:{kind:"document",document:Hson.document`' + body + '`, events:{go:' + event(args, family) + '}}}')
+    .replace('const page =', 'const Args = Hson.schema`<type "data" content <x "number" title "string">>`;\nconst page =')
+    + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
+  assert.deepEqual(inspect(make('x:num=^{pointer.clientX} title:str="Ready"')).codes, []);
+  const missing = inspect(make('x:num=^{pointer.clientX}'));
+  assert.deepEqual(missing.codes, ['HSON_EVENT_ARGUMENT_MISSING']);
+  const wrong = inspect(make('x:num=^{pointer.clientX} title:data=^{pointer.clientY}'));
+  assert.deepEqual(wrong.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+  assert.deepEqual(wrong.slices, ['title:data=^{pointer.clientY}']);
+  assert.deepEqual(wrong.diagnostics[0]?.related?.map(({ start, end }) => wrong.text.slice(start, end)), ['Args', 'event:go']);
+  assert.deepEqual(static_schema_candidate_diagnostics(ts, wrong.program), []);
+  for (const [args, span, issue, family] of [
+    ['x:num=^{pointer.pressure}', '^{pointer.pressure}', /Unsupported pointer Event lookup/, undefined],
+    ['x:num=^{pointer.clientX.}', '^{pointer.clientX.}', /one whole Part reference/, undefined],
+    ['x:num=^{pointer.clientX} title:str=^{pointer.clientY}', '^{pointer.clientY}', /requires a whole :num or :data argument/, undefined],
+    ['x:num=^{pointer.clientX}', '^{pointer.clientX}', /native pointer binding requires/, 'click'],
+  ] as const) {
+    const bad = inspect(make(args, undefined, family));
+    assert.deepEqual(bad.codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.deepEqual(bad.slices, [span]);
+    assert.match(bad.diagnostics[0]!.message, issue);
+    assert.equal(bad.diagnostics[0]?.related?.some(({ start, end }) => bad.text.slice(start, end) === 'event:go'), true);
+  }
+  const conflicting = inspect(make('x:num=^{pointer.clientX} title:str="Ready"',
+    '<main hson:part data:rows=%{rows} <button for:pointer=^{rows} event:go "^{pointer.label}"/>/>'));
+  assert.deepEqual(conflicting.slices, ['event:go']);
+  assert.match(conflicting.diagnostics[0]!.message, /Rename the Part local or its iterator alias/);
+  assert.deepEqual(conflicting.diagnostics[0]?.related?.map(({ start, end }) => conflicting.text.slice(start, end)), ['for:pointer']);
+  const ordinary = '<button hson:part data:pointer=%{stored} event:go "^{pointer.label}"/>';
+  assert.deepEqual(inspect(make('x:num=^{pointer.clientX} title:str="Ready"', ordinary, 'click')).codes, []);
+  const opaque = make('x:num=^{pointer.clientX}', ordinary).replace('events:{go:', 'events:{go:condition ? dynamic : ');
+  assert.deepEqual(inspect(opaque).codes, []);
+});
+
+check('pointer lookup completion uses the recognized Event family and the authored replacement range', () => {
+  const cache = new HsonEditorCompletionCache(ts);
+  const complete = (text: string) => {
+    const offset = text.indexOf('|');
+    const source = text.replace('|', '');
+    const { program } = inspect(source);
+    return cache.complete(file('app.ts'), source, revision, offset, program).map(({ candidate, range }) =>
+      [candidate.label, candidate.insertText, source.slice(range.start, range.end)]);
+  };
+  const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n';
+  const call = (operand: string, family = 'pointer:down') => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event on:${family} local:go ${operand} <> >`) + ');';
+  assert.deepEqual(complete(call('x:num=^{pointer.cli|entY}')),
+    [['pointer.clientX', 'pointer.clientX}', 'pointer.clientY}'], ['pointer.clientY', 'pointer.clientY}', 'pointer.clientY}']]);
+  assert.deepEqual(complete(call('x:data=^{pointer.move|')), [
+    ['pointer.movementX', 'pointer.movementX}', 'pointer.move'], ['pointer.movementY', 'pointer.movementY}', 'pointer.move'],
+  ]);
+  assert.deepEqual(complete(call('x:num="^{pointer.clientX|?}"')),
+    [['pointer.clientX', 'pointer.clientX?}', 'pointer.clientX?}']]);
+  assert.deepEqual(complete(call('x:num=^{pointer.cli|entY}').replace('on:pointer:down local:go ', '').replace('<> >', 'on:pointer:down local:go <> >')),
+    [['pointer.clientX', 'pointer.clientX}', 'pointer.clientY}'], ['pointer.clientY', 'pointer.clientY}', 'pointer.clientY}']]);
+  assert.deepEqual(complete(call('x:num=^{pointer.cli|', 'click')), []);
+  assert.deepEqual(complete(call('x:str=^{pointer.cli|')), []);
+  assert.deepEqual(complete(call('x:data={"^{pointer.cli|}"}')), []);
+  assert.deepEqual(complete(call('x:num=^{pointer.cli|').replace('tree.listen', 'opaque.listen')), []);
+  const part = application('<main/>', '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
+    + JSON.stringify('<hson:event on:pointer:move local:go x:num=^{pointer.|} <> >') + '}}}');
+  assert.deepEqual(complete(part).map(item => item[0]), ['pointer.clientX', 'pointer.clientY', 'pointer.movementX', 'pointer.movementY']);
 });
 
 check('hosted Event Action contracts recognize Parts Libraries with known access metadata', () => {

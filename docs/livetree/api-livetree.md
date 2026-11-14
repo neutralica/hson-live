@@ -885,13 +885,19 @@ outlast individual listeners and child removal. Removing the owning root
 retires its registry.
 
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
-one `local:` action, and the required empty outcome object `<>`. The declaration
+`on:pointer:down`, or `on:pointer:move`, one `local:` action, and the required
+empty outcome object `<>`. The declaration
 may include `once`, `stopProp`, and named arguments such as `title:str="Example"`,
 `x:num="-0"`, or `settings:data={<open true>}`. Declare zero arguments to
-supply `undefined`. Unsupported
-flags, Part references, `host:` actions, nonempty outcomes, and pending fluent
-builder settings reject. The action and input are checked before native
-attachment. A missing action throws and requires a fresh registration attempt.
+supply `undefined`. Pointer declarations can use `^{pointer.clientX}`,
+`^{pointer.clientY}`, `^{pointer.movementX}`, and `^{pointer.movementY}` as whole
+`num` or `data` arguments. The listener reads those finite numbers from the native
+PointerEvent and checks the assembled arguments against the Action Schema at
+dispatch. A standalone declaration has no Part scope. Its other arguments use
+literals, which are checked before attachment when the entire object is resolved.
+A missing action throws and requires a fresh registration attempt.
+Unsupported flags, `host:` actions, nonempty outcomes, and pending fluent builder
+settings reject.
 If the subject has no DOM target, the call returns an inert subscription.
 Events dispatched synchronously by an overridden `addEventListener` are
 ignored during installation. If such a dispatch consumes a native `once`

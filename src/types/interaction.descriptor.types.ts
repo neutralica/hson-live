@@ -30,6 +30,8 @@ export type BrowserInteractionDescriptor = Readonly<{
   kind: "browser";
   key: string;
   args?: InteractionDataInput | undefined;
+  /** Portable authored argument plan. @internal */
+  eventArgs?: InteractionDataInput | undefined;
 }>;
 
 export type LocusInteractionDescriptor = Readonly<{
@@ -39,6 +41,8 @@ export type LocusInteractionDescriptor = Readonly<{
   kind: "locus";
   key: string;
   payload?: InteractionDataInput | undefined;
+  /** Portable authored argument plan. @internal */
+  eventArgs?: InteractionDataInput | undefined;
 }>;
 
 export type InteractionDescriptor = BrowserInteractionDescriptor | LocusInteractionDescriptor;

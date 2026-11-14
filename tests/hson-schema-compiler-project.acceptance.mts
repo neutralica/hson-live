@@ -491,7 +491,7 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
     'const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">, <tag "button" content "empty">]>>]>>`;',
     'hsonLiveMap.fromLibraries({',
     '  bits: { parts: {',
-    '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`, events: { go: "<hson:event on:click local:deck.go selection:data=^{args} <> >" } },',
+    '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`, events: { go: "<hson:event on:pointer:down local:deck.go selection:data=^{args} x:num=^{pointer.clientX} <> >" } },',
     '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`, events: { go: "<hson:event on:click local:deck.go selection:data=%{text} <> >" } },',
     '  } },',
     '  page: { document: Hson.document`<html <head/> <body <hson-part lib="bits" at="typed" args:data="<>"/> <hson-part lib="bits" at="scalar" text="hi"/>/>/>`, schema: Page },',
@@ -509,7 +509,7 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
   assert.equal(diagnostics.length, 1, result.stdout + result.stderr);
   assert.ok(diagnostics[0]?.startsWith(`${consumer}:8:${line.indexOf("Hson.document") + 1}: `), diagnostics[0]);
   assert.match(diagnostics[0]!, /Static Hson does not satisfy Page/);
-  const events = ', events: { go: "<hson:event on:click local:deck.go selection:data=^{args} <> >" }';
+  const events = ', events: { go: "<hson:event on:pointer:down local:deck.go selection:data=^{args} x:num=^{pointer.clientX} <> >" }';
   // None of these inventories proves a composed Schema candidate. Part
   // reference and unused-binding diagnostics belong to the editor projection.
   for (const replacement of ["", ", events: {}", ', events: { go: "<hson:event on:click local:deck.go selection:data=^{missing} <> >", other: unresolved }', ", events: opaque"]) {

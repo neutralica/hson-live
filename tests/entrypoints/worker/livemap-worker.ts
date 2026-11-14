@@ -20,6 +20,12 @@ const map = hsonLiveMap.fromLibraries({
     schema: Hson.schema`<type "data" content <ready "boolean" items <array "number">>>`,
   },
 });
+const pointerParts = hsonLiveMap.fromLibraries({
+  controls: { parts: { handle: { kind: "document", document: Hson.document`<button hson:part event:press/>`,
+    events: { press: "<hson:event on:pointer:down local:move x:num=^{pointer.clientX} <> >" } } } },
+  page: { document: Hson.document`<hson-part at=controls/handle/>` },
+});
+pointerParts.actions.define("move", (_ctx, args) => args, { args: { required: true } });
 const state = map.data.must("state");
 // @ts-expect-error Data Libraries do not expose document QUAD access.
 state.q("member");

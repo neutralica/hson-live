@@ -64,6 +64,11 @@ const result: Promise<LocalActionResult> = actions.trigger("PANEL_TOGGLE", { ope
 void result;
 const authored: ListenerSub = tree.listen.event("<hson:event on:click local:PANEL_TOGGLE open:data={true} <> >");
 authored.off() satisfies void;
+actions.define("POINTER", (ctx, args) => {
+  if (ctx.event instanceof PointerEvent) ctx.event.movementX satisfies number;
+  return args;
+}, { args: { required: true } });
+tree.listen.event("<hson:event on:pointer:move local:POINTER x:num=^{pointer.clientX} <> >").off() satisfies void;
 // @ts-expect-error A declaration requires Hson source text.
 tree.listen.event(() => {});
 // @ts-expect-error A registered Action takes named fields.

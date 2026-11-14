@@ -19,11 +19,14 @@
       enable_interactions,
       hsonLiveMap,
       hsonTransform,
+      install_libraries_snapshot,
       internal_livemap_aggregate_authority,
       livemap_document_observation_evidence,
       INTERACTION_RESERVED_LIBRARY_KEY,
       graft,
       admit_exact_runtime_livemap_libraries,
+      remove_interaction,
+      replace_interaction,
     } from "./.canonical-interactions.library.bundle.js";
 
     const QUID = "000008398";
@@ -112,6 +115,8 @@
       await checkStandaloneActions();
       await checkCrossRootActionOwner();
       checkStandaloneNativeLifecycle();
+      await checkPointerEvents();
+      await checkHostedPointerEvents();
       await checkAuthoredEvents();
       checkNativeDocumentCallbacks();
       checkSelectedLocalListeners();
@@ -125,6 +130,216 @@
     } catch (cause) {
       result.textContent = cause.stack ?? String(cause);
       result.dataset.status = "fail";
+    }
+
+    async function checkPointerEvents() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const pointer = (name, x, y, movementX = 0, movementY = 0) => new subjectWindow.PointerEvent(name, {
+        clientX: x, clientY: y, movementX, movementY, bubbles: true,
+      });
+      const argumentsSource = 'x:num=^{pointer.clientX} dx:data=^{pointer.movementX} y:num=^{pointer.clientY} dy:num=^{pointer.movementY} offset:num="-0"';
+      const move = `<hson:event on:pointer:move stopProp local:move ${argumentsSource} <> >`;
+      const down = '<hson:event on:pointer:down once local:down x:num=^{pointer.clientX} <> >';
+      const calls = [], errors = [];
+      const container = subjectDocument.createElement("main");
+      container.innerHTML = '<button id="native"></button>';
+      subjectDocument.body.append(container);
+      const standalone = graft(container, { unsafe: false });
+      const target = standalone.find.must.byId("native");
+      const native = target.dom.must.el();
+      const schema = Hson.schema`<type "data" content <x <number <min 0>> dx "number" y "number" dy "number" offset <exact -0>>>`;
+      const onError = event => {
+        if (event.error?.message.startsWith("LiveTree action ")) { errors.push(event.error.cause); event.preventDefault(); }
+      };
+      window.addEventListener("error", onError);
+      let bubbled = 0;
+      container.addEventListener("pointermove", () => bubbled++);
+      try {
+        standalone.actions.define("move", (context, data) => { calls.push([context, data]); return data; }, { args: { required: true, schema } });
+        standalone.actions.define("down", (context, data) => { calls.push([context, data]); }, { args: { required: true } });
+        const moving = target.listen.event(move), pressing = target.listen.event(down);
+        const first = pointer("pointermove", 33.25, -18.5, -7, 11);
+        check(first.movementX === -7 && first.movementY === 11, "Chrome pointer movement fixture did not carry its values.");
+        native.dispatchEvent(first);
+        native.dispatchEvent(pointer("pointermove", 41, 95, 6, -4));
+        const zero = pointer("pointermove", -0, 0);
+        const platformZero = zero.clientX;
+        Object.defineProperty(zero, "clientX", { get() { throw new Error("Own pointer getter must stay unused."); } });
+        native.dispatchEvent(zero);
+        native.dispatchEvent(pointer("pointermove", -1, 95));
+        native.dispatchEvent(new subjectWindow.MouseEvent("pointermove", { clientX: 3, clientY: 4 }));
+        native.dispatchEvent(new subjectWindow.Event("pointermove"));
+        native.dispatchEvent(pointer("pointerdown", 24, 58));
+        native.dispatchEvent(pointer("pointerdown", 12, 33));
+        check(calls.length === 4 && errors.length === 3 && bubbled === 0, "Pointer lifecycle, native brand, or Action Schema admission failed.");
+        check(calls[0][0].event === first && calls[0][0].subject === target
+          && calls[0][1].equals(Hson.data.fromSource('{"x":33.25,"dx":-7,"y":-18.5,"dy":11,"offset":-0}'))
+          && calls[1][1].equals(Hson.data.fromSource('{"x":41,"dx":6,"y":95,"dy":-4,"offset":-0}'))
+          && Object.is(calls[2][1].entries()[0][1].scalar(), platformZero)
+          && calls[3][1].equals(Hson.data.from({ x: 24 })), "Standalone did not deliver exact ordered arguments from each native dispatch.");
+        moving.off(); pressing.off();
+        native.dispatchEvent(pointer("pointermove", 9, 9));
+        check(calls.length === 4 && bubbled === 1, "Off did not release the native pointer listener.");
+        const direct = await standalone.actions.trigger("move", calls[0][1]);
+        check(direct.ok && direct.result.equals(calls[0][1]) && calls[4][0].event === undefined && calls[4][0].subject === undefined,
+          "Direct Action trigger changed the supplied Data or gained a native context.");
+      } finally { window.removeEventListener("error", onError); standalone.remove(); }
+
+      const composed = hsonLiveMap.fromLibraries({
+        parts: { parts: { control: { kind: "document",
+          document: '<button hson:part id="control" data:slide=%{slide} event:move event:down/>',
+          events: { move: move.replace('offset:num="-0"', 'slide:data=^{slide} note:str=^{slide.note?} offset:num="-0"'), down } } } },
+        page: { document: '<main <hson-part at=parts/control slide:data="<index -0>"/>/>' },
+      });
+      const seen = [], failures = [];
+      composed.actions.define("move", ({ subject, event }, data) => { seen.push([subject.dom.el(), event, data]); }, { args: { required: true } });
+      composed.actions.define("down", ({ subject, event }, data) => { seen.push([subject.dom.el(), event, data]); });
+      const page = composed.doc.must("page");
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      const continued = continue_document({ map: composed, root, interactions: { onFailure: failure => failures.push(failure) } });
+      try {
+        const button = root.querySelector("#control");
+        const first = pointer("pointermove", 33.25, -18.5, -7, 11);
+        button.dispatchEvent(first);
+        button.dispatchEvent(pointer("pointerdown", 5, 7));
+        button.dispatchEvent(pointer("pointerdown", 6, 8));
+        check(seen.length === 2 && seen[0][0] === button && seen[0][1] === first
+          && seen[0][2].equals(Hson.data.fromSource('{"x":33.25,"dx":-7,"y":-18.5,"dy":11,"slide":{"index":-0},"offset":-0}')),
+          "Canonical Part pointer dispatch did not retain the capture and order.");
+        const engine = internal_livemap_aggregate_authority(composed);
+        const system = engine.systemRoot(engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY));
+        const stored = Hson.data.fromSource(hsonTransform.fromNode(system.$_content[0]).toHson().serialize());
+        const descriptor = stored.materialize().descriptors.find(item => item.key === "down");
+        page.at([1, 0]).asElement().attrs.set("title", "edited");
+        button.dispatchEvent(pointer("pointerdown", 6, 8));
+        check(seen.length === 2, "Unrelated publication reset consumed once state.");
+        replace_interaction(composed, { ...descriptor, eventArgs: [["x", "num", "pointer", "clientY"]] });
+        button.dispatchEvent(pointer("pointerdown", 6, 8));
+        check(seen.length === 3 && seen[2][2].equals(Hson.data.from({ x: 8 })), "Changing only the plan did not reinstall the once listener.");
+        remove_interaction(composed, descriptor.id);
+        button.dispatchEvent(pointer("pointerdown", 3, 2));
+        check(seen.length === 3 && failures.length === 0, "Descriptor removal left a native listener installed.");
+      } finally { continued.dispose(); }
+
+      const plain = hsonLiveMap.fromLibraries({ page: { document: '<button id="snapshot-pointer"/>' } });
+      const descriptor = { id: "snapshot", subject: { library: "page", path: [0, 0, 1, 0, 0] },
+        listener: listener("pointermove", "element"), kind: "browser", key: "restore",
+        eventArgs: [["x", "num", "pointer", "clientX"]] };
+      add_interaction(plain, descriptor);
+      const restored = install_libraries_snapshot(structuredClone(plain.capture())).map;
+      let value;
+      restored.actions.define("restore", (_context, data) => { value = data; });
+      const restoredRoot = new DOMParser().parseFromString(restored.doc.must("page").render(), "text/html").documentElement;
+      const restoredContinuation = continue_document({ map: restored, root: restoredRoot, interactions: {} });
+      try {
+        restoredRoot.querySelector("button").dispatchEvent(pointer("pointermove", 73, 20));
+        check(value?.equals(Hson.data.from({ x: 73 })), "Restored snapshot did not install its pointer lookup.");
+      } finally { restoredContinuation.dispose(); }
+    }
+
+    async function checkHostedPointerEvents() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const until = async (condition, message) => {
+        for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+        check(condition(), message);
+      };
+      const stateSchema = Hson.schema`<type "data" content <x "number" offset "number">>`;
+      const schema = Hson.schema`<type "data" content <x <number <min 0>> slide "any" offset <exact -0>>>`;
+      const calls = [], authorizations = [], failures = [], requests = [], wire = [];
+      const locus = hsonLiveMap.locus.create({
+        state: { json: { x: 0, offset: 0 }, schema: stateSchema, access: "shared" },
+        parts: { access: "private", parts: { slide: { kind: "document",
+          document: '<button hson:part id="host-pointer" data:slide=%{slide} event:drag/>',
+          events: { drag: '<hson:event on:pointer:move host:move x:num=^{pointer.clientX} slide:data=^{slide} offset:num="-0" <> >' } } } },
+        page: { access: "shared", document: '<hson-part at=parts/slide slide:data="<index -0>"/>' },
+      }, {
+        authorizeProjection: ({ requested }) => requested,
+        authorizeAction: ({ action, payload }) => {
+          authorizations.push([action, payload]);
+          return action === "move" && payload.materialize().x !== 8;
+        },
+        actions: { move: { args: { required: true, schema }, handler: ({ stage }, payload) => {
+          calls.push(payload);
+          const { x, offset } = payload.materialize();
+          stage.data.must("state").at(["x"]).set(x);
+          stage.data.must("state").at(["offset"]).set(x === 99 ? "invalid" : offset);
+        } } },
+      });
+      const binding = bind_locus_http(locus, { endpoint: "/pointer-events" });
+      let loseFirstReply = true;
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/pointer-events", async fetch(input, init) {
+        const body = JSON.parse(init.body);
+        const response = await binding.handle(new Request(input, init), {});
+        if (body.type === "action") {
+          wire.push(body);
+          if (loseFirstReply) { loseFirstReply = false; throw new Error("Fixture discarded the first response after Locus accepted it."); }
+        }
+        return response;
+      } });
+      const frame = document.createElement("iframe");
+      let continued;
+      try {
+        const projection = { libraries: ["page", "state"], systemFeatures: ["interactions"] };
+        const session = await locus.session.create(projection);
+        const now = session.now({ html: "page" });
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = now.html;
+        document.body.append(frame);
+        await loaded;
+        const root = frame.contentDocument.documentElement;
+        continued = await continue_hosted_document({ now, credential: session.credential, root,
+          transport: { ...transport, operations: { submit(request, options) {
+            if (request.type === "action") requests.push(request);
+            return transport.operations.submit(request, options);
+          } } }, interactions: { onFailure: failure => failures.push(failure) } });
+        const fire = x => root.querySelector("#host-pointer").dispatchEvent(new frame.contentWindow.PointerEvent("pointermove", { clientX: x }));
+        const expected = x => Hson.data.fromSource(`{"x":${x},"slide":{"index":-0},"offset":-0}`);
+        const revision = locus.rev;
+        fire(14.25);
+        await until(() => failures.length === 1 && continued.echo.sync.appliedRev === locus.rev, "Lost reply did not settle the first attempt.");
+        const original = requests[0];
+        check(calls.length === 1 && calls[0].equals(expected(14.25)) && original?.payload.equals(calls[0]),
+          `Locus did not receive exact browser Data: ${calls.map(value => value.toHson())}`);
+        check(typeof wire[0]?.payloadData === "string" && Hson.data.fromSource(wire[0].payloadData).equals(expected(14.25)) && !("payload" in wire[0]),
+          `HTTP transport changed the captured payload: ${JSON.stringify(wire[0])}`);
+        const state = locus.data.must("state");
+        check(locus.rev === revision + 1 && Hson.data.fromSource(state.hson()).equals(Hson.data.from({ x: 14.25, offset: -0 })),
+          `Locus did not commit the single stage: ${revision} → ${locus.rev}, ${state.hson()}`);
+        fire(31);
+        await until(() => calls.length === 2 && continued.echo.sync.appliedRev === locus.rev, "Second pointer invocation did not reach Locus.");
+        check(calls[1].equals(expected(31)) && original.requestId !== requests[1].requestId, "Second dispatch reused the first invocation.");
+        const retried = await continued.echo.retryAction({ requestId: original.requestId, name: original.name, payload: original.payload });
+        check(retried.ok && retried.delivery === "cached" && retried.requestId === original.requestId
+          && requests[2].attemptId !== original.attemptId && retried.attemptId === requests[2].attemptId
+          && wire[2].payloadData === wire[0].payloadData && calls.length === 2 && locus.rev === revision + 2,
+          "Echo retry did not retain the captured request, exact Data and attempt correlation.");
+        fire(-1);
+        await until(() => failures.length === 2, "Receiving Action Schema did not reject the pointer value.");
+        check(authorizations.length === 3 && failures[1].cause.code === "LOCUS_SCHEMA_INVALID_PAYLOAD", "Invalid Data reached authorization or the Action.");
+        fire(8);
+        await until(() => failures.length === 3, "Action authorization did not reject the pointer value.");
+        check(failures[2].cause.code === "LOCUS_ACTION_FORBIDDEN", "The pointer listener bypassed Action authorization.");
+        fire(99);
+        await until(() => failures.length === 4, "Invalid staged write did not fail the Action.");
+        check(calls.length === 3 && locus.rev === revision + 2 && locus.data.must("state").snap().x === 31,
+          "A failed hosted Action published part of its stage.");
+        const engine = internal_livemap_aggregate_authority(echo_map_internal(continued.echo));
+        const system = engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+        const hasPlan = () => JSON.stringify(engine.systemRoot(system)).includes('"eventArgs"');
+        await session.update({ libraries: projection.libraries });
+        await until(() => !hasPlan(), "Echo failed to remove the revoked pointer Descriptor.");
+        const submissions = requests.length;
+        fire(51);
+        check(requests.length === submissions, "Revocation left a pointer listener installed.");
+        await session.update(projection);
+        await until(() => hasPlan() && continued.echo.sync.status === "caught_up", "Echo failed to recover the pointer Descriptor.");
+        fire(51);
+        await until(() => calls.length === 4 && continued.echo.sync.appliedRev === locus.rev, "Recovered pointer listener did not dispatch.");
+        check(calls[3].equals(expected(51)) && requests.length === submissions + 1 && failures.length === 4,
+          "Recovery did not reinstall the exact hosted pointer plan.");
+      } finally {
+        continued?.dispose(); continued?.echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); frame.remove();
+      }
     }
 
     async function checkStandaloneActions() {

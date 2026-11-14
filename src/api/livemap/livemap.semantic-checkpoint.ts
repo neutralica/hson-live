@@ -8,6 +8,7 @@ import { decode_portable_document_stylesheet, encode_portable_document_styleshee
 import { own_data_library_validation, validate_data_library } from "./livemap.parts.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
+import { validate_interaction_state_internal } from "../interactions/interactions.projection.js";
 
 function exact(value: object, keys: readonly string[]): void {
   if (typeof value !== "object" || value === null
@@ -71,7 +72,8 @@ export function own_semantic_checkpoint(input: LiveMapSemanticCheckpoint): LiveM
     const root = admit_public_livemap_root(library.root, entry.mode === "document" ? "document" : "data", "Semantic checkpoint");
     const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
     if (prepared.mode !== entry.mode) throw new TypeError("Checkpoint root mode disagrees with registry.");
-    validate_hson_schema_graph(HsonSchema.fromHson(entry.schema), prepared.root);
+    if (entry.scope === "hson-internal") validate_interaction_state_internal(prepared.root);
+    else validate_hson_schema_graph(HsonSchema.fromHson(entry.schema), prepared.root);
     validate_data_library(root, entry.mode, own_data_library_validation(entry));
     if (scopes !== undefined) return Object.freeze({ name: library.name,
       ...decode_document_scoped_library({ root, scopes, css: library.css }) });

@@ -15,7 +15,9 @@ import {
 import {
   encode_hson_data_internal,
   hson_data_from_value,
+  hson_data_value,
 } from "../data/hson-data.js";
+import { extract_event_arguments, read_event_argument_plan } from "../../internal/event-argument-plan.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import type { ListenerSub } from "../../types/listen.types.js";
@@ -246,10 +248,12 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
             continue;
           }
           const state = { consumed: false };
-          const data = descriptor.kind === "browser" ? descriptor.args : descriptor.payload;
+          const captured = descriptor.kind === "browser" ? descriptor.args : descriptor.payload;
           let materialized = false;
           try {
             const fingerprint = descriptor_fingerprint(descriptor);
+            const plan = descriptor.eventArgs === undefined ? undefined
+              : read_event_argument_plan(descriptor.listener.event, hson_data_value(descriptor.eventArgs));
             const handler = (event: Event): void => {
               if (disposed) return;
               if (currentTree !== undefined) {
@@ -265,6 +269,12 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
               }
               if (descriptor.listener.once) state.consumed = true;
+              let data;
+              try { data = plan === undefined ? captured : extract_event_arguments(plan, event); }
+              catch (cause) {
+                report(descriptor, descriptor.kind === "browser" ? "browser-invocation" : "locus-invocation", cause);
+                return;
+              }
               if (invoke !== undefined) {
                 void invoke(data, { subject, event, onFailure: cause => report(descriptor, "browser-invocation", cause) });
                 return;
@@ -397,7 +407,9 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
     if (kind !== "browser" && kind !== "locus") throw new Error("Canonical interaction descriptor discriminant is malformed.");
     const input = member(entry, kind === "browser" ? "args" : "payload");
     const data = input === undefined ? undefined : hson_data_from_value(input);
-    return Object.freeze(interaction_descriptor(base.id, base.subject, base.listener, kind, base.key, data));
+    const plan = member(entry, "eventArgs");
+    return Object.freeze(interaction_descriptor(base.id, base.subject, base.listener, kind, base.key, data,
+      plan === undefined ? undefined : hson_data_from_value(plan)));
   }));
 }
 

@@ -19,7 +19,7 @@ const FRAME_LIMIT = HOSTED_MAX_SNAPSHOT_BYTES;
 export type EchoHttpTransportOptions = Readonly<{
   endpoint: string;
   fetch?: typeof globalThis.fetch;
-  credentials?: RequestCredentials;
+  credentials?: "include" | "omit" | "same-origin";
 }>;
 export type EchoHttpTransport = EchoReplicaTransport & Readonly<{ dispose(): void }>;
 
