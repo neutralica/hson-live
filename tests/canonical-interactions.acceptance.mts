@@ -118,7 +118,7 @@ async function activate_echo(echo: Readonly<{
 }
 
 const buttonSubject = Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] });
-function local(id: string, key: string, args: HsonDataValue = Hson.data.from(null), override: Partial<InteractionListener> = {}): BrowserInteractionDescriptor {
+function local(id: string, key: string, args: HsonDataValue = Hson.data.from({}), override: Partial<InteractionListener> = {}): BrowserInteractionDescriptor {
   return Object.freeze({ id, subject: buttonSubject, listener: Object.freeze({ ...listener, ...override }), kind: "browser", key, args });
 }
 function authoritative(id: string, key: string, payload?: HsonDataValue): LocusInteractionDescriptor {
@@ -302,7 +302,7 @@ await check("unaffected consumed once survives an active descriptor reorder", ()
   const map = map_fixture();
   add_interaction(map, local("a", "a"));
   add_interaction(map, local("b", "b"));
-  add_interaction(map, local("c", "c", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("c", "c", Hson.data.from({}), { once: true }));
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
@@ -326,7 +326,7 @@ await check("moved consumed once stays consumed until its descriptor changes", (
   const map = map_fixture();
   add_interaction(map, local("a", "a"));
   add_interaction(map, local("b", "b"));
-  add_interaction(map, local("c", "c", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("c", "c", Hson.data.from({}), { once: true }));
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
@@ -341,7 +341,7 @@ await check("moved consumed once stays consumed until its descriptor changes", (
   calls.length = 0;
   target.fire();
   assert.deepEqual(calls, ["b", "a"]);
-  replace_interaction(map, local("c", "c", Hson.data.from(1), { once: true }));
+  replace_interaction(map, local("c", "c", Hson.data.from({ step: 1 }), { once: true }));
   calls.length = 0;
   target.fire();
   assert.deepEqual(calls, ["c", "b", "a"]);
@@ -471,7 +471,7 @@ await check("Locus staging authors hidden descriptors while direct managed write
 
 await check("local to local to authoritative reconciliation owns one exact subject", async () => {
   const map = map_fixture();
-  add_interaction(map, local("progress", "a", Hson.data.from(-0)));
+  add_interaction(map, local("progress", "a", Hson.data.from({ offset: -0 })));
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target();
@@ -503,7 +503,7 @@ await check("local to local to authoritative reconciliation owns one exact subje
   assert.equal(context?.event, event);
   assert.ok(context?.subject);
   assert.equal(retained_subject(context.subject), retained_subject(subject));
-  assert.equal(Object.is(received === undefined ? undefined : (received).materialize(), -0), true);
+  assert.equal(Object.is(received === undefined ? undefined : received.entries()?.[0]?.[1].scalar(), -0), true);
   assert.equal(map.rev, revisionBeforeActivation);
   assert.equal(aggregate.identityEpoch().issued().size, issuedBeforeActivation);
   replace_interaction(map, local("progress", "b"));
@@ -528,9 +528,8 @@ await check("fingerprinting retains owned exact data without parsing or material
     undefined,
     Hson.data.from({ nested: [null, [], {}, "", "123", "true", "null", -0, Number.MIN_VALUE, Number.MAX_VALUE] }),
     Hson.data.parse`<'10' -0 '2' <__proto__ true constructor null> '1' []>`,
-    Hson.data.from(-0), Hson.data.from("123"), Hson.data.from("true"), Hson.data.from("null"),
-    Hson.data.from(""), Hson.data.from(null), Hson.data.from([]), Hson.data.from({}),
-    Hson.data.fromSource(Hson.canonical`123`), Hson.data.fromSource(Hson.canonical`true`),
+    ...[-0, "123", "true", "null", "", null, [], 123, true].map(value => Hson.data.from({ value })),
+    Hson.data.from({}),
   ];
   const map = map_fixture();
   for (const [index, value] of values.entries()) {
@@ -578,7 +577,7 @@ await check("fingerprinting retains owned exact data without parsing or material
 
 await check("native and direct invocations enforce the same input contract and report rejections", async () => {
   const map = map_fixture();
-  add_interaction(map, local("typed-once", "typed", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("typed-once", "typed", Hson.data.from({}), { once: true }));
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
@@ -592,7 +591,7 @@ await check("native and direct invocations enforce the same input contract and r
   }, { args: { required: true, schema: Hson.schema`<type "data" content <value "number">>` } });
   const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
   try {
-    const directFailure = await map.actions.trigger("typed", null);
+    const directFailure = await map.actions.trigger("typed", {});
     assert.equal(directFailure.ok, false);
     target.fire();
     assert.equal(failures[0]?.phase, "browser-invocation");
@@ -613,15 +612,15 @@ await check("native and direct invocations enforce the same input contract and r
   } finally { dispose(); reflection.dispose(); }
 });
 
-await check("canonical local clicks validate optional and required input at invocation", () => {
+await check("canonical local clicks distinguish omitted arguments from an empty object", () => {
   const map = map_fixture();
-  const schema = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
+  const schema = Hson.schema`<type "data" content <>>`;
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);
   const seen: unknown[] = [];
   const failures: InteractionFailure[] = [];
-  const record: Parameters<typeof map.actions.define>[1] = (_ctx, input) => { seen.push(input?.scalar()); };
+  const record: Parameters<typeof map.actions.define>[1] = (_ctx, input) => { seen.push(input?.materialize()); };
   map.actions.define("optional", record, { args: { schema } });
   map.actions.define("required", record, { args: { required: true, schema } });
   const base = { id: "presence", subject: buttonSubject, listener: { ...listener, once: true }, kind: "browser" as const };
@@ -630,11 +629,11 @@ await check("canonical local clicks validate optional and required input at invo
   try {
     target.fire();
     assert.equal(target.registrations.length, 0);
-    replace_interaction(map, { ...base, key: "optional", args: null });
+    replace_interaction(map, { ...base, key: "optional", args: {} });
     target.fire();
     replace_interaction(map, { ...base, key: "required" });
     target.fire();
-    assert.deepEqual(seen, [undefined, null]);
+    assert.deepEqual(seen, [undefined, {}]);
     assert.equal(failures.length, 1);
     assert.equal(failures[0]?.phase, "browser-invocation");
     assert.equal(Object.hasOwn(failures[0]!.descriptor, "args"), false);
@@ -665,7 +664,7 @@ await check("fingerprints normalize descriptor fields and distinguish exact data
       value: ordered_projected_array([reordered]) }]);
     assert.equal(target.registrations[0]?.listener, installed);
     for (const data of [Hson.data.parse`<'2' 2 '10' -0>`, Hson.data.parse`<'2' 2 '10' 0>`,
-      Hson.data.from("123"), Hson.data.from(123)]) {
+      Hson.data.from({ value: "123" }), Hson.data.from({ value: 123 })]) {
       replace_interaction(map, local("fingerprint", "run", data));
       assert.equal(target.registrations.length, 1);
       assert.notEqual(target.registrations[0]?.listener, installed);
@@ -743,7 +742,7 @@ await check("interaction data admission shares action string rules and strict ow
 
 await check("once is retained per materialization and reset by replacement/reactivation", () => {
   const map = map_fixture();
-  add_interaction(map, local("once", "a", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("once", "a", Hson.data.from({}), { once: true }));
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
@@ -756,11 +755,11 @@ await check("once is retained per materialization and reset by replacement/react
   map.data.must("state").at(["count"]).set(1);
   assert.equal(target.registrations.length, 0);
   assert.equal(map.rev, afterFirstInvocation + 1);
-  replace_interaction(map, local("once", "a", Hson.data.from(1), { once: true }));
+  replace_interaction(map, local("once", "a", Hson.data.from({ step: 1 }), { once: true }));
   assert.equal(target.registrations.length, 1);
   target.fire(); assert.equal(calls, 2);
   remove_interaction(map, "once");
-  add_interaction(map, local("once", "a", Hson.data.from(2), { once: true }));
+  add_interaction(map, local("once", "a", Hson.data.from({ step: 2 }), { once: true }));
   assert.equal(target.registrations.length, 1);
   target.fire(); assert.equal(calls, 3);
   dispose();
@@ -804,8 +803,8 @@ await check("activation observation precedes its deterministic initialization tr
 await check("activation keeps its tree and diagnostics while late registration serves new descriptors", async () => {
   const map = map_fixture();
   add_interaction(map, local("fixed-local", "run"));
-  add_interaction(map, local("fixed-removal", "removable", Hson.data.from(null), { event: "removal" }));
-  add_interaction(map, local("fixed-absence", "added", Hson.data.from(null), { event: "addition" }));
+  add_interaction(map, local("fixed-removal", "removable", Hson.data.from({}), { event: "removal" }));
+  add_interaction(map, local("fixed-absence", "added", Hson.data.from({}), { event: "addition" }));
   add_interaction(map, {
     ...authoritative("fixed-dispatch", "save", Hson.data.from(-0)),
     listener: Object.freeze({ ...listener, event: "authoritative" }),
@@ -853,7 +852,7 @@ await check("activation keeps its tree and diagnostics while late registration s
   assert.equal(failureA > failuresAfterActivation, true);
   assert.equal(failureB, 0);
   assert.equal(alternateTarget.registrations.length, 0);
-  add_interaction(map, local("new-local", "added", Hson.data.from(null), { event: "addition" }));
+  add_interaction(map, local("new-local", "added", Hson.data.from({}), { event: "addition" }));
   firstTarget.fire(new Event("addition"));
   assert.equal(added, 1, "only the new descriptor resolves the late definition");
   dispose(); reflection.dispose(); alternateReflection.dispose();
@@ -887,8 +886,8 @@ await check("document current-tree provider fails safely while retaining its reg
 await check("prototype names require explicit registration and missing behavior is actionable", () => {
   const map = map_fixture();
   add_interaction(map, local("prototype-only", "inherited"));
-  add_interaction(map, local("prototype-to-string", "toString", Hson.data.from(null), { event: "to-string" }));
-  add_interaction(map, local("prototype-constructor", "constructor", Hson.data.from(null), { event: "constructor" }));
+  add_interaction(map, local("prototype-to-string", "toString", Hson.data.from({}), { event: "to-string" }));
+  add_interaction(map, local("prototype-constructor", "constructor", Hson.data.from({}), { event: "constructor" }));
   const reflection = hsonMirror(map.doc.must("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(retained_subject(subject), target as unknown as Element);
@@ -1040,7 +1039,7 @@ await check("concurrent authoritative activations retain independent dispatchers
 
 await check("an ignored missing listener target remains eligible for later realization", () => {
   const map = map_fixture();
-  add_interaction(map, local("late-target", "run", Hson.data.from(null), { missingTarget: "ignore" }));
+  add_interaction(map, local("late-target", "run", Hson.data.from({}), { missingTarget: "ignore" }));
   const reflection = hsonMirror(map.doc.must("page"));
   let calls = 0;
   map.actions.define("run", () => { calls += 1; });
@@ -1056,7 +1055,7 @@ await check("an ignored missing listener target remains eligible for later reali
 
 await check("exact subject replacement disposes A and materializes once on B", () => {
   const map = map_fixture();
-  add_interaction(map, local("replace-subject", "run", Hson.data.from(null), { once: true }));
+  add_interaction(map, local("replace-subject", "run", Hson.data.from({}), { once: true }));
   const localQ = "000009001";
   assert.notEqual(currentQ, localQ);
   const page = admit_exact_runtime_livemap_libraries({ page: {

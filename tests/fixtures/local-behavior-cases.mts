@@ -27,8 +27,8 @@ export async function local_behavior_cases() {
     const first = actions.trigger("bare");
     assert.equal(bareCalls, 1, "the handler starts in the calling turn");
     assert.deepEqual(await first, { ok: true });
-    const second = await actions.trigger("bare", "123");
-    assert.ok(second.ok && second.result?.scalar() === "123");
+    const second = await actions.trigger("bare", { text: "123" });
+    assert.ok(second.ok && second.result?.entries()?.[0]?.[1].scalar() === "123");
     assert.equal(bareCalls, 2);
 
     const schema = Hson.schema`<type "data" content <'10' "number" '2' "number">>`;
@@ -37,7 +37,7 @@ export async function local_behavior_cases() {
     actions.define("schema", echoInput, options);
     options.args.schema = ANY_DATA;
     assert.deepEqual(await actions.trigger("schema"), { ok: true });
-    assert.equal((await actions.trigger("schema", null)).ok, false);
+    assert.equal((await actions.trigger("schema", Hson.data.from(null))).ok, false);
     assert.equal((await actions.trigger("schema", { "10": "wrong", "2": 2 })).ok, false);
     const materialize = HsonDataValue.prototype.materialize;
     try {
@@ -54,8 +54,9 @@ export async function local_behavior_cases() {
     presence.args.required = false;
     assert.match(behaviorError(await actions.trigger("presence")).message, /requires arguments/);
     assert.match(behaviorError(await actions.trigger("required-schema")).message, /requires arguments/);
-    const explicitNull = await actions.trigger("presence", null);
-    assert.ok(explicitNull.ok && explicitNull.result?.scalar() === null);
+    for (const value of [null, -0, "123", [], false]) {
+      assert.match(behaviorError(await actions.trigger("presence", Hson.data.from(value))).message, /Data object with named fields/);
+    }
     const empty = await actions.trigger("presence", {});
     assert.ok(empty.ok && empty.result?.equals(Hson.data.from({})));
 

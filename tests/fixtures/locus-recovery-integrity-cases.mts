@@ -14,7 +14,7 @@ const startup = {
   state: { json: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` },
   parts: { parts: { button: {
     kind: "document", document: '<button hson:part event:run/>',
-    events: { run: '<hson:event on:click local:run input:data={<label "exact" count -0>} <> >' },
+    events: { run: '<hson:event on:click local:run label:str="exact" count:num="-0" <> >' },
   } } },
 } as const;
 const libraries = [{ name: "state", ownership: "private" }, { name: "parts", ownership: "private" }] as const;

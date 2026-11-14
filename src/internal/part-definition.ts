@@ -1,9 +1,10 @@
+import { event_argument_references, type AuthoredEventArgument } from "./authored-events.js";
 import { part_scalar_operand, part_scalar_source_possible } from "./part-scalar.js";
 import { copy_part_literal_sigils, part_literal_sigils } from "./part-scalar-source.js";
 import type { HsonNode, Primitive } from "../core/types.js";
 import { ROOT_TAG, STR_TAG } from "../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../core/node-guards.js";
-import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReferenceInput, type PartEvents } from "./part-events.js";
+import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReference, type PartEvents } from "./part-events.js";
 import { copy_event_attachments, event_attachment_position } from "../core/authored-event-names.js";
 import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_argument_name, is_part_scalar_argument, is_part_scalar_qualifier, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartScalarQualifier, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
@@ -151,7 +152,8 @@ export type PartReferenceUse = Readonly<{ reference: PartReference; node: HsonNo
   iterators: readonly HsonNode[];
   /** This event operand is only one possible value of its attachment. */
   conditional?: true;
-  context: "value" | "forwarding" | "structure" | "iteration" | "event"; supply?: PartReceivingDeclaration["kind"] }>;
+  context: "value" | "forwarding" | "structure" | "iteration" | "event"; supply?: PartReceivingDeclaration["kind"];
+  eventArgument?: AuthoredEventArgument }>;
 export type PartRequiredness = "required" | "optional" | "conditional";
 export type PartDefinitionAnalysis = Readonly<{
   parameters: ReadonlyMap<string, PartArgumentKind>;
@@ -184,26 +186,26 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   const outerExecution = new Map<HsonNode, readonly HsonNode[]>();
   let locals = new Map<string, PartLocalDeclaration>();
   const previous = new Map<HsonNode, Map<string, PartLocalDeclaration>>();
-  const issue = (node: HsonNode, message: string, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReferenceInput): void => {
+  const issue = (node: HsonNode, message: string, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReference): void => {
     if (report === undefined) {
       if (eventInput !== undefined && attribute !== undefined) fail_part_event_reference(message, eventInput, node, attribute);
       throw new TypeError(message);
     }
     report({ node, message, attribute, use });
   };
-  const add = (name: string, kind: PartArgumentKind, node: HsonNode, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReferenceInput) => {
+  const add = (name: string, kind: PartArgumentKind, node: HsonNode, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReference) => {
     if (parameters.has(name) && parameters.get(name) !== kind) {
       issue(node, `Conflicting Part input ${JSON.stringify(name)}.`, attribute, use, eventInput);
       return;
     }
     parameters.set(name, kind);
   };
-  const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: PartReceivingDeclaration["kind"], attribute?: string, eventInput?: PartEventReferenceInput, conditional?: true) => {
+  const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: PartReceivingDeclaration["kind"], attribute?: string, eventInput?: PartEventReference, conditional?: true, eventArgument?: AuthoredEventArgument) => {
     const declared = reference.namespace === "incoming" ? parameters.get(reference.name) : undefined;
-    const incomingScalar = context !== "event" && is_part_scalar_qualifier(declared)
+    const incomingScalar = is_part_scalar_qualifier(declared)
       ? receiving.find(local => local.receiving.reference.name === reference.name) : undefined;
     const binding = reference.namespace === "local" ? locals.get(reference.name) : incomingScalar;
-    const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(attribute === undefined ? {} : { attribute }), ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }), ...(conditional === undefined ? {} : { conditional }) };
+    const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(attribute === undefined ? {} : { attribute }), ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }), ...(conditional === undefined ? {} : { conditional }), ...(eventArgument === undefined ? {} : { eventArgument }) };
     uses.push(use);
     if (reference.namespace === "incoming") {
       if (reference.path.length || context !== "value" && context !== "event" && !is_part_scalar_qualifier(supply)) issue(node, context === "forwarding"
@@ -212,20 +214,23 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
       if (incomingScalar !== undefined) {
         used.add(incomingScalar);
         if (is_part_scalar_qualifier(supply) && !part_scalar_source_possible(supply, incomingScalar.kind)) {
-          issue(node, `Part :${supply} reference requires a ${supply} value; incoming ${reference.name} is declared ${incomingScalar.kind}.`, attribute, use);
+          issue(node, `Part :${supply} reference requires a ${supply} value; incoming ${reference.name} is declared ${incomingScalar.kind}.`, attribute, use, eventInput);
         }
       } else add(reference.name, "scalar", node, attribute, use, eventInput);
     } else if (binding === undefined) {
       issue(node, `Missing Part local declaration ${JSON.stringify(reference.name)}.`, attribute, use, eventInput);
     } else {
       used.add(binding);
-      if (context === "structure" ? binding.kind !== "doc"
-        : context === "iteration" ? binding.kind !== "data"
-        : context === "event" && binding.kind === "doc" ? true
-        : reference.path.length && binding.kind !== "data") issue(node, "Part reference does not match its declared representation.", attribute, use, eventInput);
-      if (is_part_scalar_qualifier(supply)) {
-        if (!part_scalar_source_possible(supply, binding.kind)) issue(node,
-          `Part :${supply} reference requires a ${supply} value; local ${binding.name} is declared ${binding.kind}.`, attribute, use);
+      const iterator = binding.kind === "scalar" ? iterators.get(binding.node) : undefined;
+      const source = iterator === undefined ? binding.kind : iterator.kind === "array" ? "num" : "str";
+      if (context === "event" && binding.kind === "doc") {
+        issue(node, "Event arguments require Data. Document bindings cannot be sent.", attribute, use, eventInput);
+      } else if (context === "structure" ? binding.kind !== "doc"
+        : context === "iteration" ? binding.kind !== "data" : reference.path.length && binding.kind !== "data") {
+        issue(node, "Part reference does not match its declared representation.", attribute, use, eventInput);
+      } else if (is_part_scalar_qualifier(supply)) {
+        if (!part_scalar_source_possible(supply, context === "event" ? source : binding.kind)) issue(node,
+          `Part :${supply} reference requires a ${supply} value; local ${binding.name} is declared ${source}.`, attribute, use, eventInput);
       } else if (supply !== undefined && binding.kind !== supply) {
         issue(node, "Typed Part forwarding requires the same declared representation.", attribute, use, eventInput);
       }
@@ -268,7 +273,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         issue(node, cause instanceof Error ? cause.message : String(cause), attribute);
         return;
       }
-      const alternatives = "input" in event ? [event] : event;
+      const alternatives = "args" in event ? [event] : event;
       observeEvent?.(node, attribute, alternatives);
       if (alternatives.includes("opaque")) {
         const attributes = opaqueEvents.get(node) ?? new Set<string>();
@@ -276,12 +281,16 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         opaqueEvents.set(node, attributes);
       }
       const conditional = alternatives.length > 1 ? true : undefined;
-      const reads = alternatives.flatMap(event => typeof event !== "string" && event.input?.kind === "reference"
-        ? [observe(event.input.reference, node, "event", undefined, attribute, event.input, conditional)] : []);
-      const first = reads[0];
-      // Distinct operands can agree on the same strict demand at this attachment.
-      if (conditional && first !== undefined && reads.length === alternatives.length && reads.every(({ reference }) =>
-        !reference.optional && reference.namespace === first.reference.namespace && reference.name === first.reference.name)) sharedEventDemands.add(first);
+      const reads = alternatives.map(event => typeof event === "string" ? [] : event.args.flatMap(argument =>
+        event_argument_references(argument).map(site => observe(site.reference, node, "event",
+          argument.operand.kind === "reference" && is_part_scalar_qualifier(argument.qualifier) ? argument.qualifier : undefined,
+          attribute, site, conditional, argument))));
+      // A strict demand is definite when every alternative reads the same binding.
+      if (conditional) for (const use of reads[0] ?? []) {
+        const { reference } = use;
+        if (!reference.optional && reads.every(branch => branch.some(read => !read.reference.optional
+          && read.reference.namespace === reference.namespace && read.reference.name === reference.name))) sharedEventDemands.add(use);
+      }
     },
     structure(reference, node) { observe(reference, node, "structure", undefined, part_reference_text(reference)); },
     iterator(declaration, node) {

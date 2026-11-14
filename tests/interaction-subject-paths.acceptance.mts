@@ -26,7 +26,7 @@ const listener = Object.freeze({
 });
 const subject = (path: readonly number[]) => Object.freeze({ library: "page", path });
 const descriptor = (id: string, path: readonly number[]): InteractionDescriptor =>
-  Object.freeze({ id, subject: subject(path), listener, kind: "browser", key: "run", args: null });
+  Object.freeze({ id, subject: subject(path), listener, kind: "browser", key: "run", args: {} });
 const button = () => {
   const root = parse_hson_exact_runtime("<button/>", { allowTopLevelDocumentText: true });
   const bucket = root.$_content[0];

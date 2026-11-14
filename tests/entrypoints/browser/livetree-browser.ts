@@ -62,10 +62,14 @@ actions.define("three", (_context: unknown, _args: unknown, _message: unknown) =
 actions.define("legacy", () => {}, { input: { required: true } });
 const result: Promise<LocalActionResult> = actions.trigger("PANEL_TOGGLE", { open: true });
 void result;
-const authored: ListenerSub = tree.listen.event("<hson:event on:click local:PANEL_TOGGLE input:data={<open true>} <> >");
+const authored: ListenerSub = tree.listen.event("<hson:event on:click local:PANEL_TOGGLE open:data={true} <> >");
 authored.off() satisfies void;
 // @ts-expect-error A declaration requires Hson source text.
 tree.listen.event(() => {});
+// @ts-expect-error A registered Action takes named fields.
+actions.trigger("PANEL_TOGGLE", -0);
+// @ts-expect-error An array is a Data value but cannot be the argument record.
+actions.trigger("PANEL_TOGGLE", [true]);
 // @ts-expect-error Public trigger does not accept a native event as input.
 actions.trigger("PANEL_TOGGLE", new MouseEvent("click"));
 // @ts-expect-error Registrations are additive.

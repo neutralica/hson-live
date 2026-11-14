@@ -623,9 +623,9 @@ const loc = hsonLiveMap.locus.create({
       'const loc = hsonLiveMap.fromLibraries({',
       '  bits: { parts: {',
       '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`,',
-      '      events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" } },',
+      '      events: { go: "<hson:event on:click local:deck.go selection:data=^{args} <> >" } },',
       '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`,',
-      '      events: { go: "<hson:event on:click local:deck.go input:data=%{text} <> >" } },',
+      '      events: { go: "<hson:event on:click local:deck.go selection:data=%{text} <> >" } },',
       '  } },',
       '  page: { document: Hson.document`<main <hson-part lib="bits" at="scalar" text="hi"/> <hson-part lib="bits" at="typed" args:data="<>"/>/>` },',
       '});',
@@ -638,7 +638,7 @@ const loc = hsonLiveMap.locus.create({
     const input = valid.indexOf("^{args}") + 2;
     const definitions = await request("definition", { file: file("consumer.ts"), ...location(valid, input) });
     assert.deepEqual(definitions?.[0]?.start, location(valid, valid.indexOf("data:args") + "data:".length));
-    const typedEvents = 'events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" }';
+    const typedEvents = 'events: { go: "<hson:event on:click local:deck.go selection:data=^{args} <> >" }';
     for (const replacement of ['events: opaque', '...opaque']) {
       const uncertain = valid.replace(typedEvents, replacement)
         .replace('const loc', 'declare const opaque: Record<string, string>;\nconst loc');
@@ -665,7 +665,7 @@ const loc = hsonLiveMap.locus.create({
     assert.deepEqual(partialErrors[0].start, location(partial, partial.indexOf("^{unknown}")));
     const reused = valid.replace('const loc', 'const shared = Hson.document`<button hson:part event:go/>`;\nconst loc')
       .replace('document: Hson.document`<button hson:part event:go/>`', 'document: shared')
-      .replace('    scalar:', '    other: { kind: "document", document: shared, events: { go: "<hson:event on:click local:other input:data=%{other} <> >" } },\n    scalar:')
+      .replace('    scalar:', '    other: { kind: "document", document: shared, events: { go: "<hson:event on:click local:other selection:data=%{other} <> >" } },\n    scalar:')
       .replace(' <hson-part lib="bits" at="typed"', ' <hson-part lib="bits" at="other" other="hi"/> <hson-part lib="bits" at="typed"');
     assert.deepEqual(await hsonErrors(reused), []);
     for (const [source, message, span] of [
@@ -686,7 +686,7 @@ const loc = hsonLiveMap.locus.create({
     }
     const scoped = [
       'import { Hson, hsonLiveMap } from "hson-live";',
-      'const events = { go: "<hson:event on:click local:deck.go input:data=^{args.item} <> >" } as const;',
+      'const events = { go: "<hson:event on:click local:deck.go selection:data=^{args.item} <> >" } as const;',
       'hsonLiveMap.fromLibraries({ bits: { parts: { scoped: { kind: "document", events,',
       '  document: Hson.document`<section hson:part data:args=%{args} data:items=%{items}',
       '    <button event:go/>',
@@ -718,7 +718,7 @@ const loc = hsonLiveMap.locus.create({
     const shared = [
       'import { Hson, hsonLiveMap } from "hson-live";',
       'declare const fragment: string;',
-      'const go = "<hson:event on:click local:go input:data=^{args.item} <> >";',
+      'const go = "<hson:event on:click local:go selection:data=^{args.item} <> >";',
       'hsonLiveMap.fromLibraries({ bits: { parts: {',
       '  first: { kind: "document", events: { go }, document: Hson.document`<button hson:part data:args=%{args} event:go/>` },',
       '  second: { kind: "document", events: { go }, document: Hson.document`<section hson:part <button event:go/> <button event:go/>/>` },',
@@ -749,8 +749,8 @@ const loc = hsonLiveMap.locus.create({
     const prefix = [
       'import { Hson, hsonLiveMap } from "hson-live";',
       'declare const branch: boolean, opaque: string, fragment: string, collection: Record<string, string>;',
-      'const shared = "<hson:event on:click local:go input:data=^{row.label} <> >";',
-      'const other = "<hson:event on:click local:go input:data={null} <> >";',
+      'const shared = "<hson:event on:click local:go selection:data=^{row.label} <> >";',
+      'const other = "<hson:event on:click local:go selection:data={null} <> >";',
     ].join("\n");
     const resolved = '<section hson:part data:row=%{rows} <button event:go/>/>';
     const unresolved = '<section hson:part <button event:go/>/>';
@@ -785,7 +785,7 @@ const loc = hsonLiveMap.locus.create({
       return [name, unique ? [[file("consumer.ts"), location(text, start), location(text, start + 'row'.length)]] : []];
     }));
     const distinct = source(part(resolved, '{ go: branch ? shared : copy }'))
-      .replace('hsonLiveMap.fromLibraries', 'const copy = "<hson:event on:click local:go input:data=^{row.label} <> >";\nhsonLiveMap.fromLibraries');
+      .replace('hsonLiveMap.fromLibraries', 'const copy = "<hson:event on:click local:go selection:data=^{row.label} <> >";\nhsonLiveMap.fromLibraries');
     await editConsumer(distinct);
     for (const operand of distinct.matchAll(/\^\{row\.label\}/g)) {
       const targets = await request("definition", { file: file("consumer.ts"), ...location(distinct, operand.index + 2) });
@@ -802,7 +802,7 @@ const loc = hsonLiveMap.locus.create({
       'const input: HsonDataValue<typeof Shape> = Hson.data.parse`<title "present">`;',
       'hsonLiveMap.fromLibraries({ bits: { parts: { card: { kind: "document",',
       '  document: Hson.document`<main hson:part data:args=%{args} <button event:go/> <div <button event:go/>/>/>`,',
-      '  events: { go: "<hson:event on:click local:go input:data=^{args.missing} <> >" },',
+      '  events: { go: "<hson:event on:click local:go selection:data=^{args.missing} <> >" },',
       '} } }, page: { document: Hson.document`<article <hson-part at="bits/card" args:data="${input.toHson()}"/> <hson-part at="bits/card" args:data="${input.toHson()}"/>/>` } });',
     ].join("\n");
     const hsonErrors = async source => {
@@ -844,13 +844,40 @@ const loc = hsonLiveMap.locus.create({
     assert.equal((await hsonErrors(source.replace('<button event:go/>', '<p "^{args.missing}"/> <button event:go/>'))).length, 6);
     assert.equal((await hsonErrors(sibling.replace('<button event:go/>', '<p "^{args.missing}"/> <button event:go/>'))).length, 4);
     assert.equal((await hsonErrors(sibling.replace(optional, '<aside part:optional title="%{extra?}" <p "^{args.missing}"/>/>'))).length, 2);
-    assert.equal((await hsonErrors(source.replace('^{args.missing}', '^{args.missing?}'))).length, 4);
+    assert.deepEqual(await hsonErrors(source.replace('^{args.missing}', '^{args.missing?}')), []);
+    assert.equal((await hsonErrors(source.replace('^{args.missing}', '^{args.title.nested?}'))).length, 4);
     for (const valid of [
       sibling.replace('^{args.missing}', '^{args.title}'),
       sibling.replace('<title "string">', '<title "string" missing <optional "string">>'),
       sibling.replace('<type "data" content <title "string">>', '<type "data">'),
       sibling.replace('HsonDataValue<typeof Shape>', 'HsonDataValue'),
     ]) assert.deepEqual(await hsonErrors(valid), []);
+    await editConsumer(consumer);
+  });
+  await check("bundled Event diagnostics retain ranges for proven optional omissions", async () => {
+    const operand = 'selection:str=%{label}';
+    const source = [
+      'import { Hson, hsonLiveMap } from "hson-live";',
+      'const Args = Hson.schema`<type "data" content <selection "string">>`;',
+      'const map = hsonLiveMap.fromLibraries({ bits: { parts: { card: { kind: "document",',
+      '  document: Hson.document`<p hson:part str:local=%{label?} event:go/>`,',
+      '  events: { go: "<hson:event on:click local:go ' + operand + ' <> >" },',
+      '} } }, page: { document: Hson.document`<hson-part at=bits/card/>` } });',
+      'map.actions.define("go", () => {}, { args: { schema: Args } });',
+    ].join("\n");
+    await editConsumer(source);
+    const errors = (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
+    assert.equal(errors.length, 1);
+    const [error] = errors;
+    assert.match(error.text, /Action "go" requires argument "selection"/);
+    const range = (text, start = source.indexOf(text)) => ({
+      file: file("consumer.ts"), start: location(source, start), end: location(source, start + text.length),
+    });
+    assert.deepEqual({ file: file("consumer.ts"), start: error.start, end: error.end }, range(operand));
+    assert.deepEqual(error.relatedInformation.map(info => info.span),
+      [range("Args", source.lastIndexOf("Args")), range("event:go")]);
+    await editConsumer(source.replace('selection "string"', 'selection <optional "string">'));
+    assert.deepEqual((await diagnostics("consumer.ts")).filter(error => error.code === 95002), []);
     await editConsumer(consumer);
   });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {

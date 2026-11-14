@@ -17,7 +17,7 @@ import type {
 import type { JsonValue } from "../core/types.js";
 import type { LibraryCut, LibraryCommits } from "./governor.types.js";
 import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
-import type { ActionArgsOptions } from "../internal/action-args.js";
+import type { ActionArgsInput, ActionArgsOptions } from "../internal/action-args.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -483,7 +483,7 @@ export type Locus<
     define: (name: string, handler: LocusActionHandler<HsonDataInput | undefined, TMap>,
       options?: LocusActionDefinitionOptions) => void;
     /** Submit a registered action through trusted direct authority. */
-    trigger: (name: string, args?: HsonDataInput) => Promise<LocusTriggerResult>;
+    trigger: (name: string, args?: ActionArgsInput) => Promise<LocusTriggerResult>;
   }>;
   actionRequests: LocusActionDedupeInspector;
   stage: LocusStage<TMap>;

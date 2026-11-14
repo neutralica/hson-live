@@ -132,7 +132,7 @@ export async function document_css_reconciliation_browser_cases(): Promise<{ nam
       const page = map.doc.must('page');
       enable_interactions(map);
       replace(map, record('green'));
-      add_interaction(map, { id: 'reuse-click', kind: 'browser', key: 'click', args: Hson.data.from(null),
+      add_interaction(map, { id: 'reuse-click', kind: 'browser', key: 'click', args: Hson.data.from({}),
         subject: { library: 'page', path: lookup_document_quad_internal(page, 'target')!.path },
         listener: { event: 'click', target: 'element', capture: false, once: false, passive: false,
           missingTarget: 'throw', preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } });

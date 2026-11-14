@@ -4,6 +4,8 @@ import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
+import { evaluate_canonical_projected_fields, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
+import type { VerifiedCanonicalSchemaGraph } from "../canonical-schema/graph.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_admission, library_source_definitions, library_source_fields } from "./library-source.js";
@@ -11,13 +13,15 @@ import { library_json_has_hson_source } from "./library-json-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_object, type OrderedProjectedObject, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { is_part_argument_attribute, is_part_scalar_qualifier, part_argument_name, part_argument_issue, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_data_source } from "../../core/data-source-admission.js";
-import { part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
+import { certain_part_invocations, part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
+import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
+import { event_argument_references, type AuthoredEventArgument } from "../authored-events.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
@@ -41,9 +45,140 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
       message: "Part event attachment." });
     output.push({ file: where.file, start: where.start, end: where.end, code, message, ...(related.length === 0 ? {} : { related }) });
   };
-  for (const issue of facts.missingEventInputs) report(issue.location, "HSON_EVENT_INPUT_REQUIRED",
-    `Action ${JSON.stringify(issue.key)} requires arguments. Supply input:data in this event declaration.`,
-    issue.contract, issue.attachment, "This action declares required arguments.");
+  for (const issue of facts.eventIssues) report(issue.location, issue.code, issue.message, issue.declaration, issue.attachment, "First declaration.");
+  for (const { event, location, map, attachment, maybeAbsent, definition, batch, contract } of facts.eventContracts) {
+    if (event.args.length === 0) {
+      report(contract.required === undefined ? undefined : location, "HSON_EVENT_INPUT_REQUIRED",
+        `Action ${JSON.stringify(event.key)} requires arguments. Supply named typed arguments in this event declaration.`,
+        contract.required, attachment, "This action declares required arguments.");
+      continue;
+    }
+    if (contract.schema === undefined) continue;
+    const schema = contract.schema.value;
+    const args = new Map(event.args.map(argument => [argument.name, argument]));
+    const argumentLocation = (name: string) => {
+      const argument = args.get(name);
+      return argument === undefined ? undefined : map({ start: argument.header.index, end: argument.end.index });
+    };
+    const missing = (name: string, where = location) => report(where, "HSON_EVENT_ARGUMENT_MISSING",
+      `Action ${JSON.stringify(event.key)} requires argument ${JSON.stringify(name)}.`,
+      contract.schema?.location, attachment, "Registered Action argument Schema.");
+    const incompatible = (name: string | undefined, detail: string) => report(
+      name === undefined ? location : argumentLocation(name), "HSON_EVENT_ARGUMENT_INVALID",
+      `Arguments for Action ${JSON.stringify(event.key)} do not match its Schema. ${detail}.`,
+      contract.schema?.location, attachment, "Registered Action argument Schema.");
+    const invocations = definition === undefined ? [] : certain_part_invocations(facts, definition)
+      .filter(invocation => invocation.batch.call === batch);
+    const omittedAtKnownInvocation = (argument: AuthoredEventArgument, invocation: typeof invocations[number]): boolean => {
+      if (definition === undefined || attachment === undefined || !maybeAbsent?.has(argument)) return false;
+      return event_argument_references(argument).some(({ reference }) => {
+        const use = definition.bindingSources?.references.find(use => use.reference === reference
+          && use.attachment?.file === attachment.file && use.attachment.start === attachment.start);
+        if (use === undefined || use.conditional || use.withinOptionalStructure || use.iterators.length !== 0) return false;
+        const binding = use.declaration;
+        const incoming = reference.namespace === "incoming" ? reference.name : binding?.incoming;
+        if (incoming === undefined) return false;
+        const supplied = invocation.connector?.attributes.find(attribute => part_argument_name(attribute.name)?.name === incoming);
+        if (supplied === undefined) {
+          return definition.signature?.requiredness.get(incoming) === "optional"
+            && (reference.namespace === "incoming" ? (reference.optional === true || binding?.optionalReceiving === true) && reference.path.length === 0
+              : binding?.optionalReceiving === true && (reference.path.length === 0 || binding.kind === "data"));
+        }
+        if (!reference.optional || binding?.kind !== "data" || reference.path.length === 0) return false;
+        if (!supplied.dynamicValue && supplied.value !== undefined) {
+          let value: OrderedProjectedValue | undefined;
+          try { value = admit_data_source(supplied.value); }
+          catch { return false; }
+          for (const selector of reference.path) {
+            if (value === undefined || (typeof selector === "number" ? !Array.isArray(value) : !is_ordered_projected_object(value))) return false;
+            value = ordered_projected_value_at(value, [selector]);
+            if (value === undefined) return true;
+          }
+          return false;
+        }
+        return part_data_contexts(facts, definition, incoming).some(context => {
+          if (context.invocation !== invocation || context.receiving !== binding || context.evidence?.strength !== "validated") return false;
+          const { alternatives } = part_data_projection(context.evidence, reference.path);
+          return alternatives.length > 0 && alternatives.every(alternative => alternative.kind === "absent");
+        });
+      });
+    };
+
+    const roots = project_schema_data(schema, []);
+    const objects = roots.filter(root => root.kind === "object");
+    // Each object branch requires these fields, including when other operands are unknown.
+    if (objects.length !== 0 && roots.every(root => root.kind !== "any")) {
+      for (const member of objects[0]!.members) {
+        if (!objects.every(root => root.members.some(field => field.name === member.name && !field.optional))) continue;
+        const argument = args.get(member.name);
+        if (argument === undefined) missing(member.name);
+
+      }
+    }
+
+    const literals = event.args.flatMap(({ name, operand }) => operand.kind === "literal" ? [[name, operand.value] as const] : []);
+    const fields = ordered_projected_object(literals);
+    for (const invocation of invocations) {
+      const omitted = event.args.filter(argument => omittedAtKnownInvocation(argument, invocation));
+      if (omitted.length === 0) continue;
+      const names = new Set(omitted.map(argument => argument.name));
+      const missingInEveryBranch = omitted.filter(({ name }) => objects.length > 0 && roots.every(root => root.kind !== "any")
+        && objects.every(root => root.members.some(field => field.name === name && !field.optional)));
+      for (const { name } of missingInEveryBranch) missing(name, argumentLocation(name));
+      if (missingInEveryBranch.length > 0) continue;
+
+      if (literals.length + omitted.length === event.args.length) {
+        const evaluation = evaluate_canonical_projected_schema(schema.graph, fields);
+        if (roots.length > 1 && evaluation.issues.some(issue => issue.evidence.kind !== "resource-limit" && issue.evidence.kind !== "invalid-graph")) {
+          incompatible(undefined, "No Schema alternative accepts this object");
+        }
+      } else if (roots.length > 1 && !event_schema_branch_viable(schema.graph, fields, names)) {
+        incompatible(undefined, "No Schema alternative accepts this object");
+      }
+    }
+    const fullyKnown = literals.length === event.args.length;
+    if (fullyKnown || literals.length > 0) {
+      const evaluation = fullyKnown ? evaluate_canonical_projected_schema(schema.graph, fields)
+        : evaluate_canonical_projected_fields(schema.graph, fields);
+      for (const issue of evaluation.issues) {
+        if (issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph") continue;
+        const name = issue.path[0];
+        if (issue.evidence.kind === "missing-required" && issue.path.length === 1 && typeof name === "string") {
+          if (roots.length <= 1) missing(name);
+          else incompatible(undefined, "No Schema alternative accepts this object");
+        } else {
+          // The evaluator can choose a closest union branch. Avoid attributing
+          // that branch's failure to a particular argument in an ambiguous union.
+          incompatible(roots.length > 1 || typeof name !== "string" ? undefined : name,
+            roots.length > 1 ? "No Schema alternative accepts this object" : issue_detail(issue));
+        }
+      }
+      if (fullyKnown) continue;
+    }
+
+    // A required reference supplies the kind promised by its scalar qualifier.
+    if (roots.length === 0) continue;
+    if (roots.every(root => root.kind !== "object" && root.kind !== "any")) {
+      if (literals.length === 0) incompatible(undefined, "The Schema requires a different root type");
+      continue;
+    }
+    for (const argument of event.args) {
+      const { name, qualifier, operand } = argument;
+      if (operand.kind === "literal" || maybeAbsent?.has(argument)) continue;
+      if (objects.length > 0 && roots.every(root => root.kind !== "any")
+        && objects.every(root => root.members.every(member => member.name !== name))) {
+        incompatible(name, `unknown key at ${name}`);
+        continue;
+      }
+      const actual = qualifier === "str" ? "string" : qualifier === "num" ? "number" : undefined;
+      if (actual === undefined) continue;
+      const domains = project_schema_data(schema, [name]);
+      if (domains.length > 0 && domains.every(domain => domain.kind !== "any" && domain.kind !== actual
+        && (domain.kind !== "exact" || (domain.value === null ? "null" : typeof domain.value) !== actual))) {
+        incompatible(name, `Argument ${JSON.stringify(name)} supplies a value of type ${actual}`);
+      }
+    }
+  }
   if (typescript !== undefined && checker !== undefined) for (const write of facts.writes) {
     for (const argument of write.arguments) {
       if (!is_part_scalar_qualifier(argument.kind)) continue;
@@ -98,9 +233,8 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
         if (context.receiving !== binding || !context.executionCertain || context.evidence?.strength !== "validated"
           || context.argument === undefined || context.connector === undefined || (!event && memberInvocations.has(context.connector))) continue;
         const alternatives = part_data_projection(context.evidence, use.reference.path).alternatives;
-        // A surviving event subject always needs present Data.
         const invalid = alternatives.length > 0 && alternatives.every(alternative => alternative.presence === "required"
-          && (alternative.kind === "invalid-traversal" || (event || !use.reference.optional) && alternative.kind === "absent"));
+          && (alternative.kind === "invalid-traversal" || !use.reference.optional && alternative.kind === "absent"));
         if (!invalid) continue;
         const selector = context.connector.attributes.find(attribute => attribute.name === "at")?.valueLocation;
         const where = selector?.precision === "exact" ? selector : context.argument.nameLocation;
@@ -280,6 +414,33 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
     }
   }
   return output;
+}
+
+/** Keep absence and known values correlated within each root alternative. */
+function event_schema_branch_viable(graph: VerifiedCanonicalSchemaGraph, fields: OrderedProjectedObject,
+  omitted: ReadonlySet<string>): boolean {
+  let budget = 256;
+  const viable = (ref: number, depth: number): boolean => {
+    if (--budget < 0 || depth >= 64) return true;
+    const node = graph.nodes[ref];
+    switch (node?.kind) {
+      case "projected-union": return node.choices.some(choice => viable(choice, depth + 1));
+      case "projected-ref": return viable(node.target, depth + 1);
+      case "projected-refinement":
+      case "projected-nullable":
+      case "projected-optional": return viable(node.base, depth + 1);
+      case "projected-object":
+        if (node.properties.some(([name, child]) => omitted.has(name) && graph.nodes[child]?.kind !== "projected-optional")) return false;
+        break;
+      case "projected-literal":
+        if (!node.values.some(value => is_ordered_projected_object(value) && value.entries.every(([name]) => !omitted.has(name)))) return false;
+        break;
+    }
+    const evaluation = evaluate_canonical_projected_fields({ ...graph, capabilities: { projectedRoot: ref } }, fields);
+    return evaluation.ok || evaluation.issues.some(issue => issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph");
+  };
+  const root = graph.capabilities.projectedRoot;
+  return root === undefined || viable(root, 0);
 }
 
 /** Pure preflight over authored ASTs. Unknown expressions withdraw the entire proof. */

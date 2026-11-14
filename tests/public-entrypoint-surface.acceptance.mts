@@ -142,7 +142,7 @@ await check("LiveMap action and callback declarations type-check without a platf
         ctx.subject?.dom.el();
         return args;
       });
-      map.actions.trigger("compute", -0) satisfies Promise<LocalBehaviorResult>;
+      map.actions.trigger("compute", { value: -0 }) satisfies Promise<LocalBehaviorResult>;
       const page = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } }).doc.must("page");
       const listener = page.at([1, 0]).asElement()!.listen;
       listener.local.onClick("compute", null) satisfies string;

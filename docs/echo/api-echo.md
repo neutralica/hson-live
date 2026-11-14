@@ -121,7 +121,7 @@ completion waiter settles only after Echo has processed every authority
 revision through `completionRev`, including progress-only revisions. It does not
 compare `completionRev` to `echo.rev`.
 
-Configured actions preserve exact Data fidelity in both directions. `Echo.action(name, payload)` accepts supported ordinary JavaScript values or authenticated `HsonDataValue` carriers; absence remains distinct from present null. Ordinary strings are literal Data. Use `Hson.data.fromSource(source)` to admit serialized JSON/Hson explicitly.
+Configured Actions preserve exact Data in both directions. For a registered Action, supply an ordinary Data object or an exact object carrier to `Echo.action(name, payload)`. The authority validates present arguments against the registered contract and authorizes the request. An explicit empty object remains distinct from omission. Use `Hson.data.fromSource(source)` to admit serialized JSON/Hson. Action results can be any supported Data value.
 
 Echo retains an immutable carrier in `call.request.payload`, so caller mutation cannot affect retries. Handlers, validators, and authorizers receive carriers; `payload.materialize()` provides a detached JavaScript view. Successful acknowledgments, retained status, and cached retries carry `HsonDataValue` results. Handlers may return ordinary supported values or genuine carriers; void remains no result.
 

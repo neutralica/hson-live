@@ -37,17 +37,17 @@ try {
   }, { args: { required: true } });
   const result = await subject.actions.trigger("echo", exact);
   assert.ok(result.ok && result.result === exact);
-  const sub = subject.listen.event("<hson:event on:click local:echo input:data={null} <> >");
+  const sub = subject.listen.event("<hson:event on:click local:echo note:data={null} <> >");
   sub.off();
   assert.throws(() => subject.listen.event("<hson:event on:click local:echo <> >"), /requires arguments/);
   const workerButton = new FakeElement("button");
   link_node_to_el(retained_subject(subject), workerButton as unknown as Element);
   const seen: unknown[] = [];
-  standalone.actions.define("optional", (_context, input) => { seen.push(input?.scalar()); });
+  standalone.actions.define("optional", (_context, input) => { seen.push(input?.materialize()); });
   const omitted = subject.listen.event("<hson:event on:click local:optional <> >");
-  const explicit = subject.listen.event("<hson:event on:click local:optional input:data={null} <> >");
+  const explicit = subject.listen.event("<hson:event on:click local:optional note:data={null} amount:num=\"-0\" <> >");
   workerButton.dispatchEvent(new Event("click"));
-  assert.deepEqual(seen, [undefined, null]);
+  assert.deepEqual(seen, [undefined, { note: null, amount: -0 }]);
   omitted.off(); explicit.off();
 } finally { standalone.remove(); }
 

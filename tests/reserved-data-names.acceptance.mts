@@ -170,7 +170,7 @@ await check("action input rejects before handlers and invalid computed results c
     for (const source of sources) assert.throws(() => Hson.data.fromSource(source));
     assert.equal(locus.rev, 0); assert.equal(publications, 0);
     assert.deepEqual(locus.data.must("state").snap(), { value: 0 });
-    const accepted = await locus.dispatchAction({ type: "action", id: "valid", name: "probe", payload: Hson.data.from("$_meta _hson_root") });
+    const accepted = await locus.dispatchAction({ type: "action", id: "valid", name: "probe", payload: Hson.data.from({ text: "$_meta _hson_root" }) });
     assert.equal(accepted.type, "ack"); assert.equal(executions, 1);
   } finally { locus.dispose(); }
 });

@@ -196,10 +196,10 @@ export async function document_listener_cases(): Promise<void> {
     });
     await nested;
     assert_subjects(map, ids, 1);
-    assert.equal((await locus.actions.trigger("inspect", null)).type, "ack");
+    assert.equal((await locus.actions.trigger("inspect")).type, "ack");
     assert.equal(inspected, true);
 
-    const action = locus.actions.trigger("hold", null);
+    const action = locus.actions.trigger("hold");
     await actionEntered.promise;
     const update = locus.data.must("state").at(["count"]).replace(1);
     const independent = page.at(first).asElement()!.listen.host.onClick("unnamed");

@@ -22,14 +22,14 @@ import { plan_browser_realization } from "../../src/internal/browser-realization
 import { assertCanonicalClosure, assertCanonicalSerializedClosure, TransformOracleAssertionError } from "../../src/diagnostics/transform-test-oracle.ts";
 import type { HsonNode } from "../../src/core/types.ts";
 
-const advance = "<hson:event once stopProp on:click host:ADVANCE_SLIDE input:data={<step 3>} <> >";
+const advance = "<hson:event once stopProp on:click host:ADVANCE_SLIDE step:num=\"3\" <> >";
 const literal = { kind: "document", document: Hson.document`<button hson:part event:advance id="literal" "Next"/>`,
   events: { advance } } satisfies LiveMapDocumentPart;
 const typed = { kind: "document", document: Hson.document`<section hson:part data:args=%{args}
   <button event:advance class="one"/> <button event:advance class="two"/>/>`,
-  events: { advance: "<hson:event on:click local:OPEN_PANEL input:data=^{args} <> >" } } satisfies LiveMapDocumentPart;
+  events: { advance: "<hson:event on:click local:OPEN_PANEL panel:data=^{args} <> >" } } satisfies LiveMapDocumentPart;
 const incoming = { kind: "document", document: Hson.document`<button hson:part event:advance id="incoming"/>`,
-  events: { advance: "<hson:event on:click local:OPEN_PANEL input:data=%{text} <> >" } } satisfies LiveMapDocumentPart;
+  events: { advance: "<hson:event on:click local:OPEN_PANEL title:str=%{text} <> >" } } satisfies LiveMapDocumentPart;
 const withoutInput = { ...literal, events: { advance: "<hson:event on:click local:RESET_PANEL <> >" } };
 const collection = { parts: { literal, typed, incoming, withoutInput } };
 const invocation = '<hson-part lib="parts" at="literal"/>';
@@ -79,11 +79,17 @@ function grammar_cases() {
     preventDefault: false, stopPropagation: true, stopImmediatePropagation: false,
   });
   assert.ok(literalDescriptor.data?.equals(Hson.data.from({ step: 3 })));
-  assert.equal(descriptors(admit(advance.replace("{<step 3>}", "{null}")))[0]?.data?.scalar(), null);
-  assert.equal(descriptors(admit(advance.replace("{<step 3>}", '{"<step 3>"}')))[0]?.data?.scalar(), "<step 3>");
-  assert.equal(descriptors(admit(advance.replace("{<step 3>}", "{-0}")))[0]?.data?.scalar(), -0);
+  const literalArgs = 'input:data={<step 3>} x:num="-0" title:str="Example" extra:data={null}';
+  const named = descriptors(admit(advance.replace('step:num="3"', literalArgs)))[0]?.data;
+  assert.ok(named);
+  assert.ok(named.equals(Hson.data.fromSource('{"input":{"step":3},"x":-0,"title":"Example","extra":null}')));
+  assert.deepEqual(named.entries()?.map(([name]) => name), ["input", "x", "title", "extra"]);
+  assert.ok(Object.is(named.entries()?.[1]?.[1].scalar(), -0));
+  const escaped = String.raw`label:str="Example \u005e{literal}"`;
+  assert.ok(descriptors(admit(advance.replace('step:num="3"', escaped)))[0]?.data
+    ?.equals(Hson.data.from({ label: "Example ^{literal}" })));
   for (const [destination, inputField] of [["host", "payload"], ["local", "args"]]) {
-    const omission = advance.replace("host:", `${destination}:`).replace(" input:data={<step 3>}", "");
+    const omission = advance.replace("host:", `${destination}:`).replace(' step:num="3"', "");
     const map = admit(omission);
     assert.equal(descriptors(map)[0]?.data, undefined);
     const aggregate = authority(map);
@@ -93,8 +99,16 @@ function grammar_cases() {
   }
 
   for (const [source, diagnostic] of [
+    [advance.replace('step:num="3"', 'step:num="3" step:str="three"'), /Duplicate Event argument "step"/],
+    [advance.replace('step:num="3"', 'step:doc={<i/>}'), /Invalid Event argument/],
+    [advance.replace('step:num="3"', 'step=3'), /Invalid Event argument/],
+    [advance.replace('step:num="3"', 'step:num=3'), /double-quoted literal/],
+    [advance.replace('step:num="3"', 'step:num="03"'), /quoted finite JSON number/],
+    [advance.replace('step:num="3"', 'step:num="1e999"'), /quoted finite JSON number/],
+    [advance.replace('step:num="3"', 'step:num="%{n}0"'), /numeric interpolation is unsupported/],
+    [advance.replace('step:num="3"', 'step:num'), /Expected a value/],
     [advance.replace("once", "capture"), /Unsupported authored event header/],
-    [advance.replace("once", 'once="once"'), /Only input:data takes a value/],
+    [advance.replace("once", 'once="once"'), /Invalid Event argument/],
     [advance.replace("once", "once once"), /Duplicate authored event header/],
     [advance.replace("on:click", "on:click on:click"), /Duplicate authored event header/],
     [advance.replace("on:click", "on:click on:keydown"), /exactly one on:/],
@@ -102,14 +116,14 @@ function grammar_cases() {
     [advance.replace("<> ", ""), /requires an outcome object/],
     [advance.replace("<>", "<> <>"), /single authored event outcome object/],
     [advance.replace("<>", "<success local:SHOW_SAVED>"), /Nonempty authored event outcomes.*Use <>/],
-    [advance.replace("{<step 3>}", '"<step 3>"'), /one whole Part reference/],
-    [advance.replace("{<step 3>}", "{1 2}"), /one Hson Data value/],
-    [advance.replace("{<step 3>}", "{<button/>}"), /element-mode value/],
-    [advance.replace("{<step 3>}", "{<@000008398 step 3>}"), /runtime QUID/],
+    [advance.replace('step:num="3"', 'step:data="<step 3>"'), /one whole Part reference/],
+    [advance.replace('step:num="3"', "step:data={1 2}"), /one Hson Data value/],
+    [advance.replace('step:num="3"', "step:data={<button/>}"), /element-mode value/],
+    [advance.replace('step:num="3"', "step:data={<@000008398 step 3>}"), /runtime QUID/],
     [advance.replace("hson:event", "'hson:event'"), /literal <hson:event/],
     [advance + advance, /exactly one authored event declaration/],
-    [advance.replace("{<step 3>}", "^{undeclared}"), /Missing Part local declaration/],
-    [advance.replace("{<step 3>}", "%{args.field}"), /Structured Part inputs/],
+    [advance.replace('step:num="3"', "step:num=^{undeclared}"), /Missing Part local declaration/],
+    [advance.replace('step:num="3"', "step:data=%{args.field}"), /Structured Part inputs/],
   ] as const) assert.throws(() => admit(source), diagnostic);
 
   const conflict = advance.replace("host:ADVANCE_SLIDE", "host:ADVANCE_SLIDE local:OPEN_PANEL");
@@ -117,7 +131,7 @@ function grammar_cases() {
     const details = error instanceof Error ? read_transform_error_details(error.cause) : undefined;
     return details?.source?.index === conflict.indexOf("local:") && details.related?.[0]?.source.index === conflict.indexOf("host:");
   });
-  const missing = advance.replace("{<step 3>}", "^{undeclared}");
+  const missing = advance.replace('step:num="3"', "step:num=^{undeclared}");
   assert.throws(() => admit(missing), error => read_transform_error_details(error)?.source?.index === missing.indexOf("^{undeclared}"));
   assert.throws(() => admit(advance, "<button hson:part event:unknown/>"), /Missing Part event declaration/);
   assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: { missing: {
@@ -222,7 +236,7 @@ function event_reference_ranges() {
   const document = '<button hson:part data:args=%{args} event:advance/>';
   const expression = "^{args.missing}";
   const declaration = `<hson:event on:click local:OPEN_PANEL
-  input:data=${expression} <> >`;
+  item:data=${expression} <> >`;
   const use = (data: string) => `<hson-part lib="parts" at="path" args:data="${data}"/>`;
   const compose = (source: string, second: string) => hsonLiveMap.fromLibraries({
     parts: { parts: { path: { kind: "document", document, events: { advance: source } } } },
@@ -235,17 +249,17 @@ function event_reference_ranges() {
       assert.ok(error.message.includes(`${problem} Part path ${expression} in "parts/path" at [0,0,1]`), error.message);
       const details = read_transform_error_details(error);
       assert.equal(details?.code, "HSON_EVENT_REFERENCE_INVALID");
-      assert.deepEqual(details?.source, { index: start, line: 2, column: 14 });
+      assert.deepEqual(details?.source, { index: start, line: 2, column: 13 });
       assert.deepEqual(details?.related?.find(item => item.role === "value-end")?.source,
-        { index: start + expression.length, line: 2, column: 14 + expression.length });
+        { index: start + expression.length, line: 2, column: 13 + expression.length });
       assert.equal(details?.related?.find(item => item.role === "event-attachment")?.source.index, document.indexOf("event:advance"));
       return true;
     });
   }
-  assert.deepEqual(descriptors(compose(declaration, "<missing 2>")).map(descriptor => descriptor.data?.scalar()), [1, 2]);
+  assert.deepEqual(descriptors(compose(declaration, "<missing 2>")).map(descriptor => descriptor.data?.materialize()), [{ item: 1 }, { item: 2 }]);
   const optional = declaration.replace(expression, "^{args.missing?}");
   assert.equal(descriptors(compose(optional, "<missing 2>")).length, 2);
-  assert.throws(() => compose(optional, "<>"), /input:data must resolve to present Data/);
+  assert.ok(descriptors(compose(optional, "<>"))[1]?.data?.equals(Hson.data.from({})));
   const malformed = "^{args.missing.}";
   assert.throws(() => compose(declaration.replace(expression, malformed), "<>"), error => {
     const details = error instanceof Error ? read_transform_error_details(error.cause) : undefined;
@@ -254,13 +268,35 @@ function event_reference_ranges() {
   });
 }
 
+function event_reference_comments() {
+  const compose = (local: string, incoming: string, newline: string, label = ' label:str="Ready"') =>
+    hsonLiveMap.fromLibraries({
+      parts: { parts: { card: {
+        kind: "document", document: '<button hson:part data:record=%{record} str:text=%{label?} event:advance/>',
+        events: { advance: `<hson:event on:click local:OPEN_PANEL
+          input:data=${local}// comment with < and >
+          title:str=${incoming}// another comment${newline}<> >` },
+      } } },
+      page: { document: `<hson-part at=parts/card record:data="<'a//b' -0>"${label}/>` },
+    });
+  for (const newline of ["\n", "\r\n", "\r"]) {
+    const present = descriptors(compose('^{record["a//b"]}', "%{label?}", newline))[0]?.data;
+    assert.ok(present?.equals(Hson.data.from({ input: -0, title: "Ready" })));
+    const absent = descriptors(compose("^{record.missing?}", "%{label?}", newline, ""))[0]?.data;
+    assert.ok(absent?.equals(Hson.data.from({})));
+  }
+  assert.throws(() => compose("^{record.}", "%{label?}", "\n"), /one whole Part reference/);
+  assert.throws(() => compose("^{record}suffix", "%{label?}", "\n"), /one whole Part reference/);
+  assert.throws(() => compose("^{record}", "%{label??}", "\n"), /one whole Part reference/);
+}
+
 function forwarded_event_cases() {
   const map = hsonLiveMap.fromLibraries({ parts: { parts: {
     leaf: { kind: "document", document: '<button hson:part part:optional data:args=%{args} event:advance/>',
-      events: { advance: "<hson:event on:click local:OPEN_PANEL input:data=^{args.value?} <> >" } },
+      events: { advance: "<hson:event on:click local:OPEN_PANEL value:num=^{args.value?} <> >" } },
     wrap: { kind: "document", document: '<main hson:part data:model=%{model?} <hson-part at="leaf" args:data="^{model?}"/>/>' },
   } }, page: { document: '<hson-part lib="parts" at="wrap" model:data="<value -0>"/>' } });
-  assert.equal(descriptors(map)[0]?.data?.scalar(), -0);
+  assert.ok(descriptors(map)[0]?.data?.equals(Hson.data.from({ value: -0 })));
   assert.doesNotThrow(() => map.parts.parts.leaf.write());
   assert.throws(() => map.parts.parts.leaf.write({ other: true }), /unexpected/);
   const without = hsonLiveMap.fromLibraries({ parts: { parts: {
@@ -268,6 +304,32 @@ function forwarded_event_cases() {
   } }, page: { document: '<main <hson-part lib="parts" at="leaf"/>/>' } });
   assert.deepEqual(descriptors(without), []);
   assert.doesNotMatch(without.doc.page.render(), /button/);
+}
+
+function iterator_event_arguments() {
+  const events = { advance: '<hson:event on:click local:SELECT slide:data=^{row} index:num=^{i} title:str="Slide ^{i}: ^{row.title}" caption:str=%{caption} note:str=^{row.note?} <> >' };
+  const slide = { kind: "document", document: '<section hson:part str:label=%{caption?} data:rows=%{slides} <button for:row:i=^{rows} event:advance/>/>', events } satisfies LiveMapDocumentPart;
+  const make = (rows: string, caption = '') => hsonLiveMap.fromLibraries({
+    parts: { parts: { slide } },
+    page: { document: `<hson-part at=parts/slide ${caption} slides:data="${rows}"/>` },
+  });
+  const first = '<title "First" note "Ready" x -0>';
+  const second = '<title "Second">';
+  const rows = `[${first},${second}]`.replaceAll('"', '\\"');
+  assert.deepEqual(descriptors(make(rows)).map(({ data }) => data?.materialize()), [
+    { slide: { title: "First", note: "Ready", x: -0 }, index: 0, title: "Slide 0: First", note: "Ready" },
+    { slide: { title: "Second" }, index: 1, title: "Slide 1: Second" },
+  ]);
+  assert.deepEqual(descriptors(make(rows, 'caption:str="Deck"')).map(({ data }) =>
+    data?.entries()?.map(([name]) => name)), [
+    ["slide", "index", "title", "caption", "note"], ["slide", "index", "title", "caption"],
+  ]);
+  assert.throws(() => make('[<title true note 5>]'), /Event argument "note" requires a str value/);
+  assert.throws(() => make('[<title <> >]'), /interpolation requires a primitive/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: {
+    button: { kind: "document", document: '<button hson:part doc:fragment=%{fragment} event:advance/>',
+      events: { advance: '<hson:event on:click local:SELECT fragment:data=^{fragment} <> >' } },
+  } } }), /Document bindings cannot be sent/);
 }
 
 async function composition_cases() {
@@ -305,9 +367,9 @@ async function composition_cases() {
       assert.equal(descriptor.kind, "browser");
       assert.equal(descriptor.key, "OPEN_PANEL");
       assert.equal(descriptor.attrs?.class, index % 2 === 0 ? "one" : "two");
-      assert.ok(descriptor.data?.equals(expected));
+      assert.ok(descriptor.data?.equals(panel_args(expected)));
     }
-    assert.equal(all[5]?.data?.scalar(), "<step 3>");
+    assert.ok(all[5]?.data?.equals(Hson.data.from({ title: "<step 3>" })));
     const beforeFailure = authority(map).captureSemanticCheckpoint();
     const epoch = authority(map).identityEpoch().current();
     await assert.rejects(locus.stage(stage => {
@@ -370,6 +432,7 @@ async function composition_cases() {
   assert.deepEqual(descriptors(mapWithEmptyPage, "next").map(entry => entry.attrs?.id), ["literal"]);
 }
 
+const panel_args = (panel: ReturnType<typeof Hson.data.fromSource>) => Hson.data.fromSource(`<panel ${panel.toHson()}>`);
 const runtimeInput = Hson.data.fromSource('<label "dynamic" count -0>');
 const runtimeDocument = Hson.document`<main <i/> <hson-part lib="runtimeParts" at="typed" args:data="${runtimeInput.toHson()}"/>/>`;
 const runtimeLibraries = {
@@ -392,7 +455,7 @@ function local_library_cases() {
   const interactive = map.addLibraries({ page: { document: runtimeDocument } });
   assert.equal(map.rev, 4);
   assert.deepEqual(descriptors(map).map(entry => entry.attrs?.class), ["one", "two"]);
-  assert.ok(descriptors(map).every(entry => entry.data?.equals(runtimeInput)));
+  assert.ok(descriptors(map).every(entry => entry.data?.equals(panel_args(runtimeInput))));
   const replica = hsonLiveMap.create();
   replica.replay(ordinary.commit);
   replica.data.must("state").at(["value"]).set(1);
@@ -401,7 +464,7 @@ function local_library_cases() {
   assert.equal(replica.rev, parts.commit.rev);
   assert.throws(() => replica.doc.must("page"));
   replica.addLibraries({ page: { document: runtimeDocument } });
-  assert.ok(descriptors(replica).every(entry => entry.data?.equals(runtimeInput)));
+  assert.ok(descriptors(replica).every(entry => entry.data?.equals(panel_args(runtimeInput))));
 }
 
 async function live_library_projection_cases() {
@@ -476,7 +539,7 @@ async function live_library_projection_cases() {
     finally { stop(); }
     enabled.advanceHostedProgress({ logicalMapId, incarnationId, registryDigest: decoded.registryDigest, prevRev: decoded.prevRev, rev: decoded.rev });
     assert.deepEqual(observed, ["document", expectedIds]);
-    assert.ok(descriptors(enabledMap).every(entry => entry.data?.equals(runtimeInput)));
+    assert.ok(descriptors(enabledMap).every(entry => entry.data?.equals(panel_args(runtimeInput))));
     assert.equal(enabled.clientProjection()?.registry.digest, decoded.registryDigest);
     assert.equal(enabled.clientProjection()?.revision, decoded.rev);
   } finally { enabled.dispose(); featureless.dispose(); }
@@ -564,7 +627,7 @@ async function hosted_library_cases() {
     assert.deepEqual(expected.map(entry => entry.path), [[...parent.path, 1, 0, 0], [...parent.path, 1, 0, 1]]);
     assert.deepEqual(expected.map(entry => entry.attrs?.class), ["one", "two"]);
     assert.equal(new Set([...expected, ...descriptors(map, "privatePage")].map(entry => entry.id)).size, 3);
-    assert.ok(expected.every(entry => entry.data?.equals(runtimeInput)));
+    assert.ok(expected.every(entry => entry.data?.equals(panel_args(runtimeInput))));
     const accepted = persistence.state(config.logicalMapId)?.commits.at(-1)?.commit;
     assert.equal(accepted?.previousRegistryDigest, registry.digest);
     assert.equal(accepted?.registryDigest, aggregate.hostedRegistry().digest);
@@ -790,7 +853,9 @@ async function durable_cases() {
 export async function authored_event_cases(): Promise<void> {
   grammar_cases();
   event_reference_ranges();
+  event_reference_comments();
   forwarded_event_cases();
+  iterator_event_arguments();
   await composition_cases();
   local_library_cases();
   await live_library_projection_cases();

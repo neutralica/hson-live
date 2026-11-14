@@ -87,7 +87,9 @@ There is one interaction system root. Its shared partition `S` contains descript
 
 On writable, element-qualified Document `.at()` and `.q()` handles, `.listen.local.onClick(key, input?)` and `.listen.host.onClick(key, input?)` author a click Descriptor. Standalone LiveMap and Echo client-local calls return the accepted Descriptor ID synchronously. Locus-governed calls return `Promise<string>` resolving to that ID after authoritative acceptance. Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. A Locus `stage` or action `ctx.stage` can commit grouped document edits and Descriptor changes atomically.
 
-Part event declarations can omit `input:data`, as in `<hson:event on:click host:deck.reset <> >`. The empty outcome `<>` is required. A Part reference supplied as `input:data` must resolve to present Data for each realized attachment.
+Authored Events use named arguments of the form `name:type=value`. For example, `<hson:event on:click host:deck.advance step:num="3" title:str="Next" settings:data={<speed 5>} <> >` sends an ordered Data object with `step`, `title`, and `settings`. A field spelled `input:data` has the name `input`, and its value stays nested under that name. The empty outcome `<>` is required.
+
+Use `str` for strings, `num` for finite numbers, and `data` for Hson Data. Numeric literals are double-quoted finite JSON numbers and preserve signed zero. In Parts, whole `%{incoming}` and `^{local}` references preserve the resolved value, and a quoted `str` can interpolate primitive Part values. Each attachment resolves in its own occurrence scope. An absent optional operand omits its field. A declaration with zero arguments supplies `undefined`. A declaration whose optional fields are all absent supplies an empty object.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 
@@ -109,7 +111,7 @@ map.actions.define("panel.set", (ctx, args) => {
 const result = await map.actions.trigger("panel.set", { open: true });
 ```
 
-Direct and native invocations call `(ctx, args)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `args` is `HsonDataValue | undefined`. A supplied Schema validates present exact Data. `args.required` defaults to `false`. Explicit `null` and `{}` both count as present arguments.
+Direct and native invocations call `(ctx, args)`. `ctx.map` is the operating LiveMap. Native invocations also supply `ctx.event` and the exact `ctx.subject`. `args` is `HsonDataValue | undefined`. Present registered Action arguments must be a Data object. A supplied Schema validates that exact object, including required fields. `args.required` defaults to `false`. An explicit `{}` counts as present.
 
 `trigger` starts execution immediately. The Promise resolves to `{ ok: true, result? }` with optional exact returned Data or `{ ok: false, error }` with the failure message and original cause. Functions may return Data synchronously or asynchronously.
 

@@ -292,11 +292,12 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
   });
 
   await check("Locus Schema admission, authorizers, handlers and results use authenticated values", async () => {
+    const schema = Hson.schema`<type "data" content <value "any">>`;
     const received: HsonDataValue[] = [], authorized: HsonDataValue[] = [];
     let resultValue: HsonDataInput = {};
     const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {
       actions: {
-        probe: { args: { schema: ANY_DATA }, handler: (_context, payload) => { received.push(payload!); return resultValue; } },
+        probe: { args: { schema }, handler: (_context, payload) => { received.push(payload!); return resultValue; } },
       },
       authorizeAction: ({ action, payload }) => {
         assert.ok(payload instanceof HsonDataValue);
@@ -308,23 +309,33 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     const publicFrom = HsonDataValue.from;
     try {
       HsonDataValue.from = () => { throw new Error("A public factory cannot control action admission."); };
-      for (const value of [...literals, Hson.data.fromSource(orderedJson), Hson.data.fromSource(orderedHson)]) {
+      for (const value of [...literals, -0, null, Hson.data.fromSource("[-0,null]"), Hson.data.fromSource(orderedJson), Hson.data.fromSource(orderedHson)]) {
         const expected = Hson.data.from(value); resultValue = value;
-        const result = await locus.dispatchAction({ type: "action", id: "value", name: "probe", payload: value });
+        const exactArgs = Hson.data.parse`<value ${expected.toHson()}>`;
+        const payload = value instanceof HsonDataValue ? exactArgs : { value };
+        assert.ok(exactArgs.entries()?.[0]?.[1].equals(expected));
+        const result = await locus.dispatchAction({ type: "action", id: "value", name: "probe", payload });
         assert.ok(result.type === "ack" && result.result?.equals(expected));
-        assert.ok(received.at(-1)?.equals(expected));
+        assert.ok(received.at(-1)?.equals(exactArgs));
         const remote = await admit_locus_remote_action_internal(locus, {
-          message: { type: "action", id: "exact", name: "probe", payload: expected },
+          message: { type: "action", id: "exact", name: "probe", payload: exactArgs },
         });
         assert.ok(remote.type === "ack" && remote.result?.equals(expected));
-        assert.strictEqual(authorized.at(-1), expected);
-        assert.strictEqual(received.at(-1), expected);
+        assert.strictEqual(authorized.at(-1), exactArgs);
+        assert.strictEqual(received.at(-1), exactArgs);
       }
-      const count = received.length;
+      const count = received.length, authorizationCount = authorized.length;
+      const missingField = await admit_locus_remote_action_internal(locus, {
+        message: { type: "action", id: "missing", name: "probe", payload: {} },
+      });
+      assert.equal(missingField.type, "error");
+      assert.equal(missingField.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
+      assert.match(missingField.error.message, /MISSING_REQUIRED/);
       for (const payload of invalidValues) {
         const result = await Reflect.apply(locus.dispatchAction, locus, [{ type: "action", id: "invalid", name: "probe", payload }]);
         assert.equal(result.type, "error"); assert.equal(result.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
       }
+      assert.equal(authorized.length, authorizationCount);
       assert.equal(received.length, count); assert.equal(locus.rev, 0); assert.equal(publications, 0);
       assert.deepEqual(locus.data.must("state").snap(), { value: 0 });
     } finally { HsonDataValue.from = publicFrom; locus.dispose(); }

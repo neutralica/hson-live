@@ -12,7 +12,7 @@ const listener = Object.freeze({ event: "click", target: "element", capture: fal
   stopImmediatePropagation: false } as const);
 const subject = (library: string, index: number) => ({ library, path: [0, 0, 1, 0, index] });
 const browser = (id: string, library: string, index: number): InteractionDescriptor => ({
-  id, subject: subject(library, index), listener, kind: "browser", key: id, args: null,
+  id, subject: subject(library, index), listener, kind: "browser", key: id, args: {},
 });
 function nativePage(count: number) {
   const root = new FakeElement("html"), head = new FakeElement("head"), body = new FakeElement("body");

@@ -61,7 +61,7 @@ const listener: InteractionListener = Object.freeze({ event: "click", target: "e
 
 function descriptor(id: string, library: "page" | "panel", key = "run", once = false): InteractionDescriptor {
   return Object.freeze({ id, subject: Object.freeze({ library, path: [0, 0, 1, 0, 0, 0, 0] }), listener: Object.freeze({ ...listener, once }),
-    kind: "browser", key, args: null });
+    kind: "browser", key, args: {} });
 }
 
 function locus_descriptor(id: string, library: "page" | "panel", key = "save"): InteractionDescriptor {

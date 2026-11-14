@@ -866,7 +866,7 @@ tree.actions.define("PANEL_TOGGLE", ({ tree }, args) => {
 
 const result = await tree.actions.trigger("PANEL_TOGGLE", { open: true });
 const subscription = button.listen.event(`
-  <hson:event on:click local:PANEL_TOGGLE input:data={<open true>} <> >
+  <hson:event on:click local:PANEL_TOGGLE open:data={true} <> >
 `);
 subscription.off();
 ```
@@ -874,9 +874,9 @@ subscription.off();
 Handlers receive `(context, args)`. `context.tree` is the owning root handle.
 An authored listener also supplies the receiving handle as `context.subject`
 and the native `context.event`. Arguments arrive as exact `HsonDataValue` when
-present and `undefined` when omitted. Explicit `null` and `{}` are present
-Data. A Schema checks present arguments, and `args.required: true` rejects
-omission. Duplicate names throw.
+present and `undefined` when omitted. Present arguments are Data objects, and
+`{}` counts as present. A Schema checks the object and its fields.
+`args.required: true` requires the object. Duplicate Action names throw.
 
 `trigger` starts execution immediately and resolves to `{ ok: true, result? }`
 or `{ ok: false, error: { message, cause } }`. Both synchronous and asynchronous
@@ -886,8 +886,9 @@ retires its registry.
 
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
 one `local:` action, and the required empty outcome object `<>`. The declaration
-may include `input:data={…}`, `once`, and `stopProp`. Omit `input:data` for
-an action that accepts omitted arguments. Unsupported
+may include `once`, `stopProp`, and named arguments such as `title:str="Example"`,
+`x:num="-0"`, or `settings:data={<open true>}`. Declare zero arguments to
+supply `undefined`. Unsupported
 flags, Part references, `host:` actions, nonempty outcomes, and pending fluent
 builder settings reject. The action and input are checked before native
 attachment. A missing action throws and requires a fresh registration attempt.

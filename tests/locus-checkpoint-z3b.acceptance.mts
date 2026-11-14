@@ -345,7 +345,7 @@ await case_("resume reconstructs topology larger than one Library-add transition
     state: { json: { count: 0 } },
     parts: { parts: { button: {
       kind: "document", document: '<button hson:part event:run/>',
-      events: { run: `<hson:event on:click local:run input:data={${input.toHson()}} <> >` },
+      events: { run: `<hson:event on:click local:run settings:data={${input.toHson()}} <> >` },
     } } },
   } as const;
   const names = Array.from({ length: 6 }, (_, index) => `page${index}`);

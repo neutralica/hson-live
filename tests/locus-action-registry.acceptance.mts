@@ -104,15 +104,15 @@ await check("input contracts distinguish omission, null, and Schema mismatch", a
     for (const name of ["initialRequired", "initialPresence", "required", "presence", "nullable"]) {
       actionError(await locus.actions.trigger(name), "LOCUS_SCHEMA_INVALID_PAYLOAD");
     }
-    actionError(await locus.actions.trigger("optional", null), "LOCUS_SCHEMA_INVALID_PAYLOAD");
+    actionError(await locus.actions.trigger("optional", Hson.data.from(null)), "LOCUS_SCHEMA_INVALID_PAYLOAD");
     actionError(await locus.actions.trigger("required", { value: "wrong" }), "LOCUS_SCHEMA_INVALID_PAYLOAD");
     assert.equal(received.length, 1);
     const valid = await locus.actions.trigger("required", { value: 2 });
     assert.ok(valid.type === "ack" && valid.result === received.at(-1));
     for (const name of ["initialPresence", "presence", "nullable"]) {
-      const result = await locus.actions.trigger(name, null);
+      const result = await locus.actions.trigger(name, { selection: null });
       assert.ok(result.type === "ack" && result.result === received.at(-1));
-      assert.equal(result.result?.scalar(), null);
+      assert.equal(result.result?.entries()?.[0]?.[1].scalar(), null);
       assert.equal(result.completionRev, 0);
     }
     const empty = await locus.actions.trigger("presence", {});
@@ -192,8 +192,8 @@ await check("initial and additive definitions share membership and captured cont
     for (const name of ["constructor", "__proto__", "toString", "document.custom"]) {
       actionError(await locus.actions.trigger(name), "LOCUS_UNKNOWN_ACTION");
       locus.actions.define(name, handler);
-      const result = await locus.actions.trigger(name, name);
-      assert.ok(result.type === "ack" && result.result?.scalar() === name);
+      const result = await locus.actions.trigger(name, { name });
+      assert.ok(result.type === "ack" && result.result?.entries()?.[0]?.[1].scalar() === name);
     }
     assert.deepEqual(locus.cut(), before);
     assert.equal(locus.rev, 0);
@@ -226,7 +226,7 @@ await check("durable startup snapshots handler and input before a pending load",
     const locus = await pending;
     try {
       actionError(await locus.actions.trigger("startup"), "LOCUS_SCHEMA_INVALID_PAYLOAD");
-      actionError(await locus.actions.trigger("startup", "changed contract"), "LOCUS_SCHEMA_INVALID_PAYLOAD");
+      actionError(await locus.actions.trigger("startup", { value: "changed contract" }), "LOCUS_SCHEMA_INVALID_PAYLOAD");
       const result = await locus.actions.trigger("startup", { value: 1 });
       assert.ok(result.type === "ack" && result.result?.scalar() === "captured");
       assert.equal(persistence.checkpointCalls.length, 1);
@@ -390,7 +390,7 @@ await check("projected Descriptors and Document grants do not authorize custom a
 
 await check("affirmatively authorized attached and ephemeral submissions reach dynamic definitions", async () => {
   const origins: string[] = [];
-  const input = Hson.data.from(null);
+  const input = Hson.data.from({ selection: null });
   const authorizationEntered = deferred(), releaseAuthorization = deferred();
   const locus = hsonLiveMap.locus.create({}, {
     async authorizeAction(context) {
@@ -423,7 +423,7 @@ await check("affirmatively authorized attached and ephemeral submissions reach d
     });
     await authorizationEntered.promise;
     mutable.name = "unapproved";
-    mutable.payload = Hson.data.from("changed input");
+    mutable.payload = Hson.data.from({ selection: "changed input" });
     releaseAuthorization.resolve();
     const captured = await pending;
     assert.ok(captured.type === "ack" && captured.id === "held" && captured.result === input);
@@ -443,10 +443,13 @@ await check("dynamic Schema failures precede authorization in both remote routes
     locus.actions.define("validated", () => { executions++; }, { args: { schema: countSchema, required: true } });
     assert.equal((await attached.operations.submit({ type: "session-create", id: "create" })).type, "session-created");
     const message = { type: "action", id: "invalid", name: "validated", payload: { value: "wrong" } } as const;
-    const received = await attached.operations.submit(message);
-    assert.ok(received.type === "error");
-    actionError(received, "LOCUS_SCHEMA_INVALID_PAYLOAD");
-    actionError(await admit_locus_remote_action_internal(locus, { message }), "LOCUS_SCHEMA_INVALID_PAYLOAD");
+    locus.actions.define("untyped", () => { executions++; });
+    for (const invalid of [message, { ...message, name: "untyped", payload: Hson.data.from(-0) }]) {
+      const result = await attached.operations.submit(invalid);
+      assert.ok(result.type === "error");
+      actionError(result, "LOCUS_SCHEMA_INVALID_PAYLOAD");
+      actionError(await admit_locus_remote_action_internal(locus, { message: invalid }), "LOCUS_SCHEMA_INVALID_PAYLOAD");
+    }
     assert.equal(authorizations, 0);
     assert.equal(executions, 0);
   } finally { attached.close(); locus.dispose(); }

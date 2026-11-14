@@ -9,7 +9,7 @@ import { registry_from_entries } from "../src/api/livemap/livemap.hosted.ts";
 import { make_locus_hosted_projection_policy } from "../src/api/locus/locus.projection.ts";
 
 const descriptor: InteractionDescriptor = {
-  id: "initialization", subject: { library: "page", path: [0] }, kind: "browser", key: "run", args: null,
+  id: "initialization", subject: { library: "page", path: [0] }, kind: "browser", key: "run", args: {},
   listener: { event: "click", target: "element", capture: false, once: false, passive: false,
     missingTarget: "warn", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
 };

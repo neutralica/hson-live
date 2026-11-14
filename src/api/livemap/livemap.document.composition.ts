@@ -1,3 +1,4 @@
+import { authored_event_args, event_argument_references } from "../../internal/authored-events.js";
 import { interpolate_part_string, is_part_scalar_value, part_scalar_operand } from "../../internal/part-scalar.js";
 import { copy_part_literal_sigils, part_literal_sigils } from "../../internal/part-scalar-source.js";
 import { complete_document, completed_document_paths, single_document_element } from "../../internal/complete-document.js";
@@ -5,7 +6,7 @@ import { part_coordinates } from "../../internal/part-coordinates.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { classify_ordinary_hson_structure } from "../../core/hson-structural-mode.js";
 import { AUTHORED_EVENT_TAG, copy_event_attachments, event_attachment_position } from "../../core/authored-event-names.js";
-import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReferenceInput, type PartEvents } from "../../internal/part-events.js";
+import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReference, type PartEvents } from "../../internal/part-events.js";
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
 import { part_contract_error } from "../../internal/part-contract.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
@@ -182,7 +183,7 @@ type ConfigurationScope = Map<HsonNode, ConfiguredTarget>;
 /** Detached shell or validated Part coordinates; never a source identity overlay. @internal */
 export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: PortableDocumentQuads; css?: DocumentCssRecord; events?: PartEvents }>;
 /** An operation-local contribution addressed in the composition output. */
-export type DocumentCompositionInteraction = Readonly<Omit<PartEvent, "input"> & {
+export type DocumentCompositionInteraction = Readonly<Pick<PartEvent, "kind" | "key" | "listener"> & {
   path: LiveMapDocumentPath;
   data: OrderedProjectedValue | undefined;
 }>;
@@ -790,11 +791,16 @@ export function expand_document_composition(
     // Output is append-only. Connector frames share the actual receiver; child
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
-    for (const { attribute, declaration: { input, ...event } } of attached) {
-      const data = input?.kind === "reference" ? resolve_part_event_reference(input, item, attribute, environment) : input?.value;
-      charge(event.key);
+    for (const { attribute, declaration: { args, key, kind, listener } } of attached) {
+      const data = authored_event_args(args,
+        site => resolve_part_event_reference(site, item, attribute, environment),
+        (message, site) => fail_part_event_reference(message, site, item, attribute),
+        length => {
+          if (length > limits.maxCharacters - characters) throw new Error("Document composition character limit exceeded.");
+        });
+      charge(key);
       if (data !== undefined) charge(JSON.stringify(data));
-      interactions.push({ ...event, path: scopedPath(outputPath), data });
+      interactions.push({ kind, key, listener, path: scopedPath(outputPath), data });
     }
     frame.output.push(copy);
     const localNames = frame.occurrence.localNames.get(item) ?? [];
@@ -882,18 +888,14 @@ function resolve_part_reference(reference: PartReference, environment: PartEnvir
   return binding.kind !== "data" ? binding : { ...binding, value };
 }
 
-function resolve_part_event_reference(input: PartEventReferenceInput, node: HsonNode, attribute: string,
-  environment: PartEnvironment | undefined): OrderedProjectedValue;
-function resolve_part_event_reference(input: PartEventReferenceInput, node: HsonNode, attribute: string,
-  environment: PartEnvironment | undefined, allowAbsent: true): OrderedProjectedValue | undefined;
-function resolve_part_event_reference(input: PartEventReferenceInput, node: HsonNode, attribute: string,
+function resolve_part_event_reference(site: PartEventReference, node: HsonNode, attribute: string,
   environment: PartEnvironment | undefined, allowAbsent = false): OrderedProjectedValue | undefined {
   try {
-    const { value } = resolve_part_reference(input.reference, part_environment_at(environment, node), allowAbsent);
-    if (value !== undefined || allowAbsent) return value;
-    throw new TypeError("An attached event's input:data must resolve to present Data. Supply a value or omit the subject.");
+    const binding = resolve_part_reference(site.reference, part_environment_at(environment, node), allowAbsent);
+    if (binding.kind === "doc") throw new TypeError("Event arguments require Data. Document bindings cannot be sent.");
+    return binding.value;
   } catch (cause) {
-    return fail_part_event_reference(cause instanceof Error ? cause.message : String(cause), input, node, attribute, cause);
+    return fail_part_event_reference(cause instanceof Error ? cause.message : String(cause), site, node, attribute, cause);
   }
 }
 
@@ -1022,8 +1024,9 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     },
     event(node, attribute) {
       const event = part_event_attachment(node, attribute, source.events);
-      if (event.input?.kind === "reference"
-        && resolve_part_event_reference(event.input, node, attribute, environment, true) !== undefined) present.add(node);
+      for (const argument of event.args) for (const site of event_argument_references(argument)) {
+        if (resolve_part_event_reference(site, node, attribute, environment, true) !== undefined) present.add(node);
+      }
     },
     enter(node, parent) {
       if (parent !== undefined) parents.set(node, parent);

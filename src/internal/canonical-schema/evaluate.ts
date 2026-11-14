@@ -34,6 +34,7 @@ type EvaluationState = {
   unionWork: number;
   diagnosticWork: number;
   exhausted: boolean;
+  partialObject?: OrderedProjectedObject;
 };
 
 export function evaluate_canonical_projected_schema(
@@ -45,6 +46,17 @@ export function evaluate_canonical_projected_schema(
   if (root === undefined) return invalid([make_issue("INVALID_SCHEMA", [], 0, "invalid graph", "missing projected root", { kind: "invalid-graph" })]);
   const state: EvaluationState = { steps: 0, limits: resolved_limits(limits), unionWork: 0, diagnosticWork: 0, exhausted: false };
   return projected(graph, root, candidate, [], state);
+}
+
+/** Check a subset of known root fields. Supplied values are complete, including nested objects. */
+export function evaluate_canonical_projected_fields(
+  graph: VerifiedCanonicalSchemaGraph,
+  fields: OrderedProjectedObject,
+): CanonicalGraphEvaluation {
+  const root = graph.capabilities.projectedRoot;
+  if (root === undefined) return invalid([make_issue("INVALID_SCHEMA", [], 0, "invalid graph", "missing projected root", { kind: "invalid-graph" })]);
+  const state: EvaluationState = { steps: 0, limits: resolved_limits(), unionWork: 0, diagnosticWork: 0, exhausted: false, partialObject: fields };
+  return projected(graph, root, fields, [], state);
 }
 
 export function evaluate_canonical_document_schema(
@@ -77,6 +89,12 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     if (!add_union_work(state, node.choices.length)) return resource(ref, path);
     const branches = node.choices.map((choice) => projected(graph, choice, value, path, state, depth + 1));
     if (branches.some((branch) => branch.ok)) return valid();
+    if (state.partialObject !== undefined) {
+      for (const branch of branches) {
+        const unknown = branch.issues.find(issue => issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph");
+        if (unknown !== undefined) return invalid([unknown]);
+      }
+    }
     if (is_ordered_projected_object(value)) {
       const intended = discriminated_branch(graph, node.choices, value, state);
       if (intended !== undefined) return branches[intended]!;
@@ -95,6 +113,7 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   if (node.kind === "projected-any") return valid();
   if (node.kind === "projected-literal") {
     if (node.values.some((literal) => ordered_projected_value_equal(literal, value))) return valid();
+    if (value === state.partialObject && node.values.some(is_ordered_projected_object)) return valid();
     return invalid([make_issue("INVALID_LITERAL", path, ref, projected_label(graph, ref), emit_ordered_json(value), { kind: "literal-mismatch" })]);
   }
   if (node.kind === "projected-refinement") {
@@ -139,7 +158,8 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   if (node.kind === "projected-object") {
     if (!is_ordered_projected_object(value)) return mismatch(graph, ref, path, projected_type(value));
     const props = new Map(node.properties); const values = new Map(value.entries);
-    const results = node.properties.map(([key, child]) => projected(graph, child, values.has(key) ? values.get(key) as OrderedProjectedValue : MISSING, [...path, key], state, depth + 1));
+    const properties = value === state.partialObject ? node.properties.filter(([key]) => values.has(key)) : node.properties;
+    const results = properties.map(([key, child]) => projected(graph, child, values.has(key) ? values.get(key) as OrderedProjectedValue : MISSING, [...path, key], state, depth + 1));
     if (node.exact) for (const [key] of value.entries) if (!props.has(key)) results.push(invalid([make_issue("UNKNOWN_KEY", [...path, key], ref, undefined, undefined, { kind: "unknown-key", detail: key })]));
     return merge(results, state);
   }

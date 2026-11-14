@@ -436,7 +436,7 @@ actions.define("reveal", (context, args) => {
 actions.define("three", (_context: unknown, _args: unknown, _message: unknown) => {});
 // @ts-expect-error The registry options key is args.
 actions.define("legacy", () => {}, { input: { required: true } });
-const behaviorResult: LocalBehaviorResult = await actions.trigger("reveal", null);
+const behaviorResult: LocalBehaviorResult = await actions.trigger("reveal", { title: null });
 if (behaviorResult.ok) void behaviorResult.result?.scalar();
 else void behaviorResult.error.message;
 void actions.trigger("reveal");

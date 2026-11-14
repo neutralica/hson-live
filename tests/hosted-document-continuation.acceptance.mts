@@ -262,7 +262,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
 {
   const source = make_livemap_from_authored_libraries_internal({ page: { document: '<html @:root <head/> <body <button/>/>/>' } });
   enable_interactions(source);
-  add_interaction(source, { id: "failed-root-click", subject: { library: "page", path: [0] }, kind: "browser", key: "run", args: null,
+  add_interaction(source, { id: "failed-root-click", subject: { library: "page", path: [0] }, kind: "browser", key: "run", args: {},
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } });
   const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
@@ -366,10 +366,10 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
   enable_interactions(authority);
   add_interaction(authority, descriptor);
   for (const key of ["omitted", "null", "required"]) add_interaction(authority, {
-    id: key, subject, kind: "locus", key, listener: descriptor.listener, ...(key === "null" ? { payload: null } : {}),
+    id: key, subject, kind: "locus", key, listener: descriptor.listener, ...(key === "null" ? { payload: { selection: null } } : {}),
   });
   let handled: HsonDataValue | undefined;
-  const optionalInput = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
+  const optionalInput = Hson.schema`<type "data" content <selection "null">>`;
   const inputs = new Map<string, HsonDataValue | undefined>();
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
       { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }),
@@ -445,9 +445,9 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
   assert.equal(handled?.equals(Hson.data.from({ exact: true })), true);
   assert.equal(inputs.has("omitted"), true);
   assert.equal(inputs.get("omitted"), undefined);
-  assert.equal(inputs.get("null")?.scalar(), null);
+  assert.equal(inputs.get("null")?.entries()?.[0]?.[1].scalar(), null);
   assert.deepEqual(actionFrames.map(frame => [frame.name, Object.hasOwn(frame, "payloadData"), frame.payloadData]), [
-    ["save", true, '{\n  "exact": true\n}'], ["omitted", false, undefined], ["null", true, "null"], ["required", false, undefined],
+    ["save", true, '{\n  "exact": true\n}'], ["omitted", false, undefined], ["null", true, '{\n  "selection": null\n}'], ["required", false, undefined],
   ]);
   assert.equal(failures.length, 1);
   assert.equal(failures[0]?.phase, "locus-invocation");
@@ -529,7 +529,7 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
     subject: { library: "page", path: [0, 0, 1, 0, 0] },
     kind: "browser",
     key: "clicker",
-    args: Hson.data.from(null),
+    args: Hson.data.from({ selection: null }),
     listener: { event: "click", target: "element", capture: false, once: false,
       passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false,
       stopImmediatePropagation: false },
@@ -570,7 +570,7 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
         actions.define("clicker", function (ctx, args) {
           assert.equal(arguments.length, 2);
           if (ctx.event === undefined) assert.equal(args, undefined);
-          else assert.equal(args?.scalar(), null);
+          else assert.equal(args?.entries()?.[0]?.[1].scalar(), null);
           clicks += 1;
           localContext = ctx;
         });

@@ -20,7 +20,7 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 }
 function deferred<T>() { let resolve: (value: T) => void = () => {}; const promise = new Promise<T>((done) => { resolve = done; }); return Object.freeze({ promise, resolve }); }
 function make_map() { return hsonLiveMap.fromLibraries({ state: { json: { value: 0 }, schema: ValueSchema }, other: { json: { value: 0 }, schema: ValueSchema } }); }
-type TestActions = Readonly<{ cross: Readonly<{ value: number }>; held: number }>;
+type TestActions = Readonly<{ cross: Readonly<{ value: number }>; held: Readonly<{ value: number }> }>;
 function message(id: string, name: keyof TestActions, payload: TestActions[keyof TestActions]): LocusClientActionMessage<TestActions> {
   return Object.freeze({ type: "action", id: `${id}-wire`, clientId: `${id}-client`, requestId: `${id}-request`, attemptId: `${id}-attempt`, name, payload }) as LocusClientActionMessage<TestActions>;
 }
@@ -60,7 +60,7 @@ await check("aggregate whole-action FIFO remains ahead of the common admission s
   const server = create_locus_hosted_aggregate_authority_internal<TestActions>({ libraries: test_application_catalog(map), map,
     authorizeAction: ({ action }) => action === "held", actions: {
     held: async (context, payload) => {
-      const value = payload?.scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
+      const value = payload?.entries()?.[0]?.[1].scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
       entered.push(value); if (value === 1) await gate.promise;
       await (() => { const draft = context.stage; const state = draft.data.must("state");
 if (String(state.mode) === "document") throw new Error("Expected data library.");
@@ -68,9 +68,9 @@ state.at(["value"]).set(value); })();
       return payload;
     },
   } });
-  const first = admit_locus_remote_action_internal<TestActions>(server, { message: message("first", "held", 1) });
+  const first = admit_locus_remote_action_internal<TestActions>(server, { message: message("first", "held", { value: 1 }) });
   await Promise.resolve();
-  const second = admit_locus_remote_action_internal<TestActions>(server, { message: message("second", "held", 2) });
+  const second = admit_locus_remote_action_internal<TestActions>(server, { message: message("second", "held", { value: 2 }) });
   await Promise.resolve(); assert.deepEqual(entered, [1]); gate.resolve();
   const [one, two] = await Promise.all([first, second]);
   assert.equal(one.completionRev, 1); assert.equal(two.completionRev, 2); assert.deepEqual(entered, [1, 2]); assert.equal(map.data.must("state").snap(["value"]), 2);
@@ -79,7 +79,7 @@ state.at(["value"]).set(value); })();
 
 await check("aggregate authorization rejection retains no lineage or ephemeral session", async () => {
   const server = create_locus_hosted_aggregate_authority_internal<TestActions>({ libraries: test_application_catalog(make_map()), map: make_map(), authorizeAction: () => false, actions: { held: () => 1 } });
-  const result = await admit_locus_remote_action_internal<TestActions>(server, { message: message("denied", "held", 1), connection: { principalId: "alice" } });
+  const result = await admit_locus_remote_action_internal<TestActions>(server, { message: message("denied", "held", { value: 1 }), connection: { principalId: "alice" } });
   assert.equal(result.type, "error"); if (result.type === "error") assert.equal(result.error.code, "LOCUS_ACTION_FORBIDDEN");
   assert.equal(server.actionRequests.debug().retainedTerminalCount, 0); assert.equal(server.sessions.debug().sessions.length, 0); server.dispose();
 });
@@ -87,8 +87,8 @@ await check("aggregate authorization rejection retains no lineage or ephemeral s
 await check("the internal admission capability remains bound after the normal aggregate Locus facade is created", async () => {
   let locus!: import("../src/types/locus.types.ts").Locus<ReturnType<typeof make_map>, TestActions>;
   locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(make_map(), test_application_catalog(make_map())), authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; }, actions: { held: (_context, payload) => payload } });
-  const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
-  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : (result.result).materialize(), 4);
+  const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", { value: 4 }) });
+  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : result.result.entries()?.[0]?.[1].scalar(), 4);
   assert.equal(locus.session.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();
 });
 

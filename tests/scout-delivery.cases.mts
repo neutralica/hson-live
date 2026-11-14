@@ -21,7 +21,7 @@ export async function scout_delivery_cases(): Promise<void> {
       css: { kind: 'document', document: '<hson-scout hson:part hidden "%{payload}"/>', stylesheet: '' },
       identity: { kind: 'document', document: '<hson-scout hson:part hidden @:identity "%{payload}"/>' },
       effectful: { kind: 'document', document: '<hson-scout hson:part hidden event:probe "%{payload}"/>',
-        events: { probe: '<hson:event on:click local:probe input:data={null} <> >' } },
+        events: { probe: '<hson:event on:click local:probe <> >' } },
       malformed: { kind: 'document', document: '<p hson:part "%{payload}"/>' },
     }, access: 'private' },
   }, { authorizeProjection: () => ({ libraries: ["page"] }), sessions: { schedule: (delay, callback) => { assert.equal(delay, 30_000); timers.add(callback); return () => { timers.delete(callback); }; } } });

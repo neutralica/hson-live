@@ -33,6 +33,7 @@ export type PartBindingDeclaration = Readonly<{
   location: PartSourceLocation;
   scope?: PartSourceLocation;
   incoming?: string;
+  optionalReceiving?: true;
   elementOf?: PartBindingReference;
   elementKind?: "array" | "object";
 }>;
@@ -76,7 +77,7 @@ function value_boundaries(source: string, range: HsonSourceRange, decoded: strin
 /** Reuse one completed authoritative analysis and its parser provenance. */
 export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAnalysis, provenance: HsonSourceProvenance,
   source: string, map: (range: HsonSourceRange) => PartSourceLocation | undefined,
-  eventRange?: (reference: PartReference, range: HsonSourceRange) => PartSourceLocation | undefined) {
+  eventRange?: (reference: PartReference, role: "reference" | "root") => PartSourceLocation | undefined) {
   const occurrences = new Map<HsonNode, { path: readonly number[]; withinOptionalStructure: boolean }>();
   const visit = (node: HsonNode, path: readonly number[], optionalAncestor: boolean): void => {
     const withinOptionalStructure = optionalAncestor || Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL);
@@ -122,6 +123,7 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     const elementOf = binding.elementOf === undefined ? undefined : reference(binding.elementOf);
     const result: PartBindingDeclaration = { name: binding.name, kind: binding.kind, origin, location,
       scope: scopeLocation(binding.node), ...(binding.receiving === undefined ? {} : { incoming: binding.receiving.reference.name }),
+      ...(binding.receiving?.reference.optional ? { optionalReceiving: true } : {}),
       ...(elementOf === undefined ? {} : { elementOf, elementKind: iterator?.kind }) };
     declarations.set(binding, result);
     return result;
@@ -133,8 +135,8 @@ export function project_part_bindings(root: HsonNode, analysis: PartDefinitionAn
     if (occurrence === undefined) return undefined;
     let location: PartSourceLocation | undefined, root: PartSourceLocation | undefined, attachment: PartSourceLocation | undefined;
     if (context === "event") {
-      location = eventRange?.(parsed, { start: parsed.start, end: parsed.end });
-      root = eventRange?.(parsed, { start: parsed.start + 2, end: parsed.start + 2 + parsed.name.length });
+      location = eventRange?.(parsed, "reference");
+      root = eventRange?.(parsed, "root");
       attachment = mapped(range(node, attribute, "name"));
     } else {
       const structural = context === "structure";

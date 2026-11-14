@@ -14,6 +14,7 @@ type PartDataInvocation = Readonly<{
     | Readonly<{ write: PartWriteSource; batch: PartSourceBatch; source?: never; connector?: never }>;
   parent?: PartDataInvocation;
   depth: number;
+  executionCertain: boolean;
   /** Traversal boundaries remain visible on the invocation that encountered them. */
   incomplete: string[];
 }>;
@@ -28,11 +29,12 @@ export type PartDataContext = PartDataInvocation & Readonly<{
   /** Relative to the original Schema authority; no Schema subtree is compiled. */
   path: SchemaDataPath;
   uncertainty: readonly string[];
-  /** Certainty of reaching this invocation, before considering the reference's own path. */
-  executionCertain: boolean;
 }>;
 
-type ContextIndex = ReadonlyMap<PartDocumentSource, ReadonlyMap<string, readonly PartDataContext[]>>;
+type ContextIndex = Readonly<{
+  contexts: ReadonlyMap<PartDocumentSource, ReadonlyMap<string, readonly PartDataContext[]>>;
+  invocations: ReadonlyMap<PartDocumentSource, readonly PartDataInvocation[]>;
+}>;
 const indexes = new WeakMap<PartSourceFacts, ContextIndex>();
 const FORWARDING_DEPTH = 16, FORWARDING_FRAMES = 256;
 /** One bounded traversal per root caller in its own batch. Frames carry lexical
@@ -41,6 +43,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
   const cached = indexes.get(facts);
   if (cached !== undefined) return cached;
   const result = new Map<PartDocumentSource, Map<string, PartDataContext[]>>();
+  const invocations = new Map<PartDocumentSource, PartDataInvocation[]>();
   const definitions = new Set(facts.batches.flatMap(batch => batch.libraries.flatMap(library => library.family === "parts" ? library.members.flatMap(member => member.documents) : [])));
   for (const batch of facts.batches) {
     if (!batch.eligible) continue;
@@ -72,7 +75,6 @@ function context_index(facts: PartSourceFacts): ContextIndex {
         }
         if (depth >= FORWARDING_DEPTH) boundary = `forwarding depth limit (${FORWARDING_DEPTH}); unknown continuation`;
         const incomplete: string[] = boundary === undefined ? [] : [boundary];
-        const invocation: PartDataInvocation = { source, connector, write, definition, batch, library, root, parent, depth, incomplete };
         const arguments_ = connector?.attributes.flatMap(attribute => {
           const argument = part_argument_name(attribute.name);
           return argument === undefined ? [] : [{ attribute, argument }];
@@ -82,6 +84,14 @@ function context_index(facts: PartSourceFacts): ContextIndex {
           && arguments_.every(({ attribute, argument }) => contract.parameters.get(argument.name) === argument.kind && (attribute.value !== undefined || attribute.dynamicValue === true))
           && new Set(arguments_.map(({ argument }) => argument.name)).size === arguments_.length
           && [...contract.requiredness].every(([name, requiredness]) => requiredness !== "required" || arguments_.some(({ argument }) => argument.name === name));
+        const executionCertain = parent === undefined && write === undefined && reached && certain && entries.length === 1
+          && interfaceValid && connector?.headerComplete === true && definition.admission === "qualified";
+        const invocation: PartDataInvocation = { source, connector, write, definition, batch, library, root, parent, depth, incomplete, executionCertain };
+        if (executionCertain) {
+          const existing = invocations.get(definition) ?? [];
+          existing.push(invocation);
+          invocations.set(definition, existing);
+        }
         const contexts: PartDataContext[] = [];
         for (const declaration of definition.receivingDeclarations.filter(declaration => declaration.kind === "data")) {
           const authoredArgument = connector?.attributes.find(attribute => attribute.name === `${declaration.incoming}:data`);
@@ -103,9 +113,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
           if (definition.bindingSources?.references.some(use => use.context === "receiving" && use.reference.name === declaration.incoming && use.reference.optional)) {
             uncertainty.push("optional receiving argument; value may be absent");
           }
-          const context: PartDataContext = { ...invocation, invocation, incoming: declaration.incoming, receiving, argument, evidence, path, uncertainty,
-            executionCertain: parent === undefined && write === undefined && reached && certain && entries.length === 1 && interfaceValid && connector?.headerComplete === true
-              && definition.admission === "qualified" };
+          const context: PartDataContext = { ...invocation, invocation, incoming: declaration.incoming, receiving, argument, evidence, path, uncertainty };
           contexts.push(context);
           const incoming = result.get(definition) ?? new Map<string, PartDataContext[]>();
           const existing = incoming.get(declaration.incoming) ?? [];
@@ -134,12 +142,17 @@ function context_index(facts: PartSourceFacts): ContextIndex {
       expand(undefined, undefined, { write, batch }, { frames: 0 }, false, undefined, [], write);
     }
   }
-  indexes.set(facts, result);
-  return result;
+  const index = { contexts: result, invocations };
+  indexes.set(facts, index);
+  return index;
 }
 
 export function part_data_contexts(facts: PartSourceFacts, definition: PartDocumentSource, incoming: string): readonly PartDataContext[] {
-  return context_index(facts).get(definition)?.get(incoming) ?? [];
+  return context_index(facts).contexts.get(definition)?.get(incoming) ?? [];
+}
+
+export function certain_part_invocations(facts: PartSourceFacts, definition: PartDocumentSource): readonly PartDataInvocation[] {
+  return context_index(facts).invocations.get(definition) ?? [];
 }
 
 /** Resolve through declaration identity before appending member selectors. */

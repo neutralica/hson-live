@@ -18,7 +18,7 @@ export async function mixed_stage_interaction_cases(): Promise<void> {
   const listener = { event: "click", target: "element", capture: false, once: false, passive: false,
     missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } as const;
   const descriptor = (id: string, index: number): InteractionDescriptor => ({ id, subject: { library: "page", path: path(index) },
-    listener, kind: "browser", key: id, args: null });
+    listener, kind: "browser", key: id, args: {} });
   function fixture() {
     const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button id="one"/> <button id="two"/>/>' } });
     enable_interactions(map);

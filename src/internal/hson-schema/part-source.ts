@@ -1,6 +1,6 @@
 import { part_scalar_operand } from "../part-scalar.js";
 import { decode_part_string_sigils, part_literal_sigils } from "../part-scalar-source.js";
-import { parse_authored_event } from "../authored-events.js";
+import { event_argument_references, parse_authored_event, type AuthoredEventArgument, type AuthoredEventReference } from "../authored-events.js";
 import { parse_part_event, type PartEvent } from "../part-events.js";
 import { is_event_attachment_attribute } from "../../core/authored-event-names.js";
 import { read_transform_error_details } from "../../core/errors.js";
@@ -11,7 +11,7 @@ import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { hson_package_declaration_path, hson_source_alias_eligible, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { hson_tagged_source, admit_hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
+import { hson_tagged_source, admit_hson_tagged_source, admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
 import type { HsonSourceLexicalCollector, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
@@ -27,8 +27,8 @@ import { library_source_admission, library_source_field_candidates, library_sour
 import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_provenance, resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
-import { immutable_source_declaration } from "./schema-identity.js";
-import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
+import { immutable_source_declaration, resolve_immutable_schema } from "./schema-identity.js";
+import { discover_hson_schema_declarations, type DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { OBJECT_VALUE, type SchemaDataPath } from "./data-projection.js";
 import { project_part_bindings, parse_part_binding_source, type PartBindingSources } from "../editor-introspection/part-bindings.js";
@@ -36,14 +36,28 @@ import { project_part_bindings, parse_part_binding_source, type PartBindingSourc
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
 type PartReferenceIssueSource = { location: PartSourceLocation; message: string; declaration?: PartSourceLocation; attachment?: PartSourceLocation };
-type EventInputSource = Readonly<{ kind: PartEvent["kind"]; key: string; location: PartSourceLocation; attachment?: PartSourceLocation }>;
-type MissingEventInputSource = EventInputSource & Readonly<{ contract: PartSourceLocation }>;
-type LocusActionSources = Readonly<{ actions: ReadonlyMap<string, PartSourceLocation | undefined>; complete: boolean }>;
+type EventSource = Readonly<{
+  event: PartEvent;
+  location: PartSourceLocation;
+  map: SourceRangeMap;
+  attachment?: PartSourceLocation;
+  maybeAbsent?: ReadonlySet<AuthoredEventArgument>;
+  definition?: PartDocumentSource;
+  batch?: ts.CallExpression;
+}>;
+type SourceRangeMap = (range: HsonSourceRange) => PartSourceLocation | undefined;
+type ActionContractSource = Readonly<{
+  required?: PartSourceLocation;
+  schema?: Readonly<{ value: CompiledHsonSchema; location: PartSourceLocation }>;
+}>;
+type EventContractSource = EventSource & Readonly<{ contract: ActionContractSource }>;
+type EventIssueSource = PartReferenceIssueSource & Readonly<{ code: string }>;
+type LocusActionSources = Readonly<{ actions: ReadonlyMap<string, ActionContractSource | undefined>; complete: boolean }>;
 type LocusEventSources = Readonly<{
   owner: ts.CallExpression;
   operation: "create" | "resume" | "admit";
   initialActions: LocusActionSources;
-  omissions: EventInputSource[];
+  events: EventSource[];
   definitions: ts.Expression;
 }>;
 export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: PartQualifier }>[] }>;
@@ -170,12 +184,37 @@ export type PartSourceFacts = Readonly<{
   batches: readonly PartSourceBatch[];
   documents: readonly PartDocumentSource[];
   writes: readonly PartWriteSource[];
-  missingEventInputs: readonly MissingEventInputSource[];
+  eventContracts: readonly EventContractSource[];
+  eventIssues: readonly EventIssueSource[];
   /** Known declaration roots whose receiving Part did not establish a full set of uses. */
   unavailableEventReferences: readonly PartSourceLocation[];
 }>;
 
 type Candidates = ReturnType<typeof static_source_candidates>;
+function event_range_map(literal: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral): SourceRangeMap {
+  const file = literal.getSourceFile();
+  const correspondence = static_hson_literal_correspondence(file.text, file, literal);
+  return range => {
+    const mapped = correspondence === undefined ? undefined : map_static_hson_range(correspondence, range);
+    return mapped === undefined ? undefined : { file: file.fileName, ...mapped, precision: "exact" };
+  };
+}
+
+function event_declaration_issue(literal: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral, map: SourceRangeMap, cause: unknown): PartReferenceIssueSource {
+  const details = read_transform_error_details(cause);
+  const at = (index: number) => {
+    let end = index;
+    while (end < literal.text.length && is_hson_bare_name_char(literal.text[end]!)) end++;
+    return map({ start: index, end: Math.min(literal.text.length, Math.max(index + 1, end)) });
+  };
+  const first = details?.related?.find(item => item.role === "first-declaration")?.source.index;
+  const end = details?.related?.find(item => item.role === "value-end")?.source.index;
+  const start = details?.source?.index;
+  const where = start === undefined ? undefined : end === undefined ? at(start) : map({ start, end });
+  return { location: where ?? location(literal), message: cause instanceof Error ? cause.message : String(cause),
+    ...(first === undefined ? {} : { declaration: at(first) }) };
+}
+
 function location(node: ts.Node): PartSourceLocation {
   return { file: node.getSourceFile().fileName, start: node.getStart(), end: node.getEnd(), precision: "exact" };
 }
@@ -284,20 +323,21 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const result = object(found.initializer, seen);
     return result === undefined ? undefined : { node: result.node, fresh: false };
   };
-  type SourceRangeMap = (range: HsonSourceRange) => PartSourceLocation | undefined;
   type EventSources = Readonly<{
     events: PartEventEvidence | null;
-    ranges: ReadonlyMap<PartReference, SourceRangeMap>;
-    omitted: ReadonlyMap<PartEvent, PartSourceLocation>;
-    issues: readonly PartDocumentSource["referenceIssues"][number][];
+    ranges: ReadonlyMap<PartReference, Readonly<{ map: SourceRangeMap; site: AuthoredEventReference }>>;
+    declarations: ReadonlyMap<PartEvent, EventSource>;
+    issues: readonly PartReferenceIssueSource[];
+    issuesByName: ReadonlyMap<string, PartReferenceIssueSource>;
   }>;
-  const missingEvents: EventSources = { events: null, ranges: new Map(), omitted: new Map(), issues: [] };
+  const missingEvents: EventSources = { events: null, ranges: new Map(), declarations: new Map(), issues: [], issuesByName: new Map() };
   const adjacent = new Map<ts.Expression, EventSources>();
   const contextual = new Map<ts.Expression, Map<EventSources, PartDocumentSource>>();
-  const omittedEventInputs = new Map<PartDocumentSource, readonly EventInputSource[]>();
-  const localEventInputs = new Map<ts.CallExpression, EventInputSource[]>();
+  const attachedEvents = new Map<PartDocumentSource, readonly EventSource[]>();
+  const localEvents = new Map<ts.CallExpression, EventSource[]>();
   const locusEventSources = new Map<ts.CallExpression, LocusEventSources>();
-  const missingEventInputs: MissingEventInputSource[] = [];
+  const eventContracts: EventContractSource[] = [];
+  const eventIssues: EventIssueSource[] = [];
   const unavailableEventReferences: PartSourceLocation[] = [];
   const reachable: { reachableOnly: true } = { reachableOnly: true };
   const knownRecord = (input: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined => {
@@ -310,17 +350,47 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const record = knownRecord(input);
     return record === undefined ? undefined : library_source_fields(record, typescript);
   };
-  const requiredArgs = (args: ts.Expression | undefined): PartSourceLocation | undefined => {
+  const actionSchema = (input: ts.Expression): CompiledHsonSchema | undefined => {
+    const compile = (source: string) => {
+      if (!schemas.has(source)) {
+        const compiled = compile_hson_schema(source);
+        schemas.set(source, compiled.ok ? compiled.value : undefined);
+      }
+      const value = schemas.get(source);
+      return value?.graph.capabilities.projectedRoot === undefined ? undefined : value;
+    };
+    const expression = sources.unwrap(input);
+    if (typescript.isTaggedTemplateExpression(expression) && typescript.isPropertyAccessExpression(expression.tag)
+      && expression.tag.name.text === "schema" && typescript.isIdentifier(expression.tag.expression) && is_official_hson_package_binding(expression.tag.expression, "Hson", checker, true, typescript, sources.eligible)
+      && sources.eligible(expression) && typescript.isNoSubstitutionTemplateLiteral(expression.template)) {
+      try { return compile(admit_hson_tagged_template(typescript, expression, "schema")); }
+      catch { return undefined; }
+    }
+    return resolve_immutable_schema(typescript, checker, expression, declaration => {
+      const file = declaration.getSourceFile();
+      let discovered = schemaDeclarations.get(file);
+      if (discovered === undefined) {
+        discovered = discover_hson_schema_declarations(typescript, file, checker, sources.eligible);
+        schemaDeclarations.set(file, discovered);
+      }
+      const found = discovered.find(item => item.declaration === declaration && item.eligible);
+      return found?.source === undefined ? undefined : compile(found.source);
+    }, undefined, sources.eligible);
+  };
+  const actionContract = (args: ts.Expression | undefined): ActionContractSource | undefined => {
     const fields = knownFields(args);
     if (fields === undefined || [...fields.keys()].some(key => key !== "required" && key !== "schema")) return undefined;
     const flag = fields.get("required");
-    if (flag === undefined) return undefined;
-    const evidence = sources.alternatives(flag, "json", reachable);
-    return evidence.complete && evidence.nodes.length > 0 && evidence.nodes.every(node => node.kind === typescript.SyntaxKind.TrueKeyword)
-      ? location(flag) : undefined;
+    const evidence = flag === undefined ? undefined : sources.alternatives(flag, "json", reachable);
+    const required = flag !== undefined && evidence?.complete && evidence.nodes.length > 0
+      && evidence.nodes.every(node => node.kind === typescript.SyntaxKind.TrueKeyword) ? location(flag) : undefined;
+    const input = fields.get("schema");
+    const schema = input === undefined ? undefined : actionSchema(input);
+    return { ...(required === undefined ? {} : { required }),
+      ...(input === undefined || schema === undefined ? {} : { schema: { value: schema, location: location(input) } }) };
   };
   const readInitialActions = (configuration: ts.Expression | undefined): LocusActionSources => {
-    const actions = new Map<string, PartSourceLocation | undefined>();
+    const actions = new Map<string, ActionContractSource | undefined>();
     if (configuration === undefined) return { actions, complete: true };
     const config = knownRecord(configuration);
     const choices: { methods: true } = { methods: true };
@@ -338,55 +408,40 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       if (name.length === 0 || is_locus_document_action_name(name) || actions.has(name)) continue;
       const record = knownRecord(value);
       const definition = record === undefined ? undefined : library_source_field_candidates(record, typescript, choices);
-      const flag = definition?.complete && definition.fields.some(field => field.name === "handler")
+      const contract = definition?.complete && definition.fields.some(field => field.name === "handler")
         && definition.fields.every(field => field.name === "handler" || field.name === "args")
-        ? requiredArgs(definition.fields.find(field => field.name === "args")?.value) : undefined;
-      actions.set(name, flag);
+        ? actionContract(definition.fields.find(field => field.name === "args")?.value) : undefined;
+      actions.set(name, contract);
     }
     return { actions, complete: entries.complete };
   };
-  const unavailable = (reference: PartReference, map: SourceRangeMap): void => {
-    const root = map({ start: reference.start + 2, end: reference.start + 2 + reference.name.length });
+  const unavailable = (site: AuthoredEventReference, map: SourceRangeMap): void => {
+    const root = map(site.root);
     if (root !== undefined) unavailableEventReferences.push(root);
   };
   const eventSources = (input: ts.Expression): EventSources => {
     const cached = adjacent.get(input);
     if (cached !== undefined) return cached;
-    const ranges = new Map<PartReference, SourceRangeMap>();
-    const omitted = new Map<PartEvent, PartSourceLocation>();
-    const issues: PartDocumentSource["referenceIssues"][number][] = [];
+    const ranges = new Map<PartReference, { map: SourceRangeMap; site: AuthoredEventReference }>();
+    const declarations = new Map<PartEvent, EventSource>();
+    const issues = new Map<ts.Expression, PartReferenceIssueSource>();
+    const issuesByName = new Map<string, PartReferenceIssueSource>();
     const parsed = new Map<ts.Expression, PartEventAlternative>();
     const declaration = (literal: ts.Expression): PartEventAlternative => {
       if (!sources.eligible(literal) || !typescript.isStringLiteral(literal) && !typescript.isNoSubstitutionTemplateLiteral(literal)) return "opaque";
       const previous = parsed.get(literal);
       if (previous !== undefined) return previous;
-      const file = literal.getSourceFile(), correspondence = static_hson_literal_correspondence(file.text, file, literal);
-      const map = (range: HsonSourceRange): PartSourceLocation | undefined => {
-        const mapped = correspondence === undefined ? undefined : map_static_hson_range(correspondence, range);
-        return mapped === undefined ? undefined : { file: file.fileName, ...mapped, precision: "exact" };
-      };
+      const map = event_range_map(literal);
       try {
         const event = parse_part_event(literal.text);
         parsed.set(literal, event);
-        if (event.input?.kind === "reference") ranges.set(event.input.reference, map);
-        if (event.input === undefined) omitted.set(event, location(literal));
+        for (const argument of event.args) for (const site of event_argument_references(argument)) ranges.set(site.reference, { map, site });
+        declarations.set(event, { event, location: location(literal), map });
         return event;
       } catch (cause) {
         // Preserve the key while the malformed declaration supplies no use evidence.
         parsed.set(literal, "opaque");
-        const details = read_transform_error_details(cause);
-        const at = (index: number) => {
-          let end = index;
-          while (end < literal.text.length && is_hson_bare_name_char(literal.text[end]!)) end++;
-          return map({ start: index, end: Math.min(literal.text.length, Math.max(index + 1, end)) });
-        };
-        const related = details?.related?.find(item => item.role === "first-declaration");
-        const end = details?.related?.find(item => item.role === "value-end")?.source.index;
-        const start = details?.source?.index;
-        const where = start === undefined ? undefined : end === undefined ? at(start) : map({ start, end });
-        issues.push({ location: where ?? location(literal),
-          message: cause instanceof Error ? cause.message : String(cause),
-          ...(related === undefined ? {} : { declaration: at(related.source.index) }) });
+        issues.set(literal, event_declaration_issue(literal, map, cause));
         return "opaque";
       }
     };
@@ -402,6 +457,10 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         if (name === undefined || value === undefined) { opaque = true; continue; }
         const possible = sources.alternatives(value, "document", reachable);
         const options = possible.nodes.map(declaration);
+        if (!opaque && evidence.complete && evidence.nodes.length === 1 && possible.complete && possible.nodes.length === 1) {
+          const issue = issues.get(possible.nodes[0]!);
+          if (issue !== undefined && !values.has(name)) issuesByName.set(name, issue);
+        }
         if (opaque || !possible.complete) options.push("opaque");
         values.set(name, options);
       }
@@ -418,7 +477,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         return options.size === 1 && options.has("absent") ? undefined : [...options];
       },
     };
-    const result = { events, ranges, omitted, issues };
+    const result = { events, ranges, declarations, issues: [...issues.values()], issuesByName };
     adjacent.set(input, result);
     return result;
   };
@@ -476,7 +535,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const optionalStructures: { location: PartSourceLocation; root: boolean; issue?: string; references?: number }[] = [];
     const partDeclarations: { location: PartSourceLocation; root: boolean; issue?: string }[] = [];
     const roots: PartSourceLocation[] = [];
-    const referenceIssues: PartReferenceIssueSource[] = [...adjacentEvents?.issues ?? []];
+    const referenceIssues: PartReferenceIssueSource[] = [];
+    const attachedEventIssues = new Set<PartReferenceIssueSource>();
+    const addUnattachedEventIssues = () => {
+      for (const issue of adjacentEvents?.issues ?? []) if (!attachedEventIssues.has(issue)) {
+        attachedEventIssues.add(issue);
+        referenceIssues.push(issue);
+      }
+    };
     const eventInputs = new Map<PartParameterSource["uses"][number], string | undefined>();
     const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure" | "event", typed?: PartQualifier, known?: readonly PartReference[]): void => {
       const mapped = range === undefined ? undefined : map(range);
@@ -631,7 +697,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     let parameterCompleteness: "complete" | "unknown" = "unknown";
     let signature: PartDocumentSource["signature"];
     let bindingSources: PartBindingSources | undefined;
-    const omissions: EventInputSource[] = [];
+    const eventAttachments: EventSource[] = [];
     const completeAnalysis = qualified && scanned;
     // Quoted slots cannot add structural declarations. Their values remain
     // opaque, so local lexical facts survive without proving an input interface.
@@ -667,6 +733,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           return range === undefined ? location(producer) : map({ start: range.start, end: Math.min(range.end, text.length) }) ?? location(producer);
         };
         const useIssues: [PartReferenceUse, (typeof referenceIssues)[number]][] = [];
+        const optionalEventFields = new Map<HsonNode, Map<string, Set<AuthoredEventArgument>>>();
         const analysis = analyze_part_definition(root, issue => {
           if (!lexicalComplete || issue.use?.conditional) return;
           const owner = nodeLocation(issue.node, issue.attribute,
@@ -677,15 +744,40 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           referenceIssues.push(diagnostic);
           if (issue.use !== undefined) useIssues.push([issue.use, diagnostic]);
         }, adjacentEvents?.events, (node, attribute, alternatives) => {
-          if (!lexicalComplete || alternatives.length !== 1) return;
+          if (!lexicalComplete) return;
+          const attachment = nodeLocation(node, attribute);
+          const issue = adjacentEvents?.issuesByName.get(attribute.slice("event:".length));
+          if (issue !== undefined) {
+            attachedEventIssues.add(issue);
+            referenceIssues.push({ ...issue, attachment });
+          }
+          if (alternatives.length !== 1) return;
           const event = alternatives[0];
           if (event === undefined || typeof event === "string") return;
-          const declaration = adjacentEvents?.omitted.get(event);
-          if (declaration !== undefined) omissions.push({ kind: event.kind, key: event.key, location: declaration, attachment: nodeLocation(node, attribute) });
+          const declaration = adjacentEvents?.declarations.get(event);
+          if (declaration !== undefined) {
+            const byAttribute = optionalEventFields.get(node) ?? new Map<string, Set<AuthoredEventArgument>>();
+            const maybeAbsent = new Set<AuthoredEventArgument>();
+            byAttribute.set(attribute, maybeAbsent);
+            optionalEventFields.set(node, byAttribute);
+            eventAttachments.push({ ...declaration, attachment, maybeAbsent });
+          }
         });
+        for (const use of analysis.uses) {
+          if (use.eventArgument !== undefined && use.attribute !== undefined
+            && (use.reference.optional || use.binding?.receiving?.reference.optional)) {
+            optionalEventFields.get(use.node)?.get(use.attribute)?.add(use.eventArgument);
+          }
+        }
+        addUnattachedEventIssues();
         if (analysisText === text && spellingEligible) {
           const projected = project_part_bindings(root, analysis, provenance, text, map,
-            (reference, range) => adjacentEvents?.ranges.get(reference)?.(range));
+            (reference, role) => {
+              const source = adjacentEvents?.ranges.get(reference);
+              if (source === undefined) return undefined;
+              const { map, site } = source;
+              return map(role === "root" ? site.root : { start: site.start.index, end: site.end.index });
+            });
           bindingSources = projected.sources;
           for (const [use, diagnostic] of useIssues) {
             const observed = projected.byUse.get(use);
@@ -700,8 +792,9 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         for (const use of analysis.uses) if (use.context === "event") {
           const reference = use.reference, eventRange = adjacentEvents?.ranges.get(reference);
           if (eventRange === undefined) continue;
-          if (use.attribute !== undefined && analysis.opaqueEvents.get(use.node)?.has(use.attribute)) unavailable(reference, eventRange);
-          const where = eventRange(reference);
+          const { map, site } = eventRange;
+          if (use.attribute !== undefined && analysis.opaqueEvents.get(use.node)?.has(use.attribute)) unavailable(site, map);
+          const where = map({ start: site.start.index, end: site.end.index });
           if (where === undefined) continue;
           const fact = { name: reference.name, location: where, context: "event" as const, namespace: reference.namespace,
             reference: reference.reference, optional: reference.optional === true, structured: reference.path.length > 0 };
@@ -821,6 +914,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       try { parse_authored_document_library(text); valueIndependentAdmission = true; }
       catch { /* Invalid authored structure still withdraws contract proof. */ }
     }
+    addUnattachedEventIssues();
     const receivers: PartDocumentSource["receivers"][number][] = [];
     const inputs = new Map(uses.map(use => [use, use.context === "event" ? eventInputs.get(use) : use.namespace === "incoming" ? use.name
       : part_source_bindings_at(lexicalScopes, use.location.start)?.find(binding => binding.name === use.name)?.incoming]));
@@ -839,7 +933,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       contextual.set(producer, contexts);
     }
     relationships.set(result, receivers);
-    if (omissions.length > 0) omittedEventInputs.set(result, omissions);
+    if (eventAttachments.length > 0) attachedEvents.set(result, eventAttachments.map(event => ({ ...event, definition: result })));
     return result;
   };
   const alternatives = (input: ts.Expression, adjacentEvents?: EventSources) => {
@@ -849,7 +943,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       || found.some(document => document.bindingSources === undefined))) {
       // Structural interpolation or an opaque producer can add an attachment
       // whose scope cannot be projected. Withdraw navigation for these operands.
-      for (const [reference, map] of adjacentEvents.ranges) unavailable(reference, map);
+      for (const { site, map } of adjacentEvents.ranges.values()) unavailable(site, map);
     }
     // Filtering observations cannot remove an alternative or its conditionality from the proof.
     const lexicalCertain = possible.complete && !possible.conditional && possible.nodes.length === 1 && found.length === 1;
@@ -873,7 +967,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           let hosted: LocusEventSources | undefined;
           if (owner !== undefined && (admission.operation === "create" || admission.operation === "resume" || admission.operation === "admit")) {
             hosted = { owner, operation: admission.operation, initialActions: locusEventSources.get(owner)?.initialActions
-              ?? readInitialActions(owner.arguments[1]), omissions: [], definitions: admission.definitions };
+              ?? readInitialActions(owner.arguments[1]), events: [], definitions: admission.definitions };
             locusEventSources.set(node, hosted);
           }
           const libraries: PartLibrarySource[] = [];
@@ -881,9 +975,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const definition = entry.value === undefined ? undefined : object(entry.value);
             const own = definition === undefined ? undefined : library_source_fields(definition.node, typescript);
             const parts = own?.get("parts"), body = own?.get("document");
+            const access = own?.get("access");
+            const accessValues = access === undefined ? undefined : sources.candidates(access, "json");
+            const validParts = parts !== undefined && (own?.size === 1 || hosted !== undefined && own?.size === 2
+              && accessValues !== undefined && accessValues.length > 0
+              && accessValues.every(value => "json" in value && (value.json === "private" || value.json === "shared")));
             const hasData = own?.has("json") || own?.has("hson");
             const exclusiveData = !!own?.has("json") !== !!own?.has("hson");
-            const family = own?.has("data") ? "unknown" : parts !== undefined && own?.size === 1 ? "parts" : body !== undefined && !hasData && parts === undefined ? "document"
+            const family = own?.has("data") ? "unknown" : validParts ? "parts" : body !== undefined && !hasData && parts === undefined ? "document"
               : exclusiveData && body === undefined && parts === undefined ? "data" : "unknown";
             const collection = family !== "parts" || parts === undefined ? undefined : object(parts);
             const members = collection === undefined ? undefined : library_source_field_candidates(collection.node, typescript);
@@ -906,7 +1005,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
                 return { fields, adjacentEvents, evidence: source === undefined ? undefined : alternatives(source, adjacentEvents) };
               });
               if (variants !== undefined && (!variants.complete || observed.some(variant => variant.evidence === undefined))) {
-                for (const variant of observed) for (const [reference, map] of variant.adjacentEvents?.ranges ?? []) unavailable(reference, map);
+                for (const variant of observed) for (const { site, map } of variant.adjacentEvents?.ranges.values() ?? []) unavailable(site, map);
               }
               const memberEvidence = record === undefined ? { documents: [...new Set(observed.flatMap(variant => variant.evidence?.documents ?? []))],
                 lexicalCertain: false, certain: false }
@@ -926,15 +1025,16 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
                 && [...fields.keys()].every(key => ["kind", "document", "events", "css", "stylesheet"].includes(key))
                 && kind !== undefined && sources.candidates(kind, "json")?.every(candidate => "json" in candidate && candidate.json === "document"))
                 ? selected : undefined;
-              if (contractSource !== undefined) for (const omission of omittedEventInputs.get(contractSource) ?? []) {
-                if (omission.kind === "locus") {
-                  hosted?.omissions.push(omission);
-                  const contract = hosted?.initialActions.actions.get(omission.key);
-                  if (contract !== undefined) missingEventInputs.push({ ...omission, contract });
+              if (contractSource !== undefined) for (const source of attachedEvents.get(contractSource) ?? []) {
+                const attachment = { ...source, batch: node };
+                if (attachment.event.kind === "locus") {
+                  hosted?.events.push(attachment);
+                  const contract = hosted?.initialActions.actions.get(attachment.event.key);
+                  if (contract !== undefined) eventContracts.push({ ...attachment, contract });
                 } else if (admission.operation === "fromLibraries") {
-                  const inputs = localEventInputs.get(node) ?? [];
-                  inputs.push(omission);
-                  localEventInputs.set(node, inputs);
+                  const inputs = localEvents.get(node) ?? [];
+                  inputs.push(attachment);
+                  localEvents.set(node, inputs);
                 }
               }
               return [{ name: member.name, declaration: location(member.declaration), fresh: record?.fresh === true,
@@ -1003,27 +1103,28 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     }
     if (supported) writes.push({ call, location: location(call), ...target, arguments: arguments_ });
   }
-  for (const issue of direct_event_input_issues(typescript, program, sources, localEventInputs,
-    locusEventSources, options => {
+  eventContracts.push(...direct_event_contracts(typescript, program, sources, localEvents,
+    locusEventSources, eventIssues, options => {
       const fields = knownFields(options);
       const args = fields?.get("args");
       // Capture can run application getters when the options or the args record are opaque.
       if (fields === undefined || args !== undefined && knownFields(args) === undefined) return undefined;
-      return { contract: fields.size === 1 ? requiredArgs(args) : undefined };
-    })) missingEventInputs.push(issue);
-  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, missingEventInputs, unavailableEventReferences };
+      return { contract: fields.size === 1 ? actionContract(args) : undefined };
+    }));
+  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, eventContracts, eventIssues, unavailableEventReferences };
   sourceFacts.set(program, facts);
   return facts;
 }
 
 /** Straight-line evidence from direct registrations on provable owners. */
-function direct_event_input_issues(typescript: typeof ts, program: ts.Program, sources: Candidates,
-  localEventInputs: ReadonlyMap<ts.CallExpression, readonly EventInputSource[]>,
+function direct_event_contracts(typescript: typeof ts, program: ts.Program, sources: Candidates,
+  localEvents: ReadonlyMap<ts.CallExpression, readonly EventSource[]>,
   locusEventSources: ReadonlyMap<ts.CallExpression, LocusEventSources>,
-  readOptions: (options: ts.Expression) => Readonly<{ contract: PartSourceLocation | undefined }> | undefined): readonly MissingEventInputSource[] {
+  issues: EventIssueSource[],
+  readOptions: (options: ts.Expression) => Readonly<{ contract: ActionContractSource | undefined }> | undefined): readonly EventContractSource[] {
   const checker = program.getTypeChecker();
-  const output: MissingEventInputSource[] = [];
-  const receivingFiles = new Set([...localEventInputs.keys(), ...locusEventSources.keys()].map(call => call.getSourceFile()));
+  const output: EventContractSource[] = [];
+  const receivingFiles = new Set([...localEvents.keys(), ...locusEventSources.keys()].map(call => call.getSourceFile()));
   // A small syntax whitelist allows ordinary arguments and deferred function
   // bodies. Calls, property reads, computed keys and spreads can execute code.
   const inertValue = (expression: ts.Expression, depth = 0, admission = false): boolean => {
@@ -1086,10 +1187,10 @@ function direct_event_input_issues(typescript: typeof ts, program: ts.Program, s
       const only = evidence.complete && evidence.nodes.length === 1 ? evidence.nodes[0] : undefined;
       return only !== undefined && (typescript.isStringLiteral(only) || typescript.isNoSubstitutionTemplateLiteral(only)) ? only : undefined;
     };
-    const report = (omissions: readonly EventInputSource[], actions: ReadonlyMap<string, PartSourceLocation | undefined>): void => {
-      for (const omission of omissions) {
-        const contract = actions.get(omission.key);
-        if (contract !== undefined) output.push({ ...omission, contract });
+    const report = (events: readonly EventSource[], actions: ReadonlyMap<string, ActionContractSource | undefined>): void => {
+      for (const event of events) {
+        const contract = actions.get(event.event.key);
+        if (contract !== undefined) output.push({ ...event, contract });
       }
     };
     const directCall = (input: ts.Expression | undefined): ts.CallExpression | undefined => {
@@ -1102,8 +1203,8 @@ function direct_event_input_issues(typescript: typeof ts, program: ts.Program, s
       if (typescript.isSourceFile(node) || typescript.isBlock(node)) {
         type Owner = {
           family: "tree" | "local" | "locus";
-          actions: Map<string, PartSourceLocation | undefined>;
-          inputs: EventInputSource[];
+          actions: Map<string, ActionContractSource | undefined>;
+          inputs: EventSource[];
           openActions?: true;
         };
         const owners = new Map<ts.VariableDeclaration, Owner>();
@@ -1126,7 +1227,7 @@ function direct_event_input_issues(typescript: typeof ts, program: ts.Program, s
             const awaited = typescript.isAwaitExpression(initializer);
             const construction = directCall(awaited ? initializer.expression : initializer);
             const hosted = construction === undefined ? undefined : locusEventSources.get(construction);
-            const parts = awaited || construction === undefined ? undefined : localEventInputs.get(construction);
+            const parts = awaited || construction === undefined ? undefined : localEvents.get(construction);
             const tree = freshTree(initializer);
             if (construction !== undefined && (hosted?.owner === construction || parts !== undefined || tree)) {
               // Construction arguments can invalidate earlier facts before
@@ -1136,7 +1237,7 @@ function direct_event_input_issues(typescript: typeof ts, program: ts.Program, s
               if (tree) owners.set(binding, { family: "tree", actions: new Map(), inputs: [] });
               else if (parts !== undefined) owners.set(binding, { family: "local", actions: new Map(), inputs: [...parts] });
               else if (hosted?.initialActions.complete && (hosted.operation === "resume") === awaited) {
-                const owner: Owner = { family: "locus", actions: new Map(hosted.initialActions.actions), inputs: [...hosted.omissions] };
+                const owner: Owner = { family: "locus", actions: new Map(hosted.initialActions.actions), inputs: [...hosted.events] };
                 owners.set(binding, owner);
                 loci.set(construction, owner);
               }
@@ -1158,8 +1259,8 @@ function direct_event_input_issues(typescript: typeof ts, program: ts.Program, s
             if (!typescript.isObjectLiteralExpression(definitions) || !inertValue(definitions, 0, true)) { withdraw(); continue; }
             const locus = loci.get(admission.owner);
             if (locus !== undefined) {
-              report(admission.omissions, locus.actions);
-              locus.inputs.push(...admission.omissions);
+              report(admission.events, locus.actions);
+              locus.inputs.push(...admission.events);
             }
             // Suspension can change the registry before a subsequent define.
             if (expression !== undefined && typescript.isAwaitExpression(expression)) withdraw();
@@ -1189,18 +1290,33 @@ function direct_event_input_issues(typescript: typeof ts, program: ts.Program, s
             if (name.text.length === 0 || call.arguments.length < 2 || call.arguments.length > 3) continue;
             if (owner.openActions || owner.actions.has(name.text) || owner.family === "locus" && is_locus_document_action_name(name.text)) continue;
             owner.actions.set(name.text, evidence.contract);
-            if (evidence.contract !== undefined) for (const omission of owner.inputs) {
-              if (omission.key === name.text) output.push({ ...omission, contract: evidence.contract });
+            if (evidence.contract !== undefined) for (const event of owner.inputs) {
+              if (event.event.key === name.text) output.push({ ...event, contract: evidence.contract });
             }
           } else if (method?.name === "event" && namespace?.name === "listen" && owner.family === "tree") {
             const source = literal(call.arguments[0]);
             if (source === undefined || call.arguments.length !== 1) continue;
+            const map = event_range_map(source);
             let event;
             try { event = parse_authored_event(source.text); }
-            catch { continue; }
-            if (event.kind !== "browser" || event.input !== undefined) continue;
+            catch (cause) {
+              issues.push({ ...event_declaration_issue(source, map, cause), code: "HSON_EVENT_DECLARATION_INVALID" });
+              continue;
+            }
+            if (event.kind !== "browser") continue;
+            for (const argument of event.args) for (const site of event_argument_references(argument)) {
+              const where = map({ start: site.start.index, end: site.end.index });
+              if (where !== undefined) issues.push({ location: where, code: "HSON_EVENT_REFERENCE_INVALID",
+                message: "Standalone event arguments cannot resolve Part references. Supply literals." });
+            }
             const contract = owner.actions.get(event.key);
-            if (contract !== undefined) output.push({ kind: event.kind, key: event.key, location: location(source), contract });
+            if (contract !== undefined) output.push({ event, location: location(source), map, contract });
+            else if (!owner.openActions && owner.actions.size > 0 && !owner.actions.has(event.key)) {
+              const start = event.actionStart.index + "local:".length;
+              const where = map({ start, end: start + event.key.length });
+              if (where !== undefined) issues.push({ location: where, code: "HSON_EVENT_ACTION_UNKNOWN",
+                message: `Unknown local Action ${JSON.stringify(event.key)}.` });
+            }
           } else withdraw();
         }
       }

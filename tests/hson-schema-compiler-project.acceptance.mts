@@ -449,7 +449,12 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     + 'const map = hsonLiveMap.fromLibraries({ components: { parts: { button: { kind: "document", document: "<button hson:part event:run/>", events: { run: ' + localEvent + ' } } } }, page: { document: \'<hson-part at="components/button"/>\' } });\n'
     + 'map.actions.define("run", () => {}, { args: { required: true } });\n'
     + 'const locus = hsonLiveMap.locus.create(' + definitions + ', { authorizeAction() { return true; }, actions: { cancel() {} } });\n'
-    + 'locus.actions.define("run", () => {}, { args: { required: true } });\n';
+    + 'locus.actions.define("run", () => {}, { args: { required: true } });\n'
+    + 'const Args = Hson.schema`<type "data" content <selection "string">>`;\n'
+    + 'const optional = hsonLiveMap.fromLibraries({ components: { parts: { card: { kind: "document", document: "<p hson:part str:local=%{label?} event:go/>",'
+    + ' events: { go: "<hson:event on:click local:go selection:str=%{label} <> >" } } } },'
+    + ' page: { document: Hson.document`<hson-part at=components/card/>` } });\n'
+    + 'optional.actions.define("go", () => {}, { args: { schema: Args } });\n';
   writeFileSync(consumer, source);
   const config = join(directory, "tsconfig.json");
   const parsed = ts.getParsedCommandLineOfConfigFile(config, {}, {
@@ -464,6 +469,8 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     const start = source.indexOf(declaration);
     return [consumer, start, start + declaration.length];
   }));
+  assert.deepEqual(diagnostics.filter(issue => issue.code === "HSON_EVENT_ARGUMENT_MISSING")
+    .map(issue => source.slice(issue.start, issue.end)), ['selection:str=%{label}']);
   const numeric = diagnostics.find(issue => issue.code === "HSON_PART_ARGUMENT_INVALID" && issue.message.includes("finite JSON number"));
   assert.ok(numeric);
   assert.equal(source.slice(numeric.start, numeric.end), '"1e309"');
@@ -484,8 +491,8 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
     'const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">, <tag "button" content "empty">]>>]>>`;',
     'hsonLiveMap.fromLibraries({',
     '  bits: { parts: {',
-    '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`, events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" } },',
-    '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`, events: { go: "<hson:event on:click local:deck.go input:data=%{text} <> >" } },',
+    '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`, events: { go: "<hson:event on:click local:deck.go selection:data=^{args} <> >" } },',
+    '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`, events: { go: "<hson:event on:click local:deck.go selection:data=%{text} <> >" } },',
     '  } },',
     '  page: { document: Hson.document`<html <head/> <body <hson-part lib="bits" at="typed" args:data="<>"/> <hson-part lib="bits" at="scalar" text="hi"/>/>/>`, schema: Page },',
     '});',
@@ -502,10 +509,10 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
   assert.equal(diagnostics.length, 1, result.stdout + result.stderr);
   assert.ok(diagnostics[0]?.startsWith(`${consumer}:8:${line.indexOf("Hson.document") + 1}: `), diagnostics[0]);
   assert.match(diagnostics[0]!, /Static Hson does not satisfy Page/);
-  const events = ', events: { go: "<hson:event on:click local:deck.go input:data=^{args} <> >" }';
+  const events = ', events: { go: "<hson:event on:click local:deck.go selection:data=^{args} <> >" }';
   // None of these inventories proves a composed Schema candidate. Part
   // reference and unused-binding diagnostics belong to the editor projection.
-  for (const replacement of ["", ", events: {}", ', events: { go: "<hson:event on:click local:deck.go input:data=^{missing} <> >", other: unresolved }', ", events: opaque"]) {
+  for (const replacement of ["", ", events: {}", ', events: { go: "<hson:event on:click local:deck.go selection:data=^{missing} <> >", other: unresolved }', ", events: opaque"]) {
     writeFileSync(consumer, 'declare const opaque: Record<string, string>, unresolved: string;\n' + invalid.replace(events, replacement));
     const result = generate(directory);
     succeed(result);
@@ -513,7 +520,7 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
     succeed(packaged_schema(directory, "check"));
   }
   const partial = 'declare const spare: string;\n' + invalid
-    .replace('input:data=%{text} <> >" }', 'input:data=%{text} <> >", spare }')
+    .replace('selection:data=%{text} <> >" }', 'selection:data=%{text} <> >", spare }')
     .replace('at="scalar" text="hi"', 'at="scalar" bogus="hi"');
   writeFileSync(consumer, partial);
   const editorOnly = generate(directory);

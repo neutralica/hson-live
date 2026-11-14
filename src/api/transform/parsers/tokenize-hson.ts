@@ -1,4 +1,4 @@
-import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, is_part_scalar_argument, part_argument_name, type PartArgumentKind, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference, type PartReference } from "../../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, is_part_parameter_name, is_part_scalar_argument, part_argument_name, type PartArgumentKind, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference, type PartReference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
 import { escape_cross_slot_part_references } from "../../../internal/part-scalar-source.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
@@ -20,6 +20,7 @@ import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import {
   is_hson_bare_name_char,
   is_hson_bare_name_start,
+  is_valid_hson_data_name,
 } from "../../../core/hson-name.js";
 import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
 import { AUTHORED_EVENT_TAG } from "../../../core/authored-event-names.js";
@@ -151,7 +152,7 @@ function classifyAttributeOperand(source: string, start: number, tag?: string, n
               continue;
             }
             if (isHsonTrivia(recoveryChar) || isUnsupportedWhitespace(recoveryChar)
-              || /[<>"]/.test(recoveryChar) || source.startsWith("/>", end)) break;
+              || /[<>"]/.test(recoveryChar) || source.startsWith("/>", end) || source.startsWith("//", end)) break;
           }
           end++;
         }
@@ -162,12 +163,13 @@ function classifyAttributeOperand(source: string, start: number, tag?: string, n
       end = reference.end;
       continue;
     }
-    if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || /[<>"'`«»\[\]]/.test(ch) || source.startsWith("/>", end)) break;
+    if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || /[<>"'`«»\[\]]/.test(ch)
+      || source.startsWith("/>", end) || references > 0 && source.startsWith("//", end)) break;
     end++;
   }
   const text = source.slice(start, end);
   const boundary = end === source.length || isHsonTrivia(source[end]!) || source.startsWith("/>", end)
-    || source[end] === '"' || source[end] === "<";
+    || references > 0 && source.startsWith("//", end) || source[end] === '"' || source[end] === "<";
   if (references !== 0) {
     if (boundary && whole_part_reference(text) !== undefined) return { kind: "reference", end };
     return { kind: "invalid", end, code: "HSON_ATTRIBUTE_QUOTES_REQUIRED",
@@ -221,6 +223,16 @@ export function tokenize_authored_document_library(hson: string, collector?: Hso
     template?.substitutions, template === undefined ? undefined : "document", undefined, undefined, undefined, undefined, true).scan();
 }
 
+type EventArgumentToken = Readonly<{
+  name: string;
+  qualifier: "str" | "num" | "data";
+  header: Position;
+  start: Position;
+  end: Position;
+  operand: { kind: "quoted"; raw: string } | { kind: "reference"; reference: PartReference }
+    | { kind: "data"; tokens: Tokens[] };
+}>;
+
 /** Dedicated authored event envelope. Only the inline Data operand emits Hson tokens. @internal */
 export function tokenize_authored_event(source: string) {
   return new HsonScanner(source, 0).scanEventDeclaration();
@@ -260,7 +272,7 @@ class HsonScanner {
   public scanEventDeclaration(): Readonly<{
     start: Position;
     flags: ReadonlyMap<string, Position>;
-    input: Readonly<{ value: Tokens[] | PartReference; start: Position; end: Position }> | undefined;
+    args: readonly EventArgumentToken[];
   }> {
     const code = "HSON_EVENT_DECLARATION_INVALID";
     const invalid = (message: string, at = this.position()): never => this.fail(message, at, code);
@@ -273,49 +285,66 @@ class HsonScanner {
       invalid("Expected one literal <hson:event declaration.");
     }
     const flags = new Map<string, Position>();
-    let input: { value: Tokens[] | PartReference; start: Position; end: Position } | undefined;
+    const args: EventArgumentToken[] = [];
+    const names = new Map<string, Position>();
     let separated = this.skipTrivia();
     while (this.peek() !== "<") {
       if (this.atEnd() || this.peek() === ">" || this.startsWith("/>")) invalid("An authored event requires an outcome object <>.");
       if (!separated) invalid("Expected trivia between authored event header items.");
       const at = this.position();
-      const name = this.scanBareName("event header item");
-      const first = flags.get(name);
-      if (first !== undefined) this.fail(`Duplicate authored event header item ${JSON.stringify(name)}.`, at, code,
-        [{ role: "first-declaration", pos: first }]);
-      flags.set(name, at);
+      const raw = this.scanBareName("event header item");
       separated = this.skipTrivia();
-      if (name !== "input:data") {
-        if (this.peek() === "=") invalid("Only input:data takes a value in an authored event header.", at);
+      const hasValue = this.peek() === "=";
+      if (!hasValue && (raw === "once" || raw === "stopProp" || raw.startsWith("on:") || raw.startsWith("host:") || raw.startsWith("local:"))) {
+        const first = flags.get(raw);
+        if (first !== undefined) this.fail(`Duplicate authored event header item ${JSON.stringify(raw)}.`, at, code,
+          [{ role: "first-declaration", pos: first }]);
+        flags.set(raw, at);
         continue;
       }
-      if (this.peek() !== "=") invalid("Expected input:data={Hson Data} or one whole Part reference.");
+
+      const [name, qualifier, extra] = raw.split(":");
+      if (name === undefined || !is_part_parameter_name(name) || !is_valid_hson_data_name(name) || extra !== undefined
+        || qualifier !== "str" && qualifier !== "num" && qualifier !== "data") {
+        if (!hasValue && qualifier !== "doc") invalid(`Unsupported authored event header item ${JSON.stringify(raw)}. Named arguments use name:type=value.`, at);
+        return invalid(`Invalid Event argument ${JSON.stringify(raw)}. Use name:str, name:num, or name:data followed by a value.`, at);
+      }
+      const first = names.get(name);
+      if (first !== undefined) this.fail(`Duplicate Event argument ${JSON.stringify(name)}.`, at, code,
+        [{ role: "first-declaration", pos: first }]);
+      names.set(name, at);
+      if (!hasValue) invalid(`Expected a value after ${raw}=.`, at);
       this.consumeExpected("=");
       this.skipTrivia();
-      const inputStart = this.position();
-      let value: Tokens[] | PartReference;
-      if (this.peek() === "{") {
+      const valueStart = this.position();
+      let operand: EventArgumentToken["operand"];
+      if (qualifier === "data" && this.peek() === "{") {
+        const firstToken = this.tokens.length;
         this.consumeExpected("{");
         this.skipTrivia();
-        if (this.peek() === "}") invalid("input:data requires one Hson Data value.");
-        this.scanObjectMemberValue(1, "input:data", "}");
+        if (this.peek() === "}") invalid(`${raw} requires one Hson Data value.`);
+        this.scanObjectMemberValue(1, raw, "}");
         this.skipTrivia();
-        if (this.peek() !== "}") invalid("input:data requires one Hson Data value followed by }.");
+        if (this.peek() !== "}") invalid(`${raw} requires one Hson Data value followed by }.`);
         this.consumeExpected("}");
-        value = this.tokens;
+        operand = { kind: "data", tokens: this.tokens.slice(firstToken) };
+      } else if (this.peek() === '"') {
+        operand = { kind: "quoted", raw: this.scanAttributeString(raw, qualifier).text };
       } else {
-        const reference = scan_part_reference(this.source, inputStart.index);
+        const classified = classifyAttributeOperand(this.source, valueStart.index);
+        const reference = classified.kind === "reference" ? scan_part_reference(this.source, valueStart.index) : undefined;
         if (reference === undefined) {
+          const expected = qualifier === "data" ? "{Hson Data}" : "a double-quoted literal";
           const message = this.startsWith("#{") ? PART_LOCAL_REFERENCE_MIGRATION
-            : "Expected input:data={Hson Data} or one whole Part reference.";
-          const { end } = classifyAttributeOperand(this.source, inputStart.index);
-          return this.fail(message, inputStart, code, end > inputStart.index
+            : `Expected ${expected} or one whole Part reference for ${raw}.`;
+          const { end } = classified;
+          return this.fail(message, valueStart, code, end > valueStart.index
             ? [{ role: "value-end", pos: this.positionAt(end) }] : undefined);
         }
         while (this.index < reference.end) this.consume();
-        value = reference;
+        operand = { kind: "reference", reference };
       }
-      input = { value, start: inputStart, end: this.position() };
+      args.push({ name, qualifier, header: at, start: valueStart, end: this.position(), operand });
       separated = this.skipTrivia();
     }
     this.consumeExpected("<");
@@ -327,8 +356,7 @@ class HsonScanner {
     this.consumeExpected(">");
     this.skipTrivia();
     if (!this.atEnd()) invalid("Expected exactly one authored event declaration.");
-    flags.delete("input:data");
-    return { start, flags, input };
+    return { start, flags, args };
   }
 
   private slotHere(): HsonTemplateSlot | undefined {

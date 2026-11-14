@@ -3,10 +3,10 @@ import { _throw_transform_err } from "../core/errors.js";
 import { is_ordinary_element_node } from "../core/node-guards.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../core/ordered-projected-value.js";
 import type { HsonNode } from "../core/types.js";
-import { event_source_position, parse_authored_event, type AuthoredEvent, type AuthoredEventReferenceInput } from "./authored-events.js";
+import { event_source_position, parse_authored_event, type AuthoredEvent, type AuthoredEventReference } from "./authored-events.js";
 import { is_part_parameter_name } from "./part-placeholder.js";
 
-export type PartEventReferenceInput = AuthoredEventReferenceInput;
+export type PartEventReference = AuthoredEventReference;
 export type PartEvent = AuthoredEvent;
 export type PartEvents = ReadonlyMap<string, PartEvent>;
 
@@ -29,9 +29,9 @@ export function parse_part_event(source: string): PartEvent {
   return parse_authored_event(source, "Part event declaration");
 }
 
-export function fail_part_event_reference(message: string, input: PartEventReferenceInput, node: HsonNode, attribute: string, cause?: unknown): never {
+export function fail_part_event_reference(message: string, input: PartEventReference, node: HsonNode, attribute: string, cause?: unknown): never {
   const attachment = event_attachment_position(node, attribute);
-  return _throw_transform_err(message, "Part event input", undefined, cause, {
+  return _throw_transform_err(message, "Part event argument", undefined, cause, {
     code: "HSON_EVENT_REFERENCE_INVALID", stage: "source-admission", source: event_source_position(input.start),
     related: [{ role: "value-end", source: event_source_position(input.end) },
       ...(attachment === undefined ? [] : [{ role: "event-attachment", source: attachment }])],

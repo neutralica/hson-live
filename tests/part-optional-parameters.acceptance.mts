@@ -1,3 +1,5 @@
+import { action_args_error, capture_action_args } from "../src/internal/action-args.js";
+import { hson_data_from_value } from "../src/api/data/hson-data.js";
 import { complete_html } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { isMainThread, parentPort } from "node:worker_threads";
@@ -40,6 +42,36 @@ check("write completeness uses incoming names and the immutable admitted definit
   assert.throws(() => required.parts.components.x.write(), /missing scalar input next/);
   assert.doesNotThrow(() => required.parts.components.x.write({ next: 'required' }));
   assert.throws(() => fixture('<p hson:part "%{x?}" <b "%{x}"/>/>').parts.components.x.write(), /missing scalar input x/);
+});
+
+check("optional Event sources compose an empty object checked by the Action Schema", () => {
+  const cases = [
+    ['selection:str=%{label?}', '', ''],
+    ['selection:str=%{label}', 'str:local=%{label?}', ''],
+    ['selection:str=^{local}', 'str:local=%{label?}', ''],
+    ['selection:str=^{record.label?}', 'data:record=%{input}', 'input:data="<>"'],
+    ['', '', ''],
+  ];
+  for (const [operand, receiver, supplied] of cases) {
+    const event = parse_part_event(`<hson:event on:click local:CHECK ${operand} <> >`);
+    const composed = expand_document_composition('page',
+      () => parse_authored_document_library(`<hson-part at=components/card ${supplied}/>`),
+      document_composition_options(undefined), () => ({
+        ...parse_authored_document_library(`<p hson:part ${receiver} event:go/>`),
+        events: new Map([['go', event]]),
+      }));
+    const [interaction] = composed.interactions;
+    assert.ok(interaction);
+    const input = interaction.data === undefined ? undefined : hson_data_from_value(interaction.data);
+    assert.deepEqual(input?.materialize(), operand === '' ? undefined : {});
+    for (const [schema, error] of [
+      [Hson.schema`<type "data" content <selection "string">>`, 'MISSING_REQUIRED at ["selection"]'],
+      [Hson.schema`<type "data" content <selection <optional "string">>>`, undefined],
+    ] as const) {
+      const contract = capture_action_args({ args: { schema } }, 'Action', 'Action');
+      assert.equal(action_args_error(contract, input, 'Action'), operand === '' ? undefined : error);
+    }
+  }
 });
 
 check("explicit scalar receivers distinguish absence, type mismatches, and present empty values", () => {
@@ -145,7 +177,7 @@ check("whole scalar operands retain type across nested Parts and iterator aliase
   const parts = {
     x: part('<main hson:part str:label=%{caption?} num:n=%{step} data:rows=%{rows} <hson-part at=leaf label:str=%{caption} value:num=^{n}/> <hson-part for:row:i=^{rows} at=leaf label:str="row ^{i}: ^{row.title} (%{step})" value:num=^{row.value}/>/>'),
     leaf: { ...part('<button hson:part str:title=%{label?} num:number=%{value} title=^{title} event:inspect "^{number}"/>'),
-      events: { inspect: '<hson:event on:click local:CHECK input:data=^{number} <> >' } },
+      events: { inspect: '<hson:event on:click local:CHECK value:num=^{number} <> >' } },
   };
   const map = hsonLiveMap.fromLibraries({ components: { parts } });
   map.addLibraries({ page: { document: map.parts.components.x.write({ caption: 'Title', step: -0, rows: [{ title: true, value: 1.25 }, { title: null, value: -2 }] }) } });
@@ -161,7 +193,7 @@ check("whole scalar operands retain type across nested Parts and iterator aliase
       ...parse_authored_document_library(parts[name === 'leaf' ? 'leaf' : 'x'].document),
       ...(name === 'leaf' ? { events: new Map([["inspect", parse_part_event(parts.leaf.events.inspect)]]) } : {}),
     }));
-  assert.deepEqual(composed.interactions.map(interaction => interaction.data), [-0, -0]);
+  assert.deepEqual(composed.interactions.map(interaction => interaction.data && hson_data_from_value(interaction.data).materialize()), [{ value: -0 }, { value: -0 }]);
   const ordinal = hsonLiveMap.fromLibraries({ components: { parts: { leaf: parts.leaf,
     x: part('<main hson:part data:rows=%{rows} <hson-part for::i=^{rows} at=leaf value:num=^{i}/>/>') } } });
   ordinal.addLibraries({ page: { document: ordinal.parts.components.x.write({ rows: [null, null] }) } });

@@ -552,7 +552,7 @@ await check("standalone action definitions follow owned roots and preserve exact
     assert.deepEqual(result.result.entries()?.map(([name]) => name), ["10", "2"]);
     assert.ok(Object.is(result.result.entries()?.[0]?.[1].scalar(), -0));
     assert.deepEqual(await tree.actions.trigger("copy"), { ok: true });
-    fail(await tree.actions.trigger("copy", null));
+    fail(await tree.actions.trigger("copy", Hson.data.from(null)));
     assert.equal(contexts.length, 2);
     assert.ok(contexts.every(context => context.tree === tree && !("event" in context) && !("subject" in context)));
     assert.deepEqual(tree.node, before);
@@ -561,8 +561,7 @@ await check("standalone action definitions follow owned roots and preserve exact
     const registry = tree.actions;
     tree.actions.define("required", async (_context, input) => input, { args: { required: true, schema: ANY_DATA } });
     assert.match(fail(await tree.actions.trigger("required")).message, /requires arguments/);
-    const presentNull = await tree.actions.trigger("required", null);
-    assert.ok(presentNull.ok && presentNull.result?.scalar() === null);
+    assert.match(fail(await tree.actions.trigger("required", Hson.data.from(null))).message, /Data object with named fields/);
     const empty = await tree.actions.trigger("required", {});
     assert.ok(empty.ok && empty.result?.equals(Hson.data.from({})));
     const failure = new Error("async action failed");
@@ -585,8 +584,8 @@ await check("authored click binds exact Data, native options and the receiving s
   const [subject, sibling] = subjects;
   const [element, otherElement] = elements;
   const calls: Array<{ context: LiveTreeActionContext; input: HsonDataValue | undefined }> = [];
-  const source = `<hson:event once stopProp on:click local:record input:data={<'10' -0 '2' null>} <> >`;
-  const repeat = `<hson:event on:click local:record input:data={null} <> >`;
+  const source = `<hson:event once stopProp on:click local:record offset:num="-0" note:data={null} <> >`;
+  const repeat = `<hson:event on:click local:record note:data={null} <> >`;
   function record(context: LiveTreeActionContext, input: HsonDataValue | undefined) {
     assert.equal(arguments.length, 2);
     calls.push({ context, input });
@@ -609,8 +608,8 @@ await check("authored click binds exact Data, native options and the receiving s
     element.dispatch("click", first);
     assert.equal(first.stopCalls, 1);
     assert.deepEqual(calls[0]?.context, { tree, subject, event: first });
-    assert.deepEqual(calls[0]?.input?.entries()?.map(([name, value]) => [name, value.scalar()]), [["10", -0], ["2", null]]);
-    assert.equal(calls[1]?.input?.scalar(), null);
+    assert.deepEqual(calls[0]?.input?.entries()?.map(([name, value]) => [name, value.scalar()]), [["offset", -0], ["note", null]]);
+    assert.equal(calls[1]?.input?.entries()?.[0]?.[1].scalar(), null);
     const second = new FlowEvent("click");
     element.dispatch("click", second);
     assert.equal(second.stopCalls, 0);
@@ -625,10 +624,10 @@ await check("authored click binds exact Data, native options and the receiving s
     otherElement.dispatch("click", new Event("click"));
     assert.equal(calls.length, 4);
     assert.equal(calls[3]?.context.subject, sibling);
-    assert.deepEqual(await sibling.actions.trigger("record", null), { ok: true });
+    assert.deepEqual(await sibling.actions.trigger("record", { note: null }), { ok: true });
     assert.equal(calls.length, 5);
     assert.deepEqual(calls[4]?.context, { tree });
-    assert.equal(calls[4]?.input?.scalar(), null);
+    assert.equal(calls[4]?.input?.entries()?.[0]?.[1].scalar(), null);
 
     const group = selection.filter(item => !item.isDisposed).listen.event(repeat);
     group.off(); group.off();
@@ -665,7 +664,7 @@ await check("attached and detached aliases resolve through current graph ownersh
 
 await check("invalid standalone declarations and missing actions fail before native attachment", () => {
   const { tree, element } = fixture();
-  const valid = "<hson:event on:click local:run input:data={<open true>} <> >";
+  const valid = "<hson:event on:click local:run open:data={true} <> >";
   const schema = Hson.schema`<type "data" content <open "boolean">>`;
   try {
     let calls = 0;
@@ -679,15 +678,15 @@ await check("invalid standalone declarations and missing actions fail before nat
       [valid.replace("<> ", ""), /requires an outcome object/],
       [valid.replace("<> ", "<value 1> "), /Nonempty authored event outcomes are unsupported/],
       [valid.replace("<> ", "<> <> "), /single authored event outcome object/],
-      [valid.replace(" input:data={<open true>}", ""), /Local action requires arguments/],
-      [valid.replace("input:data=", "input:data:name="), /Only input:data takes a value/],
+      [valid.replace(" open:data={true}", ""), /Local action requires arguments/],
+      [valid.replace("open:data=", "open:data:name="), /Invalid Event argument/],
       [valid.replace("local:run", "host:run"), /cannot dispatch host: actions/],
       [valid.replace("local:run", "local:run local:other"), /exactly one host: or local:/],
       [valid.replace("on:click", "on:pointerdown"), /only on:click/],
       [valid.replace("on:click", "on:click capture passive"), /Unsupported authored event header item/],
-      [valid.replace("{<open true>}", "^{value}"), /cannot resolve %\{\} or \^\{\} references/],
-      [valid.replace("{<open true>}", "%{value}"), /cannot resolve %\{\} or \^\{\} references/],
-      [valid.replace("{<open true>}", "{<open 1>}"), /at \["open"\]/],
+      [valid.replace("{true}", "^{value}"), /cannot resolve %\{\} or \^\{\} references/],
+      [valid.replace("{true}", "%{value}"), /cannot resolve %\{\} or \^\{\} references/],
+      [valid.replace("{true}", "{1}"), /at \["open"\]/],
     ] as const) assert.throws(() => tree.listen.event(source), error, source);
     const builder = tree.listen;
     assert.throws(() => builder.capture().event(valid), /cannot combine fluent listener options/);
@@ -702,21 +701,21 @@ await check("invalid standalone declarations and missing actions fail before nat
   } finally { tree.remove(); }
 });
 
-await check("standalone optional action input distinguishes omission from null before native attachment", () => {
+await check("standalone optional action arguments distinguish omission from a null field before native attachment", () => {
   const { tree, element } = fixture();
   const optional = "<hson:event on:click local:optional <> >";
-  const nullInput = optional.replace("<>", "input:data={null} <>");
-  const numbers = Hson.schema`<type "data" defs <Value "number"> content <ref "Value">>`;
-  const nulls = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
+  const nullInput = optional.replace("<>", "value:data={null} <>");
+  const numbers = Hson.schema`<type "data" content <value "number">>`;
+  const nulls = Hson.schema`<type "data" content <value "null">>`;
   const seen: unknown[] = [];
   const record: Parameters<typeof tree.actions.define>[1] =
-    (_ctx, input) => { seen.push(input?.scalar()); };
+    (_ctx, input) => { seen.push(input?.entries()?.[0]?.[1].scalar()); };
   try {
     tree.actions.define("optional", record, { args: { schema: numbers } });
     tree.actions.define("nullable", record, { args: { required: true, schema: nulls } });
     const required = optional.replace("local:optional", "local:nullable");
     assert.throws(() => tree.listen.event(required), /requires arguments/);
-    assert.throws(() => tree.listen.event(nullInput), /at \[\]/);
+    assert.throws(() => tree.listen.event(nullInput), /at \["value"\]/);
     assert.equal(element.registrations.length, 0);
     const absent = tree.listen.event(optional);
     const present = tree.listen.event(nullInput.replace("local:optional", "local:nullable"));
@@ -731,7 +730,7 @@ await check("standalone optional action input distinguishes omission from null b
 await check("a selection validates every action before adding any native listeners", () => {
   const first = fixture(), second = fixture();
   const selection = new TreeSelector([first.tree, second.tree]);
-  const source = "<hson:event on:click local:record input:data={null} <> >";
+  const source = "<hson:event on:click local:record note:data={null} <> >";
   let calls = 0;
   try {
     first.tree.actions.define("record", () => { calls++; });
@@ -754,7 +753,7 @@ await check("partial authored selection failure releases subject and action owne
   const { tree, selection, subjects, elements, listenerCounts } = selectionFixture();
   const [, second] = elements;
   const ownerCount = () => lifecycle_resource_counts_for_subject(retained_subject(tree), runtime_for_tree(tree)).listener;
-  const declaration = "<hson:event on:click stopProp local:run input:data={null} <> >";
+  const declaration = "<hson:event on:click stopProp local:run value:data={null} <> >";
   const failure = new Error("native attachment failed after adding the listener");
   const add = second.addEventListener;
   let calls = 0;
@@ -790,7 +789,7 @@ await check("authored off retries native removal through the subscription or eit
     let calls = 0, attempts = 0;
     try {
       tree.actions.define("run", () => { calls++; });
-      const sub = subject.listen.event("<hson:event on:click stopProp local:run input:data={null} <> >");
+      const sub = subject.listen.event("<hson:event on:click stopProp local:run value:data={null} <> >");
       element.removeEventListener = () => { attempts++; throw failure; };
       assert.throws(() => sub.off(), cause => cause === failure);
       assert.equal(ownerCount(), 1);
@@ -817,7 +816,7 @@ await check("authored off retries native removal through the subscription or eit
 await check("failed authored selection rollback retains cleanup and retries before adding wrappers", () => {
   const { tree, selection, elements: [first, second], listenerCounts } = selectionFixture();
   const ownerCount = () => lifecycle_resource_counts_for_subject(retained_subject(tree), runtime_for_tree(tree)).listener;
-  const declaration = "<hson:event on:click stopProp local:run input:data={null} <> >";
+  const declaration = "<hson:event on:click stopProp local:run value:data={null} <> >";
   const add = second.addEventListener;
   const remove = first.removeEventListener;
   const installFailure = new Error("native add failed after taking effect");
@@ -861,7 +860,7 @@ await check("failed authored selection rollback retains cleanup and retries befo
 await check("reentrant native add cannot publish stale authored once ownership", () => {
   const { tree, element } = fixture();
   const ownerCount = () => lifecycle_resource_counts_for_subject(retained_subject(tree), runtime_for_tree(tree)).listener;
-  const declaration = "<hson:event on:click once stopProp local:run input:data={null} <> >";
+  const declaration = "<hson:event on:click once stopProp local:run value:data={null} <> >";
   const add = element.addEventListener;
   let calls = 0;
   try {
@@ -899,7 +898,7 @@ await check("authored listeners use ordinary missing targets and report both fai
   const tree = create_staged_livetree_in_runtime({ $_tag: "button", $_content: [] }, runtime);
   const before = tree.node;
   const element = new TestElement(new TestDocument(new TestTarget()));
-  const source = (name: string) => `<hson:event on:click local:${name} input:data={null} <> >`;
+  const source = (name: string) => `<hson:event on:click local:${name} value:data={null} <> >`;
   const reports: unknown[] = [];
   const original = Object.getOwnPropertyDescriptor(globalThis, "reportError");
   Object.defineProperty(globalThis, "reportError", { configurable: true, value: (error: unknown) => reports.push(error) });

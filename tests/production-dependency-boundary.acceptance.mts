@@ -269,7 +269,7 @@ check("standalone LiveTree actions exclude canonical activation and hosted execu
     import { hsonLiveTree } from "hson-live/livetree";
     const tree = hsonLiveTree.fromHson("<button/>");
     tree.actions.define("run", (_context, input) => input);
-    globalThis.actionSub = tree.listen.event("<hson:event on:click local:run input:data={null} <> >");
+    globalThis.actionSub = tree.listen.event("<hson:event on:click local:run <> >");
   `);
   const prohibited = graph.inputs.filter(path => /\/api\/(?:interactions|locus|livehost)\//.test(path)
     || /\/internal\/interaction-storage\.js$/.test(path)

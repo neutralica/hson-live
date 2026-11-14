@@ -43,7 +43,7 @@
     });
     const local = (id, key, event, target, overrides = {}) => ({
       id, subject: Object.freeze({ library: "page", path: [0, 0, 1, 0, 0, 0, 0] }), listener: listener(event, target, overrides),
-      kind: "browser", key, args: Hson.data.from(-0),
+      kind: "browser", key, args: Hson.data.from({ offset: -0 }),
     });
     add_interaction(map, local("element", "element", "click", "element", {
       once: true, preventDefault: true, stopPropagation: true, stopImmediatePropagation: true,
@@ -66,7 +66,7 @@
       calls.element += 1;
       nativeClick = ctx.event;
       exactArgs = ctx.map === map && ctx.subject?.node.$_meta?.quid === treeButtonQuid
-        && treeButtonQuid !== QUID && Object.is(args?.materialize(), -0);
+        && treeButtonQuid !== QUID && Object.is(args?.entries()?.[0]?.[1].scalar(), -0);
     });
     for (const name of ["document", "window", "passive"]) map.actions.define(name, () => { calls[name] += 1; });
     const dispose = activate_interactions({ map, tree });
@@ -86,7 +86,7 @@
     runtimeMap.actions.define("standalone", (ctx, input) =>
       ctx.map === runtimeMap && ctx.event === undefined && ctx.subject === undefined ? input : undefined,
     { args: { required: true, schema: ANY_DATA } });
-    const direct = await runtimeMap.actions.trigger("standalone", -0);
+    const direct = await runtimeMap.actions.trigger("standalone", { offset: -0 });
     const runtimeCommit = runtimeMap.addLibraries({ runtimePage: { document: Hson.document`<main "browser"/>` },
       runtimeData: { json: true } });
     const runtimeReplica = hsonLiveMap.create();
@@ -103,7 +103,7 @@
       && !passive.defaultPrevented
       && afterImmediateStop === 1
       && nativeClick === click
-      && direct.ok && Object.is(direct.result?.scalar(), -0)
+      && direct.ok && Object.is(direct.result?.entries()?.[0]?.[1].scalar(), -0)
       && exactArgs;
     dispose();
     dispose();
@@ -146,8 +146,8 @@
       window.addEventListener("unhandledrejection", rejections);
       let bubbles = 0, callbacks = 0;
       container.addEventListener("click", () => { bubbles++; });
-      const source = (action, flags = "", input = "null") =>
-        `<hson:event on:click local:${action} ${flags} input:data={${input}} <> >`;
+      const source = (action, flags = "", args = "note:data={null}") =>
+        `<hson:event on:click local:${action} ${flags} ${args} <> >`;
       try {
         const registry = root.actions;
         check(subject.actions === registry && graft(button, { unsafe: false }).actions === registry,
@@ -157,7 +157,7 @@
           return input;
         });
         const pending = subject.listen.once().capture();
-        const first = subject.listen.event(source("panel", "once stopProp", "<'10' -0 '2' null>"));
+        const first = subject.listen.event(source("panel", "once stopProp", 'offset:num="-0" note:data={null}'));
         const repeated = subject.listen.event(source("panel"));
         pending.onClick(function ordinaryCallback(event) {
           if (event instanceof subjectWindow.MouseEvent && event.currentTarget === button) callbacks++;
@@ -169,8 +169,8 @@
         const entries = firstCall.input.entries();
         check(clicks.length === 3 && callbacks === 1 && bubbles === 1 && firstCall.ctx.tree === root
           && firstCall.ctx.subject === subject && firstCall.ctx.event === native && native instanceof subjectWindow.MouseEvent
-          && entries.map(([name]) => name).join() === "10,2" && Object.is(entries[0][1].scalar(), -0)
-          && entries[1][1].scalar() === null && clicks[1].input.scalar() === null,
+          && entries.map(([name]) => name).join() === "offset,note" && Object.is(entries[0][1].scalar(), -0)
+          && entries[1][1].scalar() === null && clicks[1].input.entries()[0][1].scalar() === null,
         "Authored click lost exact input, native realm, propagation, once, or builder isolation.");
         first.off();
         repeated.off(); repeated.off();
@@ -195,8 +195,8 @@
         check(clicks.length === 5 && requiredCalls === 0 && clicks.slice(3).every(call =>
           call.ctx.tree === root && call.ctx.subject === subject && call.input === undefined),
           "Reversible detach or terminal removal changed listener lifetime or omitted input.");
-        const direct = await registry.trigger("panel", -0);
-        check(direct.ok && Object.is(direct.result.scalar(), -0) && clicks[5].ctx.event === undefined
+        const direct = await registry.trigger("panel", { offset: -0 });
+        check(direct.ok && Object.is(direct.result.entries()[0][1].scalar(), -0) && clicks[5].ctx.event === undefined
           && clicks.length === 6 && clicks.every(call => call.arity === 2), "Action dispatch lost exact Data or changed the handler signature.");
 
         const other = root.find.must.byId("other-subject");
@@ -231,7 +231,7 @@
       const subject = source.find.must.byTag("button"), button = subject.dom.must.el();
       const click = () => button.dispatchEvent(new subjectWindow.MouseEvent("click", { bubbles: true, cancelable: true }));
       const sourceActions = source.actions, destinationActions = destination.actions;
-      const declaration = "<hson:event on:click local:panel input:data={null} <> >";
+      const declaration = "<hson:event on:click local:panel <> >";
       let sourceCalls = 0, destinationCalls = 0, unrelatedCalls = 0, callbacks = 0, bubbles = 0;
       const reports = [];
       const onError = event => {
@@ -306,7 +306,7 @@
       const subject = tree.find.must.byTag("button");
       const add = button.addEventListener, remove = button.removeEventListener;
       const click = () => button.dispatchEvent(new subjectWindow.MouseEvent("click", { bubbles: true }));
-      const declaration = "<hson:event on:click once stopProp local:run input:data={null} <> >";
+      const declaration = "<hson:event on:click once stopProp local:run <> >";
       const order = [];
       try {
         tree.actions.define("run", () => { order.push("action"); });
@@ -779,15 +779,15 @@
               ${Hson.document`<section ${oracleObserved} ${oracleTransplanted}/>`}
             />`,
             events: {
-              advance: "<hson:event once stopProp on:click host:deck.advance input:data={<step 3>} <> >",
-              panel: "<hson:event on:click local:deck.panel input:data={-0} <> >",
+              advance: "<hson:event once stopProp on:click host:deck.advance step:num=\"3\" offset:num=\"-0\" title:str=\"Next\" settings:data={<'10' -0 '2' null>} <> >",
+              panel: "<hson:event on:click local:deck.panel offset:num=\"-0\" <> >",
               reset: "<hson:event on:click host:deck.reset <> >",
             },
           },
           extra: {
             kind: "document",
             document: Hson.document`<button hson:part id="extra" event:panel "Extra"/>`,
-            events: { panel: "<hson:event on:click local:deck.panel input:data={null} <> >" },
+            events: { panel: "<hson:event on:click local:deck.panel offset:data={null} <> >" },
           },
         } },
       };
@@ -795,7 +795,10 @@
         authorizeProjection: ({ requested }) => requested,
         authorizeAction: ({ action }) => action === "deck.advance" || action === "deck.reset",
         actions: {
-          "deck.advance": (_context, payload) => { payloads.push(payload); },
+          "deck.advance": {
+            args: { required: true, schema: Hson.schema`<type "data" content <step "number" offset "number" title "string" settings "any">>` },
+            handler: (_context, payload) => { payloads.push(payload); },
+          },
           "deck.reset": { args: { schema: ANY_DATA }, handler: (_context, payload) => { payloads.push(payload); } },
         },
       });
@@ -850,12 +853,12 @@
         let bubbles = 0;
         page.querySelector("main").addEventListener("click", () => bubbles++);
         panel.click();
-        check(args.length === 1 && args[0][0] === panel && Object.is(args[0][1].scalar(), -0) && submissions === 0,
+        check(args.length === 1 && args[0][0] === panel && Object.is(args[0][1].entries()[0][1].scalar(), -0) && submissions === 0,
           "Browser-local behavior did not receive its subject and signed zero independently.");
         advance.click();
         advance.click();
         await until(() => payloads.length === 1 || failures.length > 0, "No authored Locus action was received.");
-        check(payloads.length === 1 && payloads[0].equals(Hson.data.from({ step: 3 })) && submissions === 1
+        check(payloads.length === 1 && payloads[0].equals(Hson.data.fromSource('{"step":3,"offset":-0,"title":"Next","settings":{"10":-0,"2":null}}')) && submissions === 1
           && bubbles === 2 && failures.length === 0, "Authored Locus input or native once/stopProp behavior was incorrect.");
         await locus.stage(stage => stage.doc.must("page").at([1, 0]).asElement().move(0, 1));
         await until(() => continuation.echo.sync.appliedRev === locus.rev, "Authored occurrence move did not reach the browser.");
@@ -873,7 +876,7 @@
         check(!advance.hasAttribute("event:advance") && ordinary.getAttribute("event:advance") === "event:advance"
           && ordinary.getAttribute("event:phase") === "ready", "Valued attributes did not survive native realization.");
         ordinary.click();
-        check(args.length === 3 && args[2][0] === inserted && args[2][1].scalar() === null && submissions === 1,
+        check(args.length === 3 && args[2][0] === inserted && args[2][1].entries()[0][1].scalar() === null && submissions === 1,
           "Hosted insertion did not activate the authored browser-local descriptor.");
         const observedButton = page.querySelector("#observed");
         observedButton.click();
