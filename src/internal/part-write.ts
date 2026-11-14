@@ -1,9 +1,12 @@
+import { is_part_scalar_value } from "./part-scalar.js";
+import { part_string_literal_sigils, record_part_literal_sigils } from "./part-scalar-source.js";
+import { serialize_primitive_hson } from "../api/transform/utils/primitive-utils/serialize-primitive.utils.js";
 import { analyze_part_definition } from "./part-definition.js";
 import type { PartEvents } from "./part-events.js";
 import { part_contract_error } from "./part-contract.js";
 import type { HsonAuthored } from "../api/transform/transform.types.js";
 import { qualify_authored_document_source, serialize_authored_document } from "../api/document/hson-authored.js";
-import { part_argument_name } from "./part-placeholder.js";
+import { is_part_scalar_qualifier, part_argument_name } from "./part-placeholder.js";
 import { is_public_attr_name } from "../core/public-attrs.js";
 import type { HsonNode } from "../core/types.js";
 import { admit_data_input, hson_data_value, hson_data_text_from_value } from "../api/data/hson-data.js";
@@ -60,6 +63,11 @@ export function write_part_invocation(library: string, member: string, input: re
       const value: unknown = field.value;
       if (kind === "data") {
         attrs[`${name}:data`] = hson_data_text_from_value(hson_data_value(admit_data_input(value)));
+      } else if (is_part_scalar_qualifier(kind)) {
+        if (!is_part_scalar_value(kind, value)) throw new TypeError(`Part.write ${kind} argument ${JSON.stringify(name)} requires ${kind === "str" ? "a string" : "a finite number"}.`);
+        const raw = `${name}:${kind}`;
+        attrs[raw] = typeof value === "number" ? serialize_primitive_hson(value) : value;
+        if (typeof value === "string") record_part_literal_sigils(attrs, raw, part_string_literal_sigils(value));
       } else {
         if (value !== null && typeof value !== "string" && typeof value !== "boolean"
           && !(typeof value === "number" && Number.isFinite(value))) {

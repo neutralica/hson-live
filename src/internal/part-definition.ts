@@ -1,9 +1,11 @@
+import { part_scalar_operand, part_scalar_source_possible } from "./part-scalar.js";
+import { copy_part_literal_sigils, part_literal_sigils } from "./part-scalar-source.js";
 import type { HsonNode, Primitive } from "../core/types.js";
 import { ROOT_TAG, STR_TAG } from "../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../core/node-guards.js";
 import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReferenceInput, type PartEvents } from "./part-events.js";
 import { copy_event_attachments, event_attachment_position } from "../core/authored-event-names.js";
-import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_argument_name, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_argument_name, is_part_scalar_argument, is_part_scalar_qualifier, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartScalarQualifier, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
 /** Part admission validates flags and receiving contracts even for definitions never invoked. */
 export function validate_part_definition_flags(root: HsonNode, events?: PartEvents): void {
@@ -49,6 +51,7 @@ export function transform_part_parameter_strings(root: HsonNode,
     structure?: (reference: PartReference, node: HsonNode) => void;
     iterator?: (declaration: PartIteratorDeclaration, node: HsonNode) => void;
     event?: (node: HsonNode, attribute: string) => void;
+    scalarArgument?: (value: unknown, node: HsonNode, kind: PartScalarQualifier, attribute: string) => void;
   }>): void {
   const element = root.$_tag === ROOT_TAG && root.$_content.length === 1 && is_Node(root.$_content[0]) ? root.$_content[0] : undefined;
   const declarations = Object.entries(element?.$_attrs ?? {}).filter(([name]) => element !== undefined && is_part_receiving_attribute(element.$_tag, name))
@@ -71,7 +74,7 @@ export function transform_part_parameter_strings(root: HsonNode,
     if (node.$_attrs !== undefined) {
       const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
       for (const [name, value] of Object.entries(node.$_attrs)) {
-        const directionIssue = part_direction_issue(node.$_tag, name);
+        const directionIssue = part_direction_issue(node.$_tag, name, event_attachment_position(node, name) !== undefined);
         if (directionIssue !== undefined) throw new TypeError(directionIssue);
         if (is_part_iterator_attribute(name)) continue;
         if (name === PART_DECLARATION) {
@@ -104,7 +107,10 @@ export function transform_part_parameter_strings(root: HsonNode,
         const issue = part_placeholder_placement_issue([], { name, value }, node.$_tag);
         if (issue !== undefined && (typeof value === "string" ? has_part_reference(value) : value !== null && typeof value === "object" && has_part_reference(JSON.stringify(value)))) throw new TypeError(issue);
         const argument = node.$_tag.toLowerCase() === "hson-part" ? part_argument_name(name) : undefined;
-        if (argument !== undefined && argument.kind !== "scalar") {
+        if (is_part_scalar_argument(argument)) {
+          traversal?.scalarArgument?.(value, node, argument.kind, name);
+          attrs[name] = value;
+        } else if (argument?.kind === "data" || argument?.kind === "doc") {
           if (typeof value === "string" && value.startsWith("#{")) throw new TypeError(PART_LOCAL_REFERENCE_MIGRATION);
           const reference = typeof value === "string" ? whole_part_reference(value) : undefined;
           if (reference !== undefined) forwarding?.(reference, node, argument.kind, name);
@@ -116,6 +122,7 @@ export function transform_part_parameter_strings(root: HsonNode,
       }
       if (!traversal?.inspect) {
         copy_event_attachments(node.$_attrs, attrs);
+        copy_part_literal_sigils(node.$_attrs, attrs);
         node.$_attrs = attrs;
       }
     }
@@ -144,7 +151,7 @@ export type PartReferenceUse = Readonly<{ reference: PartReference; node: HsonNo
   iterators: readonly HsonNode[];
   /** This event operand is only one possible value of its attachment. */
   conditional?: true;
-  context: "value" | "forwarding" | "structure" | "iteration" | "event"; supply?: "data" | "doc" }>;
+  context: "value" | "forwarding" | "structure" | "iteration" | "event"; supply?: PartReceivingDeclaration["kind"] }>;
 export type PartRequiredness = "required" | "optional" | "conditional";
 export type PartDefinitionAnalysis = Readonly<{
   parameters: ReadonlyMap<string, PartArgumentKind>;
@@ -191,15 +198,23 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
     }
     parameters.set(name, kind);
   };
-  const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: "data" | "doc", attribute?: string, eventInput?: PartEventReferenceInput, conditional?: true) => {
-    const binding = reference.namespace === "local" ? locals.get(reference.name) : undefined;
+  const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: PartReceivingDeclaration["kind"], attribute?: string, eventInput?: PartEventReferenceInput, conditional?: true) => {
+    const declared = reference.namespace === "incoming" ? parameters.get(reference.name) : undefined;
+    const incomingScalar = context !== "event" && is_part_scalar_qualifier(declared)
+      ? receiving.find(local => local.receiving.reference.name === reference.name) : undefined;
+    const binding = reference.namespace === "local" ? locals.get(reference.name) : incomingScalar;
     const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(attribute === undefined ? {} : { attribute }), ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }), ...(conditional === undefined ? {} : { conditional }) };
     uses.push(use);
     if (reference.namespace === "incoming") {
-      if (reference.path.length || context !== "value" && context !== "event") issue(node, context === "forwarding"
+      if (reference.path.length || context !== "value" && context !== "event" && !is_part_scalar_qualifier(supply)) issue(node, context === "forwarding"
         ? "Typed Part forwarding requires a declared local binding and ^{} reference."
         : "Structured Part inputs require a declared local binding and ^{} reference.", attribute, use, eventInput);
-      add(reference.name, "scalar", node, attribute, use, eventInput);
+      if (incomingScalar !== undefined) {
+        used.add(incomingScalar);
+        if (is_part_scalar_qualifier(supply) && !part_scalar_source_possible(supply, incomingScalar.kind)) {
+          issue(node, `Part :${supply} reference requires a ${supply} value; incoming ${reference.name} is declared ${incomingScalar.kind}.`, attribute, use);
+        }
+      } else add(reference.name, "scalar", node, attribute, use, eventInput);
     } else if (binding === undefined) {
       issue(node, `Missing Part local declaration ${JSON.stringify(reference.name)}.`, attribute, use, eventInput);
     } else {
@@ -208,7 +223,12 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         : context === "iteration" ? binding.kind !== "data"
         : context === "event" && binding.kind === "doc" ? true
         : reference.path.length && binding.kind !== "data") issue(node, "Part reference does not match its declared representation.", attribute, use, eventInput);
-      if (supply !== undefined && binding.kind !== supply) issue(node, "Typed Part forwarding requires the same declared representation.", attribute, use, eventInput);
+      if (is_part_scalar_qualifier(supply)) {
+        if (!part_scalar_source_possible(supply, binding.kind)) issue(node,
+          `Part :${supply} reference requires a ${supply} value; local ${binding.name} is declared ${binding.kind}.`, attribute, use);
+      } else if (supply !== undefined && binding.kind !== supply) {
+        issue(node, "Typed Part forwarding requires the same declared representation.", attribute, use, eventInput);
+      }
     }
     return use;
   };
@@ -227,6 +247,18 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   }, {
     inspect: true,
     enter(node) { scopes.set(node, locals); },
+    scalarArgument(value, node, kind, attribute) {
+      try {
+        const operand = part_scalar_operand(kind, value, part_literal_sigils(node.$_attrs, attribute));
+        if (operand.kind === "reference") observe(operand.reference, node, "forwarding", kind, attribute);
+        else if (operand.kind === "interpolation") for (const reference of operand.references) {
+          observe(reference, node, "value", undefined, attribute);
+        }
+      } catch (cause) {
+        if (report === undefined) throw cause;
+        issue(node, cause instanceof Error ? cause.message : String(cause), attribute);
+      }
+    },
     event(node, attribute) {
       // In source analysis, undefined is opaque and null is proven absence.
       let event;

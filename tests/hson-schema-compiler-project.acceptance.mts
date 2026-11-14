@@ -445,6 +445,7 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="absent" at="heading"/>` } });\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="absent"/>` }, components: { parts: { heading: { kind: "document", document: "<h1 hson:part/>" } } } });\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="components" at="heading" extra="x"/>` }, components: { parts: { heading: { kind: "document", document: Hson.document`<h1 hson:part "%{content}"/>` } } } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part at=components/typed count:num="1e309"/>` }, components: { parts: { typed: { kind: "document", document: "<p hson:part num:n=%{count} \\"^{n}\\"/>" } } } });\n'
     + 'const map = hsonLiveMap.fromLibraries({ components: { parts: { button: { kind: "document", document: "<button hson:part event:run/>", events: { run: ' + localEvent + ' } } } }, page: { document: \'<hson-part at="components/button"/>\' } });\n'
     + 'map.actions.define("run", () => {}, { input: { required: true } });\n'
     + 'const locus = hsonLiveMap.locus.create(' + definitions + ', { authorizeAction() { return true; }, actions: { cancel() {} } });\n'
@@ -463,6 +464,9 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     const start = source.indexOf(declaration);
     return [consumer, start, start + declaration.length];
   }));
+  const numeric = diagnostics.find(issue => issue.code === "HSON_PART_ARGUMENT_INVALID" && issue.message.includes("finite JSON number"));
+  assert.ok(numeric);
+  assert.equal(source.slice(numeric.start, numeric.end), '"1e309"');
   const before = snapshot(directory);
   succeed(generate(directory));
   assert.deepEqual(verify_schema_compiler_project(config).manifest.diagnostics, []);

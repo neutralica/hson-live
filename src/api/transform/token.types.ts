@@ -29,7 +29,7 @@ export type AuthoredQuadDeclaration = Readonly<{ value: string; start: Position;
  *******/
 export type RawAttr = {
   name: string;
-  value?: { text: string; quoted: boolean; direct?: boolean };
+  value?: { text: string; quoted: boolean; direct?: boolean; rawInterpolated?: true };
   start: Position;
   end: Position;
 };

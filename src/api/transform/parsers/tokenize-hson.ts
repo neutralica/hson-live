@@ -1,5 +1,6 @@
-import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference, type PartReference } from "../../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_LOCAL_REFERENCE_MIGRATION, is_part_scalar_argument, part_argument_name, type PartArgumentKind, part_declaration_issue, part_direction_issue, part_reference_checkpoint, scan_part_reference, whole_part_reference, part_structural_reference, type PartReference } from "../../../internal/part-placeholder.js";
 import { admit_hson_number } from "../../../core/hson-number.js";
+import { escape_cross_slot_part_references } from "../../../internal/part-scalar-source.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../../core/hson-content-string.js";
 import { HSON_MAX_NESTING, HSON_SYS_PREFIX, OBJ_TAG } from "../../../core/constants.js";
@@ -855,7 +856,11 @@ class HsonScanner {
       observeHeader(true);
       if (tag.toLowerCase() === "hson-part" || attrs.some(attr => attr.name === PART_DECLARATION)) {
         for (const attr of attrs) {
-          const issue = part_direction_issue(tag, attr.name);
+          const argument = tag.toLowerCase() === "hson-part" ? part_argument_name(attr.name) : undefined;
+          if (is_part_scalar_argument(argument) && attr.value === undefined) {
+            this.fail(`Part :${argument.kind} requires a quoted literal or a Part reference.`, attr.start, "HSON_PART_ARGUMENT_INVALID");
+          }
+          const issue = part_direction_issue(tag, attr.name, attr.value === undefined);
           if (issue !== undefined) this.fail(issue, attr.start, "HSON_PART_DIRECTION_INVALID");
         }
       }
@@ -1307,8 +1312,10 @@ class HsonScanner {
     const operand = classifyAttributeOperand(this.source, this.index, tag, name);
     if (!startsWithSlot && operand.kind === "quoted") {
       const valueStart = this.position();
-      const { text, end, direct } = this.scanAttributeString(name);
-      const attr = { name, value: { text, quoted: true, ...(direct === undefined ? {} : { direct }) }, start, end };
+      const kind = tag.toLowerCase() === "hson-part" ? part_argument_name(name)?.kind : undefined;
+      const { text, end, direct } = this.scanAttributeString(name, kind);
+      const attr: RawAttr = { name, value: { text, quoted: true,
+        ...(direct === undefined ? {} : { direct, ...(kind === "str" ? { rawInterpolated: true } : {}) }) }, start, end };
       this.collector?.recordAttribute(attr, {
         coverage: { start: start.index, end: end.index + 1 },
         name: { start: start.index, end: start.index + name.length },
@@ -1481,18 +1488,24 @@ class HsonScanner {
   }
 
   /** Attribute tokens retain their inner source text rather than outer quotes. */
-  private scanAttributeString(name: string): { text: string; end: Position; direct?: boolean } {
+  private scanAttributeString(name: string, kind?: PartArgumentKind): { text: string; end: Position; direct?: boolean } {
     const start = this.position();
     this.consumeExpected(`"`);
     const interpolations: number[] = [];
+    const stringSlots: number[] = [];
     let text = "";
     const observation = this.editorStringObservation();
 
     while (!this.atEnd() || this.slotHere() !== undefined) {
       if (this.slotHere() !== undefined) {
+        if (kind === "num") {
+          this.fail("Part :num does not accept quoted template interpolation.", this.position(), "HSON_PART_ARGUMENT_INVALID");
+        }
         const { slot, value } = this.quotedSlot();
         interpolations.push(slot);
-        text += JSON.stringify(value).slice(1, -1);
+        if (kind === "str") stringSlots.push(text.length);
+        const encoded = JSON.stringify(value).slice(1, -1);
+        text += kind === "str" ? encoded.replace(/[%^#]/g, ch => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`) : encoded;
         continue;
       }
       const ch = this.peek();
@@ -1503,7 +1516,7 @@ class HsonScanner {
         if (interpolations.length !== 0) {
           for (const slot of interpolations) this.editorSlot?.(slot, "quoted-string");
           // Keep unknown interpolated values out of literal-only source facts.
-          return { text: JSON.parse('"' + text + '"'), end, direct: true };
+          return { text: kind === "str" ? escape_cross_slot_part_references(text, stringSlots) : JSON.parse('"' + text + '"'), end, direct: true };
         }
         return { text, end };
       }

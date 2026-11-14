@@ -77,6 +77,65 @@ function inspect(text: string) {
 const valid = '<hson-part lib="components" at="heading" content="Hello" Title-Case="Title"/>';
 const missingLibrary = '<hson-part lib="absent" at="heading"/>';
 const missingMember = '<hson-part lib="components" at="absent"/>';
+check("typed Part scalar facts distinguish literals from references and report exact source ranges", () => {
+  const collection = (body: string) => '{x:{kind:"document",document:Hson.document`' + body + '`}}';
+  const receiver = '<p hson:part num:n=%{value} str:s=%{text} "^{s}:^{n}"/>';
+  const call = (fields: string) => '<hson-part at=components/x ' + fields + '/>';
+  const good = inspect(application(call(String.raw`value:num="-0" text:str="\u0025{literal}"`), collection(receiver)));
+  assert.deepEqual(good.codes, []);
+  const selected = good.facts.documents.find(document => document.connectors.length > 0)!;
+  assert.equal(selected.connectors[0]!.attributes.find(field => field.name === 'text:str')?.value, '%{literal}');
+  const definition = good.facts.documents.find(document => document.receivingDeclarations.length > 0)!;
+  assert.deepEqual([...definition.signature!.parameters], [['value', 'num'], ['text', 'str']]);
+  const count = definition.bindingSources?.references.find(use => use.reference.reference === 'n' && use.reference.namespace === 'local');
+  assert.equal(count?.declaration?.kind, 'num');
+  assert.equal(good.text.slice(count?.location.start, count?.location.end), '^{n}');
+  assert.equal(good.text.slice(count?.declaration?.location.start, count?.declaration?.location.end), 'n');
+  for (const [fields, range, wording] of [
+    ['value:num="1e309" text:str="ok"', '"1e309"', /finite JSON number/],
+    ['value:num="1^{n}" text:str="ok"', '"1^{n}"', /numeric interpolation/],
+    ['value:str="1" text:str="ok"', 'value:str', /requires num .*supplied str/],
+    ['value:bool="1" text:str="ok"', 'value:bool', /Unknown Part argument qualifier/],
+  ] as const) {
+    const bad = inspect(application(call(fields), collection(receiver)));
+    const i = bad.diagnostics.findIndex(diagnostic => diagnostic.code === 'HSON_PART_ARGUMENT_INVALID' && wording.test(diagnostic.message));
+    assert.ok(i >= 0, JSON.stringify(bad.diagnostics));
+    assert.equal(bad.slices[i], range);
+  }
+  const ordinary = inspect(application('<main/>', collection('<p hson:part hx:label=%{label} hx:num=%{label} "ok"/>')));
+  assert.deepEqual(ordinary.diagnostics, []);
+  assert.deepEqual([...ordinary.facts.documents.find(document => document.signature)?.signature?.parameters ?? []], [['label', 'scalar']]);
+  const malformed = inspect(application('<main/>', collection('<p hson:part num:n="5" "ok"/>')));
+  assert.ok(malformed.diagnostics.some((diagnostic, i) => /requires one whole incoming/.test(diagnostic.message) && malformed.slices[i] === '"5"'));
+  const body = '<p hson:part str:s=%{text} <hson-part at=leaf value:num="^{s}"/>/>';
+  const mismatch = inspect(application('<main/>', collection(body)));
+  const i = mismatch.diagnostics.findIndex(diagnostic => /local s is declared str/.test(diagnostic.message));
+  assert.ok(i >= 0);
+  assert.equal(mismatch.slices[i], '^{s}');
+  assert.equal(mismatch.text.slice(mismatch.diagnostics[i]!.related?.[0]?.start, mismatch.diagnostics[i]!.related?.[0]?.end), 's');
+
+  const wrongWrite = inspect(application('<main/>', collection(receiver)) + '\nloc.parts.components.x.write({ value: "5", text: 5 });');
+  const writes = static_part_reference_diagnostics(wrongWrite.facts, ts, wrongWrite.program.getTypeChecker());
+  assert.deepEqual(writes.map(issue => wrongWrite.text.slice(issue.start, issue.end)), ['"5"', '5']);
+  assert.deepEqual(static_schema_candidate_diagnostics(ts, wrongWrite.program), [], 'Part editor checks do not become Schema CLI policy');
+  const annotated = inspect(application('<main/>', collection(receiver))
+    + '\nconst n: {} = 5; const s: String = "hello";'
+    + '\ndeclare const invalid: boolean | string;'
+    + '\nloc.parts.components.x.write({ value: n, text: s });'
+    + '\nloc.parts.components.x.write({ value: invalid, text: s });');
+  const annotatedWrites = static_part_reference_diagnostics(annotated.facts, ts, annotated.program.getTypeChecker());
+  assert.deepEqual(annotatedWrites.map(issue => annotated.text.slice(issue.start, issue.end)), ['invalid']);
+});
+
+check("numeric Part template slots report the rejected substitution", () => {
+  const body = '<hson-part at=components/x text:str="prefix ${true}" value:num="${5}"/>';
+  const text = application(body);
+  const diagnostics = produce_document_diagnostics({ fileName: file('app.ts'), text, languageId: 'typescript' });
+  assert.deepEqual(diagnostics.map(issue => [issue.code, issue.precision, text.slice(issue.range.start, issue.range.end)]),
+    [['HSON_PART_ARGUMENT_INVALID', 'exact', '${5}']]);
+  assert.match(diagnostics[0]!.message, /does not accept quoted template interpolation/);
+});
+
 check("qualified selector diagnostics share runtime coordinates and original value locations", () => {
   assert.deepEqual(inspect(application(valid.replace('lib="components" at="heading"', 'at="components/heading"'))).codes, []);
   for (const selector of ['/heading', 'components/', 'components//heading', 'components/heading/extra', '/', '//']) {

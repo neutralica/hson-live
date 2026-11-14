@@ -1,3 +1,5 @@
+import { part_scalar_operand } from "../part-scalar.js";
+import { decode_part_string_sigils, part_literal_sigils } from "../part-scalar-source.js";
 import { parse_authored_event } from "../authored-events.js";
 import { parse_part_event, type PartEvent } from "../part-events.js";
 import { is_event_attachment_attribute } from "../../core/authored-event-names.js";
@@ -20,7 +22,7 @@ import { validate_part_collection } from "../../api/livemap/livemap.parts.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_locus_document_action_name } from "../../api/locus/locus.document-actions.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { PART_DECLARATION, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
+import { PART_DECLARATION, is_part_scalar_qualifier, type PartArgumentKind, type PartQualifier, part_declaration_issue, part_direction_issue, part_argument_name, PART_OPTIONAL, has_part_reference, part_optional_issue, is_part_iterator_attribute, part_iterator_declaration, is_part_receiving_attribute, part_receiving_declaration, part_placeholder_matches, whole_part_reference, part_placeholder_placement_issue, type PartIteratorDeclaration, type PartReference } from "../part-placeholder.js";
 import { library_source_admission, library_source_field_candidates, library_source_fields, is_object_literal_prototype_setter, literal_member } from "./library-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { annotated_data_schema_provenance, resolve_hson_schema_annotation } from "./schema-annotation.js";
@@ -44,8 +46,9 @@ type LocusEventSources = Readonly<{
   omissions: EventInputSource[];
   definitions: ts.Expression;
 }>;
-export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }>[] }>;
-export type PartLocalSource = Readonly<{ name: string; kind: "scalar" | "data" | "doc"; location: PartSourceLocation; incoming?: string;
+export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: PartQualifier }>[] }>;
+export type PartLocalSource = Readonly<{ name: string; kind: PartArgumentKind; location: PartSourceLocation; incoming?: string;
+  iteratorScalar?: "str" | "num";
   dataOrigin?: Readonly<{ incoming: string; path: SchemaDataPath }> }>;
 export type PartLexicalScopeSource = Readonly<{ location: PartSourceLocation; bindings: readonly PartLocalSource[] }>;
 export type PartDataSchemaEvidence = Readonly<{
@@ -78,6 +81,7 @@ export type PartConnectorSource = Readonly<{
   headerComplete: boolean;
   attributes: readonly Readonly<{ name: string; value?: string; nameLocation: PartSourceLocation; valueLocation?: PartSourceLocation;
     dynamicValue?: true;
+    scalarIssue?: string;
     /** Decoded authored coordinates, never an already resolved static value. */
     referencedValue?: Readonly<{ text: string; references: readonly PartReference[] }>;
     dataSchema?: CompiledHsonSchema;
@@ -108,7 +112,7 @@ export type PartDocumentSource = Readonly<{
   parameterCompleteness: "complete" | "unknown";
   /** Known input kinds and definite demands. An open vocabulary can still have a signature. */
   signature?: Pick<PartDefinitionAnalysis, "parameters" | "requiredness">;
-  receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }>[];
+  receivingDeclarations: readonly Readonly<{ name: string; incoming: string; kind: PartQualifier; location: PartSourceLocation }>[];
   iteratorDeclarations: readonly Readonly<{ location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
     /** Shared analyzer ancestry; undefined withholds execution proof. */
     enclosingIterators?: readonly PartSourceLocation[] }>[];
@@ -158,7 +162,7 @@ export type PartWriteSource = Readonly<{
   batch: PartSourceBatch;
   library: PartLibrarySource;
   definition: PartDocumentSource;
-  arguments: readonly Readonly<{ name: string; kind: "scalar" | "data" | "doc"; expression: ts.Expression;
+  arguments: readonly Readonly<{ name: string; kind: PartArgumentKind; expression: ts.Expression;
     nameLocation: PartSourceLocation; valueLocation: PartSourceLocation; dataEvidence?: PartDataSchemaEvidence }>[];
 }>;
 /** Program-snapshot facts, owned by the compiler. No registry, runtime identity or durable cache. */
@@ -464,8 +468,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     } else return undefined;
     const headers = new Map<number, PartConnectorSource>();
     const attributeRanges = new WeakMap<object, Parameters<HsonSourceLexicalCollector["recordAttribute"]>[1]>();
-    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: "data" | "doc" }[] = [];
-    const receivingDeclarations: { name: string; incoming: string; kind: "data" | "doc"; location: PartSourceLocation }[] = [];
+    const uses: { name: string; location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: PartQualifier }[] = [];
+    const receivingDeclarations: { name: string; incoming: string; kind: PartQualifier; location: PartSourceLocation }[] = [];
     const iteratorDeclarations: { location: PartSourceLocation; sourceLocation?: PartSourceLocation; declaration?: PartIteratorDeclaration; issue?: string;
       enclosingIterators?: readonly PartSourceLocation[] }[] = [];
     const lexicalScopes: PartLexicalScopeSource[] = [];
@@ -474,14 +478,14 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const roots: PartSourceLocation[] = [];
     const referenceIssues: PartReferenceIssueSource[] = [...adjacentEvents?.issues ?? []];
     const eventInputs = new Map<PartParameterSource["uses"][number], string | undefined>();
-    const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure" | "event", typed?: "data" | "doc"): void => {
+    const observeUses = (value: string, range: HsonSourceRange | undefined, context: "text" | "attribute" | "structure" | "event", typed?: PartQualifier, known?: readonly PartReference[]): void => {
       const mapped = range === undefined ? undefined : map(range);
       if (mapped === undefined) return;
-      const whole = typed ? whole_part_reference(value) : undefined;
-      if (typed && whole === undefined && !value.startsWith("%{") && !value.startsWith("^{") && !value.startsWith("#{")) return; // Serialized data is opaque.
+      const whole = known === undefined && typed ? whole_part_reference(value) : undefined;
+      if (known === undefined && typed && whole === undefined && !value.startsWith("%{") && !value.startsWith("^{") && !value.startsWith("#{")) return; // Serialized data is opaque.
       let invalid: string | undefined;
-      const parsed = part_placeholder_matches(value, message => { invalid = message; });
-      const matches = typed ? whole === undefined ? undefined : [whole] : parsed;
+      const parsed = known === undefined ? part_placeholder_matches(value, message => { invalid = message; }) : undefined;
+      const matches = known ?? (typed ? whole === undefined ? undefined : [whole] : parsed);
       if (matches === undefined) referenceIssues.push({ location: mapped,
         message: invalid === undefined || invalid === "Invalid Part placeholder." ? "Invalid Part property reference." : invalid });
       for (const match of matches ?? []) uses.push({ name: match.name, namespace: match.namespace, reference: match.reference, optional: match.optional, structured: match.path.length > 0,
@@ -505,7 +509,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           const connector = tag.toLowerCase() === "hson-part";
           if (complete && (connector || attrs.some(attr => attr.name === PART_DECLARATION))) {
             for (const attr of attrs) {
-              const issue = part_direction_issue(tag, attr.name);
+              const issue = part_direction_issue(tag, attr.name, attr.value === undefined);
               const range = attributeRanges.get(attr)?.name;
               const where = range === undefined ? undefined : map(range);
               if (issue !== undefined && where !== undefined) referenceIssues.push({ location: where, message: issue });
@@ -572,7 +576,15 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             }
             if (attr.value?.direct !== true && typeof value === "string" && part_placeholder_placement_issue(tags, { name: attr.name, value }, tag) === undefined) {
               const argument = connector ? part_argument_name(attr.name) : undefined;
-              observeUses(value, attributeRanges.get(attr)?.value, "attribute", argument?.kind === "scalar" ? undefined : argument?.kind);
+              const range = attributeRanges.get(attr)?.value;
+              const kind = argument?.kind;
+              if (is_part_scalar_qualifier(kind)) {
+                try {
+                  const operand = part_scalar_operand(kind, value, attr.value?.quoted ? decode_part_string_sigils(attr.value.text) : undefined);
+                  if (operand.kind === "reference") observeUses(value, range, "attribute", kind, [operand.reference]);
+                  else if (operand.kind === "interpolation") observeUses(value, range, "attribute", undefined, operand.references);
+                } catch { /* The connector's value evidence owns this diagnostic. */ }
+              } else observeUses(value, range, "attribute", kind === "scalar" ? undefined : kind);
             }
           }
           if (!connector) return;
@@ -589,14 +601,22 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const expression = directSlots.length === 1 && typescript.isTaggedTemplateExpression(producer) && typescript.isTemplateExpression(producer.template)
               ? producer.template.templateSpans[directSlots[0]!.substitution]?.expression : undefined;
             const schema = dataSchema(expression, true);
-            const dynamicValue: true | undefined = attr.value?.direct === true || typeof value === "string" && has_part_reference(value) ? true : undefined;
+            const kind = argument?.kind;
+            let scalarIssue: string | undefined, scalarLiteral: boolean | undefined;
+            if (is_part_scalar_qualifier(kind) && attr.value?.direct !== true) {
+              try {
+                scalarLiteral = part_scalar_operand(kind, value, attr.value?.quoted ? decode_part_string_sigils(attr.value.text) : undefined).kind === "literal";
+              } catch (cause) { scalarIssue = cause instanceof Error ? cause.message : String(cause); }
+            }
+            const dynamicValue: true | undefined = attr.value?.direct === true || typeof value === "string" && (scalarLiteral === undefined ? has_part_reference(value) : !scalarLiteral) ? true : undefined;
             const references = attr.value?.direct !== true && typeof value === "string" && (attr.name === "at" || attr.name === "lib")
               && has_part_reference(value) ? part_placeholder_matches(value) : undefined;
             return [{ name: attr.name, nameLocation: name, ...(valueRange === undefined ? {} : { valueLocation: valueRange }),
               ...(dynamicValue === undefined ? {} : { dynamicValue }),
+              ...(scalarIssue === undefined ? {} : { scalarIssue }),
               ...(references === undefined || typeof value !== "string" ? {} : { referencedValue: { text: value, references } }),
               ...(schema === undefined ? {} : { dataSchema: schema.schema, dataEvidence: schema }),
-              ...(attr.value?.direct === true || typeof value !== "string" || has_part_reference(value) && (argument === undefined || argument.kind === "scalar") ? {} : { value }) }];
+              ...(attr.value?.direct === true || typeof value !== "string" || dynamicValue === true && (argument === undefined || argument.kind === "scalar" || is_part_scalar_qualifier(kind)) ? {} : { value }) }];
           }) });
         },
       }, { slots, substitutions: slots.map(() => "") });
@@ -670,6 +690,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           for (const [use, diagnostic] of useIssues) {
             const observed = projected.byUse.get(use);
             diagnostic.declaration = observed?.declaration?.location;
+            if (observed !== undefined && is_part_scalar_qualifier(use.supply)) diagnostic.location = observed.location;
             if (use.context === "event" && observed !== undefined) {
               diagnostic.location = observed.location;
               diagnostic.attachment = observed.attachment;
@@ -703,7 +724,11 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           if (result === undefined) {
             result = [...scope.values()].map(binding => {
               const origin = dataOrigin(binding);
+              const iterator = analysis.iterators.get(binding.node);
+              const iteratorScalar = binding.kind === "scalar" && iterator !== undefined
+                ? iterator.kind === "array" ? "num" : "str" : undefined;
               return { name: binding.name, kind: binding.kind, location: declarationLocation(binding),
+                ...(iteratorScalar === undefined ? {} : { iteratorScalar }),
                 ...(origin === undefined ? {} : { dataOrigin: origin }),
                 ...(binding.receiving === undefined ? {} : { incoming: binding.receiving.reference.name }) };
             });
@@ -746,6 +771,12 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             return value;
           }, (_reference, node) => { count(node, 1); }, undefined, {
             inspect: true,
+            scalarArgument(value, node, kind, attribute) {
+              try {
+                const operand = part_scalar_operand(kind, value, part_literal_sigils(node.$_attrs, attribute));
+                if (operand.kind !== "literal") count(node, operand.kind === "reference" ? 1 : operand.references.length);
+              } catch { /* The analyzer already reported the invalid operand. */ }
+            },
             structure(_reference, node) { count(node, 1); },
             enter(node) {
               if (Object.hasOwn(node.$_attrs ?? {}, PART_OPTIONAL)) {

@@ -1,3 +1,5 @@
+import { interpolate_part_string, is_part_scalar_value, part_scalar_operand } from "../../internal/part-scalar.js";
+import { copy_part_literal_sigils, part_literal_sigils } from "../../internal/part-scalar-source.js";
 import { complete_document, completed_document_paths, single_document_element } from "../../internal/complete-document.js";
 import { part_coordinates } from "../../internal/part-coordinates.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
@@ -7,7 +9,7 @@ import { fail_part_event_reference, part_event_attachment, type PartEvent, type 
 import { analyze_part_definition, transform_part_parameter_strings, type PartDefinitionAnalysis } from "../../internal/part-definition.js";
 import { part_contract_error } from "../../internal/part-contract.js";
 import { qualify_hson_document_root } from "../document/hson-document.js";
-import { PART_DECLARATION, PART_OPTIONAL, is_part_iterator_attribute, part_reference_text, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, part_argument_name, part_direction_issue, part_placeholder_matches, whole_part_reference, type PartReference } from "../../internal/part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, is_part_iterator_attribute, part_reference_text, part_structural_reference, type PartArgumentKind, is_part_argument_attribute, is_part_scalar_qualifier, part_argument_name, part_argument_issue, type PartScalarQualifier, part_placeholder_matches, whole_part_reference, type PartReference } from "../../internal/part-placeholder.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { decode_public_attrs, is_public_attr_name } from "../../core/public-attrs.js";
@@ -190,7 +192,7 @@ export type DocumentCompositionStyle = Readonly<{
   subjects: readonly Readonly<{ name: string; path: readonly number[] }>[];
 }>;
 type Landmark = Readonly<{ node: HsonNode; path: readonly number[] }>;
-type PartBinding = (Readonly<{ kind: "scalar"; value: Primitive | undefined }>
+type PartBinding = (Readonly<{ kind: "scalar" | PartScalarQualifier; value: Primitive | undefined }>
   | Readonly<{ kind: "data"; value: OrderedProjectedValue | undefined }>
   | Readonly<{ kind: "doc"; value: string; document: DocumentCompositionSource }>
   | Readonly<{ kind: "doc"; value: undefined; document?: never }>)
@@ -208,6 +210,7 @@ type PartEnvironment = {
   readonly signature: PartDefinitionAnalysis;
   readonly events?: PartEvents;
   omitted?: (node: HsonNode) => boolean;
+  optionalConnectors?: ReadonlySet<HsonNode>;
   authoredArguments?: ReadonlyMap<HsonNode, readonly string[]>;
   structures?: ReadonlyMap<HsonNode, Extract<PartBinding, { kind: "doc" }>>;
 };
@@ -302,7 +305,7 @@ export function expand_document_composition(
     const parameters = analysis(definition).parameters;
     for (const raw of supplied) {
       const argument = part_argument_name(raw);
-      if (argument === undefined) throw new TypeError(part_direction_issue("hson-part", raw) ?? `Invalid hson-part parameter ${JSON.stringify(raw)}.`);
+      if (argument === undefined) throw new TypeError(part_argument_issue(raw));
       const { name, kind } = argument;
       if (!parameters.has(name)) throw part_contract_error(selected, parameters, "unexpected", name, kind);
       if (parameters.get(name) !== kind) throw part_contract_error(selected, parameters, "representation", name, kind);
@@ -316,10 +319,12 @@ export function expand_document_composition(
     for (const [raw, value] of Object.entries(attrs)) {
       if (!is_part_argument_attribute(raw)) continue;
       const argument = part_argument_name(raw);
-      if (argument === undefined) throw new TypeError(part_direction_issue("hson-part", raw) ?? `Invalid hson-part parameter ${JSON.stringify(raw)}.`);
+      if (argument === undefined) throw new TypeError(part_argument_issue(raw));
       if (supplied.has(argument.name)) throw new TypeError(`Conflicting Part parameter ${JSON.stringify(argument.name)}.`);
       supplied.set(argument.name, argument.kind);
-      if (argument.kind !== "scalar") {
+      if (is_part_scalar_qualifier(argument.kind)) {
+        part_scalar_operand(argument.kind, value, part_literal_sigils(attrs, raw));
+      } else if (argument.kind !== "scalar") {
         if (typeof value !== "string") throw new TypeError("Typed Part parameters require serialized strings.");
         if (whole_part_reference(value) === undefined) {
           try { if (argument.kind === "data") admit_hson_data_source(value); else documentInput(node, raw, value); }
@@ -646,9 +651,37 @@ export function expand_document_composition(
       for (const raw of parameterNames) {
         const argument = part_argument_name(raw);
         const value: unknown = Object.getOwnPropertyDescriptor(attrs, raw)?.value;
-        if (argument === undefined) throw new TypeError(part_direction_issue("hson-part", raw) ?? `Invalid hson-part parameter ${JSON.stringify(raw)} in ${context}.`);
+        if (argument === undefined) throw new TypeError(part_argument_issue(raw));
         if (parameters.has(argument.name)) throw new TypeError(`Conflicting Part parameter ${JSON.stringify(argument.name)} in ${context}.`);
-        if (argument.kind === "scalar") {
+        if (is_part_scalar_qualifier(argument.kind)) {
+          const kind = argument.kind;
+          if (typeof value === "string") charge(value);
+          let resolved: OrderedProjectedValue | undefined;
+          const operand = part_scalar_operand(kind, value, part_literal_sigils(attrs, raw));
+          if (operand.kind === "literal") resolved = operand.value;
+          else {
+            const local = part_environment_at(frame.occurrence.parameters, item);
+            const read = (reference: PartReference) => resolve_part_reference(reference, local, operand.kind === "reference" && local?.optionalConnectors?.has(item));
+            if (operand.kind === "reference") {
+              const binding = read(operand.reference);
+              if (binding.kind === "doc") throw new TypeError(`Part argument ${JSON.stringify(raw)} requires a ${kind} value in ${context}.`);
+              resolved = binding.value;
+            } else {
+              resolved = interpolate_part_string(operand.text, operand.references, reference => {
+                const binding = read(reference);
+                if (binding.value === undefined) return undefined;
+                if (binding.kind === "doc" || !parameter_scalar(binding.value)) throw new TypeError(`Part interpolation requires a primitive value for ${JSON.stringify(raw)} in ${context}.`);
+                return binding.value;
+              }, length => {
+                if (length > limits.maxCharacters - characters) throw new Error("Document composition character limit exceeded.");
+              });
+            }
+            if (resolved === undefined) continue;
+          }
+          if (!is_part_scalar_value(kind, resolved)) throw new TypeError(`Part argument ${JSON.stringify(raw)} requires a ${kind} value in ${context}.`);
+          if (operand.kind !== "literal" && typeof resolved === "string") charge(resolved);
+          parameters.set(argument.name, { kind, value: resolved });
+        } else if (argument.kind === "scalar") {
           if (!parameter_scalar(value)) throw new TypeError(`Invalid hson-part parameter ${JSON.stringify(raw)}: expected a scalar.`);
           parameters.set(argument.name, { kind: "scalar", value });
         } else {
@@ -823,13 +856,19 @@ function resolve_part_reference(reference: PartReference, environment: PartEnvir
   const binding = (reference.namespace === "incoming" ? environment?.bindings : environment?.locals)?.get(reference.name);
   const context = environment?.context ?? "top-level invocation (no enclosing Part)";
   if (binding === undefined) {
-    if (reference.namespace === "incoming" && reference.optional && environment?.signature.parameters.get(reference.name) === "scalar") return { kind: "scalar", value: undefined };
+    if (reference.namespace === "incoming" && environment !== undefined) {
+      const kind = environment.signature.parameters.get(reference.name);
+      if (kind === "scalar" && reference.optional) return { kind, value: undefined };
+      if (is_part_scalar_qualifier(kind) && environment.signature.requiredness.get(reference.name) === "optional") {
+        return { kind, value: undefined, optionalAbsence: true };
+      }
+    }
     throw new TypeError(`Missing Part parameter ${JSON.stringify(reference.name)} for ${part_reference_text(reference)} in ${context}.`);
   }
   if (binding.missingInput !== undefined && !reference.optional && environment !== undefined) {
     throw part_contract_error(environment.selected, environment.signature.parameters, "missing", binding.missingInput, binding.kind);
   }
-  if (reference.namespace === "incoming" && (binding.kind !== "scalar" || reference.path.length)) throw new TypeError("Structured Part inputs require declared local ^{} references.");
+  if (reference.namespace === "incoming" && (binding.kind === "data" || binding.kind === "doc" || reference.path.length)) throw new TypeError("Structured Part inputs require declared local ^{} references.");
   if (reference.path.length && binding.kind !== "data") throw new TypeError(`Part reference ${part_reference_text(reference)} requires a data binding in ${context}.`);
   let value = binding.value;
   for (const key of reference.path) {
@@ -936,7 +975,10 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     if (node.$_meta !== undefined) header.$_meta = node.$_meta;
     budget.text(JSON.stringify(header).length);
     const copy = clone_hson_graph_without_quids(header);
-    if (node.$_attrs !== undefined && copy.$_attrs !== undefined) copy_event_attachments(node.$_attrs, copy.$_attrs);
+    if (node.$_attrs !== undefined && copy.$_attrs !== undefined) {
+      copy_event_attachments(node.$_attrs, copy.$_attrs);
+      copy_part_literal_sigils(node.$_attrs, copy.$_attrs);
+    }
     output.push(copy); nodeLocals.set(copy, locals);
     const declared = authoredNames.get(node);
     if (declared !== undefined) localNames.set(copy, declared);
@@ -973,6 +1015,11 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     for (const reference of matches(value)) observe(reference, node);
     return value;
   }, observe, undefined, {
+    scalarArgument(value, node, kind, attribute) {
+      const operand = part_scalar_operand(kind, value, part_literal_sigils(node.$_attrs, attribute));
+      if (operand.kind === "reference") observe(operand.reference, node);
+      else if (operand.kind === "interpolation") for (const reference of operand.references) observe(reference, node);
+    },
     event(node, attribute) {
       const event = part_event_attachment(node, attribute, source.events);
       if (event.input?.kind === "reference"
@@ -1004,6 +1051,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     return false;
   };
   environment.omitted = omitted;
+  environment.optionalConnectors = optional;
   environment.structures = structures;
   // The normal composer checks included connectors against the selected Part.
   // Hidden or optional inputs must also prove their names before being discarded.
@@ -1033,7 +1081,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
       const binding = resolve_part_reference(reference, part_environment_at(environment, node), whole && optional.has(owner));
       if (binding.value === undefined) return undefined;
       if (!parameter_scalar(binding.value)) throw new TypeError(`Part reference ${part_reference_text(reference)} requires a primitive output in ${environment.context}.`);
-      const output = binding.kind === "data" || reference.namespace === "local" && node.$_tag.toLowerCase() !== "hson-part"
+      const output = binding.kind === "data" || (reference.namespace === "local" || is_part_scalar_qualifier(binding.kind)) && node.$_tag.toLowerCase() !== "hson-part"
         ? String(binding.value) : binding.value;
       if (typeof output === "string") bounded(output.length);
       return output;

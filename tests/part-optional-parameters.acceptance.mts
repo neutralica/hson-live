@@ -2,6 +2,8 @@ import { complete_html } from "./helpers/document-library.mts";
 import assert from "node:assert/strict";
 import { isMainThread, parentPort } from "node:worker_threads";
 import { Hson, hsonLiveMap } from "../src/index.js";
+import { document_composition_options, expand_document_composition } from "../src/api/livemap/livemap.document.composition.js";
+import { parse_part_event } from "../src/internal/part-events.js";
 import { analyze_part_definition } from "../src/internal/part-definition.js";
 import { parse_authored_document_library } from "../src/api/livemap/livemap.document.quad.js";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.js";
@@ -38,6 +40,148 @@ check("write completeness uses incoming names and the immutable admitted definit
   assert.throws(() => required.parts.components.x.write(), /missing scalar input next/);
   assert.doesNotThrow(() => required.parts.components.x.write({ next: 'required' }));
   assert.throws(() => fixture('<p hson:part "%{x?}" <b "%{x}"/>/>').parts.components.x.write(), /missing scalar input x/);
+});
+
+check("explicit scalar receivers distinguish absence, type mismatches, and present empty values", () => {
+  const map = fixture('<p hson:part str:label=%{label?} num:value=%{value?} title=^{label} <b "^{value}"/>/>');
+  const write = map.parts.components.x.write;
+  map.addLibraries({ absent: { document: write() }, zero: { document: write({ label: '', value: 0 }) } });
+  assert.equal(map.doc.must('absent').render(), complete_html('<p><b></b></p>'));
+  assert.equal(map.doc.must('zero').document.attrs.get({ kind: 'path', path: [0,0,1,0,0] }, 'title'), '');
+  assert.match(map.doc.must('zero').render(), /<b>0<\/b>/);
+  for (const value of ['5', true, null, undefined, Infinity, -Infinity, NaN, { n: 1 }, new Number(5)]) {
+    assert.throws(() => Reflect.apply(write, undefined, [{ value }]), /num argument "value" requires a finite number/);
+  }
+  for (const label of [5, false, null, undefined, [], new String('text')]) {
+    assert.throws(() => Reflect.apply(write, undefined, [{ label }]), /str argument "label" requires a string/);
+  }
+  assert.throws(() => map.addLibraries({ invalid: { document: '<hson-part at=components/x value:num="NaN"/>' } }), /finite JSON number/);
+  assert.throws(() => map.addLibraries({ invalid: { document: '<hson-part at=components/x value:str="5"/>' } }), /does not match the receiving interface/);
+});
+
+check("typed scalar literals preserve exact strings and finite JSON numbers across authored transport", () => {
+  const map = fixture('<p hson:part str:label=%{label} num:n=%{value} title=^{label} "^{n}"/>');
+  for (const [lexeme, display] of [['-0', '0'], ['1.25', '1.25'], ['-4.5E+2', '-450'], ['2e-3', '0.002']]) {
+    map.addLibraries({ [lexeme!]: { document: `<hson-part at=components/x label:str="A &amp; B" value:num="${lexeme}"/>` } });
+    assert.equal(map.doc.must(lexeme!).document.attrs.get({ kind: 'path', path: [0,0,1,0,0] }, 'title'), 'A &amp; B');
+    assert.match(map.doc.must(lexeme!).render(), new RegExp('>' + display + '</p>'));
+  }
+  const write = map.parts.components.x.write;
+  assert.match(write({ label: 'a', value: -0 }), /value:num="-0"/);
+  for (const [i, label] of ['label:str', ' "%{literal}"\n^{literal} #{literal}\u2028 ', '\\u0025{raw}'].entries()) {
+    const invocation = write({ label, value: 1 });
+    map.addLibraries({ ['written' + i]: { document: Hson.document`<div ${invocation}/>` } });
+    assert.equal(map.doc.must('written' + i).document.attrs.get({ kind: 'path', path: [0,0,1,0,0,0,0] }, 'title'), label);
+  }
+  const raw = '%{literal}';
+  const tagged = Hson.document`<hson-part at=components/x label:str="before ${raw} ${true}" value:num="1"/>`;
+  map.addLibraries({ tagged: { document: tagged } });
+  assert.match(map.doc.must('tagged').render(), /title="before %\{literal\} true"/);
+  for (const number of ['', '+5', '01', '.5', '2.', '1e', '1e309', '0x12', ' 5', '5\n']) {
+    assert.throws(() => map.addLibraries({ invalid: { document: '<hson-part at=components/x label:str="x" value:num=' + JSON.stringify(number) + '/>' } }), /finite JSON number/);
+  }
+  assert.throws(() => Hson.document`<hson-part at=components/x value:num="${5}"/>`, /does not accept quoted template interpolation/);
+  assert.throws(() => Hson.document`<hson-part at=components/x value:num=5/>`, /Literal attribute values require double quotes/);
+  assert.throws(() => Hson.document`<p value=5/>`, /Literal attribute values require double quotes/);
+  assert.throws(() => Hson.document`<hson-part at=components/x label:str/>`, /requires a quoted literal/);
+  assert.throws(() => map.addLibraries({ invalid: { document: '<hson-part at=components/x label:bool="true"/>' } }), /Unknown Part argument qualifier "bool"/);
+  assert.throws(() => fixture('<p hson:part str:label="literal" "ok"/>'), /requires one whole incoming argument reference/);
+  const ordinary = fixture('<p hson:part hx:label=%{language} xml:lang=%{language} hx:num=%{language} "ok"/>');
+  ordinary.addLibraries({ page: { document: ordinary.parts.components.x.write({ language: 'en' }) }, other: { document: '<p str:name="plain" name:num="5"/>' } });
+  assert.match(ordinary.doc.must('page').render(), /hx:label="en" hx:num="en" xml:lang="en"/);
+  assert.match(ordinary.doc.must('other').render(), /name:num="5" str:name="plain"/);
+});
+
+check("Part Event flags retain precedence over qualifier spellings", () => {
+  for (const name of ['str', 'num', 'data', 'doc']) {
+    for (const document of [
+      Hson.document`<button hson:part />`,
+    ]) {}
+    for (const document of ['<button hson:part event:' + name + '/>',
+      '<main hson:part <button event:' + name + '/>/>']) {
+      const event = '<hson:event on:click local:CHECK <> >';
+      const map = hsonLiveMap.fromLibraries({ components: { parts: { x: { ...part(document), events: { [name]: event } } } } });
+      const invocation = map.parts.components.x.write();
+      map.addLibraries({ page: { document: invocation } });
+      assert.match(map.doc.must('page').render(), /<button><\/button>/);
+      const result = expand_document_composition('page', () => parse_authored_document_library(invocation),
+        document_composition_options(undefined), () => ({
+          ...parse_authored_document_library(document),
+          events: new Map([[name, parse_part_event(event)]]),
+        }));
+      assert.deepEqual(result.interactions.map(({ key }) => key), ['CHECK']);
+    }
+  }
+});
+
+check("str template slots cannot manufacture Part references across source boundaries", () => {
+  const map = fixture('<p hson:part str:label=%{label} title=^{label}/>');
+  const cases = [
+    [Hson.document`<hson-part at=components/x label:str="Rate: %${'{tax}'}"/>`, 'Rate: %{tax}'],
+    [Hson.document`<hson-part at=components/x label:str="${'^'}{tax}"/>`, '^{tax}'],
+    [Hson.document`<hson-part at=components/x label:str="#${''}{tax}"/>`, '#{tax}'],
+    [Hson.document`<hson-part at=components/x label:str="^{${'tax'}}"/>`, '^{tax}'],
+    [Hson.document`<hson-part at=components/x label:str="%{tax${'}'}"/>`, '%{tax}'],
+    [Hson.document`<hson-part at=components/x label:str="%{tax${''}}"/>`, '%{tax}'],
+    [Hson.document`<hson-part at=components/x label:str="^${'{'}tax} \u0025{escaped}"/>`, '^{tax} %{escaped}'],
+  ] as const;
+  for (const [index, [document, expected]] of cases.entries()) {
+    const name = 'boundary' + index;
+    map.addLibraries({ [name]: { document } });
+    assert.equal(map.doc.must(name).document.attrs.get({ kind: 'path', path: [0,0,1,0,0] }, 'title'), expected);
+  }
+  const document = Hson.document`<main hson:part str:s=%{incoming}
+    <hson-part at=leaf label:str="${'start'} %{incoming} ^{s} %${'{literal}'}"/>
+    <hson-part at=leaf label:str="${''}^{s}${''}"/>
+  />`;
+  const nested = hsonLiveMap.fromLibraries({ components: { parts: {
+    x: part(document), leaf: part('<p hson:part str:label=%{label} "^{label}"/>'),
+  } } });
+  nested.addLibraries({ page: { document: nested.parts.components.x.write({ incoming: 'kept' }) } });
+  assert.equal(nested.doc.must('page').render(), complete_html('<main><p>start kept kept %{literal}</p><p>kept</p></main>'));
+});
+
+check("whole scalar operands retain type across nested Parts and iterator aliases", () => {
+  const parts = {
+    x: part('<main hson:part str:label=%{caption?} num:n=%{step} data:rows=%{rows} <hson-part at=leaf label:str=%{caption} value:num=^{n}/> <hson-part for:row:i=^{rows} at=leaf label:str="row ^{i}: ^{row.title} (%{step})" value:num=^{row.value}/>/>'),
+    leaf: { ...part('<button hson:part str:title=%{label?} num:number=%{value} title=^{title} event:inspect "^{number}"/>'),
+      events: { inspect: '<hson:event on:click local:CHECK input:data=^{number} <> >' } },
+  };
+  const map = hsonLiveMap.fromLibraries({ components: { parts } });
+  map.addLibraries({ page: { document: map.parts.components.x.write({ caption: 'Title', step: -0, rows: [{ title: true, value: 1.25 }, { title: null, value: -2 }] }) } });
+  assert.equal(map.doc.must('page').render(), complete_html('<main><button title="Title">0</button><button title="row 0: true (0)">1.25</button><button title="row 1: null (0)">-2</button></main>'));
+  for (const value of ['5', true, null, {}, [5]]) {
+    const invalid = map.parts.components.x.write({ step: 5, rows: [{ title: 'x', value }] });
+    assert.throws(() => map.addLibraries({ invalid: { document: invalid } }), /"value:num" requires a num value/);
+  }
+  map.addLibraries({ absent: { document: map.parts.components.x.write({ step: 5, rows: [] }) } });
+  assert.equal(map.doc.must('absent').render(), complete_html('<main><button>5</button></main>'));
+  const composed = expand_document_composition('page', () => parse_authored_document_library(map.parts.components.x.write({ step: -0, rows: [{ title: 'x', value: -0 }] })),
+    document_composition_options(undefined), (_collection, name) => ({
+      ...parse_authored_document_library(parts[name === 'leaf' ? 'leaf' : 'x'].document),
+      ...(name === 'leaf' ? { events: new Map([["inspect", parse_part_event(parts.leaf.events.inspect)]]) } : {}),
+    }));
+  assert.deepEqual(composed.interactions.map(interaction => interaction.data), [-0, -0]);
+  const ordinal = hsonLiveMap.fromLibraries({ components: { parts: { leaf: parts.leaf,
+    x: part('<main hson:part data:rows=%{rows} <hson-part for::i=^{rows} at=leaf value:num=^{i}/>/>') } } });
+  ordinal.addLibraries({ page: { document: ordinal.parts.components.x.write({ rows: [null, null] }) } });
+  assert.match(ordinal.doc.must('page').render(), /<button>0<\/button><button>1<\/button>/);
+});
+
+check("whole str references do not coerce, and num rejects partial interpolation", () => {
+  const example = (args: string) => hsonLiveMap.fromLibraries({ components: { parts: {
+    x: part(`<main hson:part data:d=%{payload} <hson-part at=leaf ${args}/> />`),
+    leaf: part('<p hson:part str:text=%{text} num:n=%{n} "^{text}:^{n}"/>'),
+  } } });
+  const map = example('text:str="^{d.value}" n:num=^{d.zero}');
+  for (const value of [5, true, null, { n: 5 }]) {
+    assert.throws(() => map.addLibraries({ page: { document: map.parts.components.x.write({ payload: { value, zero: 0 } }) } }), /"text:str" requires a str value/);
+  }
+  map.addLibraries({ page: { document: map.parts.components.x.write({ payload: { value: '5', zero: 0 } }) } });
+  assert.equal(map.doc.must('page').render(), complete_html('<main><p>5:0</p></main>'));
+  for (const number of ['"0^{d.value}"', '"^{d.value}0"', '"^{d.value}^{d.value}"']) {
+    assert.throws(() => example(`text:str="x" n:num=${number}`).parts.components.x.write({ payload: { value: 5 } }), /numeric interpolation is unsupported/);
+  }
 });
 
 check("optional scalar attributes and complete content positions omit without coercion", () => {

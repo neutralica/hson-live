@@ -2,8 +2,8 @@
 
 import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
 import type { RawAttr } from "../../token.types.js";
-import { parse_style_string } from "../attrs-utils/parse-style.js";
 import { unescape_hson_string } from "./unescape-hson.js";
+import { parse_style_string } from "../attrs-utils/parse-style.js";
 import { Primitive } from "../../../../core/types.js";
 import { PART_DECLARATION, part_declaration_issue } from "../../../../internal/part-placeholder.js";
 
@@ -96,7 +96,7 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
     }
 
     // decode quoted Hson once
-    const val: string = ra.value.direct ? ra.value.text : decode_hson_value(ra.value.text, ra.value.quoted);
+    const val: string = ra.value.direct && !ra.value.rawInterpolated ? ra.value.text : decode_hson_value(ra.value.text, ra.value.quoted);
 
     // Maintain disabled="" / disabled="disabled" → key flag behavior
     if (val === k) {

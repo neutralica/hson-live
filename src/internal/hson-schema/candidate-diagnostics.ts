@@ -12,7 +12,7 @@ import { static_source_candidates } from "./source-candidates.js";
 import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import { is_part_argument_attribute, part_argument_name, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
+import { is_part_argument_attribute, is_part_scalar_qualifier, part_argument_name, part_argument_issue, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
@@ -24,7 +24,7 @@ export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{
 type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
 
 /** Editor-only projection of compiler-owned facts. Never included in Schema build/Watch policy. */
-export function static_part_reference_diagnostics(facts: PartSourceFacts): readonly StaticSchemaDiagnostic[] {
+export function static_part_reference_diagnostics(facts: PartSourceFacts, typescript?: typeof ts, checker?: ts.TypeChecker): readonly StaticSchemaDiagnostic[] {
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
   const memberInvocations = new Set<object>();
@@ -44,6 +44,21 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
   for (const issue of facts.missingEventInputs) report(issue.location, "HSON_EVENT_INPUT_REQUIRED",
     `Action ${JSON.stringify(issue.key)} requires input. Supply input:data in this event declaration.`,
     issue.contract, issue.attachment, "This action declares required input.");
+  if (typescript !== undefined && checker !== undefined) for (const write of facts.writes) {
+    for (const argument of write.arguments) {
+      if (!is_part_scalar_qualifier(argument.kind)) continue;
+      const type = checker.getTypeAtLocation(argument.expression);
+      const expected = argument.kind === "str" ? typescript.TypeFlags.StringLike : typescript.TypeFlags.NumberLike;
+      // Structural object types such as {} and String can admit primitives.
+      // Only diagnose when every alternative excludes the required primitive.
+      const known = typescript.TypeFlags.StringLike | typescript.TypeFlags.NumberLike | typescript.TypeFlags.BooleanLike
+        | typescript.TypeFlags.Null | typescript.TypeFlags.Undefined | typescript.TypeFlags.BigIntLike | typescript.TypeFlags.ESSymbolLike | typescript.TypeFlags.NonPrimitive;
+      if ((type.isUnion() ? type.types : [type]).every(alternative => (alternative.flags & known) !== 0 && (alternative.flags & expected) === 0)) {
+        report(argument.valueLocation, "HSON_PART_ARGUMENT_INVALID", `Part.write argument ${JSON.stringify(argument.name)} requires ${argument.kind === "str" ? "a string" : "a finite number"}.`,
+          write.definition.bindingSources?.declarations.find(binding => binding.incoming === argument.name)?.location);
+      }
+    }
+  }
   for (const document of facts.documents) {
     // Grammar and declared-name conflicts are local facts; they require no receiver shape.
     const isDefinition = facts.batches.some(batch => batch.eligible && batch.libraries.some(library => library.family === "parts"
@@ -179,12 +194,15 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
       for (const attribute of connector.attributes.filter(attribute => is_part_argument_attribute(attribute.name))) {
         const argument = part_argument_name(attribute.name);
         if (argument === undefined) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", part_direction_issue("hson-part", attribute.name) ?? `Invalid Part argument ${JSON.stringify(attribute.name)}.`);
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", part_argument_issue(attribute.name));
           continue;
         }
         if (supplied.has(argument.name)) report(attribute.nameLocation, "HSON_PART_ARGUMENT_CONFLICT", `Conflicting Part argument ${JSON.stringify(argument.name)}.`);
         supplied.add(argument.name);
-        if (argument.kind !== "scalar" && attribute.value !== undefined && whole_part_reference(attribute.value) === undefined) {
+        if (attribute.scalarIssue !== undefined && !isDefinition) {
+          report(attribute.valueLocation ?? attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", attribute.scalarIssue);
+        }
+        if ((argument.kind === "data" || argument.kind === "doc") && attribute.value !== undefined && whole_part_reference(attribute.value) === undefined) {
           try {
             if (argument.kind === "data") admit_data_source(attribute.value);
             else {
@@ -256,7 +274,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts): reado
             report(attribute.nameLocation, "HSON_PART_ARGUMENT_UNKNOWN", `Unknown Part parameter ${JSON.stringify(attribute.name)} for ${JSON.stringify(`${libraryName}/${memberName}`)}.`, member.declaration);
           }
         } else if (argument.kind !== kind) {
-          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} does not match the receiving data interface of ${JSON.stringify(`${libraryName}/${memberName}`)}.`, contractLocation(argument.name));
+          report(attribute.nameLocation, "HSON_PART_ARGUMENT_INVALID", `Part parameter ${JSON.stringify(argument.name)} requires ${kind} in the receiving interface of ${JSON.stringify(`${libraryName}/${memberName}`)}; supplied ${argument.kind}.`, contractLocation(argument.name));
         }
       }
     }

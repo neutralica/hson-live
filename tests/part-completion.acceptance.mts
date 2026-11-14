@@ -68,6 +68,42 @@ function applied(result: ReturnType<typeof complete>, label: string): string {
 const apply = (text: string, entry: HostCompletion) => text.slice(0, entry.range.start) + entry.candidate.insertText + text.slice(entry.range.end);
 function authored(body: string, suffix = application): string { return imports + 'const page = Hson.document`' + body + '`;' + suffix; }
 
+check("typed scalar completion uses receiving qualifiers, binding types and exact edits", () => {
+  const leaf = '<p hson:part str:title=%{caption} num:step=%{count} "^{title}:^{step}"/>';
+  const suffix = '\nconst map = maps.fromLibraries({ components: { parts: { leaf: { kind: "document", document: Hson.document`' + leaf + '` } } }, page: { document: page } });';
+  for (const [start, name] of [['cap', 'caption:str'], ['coun', 'count:num']]) {
+    const body = '<hson-part at=components/leaf ' + start + '|/>';
+    const result = complete(authored(body, suffix));
+    assert.equal(applied(result, name!), authored(body.replace(start + '|', name!), suffix));
+    const range = result.entries.find(entry => entry.candidate.label === name)!.range;
+    assert.equal(result.text.slice(range.start, range.end), start);
+  }
+  const member = '\nconst map = maps.fromLibraries({ components: { parts: { wrap: { kind: "document", document: page } } } });';
+  assert.ok(complete(authored('<main hson:part nu|/>', member)).labels.includes('num:'));
+  const local = '<main hson:part str:caption=%{caption} num:count=%{count} "^{caption}" ';
+  const completeLocal = (argument: string) => complete(authored(local + '<hson-part at=leaf ' + argument + '/>/>', member));
+  const number = completeLocal(String.raw`count:num="^{\u0063|}"`);
+  assert.deepEqual(number.labels, ['count']);
+  assert.equal(number.text.slice(number.entries[0]!.range.start, number.entries[0]!.range.end), String.raw`\u0063`);
+  assert.deepEqual(completeLocal('caption:str=^{c|}').labels, ['caption']);
+  assert.deepEqual(completeLocal('caption:str="count ^{c|}"').labels, ['caption', 'count']);
+  assert.deepEqual(completeLocal('count:num=%{cou|nt}').labels, ['count']);
+  assert.deepEqual(completeLocal('count:num="^{c|}0"').labels, []);
+  assert.deepEqual(completeLocal(String.raw`caption:str="\u005e{c|}"`).labels, []);
+});
+
+check("whole typed operands complete iterator keys as strings and indexes as numbers", () => {
+  const member = '\nconst map = maps.fromLibraries({ components: { parts: { wrap: { kind: "document", document: page } } } });';
+  const candidates = (iterator: string, argument: string) =>
+    complete(authored('<main hson:part data:r=%{rows} <hson-part ' + iterator + '=^{r} at=leaf ' + argument + '/>/>', member)).labels;
+  assert.deepEqual(candidates('per:key:value', 'count:num=^{k|ey}'), []);
+  assert.deepEqual(candidates('per:key:value', 'label:str=^{k|ey}'), ['key']);
+  assert.deepEqual(candidates('for:value:index', 'count:num=^{i|ndex}'), ['index']);
+  assert.deepEqual(candidates('for:value:index', 'label:str=^{i|ndex}'), []);
+  assert.deepEqual(candidates('for:value:index', 'label:str="index ^{i|ndex}"'), ['index']);
+  assert.deepEqual(candidates('per:key:value', 'count:num=^{v|alue}'), ['value']);
+});
+
 check("qualified selectors complete Libraries, members and arguments with existing replacement ranges", () => {
   for (const [body, label, expected] of [
     ['<hson-part at="co|"/>', 'components/', '<hson-part at="components/"/>'],

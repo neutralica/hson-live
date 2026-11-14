@@ -1,3 +1,5 @@
+import { is_part_scalar_qualifier, part_argument_name } from "../../../internal/part-placeholder.js";
+import { part_literal_sigils } from "../../../internal/part-scalar-source.js";
 import { event_attachment_position, is_event_attachment_attribute } from "../../../core/authored-event-names.js";
 import { serialize_hson_content_string } from "../../../core/hson-content-string.js";
 import {
@@ -116,7 +118,7 @@ function effectiveMeta(
   return Object.keys(out).length === 0 ? undefined : out;
 }
 
-function serializeAttribute(name: string, value: unknown): string {
+function serializeAttribute(name: string, value: unknown, literalSigils?: ReadonlySet<number>): string {
   if (!is_valid_hson_attribute_name(name)) {
     _throw_transform_err(
       `serialize-hson: invalid attribute name "${name}"`,
@@ -134,7 +136,14 @@ function serializeAttribute(name: string, value: unknown): string {
       "serialize_hson.serializeAttribute",
     );
   }
-  const serializedValue = escape_hson_quoted_attr_value(value);
+  let serializedValue = "";
+  let start = 0;
+  for (const at of literalSigils ?? []) {
+    serializedValue += escape_hson_quoted_attr_value(value.slice(start, at))
+      + `\\u${value.charCodeAt(at).toString(16).padStart(4, "0")}`;
+    start = at + 1;
+  }
+  serializedValue += escape_hson_quoted_attr_value(value.slice(start));
   return `${name}="${serializedValue}"`;
 }
 
@@ -147,11 +156,12 @@ function emitAttrsAndMeta(
   node: HsonNode,
 ): string {
   const entries = Object.entries(node.$_attrs ?? {});
+  const connector = node.$_tag.toLowerCase() === "hson-part";
   const isFlag = ([key, value]: readonly [string, unknown]): boolean =>
-    is_event_attachment_attribute(key) ? event_attachment_position(node, key) !== undefined : value === key;
+    is_event_attachment_attribute(key) ? event_attachment_position(node, key) !== undefined : value === key && !(connector && is_part_scalar_qualifier(part_argument_name(key)?.kind));
   const valued = entries.filter(entry => !isFlag(entry)).sort(compareKeys);
   const flags = entries.filter(isFlag).sort(compareKeys);
-  const terms = valued.map(([key, value]) => serializeAttribute(key, value)).concat(flags.map(([key]) => key));
+  const terms = valued.map(([key, value]) => serializeAttribute(key, value, part_literal_sigils(node.$_attrs, key))).concat(flags.map(([key]) => key));
   return terms.length === 0 ? "" : ` ${terms.join(" ")}`;
 }
 

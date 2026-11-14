@@ -1,4 +1,5 @@
 import type { HsonNode } from "../core/types.js";
+import { is_event_attachment_attribute } from "../core/authored-event-names.js";
 
 export const PART_OPTIONAL = "part:optional";
 export const PART_DECLARATION = "hson:part";
@@ -52,15 +53,38 @@ export function is_part_parameter_name(name: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(name);
 }
 
-/** Normalize explicit Data/Document sending suffixes; coordinates are never bindings. */
+export const PART_QUALIFIERS = ["data", "doc", "str", "num"] as const;
+export type PartQualifier = typeof PART_QUALIFIERS[number];
+export type PartArgumentKind = "scalar" | PartQualifier;
+export type PartScalarQualifier = "str" | "num";
+export const is_part_scalar_qualifier = (kind: PartArgumentKind | undefined): kind is PartScalarQualifier =>
+  kind === "str" || kind === "num";
+export function is_part_scalar_argument(argument: ReturnType<typeof part_argument_name>):
+  argument is Readonly<{ name: string; kind: PartScalarQualifier }> {
+  return is_part_scalar_qualifier(argument?.kind);
+}
+const part_qualifier = (spelling: string | undefined): PartQualifier | undefined =>
+  PART_QUALIFIERS.find(kind => kind === spelling);
+
+/** Normalize sending suffixes; coordinates are never bindings. */
 export function part_argument_name(raw: string): Readonly<{ name: string; kind: PartArgumentKind }> | undefined {
-  if (!is_part_argument_attribute(raw)) return undefined;
-  const kind = raw.endsWith(":data") ? "data" : raw.endsWith(":doc") ? "doc" : "scalar";
-  const name = kind === "scalar" ? raw : raw.slice(0, kind === "data" ? -5 : -4);
-  return is_part_parameter_name(name) && is_part_argument_attribute(name) ? { name, kind } : undefined;
+  const [name, suffix, extra] = raw.split(":");
+  if (name === undefined || extra !== undefined || !is_part_parameter_name(name)
+    || !is_part_argument_attribute(raw) || !is_part_argument_attribute(name)) return undefined;
+  const kind = suffix === undefined ? "scalar" : part_qualifier(suffix);
+  return kind === undefined ? undefined : { name, kind };
 }
 
-export type PartArgumentKind = "scalar" | "data" | "doc";
+export function part_argument_issue(raw: string): string {
+  const direction = part_direction_issue("hson-part", raw);
+  if (direction !== undefined) return direction;
+  const [name, suffix, extra] = raw.split(":");
+  if (name !== undefined && is_part_parameter_name(name) && suffix !== undefined && extra === undefined && part_qualifier(suffix) === undefined) {
+    return `Unknown Part argument qualifier ${JSON.stringify(suffix)} in ${JSON.stringify(raw)}.`;
+  }
+  return `Invalid hson-part parameter ${JSON.stringify(raw)}.`;
+}
+
 export type PartReference = Readonly<{ namespace: "incoming" | "local"; name: string; path: readonly (string | number)[]; optional: boolean; reference: string; start: number; end: number }>;
 
 /** One bounded selector scanner, shared by runtime, source facts and editor checkpoints.
@@ -120,10 +144,11 @@ export function scan_part_reference(value: string, start: number, incomplete = f
   return value[at] === "}" || atEnd() ? result() : undefined;
 }
 
-export function part_placeholder_matches(value: string, invalid?: (message: string) => void): readonly PartReference[] | undefined {
+export function part_placeholder_matches(value: string, invalid?: (message: string) => void, literalSigils?: ReadonlySet<number>): readonly PartReference[] | undefined {
   const matches: PartReference[] = [];
   let at = 0;
   while ((at = next_part_reference(value, at)) !== -1) {
+    if (literalSigils?.has(at)) { at++; continue; }
     const match = scan_part_reference(value, at);
     if (match === undefined) {
       invalid?.(value.startsWith("#{", at) ? PART_LOCAL_REFERENCE_MIGRATION : "Invalid Part placeholder.");
@@ -146,37 +171,42 @@ export function part_reference_text(reference: PartReference): string {
 
 /** Receiving prefixes apply only to definition elements, never connectors. */
 export function is_part_receiving_attribute(tag: string, name: string): boolean {
-  return tag.toLowerCase() !== "hson-part" && (name.startsWith("data:") || name.startsWith("doc:"));
+  return tag.toLowerCase() !== "hson-part" && name.includes(":") && part_qualifier(name.split(":")[0]) !== undefined;
 }
 
 /** Call only in governed Part contexts; ordinary HTML attributes keep their meaning.
  * Overlapping names such as data:data are interpreted by their receiving/sending position. */
-export function part_direction_issue(tag: string, name: string): string | undefined {
+export function part_direction_issue(tag: string, name: string, flag = false): string | undefined {
   if (is_part_iterator_attribute(name)) return undefined;
-  const prefix = name.startsWith("data:") ? "data" : name.startsWith("doc:") ? "doc" : undefined;
-  const suffix = name.endsWith(":data") ? "data" : name.endsWith(":doc") ? "doc" : undefined;
+  const fields = name.split(":");
+  if (fields.length < 2) return undefined;
+  const prefix = part_qualifier(fields[0]), suffix = part_qualifier(fields.at(-1));
   if (tag.toLowerCase() === "hson-part") {
     if (prefix !== undefined && suffix === undefined) return `Part sending arguments use parameter:type; replace ${JSON.stringify(name)} with ${JSON.stringify(`${name.slice(prefix.length + 1)}:${prefix}`)}.`;
-  } else if (suffix !== undefined && prefix === undefined) {
+  } else if ((suffix === "data" || suffix === "doc") && prefix === undefined
+    && !(flag && is_event_attachment_attribute(name))) {
+    // Keep the existing structured migration. Scalar receivers have a known
+    // prefix. A scalar suffix alone can also be an ordinary attribute name.
     return `Part receiving declarations use type:local; replace ${JSON.stringify(name)} with ${JSON.stringify(`${suffix}:${name.slice(0, -suffix.length - 1)}`)}.`;
   }
   return undefined;
 }
 
-/** A receiving declaration binds one incoming structured root, never a selected subtree. */
-export type PartReceivingDeclaration = Readonly<{ name: string; kind: "data" | "doc"; reference: PartReference }>;
+/** A receiving declaration binds one incoming root, never a selected subtree. */
+export type PartReceivingDeclaration = Readonly<{ name: string; kind: PartQualifier; reference: PartReference }>;
 export function part_receiving_declaration(raw: string, value: unknown): PartReceivingDeclaration {
-  const kind = raw.startsWith("doc:") ? "doc" : "data";
-  const name = raw.slice(kind === "data" ? 5 : 4);
+  const [prefix, name, extra] = raw.split(":");
+  const kind = part_qualifier(prefix);
   const reference = typeof value === "string" ? whole_part_reference(value) : undefined;
-  if (!(raw.startsWith("data:") || raw.startsWith("doc:")) || !is_part_parameter_name(name)) {
+  if (kind === undefined || name === undefined || extra !== undefined || !is_part_parameter_name(name)) {
     throw new TypeError(`Invalid Part receiving declaration ${JSON.stringify(raw)}.`);
   }
   if (reference === undefined || reference.namespace !== "incoming" || reference.path.length !== 0) {
     throw new TypeError(`Part receiving declaration ${JSON.stringify(raw)} requires one whole incoming argument reference.`);
   }
   if (is_part_iterator_attribute(`${reference.name}:`)) {
-    throw new TypeError(`Structured Part input ${JSON.stringify(reference.name)} cannot be sent as ${JSON.stringify(`${reference.name}:${kind}`)}: ${JSON.stringify(`${reference.name}:`)} is reserved for Part iteration. Rename the incoming parameter in %{${reference.name}}; the local binding may keep its name.`);
+    const label = is_part_scalar_qualifier(kind) ? "Typed" : "Structured";
+    throw new TypeError(`${label} Part input ${JSON.stringify(reference.name)} cannot be sent as ${JSON.stringify(`${reference.name}:${kind}`)}: ${JSON.stringify(`${reference.name}:`)} is reserved for Part iteration. Rename the incoming parameter in %{${reference.name}}; the local binding may keep its name.`);
   }
   return { name, kind, reference };
 }

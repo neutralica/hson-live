@@ -66,7 +66,7 @@
         },
         {
           "name": "entity.other.attribute-name.receiving.hson",
-          "match": "(?<![A-Za-z0-9:._-])(?:data|doc):[A-Za-z_][A-Za-z0-9._-]*(?![A-Za-z0-9:._-])",
+          "match": "(?<![A-Za-z0-9:._-])(?:data|doc|str|num):[A-Za-z_][A-Za-z0-9._-]*(?![A-Za-z0-9:._-])",
           "captures": {
             "0": {
               "patterns": [
@@ -79,7 +79,7 @@
         },
         {
           "name": "entity.other.attribute-name.sending.hson",
-          "match": "(?<![A-Za-z0-9:._-])[A-Za-z_][A-Za-z0-9._-]*:(?:data|doc)(?![A-Za-z0-9:._-])",
+          "match": "(?<![A-Za-z0-9:._-])[A-Za-z_][A-Za-z0-9._-]*:(?:data|doc|str|num)(?![A-Za-z0-9:._-])",
           "captures": {
             "0": {
               "patterns": [
@@ -327,7 +327,7 @@
         { "include": "#connector-system-attributes" },
         {
           "name": "entity.other.attribute-name.sending.hson",
-          "match": "(?<![A-Za-z0-9:._-])(?!(?:for|per):)[A-Za-z_][A-Za-z0-9._-]*:(?:data|doc)(?![A-Za-z0-9:._-])",
+          "match": "(?<![A-Za-z0-9:._-])(?!(?:for|per):)[A-Za-z_][A-Za-z0-9._-]*:(?:data|doc|str|num)(?![A-Za-z0-9:._-])",
           "captures": {
             "0": {
               "patterns": [

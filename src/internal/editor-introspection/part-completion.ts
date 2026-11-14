@@ -1,10 +1,12 @@
+import { decode_part_string_sigils } from "../part-scalar-source.js";
+import { part_scalar_source_possible } from "../part-scalar.js";
 import { part_coordinates } from "../part-coordinates.js";
 import { admit_data_source } from "../../core/data-source-admission.js";
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonGrammarCheckpoint } from "../../api/transform/parsers/tokenize-hson.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
-import { PART_DECLARATION, PART_OPTIONAL, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_matches, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
+import { PART_DECLARATION, PART_OPTIONAL, PART_QUALIFIERS, is_part_scalar_qualifier, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_matches, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
 import { part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
 import { OBJECT_VALUE, project_ordered_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import type { PartDataSchemaEvidence } from "../hson-schema/part-source.js";
@@ -35,6 +37,13 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     optionalCandidate.push({ label: PART_OPTIONAL, kind: "member", insertText: PART_OPTIONAL,
       detail: "Include this structure when any authored value placeholder is present", certainty: "certain", sortText: "0000" });
   }
+  if (checkpoint.kind === "header" && memberSource && element.contentTags.length === 1
+    && element.tag.toLowerCase() !== "hson-part" && prefix.length > 0) {
+    for (const kind of PART_QUALIFIERS) if (`${kind}:`.startsWith(prefix)) {
+      optionalCandidate.push({ label: `${kind}:`, kind: "member", insertText: `${kind}:`,
+        detail: "Part receiving declaration (type:local=%{incoming})", certainty: "certain", sortText: "0001" });
+    }
+  }
   const suggestions = new Map<string, { contexts: Set<number>; certain: boolean }>();
   const schemaDetails = new Map<string, string>();
   const add = (name: string, context: number, certain: boolean): void => {
@@ -54,29 +63,43 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
     const iterationSource = attribute !== undefined && is_part_iterator_attribute(attribute);
     const argument = attribute !== undefined && element.tag.toLowerCase() === "hson-part" ? part_argument_name(attribute) : undefined;
     const supply = argument?.kind === "scalar" ? undefined : argument?.kind;
+    const scalar = is_part_scalar_qualifier(supply);
+    let wholeScalar = scalar;
+    const compatible = (declaration: PartLocalSource) => supply === undefined
+      || (scalar ? wholeScalar ? part_scalar_source_possible(supply, declaration.iteratorScalar ?? declaration.kind) : declaration.kind !== "doc" : declaration.kind === supply);
     try {
       const decoded = rawAttribute === undefined ? undefined
         : { name: rawAttribute.name, value: split_attrs_meta([rawAttribute]).attrs[rawAttribute.name] };
       const tags = decoded === undefined ? element.contentTags : element.contentTags.slice(0, -1);
       if (part_placeholder_placement_issue(tags, decoded, element.tag) !== undefined) return [];
-      if (supply !== undefined && (typeof decoded?.value !== "string" || !decoded.value.startsWith("%{") && !decoded.value.startsWith("^{"))) return [];
+      if (supply !== undefined && supply !== "str") {
+        if (typeof decoded?.value !== "string") return [];
+        const reference = scan_part_reference(decoded.value, 0, true);
+        if (supply === "num" ? reference?.end !== decoded.value.length : !decoded.value.startsWith("%{") && !decoded.value.startsWith("^{")) return [];
+      }
+      if (supply === "str" && rawAttribute?.value?.quoted && typeof decoded?.value === "string") {
+        const at = decode_hson_content_string(source.slice(rawAttribute.start.index, checkpoint.range.start)).length - 2;
+        if (decode_part_string_sigils(rawAttribute.value.text).has(at)) return [];
+        wholeScalar = at === 0 && scan_part_reference(decoded.value, 0, true)?.end === decoded.value.length;
+      }
     } catch { return []; }
     // Only actual member-source relationships establish a Part definition.
     if (!memberSource) return [];
     if (receiving && element.contentTags.length !== 1) return [];
     if (checkpoint.parameter.namespace === "incoming") {
       if (iterationSource) return [];
-      if (supply !== undefined) return [];
-      const structured = new Set(document.receivingDeclarations.map(declaration => declaration.incoming));
-      if (receiving) for (const declaration of document.receivingDeclarations) add(declaration.incoming, 0, false);
+      if (supply !== undefined && !scalar) return [];
+      const structured = new Set(document.receivingDeclarations.filter(declaration => declaration.kind === "doc" || declaration.kind === "data"
+        || scalar && wholeScalar && !part_scalar_source_possible(supply, declaration.kind)).map(declaration => declaration.incoming));
+      for (const declaration of document.receivingDeclarations) if (receiving || !structured.has(declaration.incoming)) add(declaration.incoming, 0, false);
       for (const parameter of document.parameters) if (receiving || !structured.has(parameter.name)) add(parameter.name, 0, document.parameterCompleteness === "complete");
-      for (const parameter of document.parameterSpellings) for (const use of parameter.uses) {
+      if (!scalar) for (const parameter of document.parameterSpellings) for (const use of parameter.uses) {
         if (use.namespace === "incoming" && !use.structured && use.supply === undefined && (receiving || !structured.has(parameter.name))) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, false);
       }
     } else if (!receiving) {
       for (const declaration of visible) {
         if ((!checkpoint.parameter.structural || declaration.kind === "doc") && (!iterationSource || declaration.kind === "data")
-          && (supply === undefined || declaration.kind === supply)) add(declaration.name, 0, document.parameterCompleteness === "complete");
+          && compatible(declaration)) add(declaration.name, 0, document.parameterCompleteness === "complete");
       }
       if (!checkpoint.parameter.structural && supply !== "doc") for (const declaration of visible.filter(declaration => declaration.kind === "data")) {
         const origin = declaration.dataOrigin ?? (declaration.incoming === undefined ? undefined : { incoming: declaration.incoming, path: [] });
@@ -106,7 +129,7 @@ export function part_candidates(source: string, cursor: number, checkpoint: Hson
         if (use.namespace === "local" && declaration !== undefined
           && declaration.location.start === usedDeclaration?.location.start
           && (!iterationSource || declaration.kind === "data")
-          && (supply === undefined || declaration.kind === supply)) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, document.parameterCompleteness === "complete");
+          && compatible(declaration)) add(use.optional ? use.reference.slice(0, -1) : use.reference, 0, document.parameterCompleteness === "complete");
       }
     }
     contextCount = 1;

@@ -1,3 +1,5 @@
+import { part_argument_name } from "../../../internal/part-placeholder.js";
+import { decode_part_string_sigils, record_part_literal_sigils } from "../../../internal/part-scalar-source.js";
 import { is_event_attachment_attribute, record_event_attachments } from "../../../core/authored-event-names.js";
 // Shared Hson token assembly; receiving-context attribute decoding is supplied by the caller.
 
@@ -200,6 +202,11 @@ export function assemble_hson_tokens(
 
         if (!isVSN && Object.keys(attrs).length) {
             node.$_attrs = attrs;
+            if (open.tag.toLowerCase() === "hson-part") for (const attr of open.rawAttrs) {
+                if (part_argument_name(attr.name)?.kind !== "str" || !attr.value?.quoted) continue;
+                const offsets = decode_part_string_sigils(attr.value.text);
+                if (offsets.size) record_part_literal_sigils(attrs, attr.name, offsets);
+            }
             const eventFlags = open.rawAttrs.filter(attr => attr.value === undefined && is_event_attachment_attribute(attr.name));
             if (eventFlags.length) record_event_attachments(attrs, new Map(eventFlags.map(({ name, start }) =>
                 [name, { index: start.index, line: start.line, column: start.col }])));

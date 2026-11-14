@@ -58,7 +58,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     if (program === undefined) return;
     if (program === previous) return;
     candidateDiagnostics = [...static_schema_candidate_diagnostics(typescript, program),
-      ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program))];
+      ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program), typescript, program.getTypeChecker())];
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();

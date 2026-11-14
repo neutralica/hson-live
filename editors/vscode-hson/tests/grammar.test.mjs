@@ -546,12 +546,12 @@ for (const form of ['for:item', 'for:item:i', 'for::i', 'per:key:value', 'per::v
   }
 }
 
-for (const form of ['for:data', 'for:doc', 'for:item:doc', 'per:doc', 'per:key:doc']) {
+for (const form of ['for:data', 'for:doc', 'for:item:doc', 'per:doc', 'per:key:doc', 'for:num', 'per:str']) {
   const tokens = await tokenize('source.hson', `<hson-part ${form}=^{rows} at=leaf/>`);
   assert.ok(has(tokens, form, 'keyword.control.iteration.hson'), form);
   assert.ok(!has(tokens, form, 'entity.other.attribute-name.sending.hson'), form);
 }
-for (const form of ['one:data', 'only:data', 'onload:doc', 'data:data', 'data:doc', 'doc:data']) {
+for (const form of ['one:data', 'only:data', 'onload:doc', 'data:data', 'data:doc', 'doc:data', 'title:str', 'count:num']) {
   assert.ok(has(await tokenize('source.hson', `<hson-part at=leaf ${form}=^{local}/>`), form, 'entity.other.attribute-name.sending.hson'), form);
 }
 

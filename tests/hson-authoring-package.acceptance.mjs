@@ -139,7 +139,7 @@ const aggregateCore = await build({ ...coreSizeOptions, stdin: { ...coreSizeOpti
 const aggregateCoreGzip = gzipSync(aggregateCore.outputFiles[0].contents, { level: 9 }).length;
 const authoringCoreGzip = gzipSync(authoringCore.outputFiles[0].contents, { level: 9 }).length;
 check(cases.bundleSize, () => {
-  assert.ok(narrow.gzip < 118_000, `CSS-inclusive gzip=${narrow.gzip}`);
+  assert.ok(narrow.gzip < 119_000, `CSS-inclusive gzip=${narrow.gzip}`);
   assert.ok(authoringCoreGzip < aggregateCoreGzip / 4, `core gzip=${authoringCoreGzip}, aggregate core gzip=${aggregateCoreGzip}`);
 });
 check(cases.certifyGraph, () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));

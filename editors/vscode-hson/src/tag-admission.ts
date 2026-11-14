@@ -123,8 +123,9 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate, l
         return [...quadDiagnostics, { message: error instanceof Error ? error.message : "Invalid Hson context.",
           range: source.bodyRange, source: "Hson", code: details.code, precision: "fallback", related: [] }];
       }
-      if (details?.code === "HSON_INTERPOLATION_POSITION_INVALID") {
-        const slot = preview.slots.find(item => item.offset === details.source?.index) ?? preview.slots[0]!;
+      const rejectedSlot = preview.slots.find(item => item.offset === details?.source?.index);
+      if (details?.code === "HSON_INTERPOLATION_POSITION_INVALID" || details?.code === "HSON_PART_ARGUMENT_INVALID" && rejectedSlot !== undefined) {
+        const slot = rejectedSlot ?? preview.slots[0]!;
         return [...quadDiagnostics, { message: error instanceof Error ? error.message : "Interpolation is not allowed here.",
           range: source.substitutionRanges[slot.substitution]!, source: "Hson", code: details.code, precision: "exact", related: [] }];
       }

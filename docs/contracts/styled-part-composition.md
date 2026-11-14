@@ -1,8 +1,9 @@
 # Governed Parts, composition, and occurrence-owned CSS
 
-Structured arguments follow the [directional Part grammar](part-argument-direction.md):
-receiving roots use `data:local` / `doc:local`; invocations use
-`parameter:data` / `parameter:doc`. Scalar arguments retain their existing syntax.
+Qualified arguments follow the [directional Part grammar](part-argument-direction.md):
+receiving roots use `type:local` and invocations use `parameter:type`.
+Qualifiers are `data`, `doc`, `str`, and `num`. Unqualified scalar arguments
+retain their existing syntax.
 
 A governed Part collection is an inert object data Library. Its keyed members are
 exact `{ kind: "document", document: string, css?: CssMap, stylesheet?: string }` records with exactly
@@ -117,11 +118,11 @@ optional argument is a plain record of own enumerable data fields using incoming
 parameter names, without type suffixes. Scalar values are strings, finite numbers,
 booleans, or null and become attributes through `String(value)` (`-0` becomes `"0"`).
 Data arguments accept supported JavaScript values or authenticated `HsonDataValue` carriers. Strings are literal Data; use `Hson.data.fromSource(source)` for encoded input. Document arguments require serialized source. The writer serializes admitted Data into the established authored attribute representation and derives outgoing
-`:data` / `:doc` suffixes from the selected immutable definition. Arrays and objects
+`:data`, `:doc`, `:str`, or `:num` suffixes from the selected immutable definition. Arrays and objects
 are supported Data values; scalar parameters remain limited to scalar values.
 Undefined values, accessors, and symbols are not argument values or fields. `lib` and `at`
 are reserved; `style` and `__proto__` cannot be scalar parameters but may name
-structured inputs.
+qualified inputs.
 
 Selected-source analysis, unexpected-input checks, transport-kind checks, and
 statically required missing-input checks run during `.write()`, along with direct
@@ -190,11 +191,11 @@ is consumed before connector argument classification or canonical publication.
 
 Ordinary invocations must be empty. Coordinates and construction directives are
 reserved; remaining attributes supply initial parameters. The implemented argument
-kinds are `scalar`, `data`, and `doc`; there are no `str` or `num` declarations.
+kinds are unqualified scalar, `data`, `doc`, `str`, and `num`.
 Incoming `%{name}` references name parameters without paths. Locally declared
 `^{name}` references may select properties, numeric indexes, and quoted keys.
-Receiving roots bind `data:local=%{incoming}` or `doc:local=%{incoming}`; outgoing
-invocations send `incoming:data` or `incoming:doc`. See the [directional grammar](part-argument-direction.md)
+Receiving roots bind `type:local=%{incoming}`; outgoing invocations send
+`incoming:type`. See the [directional grammar](part-argument-direction.md)
 for reserved names and forwarding rules.
 
 ```ts
@@ -226,8 +227,9 @@ defines aliases, scope, and execution order.
 
 Scalar substitution operates in decoded text and ordinary attribute values, including
 forwarding attributes. A whole scalar attribute reference retains a supported typed
-primitive from programmatic connector input; authored source and `.write()` supply
-string-valued attributes. Mixed attributes and document text use scalar string spelling.
+primitive until the receiving boundary. Authored numeric arguments and numeric
+values supplied to `.write()` enter through `:num` and preserve negative zero.
+Mixed attributes and document text use scalar string spelling.
 Scalar replacement is neither rescanned for placeholders nor parsed as Hson/HTML.
 Document transport, by contrast, supplies structure through its explicit `doc` channel.
 

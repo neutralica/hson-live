@@ -1,3 +1,4 @@
+import { copy_part_literal_sigils } from "./part-scalar-source.js";
 import { copy_event_attachments } from "../core/authored-event-names.js";
 import { PART_DECLARATION, part_structural_reference } from "./part-placeholder.js";
 import { ARR_TAG, ELEM_TAG, HSON_META_TRANSIT_PREFIX, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG, _TRANSIT_PREFIX } from '../core/constants.js';
@@ -52,7 +53,10 @@ export function capture_exact_hson_graph(input: unknown, operation: string, port
 
 /** The caller owns this freshly parsed HSON graph. Retain its scanner evidence. */
 export function capture_parsed_hson_graph(input: HsonNode, operation: string): HsonNode {
-  return capture_graph(input, operation, true, false, copy_event_attachments);
+  return capture_graph(input, operation, true, false, (source, target) => {
+    copy_event_attachments(source, target);
+    copy_part_literal_sigils(source, target);
+  });
 }
 
 /** Copy runtime storage without public admission qualification or snapshot branding. @internal */

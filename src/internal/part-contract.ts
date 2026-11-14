@@ -1,6 +1,6 @@
 import type { PartArgumentKind } from "./part-placeholder.js";
 
-const label = (kind: PartArgumentKind): string => kind === "data" ? "Data" : kind === "doc" ? "Document" : "scalar";
+const label = (kind: PartArgumentKind): string => kind === "data" ? "Data" : kind === "doc" ? "Document" : kind;
 
 /** Shared receiving-contract wording; names are always incoming names. */
 export function part_contract_error(selected: string, parameters: ReadonlyMap<string, PartArgumentKind>,
