@@ -41,7 +41,7 @@ export function monitor_appearance_ui(workspace, port) {
   }
   async function evaluate(expression, sessionId, contextId) {
     const result = await send("Runtime.evaluate", { expression, contextId, returnByValue: true }, sessionId);
-    if (result.exceptionDetails) throw new Error(result.exceptionDetails.text);
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result.value;
   }
   async function workbench() {
@@ -54,14 +54,19 @@ export function monitor_appearance_ui(workspace, port) {
     await targets();
     for (const [sessionId, ids] of contexts) for (const contextId of ids) {
       try {
-        if (await evaluate("!!document.getElementById('attributeString')", sessionId, contextId)) return { sessionId, contextId };
+        if (await evaluate("!!document.getElementById('foreground')", sessionId, contextId)) return { sessionId, contextId };
       } catch {}
     }
     throw new Error("Appearance controls unavailable");
   }
   async function perform(request) {
-    if (["layout", "screenshot", "focus-editor"].includes(request.action)) {
+    if (["layout", "screenshot", "focus-editor", "text-style"].includes(request.action)) {
       const sessionId = await workbench();
+      if(request.action === 'text-style') return evaluate(`(() => {
+        const span=[...document.querySelectorAll('.view-line span')].find(span=>span.childNodes.length===1&&span.firstChild.nodeType===Node.TEXT_NODE&&span.textContent.replaceAll(String.fromCharCode(160),' ').includes(${JSON.stringify(request.needle)}));
+        if(!span)throw new Error('Text span unavailable');const style=getComputedStyle(span);
+        return {color:style.color,fontStyle:style.fontStyle,fontWeight:style.fontWeight,textDecoration:style.textDecorationLine};
+      })()`,sessionId);
       if (request.action === "focus-editor") {
         await send("Page.bringToFront", {}, sessionId);
         return evaluate(`(() => {
@@ -90,13 +95,16 @@ export function monitor_appearance_ui(workspace, port) {
       } else if (request.action === "click") document.getElementById(request.control).click();
       return { status: document.getElementById("status").textContent,
         saved: document.getElementById("saved").getAttribute("aria-pressed"),
-        draft: Object.fromEntries(["attributeString", "contentString", "attributeQuotes", "contentQuotes"].map(role => [role, document.getElementById(role).value])) };
+        error: document.getElementById("error").textContent,
+        values: Object.fromEntries([...document.querySelectorAll('input,select')].map(input=>[input.id,input.value])),
+        targets: [...document.getElementById('target').options].map(option=>({value:option.value,label:option.textContent})) };
+
     }.toString()})(${JSON.stringify(request)})`, sessionId, contextId);
   }
   const done = (async () => {
     let last;
     while (!stopped) {
-      const request = await readFile(join(workspace, "appearance-ui-request.json"), "utf8").then(JSON.parse, () => undefined);
+      const request = await readFile(join(workspace, "appearance-ui-request.json"), "utf8").then(JSON.parse).catch(() => undefined);
       if (!request || request.id === last) { await pause(); continue; }
       last = request.id;
       let value, error;

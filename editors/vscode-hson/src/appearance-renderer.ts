@@ -1,71 +1,60 @@
-import * as vscode from "vscode";
-import type { IGrammar } from "vscode-textmate";
-import { AppearanceSpanCache, appearanceRoles, type AppearanceColors, type AppearanceRole } from "./appearance-spans.js";
+import * as vscode from 'vscode';
+import type { IGrammar } from 'vscode-textmate';
+import { AppearanceSpanCache } from './appearance-spans.js';
+import { initialAppearance, resolveStyle, roleCatalog, type AppearanceState, type Family, type Style } from './appearance-model.js';
 
-/** One renderer for both Saved and Draft. Its ownership is an explicit document
- * set; normal editors and native-owned ranges never receive these decorations. */
+function renderStyle(style: Style): vscode.DecorationRenderOptions {
+  const options: vscode.DecorationRenderOptions = {rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed};
+  if (style.foreground) options.color=style.foreground;
+  const flags = style.fontStyle === undefined ? undefined : style.fontStyle.split(/\s+/);
+  const flag = (key:'bold'|'italic'|'underline'|'strikethrough') => style[key] === 'native' ? undefined : typeof style[key] === 'boolean' ? style[key] : flags?.includes(key);
+  if (flag('bold') !== undefined) options.fontWeight=flag('bold')?'bold':'normal';
+  if (flag('italic') !== undefined) options.fontStyle=flag('italic')?'italic':'normal';
+  if (flag('underline') !== undefined || flag('strikethrough') !== undefined) options.textDecoration=[flag('underline')?'underline':'',flag('strikethrough')?'line-through':''].filter(Boolean).join(' ') || 'none';
+  return options;
+}
+/** Saved and Draft share classification, resolution and native decorations.
+ * Preview state is limited to attached scratchpads; ordinary documents use saved configuration. */
 export class AppearanceRenderer implements vscode.Disposable {
-  private readonly documents = new Set<vscode.TextDocument>();
-  private readonly decorations = new Map<AppearanceRole, { color: string; type: vscode.TextEditorDecorationType }>();
+  private readonly documents = new Map<vscode.TextDocument,Family>();
+  private readonly decorations = new Map<string,vscode.TextEditorDecorationType>();
   private readonly subscriptions: vscode.Disposable[];
-  private disposed = false;
-  constructor(private readonly grammar: Promise<IGrammar>, private readonly cache = new AppearanceSpanCache()) {
-    this.subscriptions = [
-      vscode.window.onDidChangeVisibleTextEditors(() => { void this.refresh(); }),
-      vscode.workspace.onDidChangeTextDocument(event => {
-        if (this.documents.has(event.document)) {
-          this.cache.forget(event.document.uri.toString());
-          // Clear transformed ranges immediately; never leave stale color on a
-          // newly native expression while asynchronous classification catches up.
-          for (const editor of vscode.window.visibleTextEditors) if (editor.document === event.document) this.clearEditor(editor);
-          void this.refresh();
-        }
-      }),
-      vscode.workspace.onDidCloseTextDocument(document => {
-        this.documents.delete(document);
-        this.cache.forget(document.uri.toString());
-      }),
-    ];
+  private preview?: AppearanceState;
+  private disposed=false;
+  constructor(private readonly grammar:Promise<IGrammar>, private readonly cache=new AppearanceSpanCache(),
+    private readonly saved:(document:vscode.TextDocument)=>AppearanceState=()=>initialAppearance()) {
+    this.subscriptions=[vscode.window.onDidChangeVisibleTextEditors(()=>{void this.refresh();}),
+      vscode.workspace.onDidChangeTextDocument(event=>{
+        this.cache.forget(event.document.uri.toString());
+        for(const editor of vscode.window.visibleTextEditors) if(editor.document===event.document) for(const type of this.decorations.values()) editor.setDecorations(type,[]);
+        void this.refresh();
+      }),vscode.workspace.onDidCloseTextDocument(document=>{this.documents.delete(document);this.cache.forget(document.uri.toString());}),
+      vscode.window.onDidChangeActiveColorTheme(()=>{void this.refresh();}),
+      vscode.workspace.onDidChangeConfiguration(event=>{if(event.affectsConfiguration('hson.appearance.state')||event.affectsConfiguration('editor.bracketPairColorization'))void this.refresh();})];
   }
-  async attach(document: vscode.TextDocument): Promise<void> {
-    if (this.disposed) return;
-    this.documents.add(document);
-    await this.refresh();
-  }
-  async setColors(colors: AppearanceColors): Promise<void> {
-    if (this.disposed) return;
-    for (const role of appearanceRoles) {
-      const previous = this.decorations.get(role);
-      if (previous?.color === colors[role]) continue;
-      previous?.type.dispose();
-      this.decorations.set(role, { color: colors[role], type: vscode.window.createTextEditorDecorationType({
-        color: colors[role], rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
-      }) });
+  async attach(document:vscode.TextDocument,family:Family='all'):Promise<void> {if(this.disposed)return;this.documents.set(document,family);await this.refresh();}
+  async setAppearance(state:AppearanceState|undefined):Promise<void> {if(this.disposed)return;this.preview=state;await this.refresh();}
+  async refresh():Promise<void> {
+    const grammar=await this.grammar;if(this.disposed)return;
+    const mode=[vscode.ColorThemeKind.Light,vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind)?'light':'dark';
+    const used=new Set<string>();
+    for(const editor of vscode.window.visibleTextEditors){
+      const document=editor.document;if(document.isClosed||!['hson','markdown','typescript','typescriptreact'].includes(document.languageId))continue;
+      const state=this.documents.has(document)&&this.preview?this.preview:this.saved(document);
+      const nativeBrackets=vscode.workspace.getConfiguration('editor',document).get('bracketPairColorization.enabled',true);
+      const spans=this.cache.get(grammar,{uri:document.uri.toString(),fileName:document.fileName,languageId:document.languageId,version:document.version,text:document.getText()},this.documents.get(document)??'all');
+      const ranges=new Map<string,vscode.Range[]>(), styles=new Map<string,vscode.DecorationRenderOptions>();
+      for(const span of spans){
+        if(nativeBrackets&&roleCatalog[span.role]?.nativeBrackets)continue;
+        const style=renderStyle(resolveStyle(state,span.family,span.role,mode).style);
+        if(Object.keys(style).length===1)continue;
+        const key=JSON.stringify(style);styles.set(key,style);const group=ranges.get(key)??[];
+        group.push(new vscode.Range(document.positionAt(span.range.start),document.positionAt(span.range.end)));ranges.set(key,group);used.add(key);
+      }
+      for(const [key,style]of styles)if(!this.decorations.has(key))this.decorations.set(key,vscode.window.createTextEditorDecorationType(style));
+      for(const [key,type]of this.decorations)editor.setDecorations(type,ranges.get(key)??[]);
     }
-    await this.refresh();
+    for(const [key,type]of this.decorations)if(!used.has(key)){type.dispose();this.decorations.delete(key);}
   }
-  private clearEditor(editor: vscode.TextEditor): void {
-    for (const { type } of this.decorations.values()) editor.setDecorations(type, []);
-  }
-  async refresh(): Promise<void> {
-    const grammar = await this.grammar;
-    if (this.disposed) return;
-    for (const editor of vscode.window.visibleTextEditors) {
-      const document = editor.document;
-      if (!this.documents.has(document) || document.isClosed) continue;
-      const spans = this.cache.get(grammar, { uri: document.uri.toString(), fileName: document.fileName,
-        languageId: document.languageId, version: document.version, text: document.getText() });
-      for (const [role, { type }] of this.decorations) editor.setDecorations(type, spans.filter(span => span.role === role)
-        .map(({ range }) => new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))));
-    }
-  }
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    for (const subscription of this.subscriptions) subscription.dispose();
-    for (const { type } of this.decorations.values()) type.dispose();
-    this.decorations.clear();
-    this.documents.clear();
-    this.cache.clear();
-  }
+  dispose():void {if(this.disposed)return;this.disposed=true;for(const sub of this.subscriptions)sub.dispose();for(const type of this.decorations.values())type.dispose();this.decorations.clear();this.documents.clear();this.cache.clear();}
 }

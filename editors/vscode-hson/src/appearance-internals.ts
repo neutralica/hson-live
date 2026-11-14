@@ -1,4 +1,5 @@
-/** Grammar and semantic classification contracts; appearance values live in appearance.ts. */
+import catalog from "./appearance-catalog.json";
+/** Grammar and semantic classification contracts; appearance values live in palettes/house.json. */
 export const hsonGrammarScopes = {
   "structuralName": "entity.name.type.hson",
   "authoredName": "entity.name.type.quoted.hson",
@@ -77,71 +78,17 @@ const scope = hsonGrammarScopes;
  * with TextMate fallbacks for other themes. This is syntax plumbing, so palette
  * tuning belongs in the appearance catalog instead. The adapter favors specific
  * leaf scopes; generated language-qualified mappings handle TS/TSX fallbacks. */
-export const hsonTokenDefinitions = {
-  hsonType: { role: "element", superType: "type", scopes: [scope.structuralName, scope.authoredName] },
-  hsonProperty: { role: "attribute", superType: "property", scopes: [scope.attributeName] },
-  hsonPartSystemAttribute: { role: "Part system attribute", superType: "property", scopes: [scope.partSystemAttribute], fallbackScopes: [scope.attributeName] },
-  hsonPartLibrary: { role: "Part selector Library", superType: "string", scopes: [scope.partSelectorLibrary], fallbackScopes: [scope.quotedString] },
-  hsonPartMember: { role: "Part selector member", superType: "string", scopes: [scope.partSelectorMember], fallbackScopes: [scope.quotedString] },
-  hsonPartSeparator: { role: "Part selector separator", scopes: [scope.partSelectorSeparator], fallbackScopes: [scope.quotedString] },
-  hsonFlag: { role: "flag", scopes: [scope.flag] },
-  hsonDirective: { role: "directive", scopes: [scope.directive] },
-  hsonReceiving: { role: "receiving", superType: "parameter", scopes: [scope.receiving] },
-  hsonSending: { role: "sending", scopes: [scope.sending] },
-  hsonIteration: { role: "iteration", superType: "variable", scopes: [scope.iteration] },
-  hsonLocalReferenceSigil: { role: "localReference", scopes: [scope.interpolationCaret] },
-  hsonIncomingReferenceSigil: { role: "incomingReference", scopes: [scope.interpolationPercent] },
-  hsonString: { role: "text", superType: "string", scopes: [scope.quotedString, scope.unquotedAttributeValue] },
-  hsonNumber: { role: "number", superType: "number", scopes: [scope.number] },
-  hsonKeyword: { role: "primitive", superType: "keyword", scopes: [scope.boolean, scope.null] },
-  hsonDeclaration: { role: "directive", scopes: [scope.partDeclaration] },
-  hsonQuid: { role: "quad", scopes: [scope.quid], fallbackScopes: [scope.identityFallback] },
-  hsonQuad: { role: "quad", scopes: [scope.quad], fallbackScopes: [scope.identityFallback] },
-  hsonIdentityMarker: { role: "quad", scopes: [scope.identitySigil], fallbackScopes: [scope.identityFallback] },
-  hsonComment: { role: "comment", superType: "comment", scopes: [scope.comment, scope.commentDelimiter] },
-  hsonDelimiter: { role: "structure", scopes: [scope.tagBegin, scope.tagEnd, scope.selfClosingSlash,
-    scope.arrayBegin, scope.arrayEnd, scope.sequenceSeparator] },
-  hsonOperator: { role: "assignment", scopes: [scope.assignment, scope.interpolationDollar] },
-  hsonColon: { role: "colon", scopes: [scope.colon, scope.identitySeparator], fallbackScopes: [scope.colonFallback] },
-  hsonEscape: { role: "escape", scopes: [scope.escape] },
-  hsonInvalid: { role: "invalid", scopes: [scope.invalid] },
-  hsonIncomingReference: { role: "referencePath", superType: "parameter", scopes: [scope.incomingReferenceName], fallbackScopes: ["variable.parameter"] },
-  hsonReference: { role: "referencePath", scopes: [scope.referencePath, scope.referenceSeparator, scope.selectorBegin, scope.selectorEnd] },
-  hsonInterpolationDelimiter: { role: "structure", scopes: [scope.interpolationBegin, scope.interpolationEnd] },
-  hsonQuote: { role: "quote", scopes: [scope.quoteBegin, scope.quoteEnd], fallbackScopes: [scope.quotedString] },
-} as const satisfies Record<string, {
-  role: string; superType?: string; scopes: readonly string[]; fallbackScopes?: readonly string[];
-}>;
-
-/** Orthogonal syntax refinements: retain the semantic role and its default color.
- * Existing types remain valid customization selectors, including with modifiers.
- * Punctuation modifiers expose scopes that previously collapsed in the adapter. */
-const qualifiedAttributeTypes = ["hsonProperty", "hsonFlag", "hsonDirective", "hsonReceiving", "hsonSending", "hsonIteration", "hsonDeclaration"];
-export const hsonTokenModifierDefinitions = {
-  hsonQualifier: { scopes: [scope.attributeQualifier], types: qualifiedAttributeTypes, description: "Qualifier before the first attribute colon" },
-  hsonLocalName: { scopes: [scope.attributeLocalName], types: qualifiedAttributeTypes, description: "Attribute segment following a colon" },
-  hsonTagOpen: { scopes: [scope.tagBegin], description: "Opening Hson element delimiter" },
-  hsonTagClose: { scopes: [scope.tagEnd], description: "Closing Hson element delimiter" },
-  hsonSelfClosing: { scopes: [scope.selfClosingSlash], description: "Self-closing slash" },
-  hsonArrayOpen: { scopes: [scope.arrayBegin], description: "Opening Hson array delimiter" },
-  hsonArrayClose: { scopes: [scope.arrayEnd], description: "Closing Hson array delimiter" },
-  hsonSequenceSeparator: { scopes: [scope.sequenceSeparator], description: "Hson sequence separator" },
-  hsonAssignment: { scopes: [scope.assignment], description: "Attribute assignment operator" },
-  hsonInterpolationSigil: { scopes: [scope.interpolationDollar], description: "Hson interpolation dollar sigil" },
-  hsonInterpolationOpen: { scopes: [scope.interpolationBegin], description: "Opening reference/interpolation brace" },
-  hsonInterpolationClose: { scopes: [scope.interpolationEnd], description: "Closing reference/interpolation brace" },
-  hsonMember: { scopes: [scope.referenceMember], types: ["hsonReference"], description: "Dotted Part reference member" },
-  hsonReferenceSeparator: { scopes: [scope.referenceSeparator], description: "Part reference member separator" },
-  hsonSelectorOpen: { scopes: [scope.selectorBegin], description: "Opening Part selector bracket" },
-  hsonSelectorClose: { scopes: [scope.selectorEnd], description: "Closing Part selector bracket" },
-} satisfies Record<string, { scopes: readonly string[]; types?: readonly string[]; description: string }>;
+export const hsonTokenDefinitions = catalog.tokens;
+export const hsonTokenModifierDefinitions = catalog.modifiers;
 
 export function hsonModifiersForScopes(scopes: readonly string[]): string[] {
   // Structural fallback sometimes encloses `/` in a tag-end scope. The leaf
   // punctuation, not that enclosing fallback, owns the modifier.
   const leaf = scopes.at(-1);
   return Object.entries(hsonTokenModifierDefinitions)
-    .filter(([, definition]) => definition.scopes.some(scope => scope === leaf))
+    .filter(([modifier, definition]) => modifier === 'hsonAttribute' || modifier === 'hsonContent'
+      ? definition.scopes.some(scope => scopes.includes(scope)) && (leaf === scope.quotedString || leaf === scope.quoteBegin || leaf === scope.quoteEnd)
+      : definition.scopes.some(scope => scope === leaf))
     .map(([modifier]) => modifier);
 }
 
@@ -164,6 +111,25 @@ for (const [modifier, definition] of Object.entries(hsonTokenModifierDefinitions
   if ("types" in definition) for (const type of definition.types) {
     const base = hsonTokenScopes[type]!;
     hsonTokenScopes[`${type}.${modifier}`] = [...definition.scopes.map(scope => `${base[0]} ${scope}`), ...base];
+  }
+}
+
+// Native themes match scope stacks, including enclosing strings. Preserve that
+// context when TextMate classification is transported as semantic tokens.
+for (const [type, scopes] of Object.entries(hsonTokenScopes)) {
+  const definition = Object.entries(hsonTokenDefinitions).find(([base]) => base === type.split('.')[0])?.[1];
+  const parent = definition && 'fallbackContext' in definition ? definition.fallbackContext : undefined;
+  if (parent) hsonTokenScopes[type] = [...scopes.map(scope => parent + ' ' + scope), ...scopes];
+}
+
+// Attribute/content contexts enclose the string and its punctuation, rather
+// than following them. Preserve combined quote modifiers for exact end scopes.
+for (const context of ['hsonAttribute', 'hsonContent'] as const) {
+  const parent = hsonTokenModifierDefinitions[context].scopes[0];
+  for (const type of hsonTokenModifierDefinitions[context].types) {
+    hsonTokenScopes[`${type}.${context}`] = hsonTokenScopes[type]!.map(stack => `${parent} ${stack}`);
+    if (type === 'hsonQuote') for (const edge of ['hsonQuoteOpen','hsonQuoteClose'])
+      hsonTokenScopes[`${type}.${context}.${edge}`] = hsonTokenScopes[`${type}.${edge}`]!.map(stack => `${parent} ${stack}`);
   }
 }
 

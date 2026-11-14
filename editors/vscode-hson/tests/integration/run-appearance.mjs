@@ -28,20 +28,24 @@ await writeFile(join(workspace, "proof.ts"), 'import { Hson } from "hson-live/hs
 await writeFile(join(workspace, "hson-authoring.d.ts"), 'declare module "hson-live/hson" { export const Hson: { document(s: TemplateStringsArray, ...v: unknown[]): string; data(s: TemplateStringsArray, ...v: unknown[]): unknown; }; }');
 await writeFile(join(workspace, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", strict: true }, include: ["*.ts"] }));
 const port = await binding_color_port();
-const colors = monitor_binding_colors(workspace, port);
-const ui = monitor_appearance_ui(workspace, port);
+
 console.log("APPEARANCE_TEST_ROOT=" + testRoot);
 try {
   await symlink(testRoot, alias);
-  await new Promise((accept, reject) => {
+  for(const phase of ["initial","reload"]){
+    const colors=monitor_binding_colors(workspace,port),ui=monitor_appearance_ui(workspace,port);
+    try{await new Promise((accept, reject) => {
     const child = spawn(process.env.HSON_VSCODE_EXECUTABLE ?? "/Applications/Visual Studio Code.app/Contents/MacOS/Code", [
       workspace, "--new-window", "--skip-welcome", "--skip-release-notes", "--disable-updates", "--disable-workspace-trust",
       "--user-data-dir=" + join(alias, "user"), "--extensions-dir=" + join(alias, "extensions"),
       "--remote-debugging-port=" + port, "--extensionDevelopmentPath=" + root,
       "--extensionTestsPath=" + join(root, ".test-dist/appearance-integration.cjs"),
-    ], { stdio: "inherit", env: { ...process.env, TMPDIR: alias, HSON_APPEARANCE_WORKSPACE: workspace } });
+    ], { stdio: "inherit", env: { ...process.env, TMPDIR: alias, HSON_APPEARANCE_WORKSPACE: workspace, HSON_APPEARANCE_RELOAD: phase==="reload"?"1":"0" } });
     child.on("error", reject);
     child.on("exit", (code, signal) => code === 0 ? accept() : reject(new Error(`Appearance tests exited ${code} (${signal})`)));
-  });
-} finally { colors.stop(); ui.stop(); await Promise.all([colors.done, ui.done]); await unlink(alias).catch(() => {}); }
+    });
+      await writeFile(join(workspace,`appearance-${phase}-colors.json`),await readFile(join(workspace,"binding-color-report.json")));
+    }finally{colors.stop();ui.stop();await Promise.all([colors.done,ui.done]);}
+  }
+} finally { await unlink(alias).catch(() => {}); }
 console.log(await readFile(join(workspace, "binding-color-report.json"), "utf8"));

@@ -4,7 +4,11 @@
   "description": "Syntax highlighting and authoritative diagnostics for Hson files and supported embedded Hson regions.",
   "version": "0.1.1",
   "publisher": "terminal-gothic",
-  "repository": { "type": "git", "url": "https://github.com/neutralica/hson-live.git", "directory": "editors/vscode-hson" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neutralica/hson-live.git",
+    "directory": "editors/vscode-hson"
+  },
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "icon": "images/hson-icon.png",
@@ -85,7 +89,7 @@
     ],
     "configuration": [
       {
-        "title": "Hson › Appearance",
+        "title": "Hson \u203a Appearance",
         "order": 10,
         "properties": {
           "hson.appearance.libraryMarkerStrength": {
@@ -165,11 +169,70 @@
             "order": 80,
             "title": "Library Separator Color",
             "markdownDescription": "Colors only the first member-access period after an official lowercase `hson` root. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` ID."
+          },
+          "hson.appearance.state": {
+            "type": "object",
+            "scope": "window",
+            "default": {
+              "palettes": [],
+              "assignments": {
+                "all": "native"
+              },
+              "overrides": {}
+            },
+            "description": "Named Hson syntax palettes, family assignments and sparse style overrides. Edit with Hson: Open Appearance, or edit this object directly.",
+            "additionalProperties": false,
+            "required": [
+              "palettes",
+              "assignments",
+              "overrides"
+            ],
+            "properties": {
+              "palettes": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "assignments": {
+                "type": "object",
+                "required": [
+                  "all"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "string"
+                  },
+                  "document": {
+                    "type": "string"
+                  }
+                }
+              },
+              "overrides": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "all": {
+                    "type": "object"
+                  },
+                  "data": {
+                    "type": "object"
+                  },
+                  "document": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         }
       },
       {
-        "title": "Hson › Local App",
+        "title": "Hson \u203a Local App",
         "order": 20,
         "properties": {
           "hson.localHost.entry": {
@@ -234,7 +297,7 @@
         }
       },
       {
-        "title": "Hson › Formatting",
+        "title": "Hson \u203a Formatting",
         "order": 30,
         "properties": {
           "hson.formatting.formatOnSave": {
@@ -249,33 +312,126 @@
       }
     ],
     "commands": [
-      { "command": "hson.openAppearance", "title": "Open Appearance", "category": "Hson" },
-      { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
-      { "command": "hson.formatDocument", "title": "Format Document", "category": "Hson", "enablement": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson" },
-      { "command": "hson.formatSelection", "title": "Format Selection", "category": "Hson", "enablement": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)" },
-      { "command": "hson.generateSchemaTypes", "title": "Generate Schema Types", "category": "Hson" },
-      { "command": "hson.startSchemaWatch", "title": "Start Schema Watch", "category": "Hson" },
-      { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
-      { "command": "hson.checkSchemas", "title": "Check Schemas", "category": "Hson" },
-      { "command": "hson.showSchemaOutput", "title": "Show Schema Output", "category": "Hson" },
-      { "command": "hson.runAll", "title": "Run All", "category": "Hson" },
-      { "command": "hson.stopAll", "title": "Stop All", "category": "Hson" },
-      { "command": "hson.startLocalHost", "title": "Run Local App", "category": "Hson", "enablement": "hson.localHost.canStart" },
-      { "command": "hson.runAndOpenLocalApp", "title": "Run & Open Local App", "category": "Hson" },
-      { "command": "hson.stopLocalHost", "title": "Stop Local App", "category": "Hson", "enablement": "hson.localHost.canStop" },
-      { "command": "hson.restartLocalHost", "title": "Restart Local App", "category": "Hson", "enablement": "hson.localHost.canRestart" },
-      { "command": "hson.openLocalApp", "title": "Open Local App", "category": "Hson", "enablement": "hson.localHost.canOpen" },
-      { "command": "hson.copyLocalAppUrl", "title": "Copy Local App URL", "category": "Hson", "enablement": "hson.localHost.canOpen" },
-      { "command": "hson.showLocalHostOutput", "title": "Show Local App Output", "category": "Hson" }
+      {
+        "command": "hson.openAppearance",
+        "title": "Open Appearance",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.openSettings",
+        "title": "Open Settings",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.formatDocument",
+        "title": "Format Document",
+        "category": "Hson",
+        "enablement": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson"
+      },
+      {
+        "command": "hson.formatSelection",
+        "title": "Format Selection",
+        "category": "Hson",
+        "enablement": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)"
+      },
+      {
+        "command": "hson.generateSchemaTypes",
+        "title": "Generate Schema Types",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.startSchemaWatch",
+        "title": "Start Schema Watch",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.stopSchemaWatch",
+        "title": "Stop Schema Watch",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.checkSchemas",
+        "title": "Check Schemas",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.showSchemaOutput",
+        "title": "Show Schema Output",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.runAll",
+        "title": "Run All",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.stopAll",
+        "title": "Stop All",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.startLocalHost",
+        "title": "Run Local App",
+        "category": "Hson",
+        "enablement": "hson.localHost.canStart"
+      },
+      {
+        "command": "hson.runAndOpenLocalApp",
+        "title": "Run & Open Local App",
+        "category": "Hson"
+      },
+      {
+        "command": "hson.stopLocalHost",
+        "title": "Stop Local App",
+        "category": "Hson",
+        "enablement": "hson.localHost.canStop"
+      },
+      {
+        "command": "hson.restartLocalHost",
+        "title": "Restart Local App",
+        "category": "Hson",
+        "enablement": "hson.localHost.canRestart"
+      },
+      {
+        "command": "hson.openLocalApp",
+        "title": "Open Local App",
+        "category": "Hson",
+        "enablement": "hson.localHost.canOpen"
+      },
+      {
+        "command": "hson.copyLocalAppUrl",
+        "title": "Copy Local App URL",
+        "category": "Hson",
+        "enablement": "hson.localHost.canOpen"
+      },
+      {
+        "command": "hson.showLocalHostOutput",
+        "title": "Show Local App Output",
+        "category": "Hson"
+      }
     ],
     "menus": {
       "commandPalette": [
-        { "command": "hson.formatDocument", "when": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson" },
-        { "command": "hson.formatSelection", "when": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)" }
+        {
+          "command": "hson.formatDocument",
+          "when": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson"
+        },
+        {
+          "command": "hson.formatSelection",
+          "when": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)"
+        }
       ],
       "editor/context": [
-        { "command": "hson.formatDocument", "when": "editorTextFocus && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)", "group": "1_modification@10" },
-        { "command": "hson.formatSelection", "when": "editorTextFocus && editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)", "group": "1_modification@11" }
+        {
+          "command": "hson.formatDocument",
+          "when": "editorTextFocus && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)",
+          "group": "1_modification@10"
+        },
+        {
+          "command": "hson.formatSelection",
+          "when": "editorTextFocus && editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown || editorLangId == hson)",
+          "group": "1_modification@11"
+        }
       ]
     },
     "keybindings": [
@@ -588,9 +744,11 @@
             "keyword.control.iteration.hson"
           ],
           "hsonLocalReferenceSigil": [
+            "string.quoted.double.hson keyword.operator.interpolation.caret.hson",
             "keyword.operator.interpolation.caret.hson"
           ],
           "hsonIncomingReferenceSigil": [
+            "string.quoted.double.hson keyword.operator.interpolation.percent.hson",
             "keyword.operator.interpolation.percent.hson"
           ],
           "hsonString": [
@@ -608,14 +766,20 @@
             "keyword.declaration.part.hson"
           ],
           "hsonQuid": [
+            "variable.other.constant.hson constant.other.quid.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "constant.other.quid.hson",
             "variable.other.constant.hson"
           ],
           "hsonQuad": [
+            "variable.other.constant.hson constant.other.quad.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "constant.other.quad.hson",
             "variable.other.constant.hson"
           ],
           "hsonIdentityMarker": [
+            "variable.other.constant.hson punctuation.definition.identity.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "punctuation.definition.identity.hson",
             "variable.other.constant.hson"
           ],
@@ -636,6 +800,9 @@
             "keyword.operator.interpolation.dollar.hson"
           ],
           "hsonColon": [
+            "keyword.operator.hson punctuation.separator.attribute.hson",
+            "keyword.operator.hson punctuation.separator.identity.hson",
+            "keyword.operator.hson keyword.operator.hson",
             "punctuation.separator.attribute.hson",
             "punctuation.separator.identity.hson",
             "keyword.operator.hson"
@@ -647,20 +814,31 @@
             "invalid.illegal.hson"
           ],
           "hsonIncomingReference": [
+            "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson variable.parameter.incoming.hson",
+            "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson variable.parameter",
             "variable.parameter.incoming.hson",
             "variable.parameter"
           ],
           "hsonReference": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson",
             "punctuation.accessor.hson",
             "punctuation.section.selector.begin.hson",
             "punctuation.section.selector.end.hson"
           ],
           "hsonInterpolationDelimiter": [
+            "string.quoted.double.hson punctuation.definition.template-expression.begin.hson",
+            "string.quoted.double.hson punctuation.definition.template-expression.end.hson",
             "punctuation.definition.template-expression.begin.hson",
             "punctuation.definition.template-expression.end.hson"
           ],
           "hsonQuote": [
+            "string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson punctuation.definition.string.end.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
             "punctuation.definition.string.begin.hson",
             "punctuation.definition.string.end.hson",
             "string.quoted.double.hson"
@@ -690,22 +868,42 @@
             "keyword.operator.interpolation.dollar.hson"
           ],
           "hsonReference.hsonReferenceSeparator": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.accessor.hson",
             "variable.other.property.hson"
           ],
           "hsonReference.hsonSelectorOpen": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.section.selector.begin.hson",
             "variable.other.property.hson"
           ],
           "hsonReference.hsonSelectorClose": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.section.selector.end.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson"
           ],
           "hsonInterpolationDelimiter.hsonInterpolationOpen": [
+            "string.quoted.double.hson punctuation.definition.template-expression.begin.hson",
             "punctuation.definition.template-expression.begin.hson"
           ],
           "hsonInterpolationDelimiter.hsonInterpolationClose": [
+            "string.quoted.double.hson punctuation.definition.template-expression.end.hson",
             "punctuation.definition.template-expression.end.hson"
+          ],
+          "hsonQuote.hsonQuoteOpen": [
+            "string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
+            "punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonQuoteClose": [
+            "string.quoted.double.hson punctuation.definition.string.end.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
+            "punctuation.definition.string.end.hson",
+            "string.quoted.double.hson"
           ],
           "hsonProperty.hsonQualifier": [
             "entity.other.attribute-name.hson meta.attribute.qualifier.hson",
@@ -764,11 +962,64 @@
             "keyword.declaration.part.hson"
           ],
           "hsonReference.hsonMember": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson meta.reference.member.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson meta.reference.member.hson",
             "variable.other.property.hson",
             "punctuation.accessor.hson",
             "punctuation.section.selector.begin.hson",
             "punctuation.section.selector.end.hson"
+          ],
+          "hsonString.hsonAttribute": [
+            "meta.attribute.value.hson string.quoted.double.hson",
+            "meta.attribute.value.hson string.unquoted.attribute-value.hson"
+          ],
+          "hsonQuote.hsonAttribute": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonString.hsonContent": [
+            "meta.content.value.hson string.quoted.double.hson",
+            "meta.content.value.hson string.unquoted.attribute-value.hson"
+          ],
+          "hsonQuote.hsonContent": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonAttribute.hsonQuoteOpen": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonAttribute.hsonQuoteClose": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonContent.hsonQuoteOpen": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonContent.hsonQuoteClose": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson"
           ]
         }
       },
@@ -814,9 +1065,11 @@
             "keyword.control.iteration.hson"
           ],
           "hsonLocalReferenceSigil": [
+            "string.quoted.double.hson keyword.operator.interpolation.caret.hson",
             "keyword.operator.interpolation.caret.hson"
           ],
           "hsonIncomingReferenceSigil": [
+            "string.quoted.double.hson keyword.operator.interpolation.percent.hson",
             "keyword.operator.interpolation.percent.hson"
           ],
           "hsonString": [
@@ -834,14 +1087,20 @@
             "keyword.declaration.part.hson"
           ],
           "hsonQuid": [
+            "variable.other.constant.hson constant.other.quid.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "constant.other.quid.hson",
             "variable.other.constant.hson"
           ],
           "hsonQuad": [
+            "variable.other.constant.hson constant.other.quad.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "constant.other.quad.hson",
             "variable.other.constant.hson"
           ],
           "hsonIdentityMarker": [
+            "variable.other.constant.hson punctuation.definition.identity.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "punctuation.definition.identity.hson",
             "variable.other.constant.hson"
           ],
@@ -862,6 +1121,9 @@
             "keyword.operator.interpolation.dollar.hson"
           ],
           "hsonColon": [
+            "keyword.operator.hson punctuation.separator.attribute.hson",
+            "keyword.operator.hson punctuation.separator.identity.hson",
+            "keyword.operator.hson keyword.operator.hson",
             "punctuation.separator.attribute.hson",
             "punctuation.separator.identity.hson",
             "keyword.operator.hson"
@@ -873,20 +1135,31 @@
             "invalid.illegal.hson"
           ],
           "hsonIncomingReference": [
+            "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson variable.parameter.incoming.hson",
+            "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson variable.parameter",
             "variable.parameter.incoming.hson",
             "variable.parameter"
           ],
           "hsonReference": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson",
             "punctuation.accessor.hson",
             "punctuation.section.selector.begin.hson",
             "punctuation.section.selector.end.hson"
           ],
           "hsonInterpolationDelimiter": [
+            "string.quoted.double.hson punctuation.definition.template-expression.begin.hson",
+            "string.quoted.double.hson punctuation.definition.template-expression.end.hson",
             "punctuation.definition.template-expression.begin.hson",
             "punctuation.definition.template-expression.end.hson"
           ],
           "hsonQuote": [
+            "string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson punctuation.definition.string.end.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
             "punctuation.definition.string.begin.hson",
             "punctuation.definition.string.end.hson",
             "string.quoted.double.hson"
@@ -916,22 +1189,42 @@
             "keyword.operator.interpolation.dollar.hson"
           ],
           "hsonReference.hsonReferenceSeparator": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.accessor.hson",
             "variable.other.property.hson"
           ],
           "hsonReference.hsonSelectorOpen": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.section.selector.begin.hson",
             "variable.other.property.hson"
           ],
           "hsonReference.hsonSelectorClose": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.section.selector.end.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson"
           ],
           "hsonInterpolationDelimiter.hsonInterpolationOpen": [
+            "string.quoted.double.hson punctuation.definition.template-expression.begin.hson",
             "punctuation.definition.template-expression.begin.hson"
           ],
           "hsonInterpolationDelimiter.hsonInterpolationClose": [
+            "string.quoted.double.hson punctuation.definition.template-expression.end.hson",
             "punctuation.definition.template-expression.end.hson"
+          ],
+          "hsonQuote.hsonQuoteOpen": [
+            "string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
+            "punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonQuoteClose": [
+            "string.quoted.double.hson punctuation.definition.string.end.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
+            "punctuation.definition.string.end.hson",
+            "string.quoted.double.hson"
           ],
           "hsonProperty.hsonQualifier": [
             "entity.other.attribute-name.hson meta.attribute.qualifier.hson",
@@ -990,11 +1283,64 @@
             "keyword.declaration.part.hson"
           ],
           "hsonReference.hsonMember": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson meta.reference.member.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson meta.reference.member.hson",
             "variable.other.property.hson",
             "punctuation.accessor.hson",
             "punctuation.section.selector.begin.hson",
             "punctuation.section.selector.end.hson"
+          ],
+          "hsonString.hsonAttribute": [
+            "meta.attribute.value.hson string.quoted.double.hson",
+            "meta.attribute.value.hson string.unquoted.attribute-value.hson"
+          ],
+          "hsonQuote.hsonAttribute": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonString.hsonContent": [
+            "meta.content.value.hson string.quoted.double.hson",
+            "meta.content.value.hson string.unquoted.attribute-value.hson"
+          ],
+          "hsonQuote.hsonContent": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonAttribute.hsonQuoteOpen": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonAttribute.hsonQuoteClose": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonContent.hsonQuoteOpen": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonContent.hsonQuoteClose": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson"
           ]
         }
       },
@@ -1040,9 +1386,11 @@
             "keyword.control.iteration.hson"
           ],
           "hsonLocalReferenceSigil": [
+            "string.quoted.double.hson keyword.operator.interpolation.caret.hson",
             "keyword.operator.interpolation.caret.hson"
           ],
           "hsonIncomingReferenceSigil": [
+            "string.quoted.double.hson keyword.operator.interpolation.percent.hson",
             "keyword.operator.interpolation.percent.hson"
           ],
           "hsonString": [
@@ -1060,14 +1408,20 @@
             "keyword.declaration.part.hson"
           ],
           "hsonQuid": [
+            "variable.other.constant.hson constant.other.quid.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "constant.other.quid.hson",
             "variable.other.constant.hson"
           ],
           "hsonQuad": [
+            "variable.other.constant.hson constant.other.quad.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "constant.other.quad.hson",
             "variable.other.constant.hson"
           ],
           "hsonIdentityMarker": [
+            "variable.other.constant.hson punctuation.definition.identity.hson",
+            "variable.other.constant.hson variable.other.constant.hson",
             "punctuation.definition.identity.hson",
             "variable.other.constant.hson"
           ],
@@ -1088,6 +1442,9 @@
             "keyword.operator.interpolation.dollar.hson"
           ],
           "hsonColon": [
+            "keyword.operator.hson punctuation.separator.attribute.hson",
+            "keyword.operator.hson punctuation.separator.identity.hson",
+            "keyword.operator.hson keyword.operator.hson",
             "punctuation.separator.attribute.hson",
             "punctuation.separator.identity.hson",
             "keyword.operator.hson"
@@ -1099,20 +1456,31 @@
             "invalid.illegal.hson"
           ],
           "hsonIncomingReference": [
+            "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson variable.parameter.incoming.hson",
+            "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson variable.parameter",
             "variable.parameter.incoming.hson",
             "variable.parameter"
           ],
           "hsonReference": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson",
             "punctuation.accessor.hson",
             "punctuation.section.selector.begin.hson",
             "punctuation.section.selector.end.hson"
           ],
           "hsonInterpolationDelimiter": [
+            "string.quoted.double.hson punctuation.definition.template-expression.begin.hson",
+            "string.quoted.double.hson punctuation.definition.template-expression.end.hson",
             "punctuation.definition.template-expression.begin.hson",
             "punctuation.definition.template-expression.end.hson"
           ],
           "hsonQuote": [
+            "string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson punctuation.definition.string.end.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
             "punctuation.definition.string.begin.hson",
             "punctuation.definition.string.end.hson",
             "string.quoted.double.hson"
@@ -1142,22 +1510,42 @@
             "keyword.operator.interpolation.dollar.hson"
           ],
           "hsonReference.hsonReferenceSeparator": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.accessor.hson",
             "variable.other.property.hson"
           ],
           "hsonReference.hsonSelectorOpen": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.section.selector.begin.hson",
             "variable.other.property.hson"
           ],
           "hsonReference.hsonSelectorClose": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson punctuation.section.selector.end.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
             "variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson"
           ],
           "hsonInterpolationDelimiter.hsonInterpolationOpen": [
+            "string.quoted.double.hson punctuation.definition.template-expression.begin.hson",
             "punctuation.definition.template-expression.begin.hson"
           ],
           "hsonInterpolationDelimiter.hsonInterpolationClose": [
+            "string.quoted.double.hson punctuation.definition.template-expression.end.hson",
             "punctuation.definition.template-expression.end.hson"
+          ],
+          "hsonQuote.hsonQuoteOpen": [
+            "string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
+            "punctuation.definition.string.begin.hson",
+            "string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonQuoteClose": [
+            "string.quoted.double.hson punctuation.definition.string.end.hson",
+            "string.quoted.double.hson string.quoted.double.hson",
+            "punctuation.definition.string.end.hson",
+            "string.quoted.double.hson"
           ],
           "hsonProperty.hsonQualifier": [
             "entity.other.attribute-name.hson meta.attribute.qualifier.hson",
@@ -1216,11 +1604,64 @@
             "keyword.declaration.part.hson"
           ],
           "hsonReference.hsonMember": [
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson meta.reference.member.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson variable.other.property.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.accessor.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.begin.hson",
+            "string.quoted.double.hson meta.part.local.hson variable.other.property.hson punctuation.section.selector.end.hson",
             "variable.other.property.hson meta.reference.member.hson",
             "variable.other.property.hson",
             "punctuation.accessor.hson",
             "punctuation.section.selector.begin.hson",
             "punctuation.section.selector.end.hson"
+          ],
+          "hsonString.hsonAttribute": [
+            "meta.attribute.value.hson string.quoted.double.hson",
+            "meta.attribute.value.hson string.unquoted.attribute-value.hson"
+          ],
+          "hsonQuote.hsonAttribute": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonString.hsonContent": [
+            "meta.content.value.hson string.quoted.double.hson",
+            "meta.content.value.hson string.unquoted.attribute-value.hson"
+          ],
+          "hsonQuote.hsonContent": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonAttribute.hsonQuoteOpen": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.begin.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonAttribute.hsonQuoteClose": [
+            "meta.attribute.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.attribute.value.hson punctuation.definition.string.end.hson",
+            "meta.attribute.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonContent.hsonQuoteOpen": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.begin.hson",
+            "meta.content.value.hson string.quoted.double.hson"
+          ],
+          "hsonQuote.hsonContent.hsonQuoteClose": [
+            "meta.content.value.hson string.quoted.double.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson string.quoted.double.hson",
+            "meta.content.value.hson punctuation.definition.string.end.hson",
+            "meta.content.value.hson string.quoted.double.hson"
           ]
         }
       }
@@ -1289,6 +1730,22 @@
       {
         "id": "hsonSelectorClose",
         "description": "Closing Part selector bracket"
+      },
+      {
+        "id": "hsonAttribute",
+        "description": "Hson attribute string context"
+      },
+      {
+        "id": "hsonContent",
+        "description": "Hson content string context"
+      },
+      {
+        "id": "hsonQuoteOpen",
+        "description": "Hson QuoteOpen"
+      },
+      {
+        "id": "hsonQuoteClose",
+        "description": "Hson QuoteClose"
       }
     ]
   },

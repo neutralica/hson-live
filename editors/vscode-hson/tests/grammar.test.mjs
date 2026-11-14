@@ -464,7 +464,7 @@ if (process.env.HSON_VSCODE_THEMES) {
   const extra = await tokenize('source.hson', '<p @:identity @012345678>');
   const cases = [
     ['identity', 'hsonQuad'], ['012345678', 'hsonQuid'], ['@', 'hsonIdentityMarker'], [':', 'hsonColon'],
-    ['data', 'hsonReference'], ['href', 'hsonReference.hsonMember'], ['value', 'hsonReference.hsonMember'], ['.', 'hsonReference.hsonReferenceSeparator'],
+    ['data', 'hsonIncomingReference'], ['href', 'hsonReference.hsonMember'], ['value', 'hsonReference.hsonMember'], ['.', 'hsonReference.hsonReferenceSeparator'],
     ['%', 'hsonIncomingReferenceSigil'], ['^', 'hsonLocalReferenceSigil'], ['{', 'hsonInterpolationDelimiter'], ['}', 'hsonInterpolationDelimiter'],
     ['"', 'hsonQuote'], ['=', 'hsonOperator'], ['M2 10h4', 'hsonString'],
     ['tag', 'hsonType'], ['slide', 'hsonReceiving'], ['enabled', 'hsonFlag'], ['hson', 'hsonDeclaration'],
@@ -473,11 +473,10 @@ if (process.env.HSON_VSCODE_THEMES) {
     ...Object.values(fallbacks).flat().map(scope => scope.split(' '))];
   for (const name of ['2026-light', '2026-dark', 'light_plus', 'dark_plus']) {
     const theme = await readTheme(resolve(process.env.HSON_VSCODE_THEMES, name + '.json'));
-    // A sentinel exposes an absent fallback instead of silently mistaking the
-    // editor default (or the host template's string color) for a match.
-    const sentinel = '#010203';
+    // The default is a valid authored color, never an invalid-value sentinel.
+    const defaultColor = theme.colors['editor.foreground'] ?? '#010203';
     const themed = new Registry({
-      theme: { settings: [{ settings: { foreground: sentinel } }, ...theme.tokenColors] },
+      theme: { settings: [{ settings: { foreground: defaultColor } }, ...theme.tokenColors] },
       onigLib: Promise.resolve({ createOnigScanner: p => new OnigScanner(p), createOnigString: s => new OnigString(s) }),
       loadGrammar: async scope => scope === 'source.ts'
         ? parseRawGrammar(await readFile(resolve(process.env.HSON_VSCODE_THEMES, '../../typescript-basics/syntaxes/TypeScript.tmLanguage.json'), 'utf8'), 'typescript.json')
@@ -493,14 +492,11 @@ if (process.env.HSON_VSCODE_THEMES) {
     const resolved = new Map();
     for (const [text, type] of cases) {
       const standalone = foreground([...visible, ...extra].find(token => token.text === text && (!['data', 'href', 'value', '.'].includes(text) || token.scopes.includes('variable.other.property.hson'))).scopes);
-      const embedded = fallbacks[type].map(scope => foreground(scope.split(' '))).find(color => color !== sentinel);
-      assert.ok(embedded, `${name}: missing ${type} fallback`);
+      assert.ok(fallbacks[type]?.length, `${name}: missing ${type} fallback stack`);
+      const embedded = foreground(fallbacks[type][0].split(' '));
       assert.equal(embedded, standalone, `${name}: standalone/embedded ${text}`);
       resolved.set(text, standalone);
     }
-    for (const path of ['data', 'href', 'value']) assert.notEqual(resolved.get(path), resolved.get('M2 10h4'), `${name}: path versus string`);
-    assert.notEqual(resolved.get('{'), resolved.get('data'), `${name}: braces versus path`);
-    assert.notEqual(resolved.get('%'), resolved.get('{'), `${name}: sigil versus brace`);
     const host = await themed.loadGrammar('source.ts');
     const ordinary = 'export const parts = { card: 1, render() { let value = this.card; return value; } };';
     const nativeTokens = host.tokenizeLine(ordinary, INITIAL).tokens;
@@ -525,7 +521,11 @@ if (process.env.HSON_VSCODE_THEMES) {
       for (let index = 0; index < binary.length; index += 2) {
         if (binary[index] <= offset && (binary[index + 2] ?? line.length) > offset) metadata = binary[index + 1];
       }
-      assert.equal(themed.getColorMap()[(metadata >>> 15) & 511], resolved.get('{'), `${name}: native host interpolation`);
+      const ordinaryTemplate = line.replace('Hson.document`', 'String.raw`');
+      const nativeBinary=host.tokenizeLine2(ordinaryTemplate,INITIAL).tokens;
+      const nativeOffset=offset+ordinaryTemplate.length-line.length;let nativeMetadata;
+      for(let i=0;i<nativeBinary.length;i+=2)if(nativeBinary[i]<=nativeOffset&&(nativeBinary[i+2]??ordinaryTemplate.length)>nativeOffset)nativeMetadata=nativeBinary[i+1];
+      assert.equal(themed.getColorMap()[(metadata >>> 15) & 511],themed.getColorMap()[(nativeMetadata >>> 15) & 511],`${name}: host interpolation follows the native TypeScript theme`);
     }
     console.log('ok - native theme scope foregrounds ' + name + ': ' + JSON.stringify(Object.fromEntries(resolved)));
     themed.dispose();

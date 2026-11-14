@@ -21,7 +21,7 @@ import {
 } from "../scripts/vscode-local-lib.mjs";
 
 const validateVsix = (path, manifest) => validateVsixArtifact(path, manifest,
-  new Map(manifest.contributes.themes.map(theme => [theme.path.replace(/^\.\//, ''), '{}\n'])));
+  new Map([...manifest.contributes.themes.map(theme => [theme.path.replace(/^\.\//, ''), '{}\n']), ['palettes/house.json','{}\n']]));
 
 let checks = 0;
 async function check(name, body) {
@@ -54,6 +54,8 @@ async function makeFixture(label = "authority fixture with spaces") {
   const extensionRoot = join(parent, label, "editors", "vscode-hson");
   const fixtureRepository = resolve(extensionRoot, "../..");
   await mkdir(join(extensionRoot, "themes"), { recursive: true });
+  await mkdir(join(extensionRoot, "palettes"), { recursive: true });
+  await writeFile(join(extensionRoot, "palettes/house.json"), "{}\n");
   await mkdir(join(extensionRoot, "scripts"), { recursive: true });
   await mkdir(join(extensionRoot, "syntaxes"), { recursive: true });
   await mkdir(join(extensionRoot, "images"), { recursive: true });
@@ -111,6 +113,7 @@ async function makeVsix(path, manifest, overrides = {}) {
     "dist/local-host-runner.cjs": overrides.runnerBundle ?? "module.exports = 2;\n",
     "dist/local-host-runner.cjs.map": runnerSourceMap,
     "dist/onig.wasm": "wasm",
+    "palettes/house.json": "{}\n",
     "themes/hson-house-dark-color-theme.json": "{}\n",
     "themes/hson-house-light-color-theme.json": "{}\n",
     "language-configuration.json": "{}\n",
@@ -325,6 +328,7 @@ await check("VSIX validation rejects wrong identity, version, configuration, col
       ["configuration", m => { m.contributes.configuration = []; }, /configuration contributions differ/],
       ["colors", m => { m.contributes.colors = [{ id: 'hson.libraryMarker.h', defaults: { dark: '#123456' } }]; }, /colors contributions differ/],
       ["themes", m => { m.contributes.themes = []; }, /themes contributions differ/],
+      ["semantic-modifiers", m => { m.contributes.semanticTokenModifiers = []; }, /semanticTokenModifiers contributions differ/],
       ["semantic-types", m => { m.contributes.semanticTokenTypes = []; }, /semanticTokenTypes contributions differ/],
       ["grammars", m => { m.contributes.grammars = []; }, /grammar contributions differ/],
     ]) {
@@ -516,7 +520,7 @@ await check("palette, generator and both theme files invalidate source authority
   const fixture = await makeFixture();
   try {
     const packaged = await packageCurrentSource(await fixturePackageOptions(fixture));
-    for (const path of ['src/appearance.ts', 'src/appearance-bindings.ts', 'scripts/appearance-catalog.mjs', 'src/tsserver-plugin/tsserver-plugin.ts', 'src/tsserver-plugin/native-semantic-tokens.ts', 'scripts/generate-themes.mjs', 'themes/hson-house-dark-color-theme.json', 'themes/hson-house-light-color-theme.json']) {
+    for (const path of ['palettes/house.json', 'src/appearance.ts', 'src/appearance-bindings.ts', 'scripts/appearance-catalog.mjs', 'src/tsserver-plugin/tsserver-plugin.ts', 'src/tsserver-plugin/native-semantic-tokens.ts', 'scripts/generate-themes.mjs', 'themes/hson-house-dark-color-theme.json', 'themes/hson-house-light-color-theme.json']) {
       const file = join(fixture.extensionRoot, path), before = await readFile(file);
       await writeFile(file, 'changed');
       assert.equal((await inspectPackageAuthority(fixture.extensionRoot)).state, 'stale', path);

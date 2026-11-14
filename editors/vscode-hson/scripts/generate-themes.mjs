@@ -11,7 +11,7 @@ export async function appearanceSource() {
   const result = await build({ stdin: { contents: 'export * from "./src/appearance.ts"; export * from "./src/appearance-internals.ts"; export * from "./src/appearance-bindings.ts";', resolveDir: fileURLToPath(root), loader: "ts" }, bundle: true, write: false, platform: "node", format: "esm" });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
-const { syntaxBindings, syntaxExamplePath, tokenAppearancePaths, generalRules, generalSemanticPaths, uiColorOrder } = await appearanceSource();
+const { syntaxBindings, syntaxExamplePath, segmentBindings, tokenAppearancePaths, generalRules, generalSemanticPaths, uiColorOrder } = await appearanceSource();
 
 export function validateGrammarScopes(definitions, grammar) {
   const emitted = new Set();
@@ -76,29 +76,23 @@ export function houseTheme(appearance, definitions, mode) {
     ...Object.fromEntries(Object.entries(generalSemanticPaths).map(([type, path]) => [type, semanticStyle(path)])),
     ...Object.fromEntries(Object.keys(definitions).map(type => [type, syntaxStyle(tokenAppearancePaths[type])])),
     '*.hsonQualifier': syntaxStyle('attribute.qualifier'),
-    'hsonReceiving.hsonLocalName': syntaxStyle('part.receivingArgument'),
-    'hsonReceiving.hsonQualifier': syntaxStyle('part.receivingKind'),
-    'hsonSending.hsonQualifier': syntaxStyle('part.sendingArgument'),
-    'hsonSending.hsonLocalName': syntaxStyle('attribute.qualifier'),
+    ...Object.fromEntries(segmentBindings.map(binding => [binding.selector, syntaxStyle(binding.id)])),
   };
   const tokenColors = [
     ...generalRules.map(({ scopes, path }) => rule(scopes, semanticStyle(path))),
     ...Object.entries(definitions).map(([type, definition]) => rule(definition.scopes, semanticTokenColors[type])),
     rule(syntaxBindings['attribute.qualifier'].scopes, syntaxStyle('attribute.qualifier')),
-    rule([`${syntaxBindings['part.sendingArgument'].scopes[0]} meta.attribute.qualifier.hson`], syntaxStyle('part.sendingArgument')),
-    rule([`${syntaxBindings['part.sendingArgument'].scopes[0]} meta.attribute.local-name.hson`], syntaxStyle('attribute.qualifier')),
-    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} meta.attribute.local-name.hson`], syntaxStyle('part.receivingArgument')),
-    rule([`${syntaxBindings['part.receivingArgument'].scopes[0]} ${syntaxBindings['part.receivingKind'].scopes[0]}`], syntaxStyle('part.receivingKind')),
+    ...[...segmentBindings].sort((a,b)=>a.grammarOrder-b.grammarOrder).map(binding => rule([`${binding.context} ${binding.scope}`],syntaxStyle(binding.id))),
   ];
   for (const [path, binding] of Object.entries(syntaxBindings)) {
     const foreground = syntaxStyle(path), selector = binding.selector;
-    if (['attribute.qualifier', 'part.receivingKind'].includes(path)) continue;
+    if (selector.startsWith('*') || segmentBindings.some(segment => segment.selector === selector)) continue;
     const base = selector.split('.')[0];
     if (JSON.stringify(foreground) === JSON.stringify(semanticTokenColors[base])) continue;
     // No invented modifiers: these pairs are still inseparable in TS/TSX.
     if (selector === base) throw new Error(`${path} shares ${selector} with ${tokenAppearancePaths[base]}; keep their effective styles equal until classification supports separation`);
     semanticTokenColors[selector] = foreground;
-    tokenColors.push(rule(binding.scopes, foreground));
+    tokenColors.push(rule(binding.scopes.map(scope => binding.context ? `${binding.context} ${scope}` : scope), foreground));
   }
   return {
     $schema: "vscode://schemas/color-theme", name: `Hson House ${mode === "dark" ? "Dark" : "Light"}`,
@@ -161,7 +155,7 @@ export async function generateThemes({ check = false } = {}) {
   const parsed = JSON.parse(manifest);
   const owned = brandingRuntime(appearance.branding);
   outputs.set(new URL('src/appearance-branding.generated.ts', root),
-    '// Generated from appearance.ts; edit the catalog and run themes:generate.\n'
+    '// Generated from palettes/house.json; edit that palette and run themes:generate.\n'
     + 'export const HSON_BRANDING = ' + JSON.stringify(owned, null, 2) + ' as const;\n'
     + 'export type AppearanceColorKey = keyof typeof HSON_BRANDING.colors;\n'
     + 'export const hsonIdentityMarkers = HSON_BRANDING.identityMarkers;\n'

@@ -1,3 +1,4 @@
+import { tokenize_hson } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import * as messages from "./diagnostic-messages.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ import { map_static_hson_range } from "../../../src/internal/embedded-hson/stati
 import { hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance-internals.js";
 
 export { hsonTokenScopes } from "./appearance-internals.js";
-export type HsonHighlight = Readonly<{ range: HostSourceRange; type: HsonTokenType; scopes: readonly string[]; modifiers: readonly string[] }>;
+export type HsonHighlight = Readonly<{ range: HostSourceRange; type: HsonTokenType; scannerName?: true; scopes: readonly string[]; modifiers: readonly string[] }>;
 
 let wasm: Promise<void> | undefined;
 export async function load_hson_grammar(extensionRoot: string): Promise<IGrammar> {
@@ -60,7 +61,12 @@ export function hson_literal_highlights(grammar: IGrammar, text: string): readon
     stack = tokens.ruleStack;
     offset += width;
   }
-  return result;
+  const names = new Map<number,number>();
+  try { tokenize_hson(text, 0, {recordAttribute() {}, recordToken(_token, evidence) {
+    if (evidence.roles.name) names.set(evidence.roles.name.start,evidence.roles.name.end);
+  }}); } catch { /* Proven prefixes remain usable while the user types. */ }
+  return result.map(token => token.type === 'hsonKeyword' && names.get(token.range.start) === token.range.end
+    ? {...token, type:'hsonType', scannerName:true, scopes:['source.hson','entity.name.type.hson'], modifiers:[]} : token);
 }
 
 export function hson_highlights(grammar: IGrammar, fileName: string, text: string,

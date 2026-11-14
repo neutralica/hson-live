@@ -239,8 +239,8 @@ const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383
 const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","5ff1488dd170145e980f630f135c21d976e89724bfb3e2489c71b57d4784e55c"]];
 
 export const declaredExecution = Object.freeze({
-  "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "d87dd374c63be4b4c9656a89583992faa80b777c722732b376b3fb6eedc55856", route: editorRoute,
-    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","1ee3f6779fa7a435c81a5fa7bb0c798a38bf62bb5eac6e1fe92086007a1686f2"]] },
+  "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "969e30a4ecdce159887b9861e13f6f46008402bee297d76bf680bc71a4ed19b3", route: "Two awaited isolated VS Code launches execute appearance.ts through build-tests; the second reopens the same worktree-local profile to verify persistence.",
+    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","111beb519b1ebbc9c32fe06f1559f5b0d6f68dce98b469365b99d297d0ab53b3"]] },
   "tests/livemap-graph-mutations.acceptance.mts": { sha256: "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341", route: workerRoute,
     targets: [["tests/fixtures/livemap-graph-mutations.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/livemap-graph-reads.acceptance.mts": { sha256: "e458b4ecea665f09b1ef32a9ba459dfc7be7421871f9e77445bab826485ed2c3", route: workerRoute,

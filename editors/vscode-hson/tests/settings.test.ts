@@ -68,7 +68,7 @@ check("standalone Hson enables the existing document and selection commands", ()
     }
   }
 });
-check("appearance surface contains only the finalized eight controls", () => assert.deepEqual(
+check("appearance surface contains branding controls and one syntax state", () => assert.deepEqual(
   Object.keys(appearanceGroup.properties),
   [
     "hson.appearance.libraryMarkerStrength",
@@ -79,6 +79,7 @@ check("appearance surface contains only the finalized eight controls", () => ass
     "hson.appearance.green",
     "hson.appearance.colorLibraryMarker",
     "hson.appearance.librarySeparatorColor",
+    "hson.appearance.state",
   ],
 ));
 check("library strength has the exact stable key", () => assert.ok(properties["hson.appearance.libraryMarkerStrength"]));
@@ -108,7 +109,7 @@ check("four shared color fields have approved defaults and accept empty-or-hex o
 check("default library and authoring markers retain the four shared hue settings", () => {
   for (const publicName of ["hson", "Hson"]) {
     assert.deepEqual(hsonIdentityMarkers.filter(marker => marker.publicName === publicName).map(marker => marker.colorSetting),
-      ["blue", "yellow", "pink", "green"]);
+      Object.values(publicName === "hson" ? HSON_APPEARANCE.branding.library.letters : HSON_APPEARANCE.branding.authoring.letters));
   }
 });
 check("orange is hard-migrated to pink", () => assert.equal(properties["hson.appearance.orange"], undefined));
@@ -157,7 +158,7 @@ check("marker strength falls back for non-finite input", () => assert.equal(mark
 check("the compact command set complements settings and status", () => assert.deepEqual(
   manifest.contributes.commands.map((command: { command: string }) => command.command),
   [
-    "hson.openSettings", "hson.formatDocument", "hson.formatSelection", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
+    "hson.openAppearance", "hson.openSettings", "hson.formatDocument", "hson.formatSelection", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
     "hson.runAll", "hson.stopAll", "hson.startLocalHost", "hson.runAndOpenLocalApp", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.showLocalHostOutput",
   ],
 ));

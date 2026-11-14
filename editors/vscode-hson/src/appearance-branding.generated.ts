@@ -1,4 +1,4 @@
-// Generated from appearance.ts; edit the catalog and run themes:generate.
+// Generated from palettes/house.json; edit that palette and run themes:generate.
 export const HSON_BRANDING = {
   "colors": {
     "blue": "#84a9d6",

@@ -1,7 +1,8 @@
+import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 import * as vscode from "vscode";
 import type { IGrammar } from "vscode-textmate";
 import { createHash, randomUUID } from "node:crypto";
-import { hson_highlights } from "./highlighting.js";
+import { hson_highlights, hson_literal_highlights } from "./highlighting.js";
 import { HsonBindingCache, binding_highlights, overlay_binding_highlights } from "./binding-intelligence.js";
 import { nativeTokenTypes, nativeTokenModifiers, read_native_tokens, NATIVE_SEMANTIC_COMMAND,
   SEMANTIC_DOCUMENT_LIMIT } from "./native-semantic-tokens.js";
@@ -29,9 +30,14 @@ export async function document_semantic_tokens(
     const snapshot = bindings.get({ uri: document.uri.toString(), fileName: document.fileName, languageId: document.languageId, version, text });
     const roots = binding_highlights(snapshot);
     // Standalone and Markdown need only this sparse overlay. TextMate continues
-    // owning every other token, including all host Markdown content.
+    // owning other tokens and all host Markdown content. Scanner-proven names
+    // also correct keyword-shaped Data keys without replacing that grammar.
     if (document.languageId === "hson" || document.languageId === "markdown") {
       const builder = new vscode.SemanticTokensBuilder(hsonSemanticLegend);
+      const regions = document.languageId === 'hson' ? [{bodyRange:{start:0,end:text.length}}] : markdown_hson_fence_regions(text);
+      for (const {bodyRange} of regions) for (const token of hson_literal_highlights(loaded,text.slice(bodyRange.start,bodyRange.end))) {
+        if (token.scannerName) builder.push(new vscode.Range(document.positionAt(bodyRange.start+token.range.start),document.positionAt(bodyRange.start+token.range.end)),token.type,[]);
+      }
       for (const token of roots) builder.push(new vscode.Range(document.positionAt(token.range.start), document.positionAt(token.range.end)), token.type, [...token.modifiers]);
       return stale() ? undefined : builder.build();
     }

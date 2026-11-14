@@ -1,197 +1,145 @@
-import * as vscode from "vscode";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
-import type { IGrammar } from "vscode-textmate";
-import { AppearanceRenderer } from "./appearance-renderer.js";
-import { AppearanceSpanCache, appearanceColor, appearanceRoles, isAppearanceRole, type AppearanceColors } from "./appearance-spans.js";
-import type { HsonBindingCache } from "./binding-intelligence.js";
-
-type Mode = "light" | "dark";
-type Comparison = "saved" | "draft";
+import * as vscode from 'vscode';
+import { randomUUID } from 'node:crypto';
+import { appearanceHtml } from './appearance-webview.js';
+import type { IGrammar } from 'vscode-textmate';
+import { AppearanceRenderer } from './appearance-renderer.js';
+import { AppearanceSpanCache } from './appearance-spans.js';
+import { roleCatalog, housePalette, initialAppearance, readAppearance, duplicatePalette, deletePalette, resolveStyle,
+  styleProperties, type AppearanceState, type Mode, type Family, type RoleStyle } from './appearance-model.js';
+import type { HsonBindingCache } from './binding-intelligence.js';
 type Example = keyof typeof examples;
-const labels = { attributeString: "Attribute string content", contentString: "Hson content string",
-  attributeQuotes: "Attribute quotes", contentQuotes: "Content quotes" };
 const examples = {
-  Document: { language: "hson", content: '// Editable Document scratchpad — paste your own Hson here.\n<section title="Attribute text" class="example"\n  <h1 "Content text"/>\n  <p data:message="%{message}" "Hello ^{message}"/>\n/>\n' },
+  Document: { language: "hson", content: '// Editable Document scratchpad — paste your own Hson here.\n<section hson:part data:message=%{message} title="Attribute text" class="example"\n  <h1 "Content text"/>\n  <p title=^{message} "Hello"/>\n/>\n' },
   Data: { language: "hson", content: '// Editable Data scratchpad — paste your own Hson here.\n<catalog\n  <title "Data content" >\n  <tags ["alpha", "beta"]>\n  <count 42>\n  <enabled true>\n>\n' },
-  Interpolation: { language: "typescript", content: 'import { Hson } from "hson-live/hson";\nconst hostValue = "Native TypeScript";\nconst document = Hson.document`\n<section title="Attribute text"\n  <p "Content text ${hostValue.toUpperCase()}"/>\n/>`;\n' },
+  Interpolation: { language: "typescript", content: 'import { Hson } from "hson-live/hson";\nconst hostValue = "Native TypeScript";\nconst document = Hson.document`\n<section title="Attribute text"\n  <p "Content text ${hostValue.toUpperCase()}"/>\n/>`;\nconst data = Hson.data`\n<catalog\n  <true "Data text">\n  <false 1>\n  <null null>\n>`;\n' },
 };
-function isExample(value: unknown): value is Example { return typeof value === "string" && Object.hasOwn(examples, value); }
-function currentMode(): Mode {
-  return [vscode.ColorThemeKind.Light, vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind) ? "light" : "dark";
+function currentMode(): Mode {return [vscode.ColorThemeKind.Light,vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind)?'light':'dark';}
+function configured():AppearanceState {
+  const setting=vscode.workspace.getConfiguration('hson.appearance').inspect('state');
+  return readAppearance(setting?.workspaceValue??setting?.globalValue??setting?.defaultValue);
 }
-
-/** Read the committed generator's effective colors, including its inheritance
- * and intensity blending. The editor neither edits nor regenerates House. */
-async function houseColors(extensionPath: string, mode: Mode): Promise<AppearanceColors> {
-  const theme = JSON.parse(await readFile(join(extensionPath, `themes/hson-house-${mode}-color-theme.json`), "utf8"));
-  const color = (type: string): string => {
-    const value = theme.semanticTokenColors[type];
-    const result = appearanceColor(typeof value === "string" ? value : value?.foreground);
-    if (!result) throw new Error(`Missing packaged House color: ${type}`);
-    return result;
-  };
-  return { attributeString: color("hsonString"), contentString: color("hsonString"),
-    attributeQuotes: color("hsonQuote"), contentQuotes: color("hsonQuote") };
-}
-
 export class HsonAppearanceEditor implements vscode.Disposable {
-  private panel?: vscode.WebviewPanel;
-  private renderer?: AppearanceRenderer;
-  private opening?: Promise<void>;
-  private readonly documents = new Map<Example, vscode.TextDocument>();
-  private readonly subscriptions: vscode.Disposable[] = [];
-  private saved?: Record<Mode, AppearanceColors>;
-  private draft?: Record<Mode, AppearanceColors>;
-  private comparison: Comparison = "draft";
-  private example: Example = "Document";
-  private readonly scratchpadId = randomUUID().slice(0, 8);
-  private disposed = false;
-  constructor(private readonly extensionPath: string, private readonly grammar: Promise<IGrammar>, private readonly bindings: HsonBindingCache) {}
-
-  async open(): Promise<void> {
-    if (this.disposed) return;
-    if (this.opening) return this.opening;
-    this.opening = this.openPanel().finally(() => { this.opening = undefined; });
-    return this.opening;
+  private panel?:vscode.WebviewPanel;
+  private readonly renderer:AppearanceRenderer;
+  private readonly subscriptions:vscode.Disposable[]=[];
+  private readonly documents=new Map<Example,vscode.TextDocument>();
+  private readonly scratchpadId=randomUUID().slice(0,8);
+  private saved=initialAppearance();
+  private draft=initialAppearance();
+  private comparison:'saved'|'draft'='draft';
+  private editTarget='palette:house';
+  private role='value.attributeString';
+  private mode=currentMode();
+  private destination:'user'|'workspace'='user';
+  private error='';
+  private conflict=false;
+  private saving=false;
+  private disposed=false;
+  private opening?:Promise<void>;
+  constructor(_extensionPath:string,grammar:Promise<IGrammar>,bindings:HsonBindingCache){
+    this.reload();
+    this.renderer=new AppearanceRenderer(grammar,new AppearanceSpanCache(bindings),()=>{try{return configured();}catch{return this.saved;}});
+    void this.renderer.refresh();
+    this.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event=>{
+      if(event.affectsConfiguration('editor.bracketPairColorization'))void this.present();
+      if(!event.affectsConfiguration('hson.appearance.state')||this.saving)return;
+      const dirty=JSON.stringify(this.draft)!==JSON.stringify(this.saved);
+      try{this.saved=configured();if(!dirty)this.draft=structuredClone(this.saved);else this.conflict=true;this.error='';}catch(error){this.error=String(error);}
+      void this.present();
+    }),vscode.window.onDidChangeActiveColorTheme(()=>{this.mode=currentMode();void this.present();}));
   }
-  private async openPanel(): Promise<void> {
-    if (!this.saved) {
-      const [light, dark] = await Promise.all([houseColors(this.extensionPath, "light"), houseColors(this.extensionPath, "dark")]);
-      this.saved = { light, dark };
-      this.draft = { light: { ...light }, dark: { ...dark } };
+  private reload():void {try{this.saved=configured();this.draft=structuredClone(this.saved);this.error='';this.conflict=false;}catch(error){this.error=String(error);}}
+  async open():Promise<void>{
+    if(this.disposed)return;if(this.opening)return this.opening;
+    this.opening=this.openPanel().finally(()=>{this.opening=undefined;});return this.opening;
+  }
+  private async openPanel():Promise<void>{
+    if(!this.panel){
+      const panel=this.panel=vscode.window.createWebviewPanel('hson.appearance','Hson Appearance',vscode.ViewColumn.One,{enableScripts:true,retainContextWhenHidden:true,localResourceRoots:[]});
+      const events=[panel.onDidDispose(()=>{this.panel=undefined;void this.renderer.setAppearance(undefined);for(const event of events)event.dispose();}),
+        panel.webview.onDidReceiveMessage((message:unknown)=>{void this.receive(message).catch(error=>{this.error=String(error);void this.present();});})];
+      panel.webview.html=appearanceHtml();
     }
-    if (this.disposed) return;
-    if (!this.panel) {
-      this.renderer = new AppearanceRenderer(this.grammar, new AppearanceSpanCache(this.bindings));
-      const panel = this.panel = vscode.window.createWebviewPanel("hson.appearance", "Hson Appearance", vscode.ViewColumn.One,
-        { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [] });
-      panel.webview.html = appearanceHtml();
-      this.subscriptions.push(panel.onDidDispose(() => {
-        this.panel = undefined;
-        this.renderer?.dispose();
-        this.renderer = undefined;
-        for (const subscription of this.subscriptions.splice(0)) subscription.dispose();
-      }), panel.webview.onDidReceiveMessage((message: unknown) => {
-        void this.receive(message).catch(error => { void vscode.window.showErrorMessage(`Hson Appearance: ${String(error)}`); });
-      }), vscode.window.onDidChangeActiveColorTheme(() => { void this.present(); }));
-      for (const document of this.documents.values()) if (!document.isClosed) await this.renderer.attach(document);
+    await vscode.commands.executeCommand('vscode.setEditorLayout',{orientation:0,groups:[{size:.38},{size:.62}]});
+    this.panel.reveal(vscode.ViewColumn.One,true);await this.showExample('Document');await this.present();
+  }
+  private async showExample(example:Example):Promise<void>{
+    let document=this.documents.get(example);
+    if(!document||document.isClosed){
+      const suffix=examples[example].language==='typescript'?'ts':'hson';
+      document=await vscode.workspace.openTextDocument(vscode.Uri.from({scheme:'untitled',path:`Hson ${example} ${this.scratchpadId}.${suffix}`}));
+      const edit=new vscode.WorkspaceEdit();edit.insert(document.uri,new vscode.Position(0,0),examples[example].content);
+      if(!await vscode.workspace.applyEdit(edit))throw new Error('Could not initialize scratchpad');this.documents.set(example,document);
     }
-    // An explicit editing arrangement: ordinary native editor groups retain
-    // documents, selections and undo stacks. No user setting is changed.
-    await vscode.commands.executeCommand("vscode.setEditorLayout", { orientation: 0, groups: [{ size: 0.34 }, { size: 0.66 }] });
-    this.panel?.reveal(vscode.ViewColumn.One, true);
-    await this.showExample(this.example);
-    await this.present();
+    if(!this.panel)return;
+    await this.renderer.attach(document,example==='Document'?'document':example==='Data'?'data':'all');
+    await vscode.window.showTextDocument(document,{viewColumn:vscode.ViewColumn.Two,preview:false,preserveFocus:true});
   }
-  private async showExample(example: Example): Promise<void> {
-    this.example = example;
-    let document = this.documents.get(example);
-    if (!document || document.isClosed) {
-      // Existing discovery and native TS services use the filename extension.
-      // Give untitled buffers a real language suffix without writing a file.
-      const suffix = examples[example].language === "typescript" ? "ts" : "hson";
-      const uri = vscode.Uri.from({ scheme: "untitled", path: `Hson ${example} ${this.scratchpadId}.${suffix}` });
-      document = await vscode.workspace.openTextDocument(uri);
-      const seed = new vscode.WorkspaceEdit();
-      seed.insert(document.uri, new vscode.Position(0, 0), examples[example].content);
-      if (!await vscode.workspace.applyEdit(seed)) throw new Error("Could not initialize the appearance scratchpad");
-      this.documents.set(example, document);
-    }
-    if (!this.panel) return;
-    await this.renderer?.attach(document);
-    await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Two, preview: false, preserveFocus: true });
+  private target(state:AppearanceState):Record<string,RoleStyle>|undefined {
+    if(this.editTarget.startsWith('palette:'))return state.palettes.find(p=>p.id===this.editTarget.slice(8))?.roles;
+    const family=this.editTarget.slice(9);if(family!=='all'&&family!=='data'&&family!=='document')return;
+    return state.overrides[family]??(state.overrides[family]={});
   }
-  private async receive(message: unknown): Promise<void> {
-    if (!message || typeof message !== "object" || !("type" in message) || !this.draft || !this.saved) return;
-    if (message.type === "color" && "role" in message && "value" in message && isAppearanceRole(message.role)) {
-      const color = appearanceColor(message.value);
-      if (!color) return;
-      this.draft[currentMode()][message.role] = color;
-      this.comparison = "draft";
-    } else if (message.type === "compare" && "value" in message && (message.value === "saved" || message.value === "draft")) {
-      this.comparison = message.value;
-    } else if (message.type === "revert") {
-      this.draft[currentMode()] = { ...this.saved[currentMode()] };
-      this.comparison = "draft";
-    } else if (message.type === "example" && "value" in message && isExample(message.value)) {
-      await this.showExample(message.value);
-    } else if (message.type !== "ready") return;
-    await this.present();
+  private async receive(message:unknown):Promise<void>{
+    if(!message||typeof message!=='object'||!('type'in message))return;
+    this.error='';const candidate=structuredClone(this.draft);
+    const value='value'in message?message.value:undefined;
+    if(message.type==='ready'){}
+    else if(message.type==='compare'&&(value==='saved'||value==='draft'))this.comparison=value;
+    else if(message.type==='role'&&typeof value==='string'&&Object.hasOwn(roleCatalog,value))this.role=value;
+    else if(message.type==='target'&&typeof value==='string')this.editTarget=value;
+    else if(message.type==='mode'&&(value==='light'||value==='dark'))this.mode=value;
+    else if(message.type==='destination'&&(value==='user'||value==='workspace'))this.destination=value;
+    else if(message.type==='example'&&typeof value==='string'&&Object.hasOwn(examples,value)){
+      if(value==='Document'||value==='Data'||value==='Interpolation')await this.showExample(value);
+    }else if(message.type==='revert'){this.draft=structuredClone(this.saved);this.conflict=false;this.comparison='draft';if(this.editTarget.startsWith('palette:')&&this.editTarget!=='palette:house'&&!this.draft.palettes.some(p=>'palette:'+p.id===this.editTarget))this.editTarget='palette:house';await this.present();return;}
+    else if(message.type==='assign'&&'family'in message&&(message.family==='all'||message.family==='data'||message.family==='document')&&typeof value==='string'){
+      if(value===''&&message.family!=='all')delete candidate.assignments[message.family];else candidate.assignments[message.family]=value;
+    }else if(message.type==='new'||message.type==='duplicate'){
+      const id=randomUUID(),name='name'in message&&typeof message.name==='string'?message.name.trim():'';
+      if(!name)throw new Error('Enter a palette name');
+      if(message.type==='duplicate')duplicatePalette(candidate,this.editTarget.startsWith('palette:')?this.editTarget.slice(8):'house',id,name);
+      else candidate.palettes.push({id,name,blendBackground:{...housePalette.blendBackground},roles:{}});
+      this.editTarget='palette:'+id;
+    }else if(message.type==='rename'&&typeof value==='string'){
+      const palette=candidate.palettes.find(p=>'palette:'+p.id===this.editTarget);if(!palette)throw new Error('Duplicate House to edit it');palette.name=value.trim();
+    }else if(message.type==='delete'){
+      deletePalette(candidate,this.editTarget.slice(8));this.editTarget='palette:house';
+    }else if(message.type==='property'&&'property'in message&&typeof message.property==='string'&&styleProperties.some(p=>p===message.property)){
+      const target=this.target(candidate);if(!target)throw new Error('House is read only; duplicate it to make a palette');
+      const entry=target[this.role]??(target[this.role]={}),style=entry[this.mode]??(entry[this.mode]={});
+      if(value===null)Reflect.deleteProperty(style,message.property);else Object.assign(style,{[message.property]:value});
+      if(Object.keys(style).length===0)delete entry[this.mode];if(Object.keys(entry).length===0)delete target[this.role];
+    }else if(message.type==='inherit'&&typeof value==='string'){
+      const target=this.target(candidate);if(!target)throw new Error('Duplicate House to edit it');const entry=target[this.role]??(target[this.role]={});
+      if(value)entry.inherits=value;else delete entry.inherits;
+    }else if(message.type==='save'){
+      if(this.conflict)throw new Error('Configuration changed elsewhere. Revert to load it before saving.');
+      if(this.destination==='workspace'&&!vscode.workspace.workspaceFolders?.length)throw new Error('Open a workspace to save workspace settings');
+      if(this.destination==='user'&&vscode.workspace.getConfiguration('hson.appearance').inspect('state')?.workspaceValue!==undefined)throw new Error('Workspace appearance takes precedence here. Choose Workspace to save the active appearance.');
+      this.saving=true;try{await vscode.workspace.getConfiguration('hson.appearance').update('state',readAppearance(this.draft),this.destination==='user'?vscode.ConfigurationTarget.Global:vscode.ConfigurationTarget.Workspace);this.reload();}finally{this.saving=false;}
+      await this.present();return;
+    }else if(message.type==='export'){
+      const id=this.editTarget.slice(8),palette=id==='house'?housePalette:this.draft.palettes.find(p=>p.id===id);
+      if(!this.editTarget.startsWith('palette:')||!palette)throw new Error('Select a palette to export');
+      const document=await vscode.workspace.openTextDocument({language:'json',content:JSON.stringify(palette,null,2)+'\n'});
+      await vscode.window.showTextDocument(document,{viewColumn:vscode.ViewColumn.Two,preview:false});return;
+    }else return;
+    const changed=JSON.stringify(candidate)!==JSON.stringify(this.draft);
+    this.draft=readAppearance(candidate);if(changed)this.comparison='draft';await this.present();
   }
-  private async present(): Promise<void> {
-    if (!this.saved || !this.draft || !this.panel) return;
-    const mode = currentMode();
-    await this.renderer?.setColors((this.comparison === "saved" ? this.saved : this.draft)[mode]);
-    await this.panel?.webview.postMessage({ type: "state", mode, comparison: this.comparison, example: this.example,
-      saved: this.saved[mode], draft: this.draft[mode], changed: appearanceRoles.some(role => this.saved![mode][role] !== this.draft![mode][role]) });
+  private async present():Promise<void>{
+    if(!this.panel)return;
+    await this.renderer.setAppearance(this.comparison==='saved'?this.saved:this.draft);
+    const id=this.editTarget.slice(8),palette=id==='house'?housePalette:this.draft.palettes.find(p=>p.id===id);
+    const family:Family=this.editTarget==='override:data'?'data':this.editTarget==='override:document'?'document':'all';
+    const roles=this.editTarget.startsWith('palette:')?palette?.roles:this.draft.overrides[family];
+    const effective=this.editTarget.startsWith('palette:')?{...this.draft,assignments:{all:id},overrides:{}}:this.draft;
+    await this.panel.webview.postMessage({type:'state',draft:this.draft,comparison:this.comparison,dirty:JSON.stringify(this.saved)!==JSON.stringify(this.draft),
+      role:this.role,mode:this.mode,previewMode:currentMode(),target:this.editTarget,destination:this.destination,readonly:this.editTarget==='palette:house',
+      nativeOwned:!!roleCatalog[this.role]?.nativeBrackets&&vscode.workspace.getConfiguration('editor',vscode.window.visibleTextEditors.find(editor=>editor.viewColumn===vscode.ViewColumn.Two)?.document).get('bracketPairColorization.enabled',true),
+      authored:roles?.[this.role]?.[this.mode]??{},inherits:roles?.[this.role]?.inherits??'',resolved:resolveStyle(effective,family,this.role,this.mode),
+      error:this.error||(this.conflict?'Configuration changed elsewhere; Revert before saving.':'')});
   }
-  dispose(): void {
-    this.disposed = true;
-    this.panel?.dispose();
-    this.renderer?.dispose();
-    for (const subscription of this.subscriptions.splice(0)) subscription.dispose();
-    this.documents.clear();
-  }
-}
-
-function appearanceHtml(): string {
-  const nonce = randomUUID();
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
-<style>
-body { padding: 16px; color: var(--vscode-foreground); font-family: var(--vscode-font-family); }
-h1 { font-size: 20px; } p { line-height: 1.5; } button, input { font: inherit; }
-button { padding: 6px 10px; cursor: pointer; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); border: 1px solid transparent; }
-button[aria-pressed="true"] { border-color: var(--vscode-focusBorder); color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-button:focus-visible, input:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
-.buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-.role { border-top: 1px solid var(--vscode-panel-border); padding: 12px 0; }
-.role label { display: block; margin-bottom: 8px; }
-.columns { display: grid; grid-template-columns: minmax(80px, 1fr) minmax(110px, 1fr); gap: 8px; align-items: center; }
-.saved { display: flex; align-items: center; gap: 5px; font-size: 12px; }
-.swatch { width: 16px; height: 16px; border: 1px solid var(--vscode-input-border, currentColor); flex-shrink: 0; }
-.draft { display: flex; gap: 4px; } input[type="color"] { width: 28px; height: 28px; padding: 1px; flex-shrink: 0; }
-input[type="text"] { width: 100%; min-width: 60px; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, transparent); padding: 3px; }
-input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
-.muted { color: var(--vscode-descriptionForeground); font-size: 12px; }
-</style></head><body>
-<h1>Hson Appearance</h1>
-<p id="status" role="status" aria-live="polite">Loading appearance…</p>
-<div class="buttons" aria-label="Compare appearance"><button id="saved" aria-pressed="false">Saved</button><button id="draft" aria-pressed="true">Draft</button><button id="revert">Revert Draft</button></div>
-<p class="muted">Saved starts from the committed House colors. Draft edits stay in this window’s session. Colors apply to these scratchpads.</p>
-<div class="columns muted"><span>Saved</span><span>Draft</span></div>
-${appearanceRoles.map(role => `<div class="role"><label for="${role}">${labels[role]}</label><div class="columns"><div class="saved"><span id="${role}-swatch" class="swatch"></span><span id="${role}-saved"></span></div><div class="draft"><input type="color" id="${role}-picker" aria-label="${labels[role]} color picker"><input type="text" id="${role}" aria-label="${labels[role]} hex color" spellcheck="false" maxlength="9" aria-describedby="color-help"></div></div></div>`).join("")}
-<p id="color-help" class="muted">Hex colors: #RGB, #RGBA, #RRGGBB or #RRGGBBAA. Any colors may match.</p>
-<div class="buttons" aria-label="Scratchpad examples">${Object.keys(examples).map(example => `<button id="example-${example}">${example}</button>`).join("")}</div>
-<p class="muted">Edit or paste in the native editor on the right. Switching Saved/Draft keeps your text and undo history.</p>
-<script nonce="${nonce}">
-const api = acquireVsCodeApi();
-const roles = ${JSON.stringify(appearanceRoles)};
-const send = message => api.postMessage(message);
-for (const value of ['saved', 'draft']) document.getElementById(value).onclick = () => send({type: 'compare', value});
-document.getElementById('revert').onclick = () => { document.activeElement.blur(); send({type: 'revert'}); };
-for (const value of ${JSON.stringify(Object.keys(examples))}) document.getElementById('example-' + value).onclick = () => send({type: 'example', value});
-for (const role of roles) {
-  const input = document.getElementById(role), picker = document.getElementById(role + '-picker');
-  input.oninput = () => { const valid = /^#(?:[\\da-f]{3,4}|[\\da-f]{6}|[\\da-f]{8})$/i.test(input.value); input.setAttribute('aria-invalid', String(!valid)); if (valid) send({type: 'color', role, value: input.value}); };
-  picker.oninput = () => send({type: 'color', role, value: picker.value});
-}
-window.addEventListener('message', ({data}) => {
-  if (data.type !== 'state') return;
-  document.getElementById('status').textContent = (data.comparison === 'saved' ? 'Viewing Saved' : 'Viewing Draft') + ' · House ' + data.mode + (data.changed ? ' · Unsaved draft' : ' · No draft changes');
-  for (const value of ['saved', 'draft']) document.getElementById(value).setAttribute('aria-pressed', String(data.comparison === value));
-  for (const value of ${JSON.stringify(Object.keys(examples))}) document.getElementById('example-' + value).setAttribute('aria-pressed', String(data.example === value));
-  for (const role of roles) {
-    document.getElementById(role + '-swatch').style.background = data.saved[role];
-    document.getElementById(role + '-saved').textContent = data.saved[role];
-    const input = document.getElementById(role);
-    if (document.activeElement !== input) { input.value = data.draft[role]; input.setAttribute('aria-invalid', 'false'); }
-    document.getElementById(role + '-picker').value = data.draft[role].slice(0, 7);
-  }
-});
-send({type: 'ready'});
-</script></body></html>`;
+  dispose():void{this.disposed=true;this.panel?.dispose();this.renderer.dispose();for(const sub of this.subscriptions)sub.dispose();this.documents.clear();}
 }

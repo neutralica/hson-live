@@ -1,0 +1,1326 @@
+{
+  "roles": {
+    "element.name": {
+      "label": "Element name",
+      "examples": [
+        {
+          "code": "<section/>",
+          "highlight": "section"
+        },
+        {
+          "code": "<'custom name'/>",
+          "highlight": "custom name"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "entity.name.type.hson",
+          "entity.name.type.quoted.hson"
+        ],
+        "selector": "hsonType"
+      },
+      "tokens": [
+        "hsonType"
+      ]
+    },
+    "attribute.name": {
+      "label": "Attribute name",
+      "examples": [
+        {
+          "code": "<button class=\"primary\"/>",
+          "highlight": "class"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "entity.other.attribute-name.hson"
+        ],
+        "selector": "hsonProperty"
+      },
+      "tokens": [
+        "hsonProperty"
+      ]
+    },
+    "attribute.qualifier": {
+      "label": "Attribute qualifier",
+      "examples": [
+        {
+          "code": "<button hson:part/>",
+          "highlight": "hson"
+        },
+        {
+          "code": "<section meta:blocks=^{blocks}/>",
+          "highlight": "meta"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "meta.attribute.qualifier.hson"
+        ],
+        "selector": "*.hsonQualifier"
+      },
+      "segments": [
+        {
+          "context": "entity.other.attribute-name.sending.hson",
+          "scope": "meta.attribute.local-name.hson",
+          "selector": "hsonSending.hsonLocalName",
+          "order": 4,
+          "grammarOrder": 2
+        }
+      ]
+    },
+    "part.systemAttribute.name": {
+      "label": "Part system attribute name",
+      "examples": [
+        {
+          "code": "<hson-part lib=\"components\" at=\"foo\"/>",
+          "highlight": "lib"
+        },
+        {
+          "code": "<hson-part lib=\"components\" at=\"foo\"/>",
+          "highlight": "at"
+        },
+        {
+          "code": "<hson-part at=^{each.kind}/>",
+          "highlight": "at"
+        },
+        {
+          "code": "<hson-part at=\"components/%{member}\"/>",
+          "highlight": "at"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "entity.other.attribute-name.system.hson"
+        ],
+        "selector": "hsonPartSystemAttribute"
+      },
+      "tokens": [
+        "hsonPartSystemAttribute"
+      ]
+    },
+    "part.selector.library": {
+      "label": "Part selector Library",
+      "examples": [
+        {
+          "code": "<hson-part lib=\"components\" at=\"foo\"/>",
+          "highlight": "components"
+        },
+        {
+          "code": "<hson-part at=\"components/foo\"/>",
+          "highlight": "components"
+        },
+        {
+          "code": "<hson-part lib=components at=foo/>",
+          "highlight": "components"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "meta.part.selector.library.hson"
+        ],
+        "selector": "hsonPartLibrary"
+      },
+      "tokens": [
+        "hsonPartLibrary"
+      ]
+    },
+    "part.selector.member": {
+      "label": "Part selector member",
+      "examples": [
+        {
+          "code": "<hson-part at=\"foo\"/>",
+          "highlight": "foo"
+        },
+        {
+          "code": "<hson-part at=\"components/foo\"/>",
+          "highlight": "foo"
+        },
+        {
+          "code": "<hson-part at=foo/>",
+          "highlight": "foo"
+        },
+        {
+          "code": "<hson-part at=components/foo/>",
+          "highlight": "foo"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "meta.part.selector.member.hson"
+        ],
+        "selector": "hsonPartMember"
+      },
+      "tokens": [
+        "hsonPartMember"
+      ]
+    },
+    "part.selector.separator": {
+      "label": "Part selector separator",
+      "examples": [
+        {
+          "code": "<hson-part at=\"components/foo\"/>",
+          "highlight": "/",
+          "occurrence": 1
+        },
+        {
+          "code": "<hson-part at=components/foo/>",
+          "highlight": "/",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.separator.part-selector.hson"
+        ],
+        "selector": "hsonPartSeparator"
+      },
+      "tokens": [
+        "hsonPartSeparator"
+      ]
+    },
+    "flag.name": {
+      "label": "Flag",
+      "examples": [
+        {
+          "code": "<button disabled/>",
+          "highlight": "disabled"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "constant.language.flag.hson"
+        ],
+        "selector": "hsonFlag"
+      },
+      "tokens": [
+        "hsonFlag"
+      ]
+    },
+    "part.declaration": {
+      "label": "Part declaration",
+      "examples": [
+        {
+          "code": "<section hson:part/>",
+          "highlight": "part"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.declaration.part.hson"
+        ],
+        "selector": "hsonDeclaration"
+      },
+      "tokens": [
+        "hsonDeclaration"
+      ]
+    },
+    "part.directive": {
+      "label": "Part directive",
+      "examples": [
+        {
+          "code": "<section part:optional/>",
+          "highlight": "optional"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.other.directive.hson"
+        ],
+        "selector": "hsonDirective"
+      },
+      "tokens": [
+        "hsonDirective"
+      ]
+    },
+    "part.receivingArgument": {
+      "label": "Receiving argument",
+      "examples": [
+        {
+          "code": "<section data:slide=%{currentSlide}/>",
+          "highlight": "slide",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "entity.other.attribute-name.receiving.hson"
+        ],
+        "selector": "hsonReceiving"
+      },
+      "tokens": [
+        "hsonReceiving"
+      ],
+      "segments": [
+        {
+          "context": "entity.other.attribute-name.receiving.hson",
+          "scope": "meta.attribute.local-name.hson",
+          "selector": "hsonReceiving.hsonLocalName",
+          "order": 1,
+          "grammarOrder": 3
+        }
+      ]
+    },
+    "part.receivingKind": {
+      "label": "Receiving argument kind",
+      "examples": [
+        {
+          "code": "<section data:slide=%{currentSlide}/>",
+          "highlight": "data"
+        }
+      ],
+      "binding": {
+        "context": "entity.other.attribute-name.receiving.hson",
+        "scopes": [
+          "meta.attribute.qualifier.hson"
+        ],
+        "selector": "hsonReceiving.hsonQualifier"
+      },
+      "segments": [
+        {
+          "context": "entity.other.attribute-name.receiving.hson",
+          "scope": "meta.attribute.qualifier.hson",
+          "selector": "hsonReceiving.hsonQualifier",
+          "order": 2,
+          "grammarOrder": 4
+        }
+      ]
+    },
+    "part.sendingArgument": {
+      "label": "Sending argument",
+      "examples": [
+        {
+          "code": "<hson-part slide:data=^{currentSlide}/>",
+          "highlight": "slide",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "entity.other.attribute-name.sending.hson"
+        ],
+        "selector": "hsonSending"
+      },
+      "tokens": [
+        "hsonSending"
+      ],
+      "segments": [
+        {
+          "context": "entity.other.attribute-name.sending.hson",
+          "scope": "meta.attribute.qualifier.hson",
+          "selector": "hsonSending.hsonQualifier",
+          "order": 3,
+          "grammarOrder": 1
+        }
+      ]
+    },
+    "iteration.name": {
+      "label": "Iteration binding",
+      "examples": [
+        {
+          "code": "<section for:row=^{rows}/>",
+          "highlight": "row",
+          "occurrence": 1
+        },
+        {
+          "code": "<section per:item=^{items}/>",
+          "highlight": "item",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.control.iteration.hson"
+        ],
+        "selector": "hsonIteration"
+      },
+      "tokens": [
+        "hsonIteration"
+      ]
+    },
+    "reference.incoming.marker": {
+      "label": "Incoming reference marker",
+      "examples": [
+        {
+          "code": "<p \"%{slide}\"/>",
+          "highlight": "%"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.operator.interpolation.percent.hson"
+        ],
+        "selector": "hsonIncomingReferenceSigil"
+      },
+      "tokens": [
+        "hsonIncomingReferenceSigil"
+      ]
+    },
+    "reference.local.marker": {
+      "label": "Local reference marker",
+      "examples": [
+        {
+          "code": "<p \"^{slide.title}\"/>",
+          "highlight": "^"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.operator.interpolation.caret.hson"
+        ],
+        "selector": "hsonLocalReferenceSigil"
+      },
+      "tokens": [
+        "hsonLocalReferenceSigil"
+      ]
+    },
+    "reference.incoming.content": {
+      "label": "Incoming placeholder name",
+      "examples": [
+        {
+          "code": "<p \"%{slide}\"/>",
+          "highlight": "slide"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "variable.parameter.incoming.hson"
+        ],
+        "selector": "hsonIncomingReference"
+      },
+      "tokens": [
+        "hsonIncomingReference"
+      ]
+    },
+    "reference.local.content": {
+      "label": "Local reference root (unresolved or shared binding fallback)",
+      "examples": [
+        {
+          "code": "<p \"^{slide.title}\"/>",
+          "highlight": "slide"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "variable.other.property.hson"
+        ],
+        "selector": "hsonReference"
+      },
+      "tokens": [
+        "hsonReference"
+      ]
+    },
+    "reference.member": {
+      "label": "Local reference member",
+      "examples": [
+        {
+          "code": "<p \"^{slide.title}\"/>",
+          "highlight": "title"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "meta.reference.member.hson"
+        ],
+        "selector": "hsonReference.hsonMember"
+      }
+    },
+    "reference.separator": {
+      "label": "Reference member separator",
+      "examples": [
+        {
+          "code": "<p \"^{slide.title}\"/>",
+          "highlight": "."
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.accessor.hson"
+        ],
+        "selector": "hsonReference.hsonReferenceSeparator"
+      }
+    },
+    "reference.selectorOpen": {
+      "label": "Reference selector opening bracket",
+      "examples": [
+        {
+          "code": "<p \"^{slides[0]}\"/>",
+          "highlight": "["
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.section.selector.begin.hson"
+        ],
+        "selector": "hsonReference.hsonSelectorOpen"
+      },
+      "nativeBrackets": true
+    },
+    "reference.selectorClose": {
+      "label": "Reference selector closing bracket",
+      "examples": [
+        {
+          "code": "<p \"^{slides[0]}\"/>",
+          "highlight": "]"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.section.selector.end.hson"
+        ],
+        "selector": "hsonReference.hsonSelectorClose"
+      },
+      "nativeBrackets": true
+    },
+    "value.string": {
+      "label": "String content",
+      "examples": [
+        {
+          "code": "<p \"Hello\"/>",
+          "highlight": "Hello"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "string.quoted.double.hson",
+          "string.unquoted.attribute-value.hson"
+        ],
+        "selector": "hsonString"
+      },
+      "tokens": [
+        "hsonString"
+      ]
+    },
+    "value.number": {
+      "label": "Number",
+      "examples": [
+        {
+          "code": "<count 42>",
+          "highlight": "42"
+        },
+        {
+          "code": "<amount -1.5>",
+          "highlight": "-1.5"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "constant.numeric.hson"
+        ],
+        "selector": "hsonNumber"
+      },
+      "tokens": [
+        "hsonNumber"
+      ]
+    },
+    "value.primitive": {
+      "label": "Boolean or null",
+      "examples": [
+        {
+          "code": "<enabled true>",
+          "highlight": "true"
+        },
+        {
+          "code": "<empty null>",
+          "highlight": "null"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "constant.language.boolean.hson",
+          "constant.language.null.hson"
+        ],
+        "selector": "hsonKeyword"
+      },
+      "tokens": [
+        "hsonKeyword"
+      ]
+    },
+    "identity.quid": {
+      "label": "Runtime QUID",
+      "examples": [
+        {
+          "code": "<p @012345678/>",
+          "highlight": "012345678"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "constant.other.quid.hson"
+        ],
+        "selector": "hsonQuid"
+      },
+      "tokens": [
+        "hsonQuid"
+      ]
+    },
+    "identity.quad": {
+      "label": "Authored QUAD",
+      "examples": [
+        {
+          "code": "<section @:deck/>",
+          "highlight": "deck"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "constant.other.quad.hson"
+        ],
+        "selector": "hsonQuad"
+      },
+      "tokens": [
+        "hsonQuad"
+      ]
+    },
+    "identity.punctuation.marker": {
+      "label": "Identity marker",
+      "examples": [
+        {
+          "code": "<section @:deck/>",
+          "highlight": "@"
+        },
+        {
+          "code": "<p @012345678/>",
+          "highlight": "@"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.identity.hson"
+        ],
+        "selector": "hsonIdentityMarker"
+      },
+      "tokens": [
+        "hsonIdentityMarker"
+      ]
+    },
+    "identity.punctuation.colon": {
+      "label": "Identity colon",
+      "examples": [
+        {
+          "code": "<section @:deck/>",
+          "highlight": ":"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.separator.identity.hson"
+        ],
+        "selector": "hsonColon"
+      }
+    },
+    "punctuation.colon": {
+      "label": "Attribute colon",
+      "examples": [
+        {
+          "code": "<section data:slide=%{slide}/>",
+          "highlight": ":"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.separator.attribute.hson"
+        ],
+        "selector": "hsonColon"
+      },
+      "tokens": [
+        "hsonColon"
+      ]
+    },
+    "punctuation.assignment": {
+      "label": "Attribute assignment",
+      "examples": [
+        {
+          "code": "<button class=\"primary\"/>",
+          "highlight": "="
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.operator.assignment.hson"
+        ],
+        "selector": "hsonOperator.hsonAssignment"
+      },
+      "tokens": [
+        "hsonOperator"
+      ]
+    },
+    "punctuation.interpolation": {
+      "label": "JavaScript interpolation marker",
+      "examples": [
+        {
+          "code": "<p ${title}/>",
+          "highlight": "$"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "keyword.operator.interpolation.dollar.hson"
+        ],
+        "selector": "hsonOperator.hsonInterpolationSigil"
+      }
+    },
+    "punctuation.tagOpen": {
+      "label": "Opening tag delimiter",
+      "examples": [
+        {
+          "code": "<section/>",
+          "highlight": "<"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.tag.begin.hson"
+        ],
+        "selector": "hsonDelimiter.hsonTagOpen"
+      },
+      "tokens": [
+        "hsonDelimiter"
+      ],
+      "nativeBrackets": true
+    },
+    "punctuation.tagClose": {
+      "label": "Closing tag delimiter",
+      "examples": [
+        {
+          "code": "<section/>",
+          "highlight": ">"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.tag.end.hson"
+        ],
+        "selector": "hsonDelimiter.hsonTagClose"
+      },
+      "nativeBrackets": true
+    },
+    "punctuation.selfClosingSlash": {
+      "label": "Self-closing slash",
+      "examples": [
+        {
+          "code": "<section/>",
+          "highlight": "/"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.tag.self-closing.hson"
+        ],
+        "selector": "hsonDelimiter.hsonSelfClosing"
+      }
+    },
+    "punctuation.arrayOpen": {
+      "label": "Opening array delimiter",
+      "examples": [
+        {
+          "code": "<items [1, 2]>",
+          "highlight": "["
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.section.array.begin.hson"
+        ],
+        "selector": "hsonDelimiter.hsonArrayOpen"
+      },
+      "nativeBrackets": true
+    },
+    "punctuation.arrayClose": {
+      "label": "Closing array delimiter",
+      "examples": [
+        {
+          "code": "<items [1, 2]>",
+          "highlight": "]"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.section.array.end.hson"
+        ],
+        "selector": "hsonDelimiter.hsonArrayClose"
+      },
+      "nativeBrackets": true
+    },
+    "punctuation.sequenceSeparator": {
+      "label": "Sequence separator",
+      "examples": [
+        {
+          "code": "<items [1, 2]>",
+          "highlight": ","
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.separator.sequence.hson"
+        ],
+        "selector": "hsonDelimiter.hsonSequenceSeparator"
+      }
+    },
+    "punctuation.referenceOpen": {
+      "label": "Opening reference or interpolation brace",
+      "examples": [
+        {
+          "code": "<p \"%{title}\"/>",
+          "highlight": "{"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.template-expression.begin.hson"
+        ],
+        "selector": "hsonInterpolationDelimiter.hsonInterpolationOpen"
+      },
+      "tokens": [
+        "hsonInterpolationDelimiter"
+      ]
+    },
+    "punctuation.referenceClose": {
+      "label": "Closing reference or interpolation brace",
+      "examples": [
+        {
+          "code": "<p \"%{title}\"/>",
+          "highlight": "}"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.template-expression.end.hson"
+        ],
+        "selector": "hsonInterpolationDelimiter.hsonInterpolationClose"
+      }
+    },
+    "punctuation.quoteOpen": {
+      "label": "Opening quote",
+      "examples": [
+        {
+          "code": "<p \"Hello\"/>",
+          "highlight": "\"",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.string.begin.hson"
+        ],
+        "selector": "hsonQuote.hsonQuoteOpen"
+      },
+      "tokens": [
+        "hsonQuote"
+      ]
+    },
+    "punctuation.quoteClose": {
+      "label": "Closing quote",
+      "examples": [
+        {
+          "code": "<p \"Hello\"/>",
+          "highlight": "\"",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "punctuation.definition.string.end.hson"
+        ],
+        "selector": "hsonQuote.hsonQuoteClose"
+      }
+    },
+    "comment.line": {
+      "label": "Line comment and marker",
+      "examples": [
+        {
+          "code": "// A note",
+          "highlight": "A note"
+        },
+        {
+          "code": "// A note",
+          "highlight": "//"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "comment.line.double-slash.hson",
+          "punctuation.definition.comment.hson"
+        ],
+        "selector": "hsonComment"
+      },
+      "tokens": [
+        "hsonComment"
+      ]
+    },
+    "escape.character": {
+      "label": "String escape",
+      "examples": [
+        {
+          "code": "<p \"line\\nbreak\"/>",
+          "highlight": "\\n"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "constant.character.escape.hson"
+        ],
+        "selector": "hsonEscape"
+      },
+      "tokens": [
+        "hsonEscape"
+      ]
+    },
+    "invalid.character": {
+      "label": "Invalid escape",
+      "examples": [
+        {
+          "code": "<p \"bad\\qescape\"/>",
+          "highlight": "\\q"
+        }
+      ],
+      "binding": {
+        "scopes": [
+          "invalid.illegal.hson"
+        ],
+        "selector": "hsonInvalid"
+      },
+      "tokens": [
+        "hsonInvalid"
+      ]
+    },
+    "value.attributeString": {
+      "label": "Attribute string content",
+      "examples": [
+        {
+          "code": "<p title=\"text\"/>",
+          "highlight": "text"
+        }
+      ],
+      "binding": {
+        "context": "meta.attribute.value.hson",
+        "scopes": [
+          "string.quoted.double.hson",
+          "string.unquoted.attribute-value.hson"
+        ],
+        "selector": "hsonString.hsonAttribute"
+      },
+      "fallback": "value.string"
+    },
+    "punctuation.attributeQuotes": {
+      "label": "Attribute quotes",
+      "examples": [
+        {
+          "code": "<p title=\"text\"/>",
+          "highlight": "\"",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "context": "meta.attribute.value.hson",
+        "scopes": [
+          "punctuation.definition.string.begin.hson",
+          "punctuation.definition.string.end.hson"
+        ],
+        "selector": "hsonQuote.hsonAttribute"
+      },
+      "fallback": "punctuation.quoteOpen"
+    }
+  },
+  "tokens": {
+    "hsonType": {
+      "role": "element",
+      "superType": "type",
+      "scopes": [
+        "entity.name.type.hson",
+        "entity.name.type.quoted.hson"
+      ]
+    },
+    "hsonProperty": {
+      "role": "attribute",
+      "superType": "property",
+      "scopes": [
+        "entity.other.attribute-name.hson"
+      ]
+    },
+    "hsonPartSystemAttribute": {
+      "role": "Part system attribute",
+      "superType": "property",
+      "scopes": [
+        "entity.other.attribute-name.system.hson"
+      ],
+      "fallbackScopes": [
+        "entity.other.attribute-name.hson"
+      ]
+    },
+    "hsonPartLibrary": {
+      "role": "Part selector Library",
+      "superType": "string",
+      "scopes": [
+        "meta.part.selector.library.hson"
+      ],
+      "fallbackScopes": [
+        "string.quoted.double.hson"
+      ]
+    },
+    "hsonPartMember": {
+      "role": "Part selector member",
+      "superType": "string",
+      "scopes": [
+        "meta.part.selector.member.hson"
+      ],
+      "fallbackScopes": [
+        "string.quoted.double.hson"
+      ]
+    },
+    "hsonPartSeparator": {
+      "role": "Part selector separator",
+      "scopes": [
+        "punctuation.separator.part-selector.hson"
+      ],
+      "fallbackScopes": [
+        "string.quoted.double.hson"
+      ]
+    },
+    "hsonFlag": {
+      "role": "flag",
+      "scopes": [
+        "constant.language.flag.hson"
+      ]
+    },
+    "hsonDirective": {
+      "role": "directive",
+      "scopes": [
+        "keyword.other.directive.hson"
+      ]
+    },
+    "hsonReceiving": {
+      "role": "receiving",
+      "superType": "parameter",
+      "scopes": [
+        "entity.other.attribute-name.receiving.hson"
+      ]
+    },
+    "hsonSending": {
+      "role": "sending",
+      "scopes": [
+        "entity.other.attribute-name.sending.hson"
+      ]
+    },
+    "hsonIteration": {
+      "role": "iteration",
+      "superType": "variable",
+      "scopes": [
+        "keyword.control.iteration.hson"
+      ]
+    },
+    "hsonLocalReferenceSigil": {
+      "role": "localReference",
+      "scopes": [
+        "keyword.operator.interpolation.caret.hson"
+      ],
+      "fallbackContext": "string.quoted.double.hson"
+    },
+    "hsonIncomingReferenceSigil": {
+      "role": "incomingReference",
+      "scopes": [
+        "keyword.operator.interpolation.percent.hson"
+      ],
+      "fallbackContext": "string.quoted.double.hson"
+    },
+    "hsonString": {
+      "role": "text",
+      "superType": "string",
+      "scopes": [
+        "string.quoted.double.hson",
+        "string.unquoted.attribute-value.hson"
+      ]
+    },
+    "hsonNumber": {
+      "role": "number",
+      "superType": "number",
+      "scopes": [
+        "constant.numeric.hson"
+      ]
+    },
+    "hsonKeyword": {
+      "role": "primitive",
+      "superType": "keyword",
+      "scopes": [
+        "constant.language.boolean.hson",
+        "constant.language.null.hson"
+      ]
+    },
+    "hsonDeclaration": {
+      "role": "directive",
+      "scopes": [
+        "keyword.declaration.part.hson"
+      ]
+    },
+    "hsonQuid": {
+      "role": "quad",
+      "scopes": [
+        "constant.other.quid.hson"
+      ],
+      "fallbackScopes": [
+        "variable.other.constant.hson"
+      ],
+      "fallbackContext": "variable.other.constant.hson"
+    },
+    "hsonQuad": {
+      "role": "quad",
+      "scopes": [
+        "constant.other.quad.hson"
+      ],
+      "fallbackScopes": [
+        "variable.other.constant.hson"
+      ],
+      "fallbackContext": "variable.other.constant.hson"
+    },
+    "hsonIdentityMarker": {
+      "role": "quad",
+      "scopes": [
+        "punctuation.definition.identity.hson"
+      ],
+      "fallbackScopes": [
+        "variable.other.constant.hson"
+      ],
+      "fallbackContext": "variable.other.constant.hson"
+    },
+    "hsonComment": {
+      "role": "comment",
+      "superType": "comment",
+      "scopes": [
+        "comment.line.double-slash.hson",
+        "punctuation.definition.comment.hson"
+      ]
+    },
+    "hsonDelimiter": {
+      "role": "structure",
+      "scopes": [
+        "punctuation.definition.tag.begin.hson",
+        "punctuation.definition.tag.end.hson",
+        "punctuation.definition.tag.self-closing.hson",
+        "punctuation.section.array.begin.hson",
+        "punctuation.section.array.end.hson",
+        "punctuation.separator.sequence.hson"
+      ]
+    },
+    "hsonOperator": {
+      "role": "assignment",
+      "scopes": [
+        "keyword.operator.assignment.hson",
+        "keyword.operator.interpolation.dollar.hson"
+      ]
+    },
+    "hsonColon": {
+      "role": "colon",
+      "scopes": [
+        "punctuation.separator.attribute.hson",
+        "punctuation.separator.identity.hson"
+      ],
+      "fallbackScopes": [
+        "keyword.operator.hson"
+      ],
+      "fallbackContext": "keyword.operator.hson"
+    },
+    "hsonEscape": {
+      "role": "escape",
+      "scopes": [
+        "constant.character.escape.hson"
+      ]
+    },
+    "hsonInvalid": {
+      "role": "invalid",
+      "scopes": [
+        "invalid.illegal.hson"
+      ]
+    },
+    "hsonIncomingReference": {
+      "role": "referencePath",
+      "superType": "parameter",
+      "scopes": [
+        "variable.parameter.incoming.hson"
+      ],
+      "fallbackScopes": [
+        "variable.parameter"
+      ],
+      "fallbackContext": "string.quoted.double.hson meta.part.incoming.hson variable.other.property.hson"
+    },
+    "hsonReference": {
+      "role": "referencePath",
+      "scopes": [
+        "variable.other.property.hson",
+        "punctuation.accessor.hson",
+        "punctuation.section.selector.begin.hson",
+        "punctuation.section.selector.end.hson"
+      ],
+      "fallbackContext": "string.quoted.double.hson meta.part.local.hson variable.other.property.hson"
+    },
+    "hsonInterpolationDelimiter": {
+      "role": "structure",
+      "scopes": [
+        "punctuation.definition.template-expression.begin.hson",
+        "punctuation.definition.template-expression.end.hson"
+      ],
+      "fallbackContext": "string.quoted.double.hson"
+    },
+    "hsonQuote": {
+      "role": "quote",
+      "scopes": [
+        "punctuation.definition.string.begin.hson",
+        "punctuation.definition.string.end.hson"
+      ],
+      "fallbackScopes": [
+        "string.quoted.double.hson"
+      ],
+      "fallbackContext": "string.quoted.double.hson"
+    }
+  },
+  "modifiers": {
+    "hsonQualifier": {
+      "scopes": [
+        "meta.attribute.qualifier.hson"
+      ],
+      "types": [
+        "hsonProperty",
+        "hsonFlag",
+        "hsonDirective",
+        "hsonReceiving",
+        "hsonSending",
+        "hsonIteration",
+        "hsonDeclaration"
+      ],
+      "description": "Qualifier before the first attribute colon"
+    },
+    "hsonLocalName": {
+      "scopes": [
+        "meta.attribute.local-name.hson"
+      ],
+      "types": [
+        "hsonProperty",
+        "hsonFlag",
+        "hsonDirective",
+        "hsonReceiving",
+        "hsonSending",
+        "hsonIteration",
+        "hsonDeclaration"
+      ],
+      "description": "Attribute segment following a colon"
+    },
+    "hsonTagOpen": {
+      "scopes": [
+        "punctuation.definition.tag.begin.hson"
+      ],
+      "description": "Opening Hson element delimiter"
+    },
+    "hsonTagClose": {
+      "scopes": [
+        "punctuation.definition.tag.end.hson"
+      ],
+      "description": "Closing Hson element delimiter"
+    },
+    "hsonSelfClosing": {
+      "scopes": [
+        "punctuation.definition.tag.self-closing.hson"
+      ],
+      "description": "Self-closing slash"
+    },
+    "hsonArrayOpen": {
+      "scopes": [
+        "punctuation.section.array.begin.hson"
+      ],
+      "description": "Opening Hson array delimiter"
+    },
+    "hsonArrayClose": {
+      "scopes": [
+        "punctuation.section.array.end.hson"
+      ],
+      "description": "Closing Hson array delimiter"
+    },
+    "hsonSequenceSeparator": {
+      "scopes": [
+        "punctuation.separator.sequence.hson"
+      ],
+      "description": "Hson sequence separator"
+    },
+    "hsonAssignment": {
+      "scopes": [
+        "keyword.operator.assignment.hson"
+      ],
+      "description": "Attribute assignment operator"
+    },
+    "hsonInterpolationSigil": {
+      "scopes": [
+        "keyword.operator.interpolation.dollar.hson"
+      ],
+      "description": "Hson interpolation dollar sigil"
+    },
+    "hsonInterpolationOpen": {
+      "scopes": [
+        "punctuation.definition.template-expression.begin.hson"
+      ],
+      "description": "Opening reference/interpolation brace"
+    },
+    "hsonInterpolationClose": {
+      "scopes": [
+        "punctuation.definition.template-expression.end.hson"
+      ],
+      "description": "Closing reference/interpolation brace"
+    },
+    "hsonMember": {
+      "scopes": [
+        "meta.reference.member.hson"
+      ],
+      "types": [
+        "hsonReference"
+      ],
+      "description": "Dotted Part reference member"
+    },
+    "hsonReferenceSeparator": {
+      "scopes": [
+        "punctuation.accessor.hson"
+      ],
+      "description": "Part reference member separator"
+    },
+    "hsonSelectorOpen": {
+      "scopes": [
+        "punctuation.section.selector.begin.hson"
+      ],
+      "description": "Opening Part selector bracket"
+    },
+    "hsonSelectorClose": {
+      "scopes": [
+        "punctuation.section.selector.end.hson"
+      ],
+      "description": "Closing Part selector bracket"
+    },
+    "hsonAttribute": {
+      "scopes": [
+        "meta.attribute.value.hson"
+      ],
+      "types": [
+        "hsonString",
+        "hsonQuote"
+      ],
+      "description": "Hson attribute string context"
+    },
+    "hsonContent": {
+      "scopes": [
+        "meta.content.value.hson"
+      ],
+      "types": [
+        "hsonString",
+        "hsonQuote"
+      ],
+      "description": "Hson content string context"
+    },
+    "hsonQuoteOpen": {
+      "scopes": [
+        "punctuation.definition.string.begin.hson"
+      ],
+      "description": "Hson QuoteOpen"
+    },
+    "hsonQuoteClose": {
+      "scopes": [
+        "punctuation.definition.string.end.hson"
+      ],
+      "description": "Hson QuoteClose"
+    }
+  }
+}

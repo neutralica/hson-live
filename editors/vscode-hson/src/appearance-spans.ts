@@ -3,42 +3,29 @@ import { hson_highlights, hson_literal_highlights, type HsonHighlight } from "./
 import { HsonBindingCache, binding_highlights, overlay_binding_highlights, type BindingDocument } from "./binding-intelligence.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 
-export const appearanceRoles = ["attributeString", "contentString", "attributeQuotes", "contentQuotes"] as const;
-export type AppearanceRole = typeof appearanceRoles[number];
-export type AppearanceColors = Record<AppearanceRole, string>;
-export type AppearanceSpan = Readonly<{ role: AppearanceRole; range: { start: number; end: number } }>;
-
-export function isAppearanceRole(value: unknown): value is AppearanceRole {
-  return appearanceRoles.some(role => role === value);
-}
-
-/** Validate color syntax only. Identical, transparent and low-contrast colors are valid. */
-export function appearanceColor(value: unknown): string | undefined {
-  if (typeof value !== "string" || !/^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(value)) return undefined;
-  return value.length < 6 ? "#" + [...value.slice(1)].map(char => char + char).join("") : value;
-}
-
-function roleFor(token: HsonHighlight): AppearanceRole | undefined {
-  // Bound names, references, selector coordinates, escapes and native holes
-  // keep their existing owners. Even strings nested in a reference are excluded.
-  if (token.scopes.some(scope => ["meta.part.local.hson", "meta.part.incoming.hson", "meta.interpolation.hson"].includes(scope))) return;
-  const attribute = token.scopes.includes("meta.attribute.value.hson") || token.scopes.includes("string.unquoted.attribute-value.hson");
-  const content = token.scopes.includes("meta.content.value.hson");
-  if (!attribute && !content) return;
-  if (token.type === "hsonString") return attribute ? "attributeString" : "contentString";
-  if (token.type === "hsonQuote") return attribute ? "attributeQuotes" : "contentQuotes";
-  return;
+import { roleCatalog, type Family } from "./appearance-model.js";
+import { syntaxExamplePath, tokenAppearancePaths, segmentBindings } from "./appearance-bindings.js";
+export { appearanceColor } from "./appearance-model.js";
+export const appearanceRoles = Object.keys(roleCatalog);
+export type AppearanceRole = string;
+export type AppearanceColors = Record<string,string>;
+export type AppearanceSpan = Readonly<{role: string; family: Family; range: {start:number;end:number}}>;
+export function isAppearanceRole(value: unknown): value is string {return typeof value === 'string' && Object.hasOwn(roleCatalog,value);}
+function roleFor(token: HsonHighlight): string | undefined {
+  if (token.type === 'hsonString' && token.scopes.includes('string.unquoted.attribute-value.hson')) return 'value.attributeString';
+  const selector = [token.type,...token.modifiers].join('.');
+  return segmentBindings.find(s=>s.selector===selector)?.id ?? syntaxExamplePath(token.scopes) ?? tokenAppearancePaths[token.type];
 }
 
 /** Reusable, versioned classification. Appearance changes never enter this cache key. */
 export class AppearanceSpanCache {
-  private readonly entries = new Map<string, { document: BindingDocument; spans: readonly AppearanceSpan[] }>();
+  private readonly entries = new Map<string, { document: BindingDocument; family: Family; spans: readonly AppearanceSpan[] }>();
   constructor(private readonly bindings = new HsonBindingCache()) {}
   clear(): void { this.entries.clear(); }
   forget(uri: string): void { this.entries.delete(uri); }
-  get(grammar: IGrammar, document: BindingDocument): readonly AppearanceSpan[] {
+  get(grammar: IGrammar, document: BindingDocument, family: Family = 'all'): readonly AppearanceSpan[] {
     const previous = this.entries.get(document.uri);
-    if (previous && previous.document.version === document.version && previous.document.text === document.text
+    if (previous && previous.family === family && previous.document.version === document.version && previous.document.text === document.text
       && previous.document.languageId === document.languageId && previous.document.fileName === document.fileName) return previous.spans;
     const snapshot = this.bindings.get(document);
     const { text, languageId } = document;
@@ -48,11 +35,15 @@ export class AppearanceSpanCache {
       hson_literal_highlights(grammar, text.slice(bodyRange.start, bodyRange.end)).map(token => ({ ...token,
         range: { start: token.range.start + bodyRange.start, end: token.range.end + bodyRange.start } })));
     else if (languageId === "typescript" || languageId === "typescriptreact") lexical = hson_highlights(grammar, document.fileName, text, snapshot);
+    const regions = [...snapshot.tags?.sources ?? [], ...snapshot.tags?.interpolated ?? []];
     const spans = overlay_binding_highlights(lexical, binding_highlights(snapshot)).flatMap(token => {
       const role = roleFor(token);
-      return role ? [{ role, range: token.range }] : [];
+      const region = regions.filter(source => source.bodyRange.start <= token.range.start && source.bodyRange.end >= token.range.end)
+        .sort((a,b)=>(a.bodyRange.end-a.bodyRange.start)-(b.bodyRange.end-b.bodyRange.start))[0];
+      const selected: Family = region?.authoringKind === 'document' ? 'document' : region?.authoringKind === 'data' || region?.authoringKind === 'schema' ? 'data' : family;
+      return role ? [{ role, range: token.range, family: selected }] : [];
     });
-    this.entries.set(document.uri, { document, spans });
+    this.entries.set(document.uri, { document, family, spans });
     if (this.entries.size > 8) this.entries.delete(this.entries.keys().next().value!);
     return spans;
   }

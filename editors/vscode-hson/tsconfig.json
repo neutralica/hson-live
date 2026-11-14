@@ -7,7 +7,8 @@
     "esModuleInterop": true,
     "skipLibCheck": false,
     "noEmit": true,
-    "types": ["node", "vscode"]
+    "types": ["node", "vscode"],
+    "resolveJsonModule": true
   },
   "include": [
     "src/**/*.ts",

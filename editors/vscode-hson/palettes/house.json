@@ -1,0 +1,582 @@
+{
+  "id": "house",
+  "name": "House",
+  "blendBackground": {
+    "dark": "#0f141a",
+    "light": "#FAF9F6"
+  },
+  "roles": {
+    "element.name": {
+      "dark": {
+        "foreground": "#c6caca"
+      },
+      "light": {
+        "foreground": "#245C70"
+      }
+    },
+    "attribute.name": {
+      "dark": {
+        "foreground": "#84a9d6"
+      },
+      "light": {
+        "foreground": "#465467"
+      }
+    },
+    "attribute.qualifier": {
+      "dark": {
+        "foreground": "#898a8b"
+      },
+      "light": {
+        "foreground": "#687482"
+      }
+    },
+    "part.systemAttribute.name": {
+      "dark": {
+        "foreground": "#86b7c6"
+      },
+      "light": {
+        "foreground": "#236A67"
+      }
+    },
+    "part.selector.library": {
+      "inherits": "value.string",
+      "dark": {
+        "foreground": "#648e98"
+      },
+      "light": {
+        "foreground": "#536E61"
+      }
+    },
+    "part.selector.member": {
+      "inherits": "value.string",
+      "dark": {
+        "foreground": "#86b7c6"
+      },
+      "light": {
+        "foreground": "#236A67"
+      }
+    },
+    "part.selector.separator": {
+      "inherits": "punctuation.assignment",
+      "dark": {
+        "foreground": "#c6caca"
+      },
+      "light": {
+        "foreground": "#245C70"
+      }
+    },
+    "flag.name": {
+      "dark": {
+        "foreground": "#6891c2"
+      },
+      "light": {
+        "foreground": "#576983"
+      }
+    },
+    "part.declaration": {
+      "inherits": "part.directive"
+    },
+    "part.directive": {
+      "dark": {
+        "foreground": "#9989b6"
+      },
+      "light": {
+        "foreground": "#6F4F8F"
+      }
+    },
+    "part.receivingArgument": {
+      "dark": {
+        "foreground": "#d99db5"
+      },
+      "light": {
+        "foreground": "#28313D"
+      }
+    },
+    "part.receivingKind": {
+      "inherits": "attribute.qualifier"
+    },
+    "part.sendingArgument": {
+      "dark": {
+        "foreground": "#b579ac"
+      },
+      "light": {
+        "foreground": "#405F83"
+      }
+    },
+    "iteration.name": {
+      "dark": {
+        "foreground": "#7983af"
+      },
+      "light": {
+        "foreground": "#28313D"
+      }
+    },
+    "reference.incoming.marker": {
+      "dark": {
+        "foreground": "#c7bfad"
+      },
+      "light": {
+        "foreground": "#3D434B"
+      }
+    },
+    "reference.local.marker": {
+      "dark": {
+        "foreground": "#cec9bd"
+      },
+      "light": {
+        "foreground": "#3D434B"
+      }
+    },
+    "reference.incoming.content": {
+      "dark": {
+        "foreground": "#b775b6"
+      },
+      "light": {
+        "foreground": "#405F83"
+      }
+    },
+    "reference.local.content": {
+      "dark": {
+        "foreground": "#d99db5"
+      },
+      "light": {
+        "foreground": "#28313D"
+      }
+    },
+    "reference.member": {
+      "dark": {
+        "foreground": "#d99db5",
+        "intensity": 0.8
+      },
+      "light": {
+        "foreground": "#28313D",
+        "intensity": 0.8
+      }
+    },
+    "reference.separator": {
+      "inherits": "reference.local.content"
+    },
+    "reference.selectorOpen": {
+      "inherits": "reference.local.content"
+    },
+    "reference.selectorClose": {
+      "inherits": "reference.local.content"
+    },
+    "value.string": {
+      "dark": {
+        "foreground": "#a2a4a4"
+      },
+      "light": {
+        "foreground": "#435B35"
+      }
+    },
+    "value.number": {
+      "dark": {
+        "foreground": "#D8B78F"
+      },
+      "light": {
+        "foreground": "#76552E"
+      }
+    },
+    "value.primitive": {
+      "dark": {
+        "foreground": "#B8B5DD"
+      },
+      "light": {
+        "foreground": "#5B5486"
+      }
+    },
+    "identity.quid": {
+      "inherits": "identity.quad"
+    },
+    "identity.quad": {
+      "dark": {
+        "foreground": "#b193d2"
+      },
+      "light": {
+        "foreground": "#70518F"
+      }
+    },
+    "identity.punctuation.marker": {
+      "inherits": "identity.quad",
+      "dark": {
+        "foreground": "#db82d6"
+      },
+      "light": {
+        "foreground": "#70518F"
+      }
+    },
+    "identity.punctuation.colon": {
+      "inherits": "punctuation.colon"
+    },
+    "punctuation.colon": {
+      "dark": {
+        "foreground": "#74a5bd",
+        "intensity": 0.85
+      },
+      "light": {
+        "foreground": "#354967",
+        "intensity": 0.85
+      }
+    },
+    "punctuation.assignment": {
+      "dark": {
+        "foreground": "#baa9c1",
+        "intensity": 0.7
+      },
+      "light": {
+        "foreground": "#344154",
+        "intensity": 0.7
+      }
+    },
+    "punctuation.interpolation": {
+      "dark": {
+        "foreground": "#5994cc"
+      },
+      "light": {
+        "foreground": "#2766a0"
+      }
+    },
+    "punctuation.tagOpen": {
+      "dark": {
+        "foreground": "#7f718b"
+      },
+      "light": {
+        "foreground": "#5B6573"
+      }
+    },
+    "punctuation.tagClose": {
+      "inherits": "punctuation.tagOpen"
+    },
+    "punctuation.selfClosingSlash": {
+      "inherits": "punctuation.tagOpen",
+      "dark": {
+        "foreground": "#b193d2"
+      },
+      "light": {
+        "foreground": "#70518F"
+      }
+    },
+    "punctuation.arrayOpen": {
+      "inherits": "punctuation.tagOpen"
+    },
+    "punctuation.arrayClose": {
+      "inherits": "punctuation.tagOpen"
+    },
+    "punctuation.sequenceSeparator": {
+      "inherits": "punctuation.tagOpen"
+    },
+    "punctuation.referenceOpen": {
+      "inherits": "punctuation.tagOpen",
+      "dark": {
+        "foreground": "#86c3ff",
+        "intensity": 0.7
+      },
+      "light": {
+        "foreground": "#3D434B",
+        "intensity": 0.7
+      }
+    },
+    "punctuation.referenceClose": {
+      "inherits": "punctuation.tagOpen",
+      "dark": {
+        "foreground": "#86c3ff",
+        "intensity": 0.7
+      },
+      "light": {
+        "foreground": "#3D434B",
+        "intensity": 0.7
+      }
+    },
+    "punctuation.quoteOpen": {
+      "dark": {
+        "foreground": "#BDD0AB",
+        "intensity": 0.6
+      },
+      "light": {
+        "foreground": "#101820",
+        "intensity": 0.6
+      }
+    },
+    "punctuation.quoteClose": {
+      "inherits": "punctuation.quoteOpen"
+    },
+    "comment.line": {
+      "dark": {
+        "foreground": "#939DAA"
+      },
+      "light": {
+        "foreground": "#606B78"
+      }
+    },
+    "escape.character": {
+      "dark": {
+        "foreground": "#D4BA86"
+      },
+      "light": {
+        "foreground": "#7A602B"
+      }
+    },
+    "invalid.character": {
+      "dark": {
+        "foreground": "#F08B94"
+      },
+      "light": {
+        "foreground": "#A52A3A"
+      }
+    },
+    "value.attributeString": {
+      "inherits": "value.string"
+    },
+    "punctuation.attributeQuotes": {
+      "inherits": "punctuation.quoteOpen"
+    }
+  },
+  "fullTheme": {
+    "general": {
+      "comment": {
+        "label": "Comment",
+        "inherits": "syntax.hson.comment.line"
+      },
+      "string": {
+        "label": "String",
+        "inherits": "syntax.hson.value.string"
+      },
+      "number": {
+        "label": "Number",
+        "inherits": "syntax.hson.value.number"
+      },
+      "keyword": {
+        "label": "Keyword",
+        "inherits": "syntax.hson.value.primitive"
+      },
+      "type": {
+        "label": "Type",
+        "inherits": "syntax.hson.element.name"
+      },
+      "function": {
+        "label": "Function",
+        "inherits": "syntax.hson.part.sendingArgument"
+      },
+      "variable": {
+        "label": "Variable",
+        "inherits": "syntax.hson.attribute.name"
+      },
+      "punctuation": {
+        "label": "Punctuation",
+        "inherits": "syntax.hson.punctuation.tagOpen"
+      },
+      "escape": {
+        "label": "Escape",
+        "inherits": "syntax.hson.escape.character"
+      },
+      "invalid": {
+        "label": "Invalid",
+        "inherits": "syntax.hson.invalid.character"
+      }
+    },
+    "ui": {
+      "palette": {
+        "background": {
+          "house": {
+            "dark": {
+              "foreground": "#0f141a"
+            },
+            "light": {
+              "foreground": "#FAF9F6"
+            }
+          }
+        },
+        "foreground": {
+          "house": {
+            "dark": {
+              "foreground": "#D8DEE8"
+            },
+            "light": {
+              "foreground": "#28313D"
+            }
+          }
+        },
+        "surface": {
+          "house": {
+            "dark": {
+              "foreground": "#1B222C"
+            },
+            "light": {
+              "foreground": "#F0EFEB"
+            }
+          }
+        },
+        "border": {
+          "house": {
+            "dark": {
+              "foreground": "#34404E"
+            },
+            "light": {
+              "foreground": "#D2D6DB"
+            }
+          }
+        },
+        "selection": {
+          "house": {
+            "dark": {
+              "foreground": "#30485E"
+            },
+            "light": {
+              "foreground": "#D8E5EF"
+            }
+          }
+        },
+        "accent": {
+          "house": {
+            "dark": {
+              "foreground": "#8CC7D9"
+            },
+            "light": {
+              "foreground": "#245C70"
+            }
+          }
+        }
+      },
+      "editor": {
+        "editor.background": {
+          "inherits": "ui.palette.background"
+        },
+        "editor.foreground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "editor.selectionBackground": {
+          "inherits": "ui.palette.selection"
+        },
+        "editor.lineHighlightBackground": {
+          "inherits": "ui.palette.surface"
+        },
+        "editorCursor.foreground": {
+          "inherits": "ui.palette.accent"
+        },
+        "editorLineNumber.foreground": {
+          "inherits": "syntax.hson.comment.line"
+        },
+        "editorLineNumber.activeForeground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "editorGroupHeader.tabsBackground": {
+          "inherits": "ui.palette.surface"
+        },
+        "editorBracketHighlight.foreground1": {
+          "inherits": "syntax.hson.punctuation.tagOpen"
+        },
+        "editorBracketHighlight.foreground2": {
+          "inherits": "syntax.hson.part.receivingArgument"
+        },
+        "editorBracketHighlight.foreground3": {
+          "inherits": "syntax.hson.part.directive"
+        },
+        "editorBracketHighlight.foreground4": {
+          "inherits": "syntax.hson.punctuation.tagOpen"
+        },
+        "editorBracketHighlight.foreground5": {
+          "inherits": "syntax.hson.part.receivingArgument"
+        },
+        "editorBracketHighlight.foreground6": {
+          "inherits": "syntax.hson.part.directive"
+        }
+      },
+      "workbench": {
+        "foreground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "focusBorder": {
+          "inherits": "ui.palette.accent"
+        },
+        "sideBar.background": {
+          "inherits": "ui.palette.surface"
+        },
+        "sideBar.foreground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "sideBar.border": {
+          "inherits": "ui.palette.border"
+        },
+        "activityBar.background": {
+          "inherits": "ui.palette.surface"
+        },
+        "activityBar.foreground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "statusBar.background": {
+          "inherits": "ui.palette.surface"
+        },
+        "statusBar.foreground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "titleBar.activeBackground": {
+          "inherits": "ui.palette.surface"
+        },
+        "titleBar.activeForeground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "tab.activeBackground": {
+          "inherits": "ui.palette.background"
+        },
+        "tab.activeForeground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "tab.inactiveBackground": {
+          "inherits": "ui.palette.surface"
+        },
+        "panel.background": {
+          "inherits": "ui.palette.surface"
+        },
+        "panel.border": {
+          "inherits": "ui.palette.border"
+        },
+        "input.background": {
+          "inherits": "ui.palette.background"
+        },
+        "input.foreground": {
+          "inherits": "ui.palette.foreground"
+        },
+        "input.border": {
+          "inherits": "ui.palette.border"
+        },
+        "list.activeSelectionBackground": {
+          "inherits": "ui.palette.selection"
+        },
+        "list.activeSelectionForeground": {
+          "inherits": "ui.palette.foreground"
+        }
+      }
+    },
+    "branding": {
+      "palette": {
+        "blue": "#84a9d6",
+        "yellow": "#b5a179",
+        "pink": "#d99db5",
+        "green": "#80a894"
+      },
+      "library": {
+        "enabled": true,
+        "opacity": 1,
+        "letters": {
+          "h": "blue",
+          "s": "yellow",
+          "o": "pink",
+          "n": "green"
+        },
+        "separator": {
+          "color": "#7247d4"
+        }
+      },
+      "authoring": {
+        "opacity": 0.7,
+        "letters": {
+          "H": "blue",
+          "s": "yellow",
+          "o": "pink",
+          "n": "green"
+        }
+      }
+    }
+  }
+}

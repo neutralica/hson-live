@@ -94,6 +94,7 @@ function manifestStaticPaths(manifest) {
     "dist/local-host-runner.cjs",
     "dist/local-host-runner.cjs.map",
     "dist/onig.wasm",
+    "palettes/house.json",
   ]);
   for (const language of manifest.contributes?.languages ?? []) {
     if (language.configuration) paths.add(String(language.configuration).replace(/^\.\//, ""));
@@ -129,6 +130,7 @@ async function themeContents(extensionRoot, manifest) {
     JSON.parse(text);
     contents.set(path, text);
   }
+  contents.set("palettes/house.json", await readFile(resolve(extensionRoot,"palettes/house.json"),"utf8"));
   return contents;
 }
 
@@ -171,7 +173,7 @@ export async function validateVsix(vsixPath, expectedManifest, expectedThemes) {
     throw new StageError("artifact validation failure", "packaged TypeScript server plugin contributions differ from the current manifest");
   }
 
-  for (const key of ["colors", "themes", "semanticTokenTypes", "semanticTokenScopes"]) {
+  for (const key of ["colors", "themes", "semanticTokenTypes", "semanticTokenModifiers", "semanticTokenScopes"]) {
     if (!sameJson(manifest.contributes?.[key], expectedManifest.contributes?.[key]))
       throw new StageError("artifact validation failure", `packaged ${key} contributions differ from the current manifest`);
   }
@@ -184,8 +186,7 @@ export async function validateVsix(vsixPath, expectedManifest, expectedThemes) {
   }
 
   expectedThemes ??= await themeContents(resolve(import.meta.dirname, ".."), expectedManifest);
-  for (const theme of expectedManifest.contributes?.themes ?? []) {
-    const path = String(theme.path).replace(/^\.\//, "");
+  for (const path of [...(expectedManifest.contributes?.themes??[]).map(theme=>String(theme.path).replace(/^\.\//,"")),"palettes/house.json"]) {
     const expected = expectedThemes.get(path);
     if (expected === undefined || await archive.file(`extension/${path}`).async("string") !== expected)
       throw new StageError("artifact validation failure", `packaged theme differs from generated artifact: ${path}`);
@@ -331,7 +332,7 @@ export async function packageCurrentSource(options) {
     if (options.runWorktreeValidation) await options.runWorktreeValidation();
     else await requireSuccessful("artifact validation failure", "npm", ["run", "validate:artifact"], { cwd: extensionRoot, capture: false, runProcess: runner });
 
-    // The build derives manifest appearance defaults from appearance.ts.
+    // Package the manifest and appearance artifacts checked by the build.
     const expectedManifest = JSON.parse(await readFile(join(extensionRoot, "package.json"), "utf8"));
     const expectedThemes = await themeContents(extensionRoot, expectedManifest);
     if (options.runPackager) await options.runPackager(temporaryVsix);
