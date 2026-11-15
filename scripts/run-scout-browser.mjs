@@ -101,7 +101,7 @@ try {
   const registrationScript = await readFile(registrationPath);
   const interaction = {
     id: "scout-click", subject: { library: "page", path: [0, 0, 1, 0, 0, 0, 0] },
-    kind: "locus", key: "save", payload: Hson.data.from(null),
+    kind: "locus", key: "save",
     listener: { event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
   };

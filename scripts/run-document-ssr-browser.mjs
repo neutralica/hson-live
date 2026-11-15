@@ -104,7 +104,6 @@ try {
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "browser",
     key: "clicker",
-    args: Hson.data.from(null),
   });
   const authorityInteraction = Object.freeze({
     id: "ssr-authoritative",
@@ -112,7 +111,6 @@ try {
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "locus",
     key: "state.interaction",
-    payload: Hson.data.from(null),
   });
   librariesLocus = hsonLiveMap.locus.create({ "state": { json: { count: 0 }, schema: StateSchema, access: "shared" }, "page": { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema, access: "shared" }, "admin": { document: "<aside/>", schema: AdminSchema, access: "shared" } }, { sessions: {}, interactions: [browserInteraction, authorityInteraction], defaultProjection: { libraries: ["state", "admin", "page"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
     authorizeAction: ({ action }) => ["state.increment", "state.interaction", "document.attrs.set"].includes(action), actions: {
