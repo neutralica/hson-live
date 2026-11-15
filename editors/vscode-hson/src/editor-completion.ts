@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
-import { query_hson_editor_context, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
+import { query_hson_editor_context, query_hson_event_completion, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
 import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 import { annotated_data_schema_source, resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
 import type { DiscoveredHsonSchemaDeclaration } from "../../../src/internal/hson-schema/schema-discovery.js";
@@ -52,6 +52,8 @@ export class HsonEditorCompletionCache {
       .sort((a, b) => a.bodyRange.end - a.bodyRange.start - (b.bodyRange.end - b.bodyRange.start))[0];
     if (site === undefined) {
       if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program) };
+      const event = query_hson_event_completion(this.partFacts.facts, fileName, offset);
+      if (event.length > 0) return event;
       const context = part_write_context(this.typescript, cached.program, this.partFacts.facts, fileName, offset);
       return context === undefined ? [] : context.names.map((name, index): HostCompletion => {
         const scanner = this.typescript.createScanner(this.typescript.ScriptTarget.Latest, false, cached.file.languageVariant, name);

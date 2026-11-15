@@ -38,6 +38,12 @@ export function fail_part_event_reference(message: string, input: PartEventRefer
   });
 }
 
+export function fail_part_event_binding(message: string, node: HsonNode, attribute: string): never {
+  return _throw_transform_err(message, "Part event attachment", undefined, undefined, {
+    code: "HSON_EVENT_REFERENCE_INVALID", stage: "source-admission", source: event_attachment_position(node, attribute),
+  });
+}
+
 /** Resolve a header marker only against the currently selected authored definition. */
 export function part_event_attachment<T>(node: HsonNode, attribute: string, events: Pick<ReadonlyMap<string, T>, "get"> | undefined): T {
   const fail = (message: string): never => _throw_transform_err(message, "Part event attachment", undefined, undefined, {

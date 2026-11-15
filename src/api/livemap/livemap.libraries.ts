@@ -1,6 +1,5 @@
 import { canonical_flat_correspondence } from "./livemap.document.flat-effects.js";
 import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
-import { interaction_descriptors_from_root } from "../../internal/interaction-partitions.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { document_scoped_quad_selection_is_live, resolve_document_scoped_quad, type DocumentScopedQuadSelection, type DocumentQuadOccurrenceLifetime, type DocumentQuadOccurrenceScope } from "./livemap.document.scoped-quad.js";
 import { normalize_css_map, type NormalizedCssMap } from "../../core/css-map.js";
@@ -19,7 +18,7 @@ import { read_part_events } from "../../internal/part-events.js";
 import { opaque_document_stylesheet } from "../../internal/css/opaque-stylesheet.js";
 import { make_family_selectors, type FamilySelection } from "../../internal/library-selectors.js";
 import { require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
-import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { interaction_schema_internal, project_interaction_state_internal, validate_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { composed_interaction_value, interaction_addition } from "../interactions/interactions.descriptor.js";
 import { capture_document_click, synchronous_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
 import { document_callback_listener } from "./livemap.document.native-listener.js";
@@ -74,7 +73,7 @@ import { ordered_projected_value_at } from "../../core/ordered-projected-value-m
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { admit_data_input, hson_data_value, hson_data_from_value, type HsonDataInput } from "../data/hson-data.js";
 import { admit_canonical_hson_data_value } from "../data/hson-data-hson.js";
-import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_live_path } from "./livemap.path.js";
 import { must_ordered_projected_value, must_live_path } from "./livemap.guard.js";
@@ -434,8 +433,7 @@ export function admit_durable_library_add_internal(operation: LiveMapLibraryAddO
   if (interactionAdds !== undefined) {
     const root = decode_hosted_root(interactionAdds);
     admit_portable_hson_node(root, "Durable Library interaction additions");
-    validate_hson_schema_graph(interaction_schema_internal(), root);
-    const descriptors = interaction_descriptors_from_root(projected_value_from_hson_node(root));
+    const descriptors = validate_interaction_state_internal(root);
     const canonical = projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(descriptors)]]));
     if (descriptors.length === 0 || JSON.stringify(encode_hosted_root(canonical)) !== JSON.stringify(interactionAdds)) {
       throw new Error("Durable Library interaction additions are noncanonical.");

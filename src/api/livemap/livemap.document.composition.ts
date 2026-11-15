@@ -1,4 +1,4 @@
-import { authored_event_args, event_argument_references } from "../../internal/authored-events.js";
+import { authored_event_args, event_argument_references, type AuthoredEventArguments } from "../../internal/authored-events.js";
 import { interpolate_part_string, is_part_scalar_value, part_scalar_operand } from "../../internal/part-scalar.js";
 import { copy_part_literal_sigils, part_literal_sigils } from "../../internal/part-scalar-source.js";
 import { complete_document, completed_document_paths, single_document_element } from "../../internal/complete-document.js";
@@ -185,8 +185,7 @@ export type DocumentCompositionSource = Readonly<{ root: HsonNode; quads?: Porta
 /** An operation-local contribution addressed in the composition output. */
 export type DocumentCompositionInteraction = Readonly<Pick<PartEvent, "kind" | "key" | "listener"> & {
   path: LiveMapDocumentPath;
-  data: OrderedProjectedValue | undefined;
-}>;
+}> & AuthoredEventArguments;
 /** Detached occurrence coordinates, consumed only by ordinary destination preparation. @internal */
 export type DocumentCompositionStyle = Readonly<{
   css: DocumentCssRecord;
@@ -792,15 +791,16 @@ export function expand_document_composition(
     // frames extend its final path, never the selected source's coordinates.
     const outputPath = [...frame.outputPath, frame.output.length];
     for (const { attribute, declaration: { args, key, kind, listener } } of attached) {
-      const data = authored_event_args(args,
+      const prepared = authored_event_args(args,
         site => resolve_part_event_reference(site, item, attribute, environment),
         (message, site) => fail_part_event_reference(message, site, item, attribute),
         length => {
           if (length > limits.maxCharacters - characters) throw new Error("Document composition character limit exceeded.");
         });
       charge(key);
-      if (data !== undefined) charge(JSON.stringify(data));
-      interactions.push({ kind, key, listener, path: scopedPath(outputPath), data });
+      const input = prepared.eventArgs ?? prepared.data;
+      if (input !== undefined) charge(JSON.stringify(input));
+      interactions.push({ kind, key, listener, path: scopedPath(outputPath), ...prepared });
     }
     frame.output.push(copy);
     const localNames = frame.occurrence.localNames.get(item) ?? [];
@@ -1024,8 +1024,11 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     },
     event(node, attribute) {
       const event = part_event_attachment(node, attribute, source.events);
-      for (const argument of event.args) for (const site of event_argument_references(argument)) {
-        if (resolve_part_event_reference(site, node, attribute, environment, true) !== undefined) present.add(node);
+      for (const argument of event.args) {
+        if (argument.operand.kind === "native") continue;
+        for (const site of event_argument_references(argument)) {
+          if (resolve_part_event_reference(site, node, attribute, environment, true) !== undefined) present.add(node);
+        }
       }
     },
     enter(node, parent) {

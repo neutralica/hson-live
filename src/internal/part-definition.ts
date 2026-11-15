@@ -1,10 +1,11 @@
-import { event_argument_references, type AuthoredEventArgument } from "./authored-events.js";
+import { event_argument_references, missing_native_event_binding, type AuthoredEventArgument } from "./authored-events.js";
+import { native_event_family } from "./event-argument-plan.js";
 import { part_scalar_operand, part_scalar_source_possible } from "./part-scalar.js";
 import { copy_part_literal_sigils, part_literal_sigils } from "./part-scalar-source.js";
 import type { HsonNode, Primitive } from "../core/types.js";
 import { ROOT_TAG, STR_TAG } from "../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../core/node-guards.js";
-import { fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReference, type PartEvents } from "./part-events.js";
+import { fail_part_event_binding, fail_part_event_reference, part_event_attachment, type PartEvent, type PartEventReference, type PartEvents } from "./part-events.js";
 import { copy_event_attachments, event_attachment_position } from "../core/authored-event-names.js";
 import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_argument_name, is_part_scalar_argument, is_part_scalar_qualifier, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartScalarQualifier, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
@@ -165,7 +166,8 @@ export type PartDefinitionAnalysis = Readonly<{
   used: ReadonlySet<PartLocalDeclaration>;
   opaqueEvents: ReadonlyMap<HsonNode, ReadonlySet<string>>;
 }>;
-export type PartDefinitionIssue = Readonly<{ node: HsonNode; use?: PartReferenceUse; attribute?: string; message: string }>;
+export type PartDefinitionIssue = Readonly<{ node: HsonNode; use?: PartReferenceUse; attribute?: string; message: string;
+  conflictingEventLocal?: PartLocalDeclaration }>;
 export type PartEventAlternative = PartEvent | "opaque" | "absent";
 /** The runtime supplies one exact value. Source lookup can also observe possible values at this key. */
 export type PartEventEvidence = Pick<ReadonlyMap<string, PartEvent | readonly PartEventAlternative[]>, "get">;
@@ -186,12 +188,14 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   const outerExecution = new Map<HsonNode, readonly HsonNode[]>();
   let locals = new Map<string, PartLocalDeclaration>();
   const previous = new Map<HsonNode, Map<string, PartLocalDeclaration>>();
-  const issue = (node: HsonNode, message: string, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReference): void => {
+  const issue = (node: HsonNode, message: string, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReference,
+    conflictingEventLocal?: PartLocalDeclaration): void => {
     if (report === undefined) {
       if (eventInput !== undefined && attribute !== undefined) fail_part_event_reference(message, eventInput, node, attribute);
+      if (conflictingEventLocal !== undefined && attribute !== undefined) fail_part_event_binding(message, node, attribute);
       throw new TypeError(message);
     }
-    report({ node, message, attribute, use });
+    report({ node, message, attribute, use, conflictingEventLocal });
   };
   const add = (name: string, kind: PartArgumentKind, node: HsonNode, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReference) => {
     if (parameters.has(name) && parameters.get(name) !== kind) {
@@ -218,7 +222,10 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         }
       } else add(reference.name, "scalar", node, attribute, use, eventInput);
     } else if (binding === undefined) {
-      issue(node, `Missing Part local declaration ${JSON.stringify(reference.name)}.`, attribute, use, eventInput);
+      const native = eventInput === undefined ? undefined : missing_native_event_binding(reference);
+      const message = native === undefined ? `Missing Part local declaration ${JSON.stringify(reference.name)}.`
+        : `${native} Declare a Part local named ${JSON.stringify(reference.name)} to use a composition-time value here.`;
+      issue(node, message, attribute, use, eventInput);
     } else {
       used.add(binding);
       const iterator = binding.kind === "scalar" ? iterators.get(binding.node) : undefined;
@@ -281,10 +288,22 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         opaqueEvents.set(node, attributes);
       }
       const conditional = alternatives.length > 1 ? true : undefined;
-      const reads = alternatives.map(event => typeof event === "string" ? [] : event.args.flatMap(argument =>
-        event_argument_references(argument).map(site => observe(site.reference, node, "event",
+      const first = alternatives[0];
+      const family = typeof first === "object" ? native_event_family(first.listener.event) : undefined;
+      const local = family === undefined ? undefined : locals.get(family);
+      if (local !== undefined && alternatives.every(event => typeof event !== "string" && native_event_family(event.listener.event) === family)) {
+        const operand = alternatives.length === 1 && typeof first === "object"
+          ? first.args.find(argument => argument.operand.kind === "native")?.operand : undefined;
+        const site = operand?.kind === "native" ? operand.site : undefined;
+        issue(node, `Part local ${JSON.stringify(local.name)} conflicts with the native ${family} binding at this Event attachment. Rename the Part local or its iterator alias.`,
+          attribute, undefined, site, local);
+      }
+      const reads = alternatives.map(event => typeof event === "string" ? [] : event.args.flatMap(argument => {
+        if (argument.operand.kind === "native") return [];
+        return event_argument_references(argument).map(site => observe(site.reference, node, "event",
           argument.operand.kind === "reference" && is_part_scalar_qualifier(argument.qualifier) ? argument.qualifier : undefined,
-          attribute, site, conditional, argument))));
+          attribute, site, conditional, argument));
+      }));
       // A strict demand is definite when every alternative reads the same binding.
       if (conditional) for (const use of reads[0] ?? []) {
         const { reference } = use;

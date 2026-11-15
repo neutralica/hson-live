@@ -2,6 +2,8 @@ import {
   bind_node_locus_websocket,
 } from "hson-live/locus/node";
 import type { LiveHostApplication } from "hson-live/livehost";
+import { hsonLiveMap } from "hson-live/livemap";
+import { Hson } from "hson-live/hson";
 import {
   start_node_application_host,
 } from "hson-live/livehost/node";
@@ -18,6 +20,18 @@ void bind_node_locus_websocket(locus, websocket);
 void start_node_application_host({ applications: [application] });
 void create_node_livehost_socket;
 void misplaced_locus_socket;
+
+const pointerLocus = hsonLiveMap.locus.create({
+  controls: { parts: { handle: { kind: "document", document: Hson.document`<button hson:part event:move event:key/>`,
+    events: { move: "<hson:event on:pointer:move host:MOVE dx:num=^{pointer.movementX} <> >",
+      key: "<hson:event on:key:down host:MOVE key:str=^{key.key} ctrl:data=^{key.ctrlKey} <> >" } } } },
+  page: { document: Hson.document`<hson-part at=controls/handle/>` },
+});
+pointerLocus.actions.define("MOVE", (ctx, args) => {
+  // @ts-expect-error A hosted Action receives Data without access to the browser event.
+  void ctx.event;
+  return args;
+});
 
 // TLS material is an explicit Node-only startup choice; the application stays unchanged.
 void start_node_application_host({ applications: [application], http2: { key: "PEM key", cert: "PEM certificate" } });

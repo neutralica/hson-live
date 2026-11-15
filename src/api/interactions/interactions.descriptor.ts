@@ -3,6 +3,7 @@ import { is_ordered_projected_object, ordered_projected_array, ordered_projected
 import { admit_data_input, hson_data_from_value, hson_data_value, type HsonDataValue } from "../data/hson-data.js";
 import type { BrowserInteractionDescriptor, InteractionDescriptor, InteractionListener, InteractionSubject, LocusInteractionDescriptor } from "../../types/interaction.descriptor.types.js";
 import type { DocumentCompositionInteraction } from "../livemap/livemap.document.composition.js";
+import { encode_event_argument_plan, read_event_argument_plan } from "../../internal/event-argument-plan.js";
 
 export function new_interaction_id(): string {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
@@ -10,21 +11,23 @@ export function new_interaction_id(): string {
 }
 
 type NormalizedInteractionDescriptor =
-  | (Omit<BrowserInteractionDescriptor, "args"> & Readonly<{ args?: HsonDataValue }>)
-  | (Omit<LocusInteractionDescriptor, "payload"> & Readonly<{ payload?: HsonDataValue }>);
+  | (Omit<BrowserInteractionDescriptor, "args" | "eventArgs"> & Readonly<{ args?: HsonDataValue; eventArgs?: HsonDataValue }>)
+  | (Omit<LocusInteractionDescriptor, "payload" | "eventArgs"> & Readonly<{ payload?: HsonDataValue; eventArgs?: HsonDataValue }>);
 
 export function interaction_descriptor(id: string, subject: InteractionSubject, listener: InteractionListener,
-  kind: InteractionDescriptor["kind"], key: string, input: HsonDataValue | undefined): NormalizedInteractionDescriptor {
-  const common = { id, subject, listener, key };
+  kind: InteractionDescriptor["kind"], key: string, input: HsonDataValue | undefined,
+  eventArgs?: HsonDataValue): NormalizedInteractionDescriptor {
+  const common = { id, subject, listener, key, ...(eventArgs === undefined ? {} : { eventArgs }) };
   if (input === undefined) return { ...common, kind };
   return kind === "browser" ? { ...common, kind, args: input } : { ...common, kind, payload: input };
 }
 
 /** Normalize a resolved authored attachment through the same Descriptor admission as an imperative edit. */
 export function composed_interaction_value(library: string, attachment: DocumentCompositionInteraction): OrderedProjectedObject {
-  const { path, listener, kind, key, data } = attachment;
+  const { path, listener, kind, key, data, eventArgs } = attachment;
   return descriptor_to_value(interaction_descriptor(new_interaction_id(), { library, path }, listener, kind, key,
-    data === undefined ? undefined : hson_data_from_value(data)));
+    data === undefined ? undefined : hson_data_from_value(data),
+    eventArgs === undefined ? undefined : hson_data_from_value(encode_event_argument_plan(eventArgs))));
 }
 
 export function descriptor_array(value: OrderedProjectedValue): readonly OrderedProjectedObject[] {
@@ -54,41 +57,35 @@ export function interaction_addition(descriptor: InteractionDescriptor): (curren
 
 export function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjectedObject {
   const inputKey = descriptor.kind === "browser" ? "args" : "payload";
-  const record = exact_record(descriptor, ["id", "subject", "listener", "kind", "key"], "interaction descriptor", inputKey);
+  const record = exact_record(descriptor, ["id", "subject", "listener", "kind", "key"], "interaction descriptor", [inputKey, "eventArgs"]);
   const subject = exact_record(record.subject, ["library", "path"], "interaction subject");
   const path = validate_document_path(subject.path);
-  const listener = listener_to_value(record.listener);
+  const listener = exact_record(record.listener, [
+    "event", "target", "capture", "once", "passive", "missingTarget",
+    "preventDefault", "stopPropagation", "stopImmediatePropagation",
+  ], "interaction listener");
   const fields: Array<readonly [string, OrderedProjectedValue]> = [
     ["id", scalar(record.id)],
     ["subject", ordered_projected_object([["library", scalar(subject.library)], ["path", ordered_projected_array([...path])]])],
-    ["listener", listener],
+    ["listener", ordered_projected_object(Object.entries(listener).map(([name, value]) => [name, scalar(value)] as const))],
     ["kind", scalar(record.kind)],
     ["key", scalar(record.key)],
   ];
   const input = record[inputKey];
   if (input !== undefined) fields.push([inputKey, hson_data_value(admit_data_input(input))]);
+  if (record.eventArgs !== undefined) {
+    if (input !== undefined) throw new TypeError("A canonical event argument plan cannot accompany resolved args or payload.");
+    const plan = hson_data_value(admit_data_input(record.eventArgs));
+    read_event_argument_plan(listener.event, plan);
+    fields.push(["eventArgs", plan]);
+  }
   return ordered_projected_object(fields);
 }
 
-function listener_to_value(input: unknown): OrderedProjectedObject {
-  const value = exact_record(input, [
-    "event", "target", "capture", "once", "passive", "missingTarget",
-    "preventDefault", "stopPropagation", "stopImmediatePropagation",
-  ], "interaction listener");
-  return ordered_projected_object([
-    ["event", scalar(value.event)], ["target", scalar(value.target)],
-    ["capture", scalar(value.capture)], ["once", scalar(value.once)],
-    ["passive", scalar(value.passive)], ["missingTarget", scalar(value.missingTarget)],
-    ["preventDefault", scalar(value.preventDefault)],
-    ["stopPropagation", scalar(value.stopPropagation)],
-    ["stopImmediatePropagation", scalar(value.stopImmediatePropagation)],
-  ]);
-}
-
-function exact_record(input: unknown, keys: readonly string[], label: string, optionalKey?: string): Record<string, unknown> {
+function exact_record(input: unknown, keys: readonly string[], label: string, optionalKeys: readonly string[] = []): Record<string, unknown> {
   if (typeof input !== "object" || input === null || Array.isArray(input)) throw new TypeError(`${label} must be an object.`);
   const actual = Reflect.ownKeys(input);
-  const fields = optionalKey !== undefined && actual.includes(optionalKey) ? [...keys, optionalKey] : keys;
+  const fields = [...keys, ...optionalKeys.filter(key => actual.includes(key))];
   if (actual.length !== fields.length || fields.some((key) => !actual.includes(key))) {
     throw new TypeError(`${label} has unknown or missing fields.`);
   }

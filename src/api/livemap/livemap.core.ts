@@ -62,9 +62,10 @@ import {
 import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { rewrite_interaction_subjects, validate_interaction_descriptor_ids, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
-import { interaction_descriptors_from_root, merge_interaction_descriptors, partition_interaction_descriptors } from "../../internal/interaction-partitions.js";
+import { merge_interaction_descriptors, partition_interaction_descriptors } from "../../internal/interaction-partitions.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
-import { interaction_schema_internal } from "../interactions/interactions.projection.js";
+import { interaction_schema_internal, interaction_state_schema_internal, validate_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { validate_descriptor_event_plan, validate_interaction_operation_plans } from "../../internal/event-argument-plan.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibraryAddOperation, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
@@ -482,7 +483,6 @@ function make_livemap_registry_engine(
   if (initialSystemRoot.mode === "document" || (initialSystemRoot.projectedOverlay?.size ?? 0) !== 0) {
     throw new Error("Transactional Hson system state must be Data without runtime identity.");
   }
-  must_hson_schema_root(systemSchema, initialSystemRoot.root);
   const systemState: LiveMapSystemState = {
     identity: systemIdentity,
     key: initialSystem?.key ?? INTERACTION_RESERVED_LIBRARY_KEY,
@@ -491,9 +491,9 @@ function make_livemap_registry_engine(
     hsonSchema: systemSchema,
   };
   if (systemState.key === INTERACTION_RESERVED_LIBRARY_KEY) {
-    validate_interaction_descriptor_ids(project_live_path(systemState.root, ["descriptors"]));
+    validate_interaction_state_internal(systemState.root);
     if (initialSystem !== undefined) encode_hosted_root(systemState.root);
-  }
+  } else must_hson_schema_root(systemSchema, initialSystemRoot.root);
 
   const canonicalSystemBinding: HostedRegistryBinding = Object.freeze({
     name: systemState.transportName, scope: "hson-internal", identity: systemState.identity,
@@ -1807,6 +1807,8 @@ function make_livemap_registry_engine(
             }
             with_livemap_replay_operation_index(candidate_source(target, dependency), () => { throw cause; });
           }
+          try { validate_descriptor_event_plan(descriptor); }
+          catch (cause) { with_livemap_replay_operation_index(candidate_source(target, ["descriptors", index]), () => { throw cause; }); }
         }
         if (descriptors === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
         if (clientComposition !== undefined) {
@@ -1833,7 +1835,8 @@ function make_livemap_registry_engine(
       aggregateSchemaValidations += 1;
       const root = systemCandidate.root;
       qualify_livemap_data(root, "LiveMap system candidate");
-      validate_final_schema(systemCandidate.system.hsonSchema, root, aggregate_system_target(systemCandidate.system.identity, []));
+      validate_final_schema(systemCandidate.system.key === INTERACTION_RESERVED_LIBRARY_KEY
+        ? interaction_state_schema_internal() : systemCandidate.system.hsonSchema, root, aggregate_system_target(systemCandidate.system.identity, []));
       if (systemCandidate.system.key === INTERACTION_RESERVED_LIBRARY_KEY) {
         // The exact-root bound applies to the accumulated canonical interaction
         // state, independently of how the transition encodes its operations.
@@ -2531,7 +2534,7 @@ function make_livemap_registry_engine(
         if (attachments.length > 0) throw new Error("Replayed Library interactions cannot carry authored sources.");
         const root = decode_hosted_root(replayedInteractions);
         admit_portable_hson_node(root, "Library interaction additions");
-        additions = interaction_descriptors_from_graph(root);
+        additions = validate_interaction_state_internal(root);
         if (additions.length === 0) throw new Error("Library interaction additions are empty.");
       }
       const newDocuments = new Map(prepared.filter(({ state }) => state.mode === "document").map(({ name, state }) => [name, state.root]));
@@ -2550,7 +2553,7 @@ function make_livemap_registry_engine(
       const applicationByName = new Map(application.map(binding => [binding.name, binding]));
       validate_interaction_subjects(combined, name => applicationByName.get(name)?.mode === "document");
       nextSystemRoot = projected_value_to_hson_root(ordered_projected_object([["descriptors", combined]]));
-      must_hson_schema_root(systemState.hsonSchema, nextSystemRoot);
+      validate_interaction_state_internal(nextSystemRoot);
       // The full prospective root and the portable Descriptor delta have
       // separate exact-value bounds, even when a Library is added atomically.
       encode_hosted_root(nextSystemRoot);
@@ -3070,7 +3073,8 @@ function make_livemap_registry_engine(
         preserve_part_members(require_library(prior.identity), prepared, "topology restoration");
       }
       must_hson_schema_family(schema, entry.mode === "document" ? "document" : "data");
-      must_hson_schema_root(schema, prepared.root);
+      if (entry.scope === "hson-internal") validate_interaction_state_internal(prepared.root);
+      else must_hson_schema_root(schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, own_data_library_validation(entry));
       if (entry.scope === "hson-internal") {
         if (systemState.transportName !== entry.name
@@ -3266,7 +3270,8 @@ function make_livemap_registry_engine(
       const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
       if (binding.scope !== "hson-internal") preserve_part_members(require_library(binding.identity), prepared, "snapshot restoration");
-      must_hson_schema_root(binding.schema, prepared.root);
+      if (binding.scope === "hson-internal") validate_interaction_state_internal(prepared.root);
+      else must_hson_schema_root(binding.schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, binding.validation);
       if (entry.scope === "hson-internal") {
         if (binding.identity !== systemState.identity
@@ -3494,7 +3499,8 @@ function make_livemap_registry_engine(
         && snapshot.authority.incarnationId === composition.authority.incarnationId) {
         preserve_part_members(require_library(oldBinding.identity), prepared, "receiving reconciliation");
       }
-      must_hson_schema_root(schema, prepared.root);
+      if (entry.scope === "hson-internal") validate_interaction_state_internal(prepared.root);
+      else must_hson_schema_root(schema, prepared.root);
       validate_data_library(prepared.root, prepared.mode, own_data_library_validation(entry));
       if (entry.scope === "hson-internal") {
         if (nextSystemRoot !== undefined || entry.name !== systemState.transportName
@@ -3560,7 +3566,7 @@ function make_livemap_registry_engine(
     if (incoming.local.length > 0) throw new Error("Authority interaction snapshot contains a local subject.");
     const composedRoot = projected_value_to_hson_root(ordered_projected_object([["descriptors",
       merge_interaction_descriptors(incoming.shared, localDescriptors)]]));
-    must_hson_schema_root(systemState.hsonSchema, composedRoot);
+    validate_interaction_state_internal(composedRoot);
     encode_hosted_root(composedRoot);
     // Only the authority cursor omits the binding when the session lacks the
     // feature. The composed map always owns its local canonical store.
@@ -4121,8 +4127,7 @@ function make_livemap_registry_engine(
       admit_portable_hson_node(root, "Client projected system root");
       const prepared = prepare_livemap_root(root, "data");
       if (prepared.mode !== "data-object") throw new Error("Client projected system root mode is incompatible.");
-      must_hson_schema_root(systemState.hsonSchema, prepared.root);
-      const value = must_projected_root_value(prepared.root);
+      const descriptors = validate_interaction_state_internal(prepared.root);
       const hosted = require_hosted_state();
       const classify = (name: string): "shared" | "local" | undefined => {
         const binding = hosted.byName.get(name);
@@ -4134,12 +4139,12 @@ function make_livemap_registry_engine(
       const projectedDocuments = new Set([...clientComposition.bindings.values()]
         .filter((binding) => binding.mode === "document").map((binding) => binding.name));
       for (const name of newSharedDocuments) projectedDocuments.add(name);
-      const incoming = partition_interaction_descriptors(interaction_descriptors_from_root(value), (name) =>
+      const incoming = partition_interaction_descriptors(descriptors, (name) =>
         projectedDocuments.has(name) ? "shared" : undefined);
       const merged = merge_interaction_descriptors(incoming.shared, local);
       const composedValue = ordered_projected_object([["descriptors", merged]]);
       const composedRoot = projected_value_to_hson_root(composedValue);
-      must_hson_schema_root(systemState.hsonSchema, composedRoot);
+      validate_interaction_state_internal(composedRoot);
       encode_hosted_root(composedRoot);
       return () => { systemState.root = composedRoot; };
     }),
@@ -4240,13 +4245,103 @@ function make_livemap_registry_engine(
     ),
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
-    validateCoveredDurableHosted: (commit) => {
+    validateCoveredDurableHosted: (commits) => {
       // A covering checkpoint retains every Library binding. Its registry
       // digest can differ after later additions, whose fences are checked by Locus.
       const bindings = require_hosted_state().byName;
-      const registry = { digest: commit.registryDigest };
-      if ("format" in commit) decode_portable_aggregate_commit(commit, registry, bindings);
-      else decode_private_scoped_aggregate_commit(commit, registry, bindings);
+      const history = commits.map(commit => {
+        if (!("operations" in commit)) return { operations: [], topology: commit.topology.operation };
+        const registry = { digest: commit.registryDigest };
+        const operations = "format" in commit ? decode_portable_aggregate_commit(commit, registry, bindings)
+          : decode_private_scoped_aggregate_commit(commit, registry, bindings);
+        return { operations: operations.flatMap(({ library, projected, operationIndex }) => {
+          if (library.scope !== "hson-internal" || projected === undefined) return [];
+          return with_livemap_replay_operation_index(operationIndex, () => {
+            validate_interaction_operation_plans(projected.path, projected.prev);
+            validate_interaction_operation_plans(projected.path, projected.next);
+            return [{ projected, operationIndex }];
+          });
+        }) };
+      });
+      const firstNested = history.findIndex(({ operations }) => operations.some(({ projected }) => projected.path.length > 2));
+      if (firstNested === -1) return;
+      const linkedToCheckpoint = commits.at(-1)?.rev === mapRevision;
+      let root: HsonNode;
+      if (linkedToCheckpoint) {
+        root = clone_live_root(systemState.root);
+      } else {
+        // A partial prune can detach the covered run from the checkpoint. Only
+        // a complete retained endpoint can then supply the scratch state.
+        let anchor: { index: number; position: number; value: OrderedProjectedValue } | undefined;
+        for (const [index, { operations }] of history.entries()) {
+          for (const [position, { projected: { path, next } }] of operations.entries()) {
+            if (next === undefined) continue;
+            if (path.length === 0) anchor = { index, position, value: next };
+            else if (path.length === 1 && path[0] === "descriptors") {
+              anchor = { index, position, value: ordered_projected_object([["descriptors", next]]) };
+            }
+          }
+        }
+        if (anchor === undefined) return;
+        root = projected_value_to_hson_root(anchor.value);
+
+        // Establish the end of this retained run from the exact endpoint and
+        // subsequent retained writes, without crossing into the pruned span.
+        for (const [index, { operations, topology }] of history.slice(anchor.index).entries()) {
+          if (topology?.interactionAdds !== undefined) {
+            const additions = interaction_descriptors_from_graph(decode_hosted_root(topology.interactionAdds));
+            replace_live_path_from_projected(root, ["descriptors"],
+              ordered_projected_array([...interaction_descriptors_from_graph(root), ...additions]));
+          }
+          for (const { projected, operationIndex } of index === 0 ? operations.slice(anchor.position + 1) : operations) {
+            with_livemap_replay_operation_index(operationIndex, () => {
+              const { path, prev, next } = projected;
+              must_replay_value(path, prev, project_live_path(root, path), operationIndex);
+              const planned = plan_write_ops(root, [projected_write_op_from_transport(projected)]);
+              must_replay_value(path, next, project_live_path(root, path), operationIndex);
+              must_replay_operation(projected, planned.transportOps, operationIndex, true);
+            });
+          }
+        }
+      }
+      // The journal carries both endpoints. Rewind only through the earliest
+      // nested write and validate at commit boundaries, as active admission does.
+      let restoredDeletedMember = false;
+      const matches = (expected: OrderedProjectedValue | undefined, actual: OrderedProjectedValue | undefined) =>
+        optional_ordered_projected_value_equal(expected, actual)
+          || (restoredDeletedMember && covered_interaction_value_equal(expected, actual));
+      const laterLibraries = new Set<string>();
+      const validate = () => validate_interaction_subjects(ordered_projected_array(validate_interaction_state_internal(root)),
+        name => !laterLibraries.has(name) && bindings.get(name)?.mode === "document");
+      if (!linkedToCheckpoint) validate();
+      for (const { operations, topology } of history.slice(firstNested).reverse()) {
+        const interactionAdds = topology?.interactionAdds;
+        for (const { name } of topology?.libraries ?? []) laterLibraries.add(name);
+        if (interactionAdds !== undefined) {
+          const additions = interaction_descriptors_from_graph(decode_hosted_root(interactionAdds));
+          const current = interaction_descriptors_from_graph(root);
+          const first = current.length - additions.length;
+          if (first < 0 || !additions.every((item, index) => matches(item, current[first + index]))) {
+            throw new Error("Covered Library interaction additions disagree with the retained history.");
+          }
+          replace_live_path_from_projected(root, ["descriptors"], ordered_projected_array(current.slice(0, first)));
+        }
+        for (const { projected, operationIndex } of operations.reverse()) {
+          with_livemap_replay_operation_index(operationIndex, () => {
+            const { path, prev, next, kind } = projected;
+            const current = project_live_path(root, path);
+            if (!matches(next, current)) throw new LiveMapReplayError(path, next, current, operationIndex);
+            if (prev === undefined) delete_live_path(root, path);
+            else if (kind === "delete") {
+              set_live_path_from_projected(root, path, prev);
+              restoredDeletedMember = true;
+            } else replace_live_path_from_projected(root, path, prev);
+          });
+        }
+        if (operations.length > 0 || topology !== undefined) {
+          validate();
+        }
+      }
     },
     replayDurableHosted: replay_durable_hosted_aggregate,
     replayClientHostedManaged: (owner, commit, authorityRev, scoped, assertAcceptance) => transitionController.runManaged(
@@ -4443,6 +4538,19 @@ function require_document_overlay(
 ): import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay {
   if (overlay !== undefined) return overlay;
   throw new Error("LiveMap document mode is missing its identity overlay.");
+}
+
+/** Undoing a deletion restores its value, but its former object entry position
+ * is absent from the journal. Scratch validation still requires exact values
+ * and array order. The installed checkpoint keeps its original entry order. */
+function covered_interaction_value_equal(left: OrderedProjectedValue | undefined, right: OrderedProjectedValue | undefined): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => covered_interaction_value_equal(value, right[index]));
+  }
+  if (!is_ordered_projected_object(left) || !is_ordered_projected_object(right) || left.entries.length !== right.entries.length) return false;
+  const rightEntries = new Map(right.entries);
+  return left.entries.every(([name, value]) => covered_interaction_value_equal(value, rightEntries.get(name)));
 }
 
 function must_replay_value(

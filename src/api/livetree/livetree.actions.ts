@@ -1,9 +1,9 @@
 import type { HsonNode } from "../../core/types.js";
 import type { LiveTreeActionContext, LiveTreeActions } from "../../types/livetree-action.types.js";
 import type { InteractionListener } from "../../types/interaction.descriptor.types.js";
-import { _throw_transform_err } from "../../core/errors.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
-import { authored_event_args, event_source_position, parse_authored_event, type AuthoredEventReference } from "../../internal/authored-events.js";
+import { authored_event_args, fail_event_reference, parse_authored_event, standalone_event_reference_issue, type AuthoredEventReference } from "../../internal/authored-events.js";
+import { extract_event_arguments } from "../../internal/event-argument-plan.js";
 import { make_local_actions } from "../../internal/local-actions.js";
 import { hson_data_from_value } from "../data/hson-data.js";
 import { create_staged_livetree_in_runtime } from "./creation/create-livetree.js";
@@ -75,16 +75,12 @@ export function parse_livetree_authored_event(source: string): Readonly<{
   if (kind !== "browser") {
     throw new TypeError("LiveTree.listen.event requires a local: action. A standalone LiveTree cannot dispatch host: actions.");
   }
-  const unresolved = (site: AuthoredEventReference): never =>
-    _throw_transform_err("Standalone event arguments cannot resolve %{} or ^{} references. Supply literals.",
-      "LiveTree.listen.event", undefined, undefined, {
-        code: "HSON_EVENT_REFERENCE_INVALID", stage: "source-admission", source: event_source_position(site.start),
-        related: [{ role: "value-end", source: event_source_position(site.end) }],
-      });
-  const value = authored_event_args(args, unresolved, (_message, site) => unresolved(site), () => {});
-  const data = value === undefined ? undefined : hson_data_from_value(value);
+  const invalid = (message: string, site: AuthoredEventReference): never => fail_event_reference(message, site, "LiveTree.listen.event");
+  const { data, eventArgs } = authored_event_args(args,
+    site => invalid(standalone_event_reference_issue(site), site), invalid, () => {});
   const onFailure = (cause: unknown) =>
     report_livetree_runtime_failure(`LiveTree action ${JSON.stringify(key)} failed during event dispatch.`, cause);
+  const captured = data === undefined ? undefined : hson_data_from_value(data);
   return {
     listener,
     bind(tree) {
@@ -94,8 +90,14 @@ export function parse_livetree_authored_event(source: string): Readonly<{
         throw new Error(`Unknown local action ${JSON.stringify(key)}. Define it on tree.actions before calling tree.listen.event().`);
       }
       // The native registration retains the resolved capability through reversible detach.
-      const invoke = action.bindArgs(data);
-      return { actionOwner, handler: event => { void invoke({ subject: tree, event, onFailure }); } };
+      if (eventArgs === undefined) {
+        const invoke = action.bindArgs(captured);
+        return { actionOwner, handler: event => { void invoke({ subject: tree, event, onFailure }); } };
+      }
+      return { actionOwner, handler: event => {
+        try { void action.invoke(extract_event_arguments(eventArgs, event), { subject: tree, event, onFailure }); }
+        catch (cause) { onFailure(cause); }
+      } };
     },
   };
 }

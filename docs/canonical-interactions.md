@@ -26,7 +26,7 @@ The 4 MiB exact-value bound applies to the whole prospective interaction root at
 
 Durable Locus checkpoints require the fixed interaction binding. Replay validates each original transition at its accepted boundary. Resume installs the validated checkpoint and replay result together, using the checkpoint format's manifest and chunk bounds for stored material. The final recovered topology can exceed the size of a single Library-add envelope. Recovery restores the accepted Descriptors in order with their original IDs, subjects, and exact Data.
 
-Hson owns one fixed, closed Schema. Its semantic shape is:
+The reserved slot admits the following closed structure. The registry continues to carry the original Schema envelope as its stable binding identity. This preserves the digest that fences older snapshots and durable commit tails. The reserved slot applies the current structural Schema and the plan checks below at admission and recovery.
 
 ```hson
 <type "data" content <descriptors <array <union [
@@ -47,6 +47,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
     kind <exact "browser">
     key "string"
     args <optional "any">
+    eventArgs <optional <array <array "any">>>
   >>,
   <content <
     id "string"
@@ -65,6 +66,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
     kind <exact "locus">
     key "string"
     payload <optional "any">
+    eventArgs <optional <array <array "any">>>
   >>
 ]>>>>
 ```
@@ -87,9 +89,39 @@ There is one interaction system root. Its shared partition `S` contains descript
 
 On writable, element-qualified Document `.at()` and `.q()` handles, `.listen.local.onClick(key, input?)` and `.listen.host.onClick(key, input?)` author a click Descriptor. Standalone LiveMap and Echo client-local calls return the accepted Descriptor ID synchronously. Locus-governed calls return `Promise<string>` resolving to that ID after authoritative acceptance. Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. A Locus `stage` or action `ctx.stage` can commit grouped document edits and Descriptor changes atomically.
 
+### Authored Event arguments
+
 Authored Events use named arguments of the form `name:type=value`. For example, `<hson:event on:click host:deck.advance step:num="3" title:str="Next" settings:data={<speed 5>} <> >` sends an ordered Data object with `step`, `title`, and `settings`. A field spelled `input:data` has the name `input`, and its value stays nested under that name. The empty outcome `<>` is required.
 
 Use `str` for strings, `num` for finite numbers, and `data` for Hson Data. Numeric literals are double-quoted finite JSON numbers and preserve signed zero. In Parts, whole `%{incoming}` and `^{local}` references preserve the resolved value, and a quoted `str` can interpolate primitive Part values. Each attachment resolves in its own occurrence scope. An absent optional operand omits its field. A declaration with zero arguments supplies `undefined`. A declaration whose optional fields are all absent supplies an empty object.
+
+| Authored selector | Native event | Event-local root |
+| --- | --- | --- |
+| `on:click` | `click` | |
+| `on:pointer:down` | `pointerdown` | `pointer` |
+| `on:pointer:move` | `pointermove` | `pointer` |
+| `on:pointer:up` | `pointerup` | `pointer` |
+| `on:pointer:cancel` | `pointercancel` | `pointer` |
+| `on:key:down` | `keydown` | `key` |
+| `on:key:up` | `keyup` | `key` |
+
+| Event-local root | `num` or `data` | `str` or `data` | Boolean `data` |
+| --- | --- | --- | --- |
+| `pointer` | `clientX`, `clientY`, `movementX`, `movementY`, `pointerId`, `button`, `buttons` | `pointerType` | `isPrimary`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
+| `key` | `location` | `key`, `code` | `repeat`, `isComposing`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
+
+Use native lookups as whole argument values. They require the matching native Event class and a value of the expected type, including for references ending in `?`. Pointer movement values come directly from the browser. `button` reports the changed button, `buttons` carries the button-state bitmask, and `pointerId` has the lifetime defined by the browser's pointer model. Release and cancellation dispatch separately. Keyboard `key` reports the logical value and `code` identifies the physical key.
+
+The selected family establishes its root within the Event declaration. A visible Part local or iterator alias with that name conflicts at the attachment. The same name can be used as an ordinary local outside that Event scope. Incoming `%{...}` placeholders use their usual Part bindings. `part:optional` continues to depend on composition-time references.
+
+```hson
+<hson:event on:pointer:move host:deck.move x:num=^{pointer.clientX} slide:data=^{currentSlide} y:num=^{pointer.clientY} <> >
+<hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} code:str=^{key.code} repeat:data=^{key.repeat} <> >
+```
+
+For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, and `[name, type, family, property]` for a native lookup. `family` is `"pointer"` or `"key"`. Admission requires unique argument names, matching value types, and at least one supported lookup from the listener's Event family. Descriptors carry the plan in place of resolved `args` or `payload`. Listener equivalence includes the full plan.
+
+Each browser dispatch uses the native Event to construct the exact ordered Data object, then applies the normal Action argument admission. A failed extraction rejects the invocation through the existing failure reporting. A hosted Action receives that Data through Echo and Locus. Echo retries retain the original arguments and request ID. Client-reported native values are application input subject to the Action Schema and authorization.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 

@@ -1,6 +1,6 @@
 import { part_scalar_operand } from "../part-scalar.js";
 import { decode_part_string_sigils, part_literal_sigils } from "../part-scalar-source.js";
-import { event_argument_references, parse_authored_event, type AuthoredEventArgument, type AuthoredEventReference } from "../authored-events.js";
+import { event_argument_references, parse_authored_event, standalone_event_reference_issue, type AuthoredEventArgument, type AuthoredEventReference } from "../authored-events.js";
 import { parse_part_event, type PartEvent } from "../part-events.js";
 import { is_event_attachment_attribute } from "../../core/authored-event-names.js";
 import { read_transform_error_details } from "../../core/errors.js";
@@ -186,7 +186,8 @@ export type PartSourceFacts = Readonly<{
   writes: readonly PartWriteSource[];
   eventContracts: readonly EventContractSource[];
   eventIssues: readonly EventIssueSource[];
-  /** Known declaration roots whose receiving Part did not establish a full set of uses. */
+  eventLiterals: readonly (ts.StringLiteral | ts.NoSubstitutionTemplateLiteral)[];
+  /** Event lookup roots without a provable Part binding target. */
   unavailableEventReferences: readonly PartSourceLocation[];
 }>;
 
@@ -338,6 +339,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
   const locusEventSources = new Map<ts.CallExpression, LocusEventSources>();
   const eventContracts: EventContractSource[] = [];
   const eventIssues: EventIssueSource[] = [];
+  const eventLiterals = new Set<PartSourceFacts["eventLiterals"][number]>();
   const unavailableEventReferences: PartSourceLocation[] = [];
   const reachable: { reachableOnly: true } = { reachableOnly: true };
   const knownRecord = (input: ts.Expression | undefined): ts.ObjectLiteralExpression | undefined => {
@@ -431,11 +433,15 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       if (!sources.eligible(literal) || !typescript.isStringLiteral(literal) && !typescript.isNoSubstitutionTemplateLiteral(literal)) return "opaque";
       const previous = parsed.get(literal);
       if (previous !== undefined) return previous;
+      eventLiterals.add(literal);
       const map = event_range_map(literal);
       try {
         const event = parse_part_event(literal.text);
         parsed.set(literal, event);
-        for (const argument of event.args) for (const site of event_argument_references(argument)) ranges.set(site.reference, { map, site });
+        for (const argument of event.args) for (const site of event_argument_references(argument)) {
+          if (argument.operand.kind === "native") unavailable(site, map);
+          else ranges.set(site.reference, { map, site });
+        }
         declarations.set(event, { event, location: location(literal), map });
         return event;
       } catch (cause) {
@@ -738,6 +744,13 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           if (!lexicalComplete || issue.use?.conditional) return;
           const owner = nodeLocation(issue.node, issue.attribute,
             issue.attribute?.startsWith("^{") || issue.attribute?.toLowerCase().startsWith("event:") ? "name" : "value");
+          if (issue.conflictingEventLocal !== undefined) {
+            const local = issue.conflictingEventLocal;
+            const attr = local.receiving === undefined ? Object.keys(local.node.$_attrs ?? {}).find(is_part_iterator_attribute)
+              : `${local.kind}:${local.name}`;
+            referenceIssues.push({ location: owner, message: issue.message, declaration: nodeLocation(local.node, attr) });
+            return;
+          }
           if (issue.message === "Invalid Part placeholder." && referenceIssues.some(prior => prior.message === "Invalid Part property reference."
             && owner.start <= prior.location.start && prior.location.end <= owner.end)) return;
           const diagnostic: (typeof referenceIssues)[number] = { location: owner, message: issue.message };
@@ -1104,14 +1117,15 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     if (supported) writes.push({ call, location: location(call), ...target, arguments: arguments_ });
   }
   eventContracts.push(...direct_event_contracts(typescript, program, sources, localEvents,
-    locusEventSources, eventIssues, options => {
+    locusEventSources, eventIssues, eventLiterals, options => {
       const fields = knownFields(options);
       const args = fields?.get("args");
       // Capture can run application getters when the options or the args record are opaque.
       if (fields === undefined || args !== undefined && knownFields(args) === undefined) return undefined;
       return { contract: fields.size === 1 ? actionContract(args) : undefined };
     }));
-  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, eventContracts, eventIssues, unavailableEventReferences };
+  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, eventContracts, eventIssues,
+    eventLiterals: [...eventLiterals], unavailableEventReferences };
   sourceFacts.set(program, facts);
   return facts;
 }
@@ -1121,6 +1135,7 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
   localEvents: ReadonlyMap<ts.CallExpression, readonly EventSource[]>,
   locusEventSources: ReadonlyMap<ts.CallExpression, LocusEventSources>,
   issues: EventIssueSource[],
+  eventLiterals: Set<PartSourceFacts["eventLiterals"][number]>,
   readOptions: (options: ts.Expression) => Readonly<{ contract: ActionContractSource | undefined }> | undefined): readonly EventContractSource[] {
   const checker = program.getTypeChecker();
   const output: EventContractSource[] = [];
@@ -1296,18 +1311,24 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
           } else if (method?.name === "event" && namespace?.name === "listen" && owner.family === "tree") {
             const source = literal(call.arguments[0]);
             if (source === undefined || call.arguments.length !== 1) continue;
+            eventLiterals.add(source);
             const map = event_range_map(source);
             let event;
             try { event = parse_authored_event(source.text); }
             catch (cause) {
-              issues.push({ ...event_declaration_issue(source, map, cause), code: "HSON_EVENT_DECLARATION_INVALID" });
+              issues.push({ ...event_declaration_issue(source, map, cause),
+                code: read_transform_error_details(cause)?.code === "HSON_EVENT_REFERENCE_INVALID"
+                  ? "HSON_EVENT_REFERENCE_INVALID" : "HSON_EVENT_DECLARATION_INVALID" });
               continue;
             }
             if (event.kind !== "browser") continue;
-            for (const argument of event.args) for (const site of event_argument_references(argument)) {
-              const where = map({ start: site.start.index, end: site.end.index });
-              if (where !== undefined) issues.push({ location: where, code: "HSON_EVENT_REFERENCE_INVALID",
-                message: "Standalone event arguments cannot resolve Part references. Supply literals." });
+            for (const argument of event.args) {
+              if (argument.operand.kind === "native") continue;
+              for (const site of event_argument_references(argument)) {
+                const where = map({ start: site.start.index, end: site.end.index });
+                if (where !== undefined) issues.push({ location: where, code: "HSON_EVENT_REFERENCE_INVALID",
+                  message: standalone_event_reference_issue(site) });
+              }
             }
             const contract = owner.actions.get(event.key);
             if (contract !== undefined) output.push({ event, location: location(source), map, contract });

@@ -170,7 +170,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
         incompatible(name, `unknown key at ${name}`);
         continue;
       }
-      const actual = qualifier === "str" ? "string" : qualifier === "num" ? "number" : undefined;
+      const actual = operand.kind === "native" ? operand.valueKind : qualifier === "str" ? "string" : qualifier === "num" ? "number" : undefined;
       if (actual === undefined) continue;
       const domains = project_schema_data(schema, [name]);
       if (domains.length > 0 && domains.every(domain => domain.kind !== "any" && domain.kind !== actual
