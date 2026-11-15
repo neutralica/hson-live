@@ -87,12 +87,45 @@ export function monitor_appearance_ui(workspace, port) {
       }))`, sessionId).then(JSON.parse);
     }
     const { sessionId, contextId } = await panel();
+    if (request.action === 'key-activate') {
+      const target = await workbench();
+      await send('Page.bringToFront', {}, target);
+      const focused = await evaluate(`(() => {
+        const node = document.getElementById(${JSON.stringify(request.control)});
+        node.focus();
+        return document.activeElement === node;
+      })()`, sessionId, contextId);
+      if (!focused) throw new Error('Cannot focus ' + request.control);
+      await send('Input.dispatchKeyEvent', {type:'keyDown', key:'Enter', code:'Enter', text:'\r', windowsVirtualKeyCode:13}, sessionId);
+      await send('Input.dispatchKeyEvent', {type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13}, sessionId);
+      return {focused};
+    }
     return evaluate(`(${function (request) {
-      if (request.action === "input") {
+      function reveal(node){for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;node.scrollIntoView({block:'nearest'});}
+      if(request.action==='select-role'){
+        const node=document.getElementById('role-'+request.role);reveal(node);if(node.getAttribute('aria-expanded')!=='true')node.click();
+      }else if(request.action==='details'){document.getElementById(request.control).open=request.open;
+      }else if(request.action==='catalog-top'){document.getElementById('catalog').scrollTop=0;
+      }else if(request.action==='metrics'){
+        const catalog=document.getElementById('catalog'),box=catalog.getBoundingClientRect();
+        const rows=[...document.querySelectorAll('.role-row')];
+        return {activeControl:document.activeElement.id,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,
+          roles:rows.map(row=>row.dataset.role),editableRows:rows.filter(row=>!row.querySelector('.hex').disabled).length,visibleRows:rows.filter(row=>{const r=row.getBoundingClientRect();return r.top>=box.top&&r.bottom<=box.bottom&&r.height>0;}).length,
+          firstRowTop:rows[0].getBoundingClientRect().top,headerBottom:document.querySelector('header').getBoundingClientRect().bottom,
+          properties:[...document.querySelectorAll('#properties input,#properties select')].map(node=>node.id),
+          groups:[...document.querySelectorAll('[data-group]')].map(node=>node.dataset.group),
+          editorExample:[...document.querySelectorAll('.examples button')].find(node=>node.getAttribute('aria-pressed')==='true')?.id,
+          saveDisabled:document.getElementById('save').disabled,inputInvalid:document.getElementById('foreground').getAttribute('aria-invalid'),
+          controlsColor:getComputedStyle(document.getElementById('save')).color,
+          inputColor:getComputedStyle(document.getElementById('foreground')).color,
+          effective:document.getElementById('effective').textContent,
+          foreground:document.getElementById('foreground').value,expanded:document.getElementById('inspector').hidden===false};
+      }else if (request.action === "input") {
         const input = document.getElementById(request.control);
-        input.focus(); input.value = request.value;
-        input.dispatchEvent(new Event("input", { bubbles: true })); input.blur();
-      } else if (request.action === "click") document.getElementById(request.control).click();
+        reveal(input);input.focus(); input.value = request.value;
+        input.dispatchEvent(new Event("input", { bubbles: true })); if(!request.keepFocus)input.blur();
+      } else if (request.action === "blur") {document.getElementById(request.control).blur();
+      } else if (request.action === "click") {const node=document.getElementById(request.control);reveal(node);node.click();}
       return { status: document.getElementById("status").textContent,
         saved: document.getElementById("saved").getAttribute("aria-pressed"),
         error: document.getElementById("error").textContent,

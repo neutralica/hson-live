@@ -1,3 +1,4 @@
+import { Hson } from "../../../src/hson-authoring.js";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { load_hson_grammar } from "../src/highlighting.js";
@@ -41,10 +42,12 @@ async function run() {
   assert.equal(cache.get(grammar, { ...document, version: 2, text: shadow }).length, 0, "unrecognized host tag stays native");
   for (const value of ["#000", "#0000", "#101820", "#10182000", "#ffffff"]) assert.ok(appearanceColor(value));
   for (const value of ["red", "#12345", "", 1, null]) assert.equal(appearanceColor(value), undefined);
-  const mixed="import { Hson, hson } from \"hson-live\"; Hson.data`<true true> <false false> <null null>`; Hson.document`<p \"doc\"/>`; hson.fromHson('<p title=\"ambiguous\"/>');";
+  const dataSource = '<true true false false null null>';
+  assert.doesNotThrow(() => Hson.data.parse(dataSource));
+  const mixed="import { Hson, hson } from \"hson-live\"; Hson.data`" + dataSource + "`; Hson.document`<p \"doc\"/>`; hson.fromHson('<p title=\"ambiguous\"/>');";
   const mixedSpans=cache.get(grammar,{...document,version:3,text:mixed});
   for(const key of ['true','false','null']) {
-    const start=mixed.indexOf('<'+key)+1;
+    const start=mixed.indexOf(dataSource)+dataSource.indexOf(key);
     assert.equal(mixedSpans.find(s=>s.range.start===start)?.role,'element.name');
     assert.equal(mixedSpans.find(s=>s.range.start===start)?.family,'data');
     assert.equal(mixedSpans.find(s=>s.range.start===start+key.length+1)?.role,'value.primitive');
