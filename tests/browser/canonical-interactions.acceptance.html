@@ -116,7 +116,9 @@
       await checkCrossRootActionOwner();
       checkStandaloneNativeLifecycle();
       await checkPointerEvents();
-      await checkHostedPointerEvents();
+      await checkNativeEventVocabulary();
+      await checkHostedNativeEvents("pointer");
+      await checkHostedNativeEvents("key");
       await checkAuthoredEvents();
       checkNativeDocumentCallbacks();
       checkSelectedLocalListeners();
@@ -226,31 +228,149 @@
         listener: listener("pointermove", "element"), kind: "browser", key: "restore",
         eventArgs: [["x", "num", "pointer", "clientX"]] };
       add_interaction(plain, descriptor);
+      add_interaction(plain, { ...descriptor, id: "snapshot-key", listener: listener("keyup", "element"), key: "restoreKey",
+        eventArgs: [["code", "str", "key", "code"], ["repeat", "data", "key", "repeat"]] });
       const restored = install_libraries_snapshot(structuredClone(plain.capture())).map;
-      let value;
+      let value, keyValue;
       restored.actions.define("restore", (_context, data) => { value = data; });
+      restored.actions.define("restoreKey", (_context, data) => { keyValue = data; });
       const restoredRoot = new DOMParser().parseFromString(restored.doc.must("page").render(), "text/html").documentElement;
       const restoredContinuation = continue_document({ map: restored, root: restoredRoot, interactions: {} });
       try {
         restoredRoot.querySelector("button").dispatchEvent(pointer("pointermove", 73, 20));
         check(value?.equals(Hson.data.from({ x: 73 })), "Restored snapshot did not install its pointer lookup.");
+        restoredRoot.querySelector("button").dispatchEvent(new subjectWindow.KeyboardEvent("keyup", { code: "KeyQ", repeat: true }));
+        check(keyValue?.equals(Hson.data.from({ code: "KeyQ", repeat: true })), "Restored snapshot did not install its keyboard lookups.");
       } finally { restoredContinuation.dispose(); }
     }
 
-    async function checkHostedPointerEvents() {
+    async function checkNativeEventVocabulary() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const pointerTypes = { clientX: "num", clientY: "num", movementX: "num", movementY: "num",
+        pointerId: "num", pointerType: "str", isPrimary: "data", button: "num", buttons: "num",
+        altKey: "data", ctrlKey: "data", metaKey: "data", shiftKey: "data" };
+      const keyboardTypes = { key: "str", code: "str", location: "num", repeat: "data", isComposing: "data",
+        altKey: "data", ctrlKey: "data", metaKey: "data", shiftKey: "data" };
+      const modifiers = { altKey: true, ctrlKey: false, metaKey: true, shiftKey: false };
+      const pointer = (button, buttons) => ({ clientX: 3.5, clientY: -8.25, movementX: -7, movementY: 4,
+        pointerId: 93, pointerType: "pen", isPrimary: true, button, buttons, ...modifiers });
+      const keyboard = (repeat, isComposing) => ({ key: "é", code: "KeyE", location: 1, repeat, isComposing, ...modifiers });
+      const cases = [
+        ["pointer:down", "pointerdown", pointer(2, 3)], ["pointer:move", "pointermove", pointer(-1, 3)],
+        ["pointer:up", "pointerup", pointer(2, 1)], ["pointer:cancel", "pointercancel", pointer(-1, 0)],
+        ["key:down", "keydown", keyboard(true, true)], ["key:up", "keyup", keyboard(false, false)],
+      ].map(([selector, name, values]) => {
+        const keys = selector.startsWith("key:");
+        const fields = Object.entries(keys ? keyboardTypes : pointerTypes).map(([property, type]) =>
+          `${property}:${type}=^{${keys ? "key" : "pointer"}.${property}}`).join(" ");
+        return { name, values, keys, source: (offset, note = "") =>
+          `<hson:event on:${selector} ${name === "keyup" ? "once " : ""}stopProp local:${name} ${fields} offset:num=${offset} ${note} <> >` };
+      });
+
+      const composed = hsonLiveMap.fromLibraries({
+        parts: { parts: { control: { kind: "document",
+          document: `<button hson:part id="native-vocab" num:offset=%{offset} ${cases.map(({ name }) => `event:${name}`).join(" ")}/>`,
+          events: Object.fromEntries(cases.map(({ name, source }) => [name, source("^{offset}", "note:str=%{note?}")])) } } },
+        page: { document: '<main <hson-part at=parts/control offset:num="-0"/>/>' },
+      });
+      const standaloneElement = subjectDocument.createElement("main");
+      standaloneElement.innerHTML = '<button id="native-vocab"></button>';
+      subjectDocument.body.append(standaloneElement);
+      const standalone = graft(standaloneElement, { unsafe: false });
+      const localSubject = standalone.find.must.byId("native-vocab");
+      const localTarget = localSubject.dom.must.el();
+      const canonicalRoot = new DOMParser().parseFromString(composed.doc.must("page").render(), "text/html").documentElement;
+      const canonicalTarget = canonicalRoot.querySelector("#native-vocab");
+      const local = [], canonical = [], localFailures = [], canonicalFailures = [];
+      const catchLocalFailure = event => {
+        if (event.error?.message.startsWith("LiveTree action ")) { localFailures.push(event.error.cause); event.preventDefault(); }
+      };
+      window.addEventListener("error", catchLocalFailure);
+      let continued;
+      try {
+        const subscriptions = cases.map(({ name, source }) => {
+          standalone.actions.define(name, (context, args) => { local.push({ name, context, args }); return args; });
+          composed.actions.define(name, (context, args) => { canonical.push({ name, context, args }); });
+          return localSubject.listen.event(source('"-0"'));
+        });
+        let rejected;
+        try { localSubject.listen.event('<hson:event on:key:down local:keydown pressed:str=^{keyboard.key} <> >'); }
+        catch (cause) { rejected = cause; }
+        check(/Standalone event arguments cannot resolve Part references/.test(rejected?.message), "The retired keyboard root was admitted as native.");
+        continued = continue_document({ map: composed, root: canonicalRoot, interactions: { onFailure: failure => canonicalFailures.push(failure.cause) } });
+        let bubbled = 0;
+        standaloneElement.addEventListener("pointercancel", () => bubbled++);
+        standaloneElement.addEventListener("keydown", () => bubbled++);
+        for (const { name, values, keys } of cases) {
+          const Native = keys ? subjectWindow.KeyboardEvent : subjectWindow.PointerEvent;
+          const Wrong = keys ? subjectWindow.PointerEvent : subjectWindow.KeyboardEvent;
+          const expected = Hson.data.from({ ...values, offset: -0 });
+          const fire = (target, valid) => {
+            const event = valid ? new Native(name, { ...values, bubbles: true }) : new Wrong(name);
+            const property = keys ? "key" : "pointerId";
+            if (valid) check(event[property] === values[property], `Invalid cross-realm fixture for ${name}.`);
+            Object.defineProperty(event, property, { value: "shadowed" });
+            target.dispatchEvent(event);
+            return event;
+          };
+          const localEvent = fire(localTarget, true);
+          const canonicalEvent = fire(canonicalTarget, true);
+          const a = local.at(-1), b = canonical.at(-1);
+          check(a?.name === name && b?.name === name && a.context.subject === localSubject
+            && b.context.subject.dom.el() === canonicalTarget && a.context.event === localEvent && b.context.event === canonicalEvent
+            && a.args.equals(expected) && b.args.equals(expected), `Wrong subject, event, or exact Data for ${name}.`);
+          if (name === "keyup") { fire(localTarget, true); fire(canonicalTarget, true); }
+          else { fire(localTarget, false); fire(canonicalTarget, false); }
+        }
+        const expectedErrors = cases.filter(({ name }) => name !== "keyup").map(({ keys }) =>
+          `Event argument lookups require a native ${keys ? "KeyboardEvent" : "PointerEvent"}.`);
+        check(local.length === cases.length && canonical.length === cases.length && bubbled === 0
+          && localFailures.map(cause => cause.message).join() === expectedErrors.join()
+          && canonicalFailures.map(cause => cause.message).join() === expectedErrors.join(), "Native brand, once, or propagation behavior diverged.");
+        const keydown = local.find(({ name }) => name === "keydown");
+        const direct = await standalone.actions.trigger("keydown", keydown.args);
+        check(direct.ok && direct.result === keydown.args && local.at(-1).context.event === undefined, "Direct keyboard Action changed the supplied Data.");
+        const detached = new subjectWindow.KeyboardEvent("keydown", { key: "Enter", code: "NumpadEnter" });
+        check(localSubject.detach() === 1 && localSubject.dom.el() === localTarget, "Key listener lost its subject on detach.");
+        localTarget.dispatchEvent(detached);
+        standalone.append(localSubject);
+        const reattached = new subjectWindow.KeyboardEvent("keydown", { key: "Enter", code: "Enter" });
+        localTarget.dispatchEvent(reattached);
+        localTarget.dispatchEvent(new subjectWindow.KeyboardEvent("keyup"));
+        check(local.length === cases.length + 3 && local.at(-2).context.event === detached && local.at(-1).context.event === reattached,
+          "Reattachment lost the keyboard listener or reset its consumed peer.");
+        subscriptions.forEach(sub => sub.off());
+        continued.dispose();
+        localTarget.dispatchEvent(new subjectWindow.KeyboardEvent("keydown"));
+        canonicalTarget.dispatchEvent(new subjectWindow.PointerEvent("pointercancel"));
+        check(local.length === cases.length + 3 && canonical.length === cases.length, "Listener disposal left a native callback.");
+      } finally {
+        continued?.dispose(); standalone.remove(); window.removeEventListener("error", catchLocalFailure);
+      }
+    }
+
+    async function checkHostedNativeEvents(family) {
       const check = (condition, message) => { if (!condition) throw new Error(message); };
       const until = async (condition, message) => {
         for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
         check(condition(), message);
       };
+      const keys = family === "key";
+      const first = keys ? 1 : 14.25;
+      const second = keys ? 3 : 31;
+      const selector = keys ? "on:key:down" : "on:pointer:move";
+      const coordinate = keys ? "key.location" : "pointer.clientX";
+      const keyboardFields = keys ? " key:str=^{key.key} code:str=^{key.code} repeat:data=^{key.repeat} composing:data=^{key.isComposing} ctrl:data=^{key.ctrlKey}" : "";
       const stateSchema = Hson.schema`<type "data" content <x "number" offset "number">>`;
-      const schema = Hson.schema`<type "data" content <x <number <min 0>> slide "any" offset <exact -0>>>`;
+      const schema = keys
+        ? Hson.schema`<type "data" content <x <number <min 1>> slide "any" offset <exact -0> key "string" code "string" repeat "boolean" composing "boolean" ctrl "boolean">>`
+        : Hson.schema`<type "data" content <x <number <min 1>> slide "any" offset <exact -0>>>`;
       const calls = [], authorizations = [], failures = [], requests = [], wire = [];
       const locus = hsonLiveMap.locus.create({
         state: { json: { x: 0, offset: 0 }, schema: stateSchema, access: "shared" },
         parts: { access: "private", parts: { slide: { kind: "document",
-          document: '<button hson:part id="host-pointer" data:slide=%{slide} event:drag/>',
-          events: { drag: '<hson:event on:pointer:move host:move x:num=^{pointer.clientX} slide:data=^{slide} offset:num="-0" <> >' } } } },
+          document: '<button hson:part id="host-control" data:slide=%{slide} event:run/>',
+          events: { run: `<hson:event ${selector} host:move x:num=^{${coordinate}} slide:data=^{slide} offset:num="-0"${keyboardFields} <> >` } } } },
         page: { access: "shared", document: '<hson-part at=parts/slide slide:data="<index -0>"/>' },
       }, {
         authorizeProjection: ({ requested }) => requested,
@@ -258,16 +378,18 @@
           authorizations.push([action, payload]);
           return action === "move" && payload.materialize().x !== 8;
         },
-        actions: { move: { args: { required: true, schema }, handler: ({ stage }, payload) => {
+        actions: { move: { args: { required: true, schema }, handler: (context, payload) => {
+          check(!("event" in context) && !("subject" in context), "Browser resources reached the hosted Action context.");
+          const { stage } = context;
           calls.push(payload);
           const { x, offset } = payload.materialize();
           stage.data.must("state").at(["x"]).set(x);
           stage.data.must("state").at(["offset"]).set(x === 99 ? "invalid" : offset);
         } } },
       });
-      const binding = bind_locus_http(locus, { endpoint: "/pointer-events" });
+      const binding = bind_locus_http(locus, { endpoint: "/native-events" });
       let loseFirstReply = true;
-      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/pointer-events", async fetch(input, init) {
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/native-events", async fetch(input, init) {
         const body = JSON.parse(init.body);
         const response = await binding.handle(new Request(input, init), {});
         if (body.type === "action") {
@@ -292,51 +414,60 @@
             if (request.type === "action") requests.push(request);
             return transport.operations.submit(request, options);
           } } }, interactions: { onFailure: failure => failures.push(failure) } });
-        const fire = x => root.querySelector("#host-pointer").dispatchEvent(new frame.contentWindow.PointerEvent("pointermove", { clientX: x }));
-        const expected = x => Hson.data.fromSource(`{"x":${x},"slide":{"index":-0},"offset":-0}`);
+        const keyState = x => x === first ? { key: "é", code: "KeyE", repeat: true, isComposing: true, ctrlKey: false }
+          : { key: "A", code: "KeyQ", repeat: false, isComposing: false, ctrlKey: true };
+        const fire = x => root.querySelector("#host-control").dispatchEvent(keys
+          ? new frame.contentWindow.KeyboardEvent("keydown", { location: x, ...keyState(x) })
+          : new frame.contentWindow.PointerEvent("pointermove", { clientX: x }));
+        const expected = x => {
+          const { key, code, repeat, isComposing: composing, ctrlKey: ctrl } = keyState(x);
+          return Hson.data.from({ x, slide: { index: -0 }, offset: -0, ...(keys ? { key, code, repeat, composing, ctrl } : {}) });
+        };
         const revision = locus.rev;
-        fire(14.25);
+        fire(first);
         await until(() => failures.length === 1 && continued.echo.sync.appliedRev === locus.rev, "Lost reply did not settle the first attempt.");
         const original = requests[0];
-        check(calls.length === 1 && calls[0].equals(expected(14.25)) && original?.payload.equals(calls[0]),
+        check(calls.length === 1 && calls[0].equals(expected(first)) && original?.payload.equals(calls[0]),
           `Locus did not receive exact browser Data: ${calls.map(value => value.toHson())}`);
-        check(typeof wire[0]?.payloadData === "string" && Hson.data.fromSource(wire[0].payloadData).equals(expected(14.25)) && !("payload" in wire[0]),
+        check(typeof wire[0]?.payloadData === "string" && Hson.data.fromSource(wire[0].payloadData).equals(expected(first)) && !("payload" in wire[0]),
           `HTTP transport changed the captured payload: ${JSON.stringify(wire[0])}`);
         const state = locus.data.must("state");
-        check(locus.rev === revision + 1 && Hson.data.fromSource(state.hson()).equals(Hson.data.from({ x: 14.25, offset: -0 })),
+        check(locus.rev === revision + 1 && Hson.data.fromSource(state.hson()).equals(Hson.data.from({ x: first, offset: -0 })),
           `Locus did not commit the single stage: ${revision} → ${locus.rev}, ${state.hson()}`);
-        fire(31);
-        await until(() => calls.length === 2 && continued.echo.sync.appliedRev === locus.rev, "Second pointer invocation did not reach Locus.");
-        check(calls[1].equals(expected(31)) && original.requestId !== requests[1].requestId, "Second dispatch reused the first invocation.");
+        fire(second);
+        await until(() => calls.length === 2 && continued.echo.sync.appliedRev === locus.rev, `Second ${family} invocation did not reach Locus.`);
+        check(calls[1].equals(expected(second)) && original.requestId !== requests[1].requestId, "Second dispatch reused the first invocation.");
         const retried = await continued.echo.retryAction({ requestId: original.requestId, name: original.name, payload: original.payload });
         check(retried.ok && retried.delivery === "cached" && retried.requestId === original.requestId
           && requests[2].attemptId !== original.attemptId && retried.attemptId === requests[2].attemptId
           && wire[2].payloadData === wire[0].payloadData && calls.length === 2 && locus.rev === revision + 2,
           "Echo retry did not retain the captured request, exact Data and attempt correlation.");
-        fire(-1);
-        await until(() => failures.length === 2, "Receiving Action Schema did not reject the pointer value.");
+        fire(0);
+        await until(() => failures.length === 2, `Receiving Action Schema did not reject the ${family} value.`);
         check(authorizations.length === 3 && failures[1].cause.code === "LOCUS_SCHEMA_INVALID_PAYLOAD", "Invalid Data reached authorization or the Action.");
         fire(8);
-        await until(() => failures.length === 3, "Action authorization did not reject the pointer value.");
-        check(failures[2].cause.code === "LOCUS_ACTION_FORBIDDEN", "The pointer listener bypassed Action authorization.");
+        await until(() => failures.length === 3, `Action authorization did not reject the ${family} value.`);
+        check(failures[2].cause.code === "LOCUS_ACTION_FORBIDDEN", `The ${family} listener bypassed Action authorization.`);
         fire(99);
         await until(() => failures.length === 4, "Invalid staged write did not fail the Action.");
-        check(calls.length === 3 && locus.rev === revision + 2 && locus.data.must("state").snap().x === 31,
+        check(calls.length === 3 && locus.rev === revision + 2 && locus.data.must("state").snap().x === second,
           "A failed hosted Action published part of its stage.");
         const engine = internal_livemap_aggregate_authority(echo_map_internal(continued.echo));
         const system = engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
         const hasPlan = () => JSON.stringify(engine.systemRoot(system)).includes('"eventArgs"');
         await session.update({ libraries: projection.libraries });
-        await until(() => !hasPlan(), "Echo failed to remove the revoked pointer Descriptor.");
+        await until(() => !hasPlan(), `Echo failed to remove the revoked ${family} Descriptor.`);
         const submissions = requests.length;
         fire(51);
-        check(requests.length === submissions, "Revocation left a pointer listener installed.");
+        check(requests.length === submissions, `Revocation left a ${family} listener installed.`);
         await session.update(projection);
-        await until(() => hasPlan() && continued.echo.sync.status === "caught_up", "Echo failed to recover the pointer Descriptor.");
+        await until(() => hasPlan() && continued.echo.sync.status === "caught_up", `Echo failed to recover the ${family} Descriptor.`);
         fire(51);
-        await until(() => calls.length === 4 && continued.echo.sync.appliedRev === locus.rev, "Recovered pointer listener did not dispatch.");
+        await until(() => calls.length === 4 && continued.echo.sync.appliedRev === locus.rev, `Recovered ${family} listener did not dispatch.`);
         check(calls[3].equals(expected(51)) && requests.length === submissions + 1 && failures.length === 4,
-          "Recovery did not reinstall the exact hosted pointer plan.");
+          `Recovery did not reinstall the exact hosted ${family} plan.`);
+        const direct = await continued.echo.action("move", expected(2));
+        check(direct.ok && calls.length === 5 && calls[4].equals(expected(2)), "A direct hosted Action changed its supplied Data.");
       } finally {
         continued?.dispose(); continued?.echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); frame.remove();
       }

@@ -492,7 +492,7 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
     'hsonLiveMap.fromLibraries({',
     '  bits: { parts: {',
     '    typed: { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:go/>`, events: { go: "<hson:event on:pointer:down local:deck.go selection:data=^{args} x:num=^{pointer.clientX} <> >" } },',
-    '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`, events: { go: "<hson:event on:click local:deck.go selection:data=%{text} <> >" } },',
+    '    scalar: { kind: "document", document: Hson.document`<button hson:part event:go/>`, events: { go: "<hson:event on:key:up local:deck.go selection:data=%{text} key:str=^{key.key} ctrl:data=^{key.ctrlKey} <> >" } },',
     '  } },',
     '  page: { document: Hson.document`<html <head/> <body <hson-part lib="bits" at="typed" args:data="<>"/> <hson-part lib="bits" at="scalar" text="hi"/>/>/>`, schema: Page },',
     '});',
@@ -520,7 +520,7 @@ check("packaged compiler evaluates event-bearing Parts as graph-only Schema cand
     succeed(packaged_schema(directory, "check"));
   }
   const partial = 'declare const spare: string;\n' + invalid
-    .replace('selection:data=%{text} <> >" }', 'selection:data=%{text} <> >", spare }')
+    .replace('ctrl:data=^{key.ctrlKey} <> >" }', 'ctrl:data=^{key.ctrlKey} <> >", spare }')
     .replace('at="scalar" text="hi"', 'at="scalar" bogus="hi"');
   writeFileSync(consumer, partial);
   const editorOnly = generate(directory);

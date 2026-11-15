@@ -316,8 +316,11 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   replayClientHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => LiveMapAggregateCommit;
-  /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
-  validateCoveredDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit) => void;
+  /** Validate one contiguous run of covered records without replaying it into authority. @internal */
+  validateCoveredDurableHosted: (commits: readonly (
+    import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit
+    | Readonly<{ rev: number; topology: import("../../types/livemap.types.js").LiveMapLibraryAddOperation }>
+  )[]) => void;
   replayDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit) => void;
   replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit | import("./livemap.hosted.js").PrivateScopedAggregateCommit, authorityRev?: number, scoped?: boolean, assertAcceptance?: () => void) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */

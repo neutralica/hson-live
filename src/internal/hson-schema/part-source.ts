@@ -439,7 +439,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
         const event = parse_part_event(literal.text);
         parsed.set(literal, event);
         for (const argument of event.args) for (const site of event_argument_references(argument)) {
-          if (argument.operand.kind === "pointer") unavailable(site, map);
+          if (argument.operand.kind === "native") unavailable(site, map);
           else ranges.set(site.reference, { map, site });
         }
         declarations.set(event, { event, location: location(literal), map });
@@ -1323,7 +1323,7 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
             }
             if (event.kind !== "browser") continue;
             for (const argument of event.args) {
-              if (argument.operand.kind === "pointer") continue;
+              if (argument.operand.kind === "native") continue;
               for (const site of event_argument_references(argument)) {
                 const where = map({ start: site.start.index, end: site.end.index });
                 if (where !== undefined) issues.push({ location: where, code: "HSON_EVENT_REFERENCE_INVALID",

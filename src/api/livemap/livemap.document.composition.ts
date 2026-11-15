@@ -1025,7 +1025,7 @@ function substitute_part_parameters(source: DocumentCompositionSource, analysis:
     event(node, attribute) {
       const event = part_event_attachment(node, attribute, source.events);
       for (const argument of event.args) {
-        if (argument.operand.kind === "pointer") continue;
+        if (argument.operand.kind === "native") continue;
         for (const site of event_argument_references(argument)) {
           if (resolve_part_event_reference(site, node, attribute, environment, true) !== undefined) present.add(node);
         }

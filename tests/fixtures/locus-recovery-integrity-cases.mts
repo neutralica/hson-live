@@ -194,6 +194,15 @@ export async function locus_recovery_integrity_cases(run: RunCase) {
       }
     }
 
+    // The pruned record installed Libraries that are already in the checkpoint.
+    // The next surviving topology record still proves its own registry transition.
+    persistence.seed(logicalMapId, { ...withTail, commits: withTail.commits.filter(record => record.commit.rev !== 2) });
+    const resumed = await hsonLiveMap.locus.resume(startup, config);
+    try {
+      assert.equal(resumed.rev, 4);
+      assert.equal(resumed.data.must("added").snap(["count"]), 4);
+    } finally { resumed.dispose(); }
+
     // A truncated batch can be self-consistent in isolation. The next
     // retained fence must still require the complete historical batch.
     const truncated = structuredClone(withTail);

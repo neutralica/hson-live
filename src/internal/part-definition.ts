@@ -1,5 +1,5 @@
-import { event_argument_references, is_pointer_reference, type AuthoredEventArgument } from "./authored-events.js";
-import { is_pointer_event_name } from "./event-argument-plan.js";
+import { event_argument_references, missing_native_event_binding, type AuthoredEventArgument } from "./authored-events.js";
+import { native_event_family } from "./event-argument-plan.js";
 import { part_scalar_operand, part_scalar_source_possible } from "./part-scalar.js";
 import { copy_part_literal_sigils, part_literal_sigils } from "./part-scalar-source.js";
 import type { HsonNode, Primitive } from "../core/types.js";
@@ -222,9 +222,9 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         }
       } else add(reference.name, "scalar", node, attribute, use, eventInput);
     } else if (binding === undefined) {
-      const message = eventInput !== undefined && is_pointer_reference(reference)
-        ? 'The native pointer binding requires on:pointer:down or on:pointer:move. Declare a Part local named "pointer" to use a composition-time value here.'
-        : `Missing Part local declaration ${JSON.stringify(reference.name)}.`;
+      const native = eventInput === undefined ? undefined : missing_native_event_binding(reference);
+      const message = native === undefined ? `Missing Part local declaration ${JSON.stringify(reference.name)}.`
+        : `${native} Declare a Part local named ${JSON.stringify(reference.name)} to use a composition-time value here.`;
       issue(node, message, attribute, use, eventInput);
     } else {
       used.add(binding);
@@ -288,16 +288,18 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
         opaqueEvents.set(node, attributes);
       }
       const conditional = alternatives.length > 1 ? true : undefined;
-      const local = locals.get("pointer");
-      if (local !== undefined && alternatives.length > 0 && alternatives.every(event => typeof event !== "string" && is_pointer_event_name(event.listener.event))) {
-        const event = alternatives.length === 1 ? alternatives[0] : undefined;
-        const operand = typeof event === "object" ? event.args.find(argument => argument.operand.kind === "pointer")?.operand : undefined;
-        const site = operand?.kind === "pointer" ? operand.site : undefined;
-        issue(node, 'Part local "pointer" conflicts with the native pointer binding at this Event attachment. Rename the Part local or its iterator alias.',
+      const first = alternatives[0];
+      const family = typeof first === "object" ? native_event_family(first.listener.event) : undefined;
+      const local = family === undefined ? undefined : locals.get(family);
+      if (local !== undefined && alternatives.every(event => typeof event !== "string" && native_event_family(event.listener.event) === family)) {
+        const operand = alternatives.length === 1 && typeof first === "object"
+          ? first.args.find(argument => argument.operand.kind === "native")?.operand : undefined;
+        const site = operand?.kind === "native" ? operand.site : undefined;
+        issue(node, `Part local ${JSON.stringify(local.name)} conflicts with the native ${family} binding at this Event attachment. Rename the Part local or its iterator alias.`,
           attribute, undefined, site, local);
       }
       const reads = alternatives.map(event => typeof event === "string" ? [] : event.args.flatMap(argument => {
-        if (argument.operand.kind === "pointer") return [];
+        if (argument.operand.kind === "native") return [];
         return event_argument_references(argument).map(site => observe(site.reference, node, "event",
           argument.operand.kind === "reference" && is_part_scalar_qualifier(argument.qualifier) ? argument.qualifier : undefined,
           attribute, site, conditional, argument));

@@ -87,7 +87,7 @@ export interface LocusHostedAggregatePersistenceAdapter {
   /** Atomic compare-and-swap of one still-valid complete candidate. Never prune here. */
   activateCheckpoint(logicalMapId: string, expectedCheckpointId: string | undefined, checkpointId: string): Promise<void>;
   readCheckpointChunk(id: string): Promise<CheckpointChunk | undefined>;
-  /** May remove only commits <= rev after checkpointId is observed active. */
+  /** May remove any records at or below rev after checkpointId is observed active. */
   pruneCommitsThrough(logicalMapId: string, checkpointId: string, rev: number): Promise<void>;
 }
 
@@ -596,32 +596,44 @@ async function validate_hosted_aggregate_state(
     let lastCoveredRev: number | undefined;
     let lastCoveredDigest: string | undefined;
     let crossedCheckpoint = false;
+    const coveredHistory: Array<Parameters<typeof aggregate.validateCoveredDurableHosted>[0][number]> = [];
+    const validateCoveredRun = () => {
+      if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
+      aggregate.validateCoveredDurableHosted(coveredHistory);
+      coveredHistory.length = 0;
+    };
     for (const item of commits) {
       const maybe = record(item);
       const commitRecord = maybe === undefined ? undefined : record(maybe.commit);
       if (commitRecord !== undefined && valid_revision(commitRecord.rev) && commitRecord.rev <= checkpoint.rev) {
         if (crossedCheckpoint || !valid_revision(commitRecord.prevRev)
-          || (lastCoveredRev !== undefined && commitRecord.prevRev !== lastCoveredRev)) throw invalid_state();
+          || (lastCoveredRev !== undefined && commitRecord.prevRev < lastCoveredRev)) throw invalid_state();
+        const contiguous = commitRecord.prevRev === lastCoveredRev;
+        // Scratch reconstruction can only use evidence within one retained run.
+        if (!contiguous && lastCoveredRev !== undefined) validateCoveredRun();
         // At revision zero only the deployment bindings were installed.
-        const priorDigest = lastCoveredDigest ?? (commitRecord.prevRev === 0
-          ? hosted_registry_digest(checkpoint.registry.libraries.filter(entry => !runtimeOwnership.has(entry.name)))
-          : commitRecord.previousRegistryDigest ?? commitRecord.registryDigest);
+        // Registry additions may have been pruned, but the full registry cannot change again.
+        const priorDigest = contiguous || lastCoveredDigest === checkpoint.registryDigest ? lastCoveredDigest
+          : commitRecord.prevRev === 0
+            ? hosted_registry_digest(checkpoint.registry.libraries.filter(entry => !runtimeOwnership.has(entry.name)))
+            : commitRecord.previousRegistryDigest ?? commitRecord.registryDigest;
         if (!valid_digest(priorDigest)) throw invalid_state();
         const covered = assert_commit_fence(item, checkpoint, commitRecord.prevRev, priorDigest);
         if (covered.topology === undefined) {
-          aggregate.validateCoveredDurableHosted(durable_aggregate_commit_as_client(covered));
+          coveredHistory.push(durable_aggregate_commit_as_client(covered));
         } else {
           const entries = checkpoint.registry.libraries;
           const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
           if (additions.some(entry => runtimeOwnership.get(entry.name) !== entry.ownership)) throw invalid_state();
           validate_covered_topology(covered.topology, entries, priorDigest, covered.registryDigest);
+          coveredHistory.push({ rev: covered.rev, topology: covered.topology });
         }
         lastCoveredDigest = covered.registryDigest;
         lastCoveredRev = commitRecord.rev;
         continue;
       }
+      if (!crossedCheckpoint) validateCoveredRun();
       crossedCheckpoint = true;
-      if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
       if (commit.topology !== undefined) {
         const additions = ownership_entries(record(maybe?.locus)?.libraryOwnershipAdded);
@@ -639,7 +651,7 @@ async function validate_hosted_aggregate_state(
       expectedPrevRev += 1;
       if (expectedPrevRev === prefixRevision) prefix = capturePrefix();
     }
-    if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
+    if (!crossedCheckpoint) validateCoveredRun();
     if (map.rev !== expectedPrevRev) throw invalid_state();
     if (prefixRevision !== undefined && prefix === undefined) throw invalid_state();
     const names = new Set(aggregate.hostedRegistry().libraries.filter((entry) => entry.scope !== "hson-internal").map((entry) => entry.name));

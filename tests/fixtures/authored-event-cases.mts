@@ -8,11 +8,12 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../src/internal/interaction
 import { locus_map_internal } from "../../src/internal/governor-maps.ts";
 import { hson_data_from_value, hson_data_value } from "../../src/api/data/hson-data.ts";
 import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../src/core/projected-value-graph.ts";
-import { is_ordered_projected_object, ordered_projected_array, ordered_projected_object } from "../../src/core/ordered-projected-value.ts";
+import { is_ordered_projected_object, ordered_projected_array, ordered_projected_object, type OrderedProjectedValue } from "../../src/core/ordered-projected-value.ts";
 import { parse_authored_document_library } from "../../src/api/livemap/livemap.document.quad.ts";
 import { read_transform_error_details } from "../../src/core/errors.ts";
 import { deferred, MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mts";
-import { write_semantic_checkpoint, type LocusHostedAggregatePersistedCommit } from "../../src/api/locus/locus.aggregate.persistence.ts";
+import { durable_aggregate_commit, write_semantic_checkpoint, type LocusHostedAggregatePersistedCommit } from "../../src/api/locus/locus.aggregate.persistence.ts";
+import { encode_checkpoint_chunks } from "../../src/api/locus/locus.checkpoint-chunks.ts";
 import { hson_schema_digest } from "../../src/api/schema/hson-schema.ts";
 import { interaction_schema_internal } from "../../src/api/interactions/interactions.projection.ts";
 import { interaction_descriptors_from_root } from "../../src/internal/interaction-partitions.ts";
@@ -339,11 +340,15 @@ function iterator_event_arguments() {
   } } }), /Document bindings cannot be sent/);
 }
 
-async function pointer_event_cases() {
+async function native_event_cases() {
   const move = '<hson:event on:pointer:move local:MOVE x:num=^{pointer.movementX} row:data=^{row} note:str=^{row.note?} y:data=^{pointer["clientY"]?} offset:num="-0" <> >';
   const down = '<hson:event on:pointer:down host:DOWN x:num=^{pointer.clientX} y:num=^{pointer.movementY} <> >';
-  const control = { kind: "document", document: '<main hson:part data:rows=%{rows} <button for:row=^{rows} event:move event:down/>/>',
-    events: { move, down } } satisfies LiveMapDocumentPart;
+  const release = '<hson:event on:pointer:up local:RELEASE id:num=^{pointer.pointerId} changed:num=^{pointer.button} held:num=^{pointer.buttons} <> >';
+  const cancel = '<hson:event on:pointer:cancel host:CANCEL kind:str=^{pointer.pointerType} primary:data=^{pointer.isPrimary} <> >';
+  const shortcut = '<hson:event on:key:down local:SHORTCUT key:str=^{key.key} row:data=^{row} note:str=^{row.note?} code:data=^{key["code"]?} repeat:data=^{key.repeat} offset:num="-0" <> >';
+  const keyup = '<hson:event on:key:up host:KEYUP location:num=^{key.location} composing:data=^{key.isComposing} <> >';
+  const control = { kind: "document", document: '<main hson:part data:rows=%{rows} <button for:row=^{rows} event:move event:down event:release event:cancel event:shortcut event:keyup/>/>',
+    events: { move, down, release, cancel, shortcut, keyup } } satisfies LiveMapDocumentPart;
   const startup = { parts: { parts: { control } } };
   const rows = '[<value -0 note "ready">,<value 2>]';
   const composition = `<hson-part at=parts/control rows:data=${JSON.stringify(rows)}/>`;
@@ -354,16 +359,21 @@ async function pointer_event_cases() {
   const read = (root: HsonNode) => descriptor_data(root).map(entry => new Map(entry.entries()));
   const map = hsonLiveMap.fromLibraries({ ...startup, page: { document: composition } });
   const entries = read(projectedState(map));
-  assert.equal(entries.length, 4);
+  const names = ["pointermove", "pointerdown", "pointerup", "pointercancel", "keydown", "keyup"];
+  assert.equal(entries.length, 2 * names.length);
   for (let index = 0; index < entries.length; index++) {
     const descriptor = entries[index]!;
-    assert.equal(new Map(descriptor.get("listener")?.entries()).get("event")?.scalar(), index % 2 === 0 ? "pointermove" : "pointerdown");
+    assert.equal(new Map(descriptor.get("listener")?.entries()).get("event")?.scalar(), names[index % names.length]);
     assert.equal(descriptor.has("args") || descriptor.has("payload"), false);
   }
   const first = Hson.data.fromSource('[["x","num","pointer","movementX"],["row","data",{"value":-0,"note":"ready"}],["note","str","ready"],["y","data","pointer","clientY"],["offset","num",-0]]');
   const second = Hson.data.fromSource('[["x","num","pointer","movementX"],["row","data",{"value":2}],["note","str"],["y","data","pointer","clientY"],["offset","num",-0]]');
   assert.ok(entries[0]?.get("eventArgs")?.equals(first));
-  assert.ok(entries[2]?.get("eventArgs")?.equals(second));
+  assert.ok(entries[names.length]?.get("eventArgs")?.equals(second));
+  const keyboardFirst = Hson.data.fromSource('[["key","str","key","key"],["row","data",{"value":-0,"note":"ready"}],["note","str","ready"],["code","data","key","code"],["repeat","data","key","repeat"],["offset","num",-0]]');
+  const keyboardSecond = Hson.data.fromSource('[["key","str","key","key"],["row","data",{"value":2}],["note","str"],["code","data","key","code"],["repeat","data","key","repeat"],["offset","num",-0]]');
+  assert.ok(entries[4]?.get("eventArgs")?.equals(keyboardFirst));
+  assert.ok(entries[names.length + 4]?.get("eventArgs")?.equals(keyboardSecond));
   assert.doesNotMatch(map.doc.page.render(), /event:|hson:event/);
 
   const admit = (document: string, action: string) => hsonLiveMap.fromLibraries({ parts: { parts: {
@@ -375,7 +385,7 @@ async function pointer_event_cases() {
   }
   assert.throws(() => admit(button, move.replace('x:num=', 'x:str=')), /requires a whole :num or :data argument/);
   assert.throws(() => admit(button, '<hson:event on:pointer:move local:MOVE x:str="x ^{pointer.clientX}" <> >'), /requires a whole/);
-  for (const selector of ['on:pointer:up', 'on:pointermove', 'on:wheel', 'on:keydown']) {
+  for (const selector of ['on:pointermove', 'on:wheel', 'on:keydown', 'on:key:press']) {
     assert.throws(() => admit(button, move.replace('on:pointer:move', selector)), /Unsupported Event selector/);
   }
   assert.throws(() => admit(button, move.replace('on:pointer:move', 'on:click')), /native pointer binding requires/);
@@ -398,11 +408,41 @@ async function pointer_event_cases() {
   click.addLibraries({ page: { document: click.parts.parts.control.write({ stored: { clientX: -0 } }) } });
   assert.ok(descriptors(click)[0]?.data?.equals(Hson.data.from({ x: -0 })));
 
+  const keyboard = '<hson:event on:key:down local:SHORTCUT code:str=^{key.code} copy:data=%{key?} <> >';
+  for (const property of ['key', 'key.keyCode', 'key.pressed', 'key.code.extra', 'key[0]', 'key.constructor']) {
+    assert.throws(() => admit(button, keyboard.replace('key.code', property)), /Unsupported key Event lookup/);
+  }
+  assert.throws(() => admit(button, keyboard.replace('code:str=', 'code:num=')), /whole :str or :data/);
+  assert.throws(() => admit(button, keyboard.replace('key.code', 'key.repeat')), /whole :data/);
+  assert.throws(() => admit(button, keyboard.replace('^{key.code}', '"^{key.code} suffix"')), /requires a whole :str or :data/);
+  assert.throws(() => admit(button, keyboard.replace('key.code', 'keyboard.key')), /Missing Part local declaration "keyboard"/);
+  assert.throws(() => admit(button, keyboard.replace('on:key:down', 'on:pointer:up')), /native key binding requires on:key:down or on:key:up/);
+  assert.throws(() => admit(button, move.replace('on:pointer:move', 'on:key:up')), /native pointer binding requires/);
+  const local = '<button hson:part data:key=%{stored} event:move "^{key.code}"/>';
+  assert.throws(() => admit(local, keyboard), /Part local "key" conflicts/);
+  assert.throws(() => admit('<main hson:part data:rows=%{rows} <button for:row:key=^{rows} event:move/>/>',
+    '<hson:event on:key:up local:SHORTCUT <> >'), /Part local "key" conflicts/);
+  const nonKeyboard = admit(local, '<hson:event on:pointer:cancel local:CANCEL id:num=^{pointer.pointerId} code:str=^{key.code} <> >');
+  nonKeyboard.addLibraries({ page: { document: nonKeyboard.parts.parts.control.write({ stored: { code: "stored" } }) } });
+  assert.match(nonKeyboard.doc.must("page").render(), /stored/);
+  assert.ok(read(projectedState(nonKeyboard))[0]?.get("eventArgs")?.equals(Hson.data.from([['id', 'num', 'pointer', 'pointerId'], ['code', 'str', 'stored']])));
+  const lexicalKeyboard = admit('<button hson:part num:stored=%{key} event:move/>', keyboard);
+  lexicalKeyboard.addLibraries({ page: { document: lexicalKeyboard.parts.parts.control.write({ key: -0 }) } });
+  assert.ok(read(projectedState(lexicalKeyboard))[0]?.get("eventArgs")?.equals(Hson.data.from([['code', 'str', 'key', 'code'], ['copy', 'data', -0]])));
+  const ordinaryKeyboard = admit('<button hson:part data:keyboard=%{stored} event:move/>',
+    '<hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} saved:str=^{keyboard.key} label:str="saved: ^{keyboard.key}" <> >');
+  ordinaryKeyboard.addLibraries({ page: { document: ordinaryKeyboard.parts.parts.control.write({ stored: { key: "saved" } }) } });
+  assert.ok(read(projectedState(ordinaryKeyboard))[0]?.get("eventArgs")?.equals(Hson.data.from([
+    ['pressed', 'str', 'key', 'key'], ['saved', 'str', 'saved'], ['label', 'str', 'saved: saved'],
+  ])));
+
   // A portable capture of an ordinary document can also carry an admitted plan.
   const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
   const listener = { event: "pointermove", target: "element", capture: false, once: false, passive: false,
     missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } as const;
   add_interaction(plain, { id: "plan", subject: { library: "page", path: [0] }, kind: "browser", key: "MOVE", listener, eventArgs: first });
+  const keyboardListener = { ...listener, event: "keydown" };
+  add_interaction(plain, { id: "keyboard-plan", subject: { library: "page", path: [0] }, kind: "locus", key: "SHORTCUT", listener: keyboardListener, eventArgs: keyboardFirst });
   const snapshot = plain.capture();
   assert.deepEqual(install_libraries_snapshot(structuredClone(snapshot)).map.capture(), snapshot);
   const revision = plain.rev;
@@ -410,15 +450,21 @@ async function pointer_event_cases() {
     ["pointermove", '[["x","str","pointer","clientX"]]'], ["pointermove", '[["x","num","pointer","pressure"]]'],
     ["pointermove", '[["x","num","pointer","clientX"],["x","num",0]]'],
     ["pointermove", '[["bad.name","num","pointer","clientX"]]'],
-    ["pointermove", '[["x","num","pointer","clientX"],["y","num","2"]]']] as const) {
+    ["pointermove", '[["x","num","pointer","clientX"],["y","num","2"]]'],
+    ["pointercancel", '[["key","str","key","key"]]'], ["keydown", '[["key","num","pointer","pointerId"]]'],
+    ["keydown", '[["pressed","str","keyboard","key"]]'], ["keydown", '[["pressed","str","key","pressed"]]'],
+    ["keyup", '[["repeat","num","key","repeat"]]'], ["keydown", '[["key","data","key","__proto__"]]'],
+    ["keydown", '[["key","str","key","code"],["x","num","pointer","clientX"]]'],
+    ["keydown", '[["location","str","key","location"]]']] as const) {
     assert.throws(() => add_interaction(plain, { id: "bad", subject: { library: "page", path: [0] },
       kind: "locus", key: "DOWN", listener: { ...listener, event }, eventArgs: Hson.data.fromSource(source) }), /canonical event argument plan/i);
   }
   assert.throws(() => add_interaction(plain, { id: "hybrid", subject: { library: "page", path: [0] },
     kind: "browser", key: "MOVE", listener, args: {}, eventArgs: first }), /cannot accompany/);
-  const badPlan = hson_data_value(Hson.data.fromSource('[["x","num","pointer","pressure"]]'));
+  const badPlan = hson_data_value(Hson.data.fromSource('[["pressed","str","keyboard","key"]]'));
   const forge = (root: HsonNode) => ordered_projected_array(interaction_descriptors_from_root(projected_value_from_hson_node(root)).map(entry => {
     assert.ok(is_ordered_projected_object(entry));
+    if (!entry.entries.some(([key, value]) => key === "key" && value === "SHORTCUT")) return entry;
     return ordered_projected_object(entry.entries.map(([key, value]) => [key, key === "eventArgs" ? badPlan : value]));
   }));
   const invalid = forge(projectedState(plain));
@@ -436,7 +482,7 @@ async function pointer_event_cases() {
   assert.equal(hson_schema_digest(interaction_schema_internal()), 'ff3888042afcbbda80f45c417e2323db8fd6460a377ca38057d25449bc41042b');
   const persistence = new MemoryCheckpointAdapter();
   const authorizeProjection: LocusProjectionAuthorizer = ({ requested }) => requested;
-  const config = { persistence, logicalMapId: "pointer-event-checkpoint", authorizeProjection };
+  const config = { persistence, logicalMapId: "native-event-checkpoint", authorizeProjection };
   let locus = await hsonLiveMap.locus.resume(startup, config);
   let expected: string;
   try {
@@ -457,30 +503,226 @@ async function pointer_event_cases() {
   }
 
   const persisted = new MemoryCheckpointAdapter();
-  const coveredConfig = { persistence: persisted, logicalMapId: "covered-pointer-plan" };
-  const flat = { page: { document: '<main/>' } } as const;
+  const coveredConfig = { persistence: persisted, logicalMapId: "covered-keyboard-plan" };
+  const flat = { ...startup, page: { document: '<main/>' } } as const;
   const hosted = await hsonLiveMap.locus.resume(flat, coveredConfig);
+  const intent = { id: "retained-plan", subject: { library: "page", path: [0] }, kind: "browser", key: "SHORTCUT", listener: keyboardListener } as const;
+  const before = Hson.data.from([["value", "str", "key", "key"]]);
+  const after = Hson.data.from([["value", "str", "key", "code"]]);
+  let malformed: OrderedProjectedValue;
   try {
-    const intent = { id: "retained-plan", subject: { library: "page", path: [0] }, kind: "browser", key: "MOVE", listener } as const;
-    await hosted.stage(stage => add_interaction(stage, { ...intent, eventArgs: first }));
-    const malformed = forge(projectedState(locus_map_internal(hosted)));
-    await hosted.stage(stage => replace_interaction(stage, { ...intent, eventArgs: second }));
+    await hosted.stage(stage => add_interaction(stage, { ...intent, eventArgs: before }));
+    await hosted.stage(stage => replace_interaction(stage, { ...intent, eventArgs: after }));
+    malformed = forge(projectedState(locus_map_internal(hosted)));
+    await hosted.admit({ extra: { document: composition, access: "shared" } });
     persisted.failPrune = new Error("Fixture retained checkpoint-covered history.");
     await assert.rejects(hsonLiveMap.locus.checkpoint(hosted), /checkpoint/i);
-    const checkpoint = persisted.state(coveredConfig.logicalMapId)!;
-    const [firstCommit, ...rest] = checkpoint.commits;
-    const write = firstCommit!.commit.operations[0]!;
-    assert.equal(write.domain, "data");
-    const edits = decode_livemap_replay_payload(write.payload);
-    const edit = edits[0]!;
-    assert.equal(edit.kind, "replace");
-    assert.deepEqual(edit.path, ["descriptors"]);
-    if (edit.kind !== "replace") throw new Error("Expected an exact Descriptor replacement.");
-    const payload = encode_livemap_replay_transport([{ ...edit, next: malformed }]).payload;
-    persisted.seed(coveredConfig.logicalMapId, { ...checkpoint, commits: [{ ...firstCommit!,
-      commit: { ...firstCommit!.commit, operations: [{ ...write, payload }] } }, ...rest] });
-    await assert.rejects(hsonLiveMap.locus.resume(flat, coveredConfig), { code: "LOCUS_PERSISTED_STATE_INVALID" });
   } finally { hosted.dispose(); }
+  persisted.failPrune = undefined;
+  const checkpoint = persisted.state(coveredConfig.logicalMapId)!;
+  const [firstCommit, secondCommit, ...later] = checkpoint.commits;
+  assert.equal(checkpoint.checkpoint.rev, 3);
+  assert.equal(later.length, 1);
+  const active = hsonLiveMap.fromLibraries(flat);
+  add_interaction(active, { ...intent, eventArgs: before });
+  const activeEngine = authority(active);
+  const activeSystem = activeEngine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!;
+  const activeDescriptors = interaction_descriptors_from_root(projected_value_from_hson_node(projectedState(active)));
+  assert.ok(Array.isArray(malformed) && malformed[0] !== undefined);
+  const obsoletePlan = ordered_projected_array([ordered_projected_array(["value", "str", "keyboard", "code"])]);
+  const edits = [
+    { path: ["descriptors"], invalid: malformed },
+    { path: ["descriptors", 0], prev: activeDescriptors[0], invalid: malformed[0] },
+    { path: ["descriptors", 0, "eventArgs"], prev: hson_data_value(before), next: hson_data_value(after), invalid: obsoletePlan },
+    { path: ["descriptors", 0, "eventArgs", 0, 3], prev: "key", next: "code", invalid: "pressed" },
+    { path: ["descriptors", 0, "eventArgs", 0, 2], prev: "key", invalid: "keyboard" },
+  ] as const;
+  for (const { path, invalid } of edits) {
+    assert.throws(() => activeEngine.commit([{ target: activeEngine.systemTarget(activeSystem, path),
+      kind: "replace", value: invalid }]), /Invalid canonical event argument plan operand/);
+  }
+  const write = secondCommit!.commit.operations[0]!;
+  assert.equal(write.domain, "data");
+  const [edit] = decode_livemap_replay_payload(write.payload);
+  assert.ok(edit);
+  assert.equal(edit.kind, "replace");
+  assert.deepEqual(edit.path, ["descriptors"]);
+  const seed = (path: readonly (string | number)[], prev: OrderedProjectedValue | undefined, next: OrderedProjectedValue) => {
+    const payload = encode_livemap_replay_transport([{ ...edit, kind: "replace", path, prev, next }]).payload;
+    persisted.seed(coveredConfig.logicalMapId, { ...checkpoint, commits: [firstCommit!, { ...secondCommit!,
+      commit: { ...secondCommit!.commit, operations: [{ ...write, payload }] } }, ...later] });
+  };
+  for (const entry of edits) {
+    const prev = "prev" in entry ? entry.prev : edit.prev;
+    seed(entry.path, prev, entry.invalid);
+    await assert.rejects(hsonLiveMap.locus.resume(flat, coveredConfig), { code: "LOCUS_PERSISTED_STATE_INVALID" }, JSON.stringify(entry.path));
+    if ("next" in entry) {
+      replace_interaction(active, { ...intent, eventArgs: before });
+      activeEngine.commit([{ target: activeEngine.systemTarget(activeSystem, entry.path), kind: "replace", value: entry.next }]);
+      assert.ok(read(projectedState(active))[0]?.get("eventArgs")?.equals(after));
+      seed(entry.path, prev, entry.next);
+      const recovered = await hsonLiveMap.locus.resume(flat, coveredConfig);
+      try {
+        assert.equal(recovered.rev, 3);
+        const recoveredEntries = read(projectedState(locus_map_internal(recovered)));
+        assert.ok(recoveredEntries[0]?.get("eventArgs")?.equals(after));
+        assert.ok(recoveredEntries[1]?.get("eventArgs")?.equals(first));
+        assert.ok(recoveredEntries[5]?.get("eventArgs")?.equals(keyboardFirst));
+      } finally { recovered.dispose(); }
+    }
+  }
+  // A valid final checkpoint can cover a later edit whose previous state is
+  // invalid. Checking the submitted next value alone misses that boundary.
+  seed(["descriptors", 0, "eventArgs", 0, 2], "keyboard", "key");
+  await assert.rejects(hsonLiveMap.locus.resume(flat, coveredConfig), (error: unknown) =>
+    error instanceof Error && "code" in error && error.code === "LOCUS_PERSISTED_STATE_INVALID"
+    && error.cause instanceof TypeError && error.cause.message === 'Invalid canonical event argument plan operand for "value".');
+  seed(["descriptors", 0, "listener", "target"], "invalid-target", "element");
+  await assert.rejects(hsonLiveMap.locus.resume(flat, coveredConfig), { code: "LOCUS_PERSISTED_STATE_INVALID" });
+}
+
+export async function covered_event_recovery_cases(): Promise<void> {
+  class PartialPruneAdapter extends MemoryCheckpointAdapter {
+    pruneRevision: number | undefined;
+    override async pruneCommitsThrough(id: string, checkpointId: string, rev: number): Promise<void> {
+      if (this.pruneRevision === undefined) return super.pruneCommitsThrough(id, checkpointId, rev);
+      const active = this.state(id)!;
+      assert.equal(active.checkpoint.checkpointId, checkpointId);
+      assert.equal(active.checkpoint.rev, rev);
+      assert.ok(this.pruneRevision <= rev);
+      this.seed(id, { ...active, commits: active.commits.filter(record => record.commit.rev !== this.pruneRevision) });
+      throw new Error("Pruning interrupted after deleting one covered record.");
+    }
+  }
+  const definitions = { page: { document: '<main/>' }, state: { json: { count: 0 } } } as const;
+  const listener = { event: "pointermove", target: "element", capture: false, once: false, passive: false,
+    missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } as const;
+  const pointer = { id: "pointer", subject: { library: "page", path: [0] }, kind: "browser", key: "MOVE", listener } as const;
+  const keyboard = { ...pointer, id: "key", key: "KEY", listener: { ...listener, event: "keydown" } } as const;
+  const pointerBefore = Hson.data.fromSource('[["x","num","pointer","clientX"],["offset","num",-0],["row","data",{"z":-0,"a":1}]]');
+  const pointerAfter = Hson.data.fromSource('[["x","num","pointer","clientY"],["offset","num",-0],["row","data",{"z":-0,"a":1}]]');
+  const keyBefore = Hson.data.fromSource('[["code","str","key","key"],["offset","num",-0]]');
+  const keyAfter = Hson.data.fromSource('[["code","str","key","code"],["offset","num",-0]]');
+  const systemRoot = (map: LiveMap) => authority(map).systemRoot(authority(map).systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+  const invalid = { code: "LOCUS_PERSISTED_STATE_INVALID" };
+
+  for (const rewriteDescriptor of [false, true]) {
+    const persistence = new PartialPruneAdapter();
+    const config = { persistence, logicalMapId: `partial-prune-event-${rewriteDescriptor}` };
+    let hosted = await hsonLiveMap.locus.resume(definitions, config);
+    // Retain a complete Descriptor list at revision 1 as a history anchor.
+    await hosted.stage(stage => {
+      add_interaction(stage, { ...pointer, eventArgs: pointerBefore });
+      add_interaction(stage, { ...keyboard, eventArgs: keyBefore });
+    });
+    const uncovered = persistence.state(config.logicalMapId)!;
+    const map = make_livemap_mirror_from_semantic_checkpoint_internal(authority(locus_map_internal(hosted)).captureSemanticCheckpoint());
+    hosted.dispose();
+
+    // Use the same admissible semantic transition and encoder as durable replay.
+    const engine = authority(map);
+    const system = engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!;
+    const pointerPath = ["descriptors", 0, "eventArgs", 0, 3] as const;
+    const keyPath = ["descriptors", 1, "eventArgs"] as const;
+    assert.throws(() => engine.commit([{ target: engine.systemTarget(system, pointerPath), kind: "replace", value: "pressure" }]),
+      /Invalid canonical event argument plan operand/);
+    const { hosted: nested } = engine.commit([
+      { target: engine.systemTarget(system, pointerPath), kind: "replace", value: "clientY" },
+      { target: engine.systemTarget(system, keyPath), kind: "replace", value: hson_data_value(keyAfter) },
+    ]);
+    assert.ok(nested);
+    const record = durable_aggregate_commit(nested);
+    const firstWrite = record.commit.operations[0]!;
+    assert.equal(firstWrite.domain, "data");
+    const [edit] = decode_livemap_replay_payload(firstWrite.payload);
+    assert.ok(edit?.kind === "replace");
+    assert.deepEqual(edit.path, pointerPath);
+    const malformed = { ...record, commit: { ...record.commit, operations: [
+      { ...firstWrite, payload: encode_livemap_replay_transport([{ ...edit, next: "pressure" }]).payload },
+      ...record.commit.operations.slice(1),
+    ] } };
+    persistence.seed(config.logicalMapId, { ...uncovered, commits: [...uncovered.commits, malformed] });
+    await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "uncovered nested operation requires canonical state");
+    persistence.seed(config.logicalMapId, { ...uncovered, commits: [record] });
+    await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "uncovered replay cannot skip a revision");
+    persistence.seed(config.logicalMapId, uncovered);
+    await persistence.appendCommit(record);
+    hosted = await hsonLiveMap.locus.resume(definitions, config);
+    try {
+      assert.equal(hosted.rev, 2);
+      const replayed = descriptor_data(systemRoot(locus_map_internal(hosted)));
+      assert.ok(new Map(replayed[0]?.entries()).get("eventArgs")?.equals(pointerAfter));
+      assert.ok(new Map(replayed[1]?.entries()).get("eventArgs")?.equals(keyAfter));
+      await hosted.stage(stage => {
+        stage.data.state.at(["count"]).set(3);
+        if (rewriteDescriptor) replace_interaction(stage, { ...pointer, eventArgs: pointerBefore });
+      });
+      persistence.pruneRevision = rewriteDescriptor ? 2 : 3;
+      await assert.rejects(hsonLiveMap.locus.checkpoint(hosted), { code: "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" });
+    } finally { hosted.dispose(); }
+
+    const pruned = persistence.state(config.logicalMapId)!;
+    assert.equal(pruned.checkpoint.rev, 3);
+    assert.deepEqual(pruned.commits.map(entry => entry.commit.rev), rewriteDescriptor ? [1, 3] : [1, 2]);
+    const assertCheckpoint = async (revision = 3) => {
+      const recovered = await hsonLiveMap.locus.resume(definitions, config);
+      try {
+        assert.equal(recovered.rev, revision);
+        assert.equal(recovered.data.state.snap(["count"]), revision);
+        const entries = descriptor_data(systemRoot(locus_map_internal(recovered)));
+        assert.ok(new Map(entries[0]?.entries()).get("eventArgs")?.equals(rewriteDescriptor ? pointerBefore : pointerAfter));
+        assert.ok(new Map(entries[1]?.entries()).get("eventArgs")?.equals(keyAfter));
+      } finally { recovered.dispose(); }
+    };
+    await assertCheckpoint();
+    const [first, second, third] = persistence.appendCalls;
+    assert.ok(first && second && third);
+    assert.deepEqual(persistence.appendCalls.map(entry => entry.commit.rev), [1, 2, 3]);
+    for (const commits of [[first, second, third], [first, third], [first, second], [second, third], [second], []]) {
+      persistence.seed(config.logicalMapId, { ...pruned, commits });
+      await assertCheckpoint();
+    }
+    persistence.seed(config.logicalMapId, { ...pruned, commits: [first, malformed] });
+    await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "retained complete Descriptor list establishes historical context");
+    persistence.seed(config.logicalMapId, { ...pruned, commits: [third, first] });
+    await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "partial pruning does not permit out-of-order records");
+    persistence.seed(config.logicalMapId, { ...pruned, commits: [first, third, third] });
+    await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "partial pruning does not permit duplicate records");
+
+    if (rewriteDescriptor) {
+      persistence.seed(config.logicalMapId, { ...pruned, commits: [first, second, third] });
+      hosted = await hsonLiveMap.locus.resume(definitions, config);
+      try {
+        await hosted.stage(stage => stage.data.state.at(["count"]).set(4));
+        persistence.pruneRevision = 3;
+        await assert.rejects(hsonLiveMap.locus.checkpoint(hosted), { code: "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" });
+      } finally { hosted.dispose(); }
+      const withGap = persistence.state(config.logicalMapId)!;
+      assert.deepEqual(withGap.commits.map(entry => entry.commit.rev), [1, 2, 4]);
+      await assertCheckpoint(4);
+      // The retained nested write can be checked against revision 1. It cannot
+      // be rewound from revision 4 across the missing Descriptor rewrite.
+      persistence.seed(config.logicalMapId, { ...withGap, commits: withGap.commits.slice(1) });
+      await assertCheckpoint(4);
+      persistence.seed(config.logicalMapId, { ...withGap, commits: [first, malformed, withGap.commits[2]!] });
+      await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "validating a detached run still uses its retained anchor");
+    }
+
+    const invalidDescriptors = interaction_descriptors_from_root(projected_value_from_hson_node(systemRoot(map))).map(entry => {
+      assert.ok(is_ordered_projected_object(entry));
+      return ordered_projected_object(entry.entries.map(([name, value]) => [name, name === "eventArgs" ? ordered_projected_array([]) : value]));
+    });
+    const invalidRoot = projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(invalidDescriptors)]]));
+    const { checkpoint } = pruned;
+    const chunks = checkpoint.chunks.flatMap(descriptor => {
+      if (descriptor.owner !== INTERACTION_RESERVED_LIBRARY_KEY || descriptor.part !== "root") return [descriptor];
+      const [replacement] = encode_checkpoint_chunks(checkpoint.checkpointId, checkpoint.rev, descriptor.owner, "root", invalidRoot);
+      persistence.chunks.set(replacement!.chunk.id, replacement!.chunk);
+      return [replacement!.descriptor];
+    });
+    persistence.seed(config.logicalMapId, { checkpoint: { ...checkpoint, chunks }, commits: [] });
+    await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, "the active checkpoint itself requires canonical state");
+  }
 }
 
 async function composition_cases() {
@@ -1007,7 +1249,8 @@ export async function authored_event_cases(): Promise<void> {
   event_reference_comments();
   forwarded_event_cases();
   iterator_event_arguments();
-  await pointer_event_cases();
+  await native_event_cases();
+  await covered_event_recovery_cases();
   await composition_cases();
   local_library_cases();
   await live_library_projection_cases();

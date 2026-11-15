@@ -22,8 +22,9 @@ void create_node_livehost_socket;
 void misplaced_locus_socket;
 
 const pointerLocus = hsonLiveMap.locus.create({
-  controls: { parts: { handle: { kind: "document", document: Hson.document`<button hson:part event:move/>`,
-    events: { move: "<hson:event on:pointer:move host:MOVE dx:num=^{pointer.movementX} <> >" } } } },
+  controls: { parts: { handle: { kind: "document", document: Hson.document`<button hson:part event:move event:key/>`,
+    events: { move: "<hson:event on:pointer:move host:MOVE dx:num=^{pointer.movementX} <> >",
+      key: "<hson:event on:key:down host:MOVE key:str=^{key.key} ctrl:data=^{key.ctrlKey} <> >" } } } },
   page: { document: Hson.document`<hson-part at=controls/handle/>` },
 });
 pointerLocus.actions.define("MOVE", (ctx, args) => {

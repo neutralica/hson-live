@@ -21,8 +21,9 @@ const map = hsonLiveMap.fromLibraries({
   },
 });
 const pointerParts = hsonLiveMap.fromLibraries({
-  controls: { parts: { handle: { kind: "document", document: Hson.document`<button hson:part event:press/>`,
-    events: { press: "<hson:event on:pointer:down local:move x:num=^{pointer.clientX} <> >" } } } },
+  controls: { parts: { handle: { kind: "document", document: Hson.document`<button hson:part event:press event:release/>`,
+    events: { press: "<hson:event on:pointer:down local:move x:num=^{pointer.clientX} <> >",
+      release: "<hson:event on:key:up local:move code:str=^{key.code} shift:data=^{key.shiftKey} <> >" } } } },
   page: { document: Hson.document`<hson-part at=controls/handle/>` },
 });
 pointerParts.actions.define("move", (_ctx, args) => args, { args: { required: true } });

@@ -89,19 +89,39 @@ There is one interaction system root. Its shared partition `S` contains descript
 
 On writable, element-qualified Document `.at()` and `.q()` handles, `.listen.local.onClick(key, input?)` and `.listen.host.onClick(key, input?)` author a click Descriptor. Standalone LiveMap and Echo client-local calls return the accepted Descriptor ID synchronously. Locus-governed calls return `Promise<string>` resolving to that ID after authoritative acceptance. Local descriptors can be authored after their local document exists without a shared `interactions` grant or a server round trip. A Locus `stage` or action `ctx.stage` can commit grouped document edits and Descriptor changes atomically.
 
+### Authored Event arguments
+
 Authored Events use named arguments of the form `name:type=value`. For example, `<hson:event on:click host:deck.advance step:num="3" title:str="Next" settings:data={<speed 5>} <> >` sends an ordered Data object with `step`, `title`, and `settings`. A field spelled `input:data` has the name `input`, and its value stays nested under that name. The empty outcome `<>` is required.
 
 Use `str` for strings, `num` for finite numbers, and `data` for Hson Data. Numeric literals are double-quoted finite JSON numbers and preserve signed zero. In Parts, whole `%{incoming}` and `^{local}` references preserve the resolved value, and a quoted `str` can interpolate primitive Part values. Each attachment resolves in its own occurrence scope. An absent optional operand omits its field. A declaration with zero arguments supplies `undefined`. A declaration whose optional fields are all absent supplies an empty object.
 
-`on:pointer:down` selects `pointerdown` and `on:pointer:move` selects `pointermove`. Either selector introduces `pointer` in the Event declaration. `^{pointer.clientX}`, `^{pointer.clientY}`, `^{pointer.movementX}`, and `^{pointer.movementY}` supply finite numbers from the native PointerEvent. Use a whole lookup in a `num` or `data` argument. Each native lookup requires a finite value, including when its reference uses `?`. A visible Part local or iterator alias named `pointer` conflicts at a pointer Event attachment. Rename that declaration to resolve the conflict. Ordinary `pointer` locals still work in Part content and click Events outside that scope. `part:optional` continues to depend on composition-time references.
+| Authored selector | Native event | Event-local root |
+| --- | --- | --- |
+| `on:click` | `click` | |
+| `on:pointer:down` | `pointerdown` | `pointer` |
+| `on:pointer:move` | `pointermove` | `pointer` |
+| `on:pointer:up` | `pointerup` | `pointer` |
+| `on:pointer:cancel` | `pointercancel` | `pointer` |
+| `on:key:down` | `keydown` | `key` |
+| `on:key:up` | `keyup` | `key` |
+
+| Event-local root | `num` or `data` | `str` or `data` | Boolean `data` |
+| --- | --- | --- | --- |
+| `pointer` | `clientX`, `clientY`, `movementX`, `movementY`, `pointerId`, `button`, `buttons` | `pointerType` | `isPrimary`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
+| `key` | `location` | `key`, `code` | `repeat`, `isComposing`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
+
+Use native lookups as whole argument values. They require the matching native Event class and a value of the expected type, including for references ending in `?`. Pointer movement values come directly from the browser. `button` reports the changed button, `buttons` carries the button-state bitmask, and `pointerId` has the lifetime defined by the browser's pointer model. Release and cancellation dispatch separately. Keyboard `key` reports the logical value and `code` identifies the physical key.
+
+The selected family establishes its root within the Event declaration. A visible Part local or iterator alias with that name conflicts at the attachment. The same name can be used as an ordinary local outside that Event scope. Incoming `%{...}` placeholders use their usual Part bindings. `part:optional` continues to depend on composition-time references.
 
 ```hson
 <hson:event on:pointer:move host:deck.move x:num=^{pointer.clientX} slide:data=^{currentSlide} y:num=^{pointer.clientY} <> >
+<hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} code:str=^{key.code} repeat:data=^{key.repeat} <> >
 ```
 
-For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, and `[name, type, "pointer", property]` for a native lookup. Admission requires unique argument names, matching capture types, and at least one supported pointer lookup on a pointer listener. The plan occupies the Descriptor by itself. Existing `args` and `payload` store resolved Data and cannot express a lookup interleaved with per-occurrence captures. Listener equivalence includes the full plan.
+For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, and `[name, type, family, property]` for a native lookup. `family` is `"pointer"` or `"key"`. Admission requires unique argument names, matching value types, and at least one supported lookup from the listener's Event family. Descriptors carry the plan in place of resolved `args` or `payload`. Listener equivalence includes the full plan.
 
-Each browser dispatch uses the native Event to construct the exact ordered Data object, then applies the normal Action argument admission. A failed extraction rejects the invocation through the existing failure reporting. A hosted Action receives that Data through Echo and Locus. Echo retries retain the original arguments and request ID. Client-reported coordinates are application input subject to the Action Schema and authorization.
+Each browser dispatch uses the native Event to construct the exact ordered Data object, then applies the normal Action argument admission. A failed extraction rejects the invocation through the existing failure reporting. A hosted Action receives that Data through Echo and Locus. Echo retries retain the original arguments and request ID. Client-reported native values are application input subject to the Action Schema and authorization.
 
 The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
 

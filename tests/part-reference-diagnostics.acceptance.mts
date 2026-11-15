@@ -1042,7 +1042,7 @@ check('pointer Event diagnostics retain lexical, Action Schema, and source-range
   assert.deepEqual(inspect(opaque).codes, []);
 });
 
-check('pointer lookup completion uses the recognized Event family and the authored replacement range', () => {
+check('native Event completion uses the selector, qualifier, and authored replacement range', () => {
   const cache = new HsonEditorCompletionCache(ts);
   const complete = (text: string) => {
     const offset = text.indexOf('|');
@@ -1068,7 +1068,108 @@ check('pointer lookup completion uses the recognized Event family and the author
   assert.deepEqual(complete(call('x:num=^{pointer.cli|').replace('tree.listen', 'opaque.listen')), []);
   const part = application('<main/>', '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
     + JSON.stringify('<hson:event on:pointer:move local:go x:num=^{pointer.|} <> >') + '}}}');
-  assert.deepEqual(complete(part).map(item => item[0]), ['pointer.clientX', 'pointer.clientY', 'pointer.movementX', 'pointer.movementY']);
+  assert.deepEqual(complete(part).map(item => item[0]), ['pointer.clientX', 'pointer.clientY', 'pointer.movementX', 'pointer.movementY',
+    'pointer.pointerId', 'pointer.button', 'pointer.buttons']);
+  assert.deepEqual(complete(call('kind:str=^{pointer.pointer|Id}', 'pointer:cancel')),
+    [['pointer.pointerType', 'pointer.pointerType}', 'pointer.pointerId}']]);
+  assert.deepEqual(complete(call('key:str=^{key.|}', 'key:down')),
+    [['key.key', 'key.key}', 'key.}'], ['key.code', 'key.code}', 'key.}']]);
+  assert.deepEqual(complete(call('location:num=^{key.|', 'key:up')), [['key.location', 'key.location}', 'key.']]);
+  assert.deepEqual(complete(call('repeat:data="^{key.re|peat?}"', 'key:up')),
+    [['key.repeat', 'key.repeat?}', 'key.repeat?}']]);
+  assert.deepEqual(complete(call('value:str="^{key.co|de}"', 'key:down')),
+    [['key.code', 'key.code}', 'key.code}']]);
+  assert.deepEqual(complete(call('value:str="^{key.co|de} suffix"', 'key:down')), []);
+  assert.deepEqual(complete(call('value:data="^{key.re|}suffix"', 'key:up')), []);
+  assert.deepEqual(complete(call('value:str=^{key.co|de}suffix', 'key:down')), []);
+  assert.deepEqual(complete(call('x:data=^{key.|}', 'key:down')).map(item => item[0]), [
+    'key.key', 'key.code', 'key.location', 'key.repeat', 'key.isComposing',
+    'key.altKey', 'key.ctrlKey', 'key.metaKey', 'key.shiftKey',
+  ]);
+  assert.deepEqual(complete(call('x:data=^{key.|}', 'pointer:up')), []);
+  assert.deepEqual(complete(call('x:data=^{keyboard.|}', 'key:down')), []);
+  assert.deepEqual(complete(call('x:data=^{pointer.|}', 'key:down')), []);
+  assert.deepEqual(complete(call('', 'key:|down')), [
+    ['on:key:down', 'on:key:down', 'on:key:down'], ['on:key:up', 'on:key:up', 'on:key:down'],
+  ]);
+  assert.deepEqual(complete(call('', 'pointer:ca|')), [['on:pointer:cancel', 'on:pointer:cancel', 'on:pointer:ca']]);
+  assert.deepEqual(complete(call('', 'pointer:u|')), [['on:pointer:up', 'on:pointer:up', 'on:pointer:u']]);
+  assert.deepEqual(complete(call('', 'click on:key:|')), []);
+  assert.deepEqual(complete(call('', 'key:down o|')), []);
+  assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o| on:key:down')), []);
+  const header = (source: string) => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event ${source} <> >`) + ');';
+  assert.deepEqual(complete(header('on:k| count:num=bad on:key:down local:go')), []);
+  assert.deepEqual(complete(header('count:num=bad on:k| on:key:down local:go')), []);
+  assert.deepEqual(complete(header('on:key:down count:num=bad on:k| local:go')), []);
+  assert.deepEqual(complete(header('on:k| count:num= on:key:down local:go')), []);
+  assert.deepEqual(complete(header('count:data={} on:k| on:key:down local:go')), []);
+  assert.deepEqual(complete(header(String.raw`on:k| count:num="\q" on:key:down local:go`)), []);
+  assert.deepEqual(complete(header('on:k| x:data=^{root["unterminated on:key:down')), []);
+  assert.deepEqual(complete(header('on:k| x:data=^{root["closed"] on:key:down local:go')), []);
+  assert.deepEqual(complete(header('count:num=bad on:key:|down other:num=bad local:go')), [
+    ['on:key:down', 'on:key:down', 'on:key:down'], ['on:key:up', 'on:key:up', 'on:key:down'],
+  ]);
+  assert.deepEqual(complete(header('on:k| count:num=bad label:str="on:key:down" // on:key:up\nlocal:go')), [
+    ['on:key:down', 'on:key:down', 'on:k'], ['on:key:up', 'on:key:up', 'on:k'],
+  ]);
+  assert.deepEqual(complete(header('count:num=bad on:key:down value:str="^{key.co|de}" local:go')),
+    [['key.code', 'key.code}', 'key.code}']]);
+  for (const source of [
+    '<hson:event count:num=bad on:key:down local:go <> >',
+    '<hson:event on:key:down x:data=^{root["unterminated on:key:down <> >',
+  ]) {
+    assert.throws(() => hsonLiveMap.fromLibraries({ parts: { parts: { button: {
+      kind: "document", document: '<button hson:part event:go/>',
+      events: { go: source },
+    } } } }), /or one whole Part reference/);
+  }
+  assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o|')).map(item => item[0]), [
+    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up',
+  ]);
+});
+
+check('keyboard Event diagnostics retain lexical and Action Schema evidence across qualifiers', () => {
+  const source = (args: string, body = '<button hson:part event:go/>', selector = 'on:key:up', schema = '<key "string" flag "boolean" location "number">') => application('<main/>',
+    '{card:{kind:"document",document:Hson.document`' + body + '`, events:{go:'
+    + JSON.stringify(`<hson:event ${selector} local:go ${args} <> >`) + '}}}')
+    .replace('const page =', 'const Args = Hson.schema`<type "data" content ' + schema + '>`;\nconst page =')
+    + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
+  const valid = 'key:data=^{key.key} flag:data=^{key.isComposing?} location:data=^{key.location}';
+  assert.deepEqual(inspect(source(valid)).codes, []);
+  for (const [schema, field, kind] of [
+    ['<key "number" flag "boolean" location "number">', 'key:data=^{key.key}', 'string'],
+    ['<key "string" flag "string" location "number">', 'flag:data=^{key.isComposing?}', 'boolean'],
+    ['<key "string" flag "boolean" location "string">', 'location:data=^{key.location}', 'number'],
+  ]) {
+    const bad = inspect(source(valid, undefined, undefined, schema));
+    assert.deepEqual(bad.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+    assert.deepEqual(bad.slices, [field]);
+    assert.match(bad.diagnostics[0]!.message, new RegExp(`supplies a value of type ${kind}`));
+    assert.deepEqual(bad.diagnostics[0]?.related?.map(({ start, end }) => bad.text.slice(start, end)), ['Args', 'event:go']);
+    assert.deepEqual(static_schema_candidate_diagnostics(ts, bad.program), []);
+  }
+  for (const [args, range, message, selector] of [
+    ['key:str=^{key.keyCode}', '^{key.keyCode}', /Unsupported key Event lookup/, undefined],
+    ['pressed:str=^{key.pressed}', '^{key.pressed}', /Unsupported key Event lookup/, undefined],
+    ['pressed:str=^{keyboard.key}', '^{keyboard.key}', /Missing Part local declaration "keyboard"/, undefined],
+    ['key:str=^{key.repeat}', '^{key.repeat}', /requires a whole :data argument/, undefined],
+    ['key:num=^{key.code}', '^{key.code}', /requires a whole :str or :data argument/, undefined],
+    ['key:str=^{key.key}', '^{key.key}', /native key binding requires on:key:down or on:key:up/, 'on:pointer:up'],
+    ['location:num=^{pointer.pointerId}', '^{pointer.pointerId}', /native pointer binding requires/, undefined],
+  ] as const) {
+    const bad = inspect(source(args, undefined, selector));
+    assert.deepEqual(bad.codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.deepEqual(bad.slices, [range]);
+    assert.match(bad.diagnostics[0]!.message, message);
+    assert.deepEqual(bad.diagnostics[0]?.related?.map(({ start, end }) => bad.text.slice(start, end)), ['event:go']);
+  }
+  const local = '<main hson:part data:rows=%{rows} <button for:key=^{rows} event:go "^{key.key}"/>/>';
+  const collision = inspect(source(valid, local));
+  assert.deepEqual(collision.slices, ['event:go']);
+  assert.match(collision.diagnostics[0]!.message, /Part local "key" conflicts/);
+  assert.deepEqual(collision.diagnostics[0]?.related?.map(({ start, end }) => collision.text.slice(start, end)), ['for:key']);
+  assert.deepEqual(inspect(source('key:str=^{key.key}', local, 'on:click', '<key "string">')).codes, []);
+  assert.deepEqual(inspect(source('key:str=^{key.key}', local).replace('events:{go:', 'events:{go:condition ? dynamic : ')).codes, []);
 });
 
 check('hosted Event Action contracts recognize Parts Libraries with known access metadata', () => {

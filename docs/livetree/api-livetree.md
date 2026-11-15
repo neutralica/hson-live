@@ -885,15 +885,18 @@ outlast individual listeners and child removal. Removing the owning root
 retires its registry.
 
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
-`on:pointer:down`, or `on:pointer:move`, one `local:` action, and the required
-empty outcome object `<>`. The declaration
+`on:pointer:down`, `on:pointer:move`, `on:pointer:up`, `on:pointer:cancel`,
+`on:key:down`, or `on:key:up`, one `local:` action, and an empty outcome object `<>`. The declaration
 may include `once`, `stopProp`, and named arguments such as `title:str="Example"`,
 `x:num="-0"`, or `settings:data={<open true>}`. Declare zero arguments to
-supply `undefined`. Pointer declarations can use `^{pointer.clientX}`,
-`^{pointer.clientY}`, `^{pointer.movementX}`, and `^{pointer.movementY}` as whole
-`num` or `data` arguments. The listener reads those finite numbers from the native
-PointerEvent and checks the assembled arguments against the Action Schema at
-dispatch. A standalone declaration has no Part scope. Its other arguments use
+supply `undefined`. Pointer declarations can use whole native lookups such as
+`id:num=^{pointer.pointerId}` and `primary:data=^{pointer.isPrimary}`.
+Key declarations use `key`, as in `pressed:str=^{key.key}` and
+`repeat:data=^{key.repeat}`. The listener reads native properties and
+checks the assembled arguments against the Action Schema at dispatch.
+[Supported native properties](../canonical-interactions.md#authored-event-arguments)
+
+A standalone declaration has no Part scope. Its other arguments use
 literals, which are checked before attachment when the entire object is resolved.
 A missing action throws and requires a fresh registration attempt.
 Unsupported flags, `host:` actions, nonempty outcomes, and pending fluent builder

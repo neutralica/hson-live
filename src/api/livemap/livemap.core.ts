@@ -4245,19 +4245,102 @@ function make_livemap_registry_engine(
     ),
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
-    validateCoveredDurableHosted: (commit) => {
+    validateCoveredDurableHosted: (commits) => {
       // A covering checkpoint retains every Library binding. Its registry
       // digest can differ after later additions, whose fences are checked by Locus.
       const bindings = require_hosted_state().byName;
-      const registry = { digest: commit.registryDigest };
-      const operations = "format" in commit ? decode_portable_aggregate_commit(commit, registry, bindings)
-        : decode_private_scoped_aggregate_commit(commit, registry, bindings);
-      for (const { library, projected, operationIndex } of operations) {
-        if (library.scope !== "hson-internal" || projected === undefined) continue;
-        with_livemap_replay_operation_index(operationIndex, () => {
-          validate_interaction_operation_plans(projected.path, projected.prev);
-          validate_interaction_operation_plans(projected.path, projected.next);
-        });
+      const history = commits.map(commit => {
+        if (!("operations" in commit)) return { operations: [], topology: commit.topology.operation };
+        const registry = { digest: commit.registryDigest };
+        const operations = "format" in commit ? decode_portable_aggregate_commit(commit, registry, bindings)
+          : decode_private_scoped_aggregate_commit(commit, registry, bindings);
+        return { operations: operations.flatMap(({ library, projected, operationIndex }) => {
+          if (library.scope !== "hson-internal" || projected === undefined) return [];
+          return with_livemap_replay_operation_index(operationIndex, () => {
+            validate_interaction_operation_plans(projected.path, projected.prev);
+            validate_interaction_operation_plans(projected.path, projected.next);
+            return [{ projected, operationIndex }];
+          });
+        }) };
+      });
+      const firstNested = history.findIndex(({ operations }) => operations.some(({ projected }) => projected.path.length > 2));
+      if (firstNested === -1) return;
+      const linkedToCheckpoint = commits.at(-1)?.rev === mapRevision;
+      let root: HsonNode;
+      if (linkedToCheckpoint) {
+        root = clone_live_root(systemState.root);
+      } else {
+        // A partial prune can detach the covered run from the checkpoint. Only
+        // a complete retained endpoint can then supply the scratch state.
+        let anchor: { index: number; position: number; value: OrderedProjectedValue } | undefined;
+        for (const [index, { operations }] of history.entries()) {
+          for (const [position, { projected: { path, next } }] of operations.entries()) {
+            if (next === undefined) continue;
+            if (path.length === 0) anchor = { index, position, value: next };
+            else if (path.length === 1 && path[0] === "descriptors") {
+              anchor = { index, position, value: ordered_projected_object([["descriptors", next]]) };
+            }
+          }
+        }
+        if (anchor === undefined) return;
+        root = projected_value_to_hson_root(anchor.value);
+
+        // Establish the end of this retained run from the exact endpoint and
+        // subsequent retained writes, without crossing into the pruned span.
+        for (const [index, { operations, topology }] of history.slice(anchor.index).entries()) {
+          if (topology?.interactionAdds !== undefined) {
+            const additions = interaction_descriptors_from_graph(decode_hosted_root(topology.interactionAdds));
+            replace_live_path_from_projected(root, ["descriptors"],
+              ordered_projected_array([...interaction_descriptors_from_graph(root), ...additions]));
+          }
+          for (const { projected, operationIndex } of index === 0 ? operations.slice(anchor.position + 1) : operations) {
+            with_livemap_replay_operation_index(operationIndex, () => {
+              const { path, prev, next } = projected;
+              must_replay_value(path, prev, project_live_path(root, path), operationIndex);
+              const planned = plan_write_ops(root, [projected_write_op_from_transport(projected)]);
+              must_replay_value(path, next, project_live_path(root, path), operationIndex);
+              must_replay_operation(projected, planned.transportOps, operationIndex, true);
+            });
+          }
+        }
+      }
+      // The journal carries both endpoints. Rewind only through the earliest
+      // nested write and validate at commit boundaries, as active admission does.
+      let restoredDeletedMember = false;
+      const matches = (expected: OrderedProjectedValue | undefined, actual: OrderedProjectedValue | undefined) =>
+        optional_ordered_projected_value_equal(expected, actual)
+          || (restoredDeletedMember && covered_interaction_value_equal(expected, actual));
+      const laterLibraries = new Set<string>();
+      const validate = () => validate_interaction_subjects(ordered_projected_array(validate_interaction_state_internal(root)),
+        name => !laterLibraries.has(name) && bindings.get(name)?.mode === "document");
+      if (!linkedToCheckpoint) validate();
+      for (const { operations, topology } of history.slice(firstNested).reverse()) {
+        const interactionAdds = topology?.interactionAdds;
+        for (const { name } of topology?.libraries ?? []) laterLibraries.add(name);
+        if (interactionAdds !== undefined) {
+          const additions = interaction_descriptors_from_graph(decode_hosted_root(interactionAdds));
+          const current = interaction_descriptors_from_graph(root);
+          const first = current.length - additions.length;
+          if (first < 0 || !additions.every((item, index) => matches(item, current[first + index]))) {
+            throw new Error("Covered Library interaction additions disagree with the retained history.");
+          }
+          replace_live_path_from_projected(root, ["descriptors"], ordered_projected_array(current.slice(0, first)));
+        }
+        for (const { projected, operationIndex } of operations.reverse()) {
+          with_livemap_replay_operation_index(operationIndex, () => {
+            const { path, prev, next, kind } = projected;
+            const current = project_live_path(root, path);
+            if (!matches(next, current)) throw new LiveMapReplayError(path, next, current, operationIndex);
+            if (prev === undefined) delete_live_path(root, path);
+            else if (kind === "delete") {
+              set_live_path_from_projected(root, path, prev);
+              restoredDeletedMember = true;
+            } else replace_live_path_from_projected(root, path, prev);
+          });
+        }
+        if (operations.length > 0 || topology !== undefined) {
+          validate();
+        }
       }
     },
     replayDurableHosted: replay_durable_hosted_aggregate,
@@ -4455,6 +4538,19 @@ function require_document_overlay(
 ): import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay {
   if (overlay !== undefined) return overlay;
   throw new Error("LiveMap document mode is missing its identity overlay.");
+}
+
+/** Undoing a deletion restores its value, but its former object entry position
+ * is absent from the journal. Scratch validation still requires exact values
+ * and array order. The installed checkpoint keeps its original entry order. */
+function covered_interaction_value_equal(left: OrderedProjectedValue | undefined, right: OrderedProjectedValue | undefined): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => covered_interaction_value_equal(value, right[index]));
+  }
+  if (!is_ordered_projected_object(left) || !is_ordered_projected_object(right) || left.entries.length !== right.entries.length) return false;
+  const rightEntries = new Map(right.entries);
+  return left.entries.every(([name, value]) => covered_interaction_value_equal(value, rightEntries.get(name)));
 }
 
 function must_replay_value(

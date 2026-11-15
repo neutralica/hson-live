@@ -122,7 +122,7 @@ function isUnsupportedWhitespace(value: string): boolean {
 
 type AttributeOperand = Readonly<{ end: number } & (
   { kind: "quoted" | "reference" | "selector" }
-  | { kind: "invalid"; code: string; message: string }
+  | { kind: "invalid"; code: string; message: string; unterminatedQuotedKey?: boolean }
 )>;
 
 /** Source-only classification shared with closer lookahead. Receiving semantics
@@ -156,7 +156,7 @@ function classifyAttributeOperand(source: string, start: number, tag?: string, n
           }
           end++;
         }
-        return { kind: "invalid", end, code: "HSON_PART_REFERENCE_INVALID",
+        return { kind: "invalid", end, code: "HSON_PART_REFERENCE_INVALID", unterminatedQuotedKey: quotedKey,
           message: legacy ? PART_LOCAL_REFERENCE_MIGRATION : "Invalid or incomplete Part reference in attribute value." };
       }
       references++;
@@ -238,18 +238,40 @@ export function tokenize_authored_event(source: string) {
   return new HsonScanner(source, 0).scanEventDeclaration();
 }
 
-/** Locate the authored value boundary for a lookup being edited. @internal */
-export function authored_event_lookup_checkpoint(source: string, cursor: number) {
-  let value: Readonly<{ flags: ReadonlyMap<string, Position>; qualifier: EventArgumentToken["qualifier"]; start: number }> | undefined;
+/** Check the boundary that will follow a completed whole Event operand. @internal */
+export function authored_event_operand_ends_at(source: string, end: number, quoted: boolean): boolean {
+  if (end === source.length) return true;
+  if (quoted && source[end++] !== '"') return false;
+  return end === source.length || isHsonTrivia(source[end]!) || source.startsWith("//", end) || source[end] === "<";
+}
+
+/** Locate the authored selector or value boundary being edited. @internal */
+export function authored_event_completion_checkpoint(source: string, cursor: number) {
+  let checkpoint: (Readonly<{ kind: "selector"; start: number; end: number }>
+    | Readonly<{ kind: "value"; qualifier: EventArgumentToken["qualifier"]; start: number }>) &
+    Readonly<{ flags: ReadonlyMap<string, Position> }> | undefined;
+  let scannedHeader = false;
   const observe: EventValueObserver = (flags, qualifier, start) => {
-    if (start <= cursor) value = { flags, qualifier, start };
+    if (start <= cursor) checkpoint = { kind: "value", flags, qualifier, start };
   };
-  try { new HsonScanner(source, 0).scanEventDeclaration(observe); }
-  catch { /* The lookup and the Event envelope may still be under edit. */ }
-  return value;
+  const header: EventHeaderObserver = (flags, start, raw) => {
+    const end = start + raw.length;
+    if (start < cursor && cursor <= end && (raw.startsWith("on:") || "on:".startsWith(raw))) {
+      checkpoint = { kind: "selector", flags, start, end };
+      return true;
+    }
+    return false;
+  };
+  try { new HsonScanner(source, 0).scanEventDeclaration(observe, header, () => { scannedHeader = true; }); }
+  catch { /* The Event envelope may still be under edit. */ }
+  // A lexical error can hide later flags. Offer selectors only once the
+  // scanner has accounted for the entire header, including an unfinished EOF.
+  if (checkpoint?.kind === "selector" && !scannedHeader) return undefined;
+  return checkpoint;
 }
 
 type EventValueObserver = (flags: ReadonlyMap<string, Position>, qualifier: EventArgumentToken["qualifier"], start: number) => void;
+type EventHeaderObserver = (flags: ReadonlyMap<string, Position>, start: number, raw: string) => boolean;
 
 class HsonScanner {
   private readonly tokens: Tokens[] = [];
@@ -282,7 +304,8 @@ class HsonScanner {
   private editorElement: HsonGrammarCheckpoint["element"];
   private editorAttribute: string | undefined;
 
-  public scanEventDeclaration(observeValue?: EventValueObserver): Readonly<{
+  public scanEventDeclaration(observeValue?: EventValueObserver, observeHeader?: EventHeaderObserver,
+    onHeaderEnd?: () => void): Readonly<{
     start: Position;
     flags: ReadonlyMap<string, Position>;
     args: readonly EventArgumentToken[];
@@ -300,54 +323,82 @@ class HsonScanner {
     const flags = new Map<string, Position>();
     const args: EventArgumentToken[] = [];
     const names = new Map<string, Position>();
+    const completing = observeHeader !== undefined;
     let separated = this.skipTrivia();
     while (this.peek() !== "<") {
-      if (this.atEnd() || this.peek() === ">" || this.startsWith("/>")) invalid("An authored event requires an outcome object <>.");
+      if (this.atEnd() || this.peek() === ">" || this.startsWith("/>")) {
+        onHeaderEnd?.();
+        invalid("An authored event requires an outcome object <>.");
+      }
       if (!separated) invalid("Expected trivia between authored event header items.");
       const at = this.position();
       const raw = this.scanBareName("event header item");
       separated = this.skipTrivia();
       const hasValue = this.peek() === "=";
+      // During completion, skip the header item being replaced and keep scanning for other selectors.
+      if (!hasValue && observeHeader?.(flags, at.index, raw)) continue;
       if (!hasValue && (raw === "once" || raw === "stopProp" || raw.startsWith("on:") || raw.startsWith("host:") || raw.startsWith("local:"))) {
         const first = flags.get(raw);
-        if (first !== undefined) this.fail(`Duplicate authored event header item ${JSON.stringify(raw)}.`, at, code,
+        if (first !== undefined && !completing) this.fail(`Duplicate authored event header item ${JSON.stringify(raw)}.`, at, code,
           [{ role: "first-declaration", pos: first }]);
         flags.set(raw, at);
         continue;
       }
 
       const [name, qualifier, extra] = raw.split(":");
-      if (name === undefined || !is_part_parameter_name(name) || !is_valid_hson_data_name(name) || extra !== undefined
-        || qualifier !== "str" && qualifier !== "num" && qualifier !== "data") {
+      const knownQualifier = qualifier === "str" || qualifier === "num" || qualifier === "data";
+      const namedArgument = name !== undefined && is_part_parameter_name(name) && is_valid_hson_data_name(name)
+        && extra === undefined && knownQualifier;
+      if (!namedArgument && !completing) {
         if (!hasValue && qualifier !== "doc") invalid(`Unsupported authored event header item ${JSON.stringify(raw)}. Named arguments use name:type=value.`, at);
         return invalid(`Invalid Event argument ${JSON.stringify(raw)}. Use name:str, name:num, or name:data followed by a value.`, at);
       }
-      const first = names.get(name);
-      if (first !== undefined) this.fail(`Duplicate Event argument ${JSON.stringify(name)}.`, at, code,
-        [{ role: "first-declaration", pos: first }]);
-      names.set(name, at);
-      if (!hasValue) invalid(`Expected a value after ${raw}=.`, at);
+      if (namedArgument) {
+        const first = names.get(name);
+        if (first !== undefined && !completing) this.fail(`Duplicate Event argument ${JSON.stringify(name)}.`, at, code,
+          [{ role: "first-declaration", pos: first }]);
+        names.set(name, at);
+      }
+      if (!hasValue) {
+        if (completing) continue;
+        invalid(`Expected a value after ${raw}=.`, at);
+      }
       this.consumeExpected("=");
-      this.skipTrivia();
+      separated = this.skipTrivia();
+      // A selector after a missing operand is still a separate header item.
+      if (completing && separated && this.startsWith("on:")) continue;
       const valueStart = this.position();
-      observeValue?.(flags, qualifier, valueStart.index);
+      if (namedArgument) observeValue?.(flags, qualifier, valueStart.index);
       let operand: EventArgumentToken["operand"];
-      if (qualifier === "data" && this.peek() === "{") {
+      if (this.peek() === "{" && (qualifier === "data" || completing)) {
         const firstToken = this.tokens.length;
         this.consumeExpected("{");
         this.skipTrivia();
-        if (this.peek() === "}") invalid(`${raw} requires one Hson Data value.`);
+        if (this.peek() === "}") {
+          if (!completing) invalid(`${raw} requires one Hson Data value.`);
+          this.consumeExpected("}");
+          separated = this.skipTrivia();
+          continue;
+        }
         this.scanObjectMemberValue(1, raw, "}");
         this.skipTrivia();
         if (this.peek() !== "}") invalid(`${raw} requires one Hson Data value followed by }.`);
         this.consumeExpected("}");
         operand = { kind: "data", tokens: this.tokens.slice(firstToken) };
       } else if (this.peek() === '"') {
-        operand = { kind: "quoted", raw: this.scanAttributeString(raw, qualifier).text };
+        operand = { kind: "quoted", raw: this.scanAttributeString(raw, knownQualifier ? qualifier : undefined).text };
       } else {
         const classified = classifyAttributeOperand(this.source, valueStart.index);
         const reference = classified.kind === "reference" ? scan_part_reference(this.source, valueStart.index) : undefined;
         if (reference === undefined) {
+          if (completing && !(classified.kind === "invalid" && classified.unterminatedQuotedKey)
+            && (classified.end > this.index || this.atEnd() || this.peek() === "<")) {
+            // The operand classifier bounds malformed bare values and references.
+            // Resume at the next header item without interpreting operand text as flags.
+            while (this.index < classified.end) this.consume();
+            separated = this.skipTrivia();
+            continue;
+          }
           const expected = qualifier === "data" ? "{Hson Data}" : "a double-quoted literal";
           const message = this.startsWith("#{") ? PART_LOCAL_REFERENCE_MIGRATION
             : `Expected ${expected} or one whole Part reference for ${raw}.`;
@@ -358,9 +409,10 @@ class HsonScanner {
         while (this.index < reference.end) this.consume();
         operand = { kind: "reference", reference };
       }
-      args.push({ name, qualifier, header: at, start: valueStart, end: this.position(), operand });
+      if (namedArgument) args.push({ name, qualifier, header: at, start: valueStart, end: this.position(), operand });
       separated = this.skipTrivia();
     }
+    onHeaderEnd?.();
     this.consumeExpected("<");
     this.skipTrivia();
     if (this.peek() !== ">") invalid("Nonempty authored event outcomes are unsupported. Use <>.");

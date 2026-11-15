@@ -11,21 +11,16 @@ import { PART_LOCAL_REFERENCE_MIGRATION, part_reference_text, whole_part_referen
 import { interpolate_part_string, is_part_scalar_value, part_scalar_operand } from "./part-scalar.js";
 import { decode_part_string_sigils } from "./part-scalar-source.js";
 import type { Primitive } from "../core/types.js";
-import { is_pointer_event_name, is_pointer_event_property, POINTER_EVENT_PROPERTIES,
-  type DeferredEventArgument, type EventArgumentQualifier, type PointerEventProperty } from "./event-argument-plan.js";
+import { AUTHORED_EVENT_NAMES, NATIVE_EVENT_PROPERTIES, native_event_family, native_event_scalar_qualifier,
+  type DeferredEventArgument, type EventArgumentQualifier, type NativeEventFamily, type NativeEventValueKind } from "./event-argument-plan.js";
 
-const AUTHORED_EVENT_NAMES = new Map([
-  ["on:click", "click"], ["on:pointer:down", "pointerdown"], ["on:pointer:move", "pointermove"],
-]);
-const AUTHORED_EVENT_SELECTORS = "on:click, on:pointer:down, or on:pointer:move";
-
-export function authored_event_name(selector: string): string | undefined { return AUTHORED_EVENT_NAMES.get(selector); }
+const AUTHORED_EVENT_SELECTORS = [...AUTHORED_EVENT_NAMES.keys()].join(", ");
 
 export type AuthoredEventReference = Readonly<{ reference: PartReference; start: Position; end: Position; root: Readonly<{ start: number; end: number }> }>;
 type EventOperand =
   | Readonly<{ kind: "literal"; value: OrderedProjectedValue }>
   | Readonly<{ kind: "reference"; site: AuthoredEventReference }>
-  | Readonly<{ kind: "pointer"; site: AuthoredEventReference; property: PointerEventProperty; qualifier: "num" | "data" }>
+  | Readonly<{ kind: "native"; site: AuthoredEventReference; family: NativeEventFamily; property: string; valueKind: NativeEventValueKind }>
   | Readonly<{ kind: "interpolation"; text: string; sites: readonly AuthoredEventReference[] }>;
 export type AuthoredEventArgument = Readonly<{
   name: string;
@@ -60,7 +55,7 @@ export function parse_authored_event(source: string, operation = "Authored event
     if (flag.startsWith("on:")) {
       if (eventPosition !== undefined) fail("An authored event requires exactly one on: selector.", position, eventPosition);
       eventPosition = position;
-      event = authored_event_name(flag);
+      event = AUTHORED_EVENT_NAMES.get(flag);
       if (event === undefined) fail(`Unsupported Event selector ${JSON.stringify(flag)}. Use ${AUTHORED_EVENT_SELECTORS}.`, position);
     } else {
       if (destination !== undefined) fail("Choose exactly one host: or local: action.", position, destination.actionStart);
@@ -77,28 +72,34 @@ export function parse_authored_event(source: string, operation = "Authored event
     args: args.map(arg => bind_event_argument(event, read_event_argument(arg, operation), operation)) };
 }
 
-export function is_pointer_reference(reference: PartReference): boolean {
-  return reference.namespace === "local" && reference.name === "pointer";
+export function missing_native_event_binding(reference: PartReference): string | undefined {
+  const { name } = reference;
+  if (reference.namespace !== "local" || name !== "pointer" && name !== "key") return undefined;
+  const selectors = [...AUTHORED_EVENT_NAMES].filter(([, event]) => native_event_family(event) === name).map(([selector]) => selector);
+  return `The native ${name} binding requires ${selectors.join(" or ")}.`;
 }
 
 function bind_event_argument(event: string, argument: AuthoredEventArgument, operation: string): AuthoredEventArgument {
-  if (!is_pointer_event_name(event)) return argument;
-  const site = event_argument_references(argument).find(({ reference }) => is_pointer_reference(reference));
+  const family = native_event_family(event);
+  if (family === undefined) return argument;
+  const site = event_argument_references(argument).find(({ reference }) => reference.namespace === "local" && reference.name === family);
   if (site === undefined) return argument;
   const [property] = site.reference.path;
-  if (site.reference.path.length !== 1 || !is_pointer_event_property(property)) {
-    return fail_event_reference(`Unsupported pointer Event lookup ${part_reference_text(site.reference)}. Use ${POINTER_EVENT_PROPERTIES.map(name => `pointer.${name}`).join(", ")}.`, site, operation);
+  const properties = NATIVE_EVENT_PROPERTIES[family];
+  const valueKind = site.reference.path.length === 1 && typeof property === "string" ? properties.get(property) : undefined;
+  if (valueKind === undefined || typeof property !== "string") {
+    return fail_event_reference(`Unsupported ${family} Event lookup ${part_reference_text(site.reference)}. Use ${[...properties.keys()].map(name => `${family}.${name}`).join(", ")}.`, site, operation);
   }
-  if (argument.operand.kind !== "reference" || argument.qualifier === "str") {
-    return fail_event_reference("A pointer Event lookup supplies a number and requires a whole :num or :data argument.", site, operation);
+  const scalar = native_event_scalar_qualifier(valueKind);
+  if (argument.operand.kind !== "reference" || argument.qualifier !== "data" && argument.qualifier !== scalar) {
+    return fail_event_reference(`A ${family} Event lookup supplies a ${valueKind} and requires a whole ${scalar === undefined ? "" : `:${scalar} or `}:data argument.`, site, operation);
   }
-  return { ...argument, operand: { kind: "pointer", site, property, qualifier: argument.qualifier } };
+  return { ...argument, operand: { kind: "native", site, family, property, valueKind } };
 }
 
 export function standalone_event_reference_issue(site: AuthoredEventReference): string {
-  return is_pointer_reference(site.reference)
-    ? "The pointer Event binding requires on:pointer:down or on:pointer:move."
-    : "Standalone event arguments cannot resolve Part references. Supply literals or a lookup from the selected native Event.";
+  return missing_native_event_binding(site.reference)
+    ?? "Standalone event arguments cannot resolve Part references. Supply literals or a lookup from the selected native Event.";
 }
 
 export function fail_event_reference(message: string, site: AuthoredEventReference, operation: string): never {
@@ -184,8 +185,8 @@ export function authored_event_args(args: readonly AuthoredEventArgument[],
   const fields: DeferredEventArgument[] = [];
   let deferred = false;
   for (const { name, qualifier, operand } of args) {
-    if (operand.kind === "pointer") {
-      fields.push([name, operand.qualifier, "pointer", operand.property]);
+    if (operand.kind === "native") {
+      fields.push([name, qualifier, operand.family, operand.property]);
       deferred = true;
       continue;
     }

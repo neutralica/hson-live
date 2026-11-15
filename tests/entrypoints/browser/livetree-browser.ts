@@ -69,6 +69,15 @@ actions.define("POINTER", (ctx, args) => {
   return args;
 }, { args: { required: true } });
 tree.listen.event("<hson:event on:pointer:move local:POINTER x:num=^{pointer.clientX} <> >").off() satisfies void;
+tree.listen.event("<hson:event on:pointer:cancel local:POINTER id:num=^{pointer.pointerId} held:num=^{pointer.buttons} <> >").off() satisfies void;
+actions.define("SHORTCUT", (ctx, args) => {
+  if (ctx.event instanceof KeyboardEvent) {
+    ctx.event.code satisfies string;
+    ctx.event.isComposing satisfies boolean;
+  }
+  return args;
+}, { args: { required: true } });
+tree.listen.event("<hson:event on:key:down local:SHORTCUT key:str=^{key.key} repeat:data=^{key.repeat} <> >").off() satisfies void;
 // @ts-expect-error A declaration requires Hson source text.
 tree.listen.event(() => {});
 // @ts-expect-error A registered Action takes named fields.
