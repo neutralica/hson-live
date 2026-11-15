@@ -9,6 +9,7 @@ import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-pr
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
 import { AUTHORED_EVENT_NAMES, NATIVE_EVENT_PROPERTIES, native_event_class, native_event_family, native_event_scalar_qualifier } from "../event-argument-plan.js";
 import { scan_part_reference } from "../part-placeholder.js";
+import { AUTHORED_EVENT_FLAGS } from "../../core/authored-event-names.js";
 
 /** Locate compiler source facts only; completion and reference diagnostics are separate consumers. */
 export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number, includeLiteralEnd = false): Readonly<{
@@ -39,7 +40,7 @@ export type HsonEditorContext = Readonly<{
   expectedKinds: readonly string[];
 }>;
 
-/** Complete selectors and native lookups in recognized authored Event literals. */
+/** Complete bare options, selectors and native lookups in recognized authored Event literals. */
 export function query_hson_event_completion(facts: PartSourceFacts, file: string, offset: number): readonly Readonly<{
   candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>;
 }>[] {
@@ -55,13 +56,18 @@ export function query_hson_event_completion(facts: PartSourceFacts, file: string
   const checkpoint = authored_event_completion_checkpoint(literal.text, cursor);
   if (checkpoint === undefined) return [];
   const selectors = [...checkpoint.flags].filter(([flag]) => flag.startsWith("on:"));
-  if (checkpoint.kind === "selector") {
-    if (selectors.length > 0) return [];
+  if (checkpoint.kind === "header") {
     const range = map_static_hson_range(correspondence, { start: checkpoint.start, end: checkpoint.end });
     if (range === undefined) return [];
     const prefix = literal.text.slice(checkpoint.start, cursor);
-    return [...AUTHORED_EVENT_NAMES].filter(([name]) => name.startsWith(prefix))
-      .map(([name, event], index) => ({ candidate: item(name, "syntax", name, event, index), range }));
+    const available = [
+      ...(selectors.length === 0 ? AUTHORED_EVENT_NAMES : []),
+      ...[...AUTHORED_EVENT_FLAGS].filter(([name]) => !checkpoint.flags.has(name)
+        && !(name === "document" && checkpoint.flags.has("window"))
+        && !(name === "window" && checkpoint.flags.has("document"))),
+    ];
+    return available.filter(([name]) => name.startsWith(prefix))
+      .map(([name, detail], index) => ({ candidate: item(name, "syntax", name, detail, index), range }));
   }
   const family = selectors.length === 1 ? native_event_family(AUTHORED_EVENT_NAMES.get(selectors[0]![0])) : undefined;
   if (family === undefined) return [];

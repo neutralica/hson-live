@@ -18,6 +18,7 @@
       echo_map_internal,
       enable_interactions,
       hsonLiveMap,
+      hsonLiveTree,
       hsonTransform,
       install_libraries_snapshot,
       internal_livemap_aggregate_authority,
@@ -112,6 +113,7 @@
     dispose();
     const result = document.querySelector("#result");
     try {
+      await checkAuthoredListenerOptions();
       await checkStandaloneActions();
       await checkCrossRootActionOwner();
       checkStandaloneNativeLifecycle();
@@ -132,6 +134,221 @@
     } catch (cause) {
       result.textContent = cause.stack ?? String(cause);
       result.dataset.status = "fail";
+    }
+
+    async function checkAuthoredListenerOptions() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const source = flags => `<hson:event on:key:down local:run ${flags} pressed:str=^{key.key} offset:num="-0" <> >`;
+      const compose = flags => hsonLiveMap.fromLibraries({
+        parts: { parts: { control: { kind: "document", document: '<button hson:part id="option-subject" event:run/>',
+          events: { run: source(flags) } } } },
+        page: { document: '<main <hson-part at=parts/control/><button id="outside"/>/>' },
+      });
+      const descriptor = map => {
+        const engine = internal_livemap_aggregate_authority(map);
+        const root = engine.systemRoot(engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY));
+        return Hson.data.fromSource(hsonTransform.fromNode(root.$_content[0]).toHson().serialize()).materialize().descriptors[0];
+      };
+      for (const canonical of [false, true]) {
+        const frame = document.createElement("iframe");
+        document.body.append(frame);
+        const doc = frame.contentDocument, win = frame.contentWindow;
+        const map = canonical ? compose("") : undefined;
+        doc.open(); doc.write(map?.doc.page.render() ?? '<main><button id="option-subject"></button><button id="outside"></button></main>'); doc.close();
+        const root = canonical ? undefined : graft(doc.querySelector("main"), { unsafe: false });
+        const subject = root?.find.must.byId("option-subject");
+        const button = doc.querySelector("#option-subject"), outside = doc.querySelector("#outside");
+        const calls = [], failures = [], adds = [], removes = [], undo = [];
+        let pending, continuation, subscription;
+        const onError = event => {
+          if (event.error?.message.startsWith("LiveTree action ")) { failures.push(event.error.cause); event.preventDefault(); }
+        };
+        window.addEventListener("error", onError);
+        for (const target of [button, doc, win]) {
+          const add = target.addEventListener, remove = target.removeEventListener;
+          target.addEventListener = function(type, handler, options) {
+            if (type === "keydown") adds.push({ target, handler, options });
+            return add.call(this, type, handler, options);
+          };
+          target.removeEventListener = function(type, handler, options) {
+            if (type === "keydown") removes.push({ target, handler, options });
+            return remove.call(this, type, handler, options);
+          };
+          undo.push(() => { target.addEventListener = add; target.removeEventListener = remove; });
+        }
+        const action = (ctx, data) => {
+          const event = ctx.event;
+          check(ctx.subject.dom.el() === button && (canonical ? ctx.map === map : ctx.tree === root && ctx.subject === subject), "Placement changed the HSON subject or Action owner.");
+          check(data.equals(Hson.data.fromSource('{"pressed":"A","offset":-0}')), "Listener options changed exact ordered Event arguments.");
+          calls.push({ event, currentTarget: event.currentTarget, target: event.target, phase: event.eventPhase,
+            prevented: event.defaultPrevented, stopped: event.cancelBubble });
+          return pending;
+        };
+        (map ?? root).actions.define("run", action);
+        const activate = () => continue_document({ map, root: doc.documentElement, interactions: { onFailure: failure => failures.push(failure.cause) } });
+        const install = flags => {
+          if (canonical) replace_interaction(map, { ...descriptor(map), listener: descriptor(compose(flags)).listener });
+          else { subscription?.off(); subscription = subject.listen.event(source(flags)); }
+        };
+        const fire = (target = button, cancelable = true) => {
+          const event = new win.KeyboardEvent("keydown", { key: "A", bubbles: true, cancelable });
+          target.dispatchEvent(event);
+          return event;
+        };
+        try {
+          if (canonical) continuation = activate(); else install("");
+          fire(outside);
+          check(calls.length === 0, "Default element placement heard a sibling.");
+          const native = fire();
+          check(calls.length === 1 && calls[0].event === native && calls[0].currentTarget === button && calls[0].target === button,
+            "Default placement did not deliver the actual native occurrence.");
+          for (const placement of ["document", "window", ""]) {
+            const target = placement === "document" ? doc : placement === "window" ? win : button;
+            install(`${placement} capture passive`);
+            if (canonical) {
+              // Ordinary portable snapshots carry the normalized Descriptor;
+              // Part scopes use coordinated projection/checkpoint recovery.
+              const portable = hsonLiveMap.fromLibraries({ page: { document: '<button/>' } });
+              add_interaction(portable, { ...descriptor(map), subject: { library: "page", path: [0, 0, 1, 0, 0] } });
+              const snapshot = portable.capture();
+              const restored = install_libraries_snapshot(structuredClone(snapshot)).map;
+              check(JSON.stringify(descriptor(restored)) === JSON.stringify(descriptor(portable)),
+                "Snapshot admission changed authored listener options, identity, subject, or ordered argument plan.");
+            }
+            const registration = adds.at(-1);
+            check(registration.target === target && registration.options.capture && registration.options.passive && !registration.options.once,
+              "Authored options did not reach the exact owner-realm native registration.");
+            const before = calls.length;
+            document.dispatchEvent(new KeyboardEvent("keydown", { key: "A" }));
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "A" }));
+            check(calls.length === before, "An iframe listener used an ambient target.");
+            fire(placement ? outside : button);
+            check(calls.length === before + 1 && calls.at(-1).currentTarget === target && calls.at(-1).target === (placement ? outside : button),
+              "Placement filtered sibling origins or changed native targets.");
+            install(`${placement} preventDefault`);
+            check(removes.some(record => record.target === registration.target && record.handler === registration.handler
+              && record.options.capture === registration.options.capture), "Reconfiguration did not remove the exact native registration.");
+            check(fire().defaultPrevented && calls.at(-1).prevented, "Cancellation was not synchronous before Action invocation.");
+            check(!fire(button, false).defaultPrevented && !calls.at(-1).prevented, "A noncancelable occurrence was canceled.");
+            install(`${placement} passive preventDefault`);
+            const passive = new win.KeyboardEvent("keydown", { key: "A", bubbles: true, cancelable: true });
+            let attempts = 0;
+            const cancel = passive.preventDefault;
+            passive.preventDefault = function() { attempts++; return cancel.call(this); };
+            button.dispatchEvent(passive);
+            check(attempts === 1 && !passive.defaultPrevented && !calls.at(-1).prevented && adds.at(-1).options.passive,
+              "Passive cancellation was rejected, skipped, or overrode the native passive option.");
+          }
+          const order = [];
+          const capture = () => order.push("capture"), bubble = () => order.push("bubble");
+          doc.addEventListener("keydown", capture, true);
+          doc.addEventListener("keydown", bubble);
+          install("document capture"); fire();
+          check(calls.at(-1).phase === Event.CAPTURING_PHASE && order.join() === "capture,bubble", "Capture placement did not use the native phase.");
+          install("document"); fire();
+          check(calls.at(-1).phase === Event.BUBBLING_PHASE, "Default registration did not use native bubbling.");
+          doc.removeEventListener("keydown", capture, true); doc.removeEventListener("keydown", bubble);
+          for (const flag of ["stopProp", "stopImmediateProp"]) {
+            install(flag);
+            let peers = 0, ancestors = 0;
+            const peer = () => peers++, ancestor = () => ancestors++;
+            button.addEventListener("keydown", peer); doc.addEventListener("keydown", ancestor);
+            fire();
+            check(calls.at(-1).stopped && ancestors === 0 && peers === (flag === "stopProp" ? 1 : 0), "Native propagation controls were conflated.");
+            button.removeEventListener("keydown", peer); doc.removeEventListener("keydown", ancestor);
+          }
+          for (const placement of ["document", "window"]) {
+            install(`${placement} once preventDefault`);
+            let settle;
+            pending = new Promise(resolve => { settle = resolve; });
+            const before = calls.length;
+            check(fire(outside).defaultPrevented && !fire(outside).defaultPrevented && calls.length === before + 1,
+              "Once waited for Action settlement or remained natively installed.");
+            if (canonical) {
+              const registrations = adds.length;
+              map.doc.page.at([1, 0]).asElement().attrs.set("title", placement);
+              map.doc.page.at([1, 0]).asElement().move(0, 1);
+              map.doc.page.at([1, 0]).asElement().move(1, 0);
+              check(adds.length === registrations, "Canonical subject movement reinstalled an unchanged listener.");
+            }
+            check(!fire(outside).defaultPrevented && calls.length === before + 1, "Unrelated work reset consumed once state.");
+            settle(); await pending; pending = undefined;
+            if (canonical) { continuation.dispose(); continuation = activate(); }
+            else install(`${placement} once preventDefault`);
+            check(fire(outside).defaultPrevented && calls.length === before + 2, "A genuine new installation did not renew once.");
+            install(`${placement} once`);
+            outside.dispatchEvent(new win.Event("keydown", { bubbles: true }));
+            fire(outside);
+            check(calls.length === before + 2, "Argument extraction failure did not consume native once.");
+          }
+          check(failures.length === 2, "Native invalid-brand occurrences did not use existing failure reporting.");
+          for (const placement of ["document", "window"]) {
+            install(placement);
+            const before = calls.length;
+            if (canonical) {
+              continuation.dispose(); fire(outside);
+              check(calls.length === before, "Canonical disposal retained an owner-realm listener.");
+              continuation = activate(); fire(outside);
+            } else {
+              check(subject.detach() === 1, "Reversible detach failed.");
+              fire(outside); root.append(subject); fire(outside);
+              check(calls.length === before + 2, "Reversible detach released a subject-owned listener.");
+              const registration = adds.at(-1);
+              subscription.off(); subscription.off(); fire(outside);
+              check(calls.length === before + 2 && removes.some(record => record.handler === registration.handler && record.target === registration.target
+                && record.options.capture === registration.options.capture), "Standalone off did not retire the exact registration.");
+            }
+          }
+          if (!canonical) {
+            const otherRootElement = doc.createElement("aside"); doc.body.append(otherRootElement);
+            const otherRoot = graft(otherRootElement, { unsafe: false });
+            try {
+              for (const placement of ["document", "window"]) {
+                install(placement);
+                const before = calls.length;
+                subject.detach(); otherRoot.append(subject); fire(outside);
+                subject.detach(); root.append(subject); fire(outside);
+                check(calls.length === before + 2, "Cross-root movement changed the captured Action or global listener lifetime.");
+              }
+            } finally { otherRoot.remove(); }
+          }
+          install("document");
+          // Retain both placements at terminal subject removal.
+          if (canonical) add_interaction(map, { ...descriptor(map), id: "window-peer", listener: descriptor(compose("window")).listener });
+          else subject.listen.event(source("window"));
+          const before = calls.length;
+          if (canonical) map.doc.page.at([1, 0, 0]).delete();
+          else subject.remove();
+          fire(outside); doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "A" })); win.dispatchEvent(new win.KeyboardEvent("keydown", { key: "A" }));
+          check(calls.length === before, "Terminal subject removal retained Document or Window registrations.");
+        } finally {
+          subscription?.off(); continuation?.dispose(); root?.remove(); undo.forEach(restore => restore());
+          window.removeEventListener("error", onError); frame.remove();
+        }
+      }
+      const inert = new DOMParser().parseFromString('<button id="inert"></button>', "text/html");
+      const inertTree = graft(inert.querySelector("button"), { unsafe: false });
+      let inertCalls = 0;
+      try {
+        inertTree.actions.define("run", () => inertCalls++);
+        const absent = inertTree.listen.event('<hson:event on:key:down window local:run <> >');
+        window.dispatchEvent(new KeyboardEvent("keydown"));
+        inert.dispatchEvent(new KeyboardEvent("keydown"));
+        check(inert.defaultView === null && inertCalls === 0, "A missing owner Window fell back to the ambient Window.");
+        absent.off();
+      } finally { inertTree.remove(); }
+      const unrealized = hsonLiveTree.fromHson('<button/>');
+      let unrealizedCalls = 0;
+      try {
+        check(unrealized.dom.el() === undefined, "Missing-target fixture unexpectedly has a native realization.");
+        unrealized.actions.define("run", () => unrealizedCalls++);
+        for (const placement of ["document", "window"]) {
+          const absent = unrealized.listen.event(`<hson:event on:key:down ${placement} local:run <> >`);
+          document.dispatchEvent(new KeyboardEvent("keydown")); window.dispatchEvent(new KeyboardEvent("keydown"));
+          check(unrealizedCalls === 0, "An unrealized subject installed on an ambient target.");
+          absent.off();
+        }
+      } finally { unrealized.remove(); }
     }
 
     async function checkPointerEvents() {
@@ -370,7 +587,7 @@
         state: { json: { x: 0, offset: 0 }, schema: stateSchema, access: "shared" },
         parts: { access: "private", parts: { slide: { kind: "document",
           document: '<button hson:part id="host-control" data:slide=%{slide} event:run/>',
-          events: { run: `<hson:event ${selector} host:move x:num=^{${coordinate}} slide:data=^{slide} offset:num="-0"${keyboardFields} <> >` } } } },
+          events: { run: `<hson:event ${selector} ${keys ? "window" : "document"} capture preventDefault stopImmediateProp host:move x:num=^{${coordinate}} slide:data=^{slide} offset:num="-0"${keyboardFields} <> >` } } } },
         page: { access: "shared", document: '<hson-part at=parts/slide slide:data="<index -0>"/>' },
       }, {
         authorizeProjection: ({ requested }) => requested,
@@ -388,7 +605,7 @@
         } } },
       });
       const binding = bind_locus_http(locus, { endpoint: "/native-events" });
-      let loseFirstReply = true;
+      let loseFirstReply = true, occurrence;
       const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/native-events", async fetch(input, init) {
         const body = JSON.parse(init.body);
         const response = await binding.handle(new Request(input, init), {});
@@ -411,14 +628,27 @@
         const root = frame.contentDocument.documentElement;
         continued = await continue_hosted_document({ now, credential: session.credential, root,
           transport: { ...transport, operations: { submit(request, options) {
-            if (request.type === "action") requests.push(request);
+            if (request.type === "action") {
+              check(occurrence.defaultPrevented, "Echo submitted before synchronous native cancellation.");
+              requests.push(request);
+            }
             return transport.operations.submit(request, options);
           } } }, interactions: { onFailure: failure => failures.push(failure) } });
         const keyState = x => x === first ? { key: "é", code: "KeyE", repeat: true, isComposing: true, ctrlKey: false }
           : { key: "A", code: "KeyQ", repeat: false, isComposing: false, ctrlKey: true };
-        const fire = x => root.querySelector("#host-control").dispatchEvent(keys
-          ? new frame.contentWindow.KeyboardEvent("keydown", { location: x, ...keyState(x) })
-          : new frame.contentWindow.PointerEvent("pointermove", { clientX: x }));
+        const fire = (x, active = true) => {
+          occurrence = keys
+            ? new frame.contentWindow.KeyboardEvent("keydown", { location: x, ...keyState(x), bubbles: true, cancelable: true })
+            : new frame.contentWindow.PointerEvent("pointermove", { clientX: x, bubbles: true, cancelable: true });
+          let peers = 0;
+          const target = keys ? frame.contentWindow : frame.contentDocument, peer = () => peers++;
+          target.addEventListener(occurrence.type, peer, true);
+          // The origin is outside the authored button. Placement does not scope propagation.
+          root.querySelector("body").dispatchEvent(occurrence);
+          target.removeEventListener(occurrence.type, peer, true);
+          check(occurrence.defaultPrevented === active && peers === (active ? 0 : 1),
+            "Hosted cancellation or immediate propagation control waited for Action settlement.");
+        };
         const expected = x => {
           const { key, code, repeat, isComposing: composing, ctrlKey: ctrl } = keyState(x);
           return Hson.data.from({ x, slide: { index: -0 }, offset: -0, ...(keys ? { key, code, repeat, composing, ctrl } : {}) });
@@ -458,7 +688,7 @@
         await session.update({ libraries: projection.libraries });
         await until(() => !hasPlan(), `Echo failed to remove the revoked ${family} Descriptor.`);
         const submissions = requests.length;
-        fire(51);
+        fire(51, false);
         check(requests.length === submissions, `Revocation left a ${family} listener installed.`);
         await session.update(projection);
         await until(() => hasPlan() && continued.echo.sync.status === "caught_up", `Echo failed to recover the ${family} Descriptor.`);

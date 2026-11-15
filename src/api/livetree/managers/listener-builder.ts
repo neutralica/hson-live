@@ -65,12 +65,8 @@ export function resolve_livetree_listener_targets_internal(
     try {
       const mappedElement = tree.dom.el();
       const ownerDocument = mappedElement?.ownerDocument;
-      const ambient = target === "window"
-        ? ownerDocument === undefined
-          ? (typeof window !== "undefined" ? window : null)
-          : ownerDocument.defaultView
-        : ownerDocument ?? (typeof document !== "undefined" ? document : null);
-      return ambient === null || ambient === undefined ? [] : [ambient];
+      const nativeTarget = target === "window" ? ownerDocument?.defaultView : ownerDocument;
+      return nativeTarget === null || nativeTarget === undefined ? [] : [nativeTarget];
     } catch { return []; }
   }
   const element = tree.dom.el();
@@ -257,7 +253,7 @@ function attachListener(
   const wrapped: EventListener = event => {
     if (config.stopImmediatePropagation) event.stopImmediatePropagation();
     if (config.stopPropagation) event.stopPropagation();
-    if (config.preventDefault && !config.opts.passive) event.preventDefault();
+    if (config.preventDefault) event.preventDefault();
     handler(event);
   };
 

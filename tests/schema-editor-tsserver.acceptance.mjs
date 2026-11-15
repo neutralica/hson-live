@@ -644,6 +644,7 @@ const loc = hsonLiveMap.locus.create({
         .replace('const loc', 'declare const opaque: Record<string, string>;\nconst loc');
       assert.deepEqual(await hsonErrors(uncertain), []);
     }
+    assert.deepEqual(await hsonErrors(valid.replace("on:click", "capture on:click")), []);
     for (const [source, message, span] of [
       [valid.replace("event:go", "event:unknown"), /Missing Part event declaration "unknown"/, 'event:unknown'],
       [valid.replace(typedEvents, ""), /requires a governed Part's events collection/, "event:go"],
@@ -674,7 +675,7 @@ const loc = hsonLiveMap.locus.create({
       [valid.replace("%{text}", "^{missing}"), /Missing Part local declaration "missing"/, '^{missing}'],
       [valid.replace("^{args}", "^{args.}"), /one whole Part reference/, "^{args.}"],
       [valid.replace("^{args}", String.raw`\u005e{args.}`), /one whole Part reference/, String.raw`\u005e{args.}`],
-      [valid.replace("on:click", "capture on:click"), /Unsupported authored event header/, 'capture'],
+      [valid.replace("on:click", "on:click unknownOption"), /Unsupported authored event header item/, 'unknownOption'],
       [valid.replace("local:deck.go", "local:deck.go host:other"), /exactly one host: or local:/, 'host:other'],
     ]) {
       const errors = await hsonErrors(source);

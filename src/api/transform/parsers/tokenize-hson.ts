@@ -23,7 +23,7 @@ import {
   is_valid_hson_data_name,
 } from "../../../core/hson-name.js";
 import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
-import { AUTHORED_EVENT_TAG } from "../../../core/authored-event-names.js";
+import { AUTHORED_EVENT_FLAGS, AUTHORED_EVENT_TAG } from "../../../core/authored-event-names.js";
 import type {
   HsonSourceLexicalCollector,
   HsonTokenSourceEvidence,
@@ -245,9 +245,9 @@ export function authored_event_operand_ends_at(source: string, end: number, quot
   return end === source.length || isHsonTrivia(source[end]!) || source.startsWith("//", end) || source[end] === "<";
 }
 
-/** Locate the authored selector or value boundary being edited. @internal */
+/** Locate the authored header or value boundary being edited. @internal */
 export function authored_event_completion_checkpoint(source: string, cursor: number) {
-  let checkpoint: (Readonly<{ kind: "selector"; start: number; end: number }>
+  let checkpoint: (Readonly<{ kind: "header"; start: number; end: number }>
     | Readonly<{ kind: "value"; qualifier: EventArgumentToken["qualifier"]; start: number }>) &
     Readonly<{ flags: ReadonlyMap<string, Position> }> | undefined;
   let scannedHeader = false;
@@ -256,22 +256,30 @@ export function authored_event_completion_checkpoint(source: string, cursor: num
   };
   const header: EventHeaderObserver = (flags, start, raw) => {
     const end = start + raw.length;
-    if (start < cursor && cursor <= end && (raw.startsWith("on:") || "on:".startsWith(raw))) {
-      checkpoint = { kind: "selector", flags, start, end };
+    if (start < cursor && cursor <= end) {
+      checkpoint = { kind: "header", flags, start, end };
       return true;
     }
     return false;
   };
-  try { new HsonScanner(source, 0).scanEventDeclaration(observe, header, () => { scannedHeader = true; }); }
+  const gap: EventHeaderGapObserver = (flags, start, end) => {
+    if (cursor <= start || end < cursor) return;
+    const lineStart = Math.max(start, source.lastIndexOf("\n", cursor - 1) + 1, source.lastIndexOf("\r", cursor - 1) + 1);
+    const commentStart = source.indexOf("//", lineStart);
+    if (commentStart >= 0 && commentStart <= cursor && commentStart < end) return;
+    checkpoint = { kind: "header", flags, start: cursor, end: cursor };
+  };
+  try { new HsonScanner(source, 0).scanEventDeclaration(observe, header, () => { scannedHeader = true; }, gap); }
   catch { /* The Event envelope may still be under edit. */ }
-  // A lexical error can hide later flags. Offer selectors only once the
+  // A lexical error can hide later flags. Offer header items only once the
   // scanner has accounted for the entire header, including an unfinished EOF.
-  if (checkpoint?.kind === "selector" && !scannedHeader) return undefined;
+  if (checkpoint?.kind === "header" && !scannedHeader) return undefined;
   return checkpoint;
 }
 
 type EventValueObserver = (flags: ReadonlyMap<string, Position>, qualifier: EventArgumentToken["qualifier"], start: number) => void;
 type EventHeaderObserver = (flags: ReadonlyMap<string, Position>, start: number, raw: string) => boolean;
+type EventHeaderGapObserver = (flags: ReadonlyMap<string, Position>, start: number, end: number) => void;
 
 class HsonScanner {
   private readonly tokens: Tokens[] = [];
@@ -305,7 +313,7 @@ class HsonScanner {
   private editorAttribute: string | undefined;
 
   public scanEventDeclaration(observeValue?: EventValueObserver, observeHeader?: EventHeaderObserver,
-    onHeaderEnd?: () => void): Readonly<{
+    onHeaderEnd?: () => void, observeGap?: EventHeaderGapObserver): Readonly<{
     start: Position;
     flags: ReadonlyMap<string, Position>;
     args: readonly EventArgumentToken[];
@@ -324,7 +332,13 @@ class HsonScanner {
     const args: EventArgumentToken[] = [];
     const names = new Map<string, Position>();
     const completing = observeHeader !== undefined;
-    let separated = this.skipTrivia();
+    const headerTrivia = (): boolean => {
+      const start = this.index;
+      const separated = this.skipTrivia();
+      observeGap?.(flags, start, this.index);
+      return separated;
+    };
+    let separated = headerTrivia();
     while (this.peek() !== "<") {
       if (this.atEnd() || this.peek() === ">" || this.startsWith("/>")) {
         onHeaderEnd?.();
@@ -333,11 +347,14 @@ class HsonScanner {
       if (!separated) invalid("Expected trivia between authored event header items.");
       const at = this.position();
       const raw = this.scanBareName("event header item");
+      const gapStart = this.index;
       separated = this.skipTrivia();
       const hasValue = this.peek() === "=";
-      // During completion, skip the header item being replaced and keep scanning for other selectors.
-      if (!hasValue && observeHeader?.(flags, at.index, raw)) continue;
-      if (!hasValue && (raw === "once" || raw === "stopProp" || raw.startsWith("on:") || raw.startsWith("host:") || raw.startsWith("local:"))) {
+      // Keep scanning the whole header so completions exclude existing options on either side.
+      const replacing = !hasValue && observeHeader?.(flags, at.index, raw);
+      if (!hasValue) observeGap?.(flags, gapStart, this.index);
+      if (replacing) continue;
+      if (!hasValue && (AUTHORED_EVENT_FLAGS.has(raw) || raw.startsWith("on:") || raw.startsWith("host:") || raw.startsWith("local:"))) {
         const first = flags.get(raw);
         if (first !== undefined && !completing) this.fail(`Duplicate authored event header item ${JSON.stringify(raw)}.`, at, code,
           [{ role: "first-declaration", pos: first }]);
@@ -410,7 +427,7 @@ class HsonScanner {
         operand = { kind: "reference", reference };
       }
       if (namedArgument) args.push({ name, qualifier, header: at, start: valueStart, end: this.position(), operand });
-      separated = this.skipTrivia();
+      separated = headerTrivia();
     }
     onHeaderEnd?.();
     this.consumeExpected("<");

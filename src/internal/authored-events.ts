@@ -1,4 +1,5 @@
 import type { Position } from "../api/transform/token.types.js";
+import { AUTHORED_EVENT_FLAGS } from "../core/authored-event-names.js";
 import { _throw_transform_err } from "../core/errors.js";
 import { canonical_hson_data_from_node } from "../core/hson-data-canonical-codec.js";
 import { ordered_projected_object, type OrderedProjectedObject, type OrderedProjectedValue } from "../core/ordered-projected-value.js";
@@ -45,13 +46,18 @@ export function parse_authored_event(source: string, operation = "Authored event
   let eventPosition: Position | undefined;
   let event: string | undefined;
   let destination: Pick<AuthoredEvent, "kind" | "key" | "actionStart"> | undefined;
+  let placement: Position | undefined;
   const fail = (message: string, position: Position, first?: Position): never =>
     _throw_transform_err(message, operation, undefined, undefined, {
       code: "HSON_EVENT_DECLARATION_INVALID", stage: "source-admission", source: event_source_position(position),
       ...(first === undefined ? {} : { related: [{ role: "first-declaration", source: event_source_position(first) }] }),
     });
   for (const [flag, position] of flags) {
-    if (flag === "once" || flag === "stopProp") continue;
+    if (flag === "document" || flag === "window") {
+      if (placement !== undefined) fail("Ambiguous listener target: document and window are mutually exclusive.", position, placement);
+      placement = position;
+    }
+    if (AUTHORED_EVENT_FLAGS.has(flag)) continue;
     if (flag.startsWith("on:")) {
       if (eventPosition !== undefined) fail("An authored event requires exactly one on: selector.", position, eventPosition);
       eventPosition = position;
@@ -68,7 +74,10 @@ export function parse_authored_event(source: string, operation = "Authored event
     return fail(`An authored event requires one of ${AUTHORED_EVENT_SELECTORS} and one host: or local: action.`, args[0]?.header ?? start);
   }
   return { ...destination, listener: { ...DOCUMENT_CLICK_LISTENER, event,
-    once: flags.has("once"), stopPropagation: flags.has("stopProp") },
+    target: flags.has("document") ? "document" : flags.has("window") ? "window" : "element",
+    once: flags.has("once"), capture: flags.has("capture"), passive: flags.has("passive"),
+    preventDefault: flags.has("preventDefault"), stopPropagation: flags.has("stopProp"),
+    stopImmediatePropagation: flags.has("stopImmediateProp") },
     args: args.map(arg => bind_event_argument(event, read_event_argument(arg, operation), operation)) };
 }
 

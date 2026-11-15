@@ -1095,8 +1095,8 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('', 'pointer:ca|')), [['on:pointer:cancel', 'on:pointer:cancel', 'on:pointer:ca']]);
   assert.deepEqual(complete(call('', 'pointer:u|')), [['on:pointer:up', 'on:pointer:up', 'on:pointer:u']]);
   assert.deepEqual(complete(call('', 'click on:key:|')), []);
-  assert.deepEqual(complete(call('', 'key:down o|')), []);
-  assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o| on:key:down')), []);
+  assert.deepEqual(complete(call('', 'key:down o|')), [['once', 'once', 'o']]);
+  assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o| on:key:down')), [['once', 'once', 'o']]);
   const header = (source: string) => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event ${source} <> >`) + ');';
   assert.deepEqual(complete(header('on:k| count:num=bad on:key:down local:go')), []);
   assert.deepEqual(complete(header('count:num=bad on:k| on:key:down local:go')), []);
@@ -1124,8 +1124,63 @@ check('native Event completion uses the selector, qualifier, and authored replac
     } } } }), /or one whole Part reference/);
   }
   assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o|')).map(item => item[0]), [
-    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up',
+    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up', 'once',
   ]);
+});
+
+check('Event listener options complete as bare flags and diagnose structural errors at authored ranges', () => {
+  const cache = new HsonEditorCompletionCache(ts);
+  const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n'
+    + 'tree.actions.define("go", () => {});\n';
+  const call = (header: string) => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event on:click local:go ${header} <> >`) + ');';
+  const complete = (text: string) => {
+    const offset = text.indexOf('|'), source = text.replace('|', '');
+    const { program } = inspect(source);
+    return cache.complete(file('app.ts'), source, revision, offset, program).map(({ candidate, range }) => {
+      assert.equal(candidate.kind, 'syntax');
+      assert.equal(candidate.insertText, candidate.label);
+      return [candidate.label, source.slice(range.start, range.end)];
+    });
+  };
+  const flags = ['once', 'capture', 'passive', 'preventDefault', 'stopProp', 'stopImmediateProp', 'document', 'window'];
+  assert.deepEqual(complete(call('|')).map(entry => entry[0]), flags);
+  assert.deepEqual(complete(call('cap|ture')), [['capture', 'capture']]);
+  assert.deepEqual(complete(call('passive | document')).map(entry => entry[0]), flags.filter(flag => !['passive', 'document', 'window'].includes(flag)));
+  assert.deepEqual(complete(call('doc| window')), []);
+  assert.deepEqual(complete(call('window doc|')), []);
+  assert.deepEqual(complete(call('capture cap|')), []);
+  assert.deepEqual(complete(call('cap| capture')), []);
+  assert.deepEqual(complete(call('capture|="true"')), []);
+  assert.deepEqual(complete(call('capture:str="cap|"')), []);
+  assert.deepEqual(complete(call('x:data={"cap|"}')), []);
+  assert.deepEqual(complete(call('// cap|\n')), []);
+  assert.deepEqual(complete(call('/|/ options\n')), []);
+  assert.deepEqual(complete(call('// options\n cap|')), [['capture', 'cap']]);
+  assert.deepEqual(complete(call('cap|').replace('cap|', String.raw`\u0063ap|`)), [['capture', String.raw`\u0063ap`]]);
+  const part = (header: string) => application('<main/>', '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
+    + JSON.stringify(`<hson:event on:click local:go ${header} <> >`) + '}}}') + '\nloc.actions.define("go", () => {});';
+  assert.deepEqual(complete(part('win|')), [['window', 'win']]);
+  for (const build of [call, part]) {
+    assert.deepEqual(inspect(build('document capture once passive preventDefault stopProp stopImmediateProp')).codes, []);
+    assert.deepEqual(inspect(build('window passive preventDefault')).codes, []);
+    for (const [header, range, message] of [
+      ['document window', 'window', /Ambiguous listener target/], ['window document', 'document', /Ambiguous listener target/],
+      ['capture capture', 'capture', /Duplicate authored event header/],
+      ['passive="true"', 'passive', /Invalid Event argument/], ['stopImmediatePropagation', 'stopImmediatePropagation', /Unsupported authored event header/],
+      ['element', 'element', /Unsupported authored event header/], ['capture:true', 'capture:true', /Unsupported authored event header/],
+    ] as const) {
+      const result = inspect(build(header));
+      assert.deepEqual(result.codes, [build === part ? 'HSON_PART_REFERENCE_INVALID' : 'HSON_EVENT_DECLARATION_INVALID']);
+      assert.deepEqual(result.slices, [range]);
+      assert.match(result.diagnostics[0]!.message, message);
+      if (header === 'document window' || header === 'window document' || header === 'capture capture') {
+        const related = result.diagnostics[0]!.related?.[0];
+        assert.ok(related);
+        assert.equal(result.text.slice(related.start, related.end), header.split(' ')[0]);
+      }
+      assert.deepEqual(static_schema_candidate_diagnostics(ts, result.program), [], 'Editor findings do not expand Schema CLI enforcement');
+    }
+  }
 });
 
 check('keyboard Event diagnostics retain lexical and Action Schema evidence across qualifiers', () => {

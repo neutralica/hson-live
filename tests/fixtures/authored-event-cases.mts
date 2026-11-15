@@ -29,8 +29,9 @@ import { plan_browser_realization } from "../../src/internal/browser-realization
 import { assertCanonicalClosure, assertCanonicalSerializedClosure, TransformOracleAssertionError } from "../../src/diagnostics/transform-test-oracle.ts";
 import type { HsonNode } from "../../src/core/types.ts";
 import type { LocusProjectionAuthorizer } from "../../src/types/locus.types.ts";
+import { parse_authored_event } from "../../src/internal/authored-events.ts";
 
-const advance = "<hson:event once stopProp on:click host:ADVANCE_SLIDE step:num=\"3\" <> >";
+const advance = "<hson:event once stopProp document capture passive preventDefault stopImmediateProp on:click host:ADVANCE_SLIDE step:num=\"3\" <> >";
 const literal = { kind: "document", document: Hson.document`<button hson:part event:advance id="literal" "Next"/>`,
   events: { advance } } satisfies LiveMapDocumentPart;
 const typed = { kind: "document", document: Hson.document`<section hson:part data:args=%{args}
@@ -38,7 +39,7 @@ const typed = { kind: "document", document: Hson.document`<section hson:part dat
   events: { advance: "<hson:event on:click local:OPEN_PANEL panel:data=^{args} <> >" } } satisfies LiveMapDocumentPart;
 const incoming = { kind: "document", document: Hson.document`<button hson:part event:advance id="incoming"/>`,
   events: { advance: "<hson:event on:click local:OPEN_PANEL title:str=%{text} <> >" } } satisfies LiveMapDocumentPart;
-const withoutInput = { ...literal, events: { advance: "<hson:event on:click local:RESET_PANEL <> >" } };
+const withoutInput = { ...literal, events: { advance: "<hson:event window capture preventDefault on:click local:RESET_PANEL <> >" } };
 const collection = { parts: { literal, typed, incoming, withoutInput } };
 const invocation = '<hson-part lib="parts" at="literal"/>';
 const connector = (source: string) => {
@@ -83,10 +84,32 @@ function grammar_cases() {
   assert.equal(literalDescriptor.attrs?.id, "literal");
   assert.ok(typeof literalDescriptor.listener === "object" && literalDescriptor.listener !== null);
   assert.deepEqual({ ...literalDescriptor.listener }, {
-    event: "click", target: "element", capture: false, once: true, passive: false, missingTarget: "ignore",
-    preventDefault: false, stopPropagation: true, stopImmediatePropagation: false,
+    event: "click", target: "document", capture: true, once: true, passive: true, missingTarget: "ignore",
+    preventDefault: true, stopPropagation: true, stopImmediatePropagation: true,
   });
   assert.ok(literalDescriptor.data?.equals(Hson.data.from({ step: 3 })));
+  const flagSource = (flags: string) => `<hson:event on:click local:run ${flags} <> >`;
+  const defaults = parse_authored_event(flagSource("")).listener;
+  assert.deepEqual(defaults, { event: "click", target: "element", capture: false, once: false, passive: false,
+    missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false });
+  for (const [flag, field, value] of [
+    ["once", "once", true], ["capture", "capture", true], ["passive", "passive", true],
+    ["preventDefault", "preventDefault", true], ["stopProp", "stopPropagation", true],
+    ["stopImmediateProp", "stopImmediatePropagation", true], ["document", "target", "document"], ["window", "target", "window"],
+  ] as const) {
+    assert.deepEqual(parse_authored_event(flagSource(flag)).listener, { ...defaults, [field]: value });
+    assert.throws(() => parse_authored_event(flagSource(`${flag} ${flag}`)), /Duplicate authored event header/);
+    assert.throws(() => parse_authored_event(flagSource(`${flag}="true"`)), /Invalid Event argument/);
+  }
+  for (const [first, second] of [["document", "window"], ["window", "document"]]) {
+    const conflict = flagSource(`${first} ${second}`);
+    assert.throws(() => parse_authored_event(conflict), cause => {
+      const details = read_transform_error_details(cause);
+      return cause instanceof Error && /Ambiguous listener target/.test(cause.message)
+        && details?.source?.index === conflict.indexOf(second!)
+        && details.related?.[0]?.source.index === conflict.indexOf(first!);
+    });
+  }
   const literalArgs = 'input:data={<step 3>} x:num="-0" title:str="Example" extra:data={null}';
   const named = descriptors(admit(advance.replace('step:num="3"', literalArgs)))[0]?.data;
   assert.ok(named);
@@ -115,7 +138,7 @@ function grammar_cases() {
     [advance.replace('step:num="3"', 'step:num="1e999"'), /quoted finite JSON number/],
     [advance.replace('step:num="3"', 'step:num="%{n}0"'), /numeric interpolation is unsupported/],
     [advance.replace('step:num="3"', 'step:num'), /Expected a value/],
-    [advance.replace("once", "capture"), /Unsupported authored event header/],
+    [advance.replace("once", "unknownOption"), /Unsupported authored event header/],
     [advance.replace("once", 'once="once"'), /Invalid Event argument/],
     [advance.replace("once", "once once"), /Duplicate authored event header/],
     [advance.replace("on:click", "on:click on:click"), /Duplicate authored event header/],
@@ -981,7 +1004,7 @@ async function hosted_library_cases() {
   let expected: ReturnType<typeof descriptors>;
   try {
     await assert.rejects(locus.admit({ anchorCopy: { document: "<aside/>" }, bad: { parts: { invalid: { ...literal,
-      events: { advance: advance.replace("once", "capture") } } } } }), /Unsupported authored event header/);
+      events: { advance: advance.replace("once", "unknownOption") } } } } }), /Unsupported authored event header/);
     unchanged();
     await assert.rejects(locus.admit({ ...runtimeLibraries,
       page: { document: '<hson-part lib="runtimeParts" at="typed"/>', access: "shared" } }), /missing/);

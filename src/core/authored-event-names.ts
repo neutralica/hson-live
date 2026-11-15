@@ -2,6 +2,18 @@ import type { HsonNode } from "./types.js";
 
 export const AUTHORED_EVENT_TAG = "hson:event";
 
+/** Bare native listener options shared by Event admission and editor completion. */
+export const AUTHORED_EVENT_FLAGS: ReadonlyMap<string, string> = new Map([
+  ["once", "Remove the native listener after its first occurrence"],
+  ["capture", "Listen during the native capture phase"],
+  ["passive", "Register a passive native listener"],
+  ["preventDefault", "Attempt native default cancellation during dispatch"],
+  ["stopProp", "Stop native propagation"],
+  ["stopImmediateProp", "Stop native immediate propagation"],
+  ["document", "Listen on the subject's owning Document"],
+  ["window", "Listen on the subject's owning Window"],
+]);
+
 export function is_event_attachment_attribute(name: string): boolean {
   return name.toLowerCase().startsWith("event:");
 }
