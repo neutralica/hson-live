@@ -228,7 +228,7 @@
         "keyword.operator.interpolation.percent.hson"
       ],
       "settings": {
-        "foreground": "#edc466"
+        "foreground": "#ffa89a"
       }
     },
     {
@@ -472,7 +472,7 @@
     "hsonSending": "#b579ac",
     "hsonIteration": "#7983af",
     "hsonLocalReferenceSigil": "#d5cab1",
-    "hsonIncomingReferenceSigil": "#edc466",
+    "hsonIncomingReferenceSigil": "#ffa89a",
     "hsonString": "#a2a4a4",
     "hsonNumber": "#d8b78f",
     "hsonKeyword": "#b8b5dd",

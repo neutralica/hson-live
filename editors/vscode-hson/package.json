@@ -89,7 +89,7 @@
     ],
     "configuration": [
       {
-        "title": "Hson \u203a Appearance",
+        "title": "Hson › Appearance",
         "order": 10,
         "properties": {
           "hson.appearance.libraryMarkerStrength": {
@@ -134,7 +134,7 @@
           },
           "hson.appearance.pink": {
             "type": "string",
-            "default": "#d99db5",
+            "default": "#e76bb3",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
             "patternErrorMessage": "Use an empty value or a hexadecimal color such as #ff4a8c.",
             "scope": "window",
@@ -232,7 +232,7 @@
         }
       },
       {
-        "title": "Hson \u203a Local App",
+        "title": "Hson › Local App",
         "order": 20,
         "properties": {
           "hson.localHost.entry": {
@@ -297,7 +297,7 @@
         }
       },
       {
-        "title": "Hson \u203a Formatting",
+        "title": "Hson › Formatting",
         "order": 30,
         "properties": {
           "hson.formatting.formatOnSave": {
@@ -501,8 +501,8 @@
         "id": "hson.libraryMarker.o",
         "description": "Hson library facade marker: o (strong pink).",
         "defaults": {
-          "dark": "#d99db5",
-          "light": "#d99db5",
+          "dark": "#e76bb3",
+          "light": "#e76bb3",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
@@ -541,8 +541,8 @@
         "id": "hson.authoringMarker.o",
         "description": "Hson notation marker: O (soft pink).",
         "defaults": {
-          "dark": "#d99db5",
-          "light": "#d99db5",
+          "dark": "#e76bb3",
+          "light": "#e76bb3",
           "highContrast": "editor.foreground",
           "highContrastLight": "editor.foreground"
         }
