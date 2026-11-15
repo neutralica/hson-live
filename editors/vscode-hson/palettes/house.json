@@ -113,7 +113,7 @@
     },
     "reference.incoming.marker": {
       "dark": {
-        "foreground": "#c7bfad"
+        "foreground": "#edc466"
       },
       "light": {
         "foreground": "#3D434B"
@@ -121,7 +121,7 @@
     },
     "reference.local.marker": {
       "dark": {
-        "foreground": "#cec9bd"
+        "foreground": "#d5cab1"
       },
       "light": {
         "foreground": "#3D434B"
@@ -129,7 +129,7 @@
     },
     "reference.incoming.content": {
       "dark": {
-        "foreground": "#b775b6"
+        "foreground": "#8c78b3"
       },
       "light": {
         "foreground": "#405F83"
@@ -200,7 +200,7 @@
     "identity.punctuation.marker": {
       "inherits": "identity.quad",
       "dark": {
-        "foreground": "#db82d6"
+        "foreground": "#e76bb3"
       },
       "light": {
         "foreground": "#70518F"
