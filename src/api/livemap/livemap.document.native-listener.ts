@@ -5,7 +5,7 @@ import { livemap_document_callback_realization } from "./livemap.document.regist
 /** Resolve only at registration, so a retained builder retains its selection semantics. @internal */
 export function document_callback_listener(
   owner: object,
-  select: () => readonly number[],
+  select: (() => readonly number[]) | undefined,
   assertReadable: () => void = () => {},
 ): DocumentCallbackListener {
   type Configure = (builder: DocumentCallbackListener) => DocumentCallbackListener;
@@ -14,20 +14,70 @@ export function document_callback_listener(
     configuration.push(apply);
     return api;
   };
+  const attach = (callback: unknown, install: (builder: DocumentCallbackListener) => import("../../types/native-listener.types.js").NativeListenerSub) => {
+    const pending = configuration;
+    configuration = [];
+    assertReadable();
+    if (typeof callback !== "function") throw new TypeError("Document native listener requires a callback function.");
+    const realization = livemap_document_callback_realization(owner);
+    if (realization === undefined) throw new Error("Document native listener requires an active browser realization.");
+    const subject = select === undefined ? { kind: "document" as const } : capture_livemap_document_element(owner, select)();
+    return realization(subject, builder => install(pending.reduce((current, apply) => apply(current), builder)));
+  };
   const api: DocumentCallbackListener = {
-    onClick(callback) {
-      const pending = configuration;
-      configuration = [];
-      assertReadable();
-      if (typeof callback !== "function") throw new TypeError("Document native click requires a callback function.");
-      const attach = livemap_document_callback_realization(owner);
-      if (attach === undefined) throw new Error("Document native listener requires an active browser realization.");
-      const path = capture_livemap_document_element(owner, select)();
-      return attach(path, builder => pending.reduce((current, apply) => apply(current), builder).onClick(callback));
-    },
+    on: (type, callback) => attach(callback, builder => builder.on(type, callback)),
+    onCustom: (type, callback) => attach(callback, builder => builder.onCustom(type, callback)),
+    onCustomDetail: (type, callback) => attach(callback, builder => builder.onCustomDetail(type, callback)),
+    onInput: callback => attach(callback, builder => builder.onInput(callback)),
+    onChange: callback => attach(callback, builder => builder.onChange(callback)),
+    onSubmit: callback => attach(callback, builder => builder.onSubmit(callback)),
+    onClick: callback => attach(callback, builder => builder.onClick(callback)),
+    onDblClick: callback => attach(callback, builder => builder.onDblClick(callback)),
+    onContextMenu: callback => attach(callback, builder => builder.onContextMenu(callback)),
+    onMouseMove: callback => attach(callback, builder => builder.onMouseMove(callback)),
+    onMouseDown: callback => attach(callback, builder => builder.onMouseDown(callback)),
+    onMouseUp: callback => attach(callback, builder => builder.onMouseUp(callback)),
+    onMouseEnter: callback => attach(callback, builder => builder.onMouseEnter(callback)),
+    onMouseLeave: callback => attach(callback, builder => builder.onMouseLeave(callback)),
+    onPointerDown: callback => attach(callback, builder => builder.onPointerDown(callback)),
+    onPointerMove: callback => attach(callback, builder => builder.onPointerMove(callback)),
+    onPointerUp: callback => attach(callback, builder => builder.onPointerUp(callback)),
+    onPointerEnter: callback => attach(callback, builder => builder.onPointerEnter(callback)),
+    onPointerLeave: callback => attach(callback, builder => builder.onPointerLeave(callback)),
+    onPointerCancel: callback => attach(callback, builder => builder.onPointerCancel(callback)),
+    onTouchStart: callback => attach(callback, builder => builder.onTouchStart(callback)),
+    onTouchMove: callback => attach(callback, builder => builder.onTouchMove(callback)),
+    onTouchEnd: callback => attach(callback, builder => builder.onTouchEnd(callback)),
+    onTouchCancel: callback => attach(callback, builder => builder.onTouchCancel(callback)),
+    onWheel: callback => attach(callback, builder => builder.onWheel(callback)),
+    onScroll: callback => attach(callback, builder => builder.onScroll(callback)),
+    onKeyDown: callback => attach(callback, builder => builder.onKeyDown(callback)),
+    onKeyUp: callback => attach(callback, builder => builder.onKeyUp(callback)),
+    onFocus: callback => attach(callback, builder => builder.onFocus(callback)),
+    onBlur: callback => attach(callback, builder => builder.onBlur(callback)),
+    onFocusIn: callback => attach(callback, builder => builder.onFocusIn(callback)),
+    onFocusOut: callback => attach(callback, builder => builder.onFocusOut(callback)),
+    onDragStart: callback => attach(callback, builder => builder.onDragStart(callback)),
+    onDragOver: callback => attach(callback, builder => builder.onDragOver(callback)),
+    onDrop: callback => attach(callback, builder => builder.onDrop(callback)),
+    onDragEnd: callback => attach(callback, builder => builder.onDragEnd(callback)),
+    onAnimationStart: callback => attach(callback, builder => builder.onAnimationStart(callback)),
+    onAnimationIteration: callback => attach(callback, builder => builder.onAnimationIteration(callback)),
+    onAnimationEnd: callback => attach(callback, builder => builder.onAnimationEnd(callback)),
+    onAnimationCancel: callback => attach(callback, builder => builder.onAnimationCancel(callback)),
+    onTransitionStart: callback => attach(callback, builder => builder.onTransitionStart(callback)),
+    onTransitionEnd: callback => attach(callback, builder => builder.onTransitionEnd(callback)),
+    onTransitionCancel: callback => attach(callback, builder => builder.onTransitionCancel(callback)),
+    onTransitionRun: callback => attach(callback, builder => builder.onTransitionRun(callback)),
+    onCopy: callback => attach(callback, builder => builder.onCopy(callback)),
+    onCut: callback => attach(callback, builder => builder.onCut(callback)),
+    onPaste: callback => attach(callback, builder => builder.onPaste(callback)),
     get document() { return configure(builder => builder.document); },
     get window() { return configure(builder => builder.window); },
-    get element() { return configure(builder => builder.element); },
+    get element() {
+      if (select === undefined) { configuration = []; throw new TypeError("A Document Library cannot use element listener placement."); }
+      return configure(builder => builder.element);
+    },
     once: () => configure(builder => builder.once()),
     passive: () => configure(builder => builder.passive()),
     capture: () => configure(builder => builder.capture()),
@@ -40,5 +90,15 @@ export function document_callback_listener(
     stopAll: () => configure(builder => builder.stopAll()),
     clearStops: () => configure(builder => builder.clearStops()),
   };
+  pendingOptions.set(api, () => {
+    const pending = configuration.length > 0;
+    configuration = [];
+    if (pending) throw new TypeError("listen.event() cannot combine fluent listener options with an authored declaration.");
+  });
   return api;
+}
+
+const pendingOptions = new WeakMap<object, () => void>();
+export function assert_no_pending_document_options(builder: DocumentCallbackListener): void {
+  pendingOptions.get(builder)?.();
 }

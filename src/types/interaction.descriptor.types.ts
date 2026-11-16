@@ -1,6 +1,6 @@
 import type { HsonDataInput } from "../api/data/hson-data.js";
 import type { LiveMapDocumentPathInput } from "./livemap.types.js";
-import type { DocumentCallbackListener } from "./native-listener.types.js";
+import type { DocumentCallbackListener, DocumentLibraryCallbackListener } from "./native-listener.types.js";
 
 /** Complete normalized portable semantics of one LiveTree listener registration. */
 export type InteractionListener = Readonly<{
@@ -17,10 +17,15 @@ export type InteractionListener = Readonly<{
 
 type InteractionDataInput = HsonDataInput;
 
-/** Portable coordinate of a document subject in the authority registry. */
+/** Portable element coordinate or explicit Document Library ownership. */
 export type InteractionSubject = Readonly<{
   library: string;
   path: LiveMapDocumentPathInput;
+  kind?: never;
+}> | Readonly<{
+  library: string;
+  kind: "document";
+  path?: never;
 }>;
 
 export type BrowserInteractionDescriptor = Readonly<{
@@ -47,10 +52,13 @@ export type LocusInteractionDescriptor = Readonly<{
 
 export type InteractionDescriptor = BrowserInteractionDescriptor | LocusInteractionDescriptor;
 
-/** Author one canonical click relationship and return its accepted Descriptor ID. */
+/** Author canonical Events or click conveniences with receiver-specific acceptance. */
 export type DocumentListener<TResult> = Readonly<{
+  event: (source: string) => TResult;
   local: Readonly<{ onClick: (key: string, input?: HsonDataInput) => TResult }>;
   host: Readonly<{ onClick: (key: string, input?: HsonDataInput) => TResult }>;
 }>;
 
 export type DocumentElementListener<TResult> = DocumentListener<TResult> & DocumentCallbackListener;
+
+export type DocumentLibraryListener<TResult> = DocumentListener<TResult> & DocumentLibraryCallbackListener;

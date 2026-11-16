@@ -978,6 +978,25 @@ check('named Event diagnostics retain the argument, schema registration, and att
   assert.deepEqual(inspect(tree + 'tree.actions.define(dynamic, () => {});' + listen('x:num="120" title:str="ready"', 'missing')).codes, []);
 });
 
+check('Document Library declarations and imperative Events retain standalone diagnostics', () => {
+  const event = JSON.stringify('<hson:event on:click local:go value:str=^{missing} <> >');
+  const prefix = 'import {hsonLiveMap} from "hson-live";\n';
+  const construction = 'const map=hsonLiveMap.fromLibraries({page:{document:"<main/>"}});\n';
+  assert.deepEqual(inspect(prefix + 'const map=hsonLiveMap.fromLibraries({page:{document:"<main/>",events:{go:' + event + '}}});').slices, ['^{missing}']);
+  for (const receiver of ['map.doc.must("page")', 'map.doc.must("page").at([1,0]).asElement()!', 'page']) {
+    const alias = receiver === 'page' ? 'const page=map.doc.must("page");\n' : '';
+    assert.deepEqual(inspect(prefix + construction + alias + receiver + '.listen.event(' + event + ');').slices, ['^{missing}'], receiver);
+  }
+  const required = construction + 'map.actions.define("go",()=>{},{args:{required:true}});\n'
+    + 'map.doc.must("page").listen.event("<hson:event on:click local:go <> >");';
+  assert.deepEqual(inspect(prefix + required).codes, ['HSON_EVENT_INPUT_REQUIRED']);
+  const hosted = prefix + 'const loc=hsonLiveMap.locus.create({page:{document:"<main/>"}},{actions:{go(){}}});\n'
+    + 'loc.doc.must("page").listen.event("<hson:event on:click host:missing <> >");';
+  const unknown = inspect(hosted);
+  assert.deepEqual(unknown.slices, ['missing']);
+  assert.equal(unknown.diagnostics[0]?.message, 'Unknown hosted Action "missing".');
+});
+
 check('known Event fields retain exact Schema evidence beside unresolved operands', () => {
   const schema = '<type "data" content <count <exact -0> label "string" settings <optional <content <speed "number">>>>>';
   const source = (fields: string, definition = schema) => application('<main/>',

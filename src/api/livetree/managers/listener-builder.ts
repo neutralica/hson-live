@@ -1,3 +1,5 @@
+import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
+import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
 // listener-builder.ts
 
@@ -7,13 +9,29 @@ import type { InteractionListener } from "../../../types/interaction.descriptor.
 import type { LiveTree } from "../livetree.js";
 import { parse_livetree_authored_event } from "../livetree.actions.js";
 import { assert_livetree_node_active, is_livetree_node_disposed } from "../livetree-state.js";
-import { disposable_add_for_subject, disposable_remove_for_subject } from "./lifecycle-registry.js";
+import { disposable_add_for_subject, disposable_remove_for_subject, type DocumentListenerBinding, type LifecycleOwner } from "./lifecycle-registry.js";
 import {
   type LiveTreeRuntime,
   runtime_for_tree,
   active_subject_for_tree,
 } from "../runtime/livetree-runtime.js";
 
+
+export type NativeListenerSubject = LiveTree | DocumentListenerBinding;
+export function is_document_listener_binding(subject: NativeListenerSubject): subject is DocumentListenerBinding {
+  return "kind" in subject && subject.kind === "document";
+}
+function listener_owner(subject: NativeListenerSubject): LifecycleOwner {
+  return is_document_listener_binding(subject) ? subject : active_subject_for_tree(subject);
+}
+function assert_listener_owner(owner: LifecycleOwner): void {
+  if ("kind" in owner) owner.assertActive();
+  else assert_livetree_node_active(owner, "install listener");
+}
+function assert_listener_subject(subject: NativeListenerSubject): void {
+  if (is_document_listener_binding(subject)) subject.assertActive();
+  else assert_mutation_publication_available(active_subject_for_tree(subject));
+}
 
 type RegistrationConfig = Readonly<{
   opts: Readonly<ListenOpts>;
@@ -22,6 +40,7 @@ type RegistrationConfig = Readonly<{
   stopPropagation: boolean;
   stopImmediatePropagation: boolean;
   actionOwner?: HsonNode;
+  onNativeOnce?: () => void;
 }>;
 
 const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
@@ -56,11 +75,26 @@ function is_event_target(value: unknown): value is EventTarget {
     && typeof candidate.removeEventListener === "function";
 }
 
+/** Discover the realm from actual realization mappings, including a synthetic graph root. */
+export function realized_document_for_listener(tree: LiveTree): Document | undefined {
+  for (const node of collect_subtree_nodes(active_subject_for_tree(tree))) {
+    const element = get_el_for_node(node);
+    if (element !== undefined) return element.ownerDocument;
+  }
+  return undefined;
+}
+
 /** Resolve the exact targets selected by one normalized listener target. @internal */
 export function resolve_livetree_listener_targets_internal(
-  tree: LiveTree,
+  tree: NativeListenerSubject,
   target: ListenOpts["target"],
 ): readonly EventTarget[] {
+  if (is_document_listener_binding(tree)) {
+    tree.assertActive();
+    if (target === "element") throw new TypeError("A Document interaction subject cannot use element listener placement.");
+    const nativeTarget = target === "window" ? tree.document?.defaultView : tree.document;
+    return nativeTarget === null || nativeTarget === undefined ? [] : [nativeTarget];
+  }
   if (target === "window" || target === "document") {
     try {
       const mappedElement = tree.dom.el();
@@ -104,13 +138,16 @@ function addWithOff(
   type: string,
   handler: EventListener,
   opts: AddEventListenerOptions,
-  owner: HsonNode,
-  tree: LiveTree,
-  onOff: () => void,
+  owner: LifecycleOwner,
+  tree: NativeListenerSubject,
+  owningListeners: Set<() => void> | undefined,
+  onOff: (release: () => void) => void,
   actionOwner?: HsonNode,
+  onNativeOnce?: () => void,
 ): (() => void) | undefined {
-  const runtime = runtime_for_tree(tree);
+  const runtime = is_document_listener_binding(tree) ? tree.runtime : runtime_for_tree(tree);
   const additionalOwner = actionOwner === owner ? undefined : actionOwner;
+  const bindingListeners = "kind" in owner ? owner.listeners : undefined;
   // A failed install has no subscription to retry. Clear retired wrappers for
   // this target and event before adding another one.
   for (const off of [...(TARGET_LISTENER_REG.get(target) ?? [])]) {
@@ -129,6 +166,7 @@ function addWithOff(
     if (opts.once) {
       // Native once removes the wrapper before invoking it.
       nativeRelease.detached = true;
+      onNativeOnce?.();
     }
     if (nativeRelease.retired || (installing && actionOwner !== undefined)) return;
     try {
@@ -169,29 +207,37 @@ function addWithOff(
     const set = TARGET_LISTENER_REG.get(target);
     set?.delete(off);
     if (set?.size === 0) TARGET_LISTENER_REG.delete(target);
-    onOff();
+    bindingListeners?.delete(off);
+    owningListeners?.delete(off);
+    onOff(off);
   };
   const track = (): void => {
     let set = TARGET_LISTENER_REG.get(target);
     if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
     set.add(off);
     NATIVE_RELEASE_FOR_OFF.set(off, nativeRelease);
-    if (!is_livetree_node_disposed(owner)) disposable_add_for_subject(owner, off, "listener", runtime);
+    if ("kind" in owner || !is_livetree_node_disposed(owner)) disposable_add_for_subject(owner, off, "listener", runtime);
     if (additionalOwner !== undefined && !is_livetree_node_disposed(additionalOwner)) {
       disposable_add_for_subject(additionalOwner, off, "listener", runtime);
     }
+    bindingListeners?.add(off);
+    owningListeners?.add(off);
   };
 
   try {
     addNative(type, nativeHandler, opts);
-    assert_livetree_node_active(owner, "install listener");
+    assert_listener_owner(owner);
     if (actionOwner !== undefined) {
       assert_livetree_node_active(actionOwner, "install authored listener");
       if (nativeRelease.detached) throw new Error("Authored once listener was consumed during native installation.");
     }
   } catch (cause) {
     try { off(); }
-    catch { track(); }
+    catch {
+      // Native rollback may reenter teardown. Publish the same pending release
+      // to both owners even if installation could not return a subscription.
+      track();
+    }
     throw cause;
   } finally { installing = false; }
   if (nativeRelease.detached) return undefined;
@@ -232,10 +278,14 @@ export function _listeners_debug_hard_reset(): void {
 
 /** Authored and canonical listeners use the same normalized native registration. @internal */
 export function install_livetree_listener(
-  tree: LiveTree, listener: InteractionListener, handler: EventListener,
-  { actionOwner, owningListeners }: { actionOwner?: HsonNode; owningListeners?: Set<() => void> } = {},
+  tree: NativeListenerSubject, listener: InteractionListener, handler: EventListener,
+  { actionOwner, owningListeners, onNativeOnce }: {
+    actionOwner?: HsonNode;
+    owningListeners?: Set<() => void>;
+    onNativeOnce?: () => void;
+  } = {},
 ): ListenerSub {
-  assert_mutation_publication_available(active_subject_for_tree(tree));
+  assert_listener_subject(tree);
   if (actionOwner !== undefined) assert_livetree_node_active(actionOwner, "install authored listener");
   return attachListener(tree, listener.event, handler, {
     opts: listener,
@@ -244,11 +294,12 @@ export function install_livetree_listener(
     stopPropagation: listener.stopPropagation,
     stopImmediatePropagation: listener.stopImmediatePropagation,
     actionOwner,
+    onNativeOnce,
   }, owningListeners);
 }
 
 function attachListener(
-  tree: LiveTree, type: string, handler: EventListener, config: RegistrationConfig, owningListeners?: Set<() => void>,
+  tree: NativeListenerSubject, type: string, handler: EventListener, config: RegistrationConfig, owningListeners?: Set<() => void>,
 ): ListenerSub {
   const wrapped: EventListener = event => {
     if (config.stopImmediatePropagation) event.stopImmediatePropagation();
@@ -282,17 +333,11 @@ function attachListener(
 
   try {
     for (const target of targets) {
-      let off: (() => void) | undefined;
-      off = addWithOff(target, String(type), wrapped, options, active_subject_for_tree(tree), tree, () => {
-        if (off === undefined) return;
-        owningListeners?.delete(off);
-        const index = offs.indexOf(off);
+      const off = addWithOff(target, String(type), wrapped, options, listener_owner(tree), tree, owningListeners, release => {
+        const index = offs.indexOf(release);
         if (index >= 0) offs.splice(index, 1);
-      }, config.actionOwner);
-      if (off !== undefined) {
-        offs.push(off);
-        owningListeners?.add(off);
-      }
+      }, config.actionOwner, config.onNativeOnce);
+      if (off !== undefined) offs.push(off);
     }
   } catch (error) {
     try { sub.off(); }
@@ -322,7 +367,7 @@ function attachListener(
  * @param owningListeners - Optional binding scope that shares the native release functions.
  * @returns A fluent listener-registration surface.
  */
-export function build_listener(tree: LiveTree, owningListeners: Set<() => void> | undefined = undefined): ListenerBuilder {
+export function build_listener(tree: NativeListenerSubject, owningListeners: Set<() => void> | undefined = undefined): ListenerBuilder {
   let opts: ListenOpts = {};
   let missingPolicy: MissingPolicy = "warn";
   let hasMissingPolicy = false;
@@ -352,7 +397,7 @@ export function build_listener(tree: LiveTree, owningListeners: Set<() => void> 
     type: K,
     handler: (ev: ElemMap[K]) => void
   ): ListenerSub => {
-    assert_mutation_publication_available(active_subject_for_tree(tree));
+    assert_listener_subject(tree);
     const config = takeRegistrationConfig();
     return attachListener(tree, type, event => handler(event as ElemMap[K]), config, owningListeners);
   };
@@ -365,6 +410,7 @@ export function build_listener(tree: LiveTree, owningListeners: Set<() => void> 
       const hasPending = Object.keys(opts).length !== 0 || hasMissingPolicy || Object.keys(stops).length !== 0;
       reset();
       if (hasPending) throw new TypeError("listen.event() cannot combine fluent listener options with an authored declaration.");
+      if (is_document_listener_binding(tree)) throw new TypeError("Document authored Events require canonical admission.");
       const { listener, bind } = parse_livetree_authored_event(source);
       const { actionOwner, handler } = bind(tree);
       return install_livetree_listener(tree, listener, handler, { actionOwner, owningListeners });

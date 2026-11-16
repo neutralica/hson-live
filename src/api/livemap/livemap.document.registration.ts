@@ -45,13 +45,14 @@ export type LiveMapDocumentIdentityCommitReservation = Readonly<{
 }>;
 
 export type AttachDocumentCallback = (
-  path: LiveMapDocumentPath,
+  path: LiveMapDocumentPath | Readonly<{ kind: "document" }>,
   install: (builder: DocumentCallbackListener) => NativeListenerSub,
 ) => NativeListenerSub;
 
 /** One active local projection participant; never serialized or exposed publicly. */
 export type LiveMapDocumentIdentityParticipant = Readonly<{
   attachCallback?: AttachDocumentCallback;
+  listenerBinding?: import("../livetree/managers/lifecycle-registry.js").DocumentListenerBinding;
   /** Existing runtime namespace, including retired/pending identities. @internal */
   quidUnavailable?: (quid: string) => boolean;
   preflight: (operations: readonly LiveMapGraphOp[], introduced?: ReadonlySet<string>) => LiveMapDocumentIdentityCommitReservation;
@@ -120,6 +121,12 @@ export function livemap_document_identity_quid_unavailable(owner: object, quid: 
 export function livemap_document_callback_realization(owner: object): AttachDocumentCallback | undefined {
   const authority = authorityForOwner.get(owner);
   return authority === undefined ? undefined : participantForAuthority.get(authority)?.attachCallback;
+}
+
+/** The Library's existing Mirror owns this native binding, independent of element identity. */
+export function livemap_document_listener_binding(owner: object) {
+  const authority = authorityForOwner.get(owner);
+  return authority === undefined ? undefined : participantForAuthority.get(authority)?.listenerBinding;
 }
 
 /** Exact installed graph evidence for Mirror's subject correspondence. @internal */

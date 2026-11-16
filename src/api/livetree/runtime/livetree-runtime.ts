@@ -1,7 +1,7 @@
 import type { HsonNode } from "../../../core/types.js";
 import { is_Node } from "../../../core/node-guards.js";
 import { assert_livetree_node_active } from "../livetree-state.js";
-import type { LifecycleResourceKind } from "../managers/lifecycle-registry.js";
+import type { LifecycleResourceKind, LifecycleOwner } from "../managers/lifecycle-registry.js";
 
 /**
  * Internal ownership environment for active LiveTree claims and resources.
@@ -17,8 +17,8 @@ export type LiveTreeRuntime = {
   /** Every QUID lineage admitted or minted during this runtime lifetime. */
   readonly issuedQuids: Set<string>;
   /** Runtime resources follow exact realized subjects, never canonical QUID equality. */
-  readonly ownerDisposables: Map<HsonNode, Set<() => void>>;
-  readonly ownerDisposableKinds: Map<HsonNode, Map<() => void, LifecycleResourceKind>>;
+  readonly ownerDisposables: Map<LifecycleOwner, Set<() => void>>;
+  readonly ownerDisposableKinds: Map<LifecycleOwner, Map<() => void, LifecycleResourceKind>>;
   readonly styleDocuments: Set<Document>;
   /** Claimed documents not yet visible to runtime managers. */
   readonly silentStyleDocuments: Set<Document>;

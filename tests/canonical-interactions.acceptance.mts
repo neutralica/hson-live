@@ -14,7 +14,8 @@ import { client_projection_map } from "./helpers/client-projection.mts";
 import { test_application_catalog, test_public_projection } from "./helpers/hosted-catalog.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, remove_interaction, replace_interaction, type BrowserInteractionDescriptor, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocusInteractionDescriptor, type LocalBehaviorContext } from "../src/index.ts";
+import { getEventListeners } from "node:events";
+import { ANY_DATA, Hson, HsonDataValue, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonLiveTree, hsonMirror, remove_interaction, replace_interaction, type BrowserInteractionDescriptor, type HsonSchema, type InteractionDescriptor, type InteractionActionDispatcher, type InteractionFailure, type InteractionListener, type LocusInteractionDescriptor, type LocalBehaviorContext } from "../src/index.ts";
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -40,6 +41,9 @@ import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { hson_data_from_value } from "../src/api/data/hson-data.ts";
+import { livemap_document_listener_binding } from "../src/api/livemap/livemap.document.registration.ts";
+import { lifecycle_resource_counts_for_subject } from "../src/api/livetree/managers/lifecycle-registry.ts";
+import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
 
 install_fake_document();
 
@@ -883,6 +887,53 @@ await check("document current-tree provider fails safely while retaining its reg
   reflection.dispose();
 });
 
+await check("native Document once is consumed when the current-tree provider suppresses dispatch", () => {
+  const map = map_fixture();
+  const mirror = hsonMirror(map.doc.must("page"));
+  const doc = globalThis.document, { addEventListener, removeEventListener } = doc;
+  const target = new EventTarget();
+  Object.assign(doc, { addEventListener: target.addEventListener.bind(target), removeEventListener: target.removeEventListener.bind(target) });
+  project_livetree(retained_subject(mirror.tree));
+  const calls: string[] = [];
+  const failures: InteractionFailure[] = [];
+  for (const [event, once] of [["suppressed", true], ["persistent", false], ["normal", true]] as const) {
+    map.actions.define(event, () => { calls.push(event); });
+    add_interaction(map, { id: event, subject: { library: "page", kind: "document" }, kind: "browser", key: event,
+      listener: { ...listener, target: "document", event, once } });
+  }
+  let available = true;
+  const stop = activate_document_interactions_internal({ map, tree: mirror.tree, onFailure: failure => failures.push(failure) }, () => {
+    if (!available) throw new Error("current document tree unavailable");
+    return mirror.tree;
+  });
+  try {
+    assert.equal(getEventListeners(target, "suppressed").length, 1);
+    const persistent = getEventListeners(target, "persistent")[0];
+    const normal = getEventListeners(target, "normal")[0];
+    assert.ok(persistent && normal);
+    available = false;
+    target.dispatchEvent(new Event("suppressed"));
+    assert.deepEqual(calls, []);
+    assert.deepEqual(failures.map(({ phase }) => phase), ["subject-resolution"]);
+    assert.equal(getEventListeners(target, "suppressed").length, 0);
+
+    available = true;
+    const { aggregate, system, descriptors } = canonical_descriptors(map);
+    aggregate.commit([{ target: aggregate.systemTarget(system, ["descriptors"]), kind: "replace",
+      value: ordered_projected_array([descriptors[1]!, descriptors[0]!, descriptors[2]!]) }]);
+    assert.equal(getEventListeners(target, "suppressed").length, 0, "reordering must skip the consumed registration");
+    assert.deepEqual(getEventListeners(target, "persistent"), [persistent]);
+    assert.deepEqual(getEventListeners(target, "normal"), [normal]);
+    target.dispatchEvent(new Event("suppressed"));
+    target.dispatchEvent(new Event("normal"));
+    target.dispatchEvent(new Event("normal"));
+    assert.deepEqual(calls, ["normal"]);
+  } finally {
+    stop(); mirror.dispose();
+    Object.assign(doc, { addEventListener, removeEventListener });
+  }
+});
+
 await check("prototype names require explicit registration and missing behavior is actionable", () => {
   const map = map_fixture();
   add_interaction(map, local("prototype-only", "inherited"));
@@ -1219,6 +1270,231 @@ await check("public Echo dispatcher preserves exact payload through configured L
   assert.deepEqual(handled === undefined ? undefined : (handled).entries()?.map(([name]) => name), ["10", "2", "__proto__"]);
   assert.equal(Object.is(handled === undefined ? undefined : ((handled).entries()?.[0]?.[1]!).materialize(), -0), true);
   dispose(); reflection.dispose(); echo.dispose(); locus.dispose();
+});
+
+await check("Document Events retain Library ownership, independent once state, and Mirror disposal", async () => {
+  const nativeDocument = new Target(), nativeWindow = new Target();
+  const doc = globalThis.document;
+  Object.assign(doc, { addEventListener: nativeDocument.addEventListener.bind(nativeDocument),
+    removeEventListener: nativeDocument.removeEventListener.bind(nativeDocument), defaultView: nativeWindow });
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", events: {
+    key: '<hson:event on:key:down local:KEY pressed:str="Escape" <> >',
+    once: '<hson:event on:click once window local:ONCE <> >',
+  } } });
+  const page = map.doc.must("page");
+  const seen: LocalBehaviorContext[] = [];
+  const args: unknown[] = [];
+  let once = 0;
+  map.actions.define("KEY", (ctx, input) => { seen.push(ctx); args.push(input?.materialize()); });
+  map.actions.define("ONCE", () => { once++; });
+  assert.equal(nativeDocument.registrations.length, 0);
+  const mirror = hsonMirror(page);
+  project_livetree(retained_subject(mirror.tree));
+  assert.equal(nativeDocument.registrations.length, 0);
+  const failures: InteractionFailure[] = [];
+  const a = activate_interactions({ map, tree: mirror.tree, onFailure: failure => failures.push(failure) });
+  const b = activate_interactions({ map, tree: mirror.tree, onFailure: failure => failures.push(failure) });
+  try {
+    assert.deepEqual(failures, []);
+    assert.equal(nativeDocument.registrations.length, 2);
+    assert.equal(nativeWindow.registrations.length, 2);
+    const key = Object.assign(new Event("keydown"), { key: "Escape" });
+    nativeDocument.fire(key);
+    assert.equal(seen.length, 2);
+    assert.ok(seen.every(ctx => ctx.subjectKind === "document" && ctx.subject === page && ctx.event === key));
+    assert.deepEqual(Object.keys(seen[0]!), ["map", "subjectKind", "subject", "event"]);
+    assert.deepEqual(args, [{ pressed: "Escape" }, { pressed: "Escape" }]);
+    nativeWindow.fire();
+    assert.equal(once, 2);
+    page.at([1, 0]).asElement()!.replace({ $_tag: "article", $_content: [] });
+    nativeWindow.fire();
+    assert.equal(once, 2);
+    nativeDocument.fire(key);
+    assert.equal(seen.length, 4);
+    const replacement = hsonLiveMap.fromLibraries({ page: { document: "<section/>" } }).doc.must("page").root().$_content[0]!;
+    page.document.content.replace({ kind: "path", path: [] }, 0, replacement);
+    assert.equal(mirror.status, "active");
+    nativeWindow.fire();
+    nativeDocument.fire(key);
+    assert.equal(once, 2);
+    assert.equal(seen.length, 6);
+    assert.deepEqual(failures, []);
+    a(); a();
+    nativeDocument.fire(key);
+    assert.equal(seen.length, 7);
+    assert.equal(nativeDocument.registrations.length, 1);
+    const intent = map.capture();
+    mirror.dispose();
+    assert.equal(nativeDocument.registrations.length, 0);
+    assert.deepEqual(map.capture(), intent);
+    const direct = await map.actions.trigger("KEY");
+    assert.equal(direct.ok, true);
+    assert.deepEqual(seen.at(-1), { map });
+  } finally { a(); b(); mirror.dispose(); }
+});
+
+for (const route of ["callback", "canonical"] as const) {
+  await check(`Mirror disposes a partially installed Document ${route} listener`, () => {
+    const installationFailure = new Error("native registration threw after attaching");
+    class FailingTarget extends EventTarget {
+      removals = 0;
+      override addEventListener(type: string, callback: EventListenerOrEventListenerObject, options?: AddEventListenerOptions | boolean): void {
+        super.addEventListener(type, callback, options);
+        throw installationFailure;
+      }
+      override removeEventListener(type: string, callback: EventListenerOrEventListenerObject, options?: EventListenerOptions | boolean): void {
+        if (++this.removals === 1) throw new Error("native rollback threw before removing");
+        super.removeEventListener(type, callback, options);
+      }
+    }
+    const target = new FailingTarget();
+    const doc = globalThis.document, { addEventListener, removeEventListener } = doc;
+    Object.assign(doc, { addEventListener: target.addEventListener.bind(target), removeEventListener: target.removeEventListener.bind(target) });
+    const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+    const page = map.doc.must("page"), mirror = hsonMirror(page);
+    let stop: (() => void) | undefined;
+    let calls = 0;
+    try {
+      project_livetree(retained_subject(mirror.tree));
+      const binding = livemap_document_listener_binding(page.document);
+      assert.ok(binding);
+      if (route === "callback") {
+        assert.throws(() => page.listen.onClick(() => { calls++; }), error => error === installationFailure);
+      } else {
+        map.actions.define("run", () => { calls++; });
+        add_interaction(map, { id: "partial-install", subject: { library: "page", kind: "document" },
+          kind: "browser", key: "run", listener: { ...listener, target: "document" } });
+        const failures: InteractionFailure[] = [];
+        stop = activate_interactions({ map, tree: mirror.tree, onFailure: failure => failures.push(failure) });
+        assert.deepEqual(failures.map(({ phase, cause }) => [phase, cause]), [["listener-installation", installationFailure]]);
+      }
+      assert.equal(getEventListeners(target, "click").length, 1);
+      assert.equal(target.removals, 1);
+      assert.equal(lifecycle_resource_counts_for_subject(binding, binding.runtime).listener, 1);
+      target.dispatchEvent(new Event("click"));
+      assert.equal(calls, 0);
+
+      mirror.dispose();
+      stop?.(); stop?.(); mirror.dispose();
+      assert.equal(getEventListeners(target, "click").length, 0);
+      assert.equal(target.removals, 2);
+      assert.equal(lifecycle_resource_counts_for_subject(binding, binding.runtime).total, 0);
+      target.dispatchEvent(new Event("click"));
+      assert.equal(calls, 0);
+    } finally {
+      stop?.(); mirror.dispose();
+      Object.assign(doc, { addEventListener, removeEventListener });
+    }
+  });
+}
+
+for (const scenario of ["standalone activation", "Mirror activation", "reentrant callback", "reentrant canonical"] as const) {
+  await check(`Document failed-install cleanup survives ${scenario}`, () => {
+    const reentrant = scenario === "reentrant callback" || scenario === "reentrant canonical";
+    const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+    const page = map.doc.must("page");
+    const mirror = scenario === "standalone activation" ? undefined : hsonMirror(page);
+    const tree = mirror?.tree ?? hsonLiveTree.fromHson("<main/>");
+    const runtime = runtime_for_tree(tree);
+    const binding = livemap_document_listener_binding(page.document);
+    const target = new EventTarget();
+    const installationFailure = new Error("native add failed after attachment");
+    const rollbackFailure = new Error("first native removal failed");
+    const doc = globalThis.document, { addEventListener, removeEventListener } = doc;
+    let failAdd = false, removals = 0, calls = 0;
+    let healthy: (() => void) | undefined, stop: (() => void) | undefined;
+    Object.assign(doc, {
+      addEventListener(...args: Parameters<EventTarget["addEventListener"]>) {
+        target.addEventListener(...args);
+        if (failAdd) throw installationFailure;
+      },
+      removeEventListener(...args: Parameters<EventTarget["removeEventListener"]>) {
+        removals++;
+        if (reentrant) mirror?.dispose();
+        if (removals === 1) throw rollbackFailure;
+        target.removeEventListener(...args);
+      },
+    });
+    try {
+      project_livetree(retained_subject(tree));
+      const existingOwners = new Set(runtime.ownerDisposables.keys());
+      let healthyOwner: object | undefined;
+      if (scenario === "reentrant callback") {
+        failAdd = true;
+        assert.throws(() => page.listen.onClick(() => { calls++; }), error => error === installationFailure);
+      } else {
+        map.actions.define("run", () => { calls++; });
+        add_interaction(map, { id: "failed-attempt", subject: { library: "page", kind: "document" },
+          kind: "browser", key: "run", listener: { ...listener, target: "document" } });
+        if (!reentrant) {
+          healthy = activate_interactions({ map, tree });
+          healthyOwner = binding ?? [...runtime.ownerDisposables.keys()].find(owner => !existingOwners.has(owner));
+        }
+        failAdd = true;
+        const failures: InteractionFailure[] = [];
+        stop = activate_interactions({ map, tree, onFailure: failure => failures.push(failure) });
+        assert.deepEqual(failures.map(({ phase, cause }) => [phase, cause]), [["listener-installation", installationFailure]]);
+      }
+      const failedOwner = binding ?? [...runtime.ownerDisposables.keys()].find(owner =>
+        !existingOwners.has(owner) && owner !== healthyOwner && "kind" in owner && owner.kind === "document");
+      assert.ok(failedOwner);
+      assert.equal(lifecycle_resource_counts_for_subject(failedOwner, runtime).listener, binding !== undefined && !reentrant ? 2 : 1);
+      assert.equal(removals, 1);
+      assert.equal(getEventListeners(target, "click").length, reentrant ? 1 : 2);
+      target.dispatchEvent(new Event("click"));
+      assert.equal(calls, reentrant ? 0 : 1);
+      if (reentrant) {
+        assert.equal(mirror?.status, "disposed");
+        mirror?.dispose(); mirror?.dispose();
+      } else {
+        stop?.(); stop?.();
+        assert.equal(mirror?.status, binding === undefined ? undefined : "active");
+      }
+      assert.equal(getEventListeners(target, "click").length, reentrant ? 0 : 1);
+      assert.equal(removals, 2);
+      if (binding !== undefined) {
+        assert.equal(lifecycle_resource_counts_for_subject(binding, runtime).total, reentrant ? 0 : 1);
+      } else {
+        assert.equal([...runtime.ownerDisposables.keys()].filter(owner => !existingOwners.has(owner)).length, 1);
+        assert.equal(lifecycle_resource_counts_for_subject(failedOwner, runtime).total, 0);
+      }
+      target.dispatchEvent(new Event("click"));
+      assert.equal(calls, reentrant ? 0 : 2);
+      mirror?.dispose();
+      healthy?.(); healthy?.();
+      stop?.(); mirror?.dispose();
+      assert.equal(getEventListeners(target, "click").length, 0);
+      assert.equal(removals, reentrant ? 2 : 3);
+      assert.equal([...runtime.ownerDisposables.keys()].filter(owner => !existingOwners.has(owner)).length, 0);
+      if (binding !== undefined) assert.equal(lifecycle_resource_counts_for_subject(binding, runtime).total, 0);
+    } finally {
+      try { stop?.(); healthy?.(); mirror?.dispose(); }
+      finally { Object.assign(doc, { addEventListener, removeEventListener }); }
+    }
+  });
+}
+
+await check("Document owners remain distinct when they share a native Document", () => {
+  const target = new Target();
+  Object.assign(globalThis.document, { addEventListener: target.addEventListener.bind(target),
+    removeEventListener: target.removeEventListener.bind(target) });
+  const map = hsonLiveMap.fromLibraries({ first: { document: "<main/>" }, second: { document: "<aside/>" } });
+  const first = map.doc.must("first"), second = map.doc.must("second");
+  const a = hsonMirror(first), b = hsonMirror(second);
+  project_livetree(retained_subject(a.tree)); project_livetree(retained_subject(b.tree));
+  const subjects: unknown[] = [];
+  map.actions.define("run", ctx => { subjects.push(ctx.subject); });
+  const intent: InteractionDescriptor = { id: "retarget", subject: { library: "first", kind: "document" },
+    listener: { ...listener, target: "document", once: true }, kind: "browser", key: "run" };
+  add_interaction(map, intent);
+  const stopA = activate_interactions({ map, tree: a.tree, document: "first" });
+  const stopB = activate_interactions({ map, tree: b.tree, document: "second" });
+  try {
+    target.fire();
+    replace_interaction(map, { ...intent, subject: { library: "second", kind: "document" } });
+    target.fire(); target.fire();
+    assert.deepEqual(subjects, [first, second]);
+  } finally { stopA(); stopB(); a.dispose(); b.dispose(); }
 });
 
 await check("selected document listeners use their governing authority and exact subject", document_listener_cases);

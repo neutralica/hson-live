@@ -169,12 +169,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
     compositionStyles?: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[];
     compositionInteractions?: readonly import("./livemap.document.composition.js").DocumentCompositionInteraction[];
+    documentInteractions?: readonly import("../../core/ordered-projected-value.js").OrderedProjectedObject[];
   }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
     beforeInstall?: () => void) => LiveMapAggregateCommit;
   /** Same-admission storage from the private source owner; raw inputs use addLibraries. */
   addOwnedLibraries: (definitions: readonly (Parameters<InternalLiveMapAggregateAuthority["addLibraries"]>[0][number]
     & Readonly<{ part?: import("./livemap.parts.js").PartLibraryCandidate }>)[],
-    afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, beforeInstall?: () => void) => LiveMapAggregateCommit;
+    afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, beforeInstall?: () => void,
+    interactionAdds?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation["operation"]["interactionAdds"]) => LiveMapAggregateCommit;
   /** Admit authorized client-local initializers through the private composition path. @internal */
   addClientLocalLibraries: (definitions: readonly Readonly<{
     name: string;
@@ -186,7 +188,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     compositionScopes?: import("./livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
     quads?: import("../../types/livemap.types.js").PortableDocumentQuads;
     css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
-  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, assertAcceptance?: () => void) => LiveMapAggregateCommit;
+  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void, assertAcceptance?: () => void, interactionAdds?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation["operation"]["interactionAdds"]) => LiveMapAggregateCommit;
   /** Enforce the public mutation fence before decoding a public topology request. @internal */
   assertPublicMutationAllowed: () => void;
   /** Existing aggregate capture fence, also covering non-revisioned identity state. @internal */

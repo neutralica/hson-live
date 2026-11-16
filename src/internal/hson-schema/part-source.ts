@@ -983,6 +983,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               ?? readInitialActions(owner.arguments[1]), events: [], definitions: admission.definitions };
             locusEventSources.set(node, hosted);
           }
+          if (eligible && admission.operation === "fromLibraries") localEvents.set(node, []);
           const libraries: PartLibrarySource[] = [];
           for (const entry of fields?.fields ?? []) {
             const definition = entry.value === undefined ? undefined : object(entry.value);
@@ -997,6 +998,22 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const exclusiveData = !!own?.has("json") !== !!own?.has("hson");
             const family = own?.has("data") ? "unknown" : validParts ? "parts" : body !== undefined && !hasData && parts === undefined ? "document"
               : exclusiveData && body === undefined && parts === undefined ? "data" : "unknown";
+            const directEvents = family === "document" && eligible ? own?.get("events") : undefined;
+            if (directEvents !== undefined) {
+              const direct = eventSources(directEvents);
+              eventIssues.push(...direct.issues.map(issue => ({ ...issue, code: "HSON_EVENT_DECLARATION_INVALID" })));
+              for (const source of direct.declarations.values()) {
+                for (const argument of source.event.args) {
+                  if (argument.operand.kind === "native") continue;
+                  for (const site of event_argument_references(argument)) {
+                    const where = source.map({ start: site.start.index, end: site.end.index });
+                    if (where !== undefined) eventIssues.push({ location: where, code: "HSON_EVENT_REFERENCE_INVALID", message: standalone_event_reference_issue(site) });
+                  }
+                }
+                if (source.event.kind === "locus") hosted?.events.push(source);
+                else if (admission.operation === "fromLibraries") localEvents.get(node)?.push(source);
+              }
+            }
             const collection = family !== "parts" || parts === undefined ? undefined : object(parts);
             const members = collection === undefined ? undefined : library_source_field_candidates(collection.node, typescript);
             const evidence = family !== "parts" || parts === undefined ? undefined : part_collection_evidence(typescript, sources, parts);
@@ -1224,10 +1241,33 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
         };
         const owners = new Map<ts.VariableDeclaration, Owner>();
         const loci = new Map<ts.CallExpression, Owner>();
-        const withdraw = (): void => { owners.clear(); loci.clear(); };
+        const subjects = new Map<ts.VariableDeclaration, Owner>();
+        const withdraw = (): void => { owners.clear(); loci.clear(); subjects.clear(); };
         const receiver = (identifier: ts.Identifier) => {
           const found = immutable_source_declaration(typescript, checker, identifier, sources.eligible);
           return found?.eligible ? owners.get(found.declaration) : undefined;
+        };
+        const listenerReceiver = (input: ts.Expression, depth = 0): Owner | undefined => {
+          if (depth > 16) return undefined;
+          const value = sources.unwrap(input);
+          if (typescript.isNonNullExpression(value)) return listenerReceiver(value.expression, depth + 1);
+          if (typescript.isIdentifier(value)) {
+            const found = immutable_source_declaration(typescript, checker, value, sources.eligible);
+            const subject = found?.eligible ? subjects.get(found.declaration) : undefined;
+            const owner = receiver(value);
+            return subject ?? (owner?.family === "tree" ? owner : undefined);
+          }
+          const call = directCall(value);
+          if (call === undefined || !call.arguments.every(argument => inertValue(argument)
+            || typescript.isArrayLiteralExpression(argument) && argument.elements.every(element => inertValue(element)))) return undefined;
+          const method = literal_member(call.expression, typescript);
+          if (method === undefined) return undefined;
+          const family = literal_member(method.owner, typescript);
+          if ((method.name === "must" || method.name === "get") && family?.name === "doc" && typescript.isIdentifier(family.owner)) {
+            const owner = receiver(family.owner);
+            return owner?.family === "tree" ? undefined : owner;
+          }
+          return ["at", "q", "asElement", "present"].includes(method.name) ? listenerReceiver(method.owner, depth + 1) : undefined;
         };
         for (const statement of node.statements) {
           if (!sources.eligible(statement)) { withdraw(); continue; }
@@ -1239,6 +1279,8 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
           if (binding !== undefined && initializer !== undefined && typescript.isIdentifier(binding.name)) {
             const alias = typescript.isIdentifier(initializer) ? receiver(initializer) : undefined;
             if (alias !== undefined) { owners.set(binding, alias); continue; }
+            const subject = listenerReceiver(initializer);
+            if (subject !== undefined) { subjects.set(binding, subject); continue; }
             const awaited = typescript.isAwaitExpression(initializer);
             const construction = directCall(awaited ? initializer.expression : initializer);
             const hosted = construction === undefined ? undefined : locusEventSources.get(construction);
@@ -1284,7 +1326,8 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
           if (expression !== undefined && typescript.isAwaitExpression(expression)) { withdraw(); continue; }
           const method = literal_member(call.expression, typescript);
           const namespace = method === undefined ? undefined : literal_member(method.owner, typescript);
-          const owner = namespace !== undefined && typescript.isIdentifier(namespace.owner) ? receiver(namespace.owner) : undefined;
+          const owner = namespace?.name === "listen" ? listenerReceiver(namespace.owner)
+            : namespace !== undefined && typescript.isIdentifier(namespace.owner) ? receiver(namespace.owner) : undefined;
           if (owner === undefined || !call.arguments.every(argument => inertValue(argument))) {
             // Argument evaluation and opaque statements can change a tree's
             // registry owner or introduce an unobserved registration.
@@ -1308,7 +1351,7 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
             if (evidence.contract !== undefined) for (const event of owner.inputs) {
               if (event.event.key === name.text) output.push({ ...event, contract: evidence.contract });
             }
-          } else if (method?.name === "event" && namespace?.name === "listen" && owner.family === "tree") {
+          } else if (method?.name === "event" && namespace?.name === "listen") {
             const source = literal(call.arguments[0]);
             if (source === undefined || call.arguments.length !== 1) continue;
             eventLiterals.add(source);
@@ -1321,7 +1364,7 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
                   ? "HSON_EVENT_REFERENCE_INVALID" : "HSON_EVENT_DECLARATION_INVALID" });
               continue;
             }
-            if (event.kind !== "browser") continue;
+            if (owner.family === "tree" && event.kind !== "browser") continue;
             for (const argument of event.args) {
               if (argument.operand.kind === "native") continue;
               for (const site of event_argument_references(argument)) {
@@ -1330,13 +1373,14 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
                   message: standalone_event_reference_issue(site) });
               }
             }
+            if ((event.kind === "locus") !== (owner.family === "locus")) continue;
             const contract = owner.actions.get(event.key);
             if (contract !== undefined) output.push({ event, location: location(source), map, contract });
             else if (!owner.openActions && owner.actions.size > 0 && !owner.actions.has(event.key)) {
-              const start = event.actionStart.index + "local:".length;
+              const start = event.actionStart.index + (event.kind === "browser" ? "local:" : "host:").length;
               const where = map({ start, end: start + event.key.length });
               if (where !== undefined) issues.push({ location: where, code: "HSON_EVENT_ACTION_UNKNOWN",
-                message: `Unknown local Action ${JSON.stringify(event.key)}.` });
+                message: `Unknown ${event.kind === "browser" ? "local" : "hosted"} Action ${JSON.stringify(event.key)}.` });
             }
           } else withdraw();
         }

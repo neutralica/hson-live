@@ -30,7 +30,18 @@ export type DisposableDrainResult = Readonly<{
   bounded: boolean;
 }>;
 
-type LifecycleOwner = HsonNode;
+/** One existing Library realization; resources are independent of its root element. */
+export type DocumentListenerBinding = Readonly<{
+  kind: "document";
+  /** Realization correspondence only; resources belong to the Library binding. */
+  realization: HsonNode;
+  library: object;
+  document: Document | undefined;
+  runtime: LiveTreeRuntime;
+  assertActive: () => void;
+  listeners?: Set<() => void>;
+}>;
+export type LifecycleOwner = HsonNode | DocumentListenerBinding;
 
 export function disposables_count_for_owner(
   ownerQuid: string,

@@ -100,19 +100,6 @@ export function validate_descriptor_event_plan(value: OrderedProjectedValue): vo
   read_event_argument_plan(event, plan);
 }
 
-/** A retained operation can carry complete descriptors even when its checkpoint already covers it. */
-export function validate_interaction_operation_plans(path: readonly (string | number)[],
-  value: OrderedProjectedValue | undefined): void {
-  if (path.length === 0 && is_ordered_projected_object(value)) {
-    value = value.entries.find(([name]) => name === "descriptors")?.[1];
-  }
-  if (path.length === 0 || path[0] === "descriptors" && path.length === 1) {
-    if (Array.isArray(value)) for (const entry of value) validate_descriptor_event_plan(entry);
-  } else if (path[0] === "descriptors" && path.length === 2 && value !== undefined) {
-    validate_descriptor_event_plan(value);
-  }
-}
-
 /** Platform accessors check the native brand across realms and ignore lookalike own properties. */
 export function extract_event_arguments(plan: readonly DeferredEventArgument[], event: Event): HsonDataValue {
   const family = plan.find(field => field.length === 4)?.[2];

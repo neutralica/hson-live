@@ -140,7 +140,9 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
     bElement.dispatchEvent(new Event("click"));
     assert.equal(calls.length, 1, "the retarget resolves the existing definition and observes once");
     assert.equal(calls[0]?.event, event);
-    const subject = calls[0]?.subject;
+    const context = calls[0];
+    assert.ok(context && context.subjectKind !== "document");
+    const subject = context.subject;
     assert.ok(subject);
     assert.equal(retained_subject(subject), retained_subject(b));
     assert.equal(subject.dom.must.el(), bElement);
@@ -275,3 +277,41 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 }
 
 process.stdout.write("interaction subject path lifecycle passed\n");
+
+// Document ownership is independent of the element graph and survives portable restore.
+{
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { json: {} } });
+  const documentEvent: InteractionDescriptor = {
+    id: "document", subject: { library: "page", kind: "document" }, kind: "browser", key: "run",
+    listener: { ...listener, target: "document" },
+  };
+  add_interaction(map, documentEvent);
+  const before = map.capture();
+  const authority = internal_livemap_aggregate_authority(map);
+  const system = authority.systemState("@hson/canonical-interactions")!;
+  const canonical = () => materialize_projected_value(projected_value_from_hson_node(authority.systemRoot(system)));
+  const intent = canonical();
+  map.doc.must("page").at([1, 0]).asElement()!.replace({ $_tag: "article", $_content: [] });
+  assert.deepEqual(canonical(), intent);
+  map.restore(before);
+  assert.deepEqual(canonical(), intent);
+  const replica = make_livemap_hosted_mirror_from_snapshot_internal(authority.captureHosted());
+  const replicaAuthority = internal_livemap_aggregate_authority(replica);
+  assert.deepEqual(materialize_projected_value(projected_value_from_hson_node(
+    replicaAuthority.systemRoot(replicaAuthority.systemState("@hson/canonical-interactions")!))), intent);
+  for (const subject of [
+    { library: "page" }, { library: "page", kind: "element" },
+    { library: "page", kind: "document", path: [] },
+    { library: "page", kind: "document", extra: true },
+    { library: "missing", kind: "document" }, { library: "state", kind: "document" },
+  ]) {
+    assert.throws(() => Reflect.apply(add_interaction, undefined, [map, { ...documentEvent, id: "invalid", subject }]), /subject|document Library/i);
+  }
+  assert.throws(() => add_interaction(map, { ...documentEvent, id: "element-placement", listener }), /element listener placement/);
+  assert.deepEqual(canonical(), intent);
+  // Retained-state admission applies the same target restriction, beyond Schema shape.
+  assert.throws(() => authority.commit([{
+    target: authority.systemTarget(system, ["descriptors"]), kind: "replace",
+    value: [{ ...documentEvent, listener }],
+  }]), /element listener placement/);
+}

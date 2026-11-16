@@ -52,6 +52,18 @@ export function validate_interaction_subjects(
     if (typeof library !== "string" || !isDocumentLibrary(library)) {
       throw new TypeError("Canonical interaction subject must name a document Library.");
     }
+    const kind = field(subject, "kind");
+    const expected = kind === "document" ? ["library", "kind"] : ["library", "path"];
+    if (subject.entries.length !== expected.length || subject.entries.some(([key]) => !expected.includes(key))) {
+      throw new TypeError("Canonical interaction subject must be exactly { library, path } or { library, kind: \"document\" }.");
+    }
+    if (kind === "document") {
+      const listener = field(entry, "listener");
+      if (!is_ordered_projected_object(listener) || field(listener, "target") === "element") {
+        throw new TypeError("A Document interaction subject cannot use element listener placement.");
+      }
+      continue;
+    }
     const path = validate_document_path(field(subject, "path"));
     validatePath?.(library, path);
   }
@@ -73,7 +85,7 @@ export function rewrite_interaction_subjects(
   for (const entry of descriptors) {
     if (!is_ordered_projected_object(entry)) throw new TypeError("Canonical interaction descriptor is malformed.");
     const subject = field(entry, "subject");
-    if (!is_ordered_projected_object(subject) || field(subject, "library") !== library) {
+    if (!is_ordered_projected_object(subject) || field(subject, "library") !== library || field(subject, "kind") === "document") {
       next.push(entry);
       continue;
     }

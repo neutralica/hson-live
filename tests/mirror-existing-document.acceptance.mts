@@ -1,7 +1,9 @@
 import { retained_subject } from "./helpers/retained-livetree-subject.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { activate_interactions, hsonLiveMap } from "../src/index.ts";
 import { element, path, projected_element, raw_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { create_linked_livetree_in_runtime } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
@@ -12,6 +14,8 @@ import {
 } from "../src/api/mirror/mirror.document.ts";
 import { document_binding_for_node } from "../src/api/livetree/lifecycle/document-binding-state.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { livemap_document_listener_binding } from "../src/api/livemap/livemap.document.registration.ts";
+import { lifecycle_resource_counts_for_subject } from "../src/api/livetree/managers/lifecycle-registry.ts";
 import {
   DOCUMENT_MIRROR_ALREADY_BOUND_ERROR_CODE,
   DOCUMENT_MIRROR_DOM_MAPPING_MISMATCH_ERROR_CODE,
@@ -100,6 +104,59 @@ check("exact carrier and QUID state binds without initial DOM or graph writes", 
   assert.equal(rebound.status, "active");
   rebound.dispose();
   fixture.tree.remove();
+});
+
+check("fixed Document activation follows replacement Mirror ownership of the same tree", () => {
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", events: {
+    click: '<hson:event on:click local:CLICK <> >',
+    once: '<hson:event on:key:down once local:ONCE <> >',
+  } }, state: { json: { count: 0 } } });
+  const page = map.doc.must("page");
+  const tree = create_linked_livetree_in_runtime(projected_element("<html <head/> <body <main/>/>/>"), runtime);
+  const doc = globalThis.document, { addEventListener, removeEventListener } = doc;
+  const native = new EventTarget();
+  Object.assign(doc, { addEventListener: native.addEventListener.bind(native), removeEventListener: native.removeEventListener.bind(native) });
+  project_livetree(retained_subject(tree), "html", runtime, doc);
+  const bind = () => reflect_existing_document_in_runtime(page, tree, runtime);
+  const original = bind();
+  let replacement: ReturnType<typeof bind> | undefined;
+  let clicks = 0, once = 0;
+  map.actions.define("CLICK", () => { clicks++; });
+  map.actions.define("ONCE", () => { once++; });
+  const stop = activate_interactions({ map, tree });
+  const update = (count: number) => map.data.must("state").at(["count"]).set(count);
+  try {
+    const firstBinding = livemap_document_listener_binding(page.document);
+    const firstClick = getEventListeners(native, "click")[0];
+    assert.ok(firstBinding && firstClick);
+    native.dispatchEvent(new Event("keydown"));
+    update(1);
+    assert.deepEqual(getEventListeners(native, "click"), [firstClick]);
+    assert.equal(getEventListeners(native, "keydown").length, 0);
+
+    original.dispose();
+    assert.equal(tree.isDisposed, false);
+    assert.equal(getEventListeners(native, "click").length, 0);
+    replacement = bind();
+    const secondBinding = livemap_document_listener_binding(page.document);
+    assert.ok(secondBinding);
+    assert.notEqual(secondBinding, firstBinding);
+    update(2);
+    const secondClick = getEventListeners(native, "click")[0];
+    assert.ok(secondClick, "reconciliation must install through the replacement Mirror");
+    assert.notEqual(secondClick, firstClick);
+    assert.equal(lifecycle_resource_counts_for_subject(firstBinding, runtime).total, 0);
+    assert.equal(lifecycle_resource_counts_for_subject(secondBinding, runtime).listener, 2);
+    native.dispatchEvent(new Event("click"));
+    native.dispatchEvent(new Event("keydown"));
+    update(3);
+    assert.deepEqual(getEventListeners(native, "click"), [secondClick]);
+    assert.equal(getEventListeners(native, "keydown").length, 0);
+    assert.deepEqual([clicks, once], [1, 2]);
+  } finally {
+    stop(); replacement?.dispose(); original.dispose(); tree.remove();
+    Object.assign(doc, { addEventListener, removeEventListener });
+  }
 });
 
 check("ordinary later commit uses existing Mirror projection and retains Element identity", () => {

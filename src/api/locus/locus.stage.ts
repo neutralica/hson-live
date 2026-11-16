@@ -23,7 +23,7 @@ import { must_live_path, must_ordered_projected_value } from "../livemap/livemap
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { register_governed_document, write_document_quad } from "../../internal/governed-document.js";
-import { capture_document_click, document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
+import { capture_document_click, capture_document_event, document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
 import { add_interaction } from "../interactions/interactions.js";
 
 type Writer = LiveMapStagedWriter<LiveMap, void>;
@@ -48,7 +48,7 @@ export function make_locus_stage<TMap extends LiveMap>(
     const selected = resolve_livemap_library_internal(map, name)?.family === "parts" ? writer.parts.must(name) : writer.data.must(name);
     return selected;
   };
-  const listenAt = (name: string, document: LiveMapDocumentLibrary, select: () => readonly number[], assertLifetime?: () => void) =>
+  const listenAt = (name: string, document: LiveMapDocumentLibrary, select: (() => readonly number[]) | undefined, assertLifetime?: () => void) =>
     document_listener(async (destination, key, input) => {
       assertSubmissionAllowed();
       assertReadable();
@@ -57,6 +57,16 @@ export function make_locus_stage<TMap extends LiveMap>(
         assertReadable();
         if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
         // This submission has no graph commands ahead of the addition in its candidate.
+        add_interaction(writer, captured.descriptor());
+      });
+      return captured.id;
+    }, async source => {
+      assertSubmissionAllowed();
+      assertReadable();
+      const captured = capture_document_event(document.document, name, select, source, assertLifetime);
+      await submit(writer => {
+        assertReadable();
+        if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
         add_interaction(writer, captured.descriptor());
       });
       return captured.id;
@@ -207,6 +217,7 @@ export function make_locus_stage<TMap extends LiveMap>(
         );
         const handle = Object.freeze({
           mode: "document" as const,
+          get listen() { assertReadable(); return listenAt(name, document, undefined); },
           get rev() { assertReadable(); return document.rev; },
           root: observe(() => document.root()),
           snap: observe(() => document.snap()), hson: observe(() => document.hson()),

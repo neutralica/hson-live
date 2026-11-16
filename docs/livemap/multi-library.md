@@ -16,7 +16,7 @@ map.data.must("state").at([]).object.setKey("count", 1);
 Each entry has exactly one family discriminator:
 
 - `data` accepts a literal Data value or an explicit Data carrier. Ordinary JavaScript strings are literal Data: use `data: "hello"` for a string value. To interpret JSON or Hson source, use `data: Hson.data.fromSource('"hello"')`.
-- `document` accepts authored Hson source text or a canonical Hson node, with optional textual `stylesheet`.
+- `document` accepts authored Hson source text or a canonical Hson node, with optional `stylesheet` and named `events` declarations.
 - `parts` accepts keyed Part definitions governed intrinsically; it forbids a supplemental `schema` and a Library-level `stylesheet`.
 
 `schema` may be omitted. A data library then uses `ANY_DATA`; a document library uses `ANY_DOCUMENT`. Initial material is validated during construction or runtime admission. An explicit Schema retains its generated type evidence, so `JsonFromSchema<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
@@ -50,6 +50,16 @@ Document element locations expose `attrs`, `flags`, insertion, and movement;
 text/content locations do not expose those element-only capabilities.
 `hsonMirror(map.doc.must("page"))` binds one named document Library and stays
 attached across unrelated global revisions and reconcile replacement.
+
+The Library handle itself exposes `page.listen`, with native Document placement
+by default and `.window` for explicit Window placement. `page.listen.event(source)`
+creates a canonical Document-owned relationship; element `.listen.event(source)`
+retains element ownership. Input `events: { name: source }` creates deterministic
+`document-event/<library>/<name>` IDs atomically with admission. Supported local
+Library-add replay includes the corresponding `interactionAdds`. Local
+initializers fingerprint and install those contributions once; existing client
+Library and Event state takes precedence. See [Document Library listeners](api-livemap.md#selection-and-reads)
+and [canonical interactions](../canonical-interactions.md).
 
 A `LiveMapCommit` holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Ordinary content/CSS entries are `{ library, operation }`; topology admission uses the tagged `library-add` shape. The library name is public and the engine's opaque library identity is never exposed.
 

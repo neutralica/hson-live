@@ -3,7 +3,7 @@ import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { InteractionLocalBehaviors } from "./local-behavior.types.js";
-import type { DocumentElementListener, DocumentListener } from "./interaction.descriptor.types.js";
+import type { DocumentElementListener, DocumentListener, DocumentLibraryListener } from "./interaction.descriptor.types.js";
 import type { DocumentCallbackListener } from "./native-listener.types.js";
 // livemap.types.ts
 
@@ -1164,6 +1164,7 @@ export type LiveMapDocumentLibraryInput<
   hson?: never;
   parts?: never;
   stylesheet?: string | import("../core/style.types.js").CssMap;
+  events?: Readonly<Record<string, string>>;
 }>;
 
 /** Established data, document, or intrinsically governed Parts input. */
@@ -1228,13 +1229,13 @@ type RequiredDefinitionKeys<T> = { [K in keyof T]-?: {} extends Pick<T, K> ? nev
 /** Library-only representation check. Widened strings and any retain runtime literal semantics. */
 type LibraryJsonRepresentationCheck<T> = T extends HsonCanonical | HsonAuthored ? never : T;
 type LiveMapDefinitionValidity<T, Metadata extends string> = T extends unknown
-  ? (Exclude<keyof T, "json" | "hson" | "document" | "parts" | "schema" | "stylesheet" | Metadata> extends never ? unknown : never)
+  ? (Exclude<keyof T, "json" | "hson" | "document" | "parts" | "schema" | "stylesheet" | "events" | Metadata> extends never ? unknown : never)
     & ("access" extends Metadata ? T extends { access: infer A } ? [A] extends ["private" | "shared"] ? unknown : never : unknown : unknown)
     & (T extends { json: infer V } ? { readonly json: import("../api/data/hson-data.js").HsonDataInputCheck<V> & LibraryJsonRepresentationCheck<V> } : unknown)
     & LiveMapPartsDefinitionCheck<T> & LiveMapDocumentStylesheetCheck<T> & (
-    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "json" | "hson" | "document" | "schema" | "stylesheet"> extends never ? unknown : never
-    : T extends { json: unknown } ? Extract<RequiredDefinitionKeys<T>, "hson" | "document" | "parts" | "stylesheet"> extends never ? unknown : never
-    : T extends { hson: string } ? Extract<RequiredDefinitionKeys<T>, "json" | "document" | "parts" | "stylesheet"> extends never ? unknown : never
+    T extends { parts: unknown } ? Extract<RequiredDefinitionKeys<T>, "json" | "hson" | "document" | "schema" | "stylesheet" | "events"> extends never ? unknown : never
+    : T extends { json: unknown } ? Extract<RequiredDefinitionKeys<T>, "hson" | "document" | "parts" | "stylesheet" | "events"> extends never ? unknown : never
+    : T extends { hson: string } ? Extract<RequiredDefinitionKeys<T>, "json" | "document" | "parts" | "stylesheet" | "events"> extends never ? unknown : never
     : T extends { document: unknown } ? Extract<RequiredDefinitionKeys<T>, "json" | "hson" | "parts"> extends never ? unknown : never
     : never)
   : never;
@@ -1620,6 +1621,7 @@ export type LiveMapDocumentLibrary<
   readonly mode: LiveMapDocumentMode;
   readonly rev: number;
   readonly css: import("./document-css.types.js").DocumentCssHandle;
+  readonly listen: DocumentLibraryListener<string>;
   snap: () => string;
   hson: () => HsonDocument;
   readonly must: RequiredReads<string, HsonDocument>;

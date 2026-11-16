@@ -428,7 +428,7 @@ const actions: InteractionLocalBehaviors = continuationRegistry.actions;
 actions.define("reveal", (context, args) => {
   const ctx: LocalBehaviorContext = context;
   const event: Event | undefined = ctx.event;
-  const subject: LiveTree | undefined = ctx.subject;
+  const subject: LiveTree | undefined = ctx.subjectKind === "document" ? undefined : ctx.subject;
   void [ctx.map, event, subject];
   return args;
 }, behaviorOptions);

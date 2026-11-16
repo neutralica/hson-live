@@ -38,6 +38,8 @@ export type LocusLocalInitializer = Readonly<{
   quads: PortableDocumentQuads;
   /** Existing occurrence namespaces, never flattened into Document names. */
   scopes?: import("../api/livemap/livemap.document.scoped-quad-codec.js").DocumentScopedQuadRecord;
+  /** Canonical Event contributions admitted only when this local Library is first installed. */
+  interactionAdds?: Readonly<{ format: "hson-exact-value"; payload: string }>;
   fingerprint: string;
 }>;
 

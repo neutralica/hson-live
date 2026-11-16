@@ -99,6 +99,45 @@ Data library roots may be objects, arrays, strings, finite numbers, booleans, or
 
 Document libraries expose `document.content`, `document.attrs`, `document.flags`, `document.byQuid`, logical `at(path)` locations, `q(name)`, commits, and `render()`. Document identity is local to the runtime; portable addresses and requests use paths.
 
+Individual Document Libraries also expose `listen`. With an active Mirror or
+continuation, `page.listen.onKeyDown(handler)` registers a managed native Document
+callback, and `page.listen.window.onKeyDown(handler)` selects its owning Window.
+Generic `on`, `onCustom`, `onCustomDetail`, typed convenience listeners, and native
+options follow the LiveTree builder. Each registration returns a subscription
+with `off()`; Library callbacks survive ordinary element replacement and release
+with the realization. Targets always come from the realization's browser realm.
+
+`page.listen.event(source)` authors a canonical Document-owned Event. Element
+handles expose the same method with element ownership. Local and Echo-local
+receivers return a distinct Descriptor ID; Locus returns `Promise<string>` after
+acceptance. Echo-projected handles expose native callbacks only, and read/staged
+handles expose no runtime listeners. Authored source includes its own flags and
+Action destination, so pending fluent native options cannot accompany `.event`.
+
+Document input accepts `events?: Readonly<Record<string, string>>`:
+
+```ts
+const map = hsonLiveMap.fromLibraries({ page: {
+  document: "<main/>",
+  events: {
+    shortcut: '<hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} <> >',
+  },
+} });
+map.actions.define("SHORTCUT", (ctx, args) => {
+  if (ctx.subjectKind === "document") {
+    const page = ctx.subject; // The existing Library handle.
+    handleShortcut(page, args?.materialize());
+  }
+});
+```
+
+Each entry becomes one canonical Descriptor, with Document placement by default
+and explicit `window` supported. Entries need no element `event:name` attachment
+and have no Part lexical scope. Admission is atomic with the Library; persisted
+state carries canonical contributions, not the authored source record. Root edits
+and restoration do not regenerate declarations. See [canonical interactions](../canonical-interactions.md)
+for subject validation, Action context, activation, and persistence contracts.
+
 `page.q(name)` returns an identity-following `LiveMapDocumentQuadLocation`, or `undefined` for an unknown or retired authored QUAD. Lookup issues no identity and publishes nothing. Movement and valid replacement lineage retain the target; retirement, disposal, epoch replacement and changes to its owning hosted authority identity terminate the handle. Portable restoration requires fresh handles. Part selections support `page.q("nav")?.q("buttonOne")` with independent child disposal. Direct bindings take precedence; otherwise only unnamed occurrence boundaries are transparent, and ambiguous matches return `undefined`. Element bindings supply no child namespace. Relative `.at()` retains the anchor’s namespace. Data Libraries have no `.q`; see the [document QUAD location contract](../contracts/document-q-location.md) for the exact lifetime and relative-path rules.
 
 Document definitions accept `stylesheet?: string | CssMap` at construction and dynamic admission. Strings remain opaque CSS source. Structured maps use the established CssMap grammar: root declarations and relative selectors target `:root`, and `@:name` targets resolve through the receiving Document's authored QUAD namespace. Normalization, selector/media validation, target resolution, and complete Document qualification precede publication. Declaration order, typed units, custom properties, pseudos, and undefined-deletion behavior are retained. Part occurrence scoping is unchanged.

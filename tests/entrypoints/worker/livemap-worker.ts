@@ -31,6 +31,10 @@ const state = map.data.must("state");
 // @ts-expect-error Data Libraries do not expose document QUAD access.
 state.q("member");
 const quadDocument = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main @:main/>` } }).doc.must("page");
+quadDocument.listen.event('<hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} <> >') satisfies string;
+quadDocument.listen.on("keydown", event => { event satisfies unknown; }).off();
+quadDocument.listen.window.onKeyDown(event => { event satisfies unknown; }).off();
+quadDocument.listen.onCustomDetail<{ value: number }>("custom", event => { event.detail.value satisfies number; }).off();
 const quad: LiveMapDocumentQuadLocation<"page"> | undefined = quadDocument.q("unknown");
 if (quad !== undefined) {
   const active: boolean = quad.active;

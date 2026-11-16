@@ -110,6 +110,7 @@ export function make_echo_library_selector(
     if (source === "client-local") {
       const local = raw.mode === "document"
         ? Object.freeze({ source, mode: raw.mode, get rev() { return raw.rev; }, root: () => raw.root(),
+          get listen() { return guard_document_listener(raw.listen, assertReadable); },
           at: (path: readonly number[]) => local_document_location(raw.at(path)), ...representations(raw), watch: raw.watch.bind(raw),
           render: mark_browser_html_producer(() => raw.render()),
           document: Object.freeze({ root: raw.document.root.bind(raw.document), content: raw.document.content,
@@ -145,7 +146,7 @@ export function make_echo_library_selector(
       if (command.kind === "setMany") throw new Error("Expected semantic flag names.");
       return Object.freeze(Object.fromEntries(command.names.map(name => [name, name])));
     };
-    const callbackListener = (select: () => readonly number[]) =>
+    const callbackListener = (select: (() => readonly number[]) | undefined) =>
       Object.freeze(document_callback_listener(document.document, select, assertReadable));
     type ProjectedQuad = NonNullable<ReturnType<import("../../types/governor.types.js").EchoProjectedDocumentLibrary["q"]>>;
     const projected_quad = (raw: NonNullable<ReturnType<LiveMapDocumentLibrary["q"]>>): ProjectedQuad => {
@@ -256,6 +257,7 @@ export function make_echo_library_selector(
       })),
     });
     const governed = Object.freeze({ source, mode: "document" as const,
+      get listen() { return callbackListener(undefined); },
       get rev() { return document.rev; }, root: () => document.root(), ...representations(document), watch: document.watch.bind(document),
       render: mark_browser_html_producer(() => document.render()),
       commits: document.commits, schema: Object.freeze({ get: () => document.schema.get() }),

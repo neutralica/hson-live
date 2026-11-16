@@ -45,6 +45,30 @@ function assert_subjects(map: LiveMap, ids: readonly string[], index: number) {
 }
 
 export async function document_listener_cases(): Promise<void> {
+  {
+    const map = hsonLiveMap.fromLibraries({ page: { document: source } });
+    const page = map.doc.must("page"), element = page.at(first).asElement()!;
+    const event = '<hson:event on:key:down local:KEY pressed:str=^{key.key} <> >';
+    const one = page.listen.event(event), two = page.listen.event(event);
+    const three = element.listen.event(event);
+    assert.equal(new Set([one, two, three]).size, 3);
+    assert.deepEqual(descriptors(map).map(record => record.get("subject")?.materialize()), [
+      { library: "page", kind: "document" }, { library: "page", kind: "document" }, { library: "page", path: structural(0) },
+    ]);
+    const builder = page.listen;
+    builder.once();
+    assert.throws(() => builder.event(event), /cannot combine/);
+    assert.equal(typeof builder.event(event), "string");
+    assert.throws(() => page.listen.onKeyDown(() => {}), /active browser realization/);
+    const locus = hsonLiveMap.locus.create({ page: { document: source } });
+    try {
+      const pending = locus.doc.must("page").listen.event('<hson:event on:click host:GO <> >');
+      assert.ok(pending instanceof Promise);
+      assert.equal(typeof await pending, "string");
+      assert.equal(typeof await locus.doc.must("page").at(first).asElement()!.listen.event(event), "string");
+      await locus.stage(stage => assert.equal("listen" in stage.doc.must("page"), false));
+    } finally { locus.dispose(); }
+  }
   const unreadInput = reflectingInput(() => assert.fail("An invalid listener target must reject before input reflection."));
   {
     const map = hsonLiveMap.fromLibraries({ page: { document: source } });

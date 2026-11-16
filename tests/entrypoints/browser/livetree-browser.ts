@@ -35,12 +35,12 @@ selection.listen.onClick((event: KeyboardEvent) => {});
 
 hsonLiveMap.create().actions.define("click", (ctx, args) => {
   ctx.event satisfies Event | undefined;
-  ctx.subject satisfies LiveTree | undefined;
+  if (ctx.subjectKind !== "document") ctx.subject satisfies LiveTree | undefined;
   ctx.event?.preventDefault();
   if (ctx.event instanceof MouseEvent) ctx.event.clientX satisfies number;
   // @ts-expect-error Mouse coordinates require narrowing the native event.
   ctx.event?.clientX;
-  ctx.subject?.dom.el() satisfies Element | undefined;
+  if (ctx.subjectKind !== "document") ctx.subject?.dom.el() satisfies Element | undefined;
   return args;
 });
 

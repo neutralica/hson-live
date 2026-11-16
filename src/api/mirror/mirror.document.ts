@@ -16,6 +16,7 @@ import type {
 import { create_linked_livetree_in_runtime, wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import { project_linked_livetree } from "../livetree/creation/project-live-tree.js";
 import type { LiveTree } from "../livetree/livetree.js";
+import type { DocumentListenerBinding } from "../livetree/managers/lifecycle-registry.js";
 import { build_listener } from "../livetree/managers/listener-builder.js";
 import {
   document_binding_for_node,
@@ -255,10 +256,28 @@ function reflect_document_binding_in_runtime(
   let rootRegistration: DocumentBindingNodeRegistration | undefined;
   // LiveTree removes entries on off(), once, and subject retirement.
   const callbackListeners = new Set<() => void>();
+  let listenerDocument: Document | undefined;
+  const listenerBinding: DocumentListenerBinding = Object.freeze({
+    kind: "document", get realization() { return active_subject_for_tree(tree); }, library: map.document, runtime, listeners: callbackListeners,
+    get document() {
+      // The realized realm belongs to the Library binding even while a root
+      // edit removes its last mapped element. A new realization can rebind it.
+      const realized = mounted_document_anchor(projectedRoot)?.ownerDocument;
+      if (realized !== undefined) listenerDocument = realized;
+      return listenerDocument;
+    },
+    assertActive() {
+      if (currentStatus !== "active") throw new Error("Document native listener requires an active Mirror.");
+      void map.rev;
+    },
+  });
 
   const release_callback_listeners = (): void => {
     const failures: unknown[] = [];
-    for (const release of callbackListeners) {
+    // A failed installation can leave a binding-owned native release before
+    // the installer returns a subscription and records it in callbackListeners.
+    const releases = new Set([...callbackListeners, ...(runtime.ownerDisposables.get(listenerBinding) ?? [])]);
+    for (const release of releases) {
       try { release(); } catch (cause) { failures.push(cause); }
     }
     if (failures.length) throw new AggregateError(failures, "Document native listener disposal failed.");
@@ -508,24 +527,33 @@ function reflect_document_binding_in_runtime(
     return Object.freeze({ name: "document.content.remove", payload: { target: registration.canonicalTarget, index: 0 } });
   };
 
+  let disposing = false;
   const dispose_binding = (): void => {
-    if (currentStatus === "disposed") return;
-    currentStatus = "disposed";
-    const failures: unknown[] = [];
-    const clean = (run: () => void): void => { try { run(); } catch (cause) { failures.push(cause); } };
-    const callbacks = [off, offAuthorityPosition, offIdentityParticipant, offRetirement, release_callback_listeners];
-    off = offAuthorityPosition = offIdentityParticipant = offRetirement = undefined;
-    for (const callback of callbacks) if (callback !== undefined) clean(callback);
-    for (const registration of registrations) clean(() => unregister_document_binding_node(registration.node, owner));
-    if (rootRegistration !== undefined) {
-      clean(() => unregister_document_binding_node(projectedRoot, owner));
-      rootRegistration = undefined;
-    }
-    byPath.clear();
-    byQuid.clear();
-    clean(release_borrowed_carrier);
-    ACTIVE_DOCUMENT_BINDINGS.delete(map);
-    if (failures.length) throw new AggregateError(failures, "Document Mirror disposal failed.");
+    if (disposing) return;
+    disposing = true;
+    try {
+      if (currentStatus === "disposed") {
+        // A native rollback can publish its pending release after teardown.
+        release_callback_listeners();
+        return;
+      }
+      currentStatus = "disposed";
+      const failures: unknown[] = [];
+      const clean = (run: () => void): void => { try { run(); } catch (cause) { failures.push(cause); } };
+      const callbacks = [off, offAuthorityPosition, offIdentityParticipant, offRetirement, release_callback_listeners];
+      off = offAuthorityPosition = offIdentityParticipant = offRetirement = undefined;
+      for (const callback of callbacks) if (callback !== undefined) clean(callback);
+      for (const registration of registrations) clean(() => unregister_document_binding_node(registration.node, owner));
+      if (rootRegistration !== undefined) {
+        clean(() => unregister_document_binding_node(projectedRoot, owner));
+        rootRegistration = undefined;
+      }
+      byPath.clear();
+      byQuid.clear();
+      clean(release_borrowed_carrier);
+      ACTIVE_DOCUMENT_BINDINGS.delete(map);
+      if (failures.length) throw new AggregateError(failures, "Document Mirror disposal failed.");
+    } finally { disposing = false; }
   };
 
   const delegate_remove = (registration: ProjectedRegistration): boolean => {
@@ -1140,6 +1168,16 @@ function reflect_document_binding_in_runtime(
       }
     };
     assertCurrent();
+    if ("kind" in path) {
+      const document = listenerBinding.document;
+      if (document === undefined) throw new Error("Document Library has no browser realization.");
+      const sub = install(build_listener(listenerBinding, callbackListeners));
+      try {
+        assertCurrent();
+        if (listenerBinding.document !== document) throw new Error("Document listener realm changed during registration.");
+        return sub;
+      } catch (cause) { sub.off(); throw cause; }
+    }
     const key = path_key(path);
     const registration = byPath.get(key);
     const element = registration === undefined ? undefined : get_el_for_node(registration.node);
@@ -1485,6 +1523,7 @@ function reflect_document_binding_in_runtime(
     // revision recheck then closes the capture-to-subscribe initialization gap.
     offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
       attachCallback: attach_callback,
+      listenerBinding,
       quidUnavailable: (quid: string) => runtime.issuedQuids.has(quid) || runtime.pendingQuidClaims.has(quid) || runtime.quidToNode.has(quid),
       preflight: (operations, introduced) => preflight_identity_operations(operations, undefined, introduced),
       preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) =>

@@ -34,3 +34,11 @@ const missingLibrary: InteractionDescriptor = {
   args: null,
 };
 void missingLibrary;
+
+const documentSubject: InteractionDescriptor = { id: "document", subject: { library: "page", kind: "document" },
+  listener: { ...listener, target: "document" }, kind: "browser", key: "run" };
+void documentSubject;
+// @ts-expect-error A Document subject cannot carry an element path.
+const hybridSubject: InteractionDescriptor["subject"] = { library: "page", kind: "document", path: [] };
+// @ts-expect-error A missing path does not imply Document ownership.
+const missingSubject: InteractionDescriptor["subject"] = { library: "page" };

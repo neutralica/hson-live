@@ -1,3 +1,6 @@
+import { livemap_document_listener_binding } from "../livemap/livemap.document.registration.js";
+import type { DocumentListenerBinding } from "../livetree/managers/lifecycle-registry.js";
+import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
@@ -21,12 +24,13 @@ import { extract_event_arguments, read_event_argument_plan } from "../../interna
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import type { ListenerSub } from "../../types/listen.types.js";
-import { install_livetree_listener, resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
+import { install_livetree_listener, resolve_livetree_listener_targets_internal, realized_document_for_listener, is_document_listener_binding, type NativeListenerSubject } from "../livetree/managers/listener-builder.js";
 import type {
   InteractionActivationOptions,
   InteractionDescriptor,
   InteractionFailure,
   InteractionListener,
+  InteractionSubject,
 } from "../../types/interaction.types.js";
 import {
   commit_interaction_edit_internal,
@@ -48,7 +52,8 @@ type Storage = Readonly<{
 type RuntimeRecord = Readonly<{
   fingerprint: string;
   node: object;
-  subject: LiveTree;
+  subject: NativeListenerSubject;
+  target: EventTarget | undefined;
   sub: ListenerSub;
   state: { consumed: boolean };
 }>;
@@ -63,6 +68,8 @@ type ActivationSnapshot = Readonly<{
   map: LiveMap;
   tree: LiveTree;
   document: string;
+  documentHandle: LiveMapDocumentLibrary;
+  documentBinding: DocumentListenerBinding;
   dispatch: InteractionActivationOptions["dispatch"];
   onFailure: InteractionActivationOptions["onFailure"];
 }>;
@@ -136,8 +143,10 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
   const aggregate = internal_livemap_aggregate_authority(activation.map);
   const system = require_interaction_system_internal(aggregate);
   const records = new Map<string, RuntimeRecord>();
+  const owningListeners = new Set<() => void>();
   let unresolvedBehaviors = new Map<string, UnresolvedBehavior>();
   let disposed = false;
+  let disposing = false;
   let reconciling = false;
   let pending = false;
   let initializing = true;
@@ -161,12 +170,19 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
 
         for (const [id, record] of [...records]) {
           const descriptor = desiredById.get(id);
-          let subject: LiveTree | undefined;
-          try { subject = descriptor === undefined ? undefined : resolve_local_subject(activation, descriptor); }
+          let subject: NativeListenerSubject | undefined;
+          let target: EventTarget | undefined;
+          try {
+            subject = descriptor === undefined ? undefined : resolve_local_subject(activation, descriptor);
+            if (descriptor !== undefined && subject !== undefined && is_document_listener_binding(subject)) {
+              target = resolve_livetree_listener_targets_internal(subject, descriptor.listener.target)[0];
+            }
+          }
           catch { subject = undefined; }
           const fingerprint = descriptor === undefined ? undefined : descriptor_fingerprint(descriptor);
           if (descriptor === undefined || subject === undefined
-            || active_subject_for_tree(subject) !== record.node || fingerprint !== record.fingerprint) {
+            || native_subject_identity(subject) !== record.node
+            || (is_document_listener_binding(subject) && target !== record.target) || fingerprint !== record.fingerprint) {
             record.sub.off();
             records.delete(id);
           }
@@ -180,11 +196,11 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
         const installable = desired.filter((descriptor) => {
           if (descriptor.subject.library !== activation.document) return false;
           if (records.has(descriptor.id)) return true;
-          let subject: LiveTree | undefined;
+          let subject: NativeListenerSubject | undefined;
           let node: object | undefined;
           try {
             subject = resolve_local_subject(activation, descriptor);
-            if (subject !== undefined) node = active_subject_for_tree(subject);
+            if (subject !== undefined) node = native_subject_identity(subject);
           } catch { subject = undefined; }
           if (descriptor.kind === "browser") {
             const previous = unresolvedBehaviors.get(descriptor.id);
@@ -225,8 +241,9 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
         }
 
         for (const descriptor of desired) {
+          if (disposed) break;
           if (records.has(descriptor.id)) continue;
-          let subject: LiveTree | undefined;
+          let subject: NativeListenerSubject | undefined;
           try { subject = resolve_local_subject(activation, descriptor); } catch (cause) {
             report(descriptor, "subject-resolution", cause);
             continue;
@@ -265,10 +282,13 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                   const current = currentDescriptor === undefined
                     || descriptor_fingerprint(currentDescriptor) !== fingerprint
                     ? undefined : resolve_local_subject(activation, currentDescriptor);
-                  if (current === undefined || active_subject_for_tree(current) !== active_subject_for_tree(subject)) return;
+                  if (current === undefined || native_subject_identity(current) !== native_subject_identity(subject)) return;
+                } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
+              } else if (is_document_listener_binding(subject)) {
+                try {
+                  if (resolve_local_subject(activation, descriptor) !== subject) return;
                 } catch (cause) { report(descriptor, "subject-resolution", cause); return; }
               }
-              if (descriptor.listener.once) state.consumed = true;
               let data;
               try { data = plan === undefined ? captured : extract_event_arguments(plan, event); }
               catch (cause) {
@@ -276,7 +296,10 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 return;
               }
               if (invoke !== undefined) {
-                void invoke(data, { subject, event, onFailure: cause => report(descriptor, "browser-invocation", cause) });
+                const source = is_document_listener_binding(subject)
+                  ? { subjectKind: "document" as const, subject: activation.documentHandle, event }
+                  : { subject, event };
+                void invoke(data, { ...source, onFailure: cause => report(descriptor, "browser-invocation", cause) });
                 return;
               }
               const dispatch = activation.dispatch;
@@ -287,14 +310,27 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 });
               } catch (cause) { report(descriptor, "locus-invocation", cause); }
             };
-            const sub = install_livetree_listener(subject, descriptor.listener, handler);
-            if (resolve_livetree_listener_targets_internal(subject, descriptor.listener.target).length === 0) {
+            const sub = install_livetree_listener(subject, descriptor.listener, handler, {
+              owningListeners,
+              onNativeOnce: () => { state.consumed = true; },
+            });
+            let target: EventTarget | undefined;
+            try {
+              if (!disposed && (!is_document_listener_binding(subject) || activation.documentBinding === subject)) {
+                target = resolve_livetree_listener_targets_internal(subject, descriptor.listener.target)[0];
+              }
+            } catch (cause) {
+              try { sub.off(); } catch { /* Keep native rollback reachable through the activation. */ }
+              throw cause;
+            }
+            if (target === undefined) {
               sub.off();
               continue;
             }
             records.set(descriptor.id, Object.freeze({
               fingerprint,
-              node: active_subject_for_tree(subject),
+              node: native_subject_identity(subject),
+              target,
               subject,
               sub,
               state,
@@ -303,27 +339,31 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
           } catch (cause) { report(descriptor, "listener-installation", cause); }
           if (materialized && initializing) activationInitializationMaterializationHook?.();
         }
-      } while (pending);
+      } while (pending && !disposed);
     } finally { reconciling = false; }
   };
 
   const dispose = (): void => {
-    if (disposed) return;
+    if (disposing) return;
     disposed = true;
+    disposing = true;
     pending = false;
     const failures: unknown[] = [];
     const release = (operation: (() => void) | undefined): void => {
       try { operation?.(); } catch (cause) { failures.push(cause); }
     };
-    release(stopCommit);
-    release(stopRestore);
-    release(stopRealizations);
-    stopCommit = undefined;
-    stopRestore = undefined;
-    stopRealizations = undefined;
-    for (const record of records.values()) release(() => record.sub.off());
-    records.clear();
-    unresolvedBehaviors.clear();
+    try {
+      release(stopCommit);
+      release(stopRestore);
+      release(stopRealizations);
+      stopCommit = undefined;
+      stopRestore = undefined;
+      stopRealizations = undefined;
+      // Native releases remove themselves from this scope only after detaching.
+      for (const off of [...owningListeners]) release(off);
+      records.clear();
+      unresolvedBehaviors.clear();
+    } finally { disposing = false; }
     if (failures.length > 0) throw failures[0];
   };
 
@@ -360,15 +400,35 @@ function snapshot_activation(options: InteractionActivationOptions, currentTree?
     throw new TypeError("Canonical interaction failure observer must be a function.");
   }
   const runtime = runtime_for_tree(tree);
-  return Object.freeze({ map, get tree() {
+  const documentHandle = map.doc.must(document);
+  const getTree = () => {
     const current = currentTree === undefined ? tree : currentTree();
     if (runtime_for_tree(current) !== runtime) throw new Error("Document interaction provider changed its owning runtime.");
     return current;
-  }, document, dispatch, onFailure });
+  };
+  const standaloneBinding: DocumentListenerBinding = Object.freeze({
+    kind: "document", get realization() { return active_subject_for_tree(getTree()); }, library: documentHandle.document, runtime,
+    get document() { return realized_document_for_listener(getTree()); },
+    assertActive() {
+      if (getTree().isDisposed) throw new Error("Document interaction realization is disposed.");
+      void documentHandle.rev;
+    },
+  });
+  return Object.freeze({ map, get tree() { return getTree(); }, document, documentHandle, get documentBinding() {
+    const realization = active_subject_for_tree(getTree());
+    const candidate = livemap_document_listener_binding(documentHandle.document);
+    return candidate !== undefined && candidate.runtime === runtime && candidate.realization === realization
+      ? candidate : standaloneBinding;
+  }, dispatch, onFailure });
 }
 
-function resolve_local_subject(activation: ActivationSnapshot, descriptor: InteractionDescriptor): LiveTree | undefined {
+function resolve_local_subject(activation: ActivationSnapshot, descriptor: InteractionDescriptor): NativeListenerSubject | undefined {
   if (descriptor.subject.library !== activation.document) return undefined;
+  if (descriptor.subject.kind === "document") {
+    const binding = activation.documentBinding;
+    binding.assertActive();
+    return binding;
+  }
   const path = validate_document_path(descriptor.subject.path);
   let node;
   const tree = activation.tree, subject = active_subject_for_tree(tree);
@@ -376,6 +436,10 @@ function resolve_local_subject(activation: ActivationSnapshot, descriptor: Inter
   try { node = resolve_document_path(root, "document", path); }
   catch { return undefined; }
   return is_Node(node) ? wrap_in_tree(tree, node) : undefined;
+}
+
+function native_subject_identity(subject: NativeListenerSubject): object {
+  return is_document_listener_binding(subject) ? subject : active_subject_for_tree(subject);
 }
 
 /** Read only the selected installed system member; drafts keep their ordered authority. */
@@ -413,8 +477,9 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
   }));
 }
 
-function read_subject(value: OrderedProjectedObject): Readonly<{ library: string; path: readonly number[] }> {
+function read_subject(value: OrderedProjectedObject): InteractionSubject {
   const library = require_string(member(value, "library"));
+  if (member(value, "kind") === "document") return Object.freeze({ library, kind: "document" });
   const path = validate_document_path(member(value, "path"));
   return Object.freeze({ library, path });
 }
@@ -464,6 +529,6 @@ function descriptor_fingerprint(descriptor: InteractionDescriptor): string {
   // A canonical path rewrite follows the same local subject. It must not
   // replace that subject's listener or reset once/resource ownership.
   return encode_hson_data_internal(hson_data_from_value(ordered_projected_object(
-    value.entries.filter(([name]) => name !== "subject"),
+    value.entries.filter(([name]) => name !== "subject" || descriptor.subject.kind === "document"),
   )));
 }

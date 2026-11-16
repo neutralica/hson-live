@@ -7,7 +7,8 @@ import { bind_locus_websocket } from "../src/api/locus/locus.websocket.ts";
 // @hson-live-external-test
 import { test_application_catalog } from "./helpers/hosted-catalog.mts";
 import assert from "node:assert/strict";
-import { DocumentContinuationError, Hson, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionFailure, type InteractionLocalBehaviors, type LocalBehaviorContext, type LocusWebSocketLike } from "../src/index.ts";
+import { getEventListeners } from "node:events";
+import { DocumentContinuationError, Hson, activate_interactions, add_interaction, continue_document, continue_hosted_document, enable_interactions, hsonLiveMap, type HsonSchema, type InteractionDescriptor, type InteractionFailure, type InteractionLocalBehaviors, type LocalBehaviorContext, type LocusWebSocketLike } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_style_string } from "../src/api/transform/utils/attrs-utils/parse-style.ts";
@@ -15,6 +16,7 @@ import { runtime_for_tree, subject_for_tree } from "../src/api/livetree/runtime/
 import { prepare_hosted_document_internal, set_hosted_startup_fault_hook_for_tests } from "../src/api/continuation/continue-hosted-document.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { make_portable_aggregate_commit, type HostedAggregateCommit } from "../src/api/livemap/livemap.hosted.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
@@ -125,24 +127,61 @@ for (const addressedRoot of [false, true]) {
 const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "button" content "empty">]>>]>>`;
 
 // Isolate repeated owner-proven recovery and transaction failure from transport.
-for (const failure of ["none", "native", "incompatible"] as const) {
+for (const scenario of ["none", "native", "incompatible", "late-events", "fixed-events"] as const) {
+  const lateEvents = scenario === "late-events";
+  const fixedEvents = scenario === "fixed-events";
+  const withEvents = lateEvents || fixedEvents;
   const source = make_livemap_from_authored_libraries_internal({ page: { document: '<html @:root <head/> <body <button @:child/>/>/>' } });
+  if (withEvents) enable_interactions(source);
+  const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: withEvents ? ["interactions"] : [] };
   const locus = create_locus_hosted_aggregate_authority_internal({ map: source,
-    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: { libraries: ["page"] },
-    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
-  const sessionId = await locus.create_session({ libraries: ["page"] }), projection = locus.sessions.projection(sessionId)!;
+    libraries: [{ name: "page", ownership: "shared" }], defaultProjection: requested,
+    authorizeProjection: ({ requested }) => ({ libraries: requested.libraries, systemFeatures: requested.systemFeatures }) });
+  const sessionId = await locus.create_session(requested), projection = locus.sessions.projection(sessionId)!;
   const capture = () => capture_selected_authority_projection_snapshot(source, projection);
   const client = client_projection_map({ authority: capture(), local: {} }), page = client.doc.must("page");
   if (page.mode !== "document") throw Error("Document");
-  const { root, body, button: child } = native_button_page();
-  let grafted = continue_document({ map: client, document: page, root: root as unknown as Element });
+  const { root, head, body, button: child } = native_button_page();
+  const nativeWindow = new EventTarget();
+  const nativeDocument = Object.assign(new EventTarget(), root.ownerDocument, { defaultView: nativeWindow });
+  if (withEvents) {
+    for (const element of [root, head, body, child]) Object.defineProperty(element, "ownerDocument", { value: nativeDocument });
+  }
+  const seen: LocalBehaviorContext[] = [], failures: InteractionFailure[] = [];
+  client.actions.define("after-rebase", ctx => { seen.push(ctx); });
+  let grafted = continue_document({ map: client, document: page, root: root as unknown as Element,
+    interactions: lateEvents ? { onFailure: error => failures.push(error) } : undefined });
   const owner = internal_livemap_aggregate_authority(client), manager = {};
   owner.claimManagement(manager);
+  const admitEvent = async (target: "document" | "window", event = "click", once = false) => {
+    let hosted: HostedAggregateCommit | undefined;
+    const off = internal_livemap_aggregate_authority(source).observe(commit => { hosted = commit.hosted; });
+    try {
+      await locus.stage(draft => add_interaction(draft, {
+        id: `after-rebase-${target}-${event}`, subject: { library: "page", kind: "document" }, kind: "browser", key: "after-rebase",
+        listener: { event, target, capture: false, once, passive: false,
+          missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false },
+      }));
+    } finally { off(); }
+    assert.ok(hosted);
+    const commit = make_portable_aggregate_commit(hosted);
+    assert.ok(commit);
+    owner.replayClientHostedManaged(manager, commit, owner.clientProjection()?.revision);
+  };
+  let stopFixed: (() => void) | undefined;
+  let documentCallback: ReturnType<typeof getEventListeners>[number] | undefined;
   try {
-    for (let round = 0; round < (failure === "none" ? 2 : 1); round++) {
+    if (fixedEvents) {
+      await admitEvent("document");
+      stopFixed = activate_interactions({ map: client, tree: grafted.tree });
+      assert.equal(getEventListeners(nativeDocument, "click").length, 1);
+      nativeDocument.dispatchEvent(new Event("click"));
+      assert.equal(seen.length, 1);
+    }
+    for (let round = 0; round < (scenario === "none" || lateEvents ? 2 : 1); round++) {
       const oldTree = grafted.tree;
       const oldQuid: string = lookup_document_quad_internal(page, "root")!.quid;
-      if (failure === "incompatible") {
+      if (scenario === "incompatible") {
         const before = capture(), revision = locus.rev;
         await assert.rejects(locus.stage(draft => draft.doc.must("page").content.replace({ kind: "path", path: validate_document_path([]) }, 0, { $_tag: "aside", $_content: [] })), /complete html/);
         assert.deepEqual(capture(), before); assert.equal(locus.rev, revision);
@@ -155,13 +194,13 @@ for (const failure of ["none", "native", "incompatible"] as const) {
         document.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", `round-${round}`);
       });
       const nativeSet = root.setAttribute;
-      if (failure === "native") root.setAttribute = function(name, value) {
+      if (scenario === "native") root.setAttribute = function(name, value) {
         if (name === "hson:quid") throw Error("native root rebase failure");
         nativeSet.call(this, name, value);
       };
       try { reconcile_client_projection_snapshot_internal(client, manager, authority_projection_as_client_composition_internal(capture())); }
       finally { root.setAttribute = nativeSet; }
-      if (failure === "none") {
+      if (scenario === "none" || withEvents) {
         assert.equal(grafted.mirror.status, "active");
         assert.equal(grafted.tree.dom.el(), root as unknown as Element);
         assert.ok(oldTree.isDisposed); assert.throws(() => oldTree.quid, /disposed/i);
@@ -172,6 +211,54 @@ for (const failure of ["none", "native", "incompatible"] as const) {
         assert.equal(page.document.byQuid(oldQuid), undefined);
         assert.equal(runtime_for_tree(grafted.tree).quidToNode.has(oldQuid), false);
         const current = grafted.tree;
+        if (fixedEvents) {
+          nativeDocument.dispatchEvent(new Event("click"));
+          await admitEvent("window");
+          nativeWindow.dispatchEvent(new Event("click"));
+          assert.equal(seen.length, 1, "fixed activation cannot dispatch after its captured tree retires");
+          assert.equal(getEventListeners(nativeDocument, "click").length, 0);
+          assert.equal(getEventListeners(nativeWindow, "click").length, 0);
+          stopFixed?.(); stopFixed?.();
+          assert.equal(getEventListeners(nativeDocument, "click").length + getEventListeners(nativeWindow, "click").length, 0);
+          continue;
+        }
+        if (lateEvents && round === 0) {
+          for (const [target, nativeTarget] of [["document", nativeDocument], ["window", nativeWindow]] as const) {
+            await admitEvent(target);
+            assert.equal(grafted.mirror.status, "active");
+            assert.equal(grafted.tree, current);
+            const event = new Event("click");
+            nativeTarget.dispatchEvent(event);
+            assert.equal(seen.length, target === "document" ? 1 : 2, `${target} dispatch after root rebase`);
+            assert.deepEqual(seen.at(-1), { map: client, subjectKind: "document", subject: page, event });
+            assert.equal(getEventListeners(nativeTarget, "click").length, 1);
+          }
+          documentCallback = getEventListeners(nativeDocument, "click")[0];
+          assert.ok(documentCallback);
+          await admitEvent("window", "keydown", true);
+          assert.equal(getEventListeners(nativeWindow, "keydown").length, 1);
+          nativeWindow.dispatchEvent(new Event("keydown"));
+          assert.equal(seen.length, 3);
+          assert.equal(getEventListeners(nativeWindow, "keydown").length, 0);
+          continue;
+        }
+        if (lateEvents) {
+          assert.equal(getEventListeners(nativeDocument, "click")[0], documentCallback);
+          const event = new Event("click");
+          nativeDocument.dispatchEvent(event);
+          nativeWindow.dispatchEvent(new Event("keydown"));
+          assert.equal(seen.length, 4);
+          assert.deepEqual(seen.at(-1), { map: client, subjectKind: "document", subject: page, event });
+          assert.deepEqual(failures, []);
+          grafted.dispose(); grafted.dispose();
+          assert.equal(getEventListeners(nativeDocument, "click").length, 0);
+          assert.equal(getEventListeners(nativeWindow, "click").length, 0);
+          assert.equal(getEventListeners(nativeWindow, "keydown").length, 0);
+          nativeDocument.dispatchEvent(new Event("click"));
+          nativeWindow.dispatchEvent(new Event("click"));
+          assert.equal(seen.length, 4);
+          continue;
+        }
         grafted.dispose();
         const candidate = capture_continuation_document_root(page);
         const candidateRoot = resolve_document_path(candidate, "document", validate_document_path([0]));
@@ -191,11 +278,11 @@ for (const failure of ["none", "native", "incompatible"] as const) {
         assert.equal(get_node_for_el(root as unknown as Element), subject_for_tree(oldTree));
         assert.equal(page.document.byQuid(oldQuid), undefined);
         // The accepted authority state is not undone by failed DOM realization.
-        assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), failure === "native" ? "round-0" : undefined);
+        assert.equal(page.document.attrs.get({ kind: "path", path: [0] }, "title"), scenario === "native" ? "round-0" : undefined);
         assert.throws(() => oldTree.attrs.set("wrong-owner", "reject"));
       }
     }
-  } finally { owner.releaseManagement(manager); grafted.dispose(); locus.dispose(); }
+  } finally { stopFixed?.(); owner.releaseManagement(manager); grafted.dispose(); locus.dispose(); }
 }
 // Inject invalid private evidence at the existing document-observation boundary.
 // The authoritative snapshot remains accepted; Mirror must reject before native work.
@@ -630,7 +717,8 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
   assert.equal(registeredOn, clientMap.actions);
   assert.equal(localContext?.map, clientMap);
   assert.equal(localContext?.event, event);
-  assert.equal(localContext?.subject?.dom.el(), page.button);
+  assert.ok(localContext && localContext.subjectKind !== "document");
+  assert.equal(localContext.subject?.dom.el(), page.button);
   await assert.rejects(prepared.start(), /started state/);
   assert.throws(() => prepared.dispose(), /started state/);
   await assert.rejects(continue_hosted_document(options), /already has an active document continuation/);

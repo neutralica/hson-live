@@ -58,15 +58,21 @@ export function interaction_addition(descriptor: InteractionDescriptor): (curren
 export function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjectedObject {
   const inputKey = descriptor.kind === "browser" ? "args" : "payload";
   const record = exact_record(descriptor, ["id", "subject", "listener", "kind", "key"], "interaction descriptor", [inputKey, "eventArgs"]);
-  const subject = exact_record(record.subject, ["library", "path"], "interaction subject");
-  const path = validate_document_path(subject.path);
+  const documentSubject = typeof record.subject === "object" && record.subject !== null
+    && Object.getOwnPropertyDescriptor(record.subject, "kind")?.value === "document";
+  const subject = exact_record(record.subject, documentSubject ? ["library", "kind"] : ["library", "path"], "interaction subject");
+  const coordinate: readonly [string, OrderedProjectedValue] = documentSubject
+    ? ["kind", "document"] : ["path", ordered_projected_array([...validate_document_path(subject.path)])];
   const listener = exact_record(record.listener, [
     "event", "target", "capture", "once", "passive", "missingTarget",
     "preventDefault", "stopPropagation", "stopImmediatePropagation",
   ], "interaction listener");
+  if (documentSubject && listener.target === "element") {
+    throw new TypeError("A Document interaction subject cannot use element listener placement.");
+  }
   const fields: Array<readonly [string, OrderedProjectedValue]> = [
     ["id", scalar(record.id)],
-    ["subject", ordered_projected_object([["library", scalar(subject.library)], ["path", ordered_projected_array([...path])]])],
+    ["subject", ordered_projected_object([["library", scalar(subject.library)], coordinate])],
     ["listener", ordered_projected_object(Object.entries(listener).map(([name, value]) => [name, scalar(value)] as const))],
     ["kind", scalar(record.kind)],
     ["key", scalar(record.key)],

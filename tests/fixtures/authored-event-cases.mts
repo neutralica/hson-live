@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, add_interaction, hsonLiveMap, hsonTransform, replace_interaction, type LiveMap, type LiveMapDocumentPart } from "../../src/index.ts";
+import { Hson, add_interaction, hsonLiveMap, hsonTransform, remove_interaction, replace_interaction, type LiveMap, type LiveMapDocumentPart } from "../../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import { make_livemap_mirror_from_semantic_checkpoint_internal } from "../../src/api/livemap/livemap.libraries.ts";
 import { resolve_document_path, validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
@@ -501,8 +501,8 @@ async function native_event_cases() {
   assert.deepEqual(plain.capture(), snapshot);
   assert.equal(plain.rev, revision);
 
-  // Original registry fences can recover the new state and existing click-only state.
-  assert.equal(hson_schema_digest(interaction_schema_internal()), 'ff3888042afcbbda80f45c417e2323db8fd6460a377ca38057d25449bc41042b');
+  // The current registry digest fences subjects and event argument plans together.
+  assert.equal(hson_schema_digest(interaction_schema_internal()), 'ec621c2e3d254641b24a07cbb9309f427605d5446dfdaeaab5fd9327025e68be');
   const persistence = new MemoryCheckpointAdapter();
   const authorizeProjection: LocusProjectionAuthorizer = ({ requested }) => requested;
   const config = { persistence, logicalMapId: "native-event-checkpoint", authorizeProjection };
@@ -1266,7 +1266,290 @@ async function durable_cases() {
   finally { compacted.dispose(); }
 }
 
+async function document_event_cases() {
+  const events = {
+    shortcut: '<hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} <> >',
+    exit: '<hson:event on:click window host:EXIT count:num="2" <> >',
+  };
+  const input = { page: { document: "<main/>", events } };
+  const state = (map: LiveMap) => {
+    const a = authority(map);
+    return descriptor_data(a.systemRoot(a.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!)).map(value => value.materialize());
+  };
+  const map = hsonLiveMap.fromLibraries(input);
+  const expected = state(map);
+  assert.equal(expected.length, 2);
+  assert.deepEqual(expected.map(value => value && typeof value === "object" && !Array.isArray(value) ? value.subject : undefined),
+    [{ library: "page", kind: "document" }, { library: "page", kind: "document" }]);
+  assert.match(JSON.stringify(expected), /document-event\/page\/shortcut/);
+  assert.match(JSON.stringify(expected), /"target":"document"/);
+  assert.match(JSON.stringify(expected), /"target":"window"/);
+  assert.match(JSON.stringify(expected), /eventArgs/);
+  assert.deepEqual(state(hsonLiveMap.fromLibraries(input)), expected);
+  const snapshot = map.capture();
+  map.doc.must("page").at([1, 0]).asElement()!.replace({ $_tag: "article", $_content: [] });
+  assert.deepEqual(state(map), expected);
+  map.restore(snapshot);
+  assert.deepEqual(state(map), expected);
+  assert.deepEqual(state(make_livemap_mirror_from_semantic_checkpoint_internal(authority(map).captureSemanticCheckpoint())), expected);
+  const added = hsonLiveMap.create(), replayed = hsonLiveMap.create();
+  const commit = added.addLibraries(input).commit;
+  assert.ok("interactionAdds" in commit.operations[0]!.operation);
+  replayed.replay(commit);
+  assert.deepEqual(state(replayed), expected);
+  add_interaction(added, { id: "document-event/collision/shortcut", subject: { library: "page", kind: "document" },
+    kind: "browser", key: "SHORTCUT", listener: { ...parse_authored_event(events.shortcut).listener, target: "document" } });
+  const beforeCollision = added.capture();
+  assert.throws(() => added.addLibraries({ collision: { document: "<aside/>", events } }), /duplicated|already exists|collision/);
+  assert.deepEqual(added.capture(), beforeCollision);
+  for (const source of ['<hson:event on:click local:run arg:str=^{partValue} <> >',
+    '<hson:event on:click local:run arg:str=%{incoming} <> >']) {
+    const before = added.capture();
+    assert.throws(() => added.addLibraries({ invalid: { document: "<aside/>", events: { invalid: source } } }), /Part references/);
+    assert.deepEqual(added.capture(), before);
+  }
+  const seeds = local_initializers(input);
+  assert.ok(seeds[0]!.interactionAdds);
+  const { admit_locus_local_initializers } = await import("../../src/api/locus/locus.local-initializer.ts");
+  assert.throws(() => admit_locus_local_initializers(seeds.map(seed => ({ ...seed, interactionAdds: undefined }))), /Undefined/);
+  assert.throws(() => admit_locus_local_initializers(seeds.map(seed => ({ ...seed,
+    interactionAdds: encode_hosted_root(projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array([])]]))),
+  }))), /nonempty/);
+  const anchor = hsonLiveMap.fromLibraries({ anchor: { document: "<aside/>" } });
+  const a = authority(anchor);
+  const projection = await normalize_locus_effective_projection(make_locus_hosted_projection_policy(a.hostedRegistry(),
+    a.hostedPosition().authority, [{ name: "anchor", ownership: "shared" }], undefined, ({ requested }) => requested),
+    { libraries: ["anchor"], systemFeatures: [] });
+  const client = create_echo_scoped_replica_internal(capture_selected_authority_projection_snapshot(anchor, projection, true), seeds);
+  assert.ok(client.map);
+  try {
+    assert.deepEqual(state(client.map), expected);
+    client.map.doc.must("page").at([1, 0]).asElement()!.replace({ $_tag: "article", $_content: [] });
+    remove_interaction(client.map, "document-event/page/shortcut");
+    const before = client.map.capture();
+    const { install_client_local_initializers_internal } = await import("../../src/api/locus/locus.local-initializer.ts");
+    install_client_local_initializers_internal(client.map, seeds);
+    assert.deepEqual(client.map.capture(), before);
+    const late = local_initializers({ late: { document: "<aside/>", events } });
+    install_client_local_initializers_internal(client.map, late);
+    assert.equal(state(client.map).length, 3);
+  } finally { client.dispose(); }
+  const persistence = new MemoryCheckpointAdapter();
+  const config = { logicalMapId: "document-owned-events", persistence };
+  const hosted = await hsonLiveMap.locus.resume(input, config);
+  try {
+    assert.deepEqual(state(locus_map_internal(hosted)), expected);
+    await hosted.admit({ added: { document: "<section/>", events } });
+    assert.equal(state(locus_map_internal(hosted)).length, 4);
+    await hsonLiveMap.locus.checkpoint(hosted);
+  } finally { hosted.dispose(); }
+  const recovered = await hsonLiveMap.locus.resume(input, config);
+  try { assert.equal(state(locus_map_internal(recovered)).length, 4); }
+  finally { recovered.dispose(); }
+
+  // Covered history must reject malformed Document subjects even when the
+  // active checkpoint itself contains valid canonical intent.
+  const retained = await hsonLiveMap.locus.resume(input, config);
+  try {
+    await retained.doc.must("page").listen.event(events.shortcut);
+    persistence.failPrune = new Error("Retain covered Document Event history.");
+    await assert.rejects(hsonLiveMap.locus.checkpoint(retained), /checkpoint/i);
+  } finally { retained.dispose(); persistence.failPrune = undefined; }
+  const saved = persistence.state(config.logicalMapId)!;
+  const record = saved.commits.at(-1)!;
+  const write = record.commit.operations[0]!;
+  assert.equal(write.domain, "data");
+  const [edit] = decode_livemap_replay_payload(write.payload);
+  assert.ok(edit && Array.isArray(edit.next));
+  assert.equal(edit.kind, "replace");
+  assert.deepEqual(edit.path, ["descriptors"]);
+  assert.equal(record.commit.rev, saved.checkpoint.rev);
+  const seed = (next: OrderedProjectedValue) => {
+    const payload = encode_livemap_replay_transport([{ ...edit, next }]).payload;
+    persistence.seed(config.logicalMapId, { ...saved, commits: [...saved.commits.slice(0, -1),
+      { ...record, commit: { ...record.commit, operations: [{ ...write, payload }] } }] });
+  };
+  for (const subject of [{ library: "page", kind: "document", path: [] }, { library: "page" },
+    { library: "missing", kind: "document" }, { library: "page", kind: "element" }]) {
+    const next = ordered_projected_array(edit.next.map((descriptor, index) => {
+      assert.ok(is_ordered_projected_object(descriptor));
+      return index === 0 ? ordered_projected_object(descriptor.entries.map(([name, value]) =>
+        [name, name === "subject" ? hson_data_value(Hson.data.from(subject)) : value])) : descriptor;
+    }));
+    seed(next);
+    await assert.rejects(hsonLiveMap.locus.resume(input, config), { code: "LOCUS_PERSISTED_STATE_INVALID" });
+  }
+  for (const target of [undefined, "unknown", "element", "document", "window"] as const) {
+    const next = ordered_projected_array(edit.next.map((descriptor, index) => {
+      if (index !== 0) return descriptor;
+      assert.ok(is_ordered_projected_object(descriptor));
+      return ordered_projected_object(descriptor.entries.map(([name, value]) => {
+        if (name !== "listener") return [name, value];
+        assert.ok(is_ordered_projected_object(value));
+        return [name, ordered_projected_object(value.entries.flatMap(entry =>
+          entry[0] !== "target" ? [entry] : target === undefined ? [] : [["target", target]]))];
+      }));
+    }));
+    seed(next);
+    if (target === "document" || target === "window") {
+      const recovered = await hsonLiveMap.locus.resume(input, config);
+      try { assert.equal(state(locus_map_internal(recovered)).length, 5); }
+      finally { recovered.dispose(); }
+    } else {
+      await assert.rejects(hsonLiveMap.locus.resume(input, config), { code: "LOCUS_PERSISTED_STATE_INVALID" }, `target ${String(target)}`);
+    }
+  }
+  persistence.seed(config.logicalMapId, saved);
+  const valid = await hsonLiveMap.locus.resume(input, config);
+  try { assert.equal(state(locus_map_internal(valid)).length, 5); }
+  finally { valid.dispose(); }
+}
+
+async function covered_atomic_document_event_cases(): Promise<void> {
+  const definitions = { page: { document: "<main/>" }, state: { json: { count: 0 } } };
+  const invalid = { code: "LOCUS_PERSISTED_STATE_INVALID" };
+  for (const nested of [true, false]) {
+    const persistence = new MemoryCheckpointAdapter();
+    const config = { logicalMapId: `covered-atomic-document-event-${nested}`, persistence };
+    let hosted = await hsonLiveMap.locus.resume(definitions, config);
+    let map: LiveMap;
+    try {
+      await hosted.admit({ added: { document: "<aside/>" } });
+      await hosted.stage(draft => add_interaction(draft, {
+        id: "atomic", subject: { library: "added", kind: "document" }, kind: "browser", key: "run",
+        listener: { ...parse_authored_event("<hson:event on:click local:RUN <> >").listener, target: "document" },
+      }));
+      map = make_livemap_mirror_from_semantic_checkpoint_internal(authority(locus_map_internal(hosted)).captureSemanticCheckpoint());
+    } finally { hosted.dispose(); }
+
+    const engine = authority(map), system = engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!;
+    const systemRoot = (value: LiveMap) => authority(value).systemRoot(authority(value).systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+    const descriptor = interaction_descriptors_from_root(projected_value_from_hson_node(systemRoot(map)))[0];
+    assert.ok(is_ordered_projected_object(descriptor));
+    const withTarget = (target: string) => ordered_projected_object(descriptor.entries.map(([key, value]) => {
+      if (key !== "listener") return [key, value];
+      assert.ok(is_ordered_projected_object(value));
+      return [key, ordered_projected_object(value.entries.map(([field, original]) => [field, field === "target" ? target : original]))];
+    }));
+    const complete = engine.systemTarget(system, ["descriptors", 0]);
+    const placement = engine.systemTarget(system, ["descriptors", 0, "listener", "target"]);
+    const { hosted: accepted } = engine.commit([
+      ...(nested ? [{ target: placement, kind: "replace", value: "window" } as const] : []),
+      { target: complete, kind: "replace", value: withTarget("unknown") },
+      nested ? { target: placement, kind: "replace", value: "window" }
+        : { target: complete, kind: "replace", value: withTarget("window") },
+    ]);
+    assert.ok(accepted);
+    const record = durable_aggregate_commit(accepted);
+    const edits = record.commit.operations.map(write => {
+      assert.equal(write.domain, "data");
+      const [edit] = decode_livemap_replay_payload(write.payload);
+      assert.ok(edit && edit.kind === "replace");
+      return edit;
+    });
+    assert.deepEqual(edits.map(edit => edit.path), nested
+      ? [["descriptors", 0, "listener", "target"], ["descriptors", 0], ["descriptors", 0, "listener", "target"]]
+      : [["descriptors", 0], ["descriptors", 0]]);
+    assert.deepEqual(edits[nested ? 1 : 0]?.next, withTarget("unknown"));
+    await persistence.appendCommit(record);
+
+    const assertPlacement = (live: typeof hosted) => {
+      const fields = new Map(descriptor_data(systemRoot(locus_map_internal(live)))[0]?.entries());
+      assert.equal(new Map(fields.get("listener")?.entries()).get("target")?.scalar(), "window");
+    };
+    hosted = await hsonLiveMap.locus.resume(definitions, config);
+    try {
+      assert.equal(hosted.rev, record.commit.rev);
+      assertPlacement(hosted);
+      await hosted.stage(draft => draft.data.state.at(["count"]).set(1));
+      persistence.failPrune = new Error("Retain the atomic interaction commit after coverage.");
+      await assert.rejects(hsonLiveMap.locus.checkpoint(hosted), { code: "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" });
+    } finally { hosted.dispose(); persistence.failPrune = undefined; }
+    const saved = persistence.state(config.logicalMapId)!;
+    assert.equal(saved.checkpoint.rev, record.commit.rev + 1);
+    assert.equal(saved.commits[0]?.commit.topology?.operation.libraries[0]?.name, "added");
+    for (const commits of [saved.commits, [record]]) {
+      persistence.seed(config.logicalMapId, { ...saved, commits });
+      const recovered = await hsonLiveMap.locus.resume(definitions, config);
+      try { assert.equal(recovered.rev, saved.checkpoint.rev); assertPlacement(recovered); }
+      finally { recovered.dispose(); }
+    }
+
+    // Leave the accepted checkpoint intact and corrupt only a retained commit boundary.
+    for (const boundary of ["prev", "next"] as const) {
+      const index = boundary === "prev" ? 0 : edits.length - 1;
+      const edit = edits[index]!;
+      const payload = encode_livemap_replay_transport([{ ...edit, [boundary]: nested ? "element" : withTarget("element") }]).payload;
+      const operations = record.commit.operations.map((write, current) => current === index ? { ...write, payload } : write);
+      persistence.seed(config.logicalMapId, { ...saved, commits: [{ ...record, commit: { ...record.commit, operations } }] });
+      await assert.rejects(hsonLiveMap.locus.resume(definitions, config), invalid, `invalid ${boundary} boundary`);
+    }
+  }
+}
+
+async function covered_interaction_root_field_cases(): Promise<void> {
+  const definitions = { page: { document: "<main/>", events: {
+    click: '<hson:event on:click local:RUN <> >',
+  } }, state: { json: { count: 0 } } };
+  const invalid = { code: "LOCUS_PERSISTED_STATE_INVALID" };
+  for (const mixed of [false, true]) {
+    const persistence = new MemoryCheckpointAdapter();
+    const config = { logicalMapId: `covered-interaction-root-field-${mixed}`, persistence };
+    let hosted = await hsonLiveMap.locus.resume(definitions, config);
+    let record: LocusHostedAggregatePersistedCommit;
+    try {
+      const map = make_livemap_mirror_from_semantic_checkpoint_internal(authority(locus_map_internal(hosted)).captureSemanticCheckpoint());
+      const engine = authority(map), system = engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!;
+      const { hosted: accepted } = engine.commit([
+        { target: engine.systemTarget(system, []), kind: "set-key", key: "extra", value: ordered_projected_object([["value", 1]]) },
+        ...(mixed ? [{ target: engine.systemTarget(system, ["descriptors", 0, "listener", "target"]),
+          kind: "replace", value: "window" } as const] : []),
+        { target: engine.systemTarget(system, ["extra", "value"]), kind: "replace", value: 2 },
+        { target: engine.systemTarget(system, ["extra"]), kind: "delete" },
+      ]);
+      assert.ok(accepted);
+      record = durable_aggregate_commit(accepted);
+    } finally { hosted.dispose(); }
+    const withoutDelete = { ...record, commit: { ...record.commit, operations: record.commit.operations.slice(0, -1) } };
+    const initial = persistence.state(config.logicalMapId)!;
+    persistence.seed(config.logicalMapId, { ...initial, commits: [withoutDelete] });
+    await assert.rejects(async () => (await hsonLiveMap.locus.resume(definitions, config)).dispose(), invalid, "uncovered extra field");
+    persistence.seed(config.logicalMapId, initial);
+    await persistence.appendCommit(record);
+
+    const assertBoundary = (live: typeof hosted) => {
+      const engine = authority(locus_map_internal(live));
+      const root = engine.systemRoot(engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+      const value = projected_value_from_hson_node(root);
+      assert.ok(is_ordered_projected_object(value));
+      assert.deepEqual(value.entries.map(([name]) => name), ["descriptors"]);
+      const fields = new Map(descriptor_data(root)[0]?.entries());
+      assert.equal(new Map(fields.get("listener")?.entries()).get("target")?.scalar(), mixed ? "window" : "document");
+    };
+    hosted = await hsonLiveMap.locus.resume(definitions, config);
+    try {
+      assertBoundary(hosted);
+      await hosted.stage(draft => draft.data.state.at(["count"]).set(1));
+      persistence.failPrune = new Error("Retain the atomic root field commit after coverage.");
+      await assert.rejects(hsonLiveMap.locus.checkpoint(hosted), { code: "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" });
+    } finally { hosted.dispose(); persistence.failPrune = undefined; }
+
+    const saved = persistence.state(config.logicalMapId)!;
+    assert.equal(saved.checkpoint.rev, record.commit.rev + 1);
+    for (const commits of [saved.commits, [record]]) {
+      persistence.seed(config.logicalMapId, { ...saved, commits });
+      const recovered = await hsonLiveMap.locus.resume(definitions, config);
+      try { assertBoundary(recovered); } finally { recovered.dispose(); }
+    }
+    persistence.seed(config.logicalMapId, { ...saved, commits: [withoutDelete] });
+    await assert.rejects(async () => (await hsonLiveMap.locus.resume(definitions, config)).dispose(), invalid, "covered extra field");
+  }
+}
+
 export async function authored_event_cases(): Promise<void> {
+  await covered_atomic_document_event_cases();
+  await covered_interaction_root_field_cases();
+  await document_event_cases();
   grammar_cases();
   event_reference_ranges();
   event_reference_comments();

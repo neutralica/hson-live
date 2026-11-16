@@ -58,6 +58,10 @@ remove_interaction(replica, "id");
 
 // Retain specialized inventories, not just broad declared capabilities.
 const concrete = hsonLiveMap.fromLibraries({ page: { document: "<main/>" }, state: { json: { count: 0 } } });
+// @ts-expect-error Direct Events belong to Document Libraries.
+hsonLiveMap.fromLibraries({ state: { json: {}, events: { click: "<hson:event on:click local:run <> >" } } });
+// @ts-expect-error Named Document Event definitions are authored strings.
+hsonLiveMap.fromLibraries({ page: { document: "<main/>", events: { click: 3 } } });
 const governed = hsonLiveMap.locus.create({ page: { document: "<main/>" } });
 add_interaction(concrete, descriptor);
 concrete.batch(draft => { add_interaction(draft, descriptor); replace_interaction(draft, descriptor); remove_interaction(draft, "id"); });
@@ -145,3 +149,34 @@ preciseStandalone.asText()!.present()!.listen;
 preciseLocus.asText()!.present()!.listen;
 // @ts-expect-error A presence check preserves the text refinement.
 preciseLocal.asText()!.present()!.listen;
+
+const eventSource = '<hson:event on:key:down local:KEY pressed:str=^{key.key} <> >';
+concrete.doc.must("page").listen.event(eventSource) satisfies string;
+pathElement.listen.event(eventSource) satisfies string;
+governed.doc.must("page").listen.event(eventSource) satisfies Promise<string>;
+governed.doc.must("page").at([1, 0]).asElement()!.listen.event(eventSource) satisfies Promise<string>;
+localDocument.listen.event(eventSource) satisfies string;
+localDocument.at([1, 0]).asElement()!.listen.event(eventSource) satisfies string;
+for (const nativeListener of [concrete.doc.must("page").listen, localDocument.listen, projectedDocument.listen, pathElement.listen]) {
+  nativeListener.on("keydown", event => { event satisfies KeyboardEvent; }).off();
+  nativeListener.onCustom<KeyboardEvent>("custom", event => { event.key satisfies string; }).off();
+  nativeListener.onCustomDetail<{ value: number }>("custom-detail", event => { event.detail.value satisfies number; }).off();
+  nativeListener.window.capture().once().onPointerDown(event => { event satisfies PointerEvent; }).off();
+  nativeListener.onKeyDown(event => { event.key satisfies string; }).off();
+  nativeListener.onAnimationEnd(event => { event.animationName satisfies string; }).off();
+  nativeListener.onPaste(event => { event satisfies ClipboardEvent; }).off();
+}
+// @ts-expect-error Document Library subjects cannot select native element placement.
+concrete.doc.must("page").listen.element;
+// @ts-expect-error Projected Library listening confers no canonical write authority.
+projectedDocument.listen.event(eventSource);
+// @ts-expect-error Projected element listening confers no canonical write authority.
+projectedElement.listen.event(eventSource);
+// @ts-expect-error Read handles have no runtime listener capability.
+action.doc.must("page").listen;
+// @ts-expect-error Staged Library handles have no runtime listener capability.
+writer.doc.must("page").listen;
+map.actions.define("subject", ctx => {
+  if (ctx.subjectKind === "document") ctx.subject.listen.event(eventSource) satisfies string;
+  else ctx.subject?.dom.el();
+});

@@ -124,6 +124,7 @@
       await checkAuthoredEvents();
       checkNativeDocumentCallbacks();
       checkSelectedLocalListeners();
+      await checkLibraryOwnedEvents();
       await checkSelectedHostedListener();
       checkNativeDuringExactRestore();
       checkNativeDuringQueuedRestores();
@@ -1095,6 +1096,66 @@
       } finally { ambientSub.off(); elementSub.off(); peerSub.off(); }
     }
 
+    async function checkLibraryOwnedEvents() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button id="button"/>/>', events: {
+        shortcut: '<hson:event on:key:down local:KEY pressed:str=^{key.key} <> >',
+        once: '<hson:event on:click window once local:ONCE <> >',
+      } } });
+      const page = map.doc.must("page"), calls = [], failures = [];
+      let once = 0, native = 0, custom = 0, element = 0;
+      map.actions.define("KEY", (ctx, args) => calls.push({ ctx, args }));
+      map.actions.define("ONCE", () => { once++; });
+      map.actions.define("ELEMENT", ctx => {
+        check(ctx.subjectKind === undefined && ctx.subject.dom.el().id === "button", "Element Action context changed.");
+        check(JSON.stringify(Object.keys(ctx)) === JSON.stringify(["map", "subject", "event"]), "Element Action context exposed internal dispatch fields.");
+        element++;
+      });
+      const frame = document.createElement("iframe");
+      let continued, stopExtra;
+      try {
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = page.render(); document.body.append(frame); await loaded;
+        const doc = frame.contentDocument, win = frame.contentWindow;
+        const key = () => doc.dispatchEvent(new win.KeyboardEvent("keydown", { key: "Escape" }));
+        key(); check(calls.length === 0, "Construction installed a native listener before activation.");
+        continued = continue_document({ map, document: page, root: doc.documentElement,
+          interactions: { onFailure: failure => failures.push(failure) } });
+        stopExtra = activate_interactions({ map, tree: continued.tree, onFailure: failure => failures.push(failure) });
+        const docNative = page.listen.on("keyup", event => {
+          check(event instanceof win.KeyboardEvent && event.currentTarget === doc, "Library callback used another realm."); native++;
+        });
+        const windowNative = page.listen.window.once().onKeyUp(event => {
+          check(event.currentTarget === win, "Library Window callback used ambient Window."); native++;
+        });
+        const customSub = page.listen.onCustomDetail("library-custom", event => { custom += event.detail.value; });
+        doc.dispatchEvent(new win.CustomEvent("library-custom", { detail: { value: 3 } }));
+        doc.dispatchEvent(new win.KeyboardEvent("keyup"));
+        win.dispatchEvent(new win.KeyboardEvent("keyup"));
+        check(native === 2 && custom === 3, "Library native vocabulary or placement failed.");
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "wrong" }));
+        check(calls.length === 0, "Document Event leaked into the ambient realm.");
+        key(); check(calls.length === 2 && calls.every(({ ctx, args }) => ctx.subjectKind === "document" && ctx.subject === page
+          && ctx.event instanceof win.KeyboardEvent && args.materialize().pressed === "Escape"), "Document Action context or native arguments failed.");
+        win.dispatchEvent(new win.MouseEvent("click"));
+        check(once === 2, "Concurrent Document activations lost independent once state.");
+        stopExtra(); stopExtra(); key(); check(calls.length === 3, "Activation release affected its peer.");
+        const elementId = page.at([1, 0, 0]).asElement().listen.event('<hson:event on:click local:ELEMENT <> >');
+        check(typeof elementId === "string", "Element authored Event did not return a Descriptor ID.");
+        doc.querySelector("#button").click(); check(element === 1, "Element authored Event was not activated.");
+        page.at([1, 0]).asElement().replace({ $_tag: "article", $_content: [] });
+        key(); win.dispatchEvent(new win.MouseEvent("click"));
+        check(calls.length === 4 && once === 2 && failures.length === 0, `Root replacement retired Document intent or reset once: ${JSON.stringify({ calls: calls.length, once, failures: failures.map(failure => ({ phase: failure.phase, cause: String(failure.cause) })) })}`);
+        doc.dispatchEvent(new win.CustomEvent("library-custom", { detail: { value: 4 } }));
+        check(custom === 7, "Root replacement retired a Library native callback.");
+        const canonical = JSON.stringify(map.capture());
+        continued.dispose();
+        key(); doc.dispatchEvent(new win.CustomEvent("library-custom", { detail: { value: 8 } }));
+        check(calls.length === 4 && custom === 7 && JSON.stringify(map.capture()) === canonical, "Disposal failed to separate resources from intent.");
+        docNative.off(); windowNative.off(); customSub.off();
+      } finally { stopExtra?.(); continued?.dispose(); frame.remove(); }
+    }
+
     function checkSelectedLocalListeners() {
       const check = (condition, message) => { if (!condition) throw new Error(message); };
 
@@ -1241,10 +1302,14 @@
       const payloads = [], failures = [];
       const locus = hsonLiveMap.locus.create({ page: {
         access: "shared", document: '<main <button @:advance id="advance"/>/>',
+        events: { shortcut: '<hson:event on:key:down host:deck.advance pressed:str=^{key.key} <> >' },
       } }, {
         authorizeProjection: ({ requested }) => requested,
         authorizeAction: ({ action }) => action === "deck.advance",
-        actions: { "deck.advance": (_context, payload) => { payloads.push(payload); } },
+        actions: { "deck.advance": (context, payload) => {
+          check(!("event" in context) && !("subject" in context) && !!context.doc.must("page"), "Hosted Action received browser context.");
+          payloads.push(payload);
+        } },
       });
       const binding = bind_locus_http(locus, { endpoint: "/selected-listener" });
       const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://listen.test/selected-listener",
@@ -1275,7 +1340,7 @@
         const projected = continued.echo.doc.must("page");
         const selected = continued.map.q("advance"), projectedQuad = projected.q("advance");
         const element = projected.at([1, 0, 0]).asElement();
-        check([selected, projectedQuad, element].every(subject => !("local" in subject.listen) && !("host" in subject.listen))
+        check([projected, selected, projectedQuad, element].every(subject => !("event" in subject.listen) && !("local" in subject.listen) && !("host" in subject.listen))
           && !("set" in selected.attrs),
           "Projected callback attachment exposed canonical write authority.");
         checkIndependentNativeBuilders(() => element, button);
@@ -1303,6 +1368,19 @@
         await until(() => payloads.length !== 0 || failures.length !== 0, "The native click did not dispatch through Echo.");
         check(payloads.length === 1 && payloads[0].equals(input) && failures.length === 0 && directCalls === 2 && coordinateCalls === 3,
           "The authorized Locus action did not receive the exact authored input.");
+        let libraryNative = 0;
+        projected.listen.onKeyDown(() => { libraryNative++; });
+        frame.contentDocument.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "Enter" }));
+        await until(() => payloads.length === 2 || failures.length > 0, "Document-owned hosted Event did not dispatch.");
+        check(payloads[1].materialize().pressed === "Enter" && libraryNative === 1 && failures.length === 0,
+          "Document-owned hosted arguments or projected native listener failed.");
+        const authorityIntent = JSON.stringify(session.now().libs.system);
+        await session.update({ libraries: [], systemFeatures: [] });
+        await until(() => continued.mirror.status === "failed", "Library projection revocation did not retire its realization.");
+        frame.contentDocument.dispatchEvent(new frame.contentWindow.KeyboardEvent("keydown", { key: "revoked" }));
+        check(libraryNative === 1 && payloads.length === 2, "Projection revocation retained Library native registrations.");
+        const inspection = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+        check(JSON.stringify(inspection.now().libs.system) === authorityIntent, "Projection revocation deleted authority Event intent.");
         const latest = receiver.capture();
         check(latest.revision > earlier.revision, "The authoritative Descriptor did not reach the composed map.");
         continued.echo.session.dispose();

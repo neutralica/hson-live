@@ -64,8 +64,8 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import { rewrite_interaction_subjects, validate_interaction_descriptor_ids, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import { merge_interaction_descriptors, partition_interaction_descriptors } from "../../internal/interaction-partitions.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
-import { interaction_schema_internal, interaction_state_schema_internal, validate_interaction_state_internal } from "../interactions/interactions.projection.js";
-import { validate_descriptor_event_plan, validate_interaction_operation_plans } from "../../internal/event-argument-plan.js";
+import { interaction_schema_internal, interaction_state_schema_internal, validate_interaction_operation_endpoint_internal, validate_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { validate_descriptor_event_plan } from "../../internal/event-argument-plan.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibraryAddOperation, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
@@ -2399,6 +2399,7 @@ function make_livemap_registry_engine(
     compositionStyles?: readonly DocumentCompositionStyle[];
     compositionScopes?: DocumentScopedQuadRecord;
     compositionInteractions?: readonly DocumentCompositionInteraction[];
+    documentInteractions?: readonly OrderedProjectedObject[];
     scopes?: DocumentScopedQuadRecord;
   }>;
 
@@ -2520,18 +2521,19 @@ function make_livemap_registry_engine(
     const application = [...existingBindings, ...newBindings];
     const attachments = definitions.flatMap(definition => (definition.compositionInteractions ?? [])
       .map(attachment => ({ library: definition.name, attachment })));
+    const documentInteractions = definitions.flatMap(definition => definition.documentInteractions ?? []);
     let nextSystemRoot = systemState.root;
     let interactionAdds: LiveMapLibraryAddOperation["operation"]["interactionAdds"];
-    if (attachments.length > 0 || replayedInteractions !== undefined) {
-      if (replayedInteractions !== undefined && clientComposition !== undefined
+    if (attachments.length > 0 || documentInteractions.length > 0 || replayedInteractions !== undefined) {
+      if (replayedInteractions !== undefined && !clientLocal && clientComposition !== undefined
         && !clientComposition.bindings.has(INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME)) {
         throw new Error("Projected Library interaction additions require the interactions feature.");
       }
       let additions: readonly OrderedProjectedValue[];
       if (replayedInteractions === undefined) {
-        additions = attachments.map(({ library, attachment }) => composed_interaction_value(library, attachment));
+        additions = [...documentInteractions, ...attachments.map(({ library, attachment }) => composed_interaction_value(library, attachment))];
       } else {
-        if (attachments.length > 0) throw new Error("Replayed Library interactions cannot carry authored sources.");
+        if (attachments.length > 0 || documentInteractions.length > 0) throw new Error("Replayed Library interactions cannot carry authored sources.");
         const root = decode_hosted_root(replayedInteractions);
         admit_portable_hson_node(root, "Library interaction additions");
         additions = validate_interaction_state_internal(root);
@@ -2634,12 +2636,13 @@ function make_livemap_registry_engine(
   }
 
   function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
-    beforeInstall?: () => void, parts: readonly (PartLibraryCandidate | undefined)[] = []): LiveMapAggregateCommit {
+    beforeInstall?: () => void, parts: readonly (PartLibraryCandidate | undefined)[] = [],
+    interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]): LiveMapAggregateCommit {
     assert_uncomposed_mutation_allowed();
     if (definitions.length === 0) return Object.freeze({
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
-    const prepared = prepare_add_libraries(definitions, false, undefined, parts);
+    const prepared = prepare_add_libraries(definitions, false, undefined, parts, interactionAdds);
     // A source-derived candidate retains its original capture fence through all admission validation.
     beforeInstall?.();
     // Serialization may acquire exclusive management after the initial admission permission check.
@@ -2649,8 +2652,8 @@ function make_livemap_registry_engine(
   }
 
   function add_client_local_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
-    assertAcceptance?: () => void): LiveMapAggregateCommit {
-    const prepared = prepare_add_libraries(definitions, true);
+    assertAcceptance?: () => void, interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]): LiveMapAggregateCommit {
+    const prepared = prepare_add_libraries(definitions, true, undefined, [], interactionAdds);
     try { assertAcceptance?.(); }
     catch (cause) { transitionController.discardAuthority(prepared.transition); throw cause; }
     return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
@@ -3898,8 +3901,8 @@ function make_livemap_registry_engine(
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     addLibraries: add_libraries,
-    addOwnedLibraries: (definitions, afterInstall, beforeInstall) =>
-      add_libraries(definitions, afterInstall, beforeInstall, definitions.map(definition => definition.part)),
+    addOwnedLibraries: (definitions, afterInstall, beforeInstall, interactionAdds) =>
+      add_libraries(definitions, afterInstall, beforeInstall, definitions.map(definition => definition.part), interactionAdds),
     addClientLocalLibraries: add_client_local_libraries,
     assertPublicMutationAllowed: () => transitionController.runUnmanaged(assert_uncomposed_mutation_allowed),
     captureFence: capture_fence,
@@ -4249,19 +4252,20 @@ function make_livemap_registry_engine(
       // A covering checkpoint retains every Library binding. Its registry
       // digest can differ after later additions, whose fences are checked by Locus.
       const bindings = require_hosted_state().byName;
+      const pendingLibraries = new Set(commits.flatMap(commit => "operations" in commit ? [] : commit.topology.operation.libraries.map(library => library.name)));
+      const retainedDocument = (name: string) => !pendingLibraries.has(name) && bindings.get(name)?.mode === "document";
       const history = commits.map(commit => {
-        if (!("operations" in commit)) return { operations: [], topology: commit.topology.operation };
+        if (!("operations" in commit)) {
+          for (const library of commit.topology.operation.libraries) pendingLibraries.delete(library.name);
+          return { operations: [], topology: commit.topology.operation };
+        }
         const registry = { digest: commit.registryDigest };
         const operations = "format" in commit ? decode_portable_aggregate_commit(commit, registry, bindings)
           : decode_private_scoped_aggregate_commit(commit, registry, bindings);
-        return { operations: operations.flatMap(({ library, projected, operationIndex }) => {
-          if (library.scope !== "hson-internal" || projected === undefined) return [];
-          return with_livemap_replay_operation_index(operationIndex, () => {
-            validate_interaction_operation_plans(projected.path, projected.prev);
-            validate_interaction_operation_plans(projected.path, projected.next);
-            return [{ projected, operationIndex }];
-          });
-        }) };
+        const writes = operations.flatMap(({ library, projected, operationIndex }) =>
+          library.scope === "hson-internal" && projected !== undefined ? [{ projected, operationIndex }] : []);
+        validate_covered_interaction_boundaries(writes, retainedDocument);
+        return { operations: writes };
       });
       const firstNested = history.findIndex(({ operations }) => operations.some(({ projected }) => projected.path.length > 2));
       if (firstNested === -1) return;
@@ -4293,25 +4297,16 @@ function make_livemap_registry_engine(
             replace_live_path_from_projected(root, ["descriptors"],
               ordered_projected_array([...interaction_descriptors_from_graph(root), ...additions]));
           }
-          for (const { projected, operationIndex } of index === 0 ? operations.slice(anchor.position + 1) : operations) {
-            with_livemap_replay_operation_index(operationIndex, () => {
-              const { path, prev, next } = projected;
-              must_replay_value(path, prev, project_live_path(root, path), operationIndex);
-              const planned = plan_write_ops(root, [projected_write_op_from_transport(projected)]);
-              must_replay_value(path, next, project_live_path(root, path), operationIndex);
-              must_replay_operation(projected, planned.transportOps, operationIndex, true);
-            });
+          for (const write of index === 0 ? operations.slice(anchor.position + 1) : operations) {
+            apply_covered_interaction_write(root, write);
           }
         }
       }
       // The journal carries both endpoints. Rewind only through the earliest
       // nested write and validate at commit boundaries, as active admission does.
       let restoredDeletedMember = false;
-      const matches = (expected: OrderedProjectedValue | undefined, actual: OrderedProjectedValue | undefined) =>
-        optional_ordered_projected_value_equal(expected, actual)
-          || (restoredDeletedMember && covered_interaction_value_equal(expected, actual));
       const laterLibraries = new Set<string>();
-      const validate = () => validate_interaction_subjects(ordered_projected_array(validate_interaction_state_internal(root)),
+      const validate = () => validate_interaction_state_internal(root,
         name => !laterLibraries.has(name) && bindings.get(name)?.mode === "document");
       if (!linkedToCheckpoint) validate();
       for (const { operations, topology } of history.slice(firstNested).reverse()) {
@@ -4321,22 +4316,14 @@ function make_livemap_registry_engine(
           const additions = interaction_descriptors_from_graph(decode_hosted_root(interactionAdds));
           const current = interaction_descriptors_from_graph(root);
           const first = current.length - additions.length;
-          if (first < 0 || !additions.every((item, index) => matches(item, current[first + index]))) {
+          if (first < 0 || !additions.every((item, index) =>
+            matches_covered_interaction_value(item, current[first + index], restoredDeletedMember))) {
             throw new Error("Covered Library interaction additions disagree with the retained history.");
           }
           replace_live_path_from_projected(root, ["descriptors"], ordered_projected_array(current.slice(0, first)));
         }
-        for (const { projected, operationIndex } of operations.reverse()) {
-          with_livemap_replay_operation_index(operationIndex, () => {
-            const { path, prev, next, kind } = projected;
-            const current = project_live_path(root, path);
-            if (!matches(next, current)) throw new LiveMapReplayError(path, next, current, operationIndex);
-            if (prev === undefined) delete_live_path(root, path);
-            else if (kind === "delete") {
-              set_live_path_from_projected(root, path, prev);
-              restoredDeletedMember = true;
-            } else replace_live_path_from_projected(root, path, prev);
-          });
+        for (const write of operations.reverse()) {
+          restoredDeletedMember = rewind_covered_interaction_write(root, write, restoredDeletedMember);
         }
         if (operations.length > 0 || topology !== undefined) {
           validate();
@@ -4538,6 +4525,101 @@ function require_document_overlay(
 ): import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay {
   if (overlay !== undefined) return overlay;
   throw new Error("LiveMap document mode is missing its identity overlay.");
+}
+
+type CoveredInteractionWrite = Readonly<{ projected: LiveMapProjectedDataOp; operationIndex: number }>;
+
+/** A complete endpoint anchors its subtree inside one atomic commit. Recover
+ * both boundaries in operation order, even when the run has no full root. */
+function validate_covered_interaction_boundaries(
+  writes: readonly CoveredInteractionWrite[], isDocumentLibrary: (name: string) => boolean,
+): void {
+  const wholeRoot = writes.some(({ projected }) => projected.path.length === 0);
+  const wholeList = writes.some(({ projected: { path } }) => path.length === 1 && path[0] === "descriptors");
+  const groups = new Map<string, { path: LivePath; writes: CoveredInteractionWrite[] }>();
+  for (const write of writes) {
+    const path = write.projected.path;
+    const depth = wholeRoot ? 0 : wholeList || path[0] !== "descriptors" ? 1 : 2;
+    const endpoint = path.slice(0, depth);
+    const key = JSON.stringify(endpoint);
+    let group = groups.get(key);
+    if (group === undefined) {
+      group = { path: endpoint, writes: [] };
+      groups.set(key, group);
+    }
+    group.writes.push(write);
+  }
+  for (const { path, writes: group } of groups.values()) {
+    const depth = path.length;
+    const anchorIndex = group.findIndex(({ projected }) => projected.path.length === depth);
+    if (anchorIndex === -1) {
+      // A nested write cannot create or remove its root field. Without a
+      // write to that field itself, it must be present at both boundaries.
+      if (depth === 1 && path[0] !== "descriptors") {
+        with_livemap_replay_operation_index(group[0]!.operationIndex, () => {
+          throw new TypeError(`Canonical interaction root does not declare ${JSON.stringify(path[0])}.`);
+        });
+      }
+      continue;
+    }
+    const { projected: anchor, operationIndex } = group[anchorIndex]!;
+    const validate = (value: OrderedProjectedValue | undefined) => with_livemap_replay_operation_index(operationIndex, () =>
+      validate_interaction_operation_endpoint_internal(anchor.path, value, isDocumentLibrary));
+    if (group.length === 1) {
+      validate(anchor.prev);
+      validate(anchor.next);
+      continue;
+    }
+    const scratchPath = ["endpoint"];
+    const scratchWrite = (write: CoveredInteractionWrite): CoveredInteractionWrite => ({
+      ...write, projected: { ...write.projected, path: [...scratchPath, ...write.projected.path.slice(depth)] },
+    });
+    const scratch = (value: OrderedProjectedValue | undefined) => projected_value_to_hson_root(
+      ordered_projected_object(value === undefined ? [] : [["endpoint", value]]));
+    const before = scratch(anchor.prev), after = scratch(anchor.next);
+    let restoredDeletedMember = false;
+    for (const write of group.slice(0, anchorIndex).reverse()) {
+      restoredDeletedMember = rewind_covered_interaction_write(before, scratchWrite(write), restoredDeletedMember);
+    }
+    for (const write of group.slice(anchorIndex + 1)) apply_covered_interaction_write(after, scratchWrite(write));
+    validate(project_live_path(before, scratchPath));
+    validate(project_live_path(after, scratchPath));
+  }
+}
+
+function apply_covered_interaction_write(root: HsonNode, { projected, operationIndex }: CoveredInteractionWrite): void {
+  with_livemap_replay_operation_index(operationIndex, () => {
+    const { path, prev, next } = projected;
+    must_replay_value(path, prev, project_live_path(root, path), operationIndex);
+    const planned = plan_write_ops(root, [projected_write_op_from_transport(projected)]);
+    must_replay_value(path, next, project_live_path(root, path), operationIndex);
+    must_replay_operation(projected, planned.transportOps, operationIndex, true);
+  });
+}
+
+function rewind_covered_interaction_write(
+  root: HsonNode, { projected, operationIndex }: CoveredInteractionWrite, restoredDeletedMember: boolean,
+): boolean {
+  return with_livemap_replay_operation_index(operationIndex, () => {
+    const { path, prev, next, kind } = projected;
+    const current = project_live_path(root, path);
+    if (!matches_covered_interaction_value(next, current, restoredDeletedMember)) {
+      throw new LiveMapReplayError(path, next, current, operationIndex);
+    }
+    if (prev === undefined) delete_live_path(root, path);
+    else if (kind === "delete") {
+      set_live_path_from_projected(root, path, prev);
+      return true;
+    } else replace_live_path_from_projected(root, path, prev);
+    return restoredDeletedMember;
+  });
+}
+
+function matches_covered_interaction_value(
+  expected: OrderedProjectedValue | undefined, actual: OrderedProjectedValue | undefined, restoredDeletedMember: boolean,
+): boolean {
+  return optional_ordered_projected_value_equal(expected, actual)
+    || (restoredDeletedMember && covered_interaction_value_equal(expected, actual));
 }
 
 /** Undoing a deletion restores its value, but its former object entry position

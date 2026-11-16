@@ -1,3 +1,11 @@
+import { validate_interaction_state_internal } from "../interactions/interactions.projection.js";
+import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
+import { ordered_projected_array, ordered_projected_object } from "../../core/ordered-projected-value.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { resolve_document_path } from "../livemap/livemap.document.path.js";
+import { is_ordinary_element_node } from "../../core/node-guards.js";
+import type { HsonNode } from "../../core/types.js";
 import { decode_document_scoped_library } from "../livemap/livemap.document.scoped-portable.js";
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { own_data_library_validation, validate_data_library } from "../livemap/livemap.parts.js";
@@ -68,6 +76,20 @@ function canonical_local_css(input: unknown): import("../../types/document-css.t
   return freeze_portable_value(encode_portable_document_stylesheet(stylesheet));
 }
 
+function canonical_local_interactions(input: unknown, name: string, root: HsonNode, document: boolean) {
+  if (input === undefined) return undefined;
+  const descriptors = validate_interaction_state_internal(decode_hosted_root(input, HOSTED_MAX_SNAPSHOT_BYTES));
+  if (!document || descriptors.length === 0) throw new Error("Local initializer interactions require a Document Library and nonempty descriptors.");
+  validate_interaction_subjects(ordered_projected_array(descriptors), library => library === name, (_library, path) => {
+    if (!is_ordinary_element_node(resolve_document_path(root, "document", path))) {
+      throw new Error("Local initializer interaction subject must resolve to a Document element.");
+    }
+  });
+  const canonical = encode_hosted_root(projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(descriptors)]])));
+  if (JSON.stringify(canonical) !== JSON.stringify(input)) throw new Error("Local initializer interaction encoding is inconsistent.");
+  return canonical;
+}
+
 function initializer_fingerprint(input: Omit<LocusLocalInitializer, "fingerprint">): string {
   const { schema: _source, ...contract } = input;
   return sha256_sync(JSON.stringify({ format: "hson-local-initializer", ...contract }));
@@ -99,6 +121,9 @@ export function admit_locus_session_now(input: unknown): LocusSessionNow {
 function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "local" }>): LocusLocalInitializer {
   const map = hsonLiveMap.fromLibraries(Object.freeze({ [entry.name]: entry.initializer }));
   const snapshot = map.capture();
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const interactionRoot = aggregate.systemRoot(aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+  const interactionAdds = validate_interaction_state_internal(interactionRoot).length === 0 ? undefined : encode_hosted_root(interactionRoot);
   const library = internal_livemap_aggregate_authority(map).captureSelectedHosted([entry.name], false).libraries[0];
   const registry = snapshot.registry.libraries[0];
   if (library === undefined || registry === undefined || library.name !== entry.name || registry.name !== entry.name) {
@@ -119,6 +144,7 @@ function canonical_local(entry: Extract<LocusLibraryCatalogEntry, { ownership: "
     : decode_document_scoped_library({ root: decoded, scopes: library.scopes, css }).scopes;
   if (css !== undefined && scopes === undefined) assert_portable_document_css_correspondence(decoded, registry.mode, quads.length ? quads : undefined, css);
   const base = Object.freeze({
+    ...(interactionAdds === undefined ? {} : { interactionAdds }),
     name: entry.name,
     mode: registry.mode,
     schema: registry.schema,
@@ -188,7 +214,8 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
   const names = new Set<string>();
   const admitted = input.map((candidate) => {
     const hasCss = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "css");
-    const value = exact_record(candidate, ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "quads", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "scopes") ? ["scopes"] : []), ...(hasCss ? ["css"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), "fingerprint"]);
+    const hasInteractions = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "interactionAdds");
+    const value = exact_record(candidate, [...(hasInteractions ? ["interactionAdds"] : []), "name", "mode", "schema", "schemaDigest", "rootCodec", "root", "quads", ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "scopes") ? ["scopes"] : []), ...(hasCss ? ["css"] : []), ...(typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "validation") ? ["validation"] : []), "fingerprint"]);
     if (typeof value.name !== "string" || value.name.length === 0 || names.has(value.name)
       || typeof value.schema !== "string" || typeof value.schemaDigest !== "string"
       || typeof value.fingerprint !== "string" || value.rootCodec !== "hson-exact-value") {
@@ -223,7 +250,10 @@ export function admit_locus_local_initializers(input: unknown): readonly LocusLo
     if (scopes !== undefined && quads.length) throw new Error("Conflicting flat/scoped correspondence.");
     if (scopes !== undefined && mode !== "document") throw new Error("Local Data initializer cannot carry scopes.");
     if (css !== undefined && scopes === undefined) assert_portable_document_css_correspondence(root, mode, quads.length ? quads : undefined, css);
+    if (hasInteractions && value.interactionAdds === undefined) throw new Error("Undefined local initializer interactions.");
+    const interactionAdds = canonical_local_interactions(value.interactionAdds, value.name, root, mode === "document");
     const base = Object.freeze({
+      ...(interactionAdds === undefined ? {} : { interactionAdds }),
       name: value.name,
       mode,
       schema: schemaSource,
@@ -302,5 +332,9 @@ export function install_client_local_initializers_internal(
     definitions.push({ name: initializer.name, family: initializer.mode === "document" ? "document" : "data", root, schema, ...(initializer.quads.length ? { quads: initializer.quads } : {}), ...(initializer.scopes === undefined ? {} : { scopes: initializer.scopes }), ...(initializer.validation === undefined ? {} : { validation: initializer.validation }) });
     if (initializer.css !== undefined) css[initializer.name] = initializer.css;
   }
-  add_client_local_libraries_internal(map, Object.freeze(definitions), css, installContracts, assertAcceptance);
+  const descriptors = missing.flatMap(seed => seed.interactionAdds === undefined ? []
+    : validate_interaction_state_internal(decode_hosted_root(seed.interactionAdds, HOSTED_MAX_SNAPSHOT_BYTES)));
+  const interactionAdds = descriptors.length === 0 ? undefined
+    : encode_hosted_root(projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(descriptors)]])));
+  add_client_local_libraries_internal(map, Object.freeze(definitions), css, installContracts, assertAcceptance, interactionAdds);
 }

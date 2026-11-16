@@ -1,3 +1,4 @@
+import { document_event_contributions } from "../../internal/document-events.js";
 import { canonical_flat_correspondence } from "./livemap.document.flat-effects.js";
 import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
@@ -20,7 +21,7 @@ import { make_family_selectors, type FamilySelection } from "../../internal/libr
 import { require_data_location, type DataLocationCheck } from "./livemap.data-refinement.js";
 import { interaction_schema_internal, project_interaction_state_internal, validate_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { composed_interaction_value, interaction_addition } from "../interactions/interactions.descriptor.js";
-import { capture_document_click, synchronous_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
+import { capture_document_click, capture_document_event, synchronous_document_listener, type WritableDocumentLocation } from "../interactions/interactions.authoring.js";
 import { document_callback_listener } from "./livemap.document.native-listener.js";
 import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
@@ -161,7 +162,8 @@ export type CanonicalLibraryDefinition = Readonly<{
 
 /** Owned source candidates produced here, never decoded from external fields. @internal */
 export type OwnedLibraryDefinition = CanonicalLibraryDefinition & Readonly<{ part?: PartLibraryCandidate;
-  compositionInteractions?: ReturnType<typeof expand_document_composition>["interactions"] }>;
+  compositionInteractions?: ReturnType<typeof expand_document_composition>["interactions"];
+  documentInteractions?: readonly import("../../core/ordered-projected-value.js").OrderedProjectedObject[] }>;
 
 function capture_library_source(name: string, input: ReturnType<typeof must_library_input>, publicInput = true): OwnedLibraryDefinition {
   if ("part" in input) return Object.freeze({ name, root: input.part.graph.root, schema: input.schema,
@@ -174,6 +176,7 @@ function capture_library_source(name: string, input: ReturnType<typeof must_libr
     ? (publicInput ? admit_public_livemap_root : admit_owned_livemap_root)(source, family, operation)
     : admit_authored_livemap_document(authored.root, operation);
   return Object.freeze({ name, root, schema: input.schema, family,
+    ...("events" in input && input.events !== undefined ? { documentInteractions: document_event_contributions(name, input.events) } : {}),
     ...(authored?.declarations.length ? { quads: [...authored.declarations].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0) } : {}),
     ...(input.validation === undefined ? {} : { validation: input.validation }) });
 }
@@ -352,7 +355,7 @@ function reconcile_document_css(document: object): void {
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot, scoped?: boolean, assertAcceptance?: () => void) => void>();
 const SEMANTIC_CHECKPOINT_PREPARATION = new WeakMap<object, (checkpoint: LiveMapSemanticCheckpoint) => PreparedLiveMapSemanticCheckpoint>();
 const CLIENT_LOCAL_LIBRARY_ADMISSION = new WeakMap<object, (definitions: readonly CanonicalLibraryDefinition[],
-  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void, assertAcceptance?: () => void) => LiveMapCommit>();
+  css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>, installed?: () => void, assertAcceptance?: () => void, interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]) => LiveMapCommit>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, definitions: readonly OwnedLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
   assertEntryCurrent: () => void, interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]) => Readonly<{
@@ -372,7 +375,7 @@ function capture_topology_addition(operation: LiveMapLibraryAddOperation, scoped
   const names = new Set<string>();
   exact_transport_fields(operation, ["library", "operation"]);
   const hasInteractions = Object.hasOwn(operation.operation, "interactionAdds");
-  exact_transport_fields(operation.operation, ["kind", "libraries", ...(scoped && hasInteractions ? ["interactionAdds"] : [])]);
+  exact_transport_fields(operation.operation, ["kind", "libraries", ...(hasInteractions ? ["interactionAdds"] : [])]);
   const interactionAdds = hasInteractions ? operation.operation.interactionAdds : undefined;
   if (hasInteractions && interactionAdds === undefined) throw new Error("Undefined Library interaction additions.");
   for (const entry of operation.operation.libraries) {
@@ -591,10 +594,10 @@ export function client_library_source_internal(value: object): "authority-projec
 /** Admit authorized local initializers without exposing topology mutation on the public map. @internal */
 export function add_client_local_libraries_internal(map: LiveMap, definitions: readonly CanonicalLibraryDefinition[],
   css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>>,
-  installed?: () => void, assertAcceptance?: () => void): LiveMapCommit {
+  installed?: () => void, assertAcceptance?: () => void, interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]): LiveMapCommit {
   const admit = CLIENT_LOCAL_LIBRARY_ADMISSION.get(map);
   if (admit === undefined) throw new Error("Client-local topology admission requires a composed LiveMap.");
-  return admit(capture_library_definitions(definitions), css, installed, assertAcceptance);
+  return admit(capture_library_definitions(definitions), css, installed, assertAcceptance, interactionAdds);
 }
 
 /** Observe terminal retirement of one projected document binding. @internal */
@@ -649,7 +652,7 @@ export function admit_public_livemap_definitions(inputs: unknown, hosted = false
     assert_hson_identifier_name(name, "Library");
     let input = must_library_input(name, inputs[name], { hosted, css, stylesheets, ownership });
     if ("document" in input && typeof input.document !== "string") {
-      input = Object.freeze({ document: admit_public_livemap_root(input.document, "document", `Library ${name}`), schema: input.schema });
+      input = Object.freeze({ ...input, document: admit_public_livemap_root(input.document, "document", `Library ${name}`), schema: input.schema });
     }
     sources.push([name, input]);
   }
@@ -722,7 +725,7 @@ function make_livemap_library_receiver(
   scoped = false,
 ): LiveMap {
   const descriptors = definitions.flatMap(definition =>
-    (definition.compositionInteractions ?? []).map(item => composed_interaction_value(definition.name, item)));
+    [...(definition.documentInteractions ?? []), ...(definition.compositionInteractions ?? []).map(item => composed_interaction_value(definition.name, item))]);
   if (descriptors.length > 0) {
     if (systems.length !== 0) throw new Error("Authored event composition cannot replace an existing initial system contribution.");
     systems = [{ key: INTERACTION_RESERVED_LIBRARY_KEY, transportName: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
@@ -868,11 +871,7 @@ function make_livemap_library_receiver(
     prevRev: commit.prevRev,
     rev: commit.rev,
     operations: Object.freeze([
-      ...(commit.topology === undefined ? [] : (() => {
-        if (commit.topology.operation.interactionAdds === undefined) return [commit.topology];
-        const { interactionAdds: _system, ...operation } = commit.topology.operation;
-        return [Object.freeze({ library: commit.topology.library, operation: Object.freeze(operation) })];
-      })()),
+      ...(commit.topology === undefined ? [] : [commit.topology]),
       ...(commit.css === undefined ? [] : (() => {
         const library = namesByIdentity.get(commit.css.library);
         return library === undefined ? [] : [Object.freeze({ library, operation: commit.css.operation })];
@@ -907,7 +906,8 @@ function make_livemap_library_receiver(
   const addLibrariesInternal = (additions: readonly OwnedLibraryDefinition[],
     css: Readonly<Record<string, import("../../types/document-css.types.js").DocumentCssRecord>> = {},
     clientLocal = false, beforeInstall?: () => void, installed?: () => void,
-    compositionStyles?: Readonly<{ name: string; styles: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[] }>): LiveMapCommit => {
+    compositionStyles?: Readonly<{ name: string; styles: readonly import("./livemap.document.composition.js").DocumentCompositionStyle[] }>,
+    interactionAdds?: LiveMapLibraryAddOperation["operation"]["interactionAdds"]): LiveMapCommit => {
     if (!clientLocal) aggregate.assertPublicMutationAllowed();
     for (const { name } of additions) {
       if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
@@ -922,6 +922,7 @@ function make_livemap_library_receiver(
         ...(definition.scopes === undefined ? {} : { scopes: definition.scopes }),
         ...(definition.compositionScopes === undefined ? {} : { compositionScopes: definition.compositionScopes }),
         ...(definition.compositionInteractions === undefined ? {} : { compositionInteractions: definition.compositionInteractions }),
+        ...(definition.documentInteractions === undefined ? {} : { documentInteractions: definition.documentInteractions }),
         hsonSchema: schema,
         ...(definition.validation === undefined ? {} : { validation: definition.validation }),
         ...(Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
@@ -938,8 +939,8 @@ function make_livemap_library_receiver(
       }
       installed?.();
     };
-    const commit = clientLocal ? aggregate.addClientLocalLibraries(definitions, afterInstall, beforeInstall)
-      : aggregate.addOwnedLibraries(definitions, afterInstall, beforeInstall);
+    const commit = clientLocal ? aggregate.addClientLocalLibraries(definitions, afterInstall, beforeInstall, interactionAdds)
+      : aggregate.addOwnedLibraries(definitions, afterInstall, beforeInstall, interactionAdds);
     return public_commit(commit);
   };
   const addLibraries = (inputs: LiveMapDefinitions) => {
@@ -1028,7 +1029,8 @@ function make_livemap_library_receiver(
         throw new Error("LiveMap replay requires a supported topology operation.");
       }
       aggregate.assertPublicMutationAllowed();
-      return addLibrariesInternal(capture_topology_addition(operation).definitions, topology_css(operation));
+      const { definitions, interactionAdds } = capture_topology_addition(operation);
+      return addLibrariesInternal(definitions, topology_css(operation), false, undefined, undefined, undefined, interactionAdds);
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {
@@ -1123,7 +1125,7 @@ function make_livemap_library_receiver(
     return result;
   });
   if (clientSnapshot !== undefined) CLIENT_LOCAL_LIBRARY_ADMISSION.set(libraries,
-    (definitions, css, installed, assertAcceptance) => addLibrariesInternal(definitions, css, true, assertAcceptance, installed));
+    (definitions, css, installed, assertAcceptance, interactionAdds) => addLibrariesInternal(definitions, css, true, assertAcceptance, installed, undefined, interactionAdds));
   register_echo_map_capability_internal(libraries, Object.freeze({
     revision: () => aggregate.hostedPosition().revision,
     documentMaps: () => Object.freeze([...named.values()]
@@ -1168,6 +1170,7 @@ function make_livemap_library_receiver(
         hsonSchema: schema,
         ...(definition.validation === undefined ? {} : { validation: definition.validation }),
         ...(definition.authored === true ? { authored: true } : {}),
+        ...(definition.documentInteractions === undefined ? {} : { documentInteractions: definition.documentInteractions }),
         ...(css !== undefined && Object.hasOwn(css, name) ? { css: decode_portable_document_stylesheet(css[name]) } : {}),
       });
     }), assertEntryCurrent, interactionAdds);
@@ -1731,7 +1734,7 @@ function make_document_library(
     }),
     (path, listener) => raw_at(path).watch(listener),
   );
-  const listenAt = (select: () => readonly number[], assertLifetime?: () => void) => synchronous_document_listener((destination, key, input, assertReadable) => {
+  const listenAt = (select: (() => readonly number[]) | undefined, assertLifetime?: () => void) => synchronous_document_listener((destination, key, input, assertReadable) => {
     assertReadable();
     const authority = aggregate.documentAuthority(library.identity);
     if (authority !== undefined) aggregate.assertPublicMutationAllowed();
@@ -1743,7 +1746,17 @@ function make_document_library(
     const edit = interaction_addition(captured.descriptor());
     commit_interaction_edit_internal(aggregate, edit);
     return captured.id;
-  }, guard => document_callback_listener(document, select, guard));
+  }, guard => document_callback_listener(document, select, guard), (source, assertReadable) => {
+    assertReadable();
+    const authority = aggregate.documentAuthority(library.identity);
+    if (authority !== undefined) aggregate.assertPublicMutationAllowed();
+    aggregate.librarySchema(library.identity);
+    const captured = capture_document_event(document, library.name, select, source, assertLifetime);
+    assertReadable();
+    if (aggregate.documentAuthority(library.identity) !== authority) throw new Error("Document listener authority changed before acceptance.");
+    commit_interaction_edit_internal(aggregate, interaction_addition(captured.descriptor()));
+    return captured.id;
+  });
   const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean, qualified?: boolean): WritableDocumentLocation => {
     const read = () => check?.() === false ? undefined : raw.snap();
     // Cache by coordinate and qualification so a fresh selection can reflect the
@@ -1953,6 +1966,7 @@ function make_document_library(
     );
   };
   const facade: LiveMapDocumentLibrary = {
+    get listen() { return listenAt(undefined); },
     mode: "document" as const,
     snap, hson, must: required_reads(snap, hson),
     watch: listener => raw_at([]).watch(() => listener(snap())),
@@ -2039,7 +2053,7 @@ function must_library_input(name: string, value: unknown, metadata?: {
   const selected: Record<string, unknown> = Object.create(null);
   for (const key of Reflect.ownKeys(value)) {
     if (key === "data") throw new TypeError("Data Library definitions require an explicit json or hson channel.");
-    if (metadata !== undefined && (typeof key !== "string" || !["json", "hson", "document", "parts", "schema", "stylesheet", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
+    if (metadata !== undefined && (typeof key !== "string" || !["json", "hson", "document", "parts", "schema", "stylesheet", "events", ...(metadata.hosted ? ["access"] : [])].includes(key))) {
       throw new TypeError("Library definition contains unsupported metadata.");
     }
     Object.defineProperty(selected, key, { value: Reflect.get(value, key), enumerable: true, configurable: true, writable: true });
@@ -2075,6 +2089,7 @@ function must_library_input(name: string, value: unknown, metadata?: {
       `LiveMap Library ${JSON.stringify(name)} must specify exactly one of json, hson, document, or parts.`,
     );
   }
+  if (Object.hasOwn(selected, "events") && !hasDocument) throw new TypeError("Direct Events require a Document Library.");
   if (hasParts) {
     const part = admit_part_library(selected.parts);
     // Schema fallback getters and nested Parts reflection can change the original.
@@ -2095,7 +2110,7 @@ function must_library_input(name: string, value: unknown, metadata?: {
     data, schema },
     validation === undefined ? {} : { validation })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   // Node fields are inspected only by exact admission, never by a getter-reading guard.
-  if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), { document: selected.document, schema })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
+  if (typeof selected.document === "string" || typeof selected.document === "object" && selected.document !== null) return Object.freeze(Object.assign(Object.create(null), { document: selected.document, schema, ...(Object.hasOwn(selected, "events") ? { events: selected.events } : {}) })) as NormalizedLibraryInput & Readonly<{ schema: HsonSchemaHandle }>;
   throw new TypeError(`LiveMap document Library ${JSON.stringify(name)} requires Hson source or a canonical node.`);
 }
 

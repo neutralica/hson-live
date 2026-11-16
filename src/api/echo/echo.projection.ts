@@ -1,3 +1,8 @@
+import { validate_interaction_state_internal, interaction_schema_internal } from "../interactions/interactions.projection.js";
+import { merge_interaction_descriptors } from "../../internal/interaction-partitions.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY, INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
+import { ordered_projected_object } from "../../core/ordered-projected-value.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import type { LocusLocalInitializer } from "../../types/locus.projection.types.js";
 import type { LiveMap } from "../../types/livemap.types.js";
@@ -56,7 +61,15 @@ export function compose_client_portable_aggregate_internal(
   if (inputs.length === 0) {
     throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");
   }
-  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), admitted.systems, snapshot, css, scoped);
+  const localDescriptors = initializers.flatMap(seed => seed.interactionAdds === undefined ? []
+    : validate_interaction_state_internal(decode_hosted_root(seed.interactionAdds, HOSTED_MAX_SNAPSHOT_BYTES)));
+  const systems = localDescriptors.length === 0 ? admitted.systems : [{
+    key: INTERACTION_RESERVED_LIBRARY_KEY, transportName: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
+    hsonSchema: interaction_schema_internal(),
+    root: projected_value_to_hson_root(ordered_projected_object([["descriptors", merge_interaction_descriptors(
+      admitted.systems.flatMap(system => validate_interaction_state_internal(system.root)), localDescriptors)]])),
+  }];
+  const map = make_livemap_from_canonical_libraries_internal(Object.freeze(inputs), systems, snapshot, css, scoped);
   retain_client_local_seed_contracts_internal(map, initializers);
   return map;
 }
