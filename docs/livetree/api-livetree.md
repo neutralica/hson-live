@@ -886,14 +886,18 @@ retires its registry.
 
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
 `on:pointer:down`, `on:pointer:move`, `on:pointer:up`, `on:pointer:cancel`,
-`on:key:down`, or `on:key:up`, one `local:` action, and an empty outcome object `<>`. The declaration
+`on:key:down`, `on:key:up`, `on:input`, or `on:change`, one `local:` action, and an empty outcome object `<>`. The declaration
 may include `once`, `stopProp`, and named arguments such as `title:str="Example"`,
 `x:num="-0"`, or `settings:data={<open true>}`. Declare zero arguments to
 supply `undefined`. Pointer declarations can use whole native lookups such as
 `id:num=^{pointer.pointerId}` and `primary:data=^{pointer.isPrimary}`.
 Key declarations use `key`, as in `pressed:str=^{key.key}` and
-`repeat:data=^{key.repeat}`. The listener reads native properties and
-checks the assembled arguments against the Action Schema at dispatch.
+`repeat:data=^{key.repeat}`. Input and change declarations follow the browser's
+`Event.target`, as in `value:str=^{input.target.value}` and
+`checked:data=^{change.target.checked}`. The subject remains the LiveTree handle
+that owns the declaration, even when the event originated on a descendant.
+The listener captures native values during dispatch and checks the assembled
+arguments against the Action Schema.
 [Supported native properties](../canonical-interactions.md#authored-event-arguments)
 
 A standalone declaration has no Part scope. Its other arguments use

@@ -7,7 +7,7 @@ import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from ".
 import { part_candidates } from "./part-completion.js";
 import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
-import { AUTHORED_EVENT_NAMES, NATIVE_EVENT_PROPERTIES, native_event_class, native_event_family, native_event_scalar_qualifier } from "../event-argument-plan.js";
+import { AUTHORED_EVENT_NAMES, native_event_class, native_event_family, native_event_paths, native_event_scalar_qualifier } from "../event-argument-plan.js";
 import { scan_part_reference } from "../part-placeholder.js";
 import { AUTHORED_EVENT_FLAGS } from "../../core/authored-event-names.js";
 
@@ -75,10 +75,14 @@ export function query_hson_event_completion(facts: PartSourceFacts, file: string
   const start = quoted ? checkpoint.start + 1 : checkpoint.start;
   const prefix = literal.text.slice(start, cursor);
   const root = `^{${family}.`;
-  if (!prefix.startsWith(root) || !/^[A-Za-z]*$/.test(prefix.slice(root.length))) return [];
+  if (!prefix.startsWith(root)) return [];
+  const pathPrefix = prefix.slice(root.length);
+  const paths = [...native_event_paths(family)].filter(([path, kind]) => path.startsWith(pathPrefix)
+    && (checkpoint.qualifier === "data" || checkpoint.qualifier === native_event_scalar_qualifier(kind)));
+  if (paths.length === 0) return [];
   const reference = scan_part_reference(literal.text, start);
   let end = cursor;
-  while (/[A-Za-z0-9_-]/.test(literal.text[end] ?? "")) end++;
+  while (/[A-Za-z0-9_.-]/.test(literal.text[end] ?? "")) end++;
   const optional = reference?.optional ?? literal.text[end] === "?";
   if (reference === undefined) {
     if (optional) end++;
@@ -88,13 +92,11 @@ export function query_hson_event_completion(facts: PartSourceFacts, file: string
   if (!authored_event_operand_ends_at(literal.text, replacementEnd, quoted)) return [];
   const range = map_static_hson_range(correspondence, { start: start + 2, end: replacementEnd });
   if (range === undefined) return [];
-  return [...NATIVE_EVENT_PROPERTIES[family]].filter(([name, kind]) => name.startsWith(prefix.slice(root.length))
-    && (checkpoint.qualifier === "data" || checkpoint.qualifier === native_event_scalar_qualifier(kind)))
-    .map(([property, kind], index) => {
-      const name = `${family}.${property}`;
-      return { candidate: { ...item(name, "reference", name + (optional ? "?}" : "}"),
-        `${native_event_class(family)} ${kind === "number" ? "finite number" : kind}`, index), certainty: "certain" as const }, range };
-    });
+  return paths.map(([path, kind], index) => {
+    const name = `${family}.${path}`;
+    return { candidate: { ...item(name, "reference", name + (optional ? "?}" : "}"),
+      `${native_event_class(family)} ${kind === "number" ? "finite number" : kind}`, index), certainty: "certain" as const }, range };
+  });
 }
 
 /** One editor-neutral compiler query for cursor and interpolation-slot consumers. */

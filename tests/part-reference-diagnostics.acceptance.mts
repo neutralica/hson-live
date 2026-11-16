@@ -1063,12 +1063,12 @@ check('pointer Event diagnostics retain lexical, Action Schema, and source-range
 
 check('native Event completion uses the selector, qualifier, and authored replacement range', () => {
   const cache = new HsonEditorCompletionCache(ts);
-  const complete = (text: string) => {
+  const complete = (text: string, includeDetail = false) => {
     const offset = text.indexOf('|');
     const source = text.replace('|', '');
     const { program } = inspect(source);
     return cache.complete(file('app.ts'), source, revision, offset, program).map(({ candidate, range }) =>
-      [candidate.label, candidate.insertText, source.slice(range.start, range.end)]);
+      [candidate.label, candidate.insertText, source.slice(range.start, range.end), ...(includeDetail ? [candidate.detail] : [])]);
   };
   const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n';
   const call = (operand: string, family = 'pointer:down') => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event on:${family} local:go ${operand} <> >`) + ');';
@@ -1108,6 +1108,22 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('x:data=^{key.|}', 'pointer:up')), []);
   assert.deepEqual(complete(call('x:data=^{keyboard.|}', 'key:down')), []);
   assert.deepEqual(complete(call('x:data=^{pointer.|}', 'key:down')), []);
+  assert.deepEqual(complete(call('', 'in|put')), [['on:input', 'on:input', 'on:input']]);
+  assert.deepEqual(complete(call('', 'ch|')), [['on:change', 'on:change', 'on:ch']]);
+  const stringProperties = ['tagName', 'id', 'name', 'type', 'value'];
+  assert.deepEqual(complete(call('x:str=^{input.ta|', 'input')).map(item => item[0]),
+    stringProperties.map(property => `input.target.${property}`));
+  assert.deepEqual(complete(call('x:data=^{change.target.|}', 'change'), true),
+    [...stringProperties, 'checked'].map(property => [
+      `change.target.${property}`, `change.target.${property}}`, 'change.target.}',
+      property === 'checked' ? 'Event boolean' : 'Event string',
+    ]));
+  assert.deepEqual(complete(call('x:data="^{input.target.v|alue?}"', 'input')),
+    [['input.target.value', 'input.target.value?}', 'input.target.value?}']]);
+  assert.deepEqual(complete(call('x:str=^{input.target.ch|}', 'input')), []);
+  assert.deepEqual(complete(call('x:num=^{input.target.|}', 'input')), []);
+  assert.deepEqual(complete(call('x:data=^{input.va|}', 'input')), []);
+  assert.deepEqual(complete(call('x:data=^{input.target.|}', 'change')), []);
   assert.deepEqual(complete(call('', 'key:|down')), [
     ['on:key:down', 'on:key:down', 'on:key:down'], ['on:key:up', 'on:key:up', 'on:key:down'],
   ]);
@@ -1143,7 +1159,7 @@ check('native Event completion uses the selector, qualifier, and authored replac
     } } } }), /or one whole Part reference/);
   }
   assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o|')).map(item => item[0]), [
-    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up', 'once',
+    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up', 'on:input', 'on:change', 'once',
   ]);
 });
 
@@ -1244,6 +1260,34 @@ check('keyboard Event diagnostics retain lexical and Action Schema evidence acro
   assert.deepEqual(collision.diagnostics[0]?.related?.map(({ start, end }) => collision.text.slice(start, end)), ['for:key']);
   assert.deepEqual(inspect(source('key:str=^{key.key}', local, 'on:click', '<key "string">')).codes, []);
   assert.deepEqual(inspect(source('key:str=^{key.key}', local).replace('events:{go:', 'events:{go:condition ? dynamic : ')).codes, []);
+});
+
+check('input and change Event diagnostics preserve target paths and native argument types', () => {
+  const source = (selector: string, args: string, schema = '<value "string" checked "boolean">', local = '') =>
+    application('<main/>', '{card:{kind:"document",document:Hson.document`<input hson:part ' + local + ' event:go/>`,events:{go:'
+      + JSON.stringify(`<hson:event on:${selector} local:go ${args} <> >`) + '}}}')
+      .replace('const page =', 'const Args = Hson.schema`<type "data" content ' + schema + '>`;\nconst page =')
+      + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
+  const args = 'value:data=^{change.target.value} checked:data=^{change.target.checked}';
+  assert.deepEqual(inspect(source('change', args)).codes, []);
+  const incorrect = inspect(source('change', args, '<value "number" checked "string">'));
+  assert.deepEqual(incorrect.codes, ['HSON_EVENT_ARGUMENT_INVALID', 'HSON_EVENT_ARGUMENT_INVALID']);
+  assert.deepEqual(incorrect.slices, args.split(' '));
+  assert.match(incorrect.diagnostics[0]!.message, /supplies a value of type string/);
+  assert.match(incorrect.diagnostics[1]!.message, /supplies a value of type boolean/);
+  for (const [selector, ref, message] of [
+    ['input', 'change.target.value', /native change binding requires on:change/],
+    ['change', 'change.value', /Unsupported change Event lookup/],
+    ['change', 'change.target.checked', /requires a whole :data/],
+    ['input', 'input.target.value.length', /Unsupported input Event lookup/],
+  ] as const) {
+    const result = inspect(source(selector, `value:str=^{${ref}}`));
+    assert.deepEqual(result.codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.deepEqual(result.slices, [`^{${ref}}`]);
+    assert.match(result.diagnostics[0]!.message, message);
+  }
+  const collision = inspect(source('change', args, undefined, 'data:change=%{stored}'));
+  assert.match(collision.diagnostics[0]!.message, /Part local "change" conflicts/);
 });
 
 check('hosted Event Action contracts recognize Parts Libraries with known access metadata', () => {

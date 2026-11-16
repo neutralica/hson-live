@@ -119,6 +119,8 @@
       checkStandaloneNativeLifecycle();
       await checkPointerEvents();
       await checkNativeEventVocabulary();
+      await checkNativeFormEvents();
+      await checkHostedFormEvent();
       await checkHostedNativeEvents("pointer");
       await checkHostedNativeEvents("key");
       await checkAuthoredEvents();
@@ -564,6 +566,197 @@
         check(local.length === cases.length + 3 && canonical.length === cases.length, "Listener disposal left a native callback.");
       } finally {
         continued?.dispose(); standalone.remove(); window.removeEventListener("error", catchLocalFailure);
+      }
+    }
+
+    async function checkNativeFormEvents() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const eventSource = (family, key, fields, flags = "") => `<hson:event on:${family} local:${key} ${flags} ${fields} <> >`;
+      const changeFields = 'tag:str=^{change.target.tagName} id:str=^{change.target.id} name:str=^{change.target.name} type:str=^{change.target.type} value:data=^{change.target.value}';
+      const map = hsonLiveMap.fromLibraries({
+        parts: { parts: { text: { kind: "document", document: '<input hson:part id="entry" name="entry" event:edit/>',
+          events: { edit: eventSource("input", "EDIT", 'value:str=^{input.target.value}') } } } },
+        page: {
+          document: `<main <hson-part at=parts/text/> <textarea id="notes" name="notes"/>
+            <input id="check" name="toggle" type="checkbox" value="yes"/> <input id="radio" name="choice" type="radio" value="a"/>
+            <select id="single" name="one" <option value="first"/> <option value="second"/>/>
+            <select id="multi" name="many" multiple="multiple" <option value="first"/> <option value="second"/>/>
+            <input id="number" type="number"/> <input id="file" type="file"/> <button id="button" name="button" value="press"/>
+            <div id="shadow"/> <div id="invalid"/>/>`,
+          events: { edit: eventSource("change", "CHANGE", changeFields) },
+        },
+      });
+      const page = map.doc.must("page"), calls = [], edits = [], targets = [], checked = [], failures = [], once = [];
+      map.actions.define("CHANGE", (ctx, args) => calls.push({ ctx, args }));
+      map.actions.define("EDIT", (ctx, args) => edits.push({ ctx, args }));
+      map.actions.define("TARGET", (ctx, args) => targets.push({ ctx, args }));
+      map.actions.define("CHECK", (ctx, args) => checked.push({ ctx, args }));
+      map.actions.define("ONCE", (ctx, args) => once.push({ ctx, args }));
+      const frame = document.createElement("iframe");
+      let continued;
+      try {
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = page.render();
+        document.body.append(frame);
+        await loaded;
+        const doc = frame.contentDocument, win = frame.contentWindow;
+        const get = id => doc.getElementById(id);
+        continued = continue_document({ map, document: page, root: doc.documentElement,
+          interactions: { onFailure: failure => failures.push(failure) } });
+        page.listen.event(eventSource("input", "TARGET", 'tag:str=^{input.target.tagName} id:data=^{input.target.id}', "capture"));
+        page.at([1, 0, 0]).asElement().listen.event(eventSource("change", "ONCE", 'value:str=^{change.target.value}', "once preventDefault"));
+        const fire = (target, type = "change", EventClass = win.Event, options = {}) => {
+          const event = new EventClass(type, { bubbles: true, cancelable: true, ...options });
+          target.dispatchEvent(event);
+          return event;
+        };
+        const entry = get("entry");
+        entry.value = "edited";
+        const input = new win.InputEvent("input", { bubbles: true, data: "d" });
+        const shadowed = () => { throw new Error("A shadowing property was called."); };
+        Object.defineProperty(input, "target", { get: shadowed });
+        Object.defineProperty(entry, "value", { get: shadowed, configurable: true });
+        entry.dispatchEvent(input);
+        delete entry.value;
+        entry.value = "later";
+        await Promise.resolve();
+        check(edits.length === 1 && edits[0].ctx.subject.dom.el() === entry && edits[0].ctx.event === input
+          && edits[0].args.equals(Hson.data.from({ value: "edited" })), "Part input Event lost the owner, native value or dispatch-time capture.");
+        check(fire(entry).defaultPrevented && !fire(entry).defaultPrevented && once.length === 1
+          && once[0].ctx.subject.dom.el() === entry && once[0].args.equals(Hson.data.from({ value: "later" })),
+          "Writable element change Event lost its subject, native once or default cancellation.");
+        const notes = get("notes"), checkbox = get("check"), radio = get("radio");
+        notes.value = "changed\nnotes"; fire(notes, "change", Event);
+        notes.value = ""; fire(notes);
+        checkbox.checked = false; fire(checkbox);
+        radio.checked = true; fire(radio);
+        const single = get("single"), multi = get("multi");
+        single.value = "second"; fire(single);
+        multi.options[0].selected = true; multi.options[1].selected = true; fire(multi);
+        get("number").value = "42"; fire(get("number"));
+        fire(get("file"));
+        fire(get("button"));
+        const values = [
+          ["INPUT", "entry", "entry", "text", "later"], ["INPUT", "entry", "entry", "text", "later"],
+          ["TEXTAREA", "notes", "notes", "textarea", "changed\nnotes"], ["TEXTAREA", "notes", "notes", "textarea", ""],
+          ["INPUT", "check", "toggle", "checkbox", "yes"], ["INPUT", "radio", "choice", "radio", "a"],
+          ["SELECT", "single", "one", "select-one", "second"], ["SELECT", "multi", "many", "select-multiple", "first"],
+          ["INPUT", "number", "", "number", "42"], ["INPUT", "file", "", "file", get("file").value],
+          ["BUTTON", "button", "button", "submit", "press"],
+        ];
+        check(calls.length === values.length && calls.every(({ ctx, args }, index) => {
+          const [tag, id, name, type, value] = values[index];
+          return ctx.subjectKind === "document" && ctx.subject === page && args.equals(Hson.data.from({ tag, id, name, type, value }));
+        }), "Document change events did not deliver the native control properties with the Library subject.");
+        check(failures.length === 0, "Supported native form property extraction failed.");
+        page.listen.event(eventSource("change", "CHECK", 'checked:data=^{change.target.checked?} value:str=^{change.target.value}'));
+        fire(checkbox); fire(radio);
+        check(checked.length === 2 && checked[0].args.equals(Hson.data.from({ checked: false, value: "yes" }))
+          && checked[1].args.equals(Hson.data.from({ checked: true, value: "a" })),
+          "Checkbox and radio checked and value were not captured independently.");
+        Object.defineProperty(notes, "checked", { value: true });
+        fire(notes);
+        check(checked.length === 2 && failures.length === 1 && failures[0].phase === "browser-invocation"
+          && /change\.target\.checked.*HTMLInputElement.*boolean/.test(failures[0].cause.message),
+          "An inapplicable checked lookup did not fail with the native property and brand.");
+        const invalid = get("invalid"), previousChanges = calls.length;
+        Object.defineProperties(invalid, { name: { value: "fake" }, type: { value: "text" }, value: { value: "fake" } });
+        fire(invalid);
+        check(calls.length === previousChanges && failures.length === 3 && failures.slice(1).some(failure =>
+          /change\.target\.name.*HTMLInputElement.*string/.test(failure.cause.message)), "Element shadow properties bypassed native brands.");
+        const shadow = get("shadow").attachShadow({ mode: "open" });
+        const inner = doc.createElement("input");
+        shadow.append(inner);
+        fire(inner, "input", win.Event, { composed: true });
+        check(targets.length === 2 && targets.every(({ ctx }) => ctx.subjectKind === "document" && ctx.subject === page)
+          && targets[0].args.equals(Hson.data.from({ tag: "INPUT", id: "entry" }))
+          && targets[1].args.equals(Hson.data.from({ tag: "DIV", id: "shadow" })),
+          "Writable Library input Event failed to read the retargeted Event.target.");
+        fire(doc, "input");
+        check(targets.length === 2 && failures.length === 4 && /input\.target\.tagName.*Element/.test(failures[3].cause.message),
+          "A Document event target was admitted as an Element.");
+        continued.dispose();
+        fire(entry, "input"); fire(entry);
+        check(targets.length === 2 && edits.length === 1 && calls.length === previousChanges && failures.length === 4,
+          "Continuation disposal left form listeners active.");
+      } finally { continued?.dispose(); frame.remove(); }
+
+      const container = subjectDocument.createElement("section");
+      const textarea = subjectDocument.createElement("textarea");
+      container.append(textarea);
+      subjectDocument.body.append(container);
+      const root = graft(container, { unsafe: false }), standalone = [];
+      root.actions.define("EDIT", (ctx, args) => standalone.push({ ctx, args }));
+      const subscription = root.listen.event(eventSource("input", "EDIT", 'value:str=^{input.target.value}'));
+      try {
+        textarea.value = "standalone";
+        textarea.dispatchEvent(new subjectWindow.Event("input", { bubbles: true }));
+        textarea.value = "new";
+        subscription.off();
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        check(standalone.length === 1 && standalone[0].ctx.subject === root
+          && standalone[0].args.equals(Hson.data.from({ value: "standalone" })),
+          "Standalone delegated input Event lost its owner, value or cleanup.");
+      } finally { subscription.off(); root.remove(); }
+    }
+
+    async function checkHostedFormEvent() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const calls = [], submissions = [], wire = [], failures = [];
+      const locus = hsonLiveMap.locus.create({
+        page: { access: "shared", document: '<main <input id="toggle" name="ready" type="checkbox" value="yes"/> <textarea id="notes"/>/>',
+          events: { toggle: '<hson:event on:change host:toggle name:str=^{change.target.name} offset:num="-0" value:data=^{change.target.value} checked:data=^{change.target.checked} <> >' } },
+      }, {
+        authorizeProjection: ({ requested }) => requested,
+        authorizeAction: ({ action }) => action === "toggle",
+        actions: { toggle: { args: { required: true, schema: ANY_DATA }, handler(context, args) {
+          check(!("event" in context) && !("subject" in context), "A browser object reached the hosted Action.");
+          calls.push(args);
+        } } },
+      });
+      const binding = bind_locus_http(locus, { endpoint: "/form-event" });
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/form-event", fetch(input, init) {
+        const body = JSON.parse(init.body);
+        if (body.type === "action") wire.push(body);
+        return binding.handle(new Request(input, init), {});
+      } });
+      const frame = document.createElement("iframe");
+      let continued;
+      try {
+        const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+        const now = session.now({ html: "page" });
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = now.html;
+        document.body.append(frame);
+        await loaded;
+        const doc = frame.contentDocument, win = frame.contentWindow;
+        continued = await continue_hosted_document({ now, credential: session.credential, root: doc.documentElement,
+          transport: { ...transport, operations: { submit(request, options) {
+            if (request.type === "action") submissions.push(request.payload);
+            return transport.operations.submit(request, options);
+          } } }, interactions: { onFailure: failure => failures.push(failure) } });
+        const fire = target => target.dispatchEvent(new win.Event("change", { bubbles: true }));
+        const toggle = doc.querySelector("#toggle");
+        toggle.checked = false;
+        fire(toggle);
+        toggle.value = "changed after dispatch"; toggle.checked = true;
+        for (let attempt = 0; attempt < 150 && calls.length === 0 && failures.length === 0; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 5));
+        }
+        const expected = Hson.data.from({ name: "ready", offset: -0, value: "yes", checked: false });
+        check(failures.length === 0 && calls[0]?.equals(expected) && submissions[0]?.equals(expected)
+          && wire.length === 1 && Hson.data.fromSource(wire[0].payloadData).equals(expected) && !("payload" in wire[0]),
+          `Hosted form dispatch failed: ${JSON.stringify({
+            calls: calls.map(args => args.toHson()), submissions: submissions.map(args => args?.toHson()),
+            wire: wire.map(body => body.payloadData), failures: failures.map(failure => String(failure.cause)),
+          })}`);
+        fire(doc.querySelector("#notes"));
+        check(failures.length === 1 && failures[0].phase === "locus-invocation"
+          && failures[0].cause.message.includes("change.target.checked")
+          && submissions.length === 1 && wire.length === 1 && calls.length === 1,
+          "An invalid hosted form lookup attempted to dispatch the Action.");
+      } finally {
+        continued?.dispose(); continued?.echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); frame.remove();
       }
     }
 

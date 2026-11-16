@@ -127,13 +127,33 @@ Use `str` for strings, `num` for finite numbers, and `data` for Hson Data. Numer
 | `on:pointer:cancel` | `pointercancel` | `pointer` |
 | `on:key:down` | `keydown` | `key` |
 | `on:key:up` | `keyup` | `key` |
+| `on:input` | `input` | `input` |
+| `on:change` | `change` | `change` |
 
 | Event-local root | `num` or `data` | `str` or `data` | Boolean `data` |
 | --- | --- | --- | --- |
 | `pointer` | `clientX`, `clientY`, `movementX`, `movementY`, `pointerId`, `button`, `buttons` | `pointerType` | `isPrimary`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
 | `key` | `location` | `key`, `code` | `repeat`, `isComposing`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
+| `input`, `change` | | `target.tagName`, `target.id`, `target.name`, `target.type`, `target.value` | `target.checked` |
 
 Use native lookups as whole argument values. They require the matching native Event class and a value of the expected type, including for references ending in `?`. Pointer movement values come directly from the browser. `button` reports the changed button, `buttons` carries the button-state bitmask, and `pointerId` has the lifetime defined by the browser's pointer model. Release and cancellation dispatch separately. Keyboard `key` reports the logical value and `code` identifies the physical key.
+
+Input and change lookups accept ordinary native Events and read the browser's `Event.target` during dispatch, including any retargeting across a shadow boundary. `tagName` and `id` use the Element accessors. Inputs, textareas, selects, buttons, and outputs supply native `name`, `type`, and `value` strings. Fieldsets and objects supply `name` and `type`, forms supply `name`, and options supply `value`. `checked` requires an HTML input. A lookup that cannot read the requested native property reports an invocation failure before the Action runs.
+
+The browser's casing, empty strings, and `false` are preserved. Numeric inputs and multiple selects still supply a string for `value`. Checkbox and radio values are independent of their checked state. File inputs supply the browser's display string.
+
+A Document Library can delegate changes from its controls.
+
+```ts
+const page = {
+  document: '<main <input name="title"/> <textarea name="notes"/>/>',
+  events: {
+    edit: '<hson:event on:change local:EDIT name:str=^{change.target.name} value:str=^{change.target.value} <> >',
+  },
+};
+```
+
+Each occurrence supplies the control's name and current value. The local Action still receives the Document Library as its subject. For element-owned declarations, the subject remains the owning element even when a descendant generated the event. Listener placement sets where the native listener runs. Hosted Actions receive the captured Data without browser objects.
 
 The selected family establishes its root within the Event declaration. A visible Part local or iterator alias with that name conflicts at the attachment. The same name can be used as an ordinary local outside that Event scope. Incoming `%{...}` placeholders use their usual Part bindings. `part:optional` continues to depend on composition-time references.
 
@@ -142,7 +162,7 @@ The selected family establishes its root within the Event declaration. A visible
 <hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} code:str=^{key.code} repeat:data=^{key.repeat} <> >
 ```
 
-For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, and `[name, type, family, property]` for a native lookup. `family` is `"pointer"` or `"key"`. Admission requires unique argument names, matching value types, and at least one supported lookup from the listener's Event family. Descriptors carry the plan in place of resolved `args` or `payload`. Listener equivalence includes the full plan.
+For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, `[name, type, family, property]` for a pointer or key lookup, and `[name, type, family, "target", property]` for an input or change lookup. Admission requires unique argument names, matching value types, and at least one supported lookup from the listener's Event family. Descriptors carry the plan in place of resolved `args` or `payload`. Listener equivalence includes the full plan.
 
 Each browser dispatch uses the native Event to construct the exact ordered Data object, then applies the normal Action argument admission. A failed extraction rejects the invocation through the existing failure reporting. A hosted Action receives that Data through Echo and Locus. Echo retries retain the original arguments and request ID. Client-reported native values are application input subject to the Action Schema and authorization.
 

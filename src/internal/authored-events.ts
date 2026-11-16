@@ -12,8 +12,8 @@ import { PART_LOCAL_REFERENCE_MIGRATION, part_reference_text, whole_part_referen
 import { interpolate_part_string, is_part_scalar_value, part_scalar_operand } from "./part-scalar.js";
 import { decode_part_string_sigils } from "./part-scalar-source.js";
 import type { Primitive } from "../core/types.js";
-import { AUTHORED_EVENT_NAMES, NATIVE_EVENT_PROPERTIES, native_event_family, native_event_scalar_qualifier,
-  type DeferredEventArgument, type EventArgumentQualifier, type NativeEventFamily, type NativeEventValueKind } from "./event-argument-plan.js";
+import { AUTHORED_EVENT_NAMES, native_event_family, native_event_paths, native_event_scalar_qualifier, read_native_event_lookup,
+  type DeferredEventArgument, type EventArgumentQualifier } from "./event-argument-plan.js";
 
 const AUTHORED_EVENT_SELECTORS = [...AUTHORED_EVENT_NAMES.keys()].join(", ");
 
@@ -21,7 +21,7 @@ export type AuthoredEventReference = Readonly<{ reference: PartReference; start:
 type EventOperand =
   | Readonly<{ kind: "literal"; value: OrderedProjectedValue }>
   | Readonly<{ kind: "reference"; site: AuthoredEventReference }>
-  | Readonly<{ kind: "native"; site: AuthoredEventReference; family: NativeEventFamily; property: string; valueKind: NativeEventValueKind }>
+  | Readonly<{ kind: "native"; site: AuthoredEventReference }> & NonNullable<ReturnType<typeof read_native_event_lookup>>
   | Readonly<{ kind: "interpolation"; text: string; sites: readonly AuthoredEventReference[] }>;
 export type AuthoredEventArgument = Readonly<{
   name: string;
@@ -83,8 +83,9 @@ export function parse_authored_event(source: string, operation = "Authored event
 
 export function missing_native_event_binding(reference: PartReference): string | undefined {
   const { name } = reference;
-  if (reference.namespace !== "local" || name !== "pointer" && name !== "key") return undefined;
+  if (reference.namespace !== "local") return undefined;
   const selectors = [...AUTHORED_EVENT_NAMES].filter(([, event]) => native_event_family(event) === name).map(([selector]) => selector);
+  if (selectors.length === 0) return undefined;
   return `The native ${name} binding requires ${selectors.join(" or ")}.`;
 }
 
@@ -93,17 +94,16 @@ function bind_event_argument(event: string, argument: AuthoredEventArgument, ope
   if (family === undefined) return argument;
   const site = event_argument_references(argument).find(({ reference }) => reference.namespace === "local" && reference.name === family);
   if (site === undefined) return argument;
-  const [property] = site.reference.path;
-  const properties = NATIVE_EVENT_PROPERTIES[family];
-  const valueKind = site.reference.path.length === 1 && typeof property === "string" ? properties.get(property) : undefined;
-  if (valueKind === undefined || typeof property !== "string") {
-    return fail_event_reference(`Unsupported ${family} Event lookup ${part_reference_text(site.reference)}. Use ${[...properties.keys()].map(name => `${family}.${name}`).join(", ")}.`, site, operation);
+  const native = read_native_event_lookup(family, site.reference.path);
+  if (native === undefined) {
+    return fail_event_reference(`Unsupported ${family} Event lookup ${part_reference_text(site.reference)}. Use ${[...native_event_paths(family).keys()].map(name => `${family}.${name}`).join(", ")}.`, site, operation);
   }
+  const { valueKind } = native;
   const scalar = native_event_scalar_qualifier(valueKind);
   if (argument.operand.kind !== "reference" || argument.qualifier !== "data" && argument.qualifier !== scalar) {
     return fail_event_reference(`A ${family} Event lookup supplies a ${valueKind} and requires a whole ${scalar === undefined ? "" : `:${scalar} or `}:data argument.`, site, operation);
   }
-  return { ...argument, operand: { kind: "native", site, family, property, valueKind } };
+  return { ...argument, operand: { kind: "native", site, ...native } };
 }
 
 export function standalone_event_reference_issue(site: AuthoredEventReference): string {
@@ -195,7 +195,7 @@ export function authored_event_args(args: readonly AuthoredEventArgument[],
   let deferred = false;
   for (const { name, qualifier, operand } of args) {
     if (operand.kind === "native") {
-      fields.push([name, qualifier, operand.family, operand.property]);
+      fields.push([name, qualifier, ...operand.lookup]);
       deferred = true;
       continue;
     }

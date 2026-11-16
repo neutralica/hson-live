@@ -370,8 +370,10 @@ async function native_event_cases() {
   const cancel = '<hson:event on:pointer:cancel host:CANCEL kind:str=^{pointer.pointerType} primary:data=^{pointer.isPrimary} <> >';
   const shortcut = '<hson:event on:key:down local:SHORTCUT key:str=^{key.key} row:data=^{row} note:str=^{row.note?} code:data=^{key["code"]?} repeat:data=^{key.repeat} offset:num="-0" <> >';
   const keyup = '<hson:event on:key:up host:KEYUP location:num=^{key.location} composing:data=^{key.isComposing} <> >';
-  const control = { kind: "document", document: '<main hson:part data:rows=%{rows} <button for:row=^{rows} event:move event:down event:release event:cancel event:shortcut event:keyup/>/>',
-    events: { move, down, release, cancel, shortcut, keyup } } satisfies LiveMapDocumentPart;
+  const input = '<hson:event on:input local:INPUT tag:str=^{input.target.tagName} note:str=^{row.note?} id:data=^{input.target.id} name:str=^{input.target.name} type:str=^{input.target.type} value:data=^{input.target["value"]?} checked:data=^{input.target.checked} <> >';
+  const change = '<hson:event on:change host:CHANGE value:str=^{change.target.value} <> >';
+  const control = { kind: "document", document: '<main hson:part data:rows=%{rows} <button for:row=^{rows} event:move event:down event:release event:cancel event:shortcut event:keyup event:input event:change/>/>',
+    events: { move, down, release, cancel, shortcut, keyup, input, change } } satisfies LiveMapDocumentPart;
   const startup = { parts: { parts: { control } } };
   const rows = '[<value -0 note "ready">,<value 2>]';
   const composition = `<hson-part at=parts/control rows:data=${JSON.stringify(rows)}/>`;
@@ -382,7 +384,7 @@ async function native_event_cases() {
   const read = (root: HsonNode) => descriptor_data(root).map(entry => new Map(entry.entries()));
   const map = hsonLiveMap.fromLibraries({ ...startup, page: { document: composition } });
   const entries = read(projectedState(map));
-  const names = ["pointermove", "pointerdown", "pointerup", "pointercancel", "keydown", "keyup"];
+  const names = ["pointermove", "pointerdown", "pointerup", "pointercancel", "keydown", "keyup", "input", "change"];
   assert.equal(entries.length, 2 * names.length);
   for (let index = 0; index < entries.length; index++) {
     const descriptor = entries[index]!;
@@ -397,6 +399,15 @@ async function native_event_cases() {
   const keyboardSecond = Hson.data.fromSource('[["key","str","key","key"],["row","data",{"value":2}],["note","str"],["code","data","key","code"],["repeat","data","key","repeat"],["offset","num",-0]]');
   assert.ok(entries[4]?.get("eventArgs")?.equals(keyboardFirst));
   assert.ok(entries[names.length + 4]?.get("eventArgs")?.equals(keyboardSecond));
+  const inputPlan = (note: readonly string[]) => Hson.data.from([
+    ["tag", "str", "input", "target", "tagName"], note, ["id", "data", "input", "target", "id"],
+    ["name", "str", "input", "target", "name"], ["type", "str", "input", "target", "type"],
+    ["value", "data", "input", "target", "value"], ["checked", "data", "input", "target", "checked"],
+  ]);
+  const changePlan = Hson.data.from([["value", "str", "change", "target", "value"]]);
+  assert.ok(entries[6]?.get("eventArgs")?.equals(inputPlan(["note", "str", "ready"])));
+  assert.ok(entries[names.length + 6]?.get("eventArgs")?.equals(inputPlan(["note", "str"])));
+  assert.ok(entries[7]?.get("eventArgs")?.equals(changePlan));
   assert.doesNotMatch(map.doc.page.render(), /event:|hson:event/);
 
   const admit = (document: string, action: string) => hsonLiveMap.fromLibraries({ parts: { parts: {
@@ -459,6 +470,27 @@ async function native_event_cases() {
     ['pressed', 'str', 'key', 'key'], ['saved', 'str', 'saved'], ['label', 'str', 'saved: saved'],
   ])));
 
+  for (const lookup of ["change", "change.target", "change.value", "change.checked", "change.target.tagname",
+    "change.target.files", "change.target.parentElement.id", "change.target.value.length", "change.target[0]",
+    'change["target.value"]', "change.value.target"]) {
+    assert.throws(() => admit(button, change.replace("change.target.value", lookup)), /Unsupported change Event lookup/);
+  }
+  assert.throws(() => admit(button, change.replace("value:str", "value:num")), /requires a whole :str or :data/);
+  assert.throws(() => admit(button, change.replace("target.value", "target.checked")), /requires a whole :data/);
+  assert.throws(() => admit(button, change.replace('^{change.target.value}', '"prefix ^{change.target.value}"')), /requires a whole/);
+  assert.throws(() => admit(button, change.replace("value:str", "value:str=^{change.target.id} value:str")), /Duplicate/);
+  assert.throws(() => admit(button, change.replace("on:change", "on:input")), /native change binding requires on:change/);
+  assert.throws(() => admit(button, change.replace("change.target", "input.target")), /native input binding requires on:input/);
+  const changeLocal = '<button hson:part data:change=%{stored} event:move/>';
+  assert.throws(() => admit(changeLocal, change), /Part local "change" conflicts/);
+  assert.throws(() => admit('<main hson:part data:rows=%{rows} <button for:input=^{rows} event:move/>/>',
+    '<hson:event on:input local:INPUT <> >'), /Part local "input" conflicts/);
+  const otherFamily = admit(changeLocal, '<hson:event on:input local:INPUT value:str=^{input.target.value} stored:str=^{change.target.value} <> >');
+  otherFamily.addLibraries({ page: { document: otherFamily.parts.parts.control.write({ stored: { target: { value: "composed" } } }) } });
+  assert.ok(read(projectedState(otherFamily))[0]?.get("eventArgs")?.equals(Hson.data.from([
+    ["value", "str", "input", "target", "value"], ["stored", "str", "composed"],
+  ])));
+
   // A portable capture of an ordinary document can also carry an admitted plan.
   const plain = hsonLiveMap.fromLibraries({ page: { document: '<main/>' } });
   const listener = { event: "pointermove", target: "element", capture: false, once: false, passive: false,
@@ -466,6 +498,8 @@ async function native_event_cases() {
   add_interaction(plain, { id: "plan", subject: { library: "page", path: [0] }, kind: "browser", key: "MOVE", listener, eventArgs: first });
   const keyboardListener = { ...listener, event: "keydown" };
   add_interaction(plain, { id: "keyboard-plan", subject: { library: "page", path: [0] }, kind: "locus", key: "SHORTCUT", listener: keyboardListener, eventArgs: keyboardFirst });
+  add_interaction(plain, { id: "change-plan", subject: { library: "page", path: [0] }, kind: "locus", key: "CHANGE",
+    listener: { ...listener, event: "change" }, eventArgs: changePlan });
   const snapshot = plain.capture();
   assert.deepEqual(install_libraries_snapshot(structuredClone(snapshot)).map.capture(), snapshot);
   const revision = plain.rev;
@@ -478,17 +512,23 @@ async function native_event_cases() {
     ["keydown", '[["pressed","str","keyboard","key"]]'], ["keydown", '[["pressed","str","key","pressed"]]'],
     ["keyup", '[["repeat","num","key","repeat"]]'], ["keydown", '[["key","data","key","__proto__"]]'],
     ["keydown", '[["key","str","key","code"],["x","num","pointer","clientX"]]'],
-    ["keydown", '[["location","str","key","location"]]']] as const) {
+    ["keydown", '[["location","str","key","location"]]'],
+    ["input", '[["x","str","input","value"]]'], ["input", '[["x","str","input","target.value"]]'],
+    ["input", '[["x","str","input",["target","value"]]]'], ["input", '[["x","str","input","value","target"]]'],
+    ["input", '[["x","str","input","target","value","length"]]'], ["input", '[["x","str","input","target","tagname"]]'],
+    ["input", '[["x","num","input","target","value"]]'], ["change", '[["x","str","change","target","checked"]]'],
+    ["change", '[["x","data","input","target","value"]]'], ["keyup", '[["x","data","key","target","value"]]'],
+    ["change", '[["x","data","change","target","constructor"]]']] as const) {
     assert.throws(() => add_interaction(plain, { id: "bad", subject: { library: "page", path: [0] },
       kind: "locus", key: "DOWN", listener: { ...listener, event }, eventArgs: Hson.data.fromSource(source) }), /canonical event argument plan/i);
   }
   assert.throws(() => add_interaction(plain, { id: "hybrid", subject: { library: "page", path: [0] },
     kind: "browser", key: "MOVE", listener, args: {}, eventArgs: first }), /cannot accompany/);
   const badPlan = hson_data_value(Hson.data.fromSource('[["pressed","str","keyboard","key"]]'));
-  const forge = (root: HsonNode) => ordered_projected_array(interaction_descriptors_from_root(projected_value_from_hson_node(root)).map(entry => {
+  const forge = (root: HsonNode, action = "SHORTCUT", plan = badPlan) => ordered_projected_array(interaction_descriptors_from_root(projected_value_from_hson_node(root)).map(entry => {
     assert.ok(is_ordered_projected_object(entry));
-    if (!entry.entries.some(([key, value]) => key === "key" && value === "SHORTCUT")) return entry;
-    return ordered_projected_object(entry.entries.map(([key, value]) => [key, key === "eventArgs" ? badPlan : value]));
+    if (!entry.entries.some(([key, value]) => key === "key" && value === action)) return entry;
+    return ordered_projected_object(entry.entries.map(([key, value]) => [key, key === "eventArgs" ? plan : value]));
   }));
   const invalid = forge(projectedState(plain));
   const engine = authority(plain);
@@ -498,6 +538,10 @@ async function native_event_cases() {
   const forged = { ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === INTERACTION_RESERVED_LIBRARY_KEY
     ? { ...entry, root: encode_hosted_root(invalidRoot) } : entry) };
   assert.throws(() => plain.restore(forged), /Invalid canonical event argument plan operand/);
+  const flatPath = hson_data_value(Hson.data.from([["value", "str", "change", "target.value"]]));
+  const forgedChange = projected_value_to_hson_root(ordered_projected_object([["descriptors", forge(projectedState(plain), "CHANGE", flatPath)]]));
+  assert.throws(() => plain.restore({ ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === INTERACTION_RESERVED_LIBRARY_KEY
+    ? { ...entry, root: encode_hosted_root(forgedChange) } : entry) }), /Invalid canonical event argument plan operand/);
   assert.deepEqual(plain.capture(), snapshot);
   assert.equal(plain.rev, revision);
 
@@ -519,8 +563,11 @@ async function native_event_cases() {
       const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
       const projection = session.now({ html: "page" }).libs;
       assert.equal(projection.system?.interactions.payload, expected);
-      const malformed = projected_value_to_hson_root(ordered_projected_object([["descriptors", forge(decode_hosted_root(projection.system!.interactions))]]));
-      assert.throws(() => admit_authority_projection_snapshot({ ...projection, system: { interactions: encode_hosted_root(malformed) } }));
+      const projected = decode_hosted_root(projection.system!.interactions);
+      for (const descriptors of [forge(projected), forge(projected, "CHANGE", flatPath)]) {
+        const malformed = projected_value_to_hson_root(ordered_projected_object([["descriptors", descriptors]]));
+        assert.throws(() => admit_authority_projection_snapshot({ ...projection, system: { interactions: encode_hosted_root(malformed) } }));
+      }
       if (compact) await hsonLiveMap.locus.checkpoint(locus);
     } finally { locus.dispose(); }
   }
