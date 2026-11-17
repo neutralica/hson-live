@@ -1,0 +1,110 @@
+Hson Appearance editing-state contract
+
+Inspection baseline: main 06529931, including the seven pre-existing Appearance
+modifications. No README, release-note, or declarative-document changes belong
+to this repair.
+
+Observed before repair
+----------------------
+Accepted operations clone Draft, validate with readAppearance, then push the
+previous draft unless grouped. Undo/Redo transfer snapshots and clear pending
+input. Reset restores a saved property; Revert clears both history stacks.
+Only failed property operations set rejectedInput. Failed inheritance only
+throws a transient error. Inheritance and Reset clear all pending input.
+Save captures Draft and destination, clears editGroup, and awaits update().
+Success replaces Saved; completion reads configuration. History is trimmed by
+operation revision only if no navigation occurred during the write.
+External settings replace Draft whenever Draft equals Saved with no pending
+property input, without considering either history stack.
+Hex focus begins a gesture; picker input begins one too late. Both use the
+current panel target and mode for subsequent messages. Themes wait for active
+text editing or rejected property input; picker activation has no ownership.
+Panel disposal ends gestures but preserves Draft and rejected property input.
+
+Contract for the repair
+-----------------------
+Saved is the last successfully persisted/observed valid configuration. Draft
+contains only accepted values. Pending text and rejected selections are not
+Draft or history. Validation survives unrelated actions and Save completion;
+correction clears only its matching rejection. Role navigation retains errors
+and keeps each rejected advanced field reachable for correction. Reset discards the selected
+property/source rejection; Discard pending input, Undo/Redo and confirmed Revert deliberately discard
+pending operations. Dismiss error permits retry after a failed write without
+changing accepted work. A visible unresolved error blocks Save.
+
+History contains recoverable accepted states. Save provisionally establishes a
+boundary at capture, retaining edits and Redo ahead of that state. Navigation
+cannot cross the captured boundary, regardless of completion timing. The older
+Undo prefix is retained by the pending write and restored on failure, ahead of
+any subsequent editing history. Success commits the boundary; failure does not
+rewind Draft or Redo. Capture ends a grouping interval so later edits are undoable.
+
+A pending Save owns its snapshot and destination, not subsequent editing.
+External changes adopt automatically only without a write, conflict, gesture,
+validation, dirty draft, or either history stack. Otherwise they update Saved
+and establish a conflict without replacing local work. Own-write notifications
+matching the pending snapshot or current Saved are acknowledgements. Revert
+explicitly accepts Saved and discards recoverable work, even at a clean cursor.
+
+A gesture captures palette/override scope, role, mode, property and group at
+activation. Input uses that captured target until completion/cancellation.
+Native color input has no portable picker-closed event: input/change, Escape,
+focus transfer within the panel and explicit navigation are the observable
+boundaries. Window blur alone is not proof that a native picker has closed.
+Panel close ends the gesture, retaining rejected input for reopening.
+
+Transition matrix (controller promises are explicitly resolved/rejected)
+-----------------------------------------------------------------------
+Edit B, C -> Undo B -> Save B -> Redo C, before/after completion:
+  Saved/persisted B; Draft C; Undo B then stops; C remains redoable.
+Edit B -> Undo -> Redo -> Save: Saved B, no predecessor Undo.
+Save B -> edit C -> external D: C/history retained, explicit conflict.
+Save B -> Undo/Redo -> success/failure: snapshot/destination stable;
+  accepted navigation retained; success boundary or full failure recovery.
+Invalid hex -> rejected inheritance -> Save: neither operation accepted;
+  both errors visible; no write or rejected-operation history entry.
+Rejected inheritance -> correction/Reset -> Save: only matching errors clear.
+Undo/Redo discard pending operations and navigate accepted history.
+Picker activation -> theme -> input: original mode/role/scope remains owner.
+Picker Escape/focus transfer/explicit mode switch: next gesture is independent.
+External changes while Revert awaits confirmation invalidate that confirmation.
+Panel close/reopen with invalid input: text, selection and validation retained.
+Revert with recoverable history, even Draft == Saved: confirmation required.
+Save failure -> later edit: Saved unchanged; complete accepted history retained.
+
+Verification results (2026-11-17)
+-------------------------------
+All four reported defects were reproduced before implementation: A/B/C through
+controller calls, D through native picker activation in isolated VS Code.
+
+28 deterministic controller cases pass in Node and the VS Code extension host.
+Both orderings of Redo versus successful completion converge on Saved B / Draft C,
+Undo B then stop, Redo C. Undo before/after successful completion also respects B.
+Failure restores the detached prefix ahead of later accepted edits and retains
+Redo. External changes before/during/after Save and at the final read preserve
+local work with conflict; expected own-write notifications do not conflict.
+
+Rendered tests pass in VS Code, including two trusted native color-input events
+and a trusted change event following a real Dark-to-Light theme switch. Escape
+can be consumed by the native picker without a DOM event; focus transfer and
+explicit navigation terminate ownership, and stale dialog input is ignored.
+This is a defined fallback, not an assumed picker-closed notification.
+
+The existing rendered suite passes: 47 roles / seven properties, compact rows,
+House editing and immutable shipped baseline, grouped edits, alpha/intensity,
+Saved/Working comparison, native scratchpad edits/Undo, User/Workspace writes,
+source Export, external themes and fresh-extension-host persistence. The native
+mixed underline/strikethrough limitation already reported by the suite remains.
+Settings checks (30), extension source checks, theme drift, artifact validation,
+and git diff --check pass. Full repository certification is deferred.
+
+Files changed by this repair (relative to the supplied working tree):
+  src/appearance-editor.ts
+  src/appearance-webview.ts
+  tests/appearance.test.ts
+  tests/appearance-transitions.test.ts (new)
+  tests/appearance-transitions.txt (new)
+  tests/integration/appearance-driver.mjs
+  tests/integration/appearance.ts
+All paths above are relative to editors/vscode-hson. The supplied model/renderer
+changes, release notes, declarative document, and README files remain untouched.

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { IGrammar } from 'vscode-textmate';
 import { AppearanceSpanCache } from './appearance-spans.js';
-import { initialAppearance, resolveStyle, roleCatalog, type AppearanceState, type Family, type Style } from './appearance-model.js';
+import { initialAppearance, resolveStyle, roleCatalog, type AppearanceState, type Family, type Style, type Mode } from './appearance-model.js';
 
 function renderStyle(style: Style): vscode.DecorationRenderOptions {
   const options: vscode.DecorationRenderOptions = {rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed};
@@ -20,6 +20,7 @@ export class AppearanceRenderer implements vscode.Disposable {
   private readonly decorations = new Map<string,vscode.TextEditorDecorationType>();
   private readonly subscriptions: vscode.Disposable[];
   private preview?: AppearanceState;
+  private previewMode?: Mode;
   private disposed=false;
   constructor(private readonly grammar:Promise<IGrammar>, private readonly cache=new AppearanceSpanCache(),
     private readonly saved:(document:vscode.TextDocument)=>AppearanceState=()=>initialAppearance()) {
@@ -33,20 +34,21 @@ export class AppearanceRenderer implements vscode.Disposable {
       vscode.workspace.onDidChangeConfiguration(event=>{if(event.affectsConfiguration('hson.appearance.state')||event.affectsConfiguration('editor.bracketPairColorization'))void this.refresh();})];
   }
   async attach(document:vscode.TextDocument,family:Family='all'):Promise<void> {if(this.disposed)return;this.documents.set(document,family);await this.refresh();}
-  async setAppearance(state:AppearanceState|undefined):Promise<void> {if(this.disposed)return;this.preview=state;await this.refresh();}
+  async setAppearance(state:AppearanceState|undefined,mode?:Mode):Promise<void> {if(this.disposed)return;this.preview=state;this.previewMode=mode;await this.refresh();}
   async refresh():Promise<void> {
     const grammar=await this.grammar;if(this.disposed)return;
     const mode=[vscode.ColorThemeKind.Light,vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind)?'light':'dark';
     const used=new Set<string>();
     for(const editor of vscode.window.visibleTextEditors){
       const document=editor.document;if(document.isClosed||!['hson','markdown','typescript','typescriptreact'].includes(document.languageId))continue;
-      const state=this.documents.has(document)&&this.preview?this.preview:this.saved(document);
+      const preview=this.documents.has(document)&&this.preview;
+      const state=preview||this.saved(document),renderMode=preview?this.previewMode??mode:mode;
       const nativeBrackets=vscode.workspace.getConfiguration('editor',document).get('bracketPairColorization.enabled',true);
       const spans=this.cache.get(grammar,{uri:document.uri.toString(),fileName:document.fileName,languageId:document.languageId,version:document.version,text:document.getText()},this.documents.get(document)??'all');
       const ranges=new Map<string,vscode.Range[]>(), styles=new Map<string,vscode.DecorationRenderOptions>();
       for(const span of spans){
         if(nativeBrackets&&roleCatalog[span.role]?.nativeBrackets)continue;
-        const style=renderStyle(resolveStyle(state,span.family,span.role,mode).style);
+        const style=renderStyle(resolveStyle(state,span.family,span.role,renderMode).style);
         if(Object.keys(style).length===1)continue;
         const key=JSON.stringify(style);styles.set(key,style);const group=ranges.get(key)??[];
         group.push(new vscode.Range(document.positionAt(span.range.start),document.positionAt(span.range.end)));ranges.set(key,group);used.add(key);

@@ -87,46 +87,76 @@ export function monitor_appearance_ui(workspace, port) {
       }))`, sessionId).then(JSON.parse);
     }
     const { sessionId, contextId } = await panel();
-    if (request.action === 'key-activate') {
+    if (request.action === 'type') {
+      await send('Page.bringToFront', {}, await workbench());
+      const activeControl = await evaluate('document.activeElement.id', sessionId, contextId);
+      if (activeControl !== request.control) throw new Error('Cannot type into unfocused ' + request.control);
+      await send('Input.insertText', {text:request.text}, sessionId);
+      return {activeControl};
+    }
+    if (request.action === 'key') {
+      await send('Input.dispatchKeyEvent', {type:'keyDown', key:request.key, code:request.key, windowsVirtualKeyCode:({Escape:27,Enter:13,Tab:9,ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40})[request.key]}, sessionId);
+      await send('Input.dispatchKeyEvent', {type:'keyUp', key:request.key, code:request.key, windowsVirtualKeyCode:({Escape:27,Enter:13,Tab:9,ArrowLeft:37,ArrowUp:38,ArrowRight:39,ArrowDown:40})[request.key]}, sessionId);
+      return {};
+    }
+    if (request.action === 'key-activate' || request.action === 'shortcut') {
       const target = await workbench();
       await send('Page.bringToFront', {}, target);
       const focused = await evaluate(`(() => {
         const node = document.getElementById(${JSON.stringify(request.control)});
-        node.focus();
+        for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;node.scrollIntoView({block:'nearest'});node.focus();
         return document.activeElement === node;
       })()`, sessionId, contextId);
       if (!focused) throw new Error('Cannot focus ' + request.control);
+      if(request.action==='shortcut'){
+        const modifiers=4+(request.redo?8:0);
+        await send('Input.dispatchKeyEvent',{type:'keyDown',key:request.redo?'Z':'z',code:'KeyZ',modifiers,windowsVirtualKeyCode:90},sessionId);
+        await send('Input.dispatchKeyEvent',{type:'keyUp',key:request.redo?'Z':'z',code:'KeyZ',modifiers,windowsVirtualKeyCode:90},sessionId);return {focused};
+      }
       await send('Input.dispatchKeyEvent', {type:'keyDown', key:'Enter', code:'Enter', text:'\r', windowsVirtualKeyCode:13}, sessionId);
       await send('Input.dispatchKeyEvent', {type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13}, sessionId);
       return {focused};
     }
     return evaluate(`(${function (request) {
       function reveal(node){for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;node.scrollIntoView({block:'nearest'});}
-      if(request.action==='select-role'){
+      if(request.action==='events'){
+        if(!window.appearanceEvents){window.appearanceEvents=[];for(const type of ['focus','blur','pointerdown','keydown','input','change'])document.addEventListener(type,event=>{if(event.target?.type==='color')window.appearanceEvents.push({type,key:event.key,trusted:event.isTrusted,value:event.target.value,active:document.activeElement?.id,focused:document.hasFocus()});},true);}
+        return window.appearanceEvents;
+      }else if(request.action==='focus'){document.getElementById(request.control).focus();
+      }else if(request.action==='confirm-revert'){if(!document.getElementById('revert-dialog').open)throw new Error('Confirmation not open');document.getElementById(request.cancel?'cancel-revert':'confirm-revert').click();
+      }else if(request.action==='select-role'){
         const node=document.getElementById('role-'+request.role);reveal(node);if(node.getAttribute('aria-expanded')!=='true')node.click();
       }else if(request.action==='details'){document.getElementById(request.control).open=request.open;
       }else if(request.action==='catalog-top'){document.getElementById('catalog').scrollTop=0;
       }else if(request.action==='metrics'){
         const catalog=document.getElementById('catalog'),box=catalog.getBoundingClientRect();
         const rows=[...document.querySelectorAll('.role-row')];
-        return {activeControl:document.activeElement.id,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,
+        return {activeControl:document.activeElement.id,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,catalogScrollWidth:catalog.scrollWidth,catalogClientWidth:catalog.clientWidth,
           roles:rows.map(row=>row.dataset.role),editableRows:rows.filter(row=>!row.querySelector('.hex').disabled).length,visibleRows:rows.filter(row=>{const r=row.getBoundingClientRect();return r.top>=box.top&&r.bottom<=box.bottom&&r.height>0;}).length,
           firstRowTop:rows[0].getBoundingClientRect().top,headerBottom:document.querySelector('header').getBoundingClientRect().bottom,
           properties:[...document.querySelectorAll('#properties input,#properties select')].map(node=>node.id),
           groups:[...document.querySelectorAll('[data-group]')].map(node=>node.dataset.group),
           editorExample:[...document.querySelectorAll('.examples button')].find(node=>node.getAttribute('aria-pressed')==='true')?.id,
           saveDisabled:document.getElementById('save').disabled,inputInvalid:document.getElementById('foreground').getAttribute('aria-invalid'),
+          editingMode:['dark','light'].find(mode=>document.getElementById(mode).getAttribute('aria-pressed')==='true'),
+          previewMode:document.getElementById('previewMode').textContent,
           controlsColor:getComputedStyle(document.getElementById('save')).color,
           inputColor:getComputedStyle(document.getElementById('foreground')).color,
           effective:document.getElementById('effective').textContent,
-          foreground:document.getElementById('foreground').value,expanded:document.getElementById('inspector').hidden===false};
+          foreground:document.getElementById('foreground').value,foregroundCaret:document.getElementById('foreground').selectionStart,
+          resetDisabled:document.getElementById('reset-foreground').disabled,intensityInvalid:document.getElementById('intensity').getAttribute('aria-invalid'),
+          application:document.getElementById('scope-note').textContent,
+          rowHeights:rows.map(row=>row.getBoundingClientRect().height),
+          swatches:Object.fromEntries(rows.map(row=>{const swatch=row.querySelector('.swatch');return [row.dataset.role,{color:getComputedStyle(swatch).backgroundColor,hex:swatch.style.getPropertyValue('--swatch'),picker:row.querySelector('input[type=color]').value,inherit:row.querySelector('input[type=checkbox]').checked,source:row.querySelector('.from').value,acceptedSource:row.querySelector('.from').dataset.acceptedSource,sourceInvalid:row.querySelector('.from').getAttribute('aria-invalid'),disabled:row.querySelector('.from').disabled}];})),
+          groupLabels:[...document.querySelectorAll('.group-heading')].map(node=>node.textContent),
+          expanded:document.getElementById('inspector').hidden===false};
       }else if (request.action === "input") {
         const input = document.getElementById(request.control);
-        reveal(input);input.focus(); input.value = request.value;
-        input.dispatchEvent(new Event("input", { bubbles: true })); if(!request.keepFocus)input.blur();
+        reveal(input);if(!request.keepActive)input.focus();input.value = request.value;
+        input.dispatchEvent(new Event("input", { bubbles: true })); if(!request.keepFocus&&!request.keepActive){if(input.type==='color')input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();}
       } else if (request.action === "blur") {document.getElementById(request.control).blur();
       } else if (request.action === "click") {const node=document.getElementById(request.control);reveal(node);node.click();}
-      return { status: document.getElementById("status").textContent,
+      return { status: document.getElementById("status").textContent,revertDisabled:document.getElementById("revert").disabled,
         saved: document.getElementById("saved").getAttribute("aria-pressed"),
         error: document.getElementById("error").textContent,
         values: Object.fromEntries([...document.querySelectorAll('input,select')].map(input=>[input.id,input.value])),

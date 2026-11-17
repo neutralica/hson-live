@@ -240,7 +240,7 @@ const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","5ff1488dd
 
 export const declaredExecution = Object.freeze({
   "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "969e30a4ecdce159887b9861e13f6f46008402bee297d76bf680bc71a4ed19b3", route: "Two awaited isolated VS Code launches execute appearance.ts through build-tests; the second reopens the same worktree-local profile to verify persistence.",
-    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","28ce200f0f62cd7b89b449a2ff4e19faea734fc72101c554335fec5efef23f16"]] },
+    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","87efee9ea51c063bfd35773d95071e26254238cc817315a175b77bbf097db061"]] },
   "tests/livemap-graph-mutations.acceptance.mts": { sha256: "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341", route: workerRoute,
     targets: [["tests/fixtures/livemap-graph-mutations.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/livemap-graph-reads.acceptance.mts": { sha256: "e458b4ecea665f09b1ef32a9ba459dfc7be7421871f9e77445bab826485ed2c3", route: workerRoute,

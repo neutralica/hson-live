@@ -1,5 +1,6 @@
 import { Hson } from "../../../src/hson-authoring.js";
 import assert from "node:assert/strict";
+import Module from "node:module";
 import { resolve } from "node:path";
 import { load_hson_grammar } from "../src/highlighting.js";
 import { initialAppearance, readAppearance, housePalette, duplicatePalette, deletePalette, resolveStyle, blend, roleCatalog } from "../src/appearance-model.js";
@@ -60,6 +61,15 @@ async function run() {
   for(const start of [bindingText.indexOf('data:message')+5,bindingText.indexOf('^{message}')+2])
     assert.equal(bindingSpans.find(s=>s.range.start===start)?.role,'part.receivingArgument','resolved local roots retain their declaration role');
   testModel();
+  const load = Reflect.get(Module, '_load');
+  const api = {ConfigurationTarget: {Global: 1, Workspace: 2}, ColorThemeKind: {Light: 1, HighContrastLight: 4},
+    window: {activeColorTheme: {kind: 2}, visibleTextEditors: []}, ViewColumn: {Two: 2},
+    workspace: {workspaceFolders: [{}], getConfiguration: () => ({get: (_key: string, fallback: unknown) => fallback})}};
+  Reflect.set(Module, '_load', function(this: unknown, name: string, ...args: unknown[]) {
+    return name === 'vscode' ? api : Reflect.apply(load, this, [name, ...args]);
+  });
+  try {await (await import('./appearance-transitions.test.js')).checkAppearanceTransitions();}
+  finally {Reflect.set(Module, '_load', load);}
   console.log("ok - four contextual appearance roles, native/binding ownership, mapped UTF-16 ranges, source invalidation and unrestricted color values");
 }
 void run();
@@ -97,6 +107,17 @@ function testModel(): void {
   }
   for(const value of [-1,1.1,NaN,Infinity]){const bad=initialAppearance();bad.overrides.all={'value.string':{dark:{intensity:value}}};assert.throws(()=>readAppearance(bad),/Invalid/);}
   assert.throws(()=>readAppearance({...initialAppearance(),assignments:{all:'missing'}}),/Unknown palette/);
-  assert.throws(()=>readAppearance({...initialAppearance(),palettes:[{...housePalette,id:'house'}]}),/Unknown appearance property|protected/);
+  const shipped=JSON.stringify(housePalette);
+  const edited=readAppearance({...initialAppearance(),palettes:[{id:housePalette.id,name:housePalette.name,blendBackground:structuredClone(housePalette.blendBackground),roles:structuredClone(housePalette.roles)}]});
+  edited.assignments.all='house';
+  edited.palettes[0]!.roles['value.string']!.dark!.foreground='#123abc';
+  assert.equal(resolveStyle(edited,'all','value.string','dark').style.foreground,'#123abc');
+  assert.equal(JSON.stringify(housePalette),shipped);
+  assert.ok(Object.isFrozen(housePalette.roles['value.string']!.dark));
+  assert.deepEqual(readAppearance(JSON.parse(JSON.stringify(edited))),edited);
+  assert.throws(()=>readAppearance({...edited,palettes:[edited.palettes[0],edited.palettes[0]]}),/Duplicate/);
+  const complete=structuredClone(edited);
+  for(const role of Object.keys(roleCatalog))complete.palettes[0]!.roles[role]={light:{foreground:'#ffffff',intensity:.25,fontStyle:'bold italic underline strikethrough',bold:false,italic:'native',underline:true,strikethrough:false},dark:{foreground:'#000000',intensity:1,fontStyle:'',bold:true,italic:false,underline:'native',strikethrough:true}};
+  assert.deepEqual(readAppearance(JSON.parse(JSON.stringify(complete))),complete,'all 47 roles and seven properties survive both modes');
   console.log('ok - palette CRUD, stable identity, readable persistence, sparse property inheritance, explicit Native, reset, cycles and unrestricted colors/styles');
 }

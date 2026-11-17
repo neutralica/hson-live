@@ -9,7 +9,13 @@ export type Palette = { id: string; name: string; blendBackground: Record<Mode, 
 export type AppearanceState = { palettes: Palette[]; assignments: { all: string; data?: string; document?: string }; overrides: Partial<Record<Family, Record<string, RoleStyle>>> };
 export type RoleDefinition = { label: string; examples: {code: string; highlight: string; occurrence?: number}[]; binding: {scopes: string[]; selector: string; context?: string}; tokens?: string[]; fallback?: string; nativeBrackets?: boolean; segments?: {order:number; grammarOrder:number; context: string; scope: string; selector: string}[] };
 export const roleCatalog: Readonly<Record<string, RoleDefinition>> = catalogData.roles;
-export const housePalette: Palette = houseData;
+// The bundled baseline never participates in mutable editor state.
+function freeze<T>(value: T): T {
+  if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
+  return value;
+}
+export const housePalette: Palette = freeze(houseData);
+export const builtinPalettes: readonly Palette[] = Object.freeze([housePalette]);
 export const styleProperties = ['foreground', 'intensity', 'fontStyle', 'bold', 'italic', 'underline', 'strikethrough'] as const;
 export type StyleProperty = typeof styleProperties[number];
 export function initialAppearance(): AppearanceState { return {palettes: [], assignments: {all: 'native'}, overrides: {}}; }
@@ -62,8 +68,9 @@ export function readAppearance(value: unknown): AppearanceState {
   if (!object(value)) throw new Error('Expected appearance configuration');
   keys(value,['palettes','assignments','overrides']);
   if (!Array.isArray(value.palettes) || !object(value.assignments) || !object(value.overrides)) throw new Error('Invalid appearance configuration');
-  const ids = new Set(['house','native']);
-  for (const palette of value.palettes) { validatePalette(palette); if (ids.has(palette.id)) throw new Error('Duplicate or protected palette ID: '+palette.id); ids.add(palette.id); }
+  const ids = new Set(['native']);
+  for (const palette of value.palettes) { validatePalette(palette); if (ids.has(palette.id)) throw new Error('Duplicate palette ID: '+palette.id); ids.add(palette.id); }
+  for (const palette of builtinPalettes) ids.add(palette.id);
   keys(value.assignments,['all','data','document']); keys(value.overrides,['all','data','document']);
   if (typeof value.assignments.all !== 'string') throw new Error('All Hson assignment is required');
   for (const id of Object.values(value.assignments)) if (typeof id !== 'string' || !ids.has(id)) throw new Error('Unknown palette selection: '+id);
@@ -71,7 +78,18 @@ export function readAppearance(value: unknown): AppearanceState {
   // The validated JSON snapshot is detached from VS Code configuration objects.
   return JSON.parse(JSON.stringify(value));
 }
-export function paletteById(state: AppearanceState, id: string): Palette | undefined { return id === 'house' ? housePalette : state.palettes.find(p => p.id === id); }
+export function paletteById(state: AppearanceState, id: string): Palette | undefined { return state.palettes.find(p => p.id === id) ?? builtinPalettes.find(p => p.id === id); }
+export function editablePalette(state: AppearanceState, id: string): Palette | undefined {
+  let palette = state.palettes.find(p => p.id === id);
+  const baseline = builtinPalettes.find(p => p.id === id);
+  if (!palette && baseline) {
+    // Bundled source also carries full-theme generation data; settings keep the
+    // established syntax palette schema and never acquire workbench colors.
+    palette = {id:baseline.id,name:baseline.name,blendBackground:{...baseline.blendBackground},roles:structuredClone(baseline.roles)};
+    state.palettes.push(palette);
+  }
+  return palette;
+}
 export function duplicatePalette(state: AppearanceState, source: string, id: string, name: string): Palette {
   const original = paletteById(state,source); if (!original) throw new Error('Select a palette to duplicate');
   const palette: Palette = {id,name,blendBackground:{...original.blendBackground},roles:structuredClone(original.roles)};
@@ -79,11 +97,11 @@ export function duplicatePalette(state: AppearanceState, source: string, id: str
   state.palettes.push(palette); return palette;
 }
 export function deletePalette(state: AppearanceState, id: string): void {
-  if (id === 'house') throw new Error('House is built in');
+  if (builtinPalettes.some(p => p.id === id)) throw new Error('Palette is built in; restore its shipped baseline instead');
   if (Object.values(state.assignments).includes(id)) throw new Error('Reassign this palette before deleting it');
   state.palettes = state.palettes.filter(p=>p.id!==id);
 }
-export type ResolvedStyle = { style: Style; sources: Partial<Record<StyleProperty,string>>; background?: string };
+export type ResolvedStyle = { style: Style; sources: Partial<Record<StyleProperty,string>>; background?: string; rawForeground?: string };
 export function resolveStyle(state: AppearanceState, family: Family, role: string, mode: Mode): ResolvedStyle {
   const selected = state.assignments[family] ?? state.assignments.all, palette = paletteById(state,selected);
   const sources: ResolvedStyle['sources'] = {}, style: Style = {};
@@ -107,6 +125,7 @@ export function resolveStyle(state: AppearanceState, family: Family, role: strin
   }
   // Native intensity is an explicit stop: it never exposes a lower-layer blend.
   const background = palette?.blendBackground[mode] ?? housePalette.blendBackground[mode];
+  const rawForeground = style.foreground;
   if (style.foreground) style.foreground = blend(style.foreground,background,typeof style.intensity === 'number' ? style.intensity : 1);
-  return {style,sources,background};
+  return {style,sources,background,rawForeground};
 }
