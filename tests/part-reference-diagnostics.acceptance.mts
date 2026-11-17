@@ -1110,6 +1110,24 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('x:data=^{pointer.|}', 'key:down')), []);
   assert.deepEqual(complete(call('', 'in|put')), [['on:input', 'on:input', 'on:input']]);
   assert.deepEqual(complete(call('', 'ch|')), [['on:change', 'on:change', 'on:ch']]);
+  assert.deepEqual(complete(call('', 'sub|')), [['on:submit', 'on:submit', 'on:sub']]);
+  assert.deepEqual(complete(call('', 'form|')), [['on:formdata', 'on:formdata', 'on:form']]);
+  assert.deepEqual(complete(call('name:str=^{submit.submitter.na|}', 'submit')),
+    [['submit.submitter.name', 'submit.submitter.name}', 'submit.submitter.na}']]);
+  assert.deepEqual(complete(call('id:str=^{formdata.target.i|}', 'formdata')),
+    [['formdata.target.id', 'formdata.target.id}', 'formdata.target.i}']]);
+  assert.deepEqual(complete(call('checked:bool=^{change.target.ch|}', 'change')),
+    [['change.target.checked', 'change.target.checked}', 'change.target.ch}']]);
+  assert.deepEqual(complete(call('x:str=^{formdata:g|}', 'formdata')).map(item => item.slice(0, 2)),
+    [['formdata:get', 'formdata:get("")}']]);
+  assert.deepEqual(complete(call('x:arr=^{formdata:g|}', 'formdata')).map(item => item[0]), ['formdata:getAll']);
+  assert.deepEqual(complete(call('x:bool=^{formdata:h|}', 'formdata')).map(item => item[0]), ['formdata:has']);
+  assert.deepEqual(complete(call('x:data=^{formdata:|}', 'formdata')).map(item => item[0]), ['formdata:get', 'formdata:getAll', 'formdata:has']);
+  assert.deepEqual(complete(call('x:num=^{formdata:g|}', 'formdata')), []);
+  assert.deepEqual(complete(call('x:data=^{formdata:entries|}', 'formdata')), []);
+  assert.deepEqual(complete(call('x:data=^{submit:g|}', 'submit')), []);
+  assert.deepEqual(complete(call('x:str=^{formdata:ge|t("email")}', 'formdata')).map(item => item.slice(0, 2)),
+    [['formdata:get', 'formdata:get("email")}']]);
   const stringProperties = ['tagName', 'id', 'name', 'type', 'value'];
   assert.deepEqual(complete(call('x:str=^{input.ta|', 'input')).map(item => item[0]),
     stringProperties.map(property => `input.target.${property}`));
@@ -1159,8 +1177,64 @@ check('native Event completion uses the selector, qualifier, and authored replac
     } } } }), /or one whole Part reference/);
   }
   assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o|')).map(item => item[0]), [
-    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up', 'on:input', 'on:change', 'once',
+    'on:click', 'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:pointer:cancel', 'on:key:down', 'on:key:up', 'on:input', 'on:change', 'on:submit', 'on:formdata', 'once',
   ]);
+  assert.deepEqual(complete(header('on:formdata local:go ready:b|')).map(item => item.slice(0, 2)), [['ready:bool', 'ready:bool=']]);
+  assert.deepEqual(complete(header('on:formdata local:go tags:a|')).map(item => item.slice(0, 2)), [['tags:arr', 'tags:arr=']]);
+});
+
+check('submission Event diagnostics retain native result categories and bounded operation grammar', () => {
+  const tree = 'import {hsonLiveTree as trees, Hson} from "hson-live";\nconst tree = trees.fromHson("<form/>");\n';
+  const call = (operand: string, schema = '<type "data" content <value "any">>') => tree
+    + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`${schema}\`}});\n`
+    + 'tree.listen.event(' + JSON.stringify(`<hson:event on:formdata local:go ${operand} <> >`) + ');';
+  for (const operand of ['value:str=^{formdata:get("email")}', 'value:arr=^{formdata:getAll("tag")}',
+    'value:bool=^{formdata:has("upload")}', 'value:arr={[false,null]}', 'value:bool="false"']) {
+    assert.deepEqual(inspect(call(operand)).codes, []);
+  }
+  assert.deepEqual(inspect(call('value:str=^{formdata:get("missing")}', '<type "data" content <value "null">>')).codes, []);
+  for (const operand of ['value:str=^{formdata:get(name)}', 'value:str=^{formdata:get("a","b")}',
+    'value:data=^{formdata:entries("a")}', 'value:data=^{formdata:get("a").name}']) {
+    const result = inspect(call(operand));
+    assert.deepEqual(result.codes, ['HSON_EVENT_DECLARATION_INVALID']);
+    assert.match(result.diagnostics[0]!.message, /FormData Event operation/);
+  }
+  assert.deepEqual(inspect(call('value:bool=^{formdata:has("a")}', '<type "data" content <value "string">>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+  assert.deepEqual(inspect(call('value:arr=^{formdata:getAll("a")}', '<type "data" content <value "string">>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+});
+
+check('Event array categories admit tuple Schemas without weakening incompatible category diagnostics', () => {
+  const tree = 'import {hsonLiveTree as trees, Hson} from "hson-live";\nconst tree = trees.fromHson("<form/>");\n';
+  const call = (operand: string, schema: string, selector = 'formdata') => tree
+    + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`<type "data" content <value ${schema}>>\`}});\n`
+    + 'tree.listen.event(' + JSON.stringify(`<hson:event on:${selector} local:go ${operand} <> >`) + ');';
+  const incompatible = (operand: string, schema: string, selector = 'formdata') => {
+    const result = inspect(call(operand, schema, selector));
+    assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+    assert.deepEqual(result.slices, [JSON.stringify(operand).slice(1, -1)]);
+    assert.match(result.diagnostics[0]!.message, /do not match its Schema/);
+  };
+  for (const qualifier of ['arr', 'data']) {
+    const operand = `value:${qualifier}=^{formdata:getAll("tag")}`;
+    // A deferred result establishes neither a tuple length nor its actual contents.
+    for (const schema of ['<tuple ["string","string"]>', '<tuple []>', '<array "string">', '<array "any">']) {
+      assert.deepEqual(inspect(call(operand, schema)).codes, []);
+    }
+    incompatible(operand, '"string"');
+  }
+  for (const [operand, compatible, rejected, selector] of [
+    ['value:str=^{formdata:get("tag")}', '"string"', '"boolean"', 'formdata'],
+    ['value:num=^{pointer.clientX}', '"number"', '"string"', 'pointer:move'],
+    ['value:bool=^{formdata:has("tag")}', '"boolean"', '"string"', 'formdata'],
+    ['value:data=^{formdata:has("tag")}', '"boolean"', '"string"', 'formdata'],
+  ]) {
+    assert.deepEqual(inspect(call(operand!, compatible!, selector)).codes, []);
+    incompatible(operand!, rejected!, selector);
+  }
+  // Fully known arrays still undergo the established tuple value validation.
+  assert.deepEqual(inspect(call('value:arr={["a","b"]}', '<tuple ["string","string"]>')).codes, []);
+  incompatible('value:arr={["a"]}', '<tuple ["string","string"]>');
+  incompatible('value:arr={["a",false]}', '<tuple ["string","string"]>');
 });
 
 check('Event listener options complete as bare flags and diagnose structural errors at authored ranges', () => {
@@ -1242,7 +1316,7 @@ check('keyboard Event diagnostics retain lexical and Action Schema evidence acro
     ['key:str=^{key.keyCode}', '^{key.keyCode}', /Unsupported key Event lookup/, undefined],
     ['pressed:str=^{key.pressed}', '^{key.pressed}', /Unsupported key Event lookup/, undefined],
     ['pressed:str=^{keyboard.key}', '^{keyboard.key}', /Missing Part local declaration "keyboard"/, undefined],
-    ['key:str=^{key.repeat}', '^{key.repeat}', /requires a whole :data argument/, undefined],
+    ['key:str=^{key.repeat}', '^{key.repeat}', /requires a whole :bool or :data argument/, undefined],
     ['key:num=^{key.code}', '^{key.code}', /requires a whole :str or :data argument/, undefined],
     ['key:str=^{key.key}', '^{key.key}', /native key binding requires on:key:down or on:key:up/, 'on:pointer:up'],
     ['location:num=^{pointer.pointerId}', '^{pointer.pointerId}', /native pointer binding requires/, undefined],
@@ -1278,7 +1352,7 @@ check('input and change Event diagnostics preserve target paths and native argum
   for (const [selector, ref, message] of [
     ['input', 'change.target.value', /native change binding requires on:change/],
     ['change', 'change.value', /Unsupported change Event lookup/],
-    ['change', 'change.target.checked', /requires a whole :data/],
+    ['change', 'change.target.checked', /requires a whole :bool or :data/],
     ['input', 'input.target.value.length', /Unsupported input Event lookup/],
   ] as const) {
     const result = inspect(source(selector, `value:str=^{${ref}}`));

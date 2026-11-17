@@ -120,11 +120,14 @@
       await checkPointerEvents();
       await checkNativeEventVocabulary();
       await checkNativeFormEvents();
+      await checkNativeSubmissionEvents();
+      await checkHostedSubmissionEvents();
       await checkHostedFormEvent();
       await checkHostedNativeEvents("pointer");
       await checkHostedNativeEvents("key");
       await checkAuthoredEvents();
       checkNativeDocumentCallbacks();
+      checkListenerConveniences();
       checkSelectedLocalListeners();
       await checkLibraryOwnedEvents();
       await checkSelectedHostedListener();
@@ -698,6 +701,275 @@
           && standalone[0].args.equals(Hson.data.from({ value: "standalone" })),
           "Standalone delegated input Event lost its owner, value or cleanup.");
       } finally { subscription.off(); root.remove(); }
+    }
+
+    async function checkNativeSubmissionEvents() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const source = (event, key, fields = "", flags = "") => `<hson:event on:${event} local:${key} ${flags} ${fields} <> >`;
+      const fields = 'email:str=^{formdata:get("email")} absent:str=^{formdata:get("missing")} empty:str=^{formdata:get("empty")} tags:arr=^{formdata:getAll("tag")} missing:arr=^{formdata:getAll("missing")} upload:bool=^{formdata:has("upload")} no:bool=^{formdata:has("missing")} id:str=^{formdata.target.id}';
+      const map = hsonLiveMap.fromLibraries({
+        parts: { parts: { form: { kind: "document", document: `<form hson:part id="profile" @:form event:submit event:data
+          <input name="email" value="original" required="required"/><input name="empty" value=""/>
+          <input name="tag" value="first"/><input name="tag" value="second"/><input name="upload" type="file"/>
+          <button name="save" value="yes" id="save"/>/>`, events: {
+            submit: source("submit", "SUBMIT", 'id:str=^{submit.target.id} button:str=^{submit.submitter.name}', "preventDefault"),
+            data: source("formdata", "MUTATE", fields),
+          } } } },
+        page: { document: '<main <hson-part at=parts/form/><div id="shadow"/>/>',
+          events: { data: source("formdata", "OBSERVE", fields), submit: source("submit", "DOCUMENT_SUBMIT", 'id:str=^{submit.target.id}') } },
+      });
+      const page = map.doc.must("page"), submits = [], documentSubmits = [], early = [], late = [], captures = [], native = [], failures = [], order = [];
+      map.actions.define("SUBMIT", (ctx, args) => { submits.push({ ctx, args }); });
+      map.actions.define("DOCUMENT_SUBMIT", (ctx, args) => { documentSubmits.push({ ctx, args }); });
+      map.actions.define("MUTATE", (ctx, args) => {
+        early.push({ ctx, args, data: ctx.event.formData }); order.push("action");
+        ctx.event.formData.set("email", "mutated");
+        ctx.event.formData.append("tag", "action");
+        // The browser must continue even when the Action never settles.
+        return new Promise(() => {});
+      });
+      map.actions.define("OBSERVE", (ctx, args) => { late.push({ ctx, args }); order.push("document-action"); });
+      map.actions.define("CAPTURE", (ctx, args) => { captures.push({ ctx, args }); });
+      map.actions.define("FILE", () => { throw new Error("A selected File reached an Action."); });
+      map.actions.define("STRICT", () => { throw new Error("Null bypassed the local Action Schema."); },
+        { args: { required: true, schema: Hson.schema`<type "data" content <value "string">>` } });
+      const frame = document.createElement("iframe");
+      let continued;
+      try {
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = page.render(); document.body.append(frame); await loaded;
+        const doc = frame.contentDocument, win = frame.contentWindow, form = doc.getElementById("profile"), button = doc.getElementById("save");
+        form.addEventListener("submit", event => native.push(event));
+        form.addEventListener("formdata", event => { order.push("before"); event.formData.append("tag", "before"); });
+        continued = continue_document({ map, document: page, root: doc.documentElement,
+          interactions: { onFailure: failure => failures.push(failure) } });
+        const after = [];
+        form.addEventListener("formdata", event => { order.push("after"); after.push({ event, data: event.formData, email: event.formData.get("email") }); });
+        const capture = page.listen.event(source("formdata", "CAPTURE", 'id:str=^{formdata.target.id}', "capture once preventDefault"));
+        form.requestSubmit(button);
+        check(native.length === 1 && submits.length === 1 && submits[0].ctx.event === native[0] && native[0].defaultPrevented
+          && submits[0].ctx.subject.dom.el() === form && submits[0].args.equals(Hson.data.from({ id: "profile", button: "save" }))
+          && early.length === 0, "requestSubmit did not retain native SubmitEvent identity, cancellation, subject, or submission timing.");
+        check(documentSubmits.length === 1 && documentSubmits[0].ctx.subjectKind === "document" && documentSubmits[0].ctx.subject === page
+          && documentSubmits[0].ctx.event === native[0] && documentSubmits[0].args.equals(Hson.data.from({ id: "profile" })),
+          "Document-owned submit lost its canonical subject or native origin.");
+        form.elements.email.value = "";
+        form.requestSubmit(button);
+        check(native.length === 1 && submits.length === 1 && early.length === 0, "Constraint validation was bypassed.");
+        form.elements.email.value = "original";
+        form.requestSubmit();
+        check(native.length === 2 && native[1].submitter === null && native[1].defaultPrevented && submits.length === 1
+          && failures.length === 1 && /submit\.submitter\.name.*null/.test(failures[0].cause.message), "Null submitter traversal was fabricated or silently omitted.");
+        const optional = page.listen.event(source("submit", "CAPTURE", 'name:str=^{submit.submitter.name?}'));
+        form.requestSubmit();
+        remove_interaction(map, optional);
+        check(failures.length === 3 && /null/.test(failures[2].cause.message), "The existing ? spelling silently became optional native traversal.");
+
+        const transfer = new win.DataTransfer();
+        transfer.items.add(new win.File(["contents"], "upload.txt", { type: "text/plain" }));
+        form.elements.upload.files = transfer.files;
+        const NativeFormData = win.FormData, OuterFormData = window.FormData;
+        let constructions = 0;
+        const operations = [], restoreMethods = [];
+        for (const method of ["get", "getAll", "has"]) {
+          const original = OuterFormData.prototype[method];
+          OuterFormData.prototype[method] = function(name) { operations.push([this, method, name]); return original.call(this, name); };
+          restoreMethods.push(() => { OuterFormData.prototype[method] = original; });
+        }
+        const wrapped = Native => new Proxy(Native, { construct(target, args) { constructions++; return Reflect.construct(target, args); } });
+        win.FormData = wrapped(NativeFormData); window.FormData = wrapped(OuterFormData);
+        let data;
+        try { data = new win.FormData(form); }
+        finally { win.FormData = NativeFormData; window.FormData = OuterFormData; restoreMethods.forEach(restore => restore()); }
+        const expectedOperations = [["get", "email"], ["get", "missing"], ["get", "empty"], ["getAll", "tag"], ["getAll", "missing"], ["has", "upload"], ["has", "missing"]];
+        check(operations.every(([receiver]) => receiver === early[0].data)
+          && JSON.stringify(operations.map(([, ...operation]) => operation)) === JSON.stringify([...expectedOperations, ...expectedOperations]),
+          "Operations did not run in argument declaration order on the original native receiver.");
+        check(constructions === 1 && early.length === 1 && late.length === 1 && captures.length === 1 && after.length === 1,
+          "HSON reads constructed FormData or changed the occurrence count.");
+        check(JSON.stringify(order) === JSON.stringify(["before", "action", "after", "document-action"])
+          && early[0].ctx.event === after[0].event && early[0].data === after[0].data && after[0].email === "mutated"
+          && late[0].ctx.event === early[0].ctx.event && late[0].ctx.subjectKind === "document" && late[0].ctx.subject === page,
+          "FormData identity, native listener order, synchronous mutation, or Document subject changed.");
+        const expected = (email, tags) => Hson.data.from({ email, absent: null, empty: "", tags, missing: [], upload: true, no: false, id: "profile" });
+        check(early[0].args.equals(expected("original", ["first", "second", "before"]))
+          && late[0].args.equals(expected("mutated", ["first", "second", "before", "action"]))
+          && !after[0].event.cancelable && !after[0].event.defaultPrevented && !after[0].event.composed,
+          "Selective capture changed null, empty strings, repeated values, Files, booleans, or native event flags.");
+        new win.FormData(form);
+        check(captures.length === 1 && early.length === 2 && late.length === 2, "Native once or repeat occurrences were changed.");
+        remove_interaction(map, capture);
+
+        // Each selected native File must fail projection without invoking the Action.
+        for (const [method, type] of [["get", "data"], ["get", "str"], ["getAll", "arr"]]) {
+          const selected = page.listen.event(source("formdata", "FILE", `value:${type}=^{formdata:${method}("upload")}`));
+          const count = failures.length;
+          new win.FormData(form);
+          remove_interaction(map, selected);
+          check(failures.length === count + 1 && /File.*HSON Data/.test(failures.at(-1).cause.message), "Selected File did not produce an actionable projection failure.");
+        }
+        const strict = page.listen.event(source("formdata", "STRICT", 'value:str=^{formdata:get("missing")}'));
+        const failureCount = failures.length;
+        new win.FormData(form); remove_interaction(map, strict);
+        check(failures.length === failureCount + 1 && /TYPE_MISMATCH.*value/.test(failures.at(-1).cause.message), "Native null was not admitted separately by the local Action Schema.");
+
+        // Native form.submit bypasses submit listeners. Compare each formdata occurrence to a native observer.
+        const sink = doc.createElement("iframe"); sink.name = "submission-sink"; doc.body.append(sink);
+        form.target = sink.name; form.action = "about:blank";
+        const nativeCount = native.length, submitCount = submits.length, beforeSubmitData = after.length, observedBefore = late.length;
+        form.submit();
+        check(native.length === nativeCount && submits.length === submitCount && late.length - observedBefore === after.length - beforeSubmitData,
+          "form.submit synthesized submit or HSON normalized browser formdata occurrences.");
+
+        // A shadow-root formdata occurrence does not cross a non-composed native boundary.
+        const shadow = doc.getElementById("shadow").attachShadow({ mode: "open" });
+        const inner = doc.createElement("form"); shadow.append(inner);
+        const documentCount = late.length;
+        new win.FormData(inner);
+        check(late.length === documentCount, "Document delegation crossed a native non-composed boundary.");
+        const stop = event => event.stopPropagation();
+        form.addEventListener("formdata", stop);
+        new win.FormData(form);
+        form.removeEventListener("formdata", stop);
+        check(late.length === documentCount, "Document Event received an occurrence excluded by native propagation.");
+        const malformed = new win.Event("formdata", { bubbles: true });
+        Object.defineProperty(malformed, "formData", { value: data });
+        const previous = early.length;
+        form.dispatchEvent(malformed);
+        check(early.length === previous && /native FormDataEvent/.test(failures.at(-1).cause.message), "A lookalike Event bypassed native brand checking.");
+      } finally { continued?.dispose(); frame.remove(); }
+
+      // Standalone delegation retains its canonical subject and the original Event/FormData context.
+      const container = subjectDocument.createElement("section");
+      container.innerHTML = '<form id="standalone"><input name="email" value="local"><button name="send"></button></form>';
+      subjectDocument.body.append(container);
+      const root = graft(container, { unsafe: false }), seen = [], standaloneForm = container.querySelector("form");
+      root.actions.define("LOCAL", (ctx, args) => { seen.push({ ctx, args }); ctx.event.formData.append("local", "yes"); });
+      root.actions.define("SUBMIT", (ctx, args) => { seen.push({ ctx, args }); });
+      root.actions.define("SHADOW", (ctx, args) => { seen.push({ ctx, args }); });
+      const sub = root.listen.event(source("formdata", "LOCAL", 'email:str=^{formdata:get("email")}'));
+      const submitSub = root.listen.event(source("submit", "SUBMIT", 'name:str=^{submit.submitter.name}', "preventDefault once"));
+      const later = [];
+      subjectDocument.addEventListener("formdata", event => later.push(event.formData.get("local")), { once: true });
+      try {
+        const data = new subjectWindow.FormData(standaloneForm);
+        standaloneForm.requestSubmit(standaloneForm.querySelector("button"));
+        check(seen.length === 2 && seen[0].ctx.subject === root && data.get("local") === "yes"
+          && seen[0].args.equals(Hson.data.from({ email: "local" })) && later[0] === "yes"
+          && seen[1].ctx.event.defaultPrevented && seen[1].args.equals(Hson.data.from({ name: "send" })),
+          "Standalone native form Actions lost synchronous mutation, Data capture, subject, or cancellation.");
+        sub.off();
+        let nativeEvent, nativeData;
+        standaloneForm.addEventListener("formdata", event => {
+          nativeEvent = event; nativeData = event.formData;
+          const shadowed = () => { throw new Error("A shadowing property bypassed a platform accessor."); };
+          Object.defineProperties(event, { target: { get: shadowed }, formData: { get: shadowed } });
+          Object.defineProperty(nativeData, "get", { value: shadowed });
+        }, { once: true });
+        const shadowSub = root.listen.event(source("formdata", "SHADOW", 'id:str=^{formdata.target.id} value:str=^{formdata:get("email")}'));
+        try {
+          new subjectWindow.FormData(standaloneForm);
+          check(seen.length === 3 && seen[2].ctx.event === nativeEvent && nativeData !== undefined
+            && seen[2].args.equals(Hson.data.from({ id: "standalone", value: "local" })),
+            "Shadow properties replaced native FormData relationships or method reads.");
+        } finally { shadowSub.off(); }
+      } finally { sub.off(); submitSub.off(); root.remove(); container.remove(); }
+    }
+
+    async function checkHostedSubmissionEvents() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const until = async (condition, message) => {
+        for (let attempt = 0; attempt < 150 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 5));
+        check(condition(), message);
+      };
+      const source = (key, fields, flags = "") => `<hson:event on:formdata host:${key} ${flags} ${fields} <> >`;
+      const fields = 'email:str=^{formdata:get("email")} tags:arr=^{formdata:getAll("tag")} upload:bool=^{formdata:has("upload")} missing:str=^{formdata:get("missing")} id:str=^{formdata.target.id}';
+      const calls = [], submissions = [], failures = [], requests = [], wire = [];
+      const locus = hsonLiveMap.locus.create({ page: { access: "shared",
+        document: '<main <form id="host-form" <input name="email" value="before"/><input name="tag" value="one"/><input name="tag" value="two"/><input name="upload" type="file"/><button name="send"/>/>/>',
+        events: {
+          save: source("SAVE", fields),
+          strict: source("STRICT", 'email:str=^{formdata:get("missing")}'),
+          file: source("FILE", 'selected:data=^{formdata:get("upload")}'),
+          submit: '<hson:event on:submit host:SUBMIT preventDefault id:str=^{submit.target.id} button:str=^{submit.submitter.name} <> >',
+        },
+      } }, {
+        authorizeProjection: ({ requested }) => requested,
+        authorizeAction: () => true,
+        actions: {
+          SAVE: { args: { required: true, schema: ANY_DATA }, handler(ctx, args) {
+            check(!("event" in ctx) && !("subject" in ctx), "A native object entered a hosted Action context.");
+            calls.push(args);
+          } },
+          STRICT: { args: { required: true, schema: Hson.schema`<type "data" content <email "string">>` },
+            handler() { throw new Error("Native null bypassed the hosted Action Schema."); } },
+          FILE: { args: { required: true, schema: ANY_DATA }, handler() { throw new Error("File crossed hosted transport."); } },
+          SUBMIT: { args: { required: true, schema: ANY_DATA }, handler(ctx, args) { submissions.push(args); } },
+        },
+      });
+      const binding = bind_locus_http(locus, { endpoint: "/submission-event" });
+      const transport = hsonLiveMap.echo.transport.http({ endpoint: "http://authored.test/submission-event", fetch(input, init) {
+        const body = JSON.parse(init.body);
+        if (body.type === "action") wire.push(body);
+        return binding.handle(new Request(input, init), {});
+      } });
+      const frame = document.createElement("iframe");
+      let continued;
+      try {
+        const session = await locus.session.create({ libraries: ["page"], systemFeatures: ["interactions"] });
+        const now = session.now({ html: "page" });
+        const loaded = new Promise(resolve => frame.addEventListener("load", resolve, { once: true }));
+        frame.srcdoc = now.html; document.body.append(frame); await loaded;
+        const doc = frame.contentDocument, win = frame.contentWindow, form = doc.getElementById("host-form");
+        const native = [];
+        form.addEventListener("formdata", event => { native.push(event); event.formData.append("tag", "native"); });
+        continued = await continue_hosted_document({ now, credential: session.credential, root: doc.documentElement,
+          transport: { ...transport, operations: { submit(request, options) {
+            if (request.type === "action") requests.push(request);
+            return transport.operations.submit(request, options);
+          } } }, interactions: { onFailure: failure => failures.push(failure) } });
+        // This later listener changes the browser's collection after HSON's Document listener has captured it.
+        doc.addEventListener("formdata", event => event.formData.set("email", "after"));
+        const data = new win.FormData(form);
+        await until(() => calls.length === 1 && failures.length === 2, "Hosted formdata occurrence did not settle.");
+        const expected = Hson.data.from({ email: "before", tags: ["one", "two", "native"], upload: true, missing: null, id: "host-form" });
+        const original = requests.find(request => request.name === "SAVE");
+        check(native.length === 1 && native[0].formData.get("email") === "after" && data.get("email") === "after" && calls[0].equals(expected)
+          && original?.payload.equals(expected) && requests.length === 2 && wire.length === 2
+          && requests.every(request => request.name !== "FILE") && wire.every(body => typeof body.payloadData === "string" && !("payload" in body)),
+          "Hosted Event did not selectively capture the occurrence before subsequent native mutation.");
+        check(wire.some(body => Hson.data.fromSource(body.payloadData).equals(expected))
+          && wire.some(body => Hson.data.fromSource(body.payloadData).equals(Hson.data.from({ email: null }))),
+          "Hosted capture coerced null or transmitted native objects.");
+        check(failures.some(failure => /File.*HSON Data/.test(failure.cause.message))
+          && failures.some(failure => failure.cause.code === "LOCUS_SCHEMA_INVALID_PAYLOAD")
+          && failures.every(failure => failure.descriptor.subject.library === "page" && failure.descriptor.subject.kind === "document"),
+          "Hosted File admission, null Schema admission, or Document Library ownership changed.");
+        const snapshot = original.payload.toHson();
+        form.elements.email.value = "retry must not read this";
+        data.set("email", "mutated again");
+        const reads = FormData.prototype.get;
+        FormData.prototype.get = function() { throw new Error("Echo retry attempted native extraction."); };
+        let retry;
+        try { retry = await continued.echo.retryAction({ requestId: original.requestId, name: original.name, payload: original.payload }); }
+        finally { FormData.prototype.get = reads; }
+        check(retry.ok && retry.delivery === "cached" && calls.length === 1 && native.length === 1
+          && requests.at(-1).payload.toHson() === snapshot && wire.at(-1).payloadData === wire.find(body => body.name === "SAVE").payloadData,
+          "Echo retry re-extracted native values or changed the captured Data.");
+        // A second occurrence remains a distinct dispatch with its own values.
+        new win.FormData(form);
+        await until(() => calls.length === 2 && failures.length === 4, "Second native formdata occurrence was lost.");
+        check(calls[1].materialize().email === "retry must not read this" && native.length === 2,
+          "Hosted formdata occurrences were deduplicated or captured too late.");
+        let submit;
+        form.addEventListener("submit", event => { submit = event; });
+        form.requestSubmit(form.querySelector("button"));
+        await until(() => submissions.length === 1, "Hosted submit did not reach Locus.");
+        check(submit.defaultPrevented && native.length === 2 && submissions[0].equals(Hson.data.from({ id: "host-form", button: "send" })),
+          "Hosted submit changed native cancellation or constructed implicit FormData.");
+      } finally {
+        continued?.dispose(); continued?.echo.dispose(); transport.dispose(); binding.dispose(); locus.dispose(); frame.remove();
+      }
     }
 
     async function checkHostedFormEvent() {
@@ -1347,6 +1619,48 @@
         check(calls.length === 4 && custom === 7 && JSON.stringify(map.capture()) === canonical, "Disposal failed to separate resources from intent.");
         docNative.off(); windowNative.off(); customSub.off();
       } finally { stopExtra?.(); continued?.dispose(); frame.remove(); }
+    }
+
+    function checkListenerConveniences() {
+      const check = (condition, message) => { if (!condition) throw new Error(message); };
+      const standalone = subjectDocument.createElement("section");
+      standalone.innerHTML = "<button></button><button></button>";
+      subjectDocument.body.append(standalone);
+      const tree = graft(standalone, { unsafe: false });
+      const map = hsonLiveMap.fromLibraries({ page: { document: '<main <button @:subject/>/>' } });
+      const page = map.doc.must("page");
+      const root = new DOMParser().parseFromString(page.render(), "text/html").documentElement;
+      const continued = continue_document({ map, document: page, root });
+      const buttons = [...standalone.querySelectorAll("button")];
+      const adapters = [
+        ["LiveTree", tree.find.must.byTag("button").listen, [buttons[0]]],
+        ["selection", tree.findAll.byTag("button").listen, buttons],
+        ["LiveMap element", page.q("subject").listen, [root.querySelector("button")]],
+        ["LiveMap Document", page.listen, [root.ownerDocument]],
+      ];
+      const names = builder => Object.keys(builder).filter(name => /^on[A-Z]/.test(name) && !name.startsWith("onCustom")).sort();
+      const expected = names(adapters[0][1]);
+      check(expected.length === 44, "The established convenience vocabulary changed.");
+      try {
+        for (const [label, builder, targets] of adapters) {
+          check(JSON.stringify(names(builder)) === JSON.stringify(expected), `${label} convenience vocabulary differs.`);
+          for (const name of expected) {
+            // Every established convenience spells its native event after the on prefix.
+            const eventName = name.slice(2).toLowerCase();
+            const seen = [];
+            const sub = builder[name](event => seen.push(event));
+            try {
+              const events = targets.map(() => new subjectWindow.Event(eventName));
+              targets.forEach((target, index) => target.dispatchEvent(events[index]));
+              check(seen.length === events.length && seen.every((event, index) => event === events[index]),
+                `${label}.${name} did not dispatch its native event to every subject.`);
+            } finally { sub.off(); }
+            const count = seen.length;
+            targets.forEach(target => target.dispatchEvent(new subjectWindow.Event(eventName)));
+            check(seen.length === count, `${label}.${name} retained a released callback.`);
+          }
+        }
+      } finally { continued.dispose(); tree.remove(); standalone.remove(); }
     }
 
     function checkSelectedLocalListeners() {

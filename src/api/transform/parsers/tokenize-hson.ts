@@ -24,6 +24,8 @@ import {
 } from "../../../core/hson-name.js";
 import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
 import { AUTHORED_EVENT_FLAGS, AUTHORED_EVENT_TAG } from "../../../core/authored-event-names.js";
+import { scan_formdata_operation } from "../../../internal/event-operation-source.js";
+import type { EventArgumentQualifier } from "../../../internal/event-argument-plan.js";
 import type {
   HsonSourceLexicalCollector,
   HsonTokenSourceEvidence,
@@ -225,12 +227,13 @@ export function tokenize_authored_document_library(hson: string, collector?: Hso
 
 type EventArgumentToken = Readonly<{
   name: string;
-  qualifier: "str" | "num" | "data";
+  qualifier: EventArgumentQualifier;
   header: Position;
   start: Position;
   end: Position;
   operand: { kind: "quoted"; raw: string } | { kind: "reference"; reference: PartReference }
-    | { kind: "data"; tokens: Tokens[] };
+    | { kind: "data"; tokens: Tokens[] }
+    | { kind: "operation"; operation: NonNullable<ReturnType<typeof scan_formdata_operation>> };
 }>;
 
 /** Dedicated authored event envelope. Only the inline Data operand emits Hson tokens. @internal */
@@ -363,12 +366,12 @@ class HsonScanner {
       }
 
       const [name, qualifier, extra] = raw.split(":");
-      const knownQualifier = qualifier === "str" || qualifier === "num" || qualifier === "data";
+      const knownQualifier = qualifier === "str" || qualifier === "num" || qualifier === "bool" || qualifier === "arr" || qualifier === "data";
       const namedArgument = name !== undefined && is_part_parameter_name(name) && is_valid_hson_data_name(name)
         && extra === undefined && knownQualifier;
       if (!namedArgument && !completing) {
         if (!hasValue && qualifier !== "doc") invalid(`Unsupported authored event header item ${JSON.stringify(raw)}. Named arguments use name:type=value.`, at);
-        return invalid(`Invalid Event argument ${JSON.stringify(raw)}. Use name:str, name:num, or name:data followed by a value.`, at);
+        return invalid(`Invalid Event argument ${JSON.stringify(raw)}. Use name:str, name:num, name:bool, name:arr, or name:data followed by a value.`, at);
       }
       if (namedArgument) {
         const first = names.get(name);
@@ -387,7 +390,7 @@ class HsonScanner {
       const valueStart = this.position();
       if (namedArgument) observeValue?.(flags, qualifier, valueStart.index);
       let operand: EventArgumentToken["operand"];
-      if (this.peek() === "{" && (qualifier === "data" || completing)) {
+      if (this.peek() === "{" && (qualifier === "data" || qualifier === "arr" || qualifier === "bool" || completing)) {
         const firstToken = this.tokens.length;
         this.consumeExpected("{");
         this.skipTrivia();
@@ -403,7 +406,15 @@ class HsonScanner {
         this.consumeExpected("}");
         operand = { kind: "data", tokens: this.tokens.slice(firstToken) };
       } else if (this.peek() === '"') {
-        operand = { kind: "quoted", raw: this.scanAttributeString(raw, knownQualifier ? qualifier : undefined).text };
+        operand = { kind: "quoted", raw: this.scanAttributeString(raw, qualifier === "str" || qualifier === "num" ? qualifier : undefined).text };
+      } else if (this.startsWith("^{formdata:")) {
+        let operation;
+        try { operation = scan_formdata_operation(this.source, this.index); }
+        catch (cause) { return invalid(cause instanceof Error ? cause.message : String(cause), valueStart); }
+        if (operation === undefined) return invalid("Expected a FormData Event operation.", valueStart);
+        while (this.index < operation.reference.end) this.consume();
+        if (!authored_event_operand_ends_at(this.source, this.index, false)) invalid("A FormData operation must occupy the whole Event argument.", valueStart);
+        operand = { kind: "operation", operation };
       } else {
         const classified = classifyAttributeOperand(this.source, valueStart.index);
         const reference = classified.kind === "reference" ? scan_part_reference(this.source, valueStart.index) : undefined;

@@ -886,9 +886,9 @@ retires its registry.
 
 `listen.event(source)` accepts one `<hson:event>` declaration with `on:click`,
 `on:pointer:down`, `on:pointer:move`, `on:pointer:up`, `on:pointer:cancel`,
-`on:key:down`, `on:key:up`, `on:input`, or `on:change`, one `local:` action, and an empty outcome object `<>`. The declaration
+`on:key:down`, `on:key:up`, `on:input`, `on:change`, `on:submit`, or `on:formdata`, one `local:` action, and an empty outcome object `<>`. The declaration
 may include `once`, `stopProp`, and named arguments such as `title:str="Example"`,
-`x:num="-0"`, or `settings:data={<open true>}`. Declare zero arguments to
+`x:num="-0"`, `ready:bool="false"`, `tags:arr={["one","two"]}`, or `settings:data={<open true>}`. Declare zero arguments to
 supply `undefined`. Pointer declarations can use whole native lookups such as
 `id:num=^{pointer.pointerId}` and `primary:data=^{pointer.isPrimary}`.
 Key declarations use `key`, as in `pressed:str=^{key.key}` and
@@ -898,6 +898,15 @@ Key declarations use `key`, as in `pressed:str=^{key.key}` and
 that owns the declaration, even when the event originated on a descendant.
 The listener captures native values during dispatch and checks the assembled
 arguments against the Action Schema.
+Submit declarations can read `submit.target.id` and `submit.submitter.name`;
+traversing a null submitter fails clearly. Formdata declarations can read
+`formdata.target.id` and invoke `formdata:get("email")`, `formdata:getAll("tag")`,
+or `formdata:has("upload")` on the existing native `FormDataEvent.formData`.
+Use `str`, `arr`, and `bool` respectively, or `data`. Missing `get` results remain
+null even under `str`; the Action Schema decides whether null is acceptable.
+Selected Files cannot enter Data. Local Actions can synchronously mutate the
+original collection via `ctx.event.formData`; the browser continues without
+awaiting the Action. HSON never constructs FormData or cancels submission implicitly.
 [Supported native properties](../canonical-interactions.md#authored-event-arguments)
 
 A standalone declaration has no Part scope. Its other arguments use

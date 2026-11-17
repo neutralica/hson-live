@@ -170,12 +170,16 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
         incompatible(name, `unknown key at ${name}`);
         continue;
       }
-      const actual = operand.kind === "native" ? operand.valueKind : qualifier === "str" ? "string" : qualifier === "num" ? "number" : undefined;
+      const actual = operand.kind === "native" ? operand.valueKind : qualifier === "str" ? "string" : qualifier === "num" ? "number"
+        : qualifier === "bool" ? "boolean" : qualifier === "arr" ? "array" : undefined;
       if (actual === undefined) continue;
+      const kinds: readonly string[] = operand.kind === "native" && operand.lookup.length === 5 && operand.lookup[4] === "entry-or-null"
+        ? [actual, "null"] : [actual];
       const domains = project_schema_data(schema, [name]);
-      if (domains.length > 0 && domains.every(domain => domain.kind !== "any" && domain.kind !== actual
-        && (domain.kind !== "exact" || (domain.value === null ? "null" : typeof domain.value) !== actual))) {
-        incompatible(name, `Argument ${JSON.stringify(name)} supplies a value of type ${actual}`);
+      // Tuple length and members constrain actual arrays, not their possible source category.
+      if (domains.length > 0 && domains.every(domain => domain.kind !== "any" && !kinds.includes(domain.kind === "tuple" ? "array" : domain.kind)
+        && (domain.kind !== "exact" || !kinds.includes(domain.value === null ? "null" : typeof domain.value)))) {
+        incompatible(name, `Argument ${JSON.stringify(name)} supplies a value of type ${kinds.join(" or ")}`);
       }
     }
   }

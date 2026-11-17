@@ -301,7 +301,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
       const reads = alternatives.map(event => typeof event === "string" ? [] : event.args.flatMap(argument => {
         if (argument.operand.kind === "native") return [];
         return event_argument_references(argument).map(site => observe(site.reference, node, "event",
-          argument.operand.kind === "reference" && is_part_scalar_qualifier(argument.qualifier) ? argument.qualifier : undefined,
+          argument.operand.kind === "reference" && (argument.qualifier === "str" || argument.qualifier === "num") ? argument.qualifier : undefined,
           attribute, site, conditional, argument));
       }));
       // A strict demand is definite when every alternative reads the same binding.

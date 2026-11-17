@@ -30,6 +30,7 @@ import { assertCanonicalClosure, assertCanonicalSerializedClosure, TransformOrac
 import type { HsonNode } from "../../src/core/types.ts";
 import type { LocusProjectionAuthorizer } from "../../src/types/locus.types.ts";
 import { parse_authored_event } from "../../src/internal/authored-events.ts";
+import { read_event_argument_plan } from "../../src/internal/event-argument-plan.ts";
 
 const advance = "<hson:event once stopProp document capture passive preventDefault stopImmediateProp on:click host:ADVANCE_SLIDE step:num=\"3\" <> >";
 const literal = { kind: "document", document: Hson.document`<button hson:part event:advance id="literal" "Next"/>`,
@@ -363,6 +364,116 @@ function iterator_event_arguments() {
   } } }), /Document bindings cannot be sent/);
 }
 
+async function submission_event_cases() {
+  const source = (operand: string, type = "str", selector = "formdata") => `<hson:event on:${selector} local:SAVE value:${type}=${operand} <> >`;
+  for (const name of ["", "email", 'a \"quote\" \\ newline\n', 'punctuation:().[]{}<>//? ^{literal}', "\u0000", "\u{1f600}"]) {
+    for (const [method, qualifier, result] of [["get", "str", "entry-or-null"], ["getAll", "arr", "entries"], ["has", "bool", "boolean"]]) {
+      const expression = `^{formdata:${method}(${JSON.stringify(name)})}`;
+      for (const operand of [expression, JSON.stringify(expression)]) {
+        const parsed = parse_authored_event(source(operand, qualifier));
+        const native = parsed.args[0]?.operand;
+        assert.equal(native?.kind, "native");
+        if (native?.kind === "native") assert.deepEqual(native.lookup, ["formdata", "formData", method, name, result]);
+      }
+    }
+  }
+  for (const operand of ['^{formdata:get}', '^{formdata:get()}', '^{formdata:get(email)}', "^{formdata:get('email')}",
+    '^{formdata:get("a","b")}', '^{formdata:get("a",)}', '^{formdata:get(("a"))}', '^{formdata:get("a"}',
+    '^{formdata:get("a)}', '^{formdata:get("a\\q")}', '^{formdata:entries("a")}', '^{formdata:set("a")}',
+    '^{formdata:get(^{field})}', '^{formdata:get("a").name}', '^{formdata:get("a"):has("b")}', '^{formdata:get("a")?}',
+    '^{formdata.formData.get["a"]["entry-or-null"]}', '^{formdata.data}', '^{formdata:get("a")}tail']) {
+    assert.throws(() => parse_authored_event(source(operand)), /FormData|Unsupported formdata/, operand);
+  }
+  for (const operand of ['^{other:get("a")}', '^{submit:get("a")}', '^{formdata:getAll(^{x})}']) {
+    assert.throws(() => parse_authored_event(source(operand)));
+  }
+  assert.throws(() => parse_authored_event(source('^{formdata:get("a")}', "str", "submit")), /requires on:formdata/);
+  assert.throws(() => parse_authored_event(source('^{formdata:get("a")}', "bool")), /:str or :data/);
+  assert.throws(() => parse_authored_event(source('^{formdata:getAll("a")}', "str")), /:arr or :data/);
+  assert.throws(() => parse_authored_event(source('^{formdata:has("a")}', "str")), /:bool or :data/);
+  assert.throws(() => parse_authored_event(source('^{submit.formData}', "data", "submit")), /Unsupported submit/);
+  // The Event-only operand must not make arbitrary document attributes admissible.
+  assert.throws(() => hsonTransform.fromHson('<input value=^{formdata:get("email")}/>').toNode());
+  assert.throws(() => hsonTransform.fromHson('<input value=unquoted/>').toNode());
+  assert.throws(() => parse_authored_event(source('{null}', "bool")), /Expected a bool/);
+  assert.throws(() => parse_authored_event(source('{<x "y">}', "arr")), /Expected a arr/);
+  const captured = (row: unknown) => hsonLiveMap.fromLibraries({
+    parts: { parts: { form: { kind: "document", document: '<form hson:part data:row=%{row} event:go/>',
+      events: { go: '<hson:event on:formdata local:SAVE tags:arr=^{row.tags} ready:bool=^{row.ready} exists:bool=^{formdata:has("tag")} <> >' } } } },
+    page: { document: `<hson-part at=parts/form row:data=${JSON.stringify(JSON.stringify(row))}/>` },
+  });
+  assert.doesNotThrow(() => captured({ tags: ["one", false, null, { nested: [] }], ready: false }));
+  assert.throws(() => captured({ tags: "one", ready: false }), /requires a arr value/);
+  assert.throws(() => captured({ tags: [], ready: "false" }), /requires a bool value/);
+
+  const submit = '<hson:event on:submit local:SAVE id:str=^{submit.target.id} button:str=^{submit.submitter.name?} <> >';
+  const formdata = '<hson:event on:formdata local:SAVE email:str=^{formdata:get("email")} tags:arr=^{formdata:getAll("tag")} upload:bool=^{formdata:has("upload")} id:str=^{formdata.target.id} flag:bool="false" list:arr={[true,null,<n -0>]} <> >';
+  const authored = hsonLiveMap.fromLibraries({
+    parts: { parts: { form: { kind: "document", document: '<form hson:part event:submit event:formdata/>', events: { submit, formdata } } } },
+    page: { document: '<hson-part at=parts/form/>', events: { formdata } },
+  });
+  const writable = hsonLiveMap.fromLibraries({ page: { document: "<form/>" } });
+  writable.doc.must("page").listen.event(submit);
+  const state = (value: LiveMap) => authority(value).systemRoot(authority(value).systemState(INTERACTION_RESERVED_LIBRARY_KEY)!);
+  const fields = descriptor_data(state(authored)).map(entry => new Map(entry.entries()));
+  const formPlan = fields.find(entry => entry.get("eventArgs")?.items()?.[0]?.items()?.[0]?.scalar() === "email")?.get("eventArgs");
+  assert.ok(formPlan);
+  assert.ok(formPlan.equals(Hson.data.from([
+    ["email", "str", "formdata", "formData", "get", "email", "entry-or-null"],
+    ["tags", "arr", "formdata", "formData", "getAll", "tag", "entries"],
+    ["upload", "bool", "formdata", "formData", "has", "upload", "boolean"],
+    ["id", "str", "formdata", "target", "id"], ["flag", "bool", false], ["list", "arr", [true, null, { n: -0 }]],
+  ])));
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<form/>" } });
+  add_interaction(map, { id: "formdata-plan", subject: { library: "page", path: [0] }, kind: "browser", key: "SAVE",
+    listener: parse_authored_event(formdata).listener, eventArgs: formPlan });
+  add_interaction(map, { id: "submit-plan", subject: { library: "page", path: [0] }, kind: "browser", key: "SAVE",
+    listener: parse_authored_event(submit).listener, eventArgs: Hson.data.from([["id", "str", "submit", "target", "id"], ["button", "str", "submit", "submitter", "name"]]) });
+  const snapshot = map.capture();
+  assert.deepEqual(install_libraries_snapshot(structuredClone(snapshot)).map.capture(), snapshot);
+  const invalidPlans = [
+    [["x", "str", "formdata", "formData", "get", "email"]],
+    [["x", "str", "formdata", "formData", "get", "email", "string"]],
+    [["x", "str", "formdata", "formData", "get", 0, "entry-or-null"]],
+    [["x", "str", "formdata", "target", "get", "email", "entry-or-null"]],
+    [["x", "data", "formdata", "formData", "entries", "email", "entries"]],
+    [["x", "str", "formdata", "formData", "getAll", "email", "entries"]],
+    [["x", "bool", "formdata", "formData", "has", "email", "entry-or-null"]],
+    [["x", "str", "formdata", "formData", "get", "email", "entry-or-null", "length"]],
+    [["x", "str", "formdata", "formData", "get", "email", "entry-or-null"], ["captured", "str", null]],
+    [["x", "bool", "formdata", "formData", "has", "email", "boolean"], ["captured", "arr", false]],
+  ];
+  const before = map.rev;
+  for (const malformed of invalidPlans) {
+    const plan = hson_data_value(Hson.data.from(malformed));
+    assert.throws(() => read_event_argument_plan("formdata", plan), /canonical event argument plan/);
+    assert.throws(() => add_interaction(map, { id: "malformed", subject: { library: "page", path: [0] }, kind: "browser", key: "SAVE",
+      listener: parse_authored_event(formdata).listener, eventArgs: Hson.data.from(malformed) }), /canonical event argument plan/);
+    const root = projected_value_to_hson_root(ordered_projected_object([["descriptors", ordered_projected_array(
+      interaction_descriptors_from_root(projected_value_from_hson_node(state(map))).map(entry => {
+        assert.ok(is_ordered_projected_object(entry));
+        return ordered_projected_object(entry.entries.map(([key, value]) => [key, key === "eventArgs" ? plan : value]));
+      }),
+    )]]));
+    assert.throws(() => map.restore({ ...snapshot, libraries: snapshot.libraries.map(entry => entry.name === INTERACTION_RESERVED_LIBRARY_KEY
+      ? { ...entry, root: encode_hosted_root(root) } : entry) }), /canonical event argument plan/);
+  }
+  assert.throws(() => read_event_argument_plan("submit", hson_data_value(formPlan)), /canonical event argument plan/);
+  assert.equal(map.rev, before);
+  assert.deepEqual(map.capture(), snapshot);
+
+  const persistence = new MemoryCheckpointAdapter();
+  const config = { persistence, logicalMapId: "submission-event-plans", authorizeProjection: ({ requested }: Parameters<LocusProjectionAuthorizer>[0]) => requested };
+  const startup = { page: { document: '<form/>', events: { submit, formdata }, access: "shared" } } as const;
+  let locus = await hsonLiveMap.locus.resume(startup, config);
+  const expected = encode_hosted_root(state(locus_map_internal(locus))).payload;
+  await hsonLiveMap.locus.checkpoint(locus);
+  locus.dispose();
+  locus = await hsonLiveMap.locus.resume(startup, config);
+  try { assert.equal(encode_hosted_root(state(locus_map_internal(locus))).payload, expected); }
+  finally { locus.dispose(); }
+}
+
 async function native_event_cases() {
   const move = '<hson:event on:pointer:move local:MOVE x:num=^{pointer.movementX} row:data=^{row} note:str=^{row.note?} y:data=^{pointer["clientY"]?} offset:num="-0" <> >';
   const down = '<hson:event on:pointer:down host:DOWN x:num=^{pointer.clientX} y:num=^{pointer.movementY} <> >';
@@ -447,7 +558,7 @@ async function native_event_cases() {
     assert.throws(() => admit(button, keyboard.replace('key.code', property)), /Unsupported key Event lookup/);
   }
   assert.throws(() => admit(button, keyboard.replace('code:str=', 'code:num=')), /whole :str or :data/);
-  assert.throws(() => admit(button, keyboard.replace('key.code', 'key.repeat')), /whole :data/);
+  assert.throws(() => admit(button, keyboard.replace('key.code', 'key.repeat')), /whole :bool or :data/);
   assert.throws(() => admit(button, keyboard.replace('^{key.code}', '"^{key.code} suffix"')), /requires a whole :str or :data/);
   assert.throws(() => admit(button, keyboard.replace('key.code', 'keyboard.key')), /Missing Part local declaration "keyboard"/);
   assert.throws(() => admit(button, keyboard.replace('on:key:down', 'on:pointer:up')), /native key binding requires on:key:down or on:key:up/);
@@ -476,7 +587,7 @@ async function native_event_cases() {
     assert.throws(() => admit(button, change.replace("change.target.value", lookup)), /Unsupported change Event lookup/);
   }
   assert.throws(() => admit(button, change.replace("value:str", "value:num")), /requires a whole :str or :data/);
-  assert.throws(() => admit(button, change.replace("target.value", "target.checked")), /requires a whole :data/);
+  assert.throws(() => admit(button, change.replace("target.value", "target.checked")), /requires a whole :bool or :data/);
   assert.throws(() => admit(button, change.replace('^{change.target.value}', '"prefix ^{change.target.value}"')), /requires a whole/);
   assert.throws(() => admit(button, change.replace("value:str", "value:str=^{change.target.id} value:str")), /Duplicate/);
   assert.throws(() => admit(button, change.replace("on:change", "on:input")), /native change binding requires on:change/);
@@ -1602,6 +1713,7 @@ export async function authored_event_cases(): Promise<void> {
   event_reference_comments();
   forwarded_event_cases();
   iterator_event_arguments();
+  await submission_event_cases();
   await native_event_cases();
   await covered_event_recovery_cases();
   await composition_cases();

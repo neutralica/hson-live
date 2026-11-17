@@ -1,3 +1,4 @@
+import { listener_conveniences } from "../../../internal/listener-conveniences.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { assert_mutation_publication_available } from "../lifecycle/mutation-publication.js";
@@ -401,9 +402,10 @@ export function build_listener(tree: NativeListenerSubject, owningListeners: Set
     const config = takeRegistrationConfig();
     return attachListener(tree, type, event => handler(event as ElemMap[K]), config, owningListeners);
   };
+  const onCustom = <E extends Event = Event>(type: string, handler: (ev: E) => void): ListenerSub =>
+    on(type as unknown as keyof ElemMap, handler as unknown as (ev: Event) => void);
   let api: ListenerBuilder;
 
-  // add convenience wrappers so api satisfies ListenerBuilder
   api = {
     on,
     event(source) {
@@ -432,85 +434,10 @@ export function build_listener(tree: NativeListenerSubject, owningListeners: Set
       return api;
     },
 
-    // Form / input
-    onInput: (fn) => on("input", (ev) => fn(ev as InputEvent)),
-    onChange: (fn) => on("change", (ev) => fn(ev as Event)),
-    onSubmit: (fn) => on("submit", (ev) => fn(ev as SubmitEvent)),
-
-    // Mouse
-    onClick: (fn) => on("click", (ev) => fn(ev as MouseEvent)),
-
-    onDblClick: (fn) => on("dblclick", (ev) => fn(ev as MouseEvent)),
-
-    onContextMenu: (fn) => on("contextmenu", (ev) => fn(ev as MouseEvent)),
-    onMouseMove: (fn) => on("mousemove", (ev) => fn(ev as MouseEvent)),
-    onMouseDown: (fn) => on("mousedown", (ev) => fn(ev as MouseEvent)),
-    onMouseUp: (fn) => on("mouseup", (ev) => fn(ev as MouseEvent)),
-    // (non-bubbling)
-    onMouseEnter: (fn) => on("mouseenter", (ev) => fn(ev as MouseEvent)),
-    // ( non-bubbling)
-    onMouseLeave: (fn) => on("mouseleave", (ev) => fn(ev as MouseEvent)),
-
-    // Pointer
-    onPointerDown: (fn) => on("pointerdown", (ev) => fn(ev as PointerEvent)),
-    onPointerMove: (fn) => on("pointermove", (ev) => fn(ev as PointerEvent)),
-    onPointerUp: (fn) => on("pointerup", (ev) => fn(ev as PointerEvent)),
-
-    onPointerEnter: (fn) => on("pointerenter", (ev) => fn(ev as PointerEvent)),
-
-    onPointerLeave: (fn) => on("pointerleave", (ev) => fn(ev as PointerEvent)),
-
-    onPointerCancel: (fn) => on("pointercancel", (ev) => fn(ev as PointerEvent)),
-
-    // Touch
-    onTouchStart: (fn) => on("touchstart", (ev) => fn(ev as TouchEvent)),
-    onTouchMove: (fn) => on("touchmove", (ev) => fn(ev as TouchEvent)),
-    onTouchEnd: (fn) => on("touchend", (ev) => fn(ev as TouchEvent)),
-    onTouchCancel: (fn) => on("touchcancel", (ev) => fn(ev as TouchEvent)),
-
-    // Wheel / scroll 
-    onWheel: (fn) => on("wheel", (ev) => fn(ev as WheelEvent)),
-    onScroll: (fn) => on("scroll", (ev) => fn(ev as Event)),
-
-    // Focus
-    // (non-bubbling)
-    onFocus: (fn) => on("focus", (ev) => fn(ev as FocusEvent)),
-    // (non-bubbling)
-    onBlur: (fn) => on("blur", (ev) => fn(ev as FocusEvent)),
-    onFocusIn: (fn) => on("focusin", (ev) => fn(ev as FocusEvent)),
-    onFocusOut: (fn) => on("focusout", (ev) => fn(ev as FocusEvent)),
-
-    // Keyboard
-    onKeyDown: (fn) => on("keydown", (ev) => fn(ev as KeyboardEvent)),
-    onKeyUp: (fn) => on("keyup", (ev) => fn(ev as KeyboardEvent)),
-
-    // Drag & drop 
-    onDragStart: (fn) => on("dragstart", (ev) => fn(ev as DragEvent)),
-    onDragOver: (fn) => on("dragover", (ev) => fn(ev as DragEvent)),
-    onDrop: (fn) => on("drop", (ev) => fn(ev as DragEvent)),
-    onDragEnd: (fn) => on("dragend", (ev) => fn(ev as DragEvent)),
-
-    // Animation lifecycle 
-    onAnimationStart: (fn) => on("animationstart", (ev) => fn(ev as AnimationEvent)),
-    onAnimationIteration: (fn) => on("animationiteration", (ev) => fn(ev as AnimationEvent)),
-    onAnimationEnd: (fn) => on("animationend", (ev) => fn(ev as AnimationEvent)),
-    onAnimationCancel: (fn) => on("animationcancel", (ev) => fn(ev as AnimationEvent)),
-
-    // Transition lifecycle 
-    onTransitionStart: (fn) => on("transitionstart", (ev) => fn(ev as TransitionEvent)),
-    onTransitionEnd: (fn) => on("transitionend", (ev) => fn(ev as TransitionEvent)),
-    onTransitionCancel: (fn) => on("transitioncancel", (ev) => fn(ev as TransitionEvent)),
-    onTransitionRun: (fn) => on("transitionrun", (ev) => fn(ev as TransitionEvent)),
-
-    // Clipboard
-    onCopy: (fn) => on("copy", (ev) => fn(ev as ClipboardEvent)),
-    onCut: (fn) => on("cut", (ev) => fn(ev as ClipboardEvent)),
-    onPaste: (fn) => on("paste", (ev) => fn(ev as ClipboardEvent)),
+    ...listener_conveniences(onCustom),
 
     // Custom events / escape hatches
-    onCustom: <E extends Event = Event>(type: string, handler: (ev: E) => void) => {
-      return on(type as unknown as keyof ElemMap, handler as unknown as (ev: Event) => void);
-    },
+    onCustom,
     onCustomDetail: <D>(type: string, handler: (ev: CustomEvent<D>) => void) => {
       return api.onCustom<CustomEvent<D>>(type, handler);
     },

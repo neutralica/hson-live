@@ -7,7 +7,8 @@ import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from ".
 import { part_candidates } from "./part-completion.js";
 import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
-import { AUTHORED_EVENT_NAMES, native_event_class, native_event_family, native_event_paths, native_event_scalar_qualifier } from "../event-argument-plan.js";
+import { AUTHORED_EVENT_NAMES, formdata_operation, native_event_class, native_event_family, native_event_paths, native_event_scalar_qualifier } from "../event-argument-plan.js";
+import { scan_formdata_operation } from "../event-operation-source.js";
 import { scan_part_reference } from "../part-placeholder.js";
 import { AUTHORED_EVENT_FLAGS } from "../../core/authored-event-names.js";
 
@@ -60,6 +61,12 @@ export function query_hson_event_completion(facts: PartSourceFacts, file: string
     const range = map_static_hson_range(correspondence, { start: checkpoint.start, end: checkpoint.end });
     if (range === undefined) return [];
     const prefix = literal.text.slice(checkpoint.start, cursor);
+    const declaration = /^([A-Za-z_][A-Za-z0-9_-]*):([a-z]*)$/.exec(prefix);
+    if (declaration !== null && !["on", "host", "local"].includes(declaration[1]!)) {
+      return ["str", "num", "bool", "arr", "data"].filter(type => type.startsWith(declaration[2]!))
+        .map((type, index) => ({ candidate: item(`${declaration[1]}:${type}`, "syntax", `${declaration[1]}:${type}=`,
+          type === "arr" ? "Array of admissible HSON Data" : type === "bool" ? "Boolean value" : "Typed Event argument", index), range }));
+    }
     const available = [
       ...(selectors.length === 0 ? AUTHORED_EVENT_NAMES : []),
       ...[...AUTHORED_EVENT_FLAGS].filter(([name]) => !checkpoint.flags.has(name)
@@ -74,6 +81,28 @@ export function query_hson_event_completion(facts: PartSourceFacts, file: string
   const quoted = literal.text[checkpoint.start] === '"';
   const start = quoted ? checkpoint.start + 1 : checkpoint.start;
   const prefix = literal.text.slice(start, cursor);
+  if (family === "formdata" && prefix.startsWith("^{formdata:")) {
+    // Complete only the declared operations and their quoted literal input scaffold.
+    const methodPrefix = prefix.slice("^{formdata:".length);
+    if (!/^[A-Za-z]*(?:\()?$/u.test(methodPrefix)) return [];
+    let complete: ReturnType<typeof scan_formdata_operation>;
+    try { complete = scan_formdata_operation(literal.text, start); } catch { /* A method name may still be under edit. */ }
+    let end = cursor;
+    while (/[A-Za-z]/.test(literal.text[end] ?? "")) end++;
+    if (literal.text[end] === "}") end++;
+    const replacementEnd = complete?.reference.end ?? end;
+    if (!authored_event_operand_ends_at(literal.text, replacementEnd, quoted)) return [];
+    const range = map_static_hson_range(correspondence, { start: start + 2, end: replacementEnd });
+    if (range === undefined) return [];
+    return ["get", "getAll", "has"].flatMap((method, index) => {
+      const operation = formdata_operation(method, complete?.lookup[3] ?? "");
+      if (operation === undefined || !`${method}(`.startsWith(methodPrefix)
+        || checkpoint.qualifier !== "data" && checkpoint.qualifier !== native_event_scalar_qualifier(operation.valueKind)) return [];
+      const name = `formdata:${method}(${JSON.stringify(operation.lookup[3])})`;
+      return [{ candidate: { ...item(`formdata:${method}`, "reference", (quoted ? JSON.stringify(name + "}").slice(1, -1) : name + "}"),
+        `Native FormData.${method}: ${operation.lookup[4]}; one quoted literal field name`, index), certainty: "certain" as const }, range }];
+    });
+  }
   const root = `^{${family}.`;
   if (!prefix.startsWith(root)) return [];
   const pathPrefix = prefix.slice(root.length);

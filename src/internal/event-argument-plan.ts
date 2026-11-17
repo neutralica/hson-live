@@ -4,11 +4,34 @@ import { hson_data_from_value, type HsonDataValue } from "../api/data/hson-data.
 import { is_part_parameter_name } from "./part-placeholder.js";
 import { is_part_scalar_value } from "./part-scalar.js";
 
-export type EventArgumentQualifier = "str" | "num" | "data";
+export type EventArgumentQualifier = "str" | "num" | "bool" | "arr" | "data";
 type OccurrenceEventFamily = "pointer" | "key";
-type TargetEventFamily = "input" | "change";
+type TargetEventFamily = "input" | "change" | "submit" | "formdata";
 export type NativeEventFamily = OccurrenceEventFamily | TargetEventFamily;
-export type NativeEventValueKind = "number" | "string" | "boolean";
+export type NativeEventValueKind = "number" | "string" | "boolean" | "array";
+
+export type FormDataOperation = "get" | "getAll" | "has";
+/** Native entry results include Files; Data projection is a separate admission step. */
+type FormDataOperationLookup =
+  | readonly [family: "formdata", receiver: "formData", method: "get", name: string, result: "entry-or-null"]
+  | readonly [family: "formdata", receiver: "formData", method: "getAll", name: string, result: "entries"]
+  | readonly [family: "formdata", receiver: "formData", method: "has", name: string, result: "boolean"];
+
+export function formdata_operation(method: unknown, name: unknown):
+  Readonly<{ lookup: FormDataOperationLookup; valueKind: NativeEventValueKind }> | undefined {
+  if (typeof name !== "string") return undefined;
+  switch (method) {
+    case "get": return { lookup: ["formdata", "formData", method, name, "entry-or-null"], valueKind: "string" };
+    case "getAll": return { lookup: ["formdata", "formData", method, name, "entries"], valueKind: "array" };
+    case "has": return { lookup: ["formdata", "formData", method, name, "boolean"], valueKind: "boolean" };
+    default: return undefined;
+  }
+}
+
+export function is_event_argument_value(qualifier: EventArgumentQualifier, value: OrderedProjectedValue): boolean {
+  return qualifier === "data" || (qualifier === "arr" ? Array.isArray(value)
+    : qualifier === "bool" ? typeof value === "boolean" : is_part_scalar_value(qualifier, value));
+}
 
 export const AUTHORED_EVENT_NAMES: ReadonlyMap<string, string> = new Map([
   ["on:click", "click"],
@@ -20,6 +43,8 @@ export const AUTHORED_EVENT_NAMES: ReadonlyMap<string, string> = new Map([
   ["on:key:up", "keyup"],
   ["on:input", "input"],
   ["on:change", "change"],
+  ["on:submit", "submit"],
+  ["on:formdata", "formdata"],
 ]);
 
 const OCCURRENCE_PROPERTIES: Readonly<Record<OccurrenceEventFamily, ReadonlyMap<string, NativeEventValueKind>>> = {
@@ -56,44 +81,50 @@ export function native_event_family(event: unknown): NativeEventFamily | undefin
   switch (event) {
     case "pointerdown": case "pointermove": case "pointerup": case "pointercancel": return "pointer";
     case "keydown": case "keyup": return "key";
-    case "input": case "change": return event;
+    case "input": case "change": case "submit": case "formdata": return event;
     default: return undefined;
   }
 }
 
-export function native_event_class(family: NativeEventFamily): "PointerEvent" | "KeyboardEvent" | "Event" {
-  return family === "pointer" ? "PointerEvent" : family === "key" ? "KeyboardEvent" : "Event";
+export function native_event_class(family: NativeEventFamily): "PointerEvent" | "KeyboardEvent" | "SubmitEvent" | "FormDataEvent" | "Event" {
+  return family === "pointer" ? "PointerEvent" : family === "key" ? "KeyboardEvent"
+    : family === "submit" ? "SubmitEvent" : family === "formdata" ? "FormDataEvent" : "Event";
 }
 
 function is_target_family(family: NativeEventFamily): family is TargetEventFamily {
-  return family === "input" || family === "change";
+  return family === "input" || family === "change" || family === "submit" || family === "formdata";
 }
 
 export function native_event_paths(family: NativeEventFamily): ReadonlyMap<string, NativeEventValueKind> {
   return is_target_family(family)
-    ? new Map([...TARGET_PROPERTIES].map(([property, { kind }]) => [`target.${property}`, kind]))
+    ? new Map((family === "submit" ? ["target", "submitter"] : ["target"])
+      .flatMap(relationship => [...TARGET_PROPERTIES].map(([property, { kind }]): [string, NativeEventValueKind] => [`${relationship}.${property}`, kind])))
     : OCCURRENCE_PROPERTIES[family];
 }
 
 type NativeEventLookup =
   | readonly [family: OccurrenceEventFamily, property: string]
-  | readonly [family: TargetEventFamily, relationship: "target", property: string];
+  | readonly [family: TargetEventFamily, relationship: "target", property: string]
+  | readonly [family: "submit", relationship: "submitter", property: string]
+  | FormDataOperationLookup;
 
 export function read_native_event_lookup(family: NativeEventFamily, path: readonly unknown[]):
   Readonly<{ lookup: NativeEventLookup; valueKind: NativeEventValueKind }> | undefined {
   const [first, second] = path;
   if (is_target_family(family)) {
-    if (path.length !== 2 || first !== "target" || typeof second !== "string") return undefined;
+    if (path.length !== 2 || typeof second !== "string") return undefined;
     const valueKind = TARGET_PROPERTIES.get(second)?.kind;
-    return valueKind === undefined ? undefined : { lookup: [family, first, second], valueKind };
+    if (valueKind === undefined) return undefined;
+    if (first === "target") return { lookup: [family, first, second], valueKind };
+    return family === "submit" && first === "submitter" ? { lookup: [family, first, second], valueKind } : undefined;
   }
   if (path.length !== 1 || typeof first !== "string") return undefined;
   const valueKind = OCCURRENCE_PROPERTIES[family].get(first);
   return valueKind === undefined ? undefined : { lookup: [family, first], valueKind };
 }
 
-export function native_event_scalar_qualifier(kind: NativeEventValueKind): "num" | "str" | undefined {
-  return kind === "number" ? "num" : kind === "string" ? "str" : undefined;
+export function native_event_scalar_qualifier(kind: NativeEventValueKind): "num" | "str" | "bool" | "arr" {
+  return kind === "number" ? "num" : kind === "string" ? "str" : kind === "boolean" ? "bool" : "arr";
 }
 
 export type DeferredEventArgument =
@@ -118,15 +149,18 @@ export function read_event_argument_plan(event: unknown, value: OrderedProjected
     if (!Array.isArray(field)) throw new TypeError("Invalid canonical event argument plan field.");
     const [name, qualifier, operand, ...path]: readonly OrderedProjectedValue[] = field;
     if (!is_valid_hson_data_name(name) || !is_part_parameter_name(name) || names.has(name)
-      || qualifier !== "str" && qualifier !== "num" && qualifier !== "data") {
+      || qualifier !== "str" && qualifier !== "num" && qualifier !== "bool" && qualifier !== "arr" && qualifier !== "data") {
       throw new TypeError("Invalid or duplicate canonical event argument plan name or type.");
     }
     names.add(name);
     if (field.length === 2) fields.push([name, qualifier]);
-    else if (field.length === 3 && (qualifier === "data" || is_part_scalar_value(qualifier, operand))) {
+    else if (field.length === 3 && operand !== undefined && is_event_argument_value(qualifier, operand)) {
       fields.push([name, qualifier, operand]);
     } else {
-      const native = operand === family ? read_native_event_lookup(family, path) : undefined;
+      const operation = operand === "formdata" && family === "formdata" && path.length === 4 && path[0] === "formData"
+        ? formdata_operation(path[1], path[2]) : undefined;
+      const native = operation === undefined ? operand === family ? read_native_event_lookup(family, path) : undefined
+        : operation.lookup[4] === path[3] ? operation : undefined;
       if (native === undefined || qualifier !== "data" && qualifier !== native_event_scalar_qualifier(native.valueKind)) {
         throw new TypeError(`Invalid canonical event argument plan operand for ${JSON.stringify(name)}.`);
       }
@@ -152,14 +186,16 @@ export function validate_descriptor_event_plan(value: OrderedProjectedValue): vo
 
 /** Platform accessors check the native brand across realms and ignore lookalike own properties. */
 export function extract_event_arguments(plan: readonly DeferredEventArgument[], event: Event): HsonDataValue {
-  const family = plan.find(field => field.length === 4 || field.length === 5)?.[2];
+  const family = plan.find(field => field.length === 4 || field.length === 5 || field.length === 7)?.[2];
   if (family === undefined) throw new TypeError("Event argument lookups require a deferred native lookup.");
   const prototype = is_target_family(family) ? undefined : require_occurrence_prototype(family, event);
+  if (family === "submit" || family === "formdata") read_native_relationship(family, family === "submit" ? "submitter" : "formData", event);
   const entries: Array<readonly [string, OrderedProjectedValue]> = [];
   for (const field of plan) {
     if (field.length === 2) continue;
     if (field.length === 3) { entries.push([field[0], field[2]]); continue; }
-    const value = field.length === 5 ? read_native_target_property(field[2], field[4], event)
+    const value = field.length === 7 ? read_native_formdata_operation(field[4], field[5], event)
+      : field.length === 5 ? read_native_target_property(field[2], field[3], field[4], event)
       : read_native_occurrence_property(field[2], field[3], event, prototype);
     entries.push([field[0], value]);
   }
@@ -197,14 +233,21 @@ function read_native_occurrence_property(family: OccurrenceEventFamily, property
   return value;
 }
 
-function read_native_target_property(family: TargetEventFamily, property: string, event: Event): string | boolean {
-  const lookup = `${family}.target.${property}`;
+function read_native_relationship(family: TargetEventFamily, relationship: "target" | "submitter" | "formData", event: Event): unknown {
+  const nativeClass = relationship === "target" ? "Event" : relationship === "submitter" ? "SubmitEvent" : "FormDataEvent";
+  const getter = platform_getter(globalThis[nativeClass]?.prototype, relationship);
+  try {
+    if (getter !== undefined) return Reflect.apply(getter, event, []);
+  } catch (cause) { throw new TypeError(`Event lookup ${family}.${relationship} requires a native ${nativeClass}.${relationship}.`, { cause }); }
+  throw new TypeError(`Event lookup ${family}.${relationship} requires a native ${nativeClass}.${relationship}.`);
+}
+
+function read_native_target_property(family: TargetEventFamily, relationship: "target" | "submitter", property: string, event: Event): string | boolean {
+  const lookup = `${family}.${relationship}.${property}`;
   const expected = TARGET_PROPERTIES.get(property);
   if (expected === undefined) throw new TypeError(`Unsupported Event lookup ${lookup}.`);
-  const getter = platform_getter(globalThis.Event?.prototype, "target");
-  let target: unknown;
-  try { target = getter === undefined ? undefined : Reflect.apply(getter, event, []); }
-  catch (cause) { throw new TypeError(`Event lookup ${lookup} requires a native Event.target.`, { cause }); }
+  const target = read_native_relationship(family, relationship, event);
+  if (target === null) throw new TypeError(`Event lookup ${lookup} is inapplicable: native ${family}.${relationship} is null and cannot be traversed.`);
   for (const name of expected.interfaces) {
     const read = platform_getter(globalThis[name]?.prototype, property);
     if (read === undefined) continue;
@@ -214,6 +257,23 @@ function read_native_target_property(family: TargetEventFamily, property: string
     if (is_native_event_value(expected.kind, value) && typeof value !== "number") return value;
   }
   throw new TypeError(`Event lookup ${lookup} requires a native ${expected.interfaces.join(" or ")} target with a ${expected.kind} ${property} property.`);
+}
+
+function read_native_formdata_operation(method: FormDataOperation, name: string, event: Event): OrderedProjectedValue {
+  const receiver = read_native_relationship("formdata", "formData", event);
+  const operation: unknown = Object.getOwnPropertyDescriptor(globalThis.FormData?.prototype ?? {}, method)?.value;
+  const label = `formdata:${method}(${JSON.stringify(name)})`;
+  let value: unknown;
+  try {
+    if (typeof operation !== "function") throw new TypeError("Native FormData method is unavailable.");
+    value = Reflect.apply(operation, receiver, [name]);
+  } catch (cause) { throw new TypeError(`Event operation ${label} requires native FormDataEvent.formData and FormData.${method}.`, { cause }); }
+  if (method === "has" && typeof value === "boolean") return value;
+  if (method === "get" && (value === null || typeof value === "string")) return value;
+  if (method === "getAll" && Array.isArray(value) && value.every(entry => typeof entry === "string")) {
+    return ordered_projected_array(value);
+  }
+  throw new TypeError(`Event operation ${label} selected an unsupported value (File entries cannot enter HSON Data). Select string fields or use formdata:has to test presence; resource support is not available.`);
 }
 
 function is_native_event_value(kind: NativeEventValueKind, value: unknown): value is string | number | boolean {

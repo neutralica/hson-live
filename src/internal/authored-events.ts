@@ -9,11 +9,12 @@ import { tokenize_authored_event } from "../api/transform/parsers/tokenize-hson.
 import type { InteractionListener } from "../types/interaction.descriptor.types.js";
 import { DOCUMENT_CLICK_LISTENER } from "./listener-config.js";
 import { PART_LOCAL_REFERENCE_MIGRATION, part_reference_text, whole_part_reference, type PartReference } from "./part-placeholder.js";
-import { interpolate_part_string, is_part_scalar_value, part_scalar_operand } from "./part-scalar.js";
+import { interpolate_part_string, part_scalar_operand } from "./part-scalar.js";
 import { decode_part_string_sigils } from "./part-scalar-source.js";
 import type { Primitive } from "../core/types.js";
-import { AUTHORED_EVENT_NAMES, native_event_family, native_event_paths, native_event_scalar_qualifier, read_native_event_lookup,
+import { AUTHORED_EVENT_NAMES, is_event_argument_value, native_event_family, native_event_paths, native_event_scalar_qualifier, read_native_event_lookup,
   type DeferredEventArgument, type EventArgumentQualifier } from "./event-argument-plan.js";
+import { scan_formdata_operation } from "./event-operation-source.js";
 
 const AUTHORED_EVENT_SELECTORS = [...AUTHORED_EVENT_NAMES.keys()].join(", ");
 
@@ -91,6 +92,14 @@ export function missing_native_event_binding(reference: PartReference): string |
 
 function bind_event_argument(event: string, argument: AuthoredEventArgument, operation: string): AuthoredEventArgument {
   const family = native_event_family(event);
+  if (argument.operand.kind === "native") {
+    if (family !== "formdata") return fail_event_reference("The native formdata operation requires on:formdata.", argument.operand.site, operation);
+    const scalar = native_event_scalar_qualifier(argument.operand.valueKind);
+    if (argument.qualifier !== "data" && argument.qualifier !== scalar) {
+      return fail_event_reference(`A formdata Event operation requires a whole :${scalar} or :data argument.`, argument.operand.site, operation);
+    }
+    return argument;
+  }
   if (family === undefined) return argument;
   const site = event_argument_references(argument).find(({ reference }) => reference.namespace === "local" && reference.name === family);
   if (site === undefined) return argument;
@@ -134,7 +143,15 @@ function read_event_argument(token: ReturnType<typeof tokenize_authored_event>["
         if (attrs.length !== 0) throw new TypeError("Hson Data cannot carry attributes or metadata.");
         return { attrs: {}, meta: {} };
       });
-      return { ...argument, operand: { kind: "literal", value: canonical_hson_data_from_node(root) } };
+      const value = canonical_hson_data_from_node(root);
+      if (!is_event_argument_value(qualifier, value)) throw new TypeError(`Expected a ${qualifier} value.`);
+      return { ...argument, operand: { kind: "literal", value } };
+    }
+    if (operand.kind === "operation") {
+      const { reference, ...native } = operand.operation;
+      return { ...argument, operand: { kind: "native", ...native, site: {
+        reference, start, end, root: { start: start.index + 2, end: start.index + 2 + reference.name.length },
+      } } };
     }
     if (operand.kind === "reference") {
       const { reference } = operand;
@@ -157,9 +174,18 @@ function read_event_argument(token: ReturnType<typeof tokenize_authored_event>["
       return { reference, start: position(reference.start), end: position(reference.end),
         root: { start: position(reference.start + 2).index, end: position(reference.start + 2 + reference.name.length).index } };
     };
-    if (qualifier === "data") {
+    const native = literalSigils.has(0) ? undefined : scan_formdata_operation(text, 0);
+    if (native !== undefined) {
+      if (native.reference.end !== text.length) throw new TypeError("A FormData operation must occupy the whole Event argument.");
+      const { reference, ...lookup } = native;
+      return { ...argument, operand: { kind: "native", ...lookup, site: site(reference) } };
+    }
+    if (qualifier === "data" || qualifier === "arr" || qualifier === "bool") {
       if (text.startsWith("#{") && !literalSigils.has(0)) throw new TypeError(PART_LOCAL_REFERENCE_MIGRATION);
       const reference = literalSigils.has(0) ? undefined : whole_part_reference(text);
+      if (qualifier === "bool" && (text === "true" || text === "false")) {
+        return { ...argument, operand: { kind: "literal", value: text === "true" } };
+      }
       if (reference === undefined) throw new TypeError("Expected {Hson Data} or one whole Part reference.");
       return { ...argument, operand: { kind: "reference", site: site(reference) } };
     }
@@ -203,7 +229,7 @@ export function authored_event_args(args: readonly AuthoredEventArgument[],
     if (operand.kind === "literal") value = operand.value;
     else if (operand.kind === "reference") {
       value = read(operand.site);
-      if (value !== undefined && qualifier !== "data" && !is_part_scalar_value(qualifier, value)) {
+      if (value !== undefined && !is_event_argument_value(qualifier, value)) {
         invalid(`Event argument ${JSON.stringify(name)} requires a ${qualifier} value.`, operand.site);
       }
     } else {

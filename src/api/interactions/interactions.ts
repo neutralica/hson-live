@@ -16,10 +16,10 @@ import {
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
 import {
-  encode_hson_data_internal,
   hson_data_from_value,
   hson_data_value,
 } from "../data/hson-data.js";
+import { emit_ordered_json } from "../../core/exact-data-codec.js";
 import { extract_event_arguments, read_event_argument_plan } from "../../internal/event-argument-plan.js";
 import type { LiveMap, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
@@ -277,8 +277,9 @@ function activate_with_tree_provider(options: InteractionActivationOptions, curr
                 // Resolve current canonical intent, including maintained paths after
                 // movement. A transition must never fall back to an obsolete handle.
                 try {
-                  const currentDescriptor = read_descriptors(installed_descriptors(aggregate.systemRoot(system)))
-                    .find(candidate => candidate.id === descriptor.id);
+                  const currentEntry = descriptor_array(installed_descriptors(aggregate.systemRoot(system)))
+                    .find(candidate => descriptor_id(candidate) === descriptor.id);
+                  const currentDescriptor = currentEntry === undefined ? undefined : read_descriptor(currentEntry);
                   const current = currentDescriptor === undefined
                     || descriptor_fingerprint(currentDescriptor) !== fingerprint
                     ? undefined : resolve_local_subject(activation, currentDescriptor);
@@ -460,21 +461,24 @@ function interaction_storage(target: object): Storage {
 }
 
 function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescriptor[] {
-  return Object.freeze(descriptor_array(value).map((entry) => {
-    const kind = member(entry, "kind");
-    const base = {
-      id: require_string(member(entry, "id")),
-      subject: read_subject(require_object(member(entry, "subject"))),
-      listener: read_listener(require_object(member(entry, "listener"))),
-      key: require_string(member(entry, "key")),
-    };
-    if (kind !== "browser" && kind !== "locus") throw new Error("Canonical interaction descriptor discriminant is malformed.");
-    const input = member(entry, kind === "browser" ? "args" : "payload");
-    const data = input === undefined ? undefined : hson_data_from_value(input);
-    const plan = member(entry, "eventArgs");
-    return Object.freeze(interaction_descriptor(base.id, base.subject, base.listener, kind, base.key, data,
-      plan === undefined ? undefined : hson_data_from_value(plan)));
-  }));
+  return Object.freeze(descriptor_array(value).map(read_descriptor));
+}
+
+/** Consume installed canonical state, normalizing envelope order independently of exact Data order. */
+function read_descriptor(entry: OrderedProjectedObject): RuntimeDescriptor {
+  const kind = member(entry, "kind");
+  const base = {
+    id: require_string(member(entry, "id")),
+    subject: read_subject(require_object(member(entry, "subject"))),
+    listener: read_listener(require_object(member(entry, "listener"))),
+    key: require_string(member(entry, "key")),
+  };
+  if (kind !== "browser" && kind !== "locus") throw new Error("Canonical interaction descriptor discriminant is malformed.");
+  const input = member(entry, kind === "browser" ? "args" : "payload");
+  const data = input === undefined ? undefined : hson_data_from_value(input);
+  const plan = member(entry, "eventArgs");
+  return Object.freeze(interaction_descriptor(base.id, base.subject, base.listener, kind, base.key, data,
+    plan === undefined ? undefined : hson_data_from_value(plan)));
 }
 
 function read_subject(value: OrderedProjectedObject): InteractionSubject {
@@ -524,11 +528,19 @@ function require_missing_policy(value: OrderedProjectedValue | undefined): Inter
   throw new Error("Canonical interaction missing-target policy is malformed.");
 }
 
-function descriptor_fingerprint(descriptor: InteractionDescriptor): string {
-  const value = descriptor_to_value(descriptor);
+function descriptor_fingerprint(descriptor: RuntimeDescriptor): string {
+  const fields: Array<readonly [string, OrderedProjectedValue]> = [["id", descriptor.id]];
   // A canonical path rewrite follows the same local subject. It must not
   // replace that subject's listener or reset once/resource ownership.
-  return encode_hson_data_internal(hson_data_from_value(ordered_projected_object(
-    value.entries.filter(([name]) => name !== "subject" || descriptor.subject.kind === "document"),
-  )));
+  if (descriptor.subject.kind === "document") {
+    fields.push(["subject", ordered_projected_object([["library", descriptor.subject.library], ["kind", "document"]])]);
+  }
+  // read_descriptor fixes listener field order. Its Data carriers are already
+  // admitted; fingerprinting must not repeat public admission or plan decoding.
+  fields.push(["listener", ordered_projected_object(Object.entries(descriptor.listener))],
+    ["kind", descriptor.kind], ["key", descriptor.key]);
+  const input = descriptor.kind === "browser" ? descriptor.args : descriptor.payload;
+  if (input !== undefined) fields.push([descriptor.kind === "browser" ? "args" : "payload", hson_data_value(input)]);
+  if (descriptor.eventArgs !== undefined) fields.push(["eventArgs", hson_data_value(descriptor.eventArgs)]);
+  return emit_ordered_json(ordered_projected_object(fields));
 }

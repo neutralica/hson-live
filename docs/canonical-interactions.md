@@ -116,7 +116,7 @@ The source record is construction input only. Ordinary root edits and restore do
 
 Authored Events use named arguments of the form `name:type=value`. For example, `<hson:event on:click host:deck.advance step:num="3" title:str="Next" settings:data={<speed 5>} <> >` sends an ordered Data object with `step`, `title`, and `settings`. A field spelled `input:data` has the name `input`, and its value stays nested under that name. The empty outcome `<>` is required.
 
-Use `str` for strings, `num` for finite numbers, and `data` for Hson Data. Numeric literals are double-quoted finite JSON numbers and preserve signed zero. In Parts, whole `%{incoming}` and `^{local}` references preserve the resolved value, and a quoted `str` can interpolate primitive Part values. Each attachment resolves in its own occurrence scope. An absent optional operand omits its field. A declaration with zero arguments supplies `undefined`. A declaration whose optional fields are all absent supplies an empty object.
+Use `str` for strings, `num` for finite numbers, `bool` for booleans, `arr` for arrays, and `data` for any admissible Hson Data. Arrays require admissible Data contents; there is no element-type annotation. Numeric literals are double-quoted finite JSON numbers and preserve signed zero. Boolean literals can use `ready:bool="false"` or `ready:bool={false}`; array literals use `tags:arr={["one","two"]}`. In Parts, whole `%{incoming}` and `^{local}` references preserve the resolved value, and a quoted `str` can interpolate primitive Part values. Each attachment resolves in its own occurrence scope. An absent optional Part operand omits its field. A declaration with zero arguments supplies `undefined`. A declaration whose optional fields are all absent supplies an empty object.
 
 | Authored selector | Native event | Event-local root |
 | --- | --- | --- |
@@ -129,12 +129,16 @@ Use `str` for strings, `num` for finite numbers, and `data` for Hson Data. Numer
 | `on:key:up` | `keyup` | `key` |
 | `on:input` | `input` | `input` |
 | `on:change` | `change` | `change` |
+| `on:submit` | `submit` | `submit` |
+| `on:formdata` | `formdata` | `formdata` |
 
-| Event-local root | `num` or `data` | `str` or `data` | Boolean `data` |
+| Event-local root | `num` or `data` | `str` or `data` | `bool` or `data` |
 | --- | --- | --- | --- |
 | `pointer` | `clientX`, `clientY`, `movementX`, `movementY`, `pointerId`, `button`, `buttons` | `pointerType` | `isPrimary`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
 | `key` | `location` | `key`, `code` | `repeat`, `isComposing`, `altKey`, `ctrlKey`, `metaKey`, `shiftKey` |
 | `input`, `change` | | `target.tagName`, `target.id`, `target.name`, `target.type`, `target.value` | `target.checked` |
+| `submit` | | `target` and `submitter` followed by the same Element/control properties | `target.checked`, `submitter.checked` where applicable |
+| `formdata` | | `target` followed by the same Element/control properties | `target.checked` where applicable |
 
 Use native lookups as whole argument values. They require the matching native Event class and a value of the expected type, including for references ending in `?`. Pointer movement values come directly from the browser. `button` reports the changed button, `buttons` carries the button-state bitmask, and `pointerId` has the lifetime defined by the browser's pointer model. Release and cancellation dispatch separately. Keyboard `key` reports the logical value and `code` identifies the physical key.
 
@@ -155,6 +159,31 @@ const page = {
 
 Each occurrence supplies the control's name and current value. The local Action still receives the Document Library as its subject. For element-owned declarations, the subject remains the owning element even when a descendant generated the event. Listener placement sets where the native listener runs. Hosted Actions receive the captured Data without browser objects.
 
+Native submission and FormData use the same declaration and listener machinery:
+
+```hson
+<hson:event on:submit local:HANDLE_SUBMIT
+  formId:str=^{submit.target.id}
+  buttonName:str=^{submit.submitter.name} <> >
+<hson:event on:formdata host:SAVE_PROFILE
+  email:str=^{formdata:get("email")}
+  interests:arr=^{formdata:getAll("interest")}
+  agreed:bool=^{formdata:has("agree")}
+  formId:str=^{formdata.target.id} <> >
+```
+
+`submit` denotes a native `SubmitEvent`. Native `requestSubmit()` performs constraint validation and can dispatch it; `form.submit()` bypasses the submit event. Cancellation requires an explicit `preventDefault` flag or native listener behavior. HSON never constructs FormData during submit, and `submit.formData` is unsupported. A native `submitter` can be null. Traversing it, including `submit.submitter.name?`, reports an inapplicable traversal; `?` does not introduce optional native traversal.
+
+`formdata` denotes the native `FormDataEvent`. The defined `:` connector in `formdata:get("email")` invokes the native `FormData.get` method with the event's existing `.formData` object as its receiver. A `.` follows a supported native property relationship. Only `get`, `getAll`, and `has` are admitted, each with exactly one double-quoted literal field name using HSON's JSON string escapes. Empty names and punctuation are valid. Operations occupy the whole argument. Dynamic operands, nested references, chaining, other receivers and methods, and iterator projections are unsupported.
+
+`get` returns the native string or null. A missing field yields null even with `:str`: that annotation describes the non-null category, and the operation plan explicitly permits the native absence result. An existing empty value remains `""`. `getAll` preserves repeated values and entry order, returning an empty array when absent. `has` returns a boolean, including false. Reads select only the requested entries. An unrelated File does not prevent reading a string field or testing presence. A selected File, including one inside a `getAll` result, fails Data projection with an unsupported-value diagnostic. Native objects never enter canonical Data or hosted transport.
+
+Extraction, Data admission, and Action Schema admission are separate. For example, successful `get` extraction can supply `{email: null}`; an Action Schema requiring a non-null string rejects it through the existing Action admission process. Other incompatible categories are never coerced.
+
+Methods run synchronously, in argument declaration order, at that listener's actual position in native dispatch. A local Action receives the original Event in `ctx.event` and can synchronously mutate `ctx.event.formData` with native methods. Later native listeners see those mutations according to browser ordering. HSON neither awaits Action settlement during dispatch nor owns or reverses the mutations. A hosted Action receives the captured Data only and cannot change the ongoing browser submission. Echo retries reuse the captured arguments without reading FormData again.
+
+The browser owns event count, ordering, cancellation, propagation, and composed behavior. Native FormData construction can itself emit `formdata`; HSON reads never construct another instance or synthesize an occurrence. A Document Library listener receives only occurrences that reach its Document. Browser navigation may produce different occurrence counts across engines; each observed occurrence is captured independently without deduplication or an exactly-once submission guarantee. The receiver is specifically `FormDataEvent.formData`; no identity equivalence with the value returned by a separately authored `new FormData(form)` is assumed.
+
 The selected family establishes its root within the Event declaration. A visible Part local or iterator alias with that name conflicts at the attachment. The same name can be used as an ordinary local outside that Event scope. Incoming `%{...}` placeholders use their usual Part bindings. `part:optional` continues to depend on composition-time references.
 
 ```hson
@@ -162,7 +191,9 @@ The selected family establishes its root within the Event declaration. A visible
 <hson:event on:key:down local:SHORTCUT pressed:str=^{key.key} code:str=^{key.code} repeat:data=^{key.repeat} <> >
 ```
 
-For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, `[name, type, family, property]` for a pointer or key lookup, and `[name, type, family, "target", property]` for an input or change lookup. Admission requires unique argument names, matching value types, and at least one supported lookup from the listener's Event family. Descriptors carry the plan in place of resolved `args` or `payload`. Listener equivalence includes the full plan.
+For a declaration containing a native lookup, the internal `eventArgs` field holds one ordered plan. Its entries are `[name, type, capturedValue]` for a resolved field, `[name, type]` for a capture omitted during composition, `[name, type, family, property]` for a pointer or key lookup, and `[name, type, family, "target", property]` for an input, change, submit, or formdata lookup. Submit also supports `[name, type, "submit", "submitter", property]`.
+
+FormData operations use `[name, type, "formdata", "formData", method, literalFieldName, resultContract]`. The receiver connector and result contract are explicit: `get` requires `entry-or-null`, `getAll` requires `entries`, and `has` requires `boolean`. A native entry is a string or File; File results fail the separate Data projection step. Captured `str` values remain non-null; only the `get` operation has this nullable result contract. Admission and recovery validate the exact tuple, family, receiver, method, literal operand, result contract, qualifier, unique argument names, and presence of at least one deferred lookup. Descriptors carry the plan in place of resolved `args` or `payload`. Listener equivalence includes the full plan. Native objects are never stored in it.
 
 Each browser dispatch uses the native Event to construct the exact ordered Data object, then applies the normal Action argument admission. A failed extraction rejects the invocation through the existing failure reporting. A hosted Action receives that Data through Echo and Locus. Echo retries retain the original arguments and request ID. Client-reported native values are application input subject to the Action Schema and authorization.
 
