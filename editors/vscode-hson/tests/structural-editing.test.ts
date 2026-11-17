@@ -402,6 +402,22 @@ check("authored document formatting preserves nested QUADs, connector admission,
   assert.ok(result.includes('\n  <a @:next href="/next" "  Next  "/>'));
 });
 
+check("explicit standalone Document formatting preserves QUAD meaning and canonical rejection", () => {
+  const source = '// authored source\n<main   @:title\n<p   @:body "  exact content  "/>\n/>\n';
+  const options = {insertSpaces:true,tabSize:2};
+  const edits = structural_formatting_edits('/workspace/page.hson','hson',source,options,undefined,'document');
+  assert.ok(edits.length);
+  const formatted = applyEdits(source,edits);
+  assert.deepEqual(parse_authored_document_library(formatted),parse_authored_document_library(source));
+  assert.deepEqual(structural_formatting_edits('/workspace/page.hson','hson',formatted,options,undefined,'document'),[]);
+  for (const mode of ['canonical','data',undefined] as const) {
+    assert.deepEqual(structural_formatting_edits('/workspace/page.hson','hson',source,options,undefined,mode),[]);
+  }
+  for (const source of ['<main @:bad-name  />','<main @000000001  />','<main @:same <p @:same/>  />','<main @:title']) {
+    assert.deepEqual(structural_formatting_edits('/workspace/page.hson','hson',source,options,undefined,'document'),[]);
+  }
+});
+
 check("authored formatting protects interpolation expressions and keeps declaration meaning", () => {
   const body = '\n<main   @:main\n${fragment}\n<p   @:label "${text}"/>\n${optional}\n/>\n';
   const input = prefix.replace("Hson.canonical", "Hson.document") + body + "`;";

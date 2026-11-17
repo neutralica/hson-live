@@ -35,6 +35,8 @@
   "scripts": {
     "test:appearance": "npm run build && node scripts/build-tests.mjs && node .test-dist/appearance.cjs",
     "test:appearance:integration": "npm run build && node scripts/build-tests.mjs && node tests/integration/run-appearance.mjs",
+    "test:scratchpads": "node scripts/build-tests.mjs && node .test-dist/scratchpads.cjs",
+    "test:scratchpads:integration": "npm run build && node scripts/build-tests.mjs && node tests/integration/run-appearance.mjs --scratchpads",
     "test:house": "npm run build && node scripts/build-tests.mjs && node .test-dist/house.cjs && node .test-dist/native-semantic.cjs && node tests/themes.test.mjs",
     "test:house:integration": "npm run build && node scripts/build-tests.mjs && node tests/integration/run-house.mjs",
     "themes:generate": "node ./scripts/generate-themes.mjs",
@@ -293,6 +295,21 @@
             "order": 70,
             "title": "Source Directory",
             "markdownDescription": "Workspace-relative directory whose saved files trigger Build Command and Local App restart when Restart on Save is enabled."
+          }
+        }
+      },
+      {
+        "title": "Hson › Authoring",
+        "order": 25,
+        "properties": {
+          "hson.authoring.mode": {
+            "type": "string",
+            "enum": ["canonical", "document", "data"],
+            "enumDescriptions": ["Canonical Transform input; generated QUID claims are forbidden.", "Authored Document input, including authored QUAD declarations such as @:title.", "Hson Data input."],
+            "default": "canonical",
+            "scope": "resource",
+            "title": "Standalone Hson Mode",
+            "markdownDescription": "Explicit admission and formatting mode for `.hson` files. Choose Document for authored Documents; the presence of `@:` never selects a mode. Appearance scratchpads retain their own declared family. Embedded Hson uses its authoring tag."
           }
         }
       },

@@ -8,6 +8,7 @@ await rm(new URL("../.test-dist", import.meta.url), { recursive: true, force: tr
 await build({
   absWorkingDir: extensionRoot,
   entryPoints: {
+    scratchpads: "tests/scratchpads.test.ts",
     appearance: "tests/appearance.test.ts",
     "appearance-integration": "tests/integration/appearance.ts",
     house: "tests/house.test.ts",

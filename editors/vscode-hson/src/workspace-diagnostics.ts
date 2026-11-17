@@ -6,11 +6,13 @@ import {
 } from "./document-diagnostics.js";
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "./diagnostics.js";
 import { HSON_EXPECT_ERROR_MARKER } from "./diagnostic-expectations.js";
+import type { StandaloneAuthoringMode } from './authoring-mode.js';
 
 export type WorkspaceDiagnosticSource = Readonly<{
   uri: string;
   fileName: string;
   languageId: "hson" | "typescript" | "typescriptreact";
+  authoringMode?: StandaloneAuthoringMode;
 }>;
 
 export type WorkspaceSourceChange = Readonly<{
@@ -81,7 +83,7 @@ export function start_workspace_diagnostics(
       if (disposed || generations.get(document.uri) !== generation) return;
       const after = open(document.uri);
       if (after !== undefined && after.version !== document.version) return;
-      fingerprints.set(document.uri, `${document.languageId}\0${document.text}`);
+      fingerprints.set(document.uri, `${document.languageId}\0${document.authoringMode ?? ''}\0${document.text}`);
       publisher.set(document, specs);
     } catch (error) {
       if (disposed) return;
@@ -111,7 +113,7 @@ export function start_workspace_diagnostics(
     try {
       const text = await host.readSource(source);
       if (disposed || generations.get(source.uri) !== generation || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
-      const fingerprint = `${source.languageId}\0${text}`;
+      const fingerprint = `${source.languageId}\0${source.authoringMode ?? ''}\0${text}`;
       if (!force && fingerprints.get(source.uri) === fingerprint) return;
       publish(Object.freeze({ ...source, version: -generation, text }), generation);
     } catch (error) {
@@ -148,7 +150,7 @@ export function start_workspace_diagnostics(
       const added: WorkspaceDiagnosticSource[] = [];
       for (const source of discovered) {
         const prior = sources.get(source.uri);
-        if (prior?.fileName === source.fileName && prior.languageId === source.languageId) continue;
+        if (prior?.fileName === source.fileName && prior.languageId === source.languageId && prior.authoringMode === source.authoringMode) continue;
         sources.set(source.uri, source);
         fingerprints.delete(source.uri);
         added.push(source);

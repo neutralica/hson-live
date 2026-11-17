@@ -236,11 +236,11 @@ const workerRoute = "Module-level test body launches the target through reposito
 const browserRoute = "Module-level setup bundles/serves the target, launches Chrome, navigates to the test page and awaits browser results.";
 const editorRoute = "Module-level VS Code launch selects the built extensionTestsPath and awaits completion; build-tests maps it to the declared source.";
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
-const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","5ff1488dd170145e980f630f135c21d976e89724bfb3e2489c71b57d4784e55c"]];
+const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","d7b0145cd1760bbd8c60153c06c8318a24b4d0ec5063c7fbe1cbd70ea1704906"]];
 
 export const declaredExecution = Object.freeze({
-  "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "969e30a4ecdce159887b9861e13f6f46008402bee297d76bf680bc71a4ed19b3", route: "Two awaited isolated VS Code launches execute appearance.ts through build-tests; the second reopens the same worktree-local profile to verify persistence.",
-    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","87efee9ea51c063bfd35773d95071e26254238cc817315a175b77bbf097db061"]] },
+  "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "8d9b41fb67dfbd4b33968b9e0a19fb53e7419dc78de34e69804246f1b51f9882", route: "Two awaited isolated VS Code launches execute the build-tests appearance.ts bundle. Default uses extensionTestsPath; --scratchpads selects the startup driver, passes real workspace Memento, awaits run() across native restarts and requires both result files to report success. The second process reuses the temporary profile without hot-exit backups.",
+    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","a2f8d28fa380d278aef0baba56f81ce69b037ced0ffe39a3461a4bb6b2eda6c1"]] },
   "tests/livemap-graph-mutations.acceptance.mts": { sha256: "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341", route: workerRoute,
     targets: [["tests/fixtures/livemap-graph-mutations.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/livemap-graph-reads.acceptance.mts": { sha256: "e458b4ecea665f09b1ef32a9ba459dfc7be7421871f9e77445bab826485ed2c3", route: workerRoute,

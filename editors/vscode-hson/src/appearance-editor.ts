@@ -7,15 +7,10 @@ import { AppearanceSpanCache } from './appearance-spans.js';
 import { roleCatalog, housePalette, builtinPalettes, paletteById, editablePalette, initialAppearance, readAppearance, duplicatePalette, deletePalette, resolveStyle,
   styleProperties, type AppearanceState, type Mode, type Family, type RoleStyle, type StyleProperty } from './appearance-model.js';
 import type { HsonBindingCache } from './binding-intelligence.js';
-type Example = keyof typeof examples;
+import { AppearanceScratchpads, type ScratchpadExample as Example } from './scratchpads.js';
 type EditScope = { target: string; mode: Mode; role: string; property: StyleProperty };
 type RejectedInput = EditScope & { kind: 'property' | 'inherit'; text: string; error: string };
 type HistoryEntry = { state: AppearanceState; target: string; revision: number };
-const examples = {
-  Document: { language: "hson", content: '// Editable Document scratchpad — paste your own Hson here.\n<section hson:part data:message=%{message} title="Attribute text" class="example"\n  <h1 "Content text"/>\n  <p title=^{message} "Hello"/>\n/>\n' },
-  Data: { language: "hson", content: '// Editable Data scratchpad — paste your own Hson here.\n<catalog <\n  title "Data content"\n  tags ["alpha", "beta"]\n  count 42\n  enabled true\n>>\n' },
-  Interpolation: { language: "typescript", content: 'import { Hson } from "hson-live/hson";\nconst hostValue = "Native TypeScript";\nconst document = Hson.document`\n<section title="Attribute text"\n  <p "Content text ${hostValue.toUpperCase()}"/>\n/>`;\nconst data = Hson.data`\n<catalog <\n  true "Data text"\n  false 1\n  null null\n>>`;\n' },
-};
 function currentMode(): Mode {return [vscode.ColorThemeKind.Light,vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind)?'light':'dark';}
 function configured(configuration = vscode.workspace.getConfiguration('hson.appearance')): AppearanceState {
   const setting = configuration.inspect('state');
@@ -30,8 +25,6 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   private panel?:vscode.WebviewPanel;
   private readonly renderer:AppearanceRenderer;
   private readonly subscriptions:vscode.Disposable[]=[];
-  private readonly documents=new Map<Example,vscode.TextDocument>();
-  private readonly scratchpadId=randomUUID().slice(0,8);
   private saved=initialAppearance();
   private draft=initialAppearance();
   private comparison:'saved'|'draft'='draft';
@@ -42,6 +35,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   private themeModePending=false;
   private destination:'user'|'workspace'='user';
   private error='';
+  private scratchpadActionError='';
   private conflict=false;
   private configurationError = '';
   private saving?: { snapshot: AppearanceState; destination: 'user' | 'workspace' };
@@ -59,11 +53,12 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   private inputSequence = 0;
   private inputRevision = 0;
   private revertConfirmation?: (confirmed: boolean) => void;
-  constructor(_extensionPath:string,grammar:Promise<IGrammar>,bindings:HsonBindingCache){
+  constructor(_extensionPath:string,grammar:Promise<IGrammar>,bindings:HsonBindingCache,
+    private readonly scratchpads:AppearanceScratchpads, family:(document:vscode.TextDocument)=>Family=()=> 'all'){
     this.configurationChanged();
-    this.renderer=new AppearanceRenderer(grammar,new AppearanceSpanCache(bindings),()=>this.saved);
+    this.renderer=new AppearanceRenderer(grammar,new AppearanceSpanCache(bindings),()=>this.saved,document=>scratchpads.context(document),family);
     void this.renderer.refresh();
-    this.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event=>{
+    this.subscriptions.push(scratchpads.onDidChange(()=>{void this.present();}),vscode.workspace.onDidChangeConfiguration(event=>{
       if(event.affectsConfiguration('hson.appearance.state')) this.configurationChanged();
       else if(event.affectsConfiguration('editor.bracketPairColorization')) void this.present();
     }),vscode.window.onDidChangeActiveColorTheme(()=>{
@@ -77,7 +72,24 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   }
   private validTarget(target: string): boolean {
     return [...builtinPalettes.map(p => 'palette:' + p.id), 'override:all', 'override:data', 'override:document'].includes(target)
-      || this.draft.palettes.some(palette => target === 'palette:' + palette.id);
+      || this.draft.palettes.some(palette => target === 'palette:' + palette.id)
+      || this.scratchpads.targets().includes(target);
+  }
+  private assertPaletteDependencies(next: AppearanceState): void {
+    for (const target of this.scratchpads.targets()) {
+      if (!target.startsWith('palette:')) continue;
+      const id = target.slice(8), palette = paletteById(this.draft, id) ?? paletteById(this.saved, id);
+      if (palette && !paletteById(next, id)) throw new Error(`Retained scratchpads for ${palette.name}: ${this.scratchpads.references(target).join(', ')}. Use Move Scratchpads before removing this palette.`);
+    }
+  }
+  private missingPalettes(): readonly string[] {
+    return this.scratchpads.targets().filter(target => target.startsWith('palette:') && !paletteById(this.saved, target.slice(8)));
+  }
+  private requireDurablePalette(example: Example): void {
+    if (this.scratchpads.has(example, this.editTarget, this.mode)) return;
+    if (this.editTarget.startsWith('palette:') && !paletteById(configured(this.configuration()), this.editTarget.slice(8))) {
+      throw new Error('Save this palette before creating a scratchpad. Retained scratchpads can still be opened or moved.');
+    }
   }
   private normalizeTarget(): void {
     if (!this.validTarget(this.editTarget)) this.editTarget = 'palette:house';
@@ -93,7 +105,9 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       // The completion of our own write advances Saved without replacing Draft.
       if (ignoreSaveEcho && this.saving && sameAppearance(current, this.saving.snapshot)) return;
       if (sameAppearance(current, this.saved)) return;
-      if (!this.saving && !this.conflict && !this.hasLocalWork()) {
+      const removesRetainedPalette = this.scratchpads.targets().some(target => target.startsWith('palette:')
+        && (paletteById(this.draft, target.slice(8)) || paletteById(this.saved, target.slice(8))) && !paletteById(current, target.slice(8)));
+      if (!removesRetainedPalette && !this.saving && !this.conflict && !this.hasLocalWork()) {
         this.draft = structuredClone(current);
         this.undoStack = []; this.redoStack = []; this.draftRevision = ++this.revision; this.historyBaseline = undefined; this.clearInputs();
         this.normalizeTarget();
@@ -111,19 +125,28 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   }
   private async openPanel():Promise<void>{
     if(!this.panel){
+      // A restarted extension host cannot receive messages from its old panel.
+      // Replace only that orphaned view; native scratchpad editors stay intact.
+      const orphaned=vscode.window.tabGroups.all.flatMap(group=>group.tabs).filter(tab=>tab.input instanceof vscode.TabInputWebview
+        && ['hson.appearance','mainThreadWebview-hson.appearance'].includes(tab.input.viewType));
+      if(orphaned.length)await vscode.window.tabGroups.close(orphaned,true);
       const panel=this.panel=vscode.window.createWebviewPanel('hson.appearance','Hson Appearance',vscode.ViewColumn.One,{enableScripts:true,retainContextWhenHidden:true,localResourceRoots:[]});
       const events=[panel.onDidDispose(()=>{
         this.panel=undefined;
         this.activeEdit=undefined;this.editGroup=undefined;
         this.followThemeWhenReady();
         this.revertConfirmation?.(false);this.revertConfirmation=undefined;
-        void this.renderer.setAppearance(undefined);for(const event of events)event.dispose();
+        for(const event of events)event.dispose();
       }),
-        panel.webview.onDidReceiveMessage((message:unknown)=>{void this.receive(message).catch(error=>{this.error=String(error);void this.present();});})];
+        panel.webview.onDidReceiveMessage((message:unknown)=>{void this.receive(message).catch(error=>{
+          if(message && typeof message === 'object' && 'type' in message && ['open-scratchpad','restore-example','move-scratchpads','retry-scratchpads'].includes(String(message.type))) this.scratchpadActionError=String(error);
+          else this.error=String(error);
+          void this.present();
+        });})];
       panel.webview.html=appearanceHtml();
     }
     await vscode.commands.executeCommand('vscode.setEditorLayout',{orientation:0,groups:[{size:.48},{size:.52}]});
-    this.panel.reveal(vscode.ViewColumn.One,true);await this.selectExample(this.activeExample);
+    this.panel.reveal(vscode.ViewColumn.One,true);await this.present();
   }
   private async selectExample(example: Example): Promise<void> {
     if (this.switchingExample) return;
@@ -137,16 +160,11 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     }
   }
   private async showExample(example:Example):Promise<void>{
-    let document=this.documents.get(example);
-    if(!document||document.isClosed){
-      const suffix=examples[example].language==='typescript'?'ts':'hson';
-      document=await vscode.workspace.openTextDocument(vscode.Uri.from({scheme:'untitled',path:`Hson ${example} ${this.scratchpadId}.${suffix}`}));
-      const edit=new vscode.WorkspaceEdit();edit.insert(document.uri,new vscode.Position(0,0),examples[example].content);
-      if(!await vscode.workspace.applyEdit(edit))throw new Error('Could not initialize scratchpad');this.documents.set(example,document);
-    }
-    if(!this.panel)return;
-    await this.renderer.attach(document,example==='Document'?'document':example==='Data'?'data':'all');
-    await vscode.window.showTextDocument(document,{viewColumn:vscode.ViewColumn.Two,preview:false,preserveFocus:true});
+    this.requireDurablePalette(example);
+    const target=this.editTarget, mode=this.mode;
+    const label=target.startsWith('palette:')?paletteById(this.draft,target.slice(8))?.name??target.slice(8):target.slice(9)+' overrides';
+    await this.scratchpads.open(example,target,mode,label);
+    await this.renderer.refresh();
     this.activeExample=example;
   }
   private target(state:AppearanceState, edit = false):Record<string,RoleStyle>|undefined {
@@ -217,13 +235,35 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       return;
     }
     if (message.type !== 'save') this.error = '';
+    if (['open-scratchpad','restore-example','move-scratchpads','retry-scratchpads'].includes(String(message.type))) this.scratchpadActionError = '';
     if (message.type === 'confirm-revert' && typeof value === 'boolean') {
       this.revertConfirmation?.(value);this.revertConfirmation=undefined;
       return this.present();
     }
     if (message.type === 'ready') { this.inputSequence = 0; return this.present(); }
     if (message.type === 'example' && (value === 'Document' || value === 'Data' || value === 'Interpolation')) {
-      return this.selectExample(value);
+      this.activeExample=value;
+      return this.present();
+    }
+    if (message.type === 'open-scratchpad') return this.selectExample(this.activeExample);
+    if (message.type === 'retry-scratchpads') { await this.scratchpads.recover(); return this.present(); }
+    if (message.type === 'restore-example') {
+      this.requireDurablePalette(this.activeExample);
+      const label=this.editTarget.startsWith('palette:')?paletteById(this.draft,this.editTarget.slice(8))?.name??this.editTarget.slice(8):this.editTarget.slice(9)+' overrides';
+      await this.scratchpads.restoreExample(this.activeExample,this.editTarget,this.mode,label);
+      return this.present();
+    }
+    if (message.type === 'move-scratchpads') {
+      const target = this.editTarget;
+      const candidates = [...builtinPalettes, ...this.saved.palettes].filter((palette,index,all) =>
+        'palette:'+palette.id !== target && all.findIndex(other => other.id === palette.id) === index);
+      const choice = await vscode.window.showQuickPick(candidates.map(palette => ({label:palette.name,id:palette.id})),
+        {placeHolder:'Move ALL retained scratchpads: Document, Data and TS, both Dark and Light. Choose a saved palette.'});
+      if (choice) {
+        if (!paletteById(configured(this.configuration()), choice.id) || !paletteById(this.draft, choice.id)) throw new Error('Destination palette is no longer available');
+        await this.scratchpads.reassign(target,'palette:'+choice.id);
+      }
+      return this.present();
     }
     if (message.type === 'compare' && (value === 'saved' || value === 'draft')) {
       this.comparison = value;
@@ -257,6 +297,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       const revision = this.revision;
       if (this.hasLocalWork() && !await this.confirmRevert()) return;
       if (this.saving || this.configurationError || revision !== this.revision) throw new Error('Appearance changed while confirming. Review the working changes before reverting.');
+      this.assertPaletteDependencies(this.saved);
       this.draft = structuredClone(this.saved);
       this.undoStack = []; this.redoStack = []; this.draftRevision = ++this.revision; this.historyBaseline = undefined; this.clearInputs();
       this.conflict = false;
@@ -267,8 +308,10 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     if (message.type === 'undo' || message.type === 'redo') {
       const from = message.type === 'undo' ? this.undoStack : this.redoStack;
       const to = message.type === 'undo' ? this.redoStack : this.undoStack;
-      const previous = from.pop();
+      const previous = from.at(-1);
       if (previous) {
+        this.assertPaletteDependencies(previous.state);
+        from.pop();
         to.push(this.historyEntry());
         this.revision++; this.draftRevision = previous.revision;
         this.draft = previous.state; this.editTarget = previous.target; this.normalizeTarget();
@@ -277,7 +320,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       this.clearInputs(); this.comparison = 'draft';
       return this.present();
     }
-    if (message.type === 'discard-input') { this.clearInputs(); return this.present(); }
+    if (message.type === 'discard-input') { this.scratchpadActionError = ''; this.clearInputs(); return this.present(); }
     if (message.type === 'save') return this.save();
     if (message.type === 'export') {
       const id = this.editTarget.slice(8);
@@ -324,6 +367,8 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     }else if(message.type==='rename'&&typeof value==='string'){
       const palette=editablePalette(candidate,this.editTarget.slice(8));if(!palette)throw new Error('Select a palette');palette.name=value.trim();
     }else if(message.type==='delete'){
+      const retained=this.scratchpads.references(this.editTarget);
+      if(retained.length)throw new Error('Retained scratchpads: '+retained.join(', ')+'. Use Move Scratchpads before deleting this palette.');
       deletePalette(candidate,this.editTarget.slice(8));this.editTarget='palette:house';
     }else if(message.type==='property'&&field){
       if (group && !gesture) this.activeEdit = {group, target: previousTarget, role, mode, property: field};
@@ -349,7 +394,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     } else return;
     candidate.palettes=candidate.palettes.filter(p=>this.saved.palettes.some(saved=>saved.id===p.id)||!builtinPalettes.some(b=>JSON.stringify({id:b.id,name:b.name,blendBackground:b.blendBackground,roles:b.roles})===JSON.stringify(p)));
     let validated: AppearanceState;
-    try { validated = readAppearance(candidate); }
+    try { validated = readAppearance(candidate); this.assertPaletteDependencies(validated); }
     catch(error) {
       if ((message.type === 'property' || message.type === 'inherit') && field) {
         const kind = message.type;
@@ -397,6 +442,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       throw new Error('Workspace appearance takes precedence here. Choose Workspace to save the active appearance.');
     }
     const snapshot = readAppearance(this.draft);
+    this.assertPaletteDependencies(snapshot);
     const baseline = {...this.historyEntry(), state:snapshot};
     const previousBaseline = this.historyBaseline, previousUndo = this.undoStack;
     // Establish the boundary at capture, so navigation never depends on write
@@ -411,6 +457,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       void this.present();
       await write;
       this.saved = snapshot;
+      this.scratchpadActionError = '';
     } catch (error) {
       this.historyBaseline = previousBaseline;
       this.undoStack = [...previousUndo, ...this.undoStack];
@@ -424,9 +471,9 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     await this.present();
   }
   private async present():Promise<void>{
+    await this.renderer?.setAppearance(this.comparison==='saved'?this.saved:this.draft,this.mode);
     const panel = this.panel;
     if (!panel) return;
-    await this.renderer.setAppearance(this.comparison==='saved'?this.saved:this.draft,this.mode);
     if (this.panel !== panel) return;
     const id=this.editTarget.slice(8),palette=paletteById(this.draft,id);
     const family:Family=this.editTarget==='override:data'?'data':this.editTarget==='override:document'?'document':'all';
@@ -443,10 +490,10 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       resolved:resolveStyle(effective,family,role,this.mode), nativeOwned:!!roleCatalog[role]?.nativeBrackets&&nativeBrackets,
     }]));
     await panel.webview.postMessage({type:'state',draft:this.draft,comparison:this.comparison,dirty:JSON.stringify(this.saved)!==JSON.stringify(this.draft),
-      rows,confirmingRevert:!!this.revertConfirmation,builtins:builtinPalettes.map(p=>({id:p.id,name:p.name})),canUndo:!!this.undoStack.length,canRedo:!!this.redoStack.length,inputRevision:this.inputRevision,inputSequence:this.inputSequence,rejectedInputs:this.rejectedInputs,saving:!!this.saving,switchingExample:this.switchingExample,configurationInvalid:!!this.configurationError,conflict:this.conflict,assignmentsChanged:JSON.stringify(this.saved.assignments)!==JSON.stringify(this.draft.assignments),activeExample:this.activeExample,role:this.role,mode:this.mode,previewMode:currentMode(),target:this.editTarget,destination:this.destination,
+      appearanceError:this.error,retainedTargets:this.scratchpads.targets(),scratchpadError:this.scratchpads.error,rows,confirmingRevert:!!this.revertConfirmation,builtins:builtinPalettes.map(p=>({id:p.id,name:p.name})),canUndo:!!this.undoStack.length,canRedo:!!this.redoStack.length,inputRevision:this.inputRevision,inputSequence:this.inputSequence,rejectedInputs:this.rejectedInputs,saving:!!this.saving,switchingExample:this.switchingExample,configurationInvalid:!!this.configurationError,conflict:this.conflict,assignmentsChanged:JSON.stringify(this.saved.assignments)!==JSON.stringify(this.draft.assignments),activeExample:this.activeExample,role:this.role,mode:this.mode,previewMode:currentMode(),target:this.editTarget,destination:this.destination,
       nativeOwned:rows[this.role]?.nativeOwned,
       authored:roles?.[this.role]?.[this.mode]??{},inherits:roles?.[this.role]?.inherits??'',resolved:resolveStyle(effective,family,this.role,this.mode),
-      error:[...new Set([this.configurationError, ...this.rejectedInputs.map(input => input.error), this.error, this.conflict?'Configuration changed elsewhere; Revert before saving.':''].filter(Boolean))].join('\n')});
+      error:[...new Set([this.configurationError, this.scratchpadActionError, this.scratchpads.error, ...this.missingPalettes().map(target => `Settings no longer contain retained palette ${target.slice(8)} (${this.scratchpads.references(target).join(', ')}). Its source remains available: select the retained palette to open or Move Scratchpads.`), ...this.rejectedInputs.map(input => input.error), this.error, this.conflict?'Configuration changed elsewhere; Revert before saving.':''].filter(Boolean))].join('\n')});
   }
-  dispose():void{this.disposed=true;this.panel?.dispose();this.renderer.dispose();for(const sub of this.subscriptions)sub.dispose();this.documents.clear();}
+  dispose():void{this.disposed=true;this.panel?.dispose();this.renderer.dispose();for(const sub of this.subscriptions)sub.dispose();}
 }

@@ -9,13 +9,14 @@ import { AppearanceRenderer } from "../../src/appearance-renderer.js";
 import { load_hson_grammar } from "../../src/highlighting.js";
 import { initialAppearance, readAppearance, blend, housePalette, paletteById, roleCatalog, styleProperties, type AppearanceState } from "../../src/appearance-model.js";
 import { Hson } from "../../../../src/hson-authoring.js";
+import { checkScratchpads } from './scratchpads.js';
 const appearanceRoles = ["value.attributeString", "value.string", "punctuation.attributeQuotes", "punctuation.quoteOpen"] as const;
 import { document_semantic_tokens, hsonSemanticLegend } from "../../src/semantic-tokens.js";
 
 const pause = () => new Promise(resolve => setTimeout(resolve, 100));
 let sequence = 0;
 type UiState = { revertDisabled:boolean; status: string; saved: string; error: string; values: Record<string,string>; targets:{value:string;label:string}[] };
-async function ui<T = UiState>(workspace: string, request: Record<string, unknown>): Promise<T> {
+export async function ui<T = UiState>(workspace: string, request: Record<string, unknown>): Promise<T> {
   const id = ++sequence;
   await writeFile(join(workspace, "appearance-ui-request.json"), JSON.stringify({ ...request, id }));
   for (let attempt = 0; attempt < 150; attempt++) {
@@ -79,6 +80,7 @@ async function checkControllerTransitions(): Promise<void> {
     editTarget: string;
     comparison: string;
   } = Object.assign(Object.create(HsonAppearanceEditor.prototype), {
+    scratchpads: {targets:()=>[],error:''},
     saved: structuredClone(original), draft: structuredClone(original),
     editTarget: 'palette:test', role: 'value.string', mode: 'dark', destination: 'user',
     configuration, showExample: () => switching.promise, confirmRevert:async()=>true,
@@ -88,7 +90,8 @@ async function checkControllerTransitions(): Promise<void> {
   const action = (type: string, value?: string) => controller.receive({type,value});
   const color = (state: AppearanceState) => state.palettes[0]?.roles['value.string']?.dark?.foreground;
 
-  const switchingTask = action('example', 'Data');
+  await action('example', 'Data');
+  const switchingTask = action('open-scratchpad');
   await edit('#123456');
   assert.deepEqual(controller.draft.palettes[0]!.roles['value.string'],{
     ...original.palettes[0]!.roles['value.string'],dark:{...original.palettes[0]!.roles['value.string']!.dark,foreground:'#123456'},
@@ -238,6 +241,8 @@ async function checkControllerTransitions(): Promise<void> {
 async function checkRenderedTransitions(workspace: string): Promise<void> {
   await vscode.commands.executeCommand('hson.openAppearance');
   const click = async (control: string) => {await ui(workspace, {action:'key-activate', control});};
+  await click('dark');await click('Document');await click('open-scratchpad');
+  for(let i=0;i<100&&!vscode.window.visibleTextEditors.some(editor=>editor.document.isUntitled&&editor.document.getText().includes('Attribute text'));i++)await pause();
   const input = async (control: string, value: string, keepFocus = false) => {await ui(workspace, {action:'input',control,value,keepFocus});};
   type Metrics = {editingMode:string;previewMode:string;saveDisabled:boolean;inputInvalid:string|null;foreground:string;
     swatches:Record<string,{source:string;sourceInvalid:string|null;acceptedSource:string;picker:string}>};
@@ -261,6 +266,7 @@ async function checkRenderedTransitions(workspace: string): Promise<void> {
   const invalid=await metrics();assert.equal(invalid.inputInvalid,'true');assert.equal(invalid.saveDisabled,true);
   const panel=vscode.window.tabGroups.all.flatMap(group=>group.tabs).find(tab=>tab.label==='Hson Appearance')!;
   await vscode.window.tabGroups.close(panel);await vscode.commands.executeCommand('hson.openAppearance');
+  await click('open-scratchpad');
   const reopened=await metrics();assert.equal(reopened.foreground,'#broken');assert.equal(reopened.swatches['value.attributeString']!.source,'comment.line');
   assert.equal(reopened.inputInvalid,'true');assert.equal(reopened.saveDisabled,true);
   await ui(workspace,{action:'screenshot',name:'transition-rejected-cycle-and-hex'});
@@ -329,10 +335,11 @@ async function checkRenderedTransitions(workspace: string): Promise<void> {
   console.log('ok - rendered cycle/hex validation, close/reopen, picker mode ownership, cancellation and keyboard entry');
 }
 
-export async function run(): Promise<void> {
+export async function run(scratchpadStorage?: vscode.Memento): Promise<void> {
   const workspace = process.env.HSON_APPEARANCE_WORKSPACE!;
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language")!;
   await extension.activate();
+  if (process.env.HSON_SCRATCHPAD_TESTS === '1') return checkScratchpads(workspace, scratchpadStorage);
   if(process.env.HSON_APPEARANCE_RELOAD==='1'){
     const normal=await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'normal-proof.ts')));await vscode.window.showTextDocument(normal);
     await rendered(workspace,normal,'saved palettes restored after fresh extension host',[
@@ -443,7 +450,21 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   const settingsPath=join(workspace,'.vscode/settings.json'), userPath=join(workspace,'../user/User/settings.json');
   const settings=await readFile(settingsPath,'utf8');
   const input=async(control:string,value:string)=>{await ui(workspace,control==='role'?{action:'select-role',role:value}:{action:'input',control,value});await pause();};
-  const click=async(control:string)=>{const state=await ui(workspace,{action:'click',control});if(control==='revert'&&!state.revertDisabled)await ui(workspace,{action:'confirm-revert'});await pause();};
+  const click=async(control:string)=>{
+    const state=await ui(workspace,{action:'click',control});
+    if(control==='revert'&&!state.revertDisabled)await ui(workspace,{action:'confirm-revert'});
+    if(['Document','Data','Interpolation'].includes(control)) {
+      // Assignment/override coverage uses an explicit Overrides scratchpad.
+      // Palette-pinned behavior is covered by the separate scratchpad suite.
+      const target=(await ui(workspace,{action:'inspect'})).values.target;
+      const {editingMode:mode}=await ui<{editingMode:string}>(workspace,{action:'metrics'});
+      await ui(workspace,{action:'input',control:'target',value:'override:all'});
+      await ui(workspace,{action:'click',control:'open-scratchpad'});
+      for(let i=0;i<100&&!vscode.window.visibleTextEditors.some(editor=>editor.document.fileName.includes(`Hson ${control} - all overrides ${mode}`));i++)await pause();
+      await ui(workspace,{action:'input',control:'target',value:target});
+    }
+    await pause();
+  };
   const keyActivate=async(control:string)=>{await ui(workspace,{action:'key-activate',control});if(control==='revert')await ui(workspace,{action:'confirm-revert'});await pause();};
   const inspect=()=>ui(workspace,{action:'inspect'});
   const set=async(role:string,color:string)=>{await input('role',role);await input('foreground',color);await input('intensity','1');};
@@ -452,6 +473,7 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   const config=()=>readAppearance(vscode.workspace.getConfiguration('hson.appearance').get('state'));
   await vscode.commands.executeCommand('hson.openAppearance');
   assert.equal((await inspect()).saved,'false');
+  await click('Document');
   let scratch=vscode.window.visibleTextEditors.find(e=>e.document.isUntitled&&e.document.languageId==='hson')!;
   assert.ok(scratch);assert.equal(scratch.viewColumn,vscode.ViewColumn.Two);
   const layout=await ui<{x:number;y:number;width:number;height:number;controls:boolean;native:boolean}[]>(workspace,{action:'layout'});
@@ -582,10 +604,11 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   }
   await input('inherits','native');assert.equal((await metrics()).swatches['value.attributeString']!.source,'native');
   await click('inherit-value.attributeString');assert.equal((await metrics()).swatches['value.attributeString']!.disabled,true);
-  await click('light');await input('foreground','#ab12cd');
-  await rendered(workspace,scratch.document,'Light toggle previews without changing global theme',[{needle:'Attribute text',expected:rgb('#ab12cd')}]);
+  await click('light');await input('foreground','#ab12cd');await click('Document');
+  const lightScratch=vscode.window.visibleTextEditors.find(editor=>editor.viewColumn===vscode.ViewColumn.Two)!;
+  await rendered(workspace,lightScratch.document,'Separate pinned Light preview without changing global theme',[{needle:'Attribute text',expected:rgb('#ab12cd')}]);
   assert.equal(vscode.workspace.getConfiguration('workbench').get('colorTheme'),'Hson House Dark');
-  await click('dark');assert.notEqual((await inspect()).values.foreground,'#ab12cd');
+  await click('dark');await click('Document');assert.notEqual((await inspect()).values.foreground,'#ab12cd');
   await ui(workspace,{action:'click',control:'revert'});await ui(workspace,{action:'confirm-revert',cancel:true});
   assert.match((await inspect()).status,/Unsaved/);
   await click('revert');assert.equal((await inspect()).values.foreground,'#4c89ab');
@@ -737,7 +760,7 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   await rendered(workspace,data.document,'Data family independent palette',[{needle:'Data content',expected:rgb('#e05060')}]);
   await click('Document');scratch=vscode.window.visibleTextEditors.find(e=>e.document===scratch.document)!;assert.equal(scratch.document.getText(),retained);
   await rendered(workspace,scratch.document,'Document inherits All',[{needle:'Content text',expected:rgb('#21a2b3')}]);
-  await click('Interpolation');const mixed=vscode.window.visibleTextEditors.find(e=>e.document.isUntitled&&e.document.languageId==='typescript')!;
+  await click('Interpolation');let mixed=vscode.window.visibleTextEditors.find(e=>e.document.isUntitled&&e.document.languageId==='typescript')!;
   assert.ok(mixed.document.getText().includes('Hson.data'));
   assert.doesNotThrow(()=>Hson.data.parse(mixed.document.getText().split('Hson.data`')[1]!.split('`')[0]!), 'mixed example Data uses admitted current syntax');
   await rendered(workspace,mixed.document,'Data and Document palettes in the SAME native editor',[
@@ -826,7 +849,7 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   assert.equal((await metrics()).editingMode,'light','blur follows the light theme after the gesture');
   await click('dark');assert.equal((await inspect()).values.foreground,'#123456');
   await click('undo');assert.equal((await inspect()).values.foreground,'#21a2b3','partial and complete colors form a single undo gesture');
-  await click('light');
+  await click('light');await click('Interpolation');mixed=vscode.window.visibleTextEditors.find(editor=>editor.viewColumn===vscode.ViewColumn.Two)!;
   const light=JSON.parse(await readFile(join(extensionPath,'themes/hson-house-light-color-theme.json'),'utf8'));
   await rendered(workspace,mixed.document,'light House values retained in duplicated palette',[{needle:'Content text',length:12,expected:rgb(light.semanticTokenColors.hsonString)}]);
   await input('foreground','#abc');await rendered(workspace,mixed.document,'light draft accepts shorthand hex',[{needle:'Content text',length:12,expected:rgb('#aabbcc')}]);
@@ -835,6 +858,7 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   await click('reset-foreground');
   assert.equal((await metrics()).editingMode,'dark','discarding the light input follows the current dark theme');
   assert.equal((await inspect()).values.foreground,'#21a2b3');
+  await click('Interpolation');mixed=vscode.window.visibleTextEditors.find(editor=>editor.viewColumn===vscode.ViewColumn.Two)!;
   await rendered(workspace,mixed.document,'syntax palette under unrelated workbench theme',[{needle:'Content text',length:12,expected:rgb('#21a2b3')},{needle:'Data text',expected:rgb('#e05060')}]);
   assert.equal(vscode.workspace.getConfiguration('workbench').get('colorTheme'),'Default Dark Modern');
   const report={vscodeVersion:vscode.version,layout,compact,narrow,narrowLayout,wide,scratchDiagnostics,largeFile,multiControlRenderMs,singleColorRenderMs,tests:['28 deterministic editing-state transitions','cycle and hex validation with explicit discard and close/reopen','native picker trusted keyboard input across a theme change','direct editable House and immutable shipped baseline','House save, export, restore and restart','picker and hex synchronization','inheritance source and blended color preservation','grouped typing and picker history, keyboard Undo','Reset, Undo and confirmed Revert All','Save concurrency and rejected-input blocking','rendered native controls','palette CRUD and stable rename','User/Workspace persistence','four independent syntax roles','A/B text selection undo scroll','source invalidation','identical background colors','Data/Document same document','override reset and Native','shared saved production renderer','export JSON','disposal/reopen','light/dark','native host/brackets/branding','rendered RGB intensity and font styles']};

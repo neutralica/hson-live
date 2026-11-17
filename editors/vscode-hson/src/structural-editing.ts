@@ -10,6 +10,7 @@ import { parse_authored_document_library } from "../../../src/api/livemap/livema
 import type { Tokens } from "../../../src/api/transform/token.types.js";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
+import type { StandaloneAuthoringMode } from './authoring-mode.js';
 
 export type StructuralHostLanguage = "typescript" | "typescriptreact" | "markdown";
 export type StructuralLanguage = StructuralHostLanguage | "hson";
@@ -62,9 +63,12 @@ function discoverStructuralRegions(
   fileName: string,
   languageId: StructuralLanguage,
   text: string,
+  authoringMode?: StandaloneAuthoringMode,
 ): readonly StructuralRegion[] {
   if (languageId === "hson") return Object.freeze([Object.freeze({
     kind: "standalone",
+    ...(authoringMode === 'document' || authoringMode === 'data'
+      ? {authoredDocument: authoringMode === 'document', authoringKind: authoringMode} : {}),
     bodyRange: Object.freeze({ start: 0, end: text.length }),
     protectedRanges: Object.freeze([]),
     baseIndentation: "",
@@ -105,12 +109,13 @@ export function structural_document_evidence(
   fileName: string,
   languageId: StructuralLanguage,
   text: string,
+  authoringMode?: StandaloneAuthoringMode,
 ): StructuralDocumentEvidence {
   return Object.freeze({
     fileName,
     languageId,
     text,
-    regions: discoverStructuralRegions(fileName, languageId, text),
+    regions: discoverStructuralRegions(fileName, languageId, text, authoringMode),
   });
 }
 
@@ -161,8 +166,9 @@ export function structural_regions(
   fileName: string,
   languageId: StructuralLanguage,
   text: string,
+  authoringMode?: StandaloneAuthoringMode,
 ): readonly StructuralRegion[] {
-  return structural_document_evidence(fileName, languageId, text).regions;
+  return structural_document_evidence(fileName, languageId, text, authoringMode).regions;
 }
 
 export function structural_region_at_evidence(
@@ -619,10 +625,11 @@ export function structural_formatting_edits(
   text: string,
   options: StructuralIndentation,
   requestedRange?: StructuralRange,
+  authoringMode?: StandaloneAuthoringMode,
 ): readonly StructuralEdit[] {
   const edits: StructuralEdit[] = [];
   const unit = STRUCTURAL_INDENTATION;
-  for (const region of structural_regions(fileName, languageId, text)) {
+  for (const region of structural_regions(fileName, languageId, text, authoringMode)) {
     if (requestedRange !== undefined && (region.bodyRange.end <= requestedRange.start || region.bodyRange.start >= requestedRange.end)) continue;
     const body = maskProtectedSource(text, region);
     if (body === undefined) continue;

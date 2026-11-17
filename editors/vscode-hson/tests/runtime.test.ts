@@ -1119,4 +1119,36 @@ check("editing a duplicate name clears the production published diagnostic and r
   controller.dispose();
 });
 
+check("standalone Document admission is explicit, with authored QUAD diagnostics and strict canonical identities", () => {
+  const input = {languageId:'hson',fileName:'/workspace/authored.hson',text:'<main @:title <p @:body "text"/>/>'};
+  assert.deepEqual(produce_document_diagnostics({...input,authoringMode:'document'}), []);
+  for (const authoringMode of [undefined, 'canonical', 'data'] as const) {
+    const errors = produce_document_diagnostics({...input,authoringMode});
+    assert.equal(errors[0]?.code, 'HSON_ELEMENT_QUID_INVALID');
+    assert.match(errors[0]!.message, /invalid persisted QUID/);
+  }
+  for (const [text, code] of [
+    ['<main @:bad-name/>','HSON_LIBRARY_QUAD_INVALID'],
+    ['<main @:same <p @:same/>/>','HSON_LIBRARY_QUAD_DUPLICATE'],
+    ['<main @not-a-quid/>','HSON_ELEMENT_QUID_INVALID'],
+    ['<main @000000001/>','PORTABLE_RUNTIME_QUID_FORBIDDEN'],
+  ]) {
+    const errors = produce_document_diagnostics({...input,text,authoringMode:'document'});
+    assert.equal(errors[0]?.code, code, text);
+    assert.equal(errors[0]?.range.start, text.lastIndexOf('@'));
+    if (code === 'HSON_LIBRARY_QUAD_DUPLICATE') assert.equal(errors[0]?.related.length, 1);
+  }
+  assert.match(produce_document_diagnostics({...input,text:'<script @:title/>',authoringMode:'document'})[0]!.message,/requires src/);
+  for (const text of ['<main @:', '<main @:title', '<main @:title <p "unfinished']) {
+    const errors = produce_document_diagnostics({...input,text,authoringMode:'document'});
+    assert.ok(errors.length, text);
+    assert.notEqual(errors[0]?.code, 'HSON_ELEMENT_QUID_INVALID', text);
+  }
+  assert.deepEqual(produce_document_diagnostics({...input,text:'<catalog <title "data">>',authoringMode:'data'}), []);
+  assert.ok(produce_document_diagnostics({...input,text:'<catalog <title "data">>',authoringMode:'document'}).length);
+  for (const authoringMode of ['canonical','data','document'] as const) {
+    assert.equal(produce_document_diagnostics({...input,text:'<main @000000001/>',authoringMode})[0]?.code,'PORTABLE_RUNTIME_QUID_FORBIDDEN');
+  }
+});
+
 process.stdout.write(`ok - ${checks} focused runtime and lifecycle checks passed\n`);

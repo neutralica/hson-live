@@ -23,6 +23,8 @@ import {
 } from "./workspace-diagnostics.js";
 import { load_hson_grammar } from "./highlighting.js";
 import { HsonAppearanceEditor } from "./appearance-editor.js";
+import { AppearanceScratchpads } from './scratchpads.js';
+import { standaloneAuthoringMode, type StandaloneAuthoringMode } from './authoring-mode.js';
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
   hson_identity_presentation,
@@ -52,14 +54,16 @@ import {
 } from "./structural-editing.js";
 
 let localHostManager: LocalHostExtensionManager | undefined;
+let appearanceScratchpads: AppearanceScratchpads | undefined;
 
-function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
+function diagnosticDocument(document: vscode.TextDocument, authoringMode?: StandaloneAuthoringMode): DiagnosticDocument {
   return Object.freeze({
     uri: document.uri.toString(),
     version: document.version,
     languageId: document.languageId,
     fileName: document.fileName,
     text: document.getText(),
+    authoringMode,
   });
 }
 
@@ -83,6 +87,15 @@ function toRange(text: string, spec: DocumentDiagnosticSpec): vscode.Range {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  const scratchpads = appearanceScratchpads = new AppearanceScratchpads(context.workspaceState);
+  context.subscriptions.push(scratchpads);
+  const authoringMode = (document: vscode.TextDocument): StandaloneAuthoringMode => {
+    const family = scratchpads.context(document)?.family;
+    return family === 'document' || family === 'data' ? family
+      : standaloneAuthoringMode(vscode.workspace.getConfiguration('hson.authoring',document.uri).get('mode'));
+  };
+  const adaptDocument = (document: vscode.TextDocument) => diagnosticDocument(document,
+    document.languageId === 'hson' ? authoringMode(document) : undefined);
   const bindingCache = new HsonBindingCache();
   context.subscriptions.push({ dispose: () => bindingCache.clear() },
     vscode.workspace.onDidCloseTextDocument(document => bindingCache.forget(document.uri.toString())),
@@ -296,6 +309,7 @@ export function activate(context: vscode.ExtensionContext): void {
       document.getText(),
       options,
       range === undefined ? undefined : { start: document.offsetAt(range.start), end: document.offsetAt(range.end) },
+      document.languageId === 'hson' ? authoringMode(document) : undefined,
     ).map(edit => vscode.TextEdit.replace(
       new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)), edit.text,
     ));
@@ -455,6 +469,7 @@ export function activate(context: vscode.ExtensionContext): void {
       uri: uri.toString(),
       fileName: uri.fsPath,
       languageId: "hson",
+      authoringMode: standaloneAuthoringMode(vscode.workspace.getConfiguration('hson.authoring',uri).get('mode')),
     }));
     return Object.freeze([
       ...projects.sources.map(source => Object.freeze({
@@ -470,10 +485,16 @@ export function activate(context: vscode.ExtensionContext): void {
     discoverSources,
     readSource: async source => new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(source.uri))),
     onDidOpen: (listener) => vscode.workspace.onDidOpenTextDocument((document) => listener(adaptDocument(document))),
-    onDidChange: (listener) => vscode.workspace.onDidChangeTextDocument((event) => listener(adaptDocument(event.document))),
+    onDidChange: (listener) => vscode.Disposable.from(
+      vscode.workspace.onDidChangeTextDocument(event => listener(adaptDocument(event.document))),
+      vscode.workspace.onDidChangeConfiguration(event => {
+        if (!event.affectsConfiguration('hson.authoring.mode')) return;
+        for (const document of vscode.workspace.textDocuments) if (document.languageId === 'hson') listener(adaptDocument(document));
+      })),
     onDidClose: (listener) => vscode.workspace.onDidCloseTextDocument((document) => listener(adaptDocument(document))),
     onDidChangeSources: listener => register(sourceListeners, listener),
-    onDidChangeProjects: listener => register(projectListeners, listener),
+    onDidChangeProjects: listener => vscode.Disposable.from(register(projectListeners, listener),
+      vscode.workspace.onDidChangeConfiguration(event => { if (event.affectsConfiguration('hson.authoring.mode')) listener(); })),
     setTimer: (callback, delayMilliseconds) => setTimeout(callback, delayMilliseconds),
     clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
     yield: () => new Promise(resolveYield => setTimeout(resolveYield, 0)),
@@ -517,7 +538,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(start_workspace_diagnostics(host, publisher));
   // Independent of Schema associations and completion providers.
   const grammar = load_hson_grammar(context.extensionPath);
-  const appearanceEditor = new HsonAppearanceEditor(context.extensionPath, grammar, bindingCache);
+  const appearanceEditor = new HsonAppearanceEditor(context.extensionPath, grammar, bindingCache, scratchpads, document => {
+    if (document.languageId !== 'hson') return 'all';
+    const mode = authoringMode(document); return mode === 'canonical' ? 'all' : mode;
+  });
   context.subscriptions.push(appearanceEditor, vscode.commands.registerCommand("hson.openAppearance", () =>
     appearanceEditor.open().catch(error => { void vscode.window.showErrorMessage(`Hson Appearance: ${String(error)}`); })));
   const semanticChanges = new vscode.EventEmitter<void>();
@@ -859,9 +883,12 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export async function deactivate(): Promise<void> {
+  const scratchpads = appearanceScratchpads;
+  appearanceScratchpads = undefined;
   const manager = localHostManager;
   localHostManager = undefined;
-  await manager?.disposeAsync();
+  try { await scratchpads?.flush(); }
+  finally { await manager?.disposeAsync(); }
 }
 
 function terminate_schema_process(child: ChildProcess): void {

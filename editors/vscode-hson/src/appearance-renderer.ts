@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { IGrammar } from 'vscode-textmate';
 import { AppearanceSpanCache } from './appearance-spans.js';
 import { initialAppearance, resolveStyle, roleCatalog, type AppearanceState, type Family, type Style, type Mode } from './appearance-model.js';
+import type { ScratchpadContext } from './scratchpads.js';
 
 function renderStyle(style: Style): vscode.DecorationRenderOptions {
   const options: vscode.DecorationRenderOptions = {rangeBehavior:vscode.DecorationRangeBehavior.ClosedClosed};
@@ -23,7 +24,9 @@ export class AppearanceRenderer implements vscode.Disposable {
   private previewMode?: Mode;
   private disposed=false;
   constructor(private readonly grammar:Promise<IGrammar>, private readonly cache=new AppearanceSpanCache(),
-    private readonly saved:(document:vscode.TextDocument)=>AppearanceState=()=>initialAppearance()) {
+    private readonly saved:(document:vscode.TextDocument)=>AppearanceState=()=>initialAppearance(),
+    private readonly scratchpad:(document:vscode.TextDocument)=>ScratchpadContext|undefined=()=>undefined,
+    private readonly family:(document:vscode.TextDocument)=>Family=()=> 'all') {
     this.subscriptions=[vscode.window.onDidChangeVisibleTextEditors(()=>{void this.refresh();}),
       vscode.workspace.onDidChangeTextDocument(event=>{
         this.cache.forget(event.document.uri.toString());
@@ -31,7 +34,7 @@ export class AppearanceRenderer implements vscode.Disposable {
         void this.refresh();
       }),vscode.workspace.onDidCloseTextDocument(document=>{this.documents.delete(document);this.cache.forget(document.uri.toString());}),
       vscode.window.onDidChangeActiveColorTheme(()=>{void this.refresh();}),
-      vscode.workspace.onDidChangeConfiguration(event=>{if(event.affectsConfiguration('hson.appearance.state')||event.affectsConfiguration('editor.bracketPairColorization'))void this.refresh();})];
+      vscode.workspace.onDidChangeConfiguration(event=>{if(event.affectsConfiguration('hson.appearance.state')||event.affectsConfiguration('hson.authoring.mode')||event.affectsConfiguration('editor.bracketPairColorization'))void this.refresh();})];
   }
   async attach(document:vscode.TextDocument,family:Family='all'):Promise<void> {if(this.disposed)return;this.documents.set(document,family);await this.refresh();}
   async setAppearance(state:AppearanceState|undefined,mode?:Mode):Promise<void> {if(this.disposed)return;this.preview=state;this.previewMode=mode;await this.refresh();}
@@ -41,10 +44,15 @@ export class AppearanceRenderer implements vscode.Disposable {
     const used=new Set<string>();
     for(const editor of vscode.window.visibleTextEditors){
       const document=editor.document;if(document.isClosed||!['hson','markdown','typescript','typescriptreact'].includes(document.languageId))continue;
-      const preview=this.documents.has(document)&&this.preview;
-      const state=preview||this.saved(document),renderMode=preview?this.previewMode??mode:mode;
+      const context=this.scratchpad(document);
+      const preview=(context||this.documents.has(document))&&this.preview;
+      const source=preview||this.saved(document),renderMode=context?.mode??(preview?this.previewMode??mode:mode);
+      // Palette editing previews that palette, regardless of ordinary workspace
+      // assignments. This is a projection only, exactly like the color controls.
+      const state:AppearanceState=context?.target.startsWith('palette:')
+        ? {...source,assignments:{all:context.target.slice(8)},overrides:{}} : source;
       const nativeBrackets=vscode.workspace.getConfiguration('editor',document).get('bracketPairColorization.enabled',true);
-      const spans=this.cache.get(grammar,{uri:document.uri.toString(),fileName:document.fileName,languageId:document.languageId,version:document.version,text:document.getText()},this.documents.get(document)??'all');
+      const spans=this.cache.get(grammar,{uri:document.uri.toString(),fileName:document.fileName,languageId:document.languageId,version:document.version,text:document.getText()},context?.family??this.documents.get(document)??this.family(document));
       const ranges=new Map<string,vscode.Range[]>(), styles=new Map<string,vscode.DecorationRenderOptions>();
       for(const span of spans){
         if(nativeBrackets&&roleCatalog[span.role]?.nativeBrackets)continue;

@@ -23,6 +23,7 @@ function harness() {
     configurationChanged(): void;
     saved: AppearanceState; draft: AppearanceState;
   } = Object.assign(Object.create(HsonAppearanceEditor.prototype), {
+    scratchpads: {targets:()=>[],error:''},
     saved: initialAppearance(), draft: initialAppearance(), editTarget: 'override:all',
     role: 'value.attributeString', mode: 'dark', destination: 'user', comparison: 'draft',
     undoStack: [], redoStack: [], revision: 0, draftRevision: 0, inputRevision: 0,

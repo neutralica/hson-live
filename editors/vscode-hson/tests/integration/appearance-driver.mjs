@@ -54,7 +54,7 @@ export function monitor_appearance_ui(workspace, port) {
     await targets();
     for (const [sessionId, ids] of contexts) for (const contextId of ids) {
       try {
-        if (await evaluate("!!document.getElementById('foreground')", sessionId, contextId)) return { sessionId, contextId };
+        if (await evaluate("!!document.getElementById('catalog') && !!document.getElementById('open-scratchpad') && !!document.getElementById('foreground')", sessionId, contextId)) return { sessionId, contextId };
       } catch {}
     }
     throw new Error("Appearance controls unavailable");
@@ -86,7 +86,37 @@ export function monitor_appearance_ui(workspace, port) {
           controls: group.textContent.includes('Hson Appearance'), native: !!group.querySelector('.monaco-editor .view-lines')};
       }))`, sessionId).then(JSON.parse);
     }
+    if(request.action==='native-pick') {
+      const sessionId=await workbench();
+      const ready=await evaluate(`document.activeElement?.tagName==='INPUT' && !!document.activeElement.closest('.quick-input-widget')`,sessionId);
+      if(!ready)throw new Error('Quick pick not ready');
+      await send('Input.insertText',{text:request.label},sessionId);await pause();
+      await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13},sessionId);
+      await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13},sessionId);return {};
+    }
+    if (request.action === 'native-save-as') {
+      const sessionId = await workbench();
+      const ready = await evaluate(`(() => {const input=document.querySelector('input[aria-label="Folder path - Save As"]');if(!input || !input.value.includes('Hson '))return false;input.focus();input.select();return true;})()`,sessionId);
+      if (!ready) throw new Error('Native Save As is not ready');
+      await send('Input.insertText',{text:request.path},sessionId);
+      await pause();
+      const value=await evaluate('document.activeElement.value',sessionId);
+      if(value!==request.path)throw new Error('Save As destination differs');
+      await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13},sessionId);
+      await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13},sessionId);
+      return {};
+    }
     const { sessionId, contextId } = await panel();
+    if (request.action === 'type-field') {
+      await send('Page.bringToFront', {}, await workbench());
+      await evaluate(`(() => { const node = document.getElementById(${JSON.stringify(request.control)}); node.scrollIntoView({block:'nearest'}); node.focus(); node.select(); })()`,sessionId,contextId);
+      await send('Input.insertText', {text:request.value}, sessionId);
+      if(!request.keepFocus) {
+        await send('Input.dispatchKeyEvent', {type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9},sessionId);
+        await send('Input.dispatchKeyEvent', {type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9},sessionId);
+      }
+      return {};
+    }
     if (request.action === 'type') {
       await send('Page.bringToFront', {}, await workbench());
       const activeControl = await evaluate('document.activeElement.id', sessionId, contextId);

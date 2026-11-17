@@ -2,6 +2,10 @@ import * as messages from "./diagnostic-messages.js";
 import { is_workspace_typescript_source } from "./typescript-project-discovery.js";
 import { hson } from "../../../src/hson.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
+import { qualify_authored_document_source } from "../../../src/api/document/hson-authored.js";
+import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
+import { admit_canonical_hson_data_value } from "../../../src/api/data/hson-data-hson.js";
+import type { StandaloneAuthoringMode } from './authoring-mode.js';
 import {
   read_transform_error_details,
   type TransformErrorDetails,
@@ -29,6 +33,7 @@ export type DocumentDiagnosticInput = Readonly<{
   languageId: string;
   fileName: string;
   text: string;
+  authoringMode?: StandaloneAuthoringMode;
 }>;
 
 export type RelatedDiagnosticSpec = Readonly<{
@@ -136,13 +141,25 @@ export function transform_error_to_standalone_diagnostic(
   });
 }
 
-function validateStandalone(text: string): readonly DocumentDiagnosticSpec[] {
+function validateStandalone(text: string, mode: StandaloneAuthoringMode = 'canonical'): readonly DocumentDiagnosticSpec[] {
   try {
-    hson.fromHson(text).toNode();
+    if (mode === 'document') {
+      // Same admission and declaration checks as Hson.document. This never
+      // qualifies the source as canonical Transform input or issues identities.
+      parse_authored_document_library(text);
+      qualify_authored_document_source(text, new Map());
+    } else if (mode === 'data') {
+      parse_hson(text); // Retain canonical lexical/identity diagnostics before family qualification.
+      admit_canonical_hson_data_value(text);
+    }
+    else hson.fromHson(text).toNode();
     return Object.freeze([]);
   } catch (error) {
     const diagnostic = transform_error_to_standalone_diagnostic(error, text);
-    if (diagnostic === undefined) throw error;
+    if (diagnostic === undefined) {
+      if (mode === 'canonical' || !(error instanceof TypeError || error instanceof SyntaxError)) throw error;
+      return [{message:error.message,range:fallbackRange(text),source:DIAGNOSTIC_SOURCE,precision:'fallback',related:[]}];
+    }
     return Object.freeze([diagnostic]);
   }
 }
@@ -212,6 +229,6 @@ export function produce_document_diagnostics(
   const ignoreDiagnostics = hasDiagnosticsIgnoreFileDirective(input);
   if (ignoreDiagnostics && (input.languageId === "hson" || !input.text.includes(HSON_EXPECT_ERROR_MARKER))) return Object.freeze([]);
   return input.languageId === "hson"
-    ? validateStandalone(input.text)
+    ? validateStandalone(input.text, input.authoringMode)
     : validateEmbedded(input, ignoreDiagnostics);
 }

@@ -511,6 +511,19 @@ async function main(): Promise<void> {
     assert.equal(host.timers.size, 0); assert.equal(host.projectChanges.size, 0); assert.equal(host.sourceChanges.size, 0);
   });
 
+  await check('changing explicit standalone mode invalidates unchanged disk and open-source diagnostics', async () => {
+    const host=new Host(),publisher=new Publisher();
+    const file=source('/workspace/page.hson','hson'),text='<main @:title/>';
+    host.discovered=[file];host.contents.set(file.uri,text);
+    const controller=start_workspace_diagnostics(host,publisher);
+    await settle();assert.equal(publisher.values.get(file.uri)?.[0]?.code,'HSON_ELEMENT_QUID_INVALID');
+    host.discovered=[{...file,authoringMode:'document'}];host.fire(host.projectChanges,undefined);host.runTimers();
+    await settle();assert.deepEqual(publisher.values.get(file.uri),[]);
+    host.documents=[document({...file,authoringMode:'document'},text,1)];host.fire(host.opens,host.documents[0]!);
+    host.documents=[document({...file,authoringMode:'canonical'},text,1)];host.fire(host.changes,host.documents[0]!);host.runTimers();
+    assert.equal(publisher.values.get(file.uri)?.[0]?.code,'HSON_ELEMENT_QUID_INVALID');
+    assert.deepEqual(host.unexpected,[]);controller.dispose();
+  });
   process.stdout.write(`ok - ${checks} workspace diagnostics checks passed\n`);
 }
 

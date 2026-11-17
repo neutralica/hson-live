@@ -29,7 +29,11 @@ const appearanceGroup = groups.find(group => group.title === "Hson › Appearanc
 const localHostGroup = groups.find(group => group.title === "Hson › Local App");
 const formattingGroup = groups.find(group => group.title === "Hson › Formatting");
 assert.ok(appearanceGroup); assert.ok(localHostGroup); assert.ok(formattingGroup);
-check("settings expose the appearance, bounded local-app, and formatting groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App", "Hson › Formatting"]));
+check("settings expose the appearance, bounded local-app, authoring and formatting groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App", "Hson › Authoring", "Hson › Formatting"]));
+check("standalone authoring is explicit and canonical by default", () => {
+  assert.equal(properties['hson.authoring.mode'].default, 'canonical');
+  assert.equal(properties['hson.authoring.mode'].scope, 'resource');
+});
 check("the appearance authority distinguishes appearance values from internal grammar scopes", () => {
   assert.deepEqual(Object.keys(HSON_APPEARANCE), ["syntax", "ui", "branding"]);
   assert.ok(Object.values(hsonGrammarScopes).every(value => value.endsWith(".hson")));

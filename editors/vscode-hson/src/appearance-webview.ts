@@ -20,25 +20,27 @@ button,input,select,summary{font:inherit}button,input,select{min-width:0;color:v
 @media(max-width:260px){header,.toolbar{padding-left:6px;padding-right:6px}.setup,.catalog{padding-left:6px;padding-right:6px}.assignment{grid-template-columns:70px minmax(0,1fr)}}
 .scope-line{display:flex;align-items:center;gap:4px}.scope-line p{flex:1}.scope-line button{font-size:11px;border:1px solid var(--vscode-panel-border)}#preview-state{font-size:11px}.group-heading{padding-top:8px;padding-bottom:3px}#revert{font-size:11px}#target{appearance:auto;border-color:var(--vscode-dropdown-border,var(--vscode-panel-border));background:var(--vscode-dropdown-background);color:var(--vscode-dropdown-foreground)}
 dialog{color:var(--vscode-foreground);background:var(--vscode-editor-background);border:1px solid var(--vscode-focusBorder);max-width:calc(100% - 24px);padding:12px}dialog::backdrop{background:#0008}
+.scratchpad-actions button{font-size:11px;height:24px;border:1px solid var(--vscode-panel-border)}
+.scratchpad-actions .hint{margin:0;white-space:nowrap}
 </style></head><body><main class="workbench">
 <header>
  <div class="line"><span class="brand" aria-label="Hson">&lt;hson/&gt;</span><select class="grow" id="target" aria-label="Palette or override selector"></select></div>
  <div class="line save-line"><div class="segment" aria-label="Palette mode"><button id="dark" aria-pressed="true">Dark</button><button id="light" aria-pressed="false">Light</button></div><p id="status" class="grow dim" aria-live="polite">Loading…</p><button id="undo" title="Undo appearance change">Undo</button><button id="redo" title="Redo appearance change">Redo</button><button class="primary" id="save">Save</button></div>
  <div class="line"><span class="dim save-label compare-label">Compare</span><div class="segment" aria-label="Scratchpad comparison"><button id="draft" aria-pressed="true">Working</button><button id="saved" aria-pressed="false">Last saved</button></div><span class="grow"></span><select id="destination" aria-label="Save destination" title="Save to"><option value="user">User</option><option value="workspace">Workspace</option></select></div>
  <div class="scope-line"><p id="scope-note" class="dim"></p><button id="apply" title="Use this palette for All Hson; keep explicit Data and Document assignments">Apply to Hson</button></div>
- <p id="preview-state" class="hint"></p>
+ <div class="line scratchpad-actions"><button id="open-scratchpad" title="Open the selected family with this palette and mode pinned. Workspace assignments are unchanged.">Open Scratchpad</button><button id="restore-example" title="Replace the selected scratchpad source with its example. Native Undo is available.">Restore Example</button><span id="preview-state" class="hint"></span></div>
 </header>
-<p id="error" role="alert"></p><button id="discard-input" hidden>Discard pending input</button>
+<p id="error" role="alert"></p><button id="discard-input" hidden>Discard pending input</button><button id="retry-scratchpads" hidden>Retry Scratchpad Save</button>
 <div class="setup">
  <details id="assignments"><summary id="assignments-toggle"><span class="eyebrow">Applies</span><span id="assignment-summary" class="grow dim"></span></summary><div class="content">
   <div class="assignment"><label for="all">All Hson</label><select id="all"></select></div><div class="assignment"><label for="data">Data / Declarative</label><select id="data"></select></div><div class="assignment"><label for="document">Document / Part</label><select id="document"></select></div>
   <p class="hint">Inherit uses All. Native delegates to VS Code.</p></div></details>
  <details id="management"><summary id="management-toggle"><span class="eyebrow">Palettes</span><span class="dim">create · duplicate · rename · export</span></summary><div class="content">
   <input id="name" class="grow" type="text" aria-label="Name for palette actions" placeholder="Name for Create, Duplicate or Rename">
-  <div class="actions"><button id="new">Create</button><button id="duplicate">Duplicate</button><button id="rename">Rename</button><button id="delete">Delete</button><button id="export">Export to source…</button><button id="restore">Restore shipped palette</button><button id="revert">Revert All…</button></div>
+  <div class="actions"><button id="new">Create</button><button id="duplicate">Duplicate</button><button id="rename">Rename</button><button id="delete">Delete</button><button id="move-scratchpads" title="Move all retained Document, Data and TS scratchpads in both modes to another palette without replacing existing buffers">Move Scratchpads</button><button id="export">Export to source…</button><button id="restore">Restore shipped palette</button><button id="revert">Revert All…</button></div>
   <p class="hint">Delete requires reassignment first. Export opens JSON for review and Save As. Restore loads the shipped baseline into Working; Save persists it.</p></div></details>
 </div>
-<div class="toolbar"><div class="examples" aria-label="Native scratchpad"><span class="eyebrow dim">Open Scratchpad</span><button id="Document" aria-pressed="true">Document</button><button id="Data" aria-pressed="false">Data</button><button id="Interpolation" aria-pressed="false" title="Editable Data and Document regions. TypeScript imports use your workspace’s installed types.">Mixed TS</button></div><div class="search"><input id="filter" type="search" placeholder="Find a syntax role…" aria-label="Filter syntax roles"></div></div>
+<div class="toolbar"><div class="examples" aria-label="Scratchpad authoring family"><button id="Document" aria-pressed="true">Hson Document</button><button id="Data" aria-pressed="false">Hson Data</button><button id="Interpolation" aria-pressed="false" title="Editable Data and Document regions. TypeScript uses the window theme and workspace types.">Embedded TS / Hson</button></div><div class="search"><input id="filter" type="search" placeholder="Find a syntax role…" aria-label="Filter syntax roles"></div></div>
 <div id="catalog" class="catalog" aria-label="Syntax role catalog"><p id="empty" hidden>No matching roles.</p></div>
 <footer><span id="count"></span><button id="advanced" aria-expanded="false">Advanced</button><span id="previewMode"></span></footer>
 </main>
@@ -73,7 +75,7 @@ const rows=new Map(),groups=new Map();
 const awaitingInput=new Map();
 const rejectedFor=(role,property,kind='property')=>state?.rejectedInputs.find(input=>input.role===role&&input.property===property&&input.kind===kind);
 function updateActions(){
- const unresolved=awaitingInput.size>0||!!state?.rejectedInputs.length||!!state?.error;
+ const unresolved=awaitingInput.size>0||!!state?.rejectedInputs.length||!!state?.appearanceError;
  el('save').disabled=!state?.dirty||!!state.saving||!!state.configurationInvalid||!!state.conflict||unresolved;
  el('export').disabled=!state?.target.startsWith('palette:')||unresolved;
  el('undo').disabled=!state?.canUndo&&!unresolved;el('redo').disabled=!state?.canRedo;
@@ -174,8 +176,9 @@ for(const mode of ['dark','light'])el(mode).addEventListener('click',()=>send('m
 for(const id of ['saved','draft'])el(id).addEventListener('click',()=>send('compare',id));
 el('confirm-revert').addEventListener('click',()=>send('confirm-revert',true));el('cancel-revert').addEventListener('click',()=>send('confirm-revert',false));el('revert-dialog').addEventListener('cancel',event=>{event.preventDefault();send('confirm-revert',false);});
 el('save').addEventListener('click',()=>{if(!el('save').disabled)send('save');});
-for(const id of ['revert','delete','export','undo','redo','restore','apply','discard-input'])el(id).addEventListener('click',()=>send(id));
+for(const id of ['retry-scratchpads','move-scratchpads','revert','delete','export','undo','redo','restore','apply','discard-input'])el(id).addEventListener('click',()=>send(id));
 for(const id of ['Document','Data','Interpolation'])el(id).addEventListener('click',()=>send('example',id));
+for(const id of ['open-scratchpad','restore-example'])el(id).addEventListener('click',()=>send(id));
 for(const id of ['new','duplicate'])el(id).addEventListener('click',()=>send(id,undefined,{name:el('name').value}));
 el('rename').addEventListener('click',()=>send('rename',el('name').value));
 function paint(s){
@@ -195,14 +198,17 @@ function paint(s){
  state=s;const paletteMap=new Map(s.builtins.map(p=>[p.id,p.name]));for(const p of s.draft.palettes)paletteMap.set(p.id,p.name);
  const palettes=[['native','Native VS Code'],...paletteMap],names=Object.fromEntries(palettes);
  for(const family of ['all','data','document'])options(family,family==='all'?palettes:[['','↳ All Hson'],...palettes],s.draft.assignments[family]);
- options('target',[...palettes.filter(p=>p[0]!=='native').map(([id,name])=>['palette:'+id,'Palette · '+name]),['override:all','Overrides · All Hson'],['override:data','Overrides · Data'],['override:document','Overrides · Document']],s.target);
+ const retained=(s.retainedTargets??[]).filter(target=>target.startsWith('palette:')&&!paletteMap.has(target.slice(8))).map(target=>[target,'Retained palette · '+target.slice(8)]);
+ el('retry-scratchpads').hidden=!s.scratchpadError;
+ options('target',[...retained,...palettes.filter(p=>p[0]!=='native').map(([id,name])=>['palette:'+id,'Palette · '+name]),['override:all','Overrides · All Hson'],['override:data','Overrides · Data'],['override:document','Overrides · Document']],s.target);
  el('assignment-summary').textContent=names[s.draft.assignments.all]+' · Data '+(names[s.draft.assignments.data]??'↳')+' · Doc '+(names[s.draft.assignments.document]??'↳');
  el('assignment-summary').classList.toggle('dirty',s.assignmentsChanged);
  const id=s.target.slice(8),isPalette=s.target.startsWith('palette:'),assigned=family=>s.draft.assignments[family]??s.draft.assignments.all;
  const applied=['all','data','document'].filter(family=>assigned(family)===id),familyNames={all:'All Hson',data:'Data',document:'Document'};
  el('scope-note').textContent=isPalette?(applied.length?'Working: '+applied.map(f=>familyNames[f]).join(' · '):'Not applied · '+(['all','data','document'].every(f=>assigned(f)==='native')?'Native VS Code':'see assignments')):'Editing '+s.target.slice(9)+' overrides';
  el('apply').hidden=!isPalette||s.draft.assignments.all===id;
- el('preview-state').textContent='Scratchpad: '+(s.comparison==='saved'?'Last saved':'Working changes')+' · '+s.mode;
+ el('preview-state').textContent='Hson · '+(s.comparison==='saved'?'Last Saved':'Working');
+ el('preview-state').title='Open pins '+(isPalette?(names[id]??id):s.target.slice(9)+' overrides')+' · '+s.mode+'. Only Hson-owned colors preview independently; the VS Code theme is window-wide.';
  for(const mode of ['dark','light'])el(mode).setAttribute('aria-pressed',String(s.mode===mode));el('destination').value=s.destination;
  if(selected!==s.role){if(selected){rows.get(selected).input.id='hex-'+selected;rows.get(selected).reset.id='reset-'+selected;rows.get(selected).from.id='from-'+selected;}selected=s.role;rows.get(selected).input.id='foreground';rows.get(selected).reset.id='reset-foreground';rows.get(selected).from.id='inherits';}
  for(const role of roles){
@@ -235,11 +241,12 @@ function paint(s){
   el('resolution').textContent='Authored '+(s.authored.foreground??'inherit')+' → '+s.resolved.sources.foreground+'. Reset restores the last saved property. Native explicitly delegates to VS Code.';
   for(const property of properties.filter(p=>p!=='foreground')){const node=el(property);node.disabled=false;const unresolved=paintField(node,s.authored[property],s.role,property,replace);el('reset-'+property).disabled=s.authored[property]===s.saved[property]&&!unresolved;el('source-'+property).textContent=(s.resolved.style[property]??'Native')+' · '+s.resolved.sources[property]+(property==='intensity'?' · RGB base '+s.resolved.background:'');}
  }
- el('rename').disabled=!isPalette;el('delete').disabled=!isPalette||s.builtins.some(p=>p.id===id);el('restore').hidden=!isPalette||!s.builtins.some(p=>p.id===id);el('duplicate').disabled=el('export').disabled=!s.target.startsWith('palette:');
+ el('move-scratchpads').disabled=!isPalette;el('rename').disabled=!isPalette;el('delete').disabled=!isPalette||s.builtins.some(p=>p.id===id);el('restore').hidden=!isPalette||!s.builtins.some(p=>p.id===id);el('duplicate').disabled=el('export').disabled=!s.target.startsWith('palette:');
  for(const example of ['Document','Data','Interpolation']){el(example).setAttribute('aria-pressed',String(s.activeExample===example));el(example).disabled=s.switchingExample;}
+ el('open-scratchpad').disabled=el('restore-example').disabled=s.switchingExample;
  el('previewMode').textContent=s.mode+' preview'+(s.mode!==s.previewMode?' · '+s.previewMode+' editor background':'');
  el('saved').setAttribute('aria-pressed',String(s.comparison==='saved'));el('draft').setAttribute('aria-pressed',String(s.comparison==='draft'));
- el('status').textContent=s.conflict?(s.saving?'Saving… · Conflict':'Configuration conflict'):s.saving?'Saving…':s.rejectedInputs.length?'Invalid input':s.dirty?'Unsaved':'All saved';el('status').classList.toggle('dirty',s.dirty);el('status').title=(s.comparison==='saved'?'Saved':'Draft')+' preview · controls edit Working';
+ el('status').textContent=s.scratchpadError?'Scratchpad save failed':s.conflict?(s.saving?'Saving… · Conflict':'Configuration conflict'):s.saving?'Saving…':s.rejectedInputs.length?'Invalid input':s.dirty?'Unsaved':'All saved';el('status').classList.toggle('dirty',s.dirty);el('status').title=(s.comparison==='saved'?'Saved':'Draft')+' preview · controls edit Working';
  el('discard-input').hidden=!s.rejectedInputs.length&&(!s.error||s.conflict||s.configurationInvalid);el('discard-input').textContent=s.rejectedInputs.length?'Discard pending input':'Dismiss error';
  updateActions();el('save').title='Save all working changes to '+s.destination+' settings and update assigned Hson files';el('error').textContent=s.error;
  const confirmation=el('revert-dialog');if(s.confirmingRevert&&!confirmation.open)confirmation.showModal();else if(!s.confirmingRevert&&confirmation.open)confirmation.close();

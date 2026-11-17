@@ -13,6 +13,7 @@
   "include": [
     "src/**/*.ts",
     "tests/appearance.test.ts",
+    "tests/scratchpads.test.ts",
     "tests/integration/appearance.ts",
     "tests/runtime.test.ts",
     "tests/house.test.ts",
