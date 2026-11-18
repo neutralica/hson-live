@@ -5,7 +5,7 @@ import type { Family, Mode } from './appearance-model.js';
 export const scratchpadExamples = {
   Document: { family: 'document', language: 'hson', label: 'Hson Document', content: '// Editable Document scratchpad — paste your own Hson here.\n<section hson:part data:message=%{message} title="Attribute text" class="example"\n  <h1 @:title "Content text"/>\n  <p title=^{message} "Hello"/>\n/>\n' },
   Data: { family: 'data', language: 'hson', label: 'Hson Data', content: '// Editable Data scratchpad — paste your own Hson here.\n<catalog <\n  title "Data content"\n  tags ["alpha", "beta"]\n  count 42\n  enabled true\n>>\n' },
-  Interpolation: { family: 'all', language: 'typescript', label: 'Embedded TypeScript / Hson', content: 'import { Hson } from "hson-live/hson";\nconst hostValue = "Native TypeScript";\nconst document = Hson.document`\n<section title="Attribute text"\n  <p "Content text ${hostValue.toUpperCase()}"/>\n/>`;\nconst data = Hson.data`\n<catalog <\n  true "Data text"\n  false 1\n  null null\n>>`;\n' },
+  Interpolation: { family: 'all', language: 'typescript', label: 'TS + Hson', content: 'import { Hson } from "hson-live/hson";\nconst hostValue = "Native TypeScript";\nconst document = Hson.document`\n<section title="Attribute text"\n  <p "Content text ${hostValue.toUpperCase()}"/>\n/>`;\nconst data = Hson.data`\n<catalog <\n  true "Data text"\n  false 1\n  null null\n>>`;\n' },
 } satisfies Record<string, {family: Family; language: string; label: string; content: string}>;
 export type ScratchpadExample = keyof typeof scratchpadExamples;
 export type ScratchpadContext = Readonly<{ target: string; mode: Mode; family: Family }>;
@@ -207,7 +207,7 @@ export class AppearanceScratchpads implements vscode.Disposable {
       if (this.move && [this.move.target, this.move.destination].includes(target)) throw new Error('Finish scratchpad ownership recovery before creating another buffer.');
       const suffix = definition.language === 'typescript' ? 'ts' : 'hson';
       record = {example, target, mode, family: definition.family, text: definition.content,
-        uri: vscode.Uri.from({scheme:'untitled',path:`Hson ${example} - ${label} ${mode} - ${randomUUID().slice(0,8)}.${suffix}`}).toString()};
+        uri: vscode.Uri.from({scheme:'untitled',path:`${definition.label} ${mode === 'dark' ? 'Dark' : 'Light'} - ${label} - ${randomUUID().slice(0,8)}.${suffix}`}).toString()};
       this.records.push(record);
       await this.persist();
     }

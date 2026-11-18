@@ -45,6 +45,31 @@ function rejection(map: ReturnType<typeof fixture> | ReturnType<typeof snapshotF
 }
 
 export async function immutable_part_cases(check: (name: string, run: () => void | Promise<void>) => Promise<void>) {
+  await check("uninvoked Parts reject duplicate receiving names at collection admission", async () => {
+    const map = snapshotFixture(), locus = hsonLiveMap.locus.create({ state: { json: 1 } });
+    const conflict = { name: 'TypeError', message: 'Conflicting Part local binding "x".' };
+    try {
+      for (const attributes of ['data:x=%{a} doc:x=%{b}', 'doc:x=%{b} data:x=%{a}']) {
+        const document = '<section hson:part ' + attributes + ' <p title=^{x}/>/>', member = { kind: 'document' as const, document };
+        for (const invalid of [member, { ...member, events: {} }]) {
+          const definitions = { components: { parts: { good: other, invalid } } };
+          assert.throws(() => hsonLiveMap.fromLibraries(definitions), conflict);
+          assert.throws(() => hsonLiveMap.locus.create(definitions), conflict);
+          rejection(map, () => map.batch(writer => {
+            writer.parts.parts.at([]).object.setKey("good", other);
+            writer.parts.parts.at([]).object.setKey("invalid", invalid);
+          }), error => error instanceof TypeError && error.message === conflict.message);
+          assert.deepEqual(map.parts.parts.snap(), { p: part });
+          const revision = locus.rev;
+          await assert.rejects(locus.admit({ earlier: { json: 2 }, ...definitions }), conflict);
+          assert.equal(locus.rev, revision);
+          assert.throws(() => locus.data.must('earlier'));
+          assert.throws(() => locus.parts.must('components'));
+        }
+      }
+    } finally { locus.dispose(); }
+  });
+
   await check("Part admission keeps lexical and receiving analysis at use time", () => {
     for (const [document, message] of [
       ['<p hson:part "^{missing}"/>', 'Missing Part local declaration "missing".'],
@@ -58,6 +83,18 @@ export async function immutable_part_cases(check: (name: string, run: () => void
       installed.parts.parts.at([]).object.setKey("deferred", definition);
       rejection(installed, () => installed.addLibraries({ consumer: { document: '<hson-part lib="parts" at="deferred"/>' } }), new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
+  });
+
+  await check("a stored receiver can await its invocation argument and a later connector target", () => {
+    const outer = { kind: "document" as const, document: '<p hson:part str:title=%{text} <hson-part at=leaf label:str=^{title}/>/>' };
+    const map = hsonLiveMap.fromLibraries({ parts: { parts: { outer } } });
+    assert.deepEqual(map.parts.parts.outer.snap(), outer);
+    assert.throws(() => map.parts.parts.outer.write(), { message: "Part parts/outer is missing str input text. Expected: text: str." });
+    const document = map.parts.parts.outer.write({ text: "ready" });
+    assert.throws(() => map.addLibraries({ page: { document } }), { message: 'Unknown Part member "parts/leaf".' });
+    map.parts.parts.at([]).object.setKey("leaf", { kind: "document", document: '<b hson:part str:label=%{label} "^{label}"/>' });
+    map.addLibraries({ page: { document } });
+    assert.match(map.doc.must("page").render(), /<p><b>ready<\/b><\/p>/);
   });
 
   await check("completed new Parts may be temporarily malformed, while unused final additions retain source diagnostics", () => {

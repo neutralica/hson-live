@@ -572,6 +572,90 @@ check('Part conflicts retain the offending attribute through unrelated interpola
     }
   }
 });
+check('incoming scalar use preserves the independent receiver beside a conflicting local', () => {
+  for (const [attributes, duplicate] of [
+    ['str:x=%{v} str:y=%{v} num:x=%{w}', 'num:x=%{w}'],
+    ['num:x=%{w} str:y=%{v} str:x=%{v}', 'str:x=%{v}'],
+  ] as const) {
+    const body = '<p hson:part ' + attributes + ' title=%{v} alt=^{x}/>';
+    const result = inspect(application('<main/>', '{ p: { kind: "document", document: Hson.document`' + body + '` } }'));
+    const messages = result.diagnostics.map(issue => issue.message);
+    assert.deepEqual(messages.sort(), [
+      'Conflicting Part local binding "x".', 'Unused Part num binding "x".', 'Unused Part str binding "x".',
+    ]);
+    const conflict = result.diagnostics.find(issue => issue.message === 'Conflicting Part local binding "x".')!;
+    const start = result.text.indexOf(duplicate) + duplicate.indexOf('=') + 1;
+    assert.deepEqual([conflict.start, conflict.end], [start, start + 4]);
+    const bindings = result.facts.documents.find(document => document.partDeclarations.length)?.bindingSources;
+    assert.ok(bindings);
+    assert.deepEqual(bindings.declarations.map(declaration => declaration.name), ['y']);
+    const incoming = bindings.references.find(ref => ref.context === 'value' && ref.reference.namespace === 'incoming');
+    assert.equal(incoming?.declaration?.location.start, result.text.indexOf('str:y') + 4);
+    const local = bindings.references.find(ref => ref.context === 'value' && ref.reference.namespace === 'local');
+    assert.equal(local?.resolution, 'unresolved');
+    assert.equal(local.declaration, undefined);
+  }
+});
+check('conflicted receiver placement preserves authoritative binding ranges and governed usage', () => {
+  const strX = 'str:x=%{w}', numX = 'num:x=%{v}', dataX = 'data:x=%{v}';
+  const y = 'str:y=%{v}', z = 'str:z=%{v}', count = 'num:count=%{count}';
+  for (const { fields, target, localConflicts, inputConflicts } of [
+    { fields: [strX, y, numX], target: y, localConflicts: [numX], inputConflicts: [numX] },
+    { fields: [numX, y, strX], target: y, localConflicts: [strX], inputConflicts: [y] },
+    { fields: [strX, numX, y, z, count], target: y, localConflicts: [numX], inputConflicts: [y, z] },
+    { fields: [y, strX, numX, z, count], target: y, localConflicts: [numX], inputConflicts: [numX] },
+    { fields: [y, z, count, numX, strX], target: y, localConflicts: [strX], inputConflicts: [numX] },
+    { fields: [strX, numX, z, y, count], target: z, localConflicts: [numX], inputConflicts: [z, y] },
+    { fields: [dataX, strX, numX, y, z, count], target: y, localConflicts: [strX, numX], inputConflicts: [numX, y, z] },
+    { fields: [strX, numX], target: undefined, localConflicts: [numX], inputConflicts: [] },
+    { fields: [numX, strX], target: undefined, localConflicts: [strX], inputConflicts: [] },
+  ]) {
+    const body = '<p hson:part ' + fields.join(' ') + ' title=%{v} alt=^{x}' + (fields.includes(count) ? ' width=^{count}' : '') + '/>';
+    const result = inspect(application('<main/>', '{ p: { kind: "document", document: Hson.document`' + body + '` } }'));
+    const location = (start: number, end: number) => ({ file: file('app.ts'), start, end, precision: 'exact' });
+    const valueLocation = (field: string) => {
+      const start = result.text.indexOf(field);
+      assert.ok(start >= 0, field);
+      return location(start + field.indexOf('=') + 1, start + field.length);
+    };
+    const definitionLocation = (field: string) => {
+      const start = result.text.indexOf(field);
+      assert.ok(start >= 0, field);
+      return location(start + field.indexOf(':') + 1, start + field.indexOf('='));
+    };
+    const diagnostic = (field: string, message: string) => {
+      const { file, start, end } = valueLocation(field);
+      return { file, start, end, code: 'HSON_PART_REFERENCE_INVALID', message };
+    };
+    const unused = fields.filter(field => field !== target && field !== count).map(field => {
+      const [kind, local] = field.slice(0, field.indexOf('=')).split(':');
+      return diagnostic(field, `Unused Part ${kind} binding "${local}".`);
+    });
+    const byLocation = (a: { start: number; message: string }, b: { start: number; message: string }) =>
+      a.start - b.start || a.message.localeCompare(b.message);
+    assert.deepEqual([...result.diagnostics].sort(byLocation), [
+      ...localConflicts.map(field => diagnostic(field, 'Conflicting Part local binding "x".')),
+      ...inputConflicts.map(field => diagnostic(field, 'Conflicting Part input "v".')),
+      ...unused,
+    ].sort(byLocation), body);
+
+    const bindings = result.facts.documents.find(document => document.partDeclarations.length)?.bindingSources;
+    assert.ok(bindings, body);
+    assert.deepEqual(bindings.declarations.map(declaration => declaration.location),
+      fields.filter(field => field === y || field === z || field === count).map(definitionLocation), body);
+    const uses = bindings.references.filter(reference => reference.context === 'value');
+    const expectedUses = [
+      { field: 'title=%{v}', definition: target, resolution: 'unavailable' },
+      { field: 'alt=^{x}', definition: undefined, resolution: 'unresolved' },
+    ];
+    if (fields.includes(count)) expectedUses.push({ field: 'width=^{count}', definition: count, resolution: 'resolved' });
+    assert.deepEqual(uses.map(use => [use.location, use.root, use.declaration?.location, use.resolution]),
+      expectedUses.map(({ field, definition, resolution }) => {
+        const value = valueLocation(field);
+        return [value, location(value.start + 2, value.end - 1), definition === undefined ? undefined : definitionLocation(definition), resolution];
+      }), body);
+  }
+});
 check('Part conflict provenance does not upgrade incomplete or dynamically authored evidence', () => {
   const definition = (body: string) => '{ list: { kind: "document", document: Hson.document`' + body + '` } }';
   for (const body of [

@@ -29,6 +29,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   private draft=initialAppearance();
   private comparison:'saved'|'draft'='draft';
   private editTarget='palette:house';
+  private lastSharedTarget='palette:house';
   private role='value.attributeString';
   private activeExample:Example='Document';
   private mode=currentMode();
@@ -93,6 +94,22 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   }
   private normalizeTarget(): void {
     if (!this.validTarget(this.editTarget)) this.editTarget = 'palette:house';
+  }
+  private async promptPaletteName(action: 'new' | 'duplicate' | 'rename'): Promise<void> {
+    const target = this.editTarget, inputRevision = this.inputRevision;
+    const palette = target.startsWith('palette:') ? paletteById(this.draft, target.slice(8)) : undefined;
+    if (action !== 'new' && !palette) throw new Error('Choose a palette first.');
+    const validate = (value: string) => value.trim() ? undefined : 'Enter a palette name.';
+    const name = await vscode.window.showInputBox({
+      title: action === 'new' ? 'New palette' : action === 'rename' ? 'Rename palette' : 'Duplicate palette',
+      placeHolder: 'Palette name', value: palette && action !== 'new' ? palette.name + (action === 'duplicate' ? ' copy' : '') : '',
+      validateInput: validate,
+    });
+    if (name === undefined) return;
+    if (this.editTarget !== target || this.inputRevision !== inputRevision) throw new Error('The edit target changed while naming the palette.');
+    const error = validate(name);
+    if (error) throw new Error(error);
+    await this.receive({type:action, value:name, name, target});
   }
   private configurationChanged(): void {
     this.acceptConfiguration(this.configuration());
@@ -162,10 +179,17 @@ export class HsonAppearanceEditor implements vscode.Disposable {
   private async showExample(example:Example):Promise<void>{
     this.requireDurablePalette(example);
     const target=this.editTarget, mode=this.mode;
-    const label=target.startsWith('palette:')?paletteById(this.draft,target.slice(8))?.name??target.slice(8):target.slice(9)+' overrides';
-    await this.scratchpads.open(example,target,mode,label);
+    await this.scratchpads.open(example,target,mode,this.targetLabel());
     await this.renderer.refresh();
     this.activeExample=example;
+  }
+  private targetLabel(): string {
+    if (this.editTarget.startsWith('palette:')) {
+      const id = this.editTarget.slice(8);
+      return paletteById(this.draft, id)?.name ?? id;
+    }
+    return this.editTarget === 'override:all' ? 'All Hson overrides'
+      : this.editTarget === 'override:document' ? 'Document overrides' : 'Data overrides';
   }
   private target(state:AppearanceState, edit = false):Record<string,RoleStyle>|undefined {
     if(this.editTarget.startsWith('palette:'))return (edit ? editablePalette(state,this.editTarget.slice(8)) : paletteById(state,this.editTarget.slice(8)))?.roles;
@@ -241,6 +265,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       return this.present();
     }
     if (message.type === 'ready') { this.inputSequence = 0; return this.present(); }
+    if (message.type === 'prompt-name' && (value === 'new' || value === 'duplicate' || value === 'rename')) return this.promptPaletteName(value);
     if (message.type === 'example' && (value === 'Document' || value === 'Data' || value === 'Interpolation')) {
       this.activeExample=value;
       return this.present();
@@ -249,15 +274,14 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     if (message.type === 'retry-scratchpads') { await this.scratchpads.recover(); return this.present(); }
     if (message.type === 'restore-example') {
       this.requireDurablePalette(this.activeExample);
-      const label=this.editTarget.startsWith('palette:')?paletteById(this.draft,this.editTarget.slice(8))?.name??this.editTarget.slice(8):this.editTarget.slice(9)+' overrides';
-      await this.scratchpads.restoreExample(this.activeExample,this.editTarget,this.mode,label);
+      await this.scratchpads.restoreExample(this.activeExample,this.editTarget,this.mode,this.targetLabel());
       return this.present();
     }
     if (message.type === 'move-scratchpads') {
       const target = this.editTarget;
-      const candidates = [...builtinPalettes, ...this.saved.palettes].filter((palette,index,all) =>
-        'palette:'+palette.id !== target && all.findIndex(other => other.id === palette.id) === index);
-      const choice = await vscode.window.showQuickPick(candidates.map(palette => ({label:palette.name,id:palette.id})),
+      const palettes = new Map([...builtinPalettes, ...this.saved.palettes].map(palette => [palette.id, palette]));
+      const candidates = [...palettes.values()].filter(palette => 'palette:'+palette.id !== target);
+      const choice = await vscode.window.showQuickPick(candidates.map(palette => ({label:palette.name,description:palette.id,id:palette.id})),
         {placeHolder:'Move ALL retained scratchpads: Document, Data and TS, both Dark and Light. Choose a saved palette.'});
       if (choice) {
         if (!paletteById(configured(this.configuration()), choice.id) || !paletteById(this.draft, choice.id)) throw new Error('Destination palette is no longer available');
@@ -277,7 +301,9 @@ export class HsonAppearanceEditor implements vscode.Disposable {
     if (message.type === 'target') {
       if(this.rejectedInputs.length)throw new Error('Correct or reset invalid input before changing palettes.');
       if (typeof value !== 'string' || !this.validTarget(value)) throw new Error('Choose an available edit target');
+      if (this.editTarget.startsWith('palette:')) this.lastSharedTarget = this.editTarget;
       this.editTarget = value;
+      if (value === 'override:data' || value === 'override:document') this.activeExample = value === 'override:data' ? 'Data' : 'Document';
       this.clearInputs();
       return this.present();
     }
@@ -311,6 +337,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       const previous = from.at(-1);
       if (previous) {
         this.assertPaletteDependencies(previous.state);
+        if (this.editTarget.startsWith('palette:')) this.lastSharedTarget = this.editTarget;
         from.pop();
         to.push(this.historyEntry());
         this.revision++; this.draftRevision = previous.revision;
@@ -490,6 +517,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       resolved:resolveStyle(effective,family,role,this.mode), nativeOwned:!!roleCatalog[role]?.nativeBrackets&&nativeBrackets,
     }]));
     await panel.webview.postMessage({type:'state',draft:this.draft,comparison:this.comparison,dirty:JSON.stringify(this.saved)!==JSON.stringify(this.draft),
+      sharedTarget:this.editTarget.startsWith('palette:') ? this.editTarget : this.validTarget(this.lastSharedTarget) ? this.lastSharedTarget : 'palette:house',
       appearanceError:this.error,retainedTargets:this.scratchpads.targets(),scratchpadError:this.scratchpads.error,rows,confirmingRevert:!!this.revertConfirmation,builtins:builtinPalettes.map(p=>({id:p.id,name:p.name})),canUndo:!!this.undoStack.length,canRedo:!!this.redoStack.length,inputRevision:this.inputRevision,inputSequence:this.inputSequence,rejectedInputs:this.rejectedInputs,saving:!!this.saving,switchingExample:this.switchingExample,configurationInvalid:!!this.configurationError,conflict:this.conflict,assignmentsChanged:JSON.stringify(this.saved.assignments)!==JSON.stringify(this.draft.assignments),activeExample:this.activeExample,role:this.role,mode:this.mode,previewMode:currentMode(),target:this.editTarget,destination:this.destination,
       nativeOwned:rows[this.role]?.nativeOwned,
       authored:roles?.[this.role]?.[this.mode]??{},inherits:roles?.[this.role]?.inherits??'',resolved:resolveStyle(effective,family,this.role,this.mode),

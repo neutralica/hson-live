@@ -3,8 +3,13 @@ import { resolve } from "node:path";
 import { HsonBindingCache, binding_definition_at, binding_highlights, overlay_binding_highlights } from "../src/binding-intelligence.js";
 import { hson_highlights, load_hson_grammar } from "../src/highlighting.js";
 import { hsonTokenDefinitions } from "../src/appearance-internals.js";
+import { produce_document_diagnostics } from "../src/document-diagnostics.js";
+import { AppearanceSpanCache } from "../src/appearance-spans.js";
 
-import { canonical } from "./fixtures/bindings.js";
+import { canonical, iteratorColumn, ordinarySibling, invalidSibling, malformedQuotedSibling, escapedControlSibling, receivingPart,
+  invalidOperandDocument, malformedContentDocument, conflictingPart } from "./fixtures/bindings.js";
+import { analyze_part_definition } from "../../../src/internal/part-definition.js";
+import { parse_part_binding_source } from "../../../src/internal/editor-introspection/part-bindings.js";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "editor.part-bindings", title: "Shared Part binding intelligence", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "editor", "navigation", "highlighting", "provenance"]) });
 
 async function run() {
@@ -77,6 +82,253 @@ check('shadowing follows identities, including source reads before the iterator 
     assert.equal(refs[5]!.declaration, outer);
     assert.equal(refs[6]!.declaration, receiving);
     for (const ref of refs) assert.equal(binding_definition_at(result, ref.root.start)?.target, ref.declaration!.location);
+  }
+});
+check('iterator declaration, roots and member retain independent appearance in adjacent Part examples', () => {
+  const nested = '<section hson:part data:each=%{rows} <hson-part for:each=^{each} at=outer <hson-part per:key:each=^{each.children} at=^{each.kind} block:data=^{each}/> <hson-part at=^{each.outer}/>/> <p title=^{each.end}/>/>\n';
+  const appearance = new AppearanceSpanCache(cache);
+  for (const body of [iteratorColumn, '<aside/>\n' + iteratorColumn + '\n' + nested + '<p title=^{each}/>']) {
+    for (const language of ['hson','markdown','typescript','typescriptreact']) {
+      const text = language === 'hson' ? body : language === 'markdown' ? '```hson\n' + body + '\n```' : wrap(body);
+      const result = snapshot(text, language), tokens = binding_highlights(result), spans = appearance.get(grammar, result.document);
+      const roleAt = (at: number) => spans.find(span => span.range.start <= at && at < span.range.end)?.role;
+      const verify = (use: string, declaration: string, iteration: boolean, region = 0) => {
+        const at = text.indexOf(use, region) + 2;
+        const target = text.indexOf(declaration, region) + declaration.lastIndexOf(':') + 1;
+        assert.equal(binding_definition_at(result, at)?.target.start, target, language + ' ' + use);
+        for (const start of [at, target]) {
+          const token = tokens.find(token => token.range.start === start);
+          assert.equal(token?.type, iteration ? 'hsonIteration' : 'hsonReceiving');
+          assert.deepEqual(token.modifiers, ['hsonLocalName']);
+          assert.equal(roleAt(start), iteration ? 'iteration.name' : 'part.receivingArgument');
+        }
+      };
+      verify('^{blocks}', 'data:blocks', false);
+      verify('^{each.kind}', 'for:each', true);
+      verify('^{each}', 'for:each', true);
+      assert.equal(roleAt(text.indexOf('kind}')), 'reference.member');
+      if (body.includes(nested)) {
+        const region = text.indexOf(nested);
+        verify('^{each}', 'data:each', false, region);
+        verify('^{each.children}', 'for:each', true, region);
+        verify('^{each.kind}', 'per:key:each', true, region);
+        verify('^{each}', 'per:key:each', true, text.indexOf('per:key:each', region));
+        verify('^{each.outer}', 'for:each', true, region);
+        verify('^{each.end}', 'data:each', false, region);
+        const outside = text.lastIndexOf('^{each}') + 2;
+        assert.equal(binding_definition_at(result, outside), undefined);
+        assert.equal(roleAt(outside), 'reference.local.content');
+      }
+    }
+  }
+});
+check('ordinary siblings keep lexical color and have no declaration regardless of a neighboring flag', () => {
+  const appearance = new AppearanceSpanCache(cache);
+  for (const prefix of ['', '<main data-flag/>\n', '<main hson:part/>\n']) {
+    for (const language of ['hson', 'typescript']) {
+      const body = prefix + ordinarySibling, text = language === 'hson' ? body : wrap(body);
+      const result = snapshot(text, language), at = text.indexOf('^{x}') + 2;
+      if (language === 'hson' && prefix === '<main data-flag/>\n') assert.equal(at, 55);
+      assert.equal(binding_definition_at(result, at), undefined);
+      assert.ok(!binding_highlights(result).some(token => token.range.start === at));
+      const spans = appearance.get(grammar, result.document);
+      assert.equal(spans.find(span => span.range.start === at)?.role, 'reference.local.content');
+    }
+  }
+});
+check('a closed malformed quote keeps its diagnostic without hiding the next Part', () => {
+  const trivia = '\r\n// 😀 <ignored/>\r\n';
+  const bad = malformedQuotedSibling.replace('\n', '\r\n');
+  const later = '<aside title="c\r\nd <fake/>"/>';
+  const body = [bad, receivingPart, later, receivingPart, '<aside title="unclosed', receivingPart].join(trivia);
+  for (const language of ['hson', 'typescript', 'typescriptreact']) {
+    const text = language === 'hson' ? body : wrap(body);
+    const result = snapshot(text, language);
+    const [diagnostic] = produce_document_diagnostics(result.document);
+    assert.equal(diagnostic?.code, 'HSON_STRING_CONTROL_UNESCAPED');
+    assert.equal(diagnostic.range.start, text.indexOf('\r\n', text.indexOf(bad)));
+    const roots = [...text.matchAll(/<main hson:part/g)].map(match => match.index);
+    const reference = roots.map(start => text.indexOf('^{x}', start) + 2);
+    const declarations = result.sources[0]!.declarations;
+    assert.equal(declarations.length, 2);
+    for (const [index, declaration] of declarations.entries()) {
+      const at = reference[index]!, target = text.indexOf('data:x', roots[index]) + 5;
+      const definition = binding_definition_at(result, at);
+      assert.ok(definition);
+      assert.equal(declaration.origin, 'receiving');
+      assert.deepEqual(definition.origin, { file: result.document.fileName, start: at, end: at + 1, precision: 'exact' });
+      assert.equal(definition.target, declaration.location);
+      assert.deepEqual([definition.target.start, definition.target.end], [target, target + 1]);
+      assert.equal(binding_highlights(result).find(token => token.range.start === at)?.type, 'hsonReceiving');
+    }
+    assert.equal(binding_definition_at(result, reference[2]!), undefined);
+  }
+});
+check('definitions and Appearance follow the proven operand and content boundaries in original UTF-16', () => {
+  const appearance = new AppearanceSpanCache(cache);
+  const trivia = '// 😀\r\n';
+  for (const language of ['hson', 'typescript', 'typescriptreact']) {
+    const gaps = [invalidOperandDocument, malformedContentDocument, '<aside a=^{bad[/> ' + receivingPart + ' ]/>' + receivingPart];
+    if (language !== 'hson') gaps.push(
+      "<aside a=^{bad['${child}/>" + receivingPart + "']/>" + receivingPart,
+      '"bad\\q${child}\\"' + receivingPart + '"' + receivingPart,
+    );
+    for (const gap of gaps) {
+      const body = trivia + gap + '\r\n"unfinished ' + receivingPart;
+      const text = language === 'hson' ? body : wrap(body);
+      const result = snapshot(text, language), spans = appearance.get(grammar, result.document);
+      const start = text.indexOf(gap) + gap.length - receivingPart.length;
+      const target = start + 21, use = start + 39;
+      assert.deepEqual(binding_highlights(result).map(t => [t.range.start, t.range.end, t.type, t.modifiers]), [
+        [target, target + 1, 'hsonReceiving', ['hsonLocalName']], [use, use + 1, 'hsonReceiving', ['hsonLocalName']],
+      ]);
+      for (const match of text.matchAll(/\^\{x\}/g)) {
+        const at = match.index + 2, definition = binding_definition_at(result, at);
+        const role = spans.find(span => span.range.start <= at && at < span.range.end)?.role;
+        if (at === use) {
+          assert.deepEqual([definition?.origin.start, definition?.origin.end, definition?.target.start, definition?.target.end],
+            [use, use + 1, target, target + 1]);
+          assert.equal(role, 'part.receivingArgument');
+        } else {
+          assert.equal(definition, undefined);
+          assert.notEqual(role, 'part.receivingArgument');
+        }
+      }
+    }
+  }
+});
+check('conflicting receivers retain distinct contracts and no local identity in either order', () => {
+  const appearance = new AppearanceSpanCache(cache);
+  for (const reversed of [false, true]) {
+    const part = conflictingPart(reversed).replace('  <p', '  data:y=%{rows}\n  <i for:x=^{y} title=^{x.name}/>\n  <p');
+    const {root} = parse_part_binding_source(part);
+    const message = 'Conflicting Part local binding "x".';
+    assert.throws(() => analyze_part_definition(root), { message });
+    const issues: string[] = [];
+    const analysis = analyze_part_definition(root, issue => {
+      assert.equal(issue.attribute, reversed ? 'data:x' : 'doc:x');
+      issues.push(issue.message);
+    });
+    assert.deepEqual(issues, [message]);
+    assert.deepEqual(analysis.receiving.map(d => [d.kind, d.name, d.receiving.reference.name]).sort(), [
+      ['data','x','a'], ['data','y','rows'], ['doc','x','b'],
+    ]);
+    for (const language of ['hson','typescript']) {
+      const body = '// 😀\r\n' + part + '\n' + receivingPart + '\n' + ordinarySibling;
+      const text = language === 'hson' ? body : wrap(body);
+      const result = snapshot(text, language), spans = appearance.get(grammar, result.document);
+      const roleAt = (at: number) => spans.find(span => span.range.start <= at && at < span.range.end)?.role;
+      const tokens = binding_highlights(result);
+      for (const attr of ['data:x','doc:x']) {
+        assert.ok(tokens.every(token => token.range.start !== text.indexOf(attr) + attr.indexOf(':') + 1));
+      }
+      const ambiguous = text.indexOf('^{x}') + 2;
+      assert.equal(binding_definition_at(result, ambiguous), undefined);
+      assert.equal(roleAt(ambiguous), 'reference.local.content');
+      for (const [at, target, role] of [
+        [text.indexOf('^{y}') + 2, text.indexOf('data:y') + 5, 'part.receivingArgument'],
+        [text.indexOf('^{x.name}') + 2, text.indexOf('for:x') + 4, 'iteration.name'],
+        [text.indexOf(receivingPart) + 39, text.indexOf(receivingPart) + 21, 'part.receivingArgument'],
+      ] as const) {
+        const definition = binding_definition_at(result, at);
+        assert.deepEqual([definition?.target.start, definition?.target.end], [target, target + 1]);
+        assert.equal(roleAt(at), role);
+      }
+      assert.equal(binding_definition_at(result, text.lastIndexOf('^{x}') + 2), undefined);
+    }
+  }
+  const triple = '<p hson:part data:x=%{a} doc:x=%{b} str:x=%{c} title=^{x} alt=%{c}/>';
+  const result = snapshot(triple);
+  assert.deepEqual(result.sources[0]!.declarations, []);
+  assert.deepEqual(binding_highlights(result), []);
+  assert.equal(binding_definition_at(result, triple.indexOf('^{x}') + 2), undefined);
+});
+check('bounded lexical errors preserve only the identities of independently admitted Parts', () => {
+  const badPart = escapedControlSibling.replace('<aside ', '<aside hson:part data:x=%{x} ref=^{x} ');
+  const trivia = '\r\n// 😀 <ignored/>\r\n';
+  for (const language of ['hson', 'typescript']) {
+    const gaps = [badPart, 'stray words', '01'];
+    if (language === 'typescript') gaps.push('/${child}/ note', '/${child}*');
+    for (const gap of gaps) {
+      const body = receivingPart + trivia + gap + ' ' + receivingPart + trivia + ordinarySibling
+        + '<aside title="unclosed ' + receivingPart;
+      const text = language === 'hson' ? body : wrap(body);
+      const result = snapshot(text, language);
+      const starts = [text.indexOf(receivingPart), text.indexOf(receivingPart, text.indexOf(gap) + gap.length)];
+      const targets = starts.map(start => start + receivingPart.indexOf('data:x') + 5);
+      const uses = starts.map(start => start + receivingPart.indexOf('^{x}') + 2);
+      assert.deepEqual(result.sources[0]!.declarations.map(d => d.location.start), targets);
+      const tokens = binding_highlights(result);
+      assert.deepEqual(tokens.map(t => [t.range.start, t.range.end, t.type, t.modifiers]),
+        starts.flatMap((_, i) => [targets[i]!, uses[i]!].map(at => [at, at + 1, 'hsonReceiving', ['hsonLocalName']])));
+      for (const match of text.matchAll(/\^\{x\}/g)) {
+        const at = match.index + 2, target = targets[uses.indexOf(at)];
+        const definition = binding_definition_at(result, at);
+        if (target === undefined) assert.equal(definition, undefined);
+        else assert.deepEqual([definition?.target.start, definition?.target.end], [target, target + 1]);
+      }
+    }
+  }
+});
+check('completed Parts keep original UTF-16 ranges through sibling errors, holes and edits', () => {
+  const appearance = new AppearanceSpanCache(cache);
+  const trivia = '\r\n// 😀 <fake hson:part/>\r\n';
+  for (const language of ['hson','typescript','typescriptreact']) {
+    const siblings = [invalidSibling, '<aside "quoted <x/>"/>'];
+    if (language !== 'hson') siblings.push('<aside ${child}/>', '${child}');
+    for (const sibling of siblings) for (const suffix of ['', '<aside attr="', invalidSibling]) {
+      const definitions = [iteratorColumn, iteratorColumn.replace('column"', 'other"')];
+      const body = [sibling, ...definitions, suffix].join(trivia);
+      const text = language === 'hson' ? body : wrap(body);
+      const result = snapshot(text, language), spans = appearance.get(grammar, result.document);
+      assert.equal(result.sources[0]!.declarations.length, 4);
+      for (const element of definitions) {
+        const start = text.indexOf(element);
+        for (const [ref, decl, role] of [['^{blocks}', 'data:blocks', 'part.receivingArgument'],
+          ['^{each.kind}', 'for:each', 'iteration.name'], ['^{each}', 'for:each', 'iteration.name']] as const) {
+          const at = text.indexOf(ref, start) + 2, target = text.indexOf(decl, start) + decl.indexOf(':') + 1;
+          const definition = binding_definition_at(result, at);
+          assert.equal(definition?.target.start, target);
+          assert.equal(definition?.target.end, target + decl.length - decl.indexOf(':') - 1);
+          assert.equal(spans.find(span => span.range.start === at)?.role, role);
+        }
+        const member = text.indexOf('kind}', start);
+        assert.equal(binding_definition_at(result, member), undefined);
+        assert.equal(spans.find(span => span.range.start === member)?.role, 'reference.member');
+      }
+      const hole=text.indexOf('${child}');
+      if(hole>=0) assert.ok(spans.every(span=>span.range.end<=hole || span.range.start>=hole+8));
+    }
+  }
+});
+check('an unfinished parent never promotes a nested Part, and errors keep their document offsets', () => {
+  const prefix = '// 😀\r\n';
+  for (const language of ['hson', 'typescript']) {
+    const unfinished = prefix + '<aside\r\n' + canonical;
+    const text = language === 'hson' ? unfinished : wrap(unfinished);
+    const result = snapshot(text, language);
+    assert.deepEqual(binding_highlights(result), []);
+    assert.equal(binding_definition_at(result, text.indexOf('^{each.kind}') + 2), undefined);
+  }
+  const text = canonical + '\r\n' + prefix + invalidSibling;
+  const result = snapshot(text);
+  assert.equal(binding_definition_at(result, text.indexOf('^{each.kind}') + 2)?.target.start, text.indexOf('for:each') + 4);
+  const [diagnostic] = produce_document_diagnostics(result.document);
+  assert.equal(diagnostic?.code, 'HSON_PART_DECLARATION_INVALID');
+  assert.equal(diagnostic.range.start, text.indexOf('hson:part="invalid"'));
+});
+check('unsupported and quoted host slots are decided within their own Part', () => {
+  const unsupported = iteratorColumn.replace('class="column"', '${child}');
+  const quoted = iteratorColumn.replace('class="column"', 'class="before ${label} after"');
+  for (const body of [unsupported + quoted, quoted + unsupported]) {
+    const text = wrap(body), result = snapshot(text, 'typescript');
+    const accepted = text.indexOf(quoted), rejected = text.indexOf(unsupported);
+    const at = (start: number) => text.indexOf('^{each.kind}', start) + 2;
+    assert.equal(binding_definition_at(result, at(accepted))?.target.start, text.indexOf('for:each', accepted) + 4);
+    assert.equal(binding_definition_at(result, at(rejected)), undefined);
+    for (const match of text.matchAll(/\$\{(?:label|child)\}/g)) {
+      assert.ok(binding_highlights(result).every(token => token.range.end <= match.index || token.range.start >= match.index + match[0].length));
+    }
   }
 });
 check('bare/quoted operands, optional references, escaped roots, quoted keys and CRLF offsets', () => {

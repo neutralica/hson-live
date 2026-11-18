@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { ui, rendered } from './appearance.js';
+import { ui, rendered, namePalette, selectTarget } from './appearance.js';
 import { parse_authored_document_library } from '../../../../src/api/livemap/livemap.document.quad.js';
 import { checkNativeDurability } from './scratchpad-durability.js';
 import { readAppearance } from '../../src/appearance-model.js';
@@ -22,13 +22,13 @@ async function hsonErrors(document:vscode.TextDocument) {
   return vscode.languages.getDiagnostics(document.uri).filter(diagnostic=>diagnostic.source==='Hson');
 }
 export async function checkScratchpads(workspace:string, storage?: vscode.Memento):Promise<void> {
-  const click=async(control:string)=>{await ui(workspace,{action:'key-activate',control});await pause();};
-  const input=async(control:string,value:string)=>{await ui(workspace,{action:'input',control,value});await pause();};
+  const click=async(control:string)=>{await ui(workspace,{action:'key-activate',control});if(control==='delete')await ui(workspace,{action:'confirm-palette'});await pause();};
+  const input=async(control:string,value:string)=>{if(control==='target')await selectTarget(workspace,value);else await ui(workspace,{action:'input',control,value});await pause();};
   const hex=async(role:string,value:string)=>{await ui(workspace,{action:'select-role',role});await pause();await ui(workspace,{action:'type-field',control:'foreground',value});await pause();};
   const color=(document:vscode.TextDocument,needle:string,expected:string,label=needle)=>rendered(workspace,document,label,[{needle,expected:rgb(expected)}]);
   const open=async(example:string,mode:string,target='palette:house',label='House')=>{
     await input('target',target);await click(mode);await click(example);await click('open-scratchpad');
-    return until(()=>vscode.window.visibleTextEditors.find(editor=>editor.document.fileName.includes(`Hson ${example} - ${label} ${mode}`)),'open '+example+' '+mode);
+    return until(()=>vscode.window.visibleTextEditors.find(editor=>editor.document.fileName.includes(`${example==='Interpolation'?'TS + Hson':'Hson '+example} ${mode==='dark'?'Dark':'Light'} - ${label}`)),'open '+example+' '+mode);
   };
   const closePanel=async()=>{
     const tab=vscode.window.tabGroups.all.flatMap(group=>group.tabs).find(tab=>tab.label==='Hson Appearance');
@@ -185,9 +185,9 @@ export async function checkScratchpads(workspace:string, storage?: vscode.Mement
   const doc=await open('Document','dark');assert.deepEqual(await hsonErrors(doc.document),[],'scratchpad family overrides workspace Data mode');
   await vscode.workspace.getConfiguration('hson.authoring',ordinary).update('mode','canonical',vscode.ConfigurationTarget.Workspace);
   // Resolve a retained palette dependency deliberately, without replacing House buffers.
-  await input('name','Recovery destination');await click('new');await click('save');
+  await namePalette(workspace,'new','Recovery destination');await click('save');
   const recovery=(await ui<{values:Record<string,string>}>(workspace,{action:'inspect'})).values.target!;
-  await input('name','Retained custom');await click('new');
+  await namePalette(workspace,'new','Retained custom');
   await click('open-scratchpad');
   assert.match((await ui<{error:string}>(workspace,{action:'inspect'})).error,/Save this palette/);
   assert.ok(!vscode.workspace.textDocuments.some(document=>document.fileName.includes('Retained custom')));
@@ -196,7 +196,7 @@ export async function checkScratchpads(workspace:string, storage?: vscode.Mement
   let retained=await open('Document','dark',custom,'Retained custom');
   const retainedSource='<retained @:title "Palette recovery 😀"/>';
   await replace(retained,retainedSource);
-  await input('name','Renamed custom');await click('rename');await click('save');
+  await namePalette(workspace,'rename','Renamed custom');await click('save');
   await click('open-scratchpad');assert.equal(retained.document.getText(),retainedSource);
   await vscode.window.showTextDocument(retained.document,vscode.ViewColumn.Two);
   await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
@@ -211,7 +211,7 @@ export async function checkScratchpads(workspace:string, storage?: vscode.Mement
   assert.equal(retained.document.getText(),retainedSource);
   await writeFile(join(workspace,'palette-recovery.json'),JSON.stringify({target:recovery,uri:retained.document.uri.toString(),text:retainedSource}));
   // Workspace assignment previews remain available explicitly in Overrides.
-  const mixed=await open('Interpolation','dark','override:all','all overrides');
+  const mixed=await open('Interpolation','dark','override:all','All Hson overrides');
   await input('all','house');await input('data','native');await input('target','override:data');await hex('value.string','#ab34cd');
   await color(mixed.document,'Data text','#ab34cd','family-specific Data override');
   const docColor=await rendered(workspace,mixed.document,'Document family baseline',[{needle:'Content text',length:12}]);
@@ -221,7 +221,7 @@ export async function checkScratchpads(workspace:string, storage?: vscode.Mement
   // Save only after proving the unsaved preview path; ordinary assignments remain Native.
   await input('all','native');await input('data','');await input('target','palette:house');await click('save');
   assert.equal(readAppearance(vscode.workspace.getConfiguration('hson.appearance').get('state')).assignments.all,'native');
-  await input('name','External retention');await click('new');await click('save');
+  await namePalette(workspace,'new','External retention');await click('save');
   const externalTarget=(await ui<{values:Record<string,string>}>(workspace,{action:'inspect'})).values.target!;
   const external=await open('Document','dark',externalTarget,'External retention');
   const externalText='<external @:title "Source retained after settings replacement 😀"/>';

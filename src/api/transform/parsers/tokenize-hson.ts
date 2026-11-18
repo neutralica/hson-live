@@ -129,7 +129,8 @@ type AttributeOperand = Readonly<{ end: number } & (
 
 /** Source-only classification shared with closer lookahead. Receiving semantics
  * remain with Part admission; only invocation coordinates admit bare literals. */
-function classifyAttributeOperand(source: string, start: number, tag?: string, name?: string): AttributeOperand {
+function classifyAttributeOperand(source: string, start: number,
+  { tag, name, framing = false }: { tag?: string; name?: string; framing?: boolean } = {}): AttributeOperand {
   if (source[start] === '"') return { kind: "quoted", end: start };
   let end = start;
   let references = 0;
@@ -139,10 +140,10 @@ function classifyAttributeOperand(source: string, start: number, tag?: string, n
       const legacy = source.startsWith("#{", end);
       const reference = scan_part_reference(source, end);
       if (reference === undefined) {
-        // Recovery bounds only, never a second reference parser. Do not consume
-        // a following attribute or element closer while reporting the operand.
+        // Admission measures the rejected operand for diagnostics. Framing
+        // stops at the failed sigil so the enclosing walk sees its delimiters.
         let quotedKey = false;
-        while (end < source.length) {
+        while (!framing && end < source.length) {
           const recoveryChar = source[end]!;
           if (quotedKey) {
             if (recoveryChar === "\\") { end = Math.min(end + 2, source.length); continue; }
@@ -166,7 +167,7 @@ function classifyAttributeOperand(source: string, start: number, tag?: string, n
       continue;
     }
     if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || /[<>"'`«»\[\]]/.test(ch)
-      || source.startsWith("/>", end) || references > 0 && source.startsWith("//", end)) break;
+      || source.startsWith("/>", end) || (framing || references > 0) && source.startsWith("//", end)) break;
     end++;
   }
   const text = source.slice(start, end);
@@ -215,6 +216,18 @@ export function tokenize_hson(
   }
 
   return new HsonScanner(hson, depth, collector, templateSlots, interpolationMode, substitutions, editorMode).scan();
+}
+
+/** Editor-only framing. A closed element may still fail its own parse. */
+export function completed_hson_element_ranges(source: string, slots: readonly HsonTemplateSlot[]) {
+  const ranges: { start: number; end: number }[] = [];
+  const scanner = new HsonScanner(source, 0, undefined, slots, "document", slots.map(() => ""));
+  try {
+    scanner.scan((start, end) => ranges.push({ start, end }));
+  } catch {
+    // Without a scanner-proven closer the remaining source has unknown nesting.
+  }
+  return ranges;
 }
 
 /** Explicit authored document-Library context; ordinary scanners retain their grammar. @internal */
@@ -548,9 +561,10 @@ class HsonScanner {
     this.collector.completionSlot(kind, { start: boundary, end: this.index });
   }
 
-  public scan(): Tokens[] {
+  public scan(onElementRange?: (start: number, end: number) => void): Tokens[] {
+    const framing = onElementRange !== undefined;
     while (true) {
-      this.skipTrivia();
+      this.skipTrivia(framing);
       // A data checkpoint belongs to one root value. Trailing roots cannot
       // contribute discriminator facts at the same logical paths.
       if (this.editorCheckpoint !== undefined && this.editorMode === "data" && this.tokens.length > 0) return this.tokens;
@@ -565,7 +579,13 @@ class HsonScanner {
       }
 
       const ch = this.peek();
-      if (ch === "<") {
+      if (onElementRange && (ch === "<" || ch === "[" || ch === "«" || ch === '"' || ch === "'")) {
+        const start = this.index;
+        const boundary = this.structuralBoundary(this.position(), ch);
+        if (boundary.kind === CLOSE_KIND.elem) onElementRange(start, boundary.end);
+        while (this.nextSlot < this.templateSlots.length && this.templateSlots[this.nextSlot]!.offset < boundary.end) this.nextSlot++;
+        while (this.index < boundary.end) this.consume();
+      } else if (ch === "<") {
         this.scanAngle(this.initialDepth);
       } else if (ch === "«" || ch === "[") {
         this.scanArray(this.initialDepth);
@@ -584,6 +604,10 @@ class HsonScanner {
         );
       } else if (ch === "`") {
         this.rejectLegacyBacktick();
+      } else if (framing && (ch === "/" || ch === "," || ch === "=")) {
+        // Stray separators carry no nesting at the top level. skipTrivia
+        // already checked the slash for a literal comment opener.
+        this.consume();
       } else if (ch === ">" || ch === "/" || ch === "]" || ch === "»") {
         this.fail(
           this.tokens.length === 0
@@ -595,6 +619,9 @@ class HsonScanner {
       } else {
         const pos = this.position();
         const raw = this.scanBareToken();
+        // A top-level bare token ends at trivia, a delimiter, a slot or EOF.
+        // Its spelling matters to admission, but cannot change nesting.
+        if (framing) continue;
         this.bareValueCheckpoint(pos.index, raw);
         if (!isPrimitiveLiteral(raw)) {
           const numericDefect = classifyNumberDefect(raw);
@@ -1431,7 +1458,7 @@ class HsonScanner {
       this.rejectLegacyBacktick();
     }
 
-    const operand = classifyAttributeOperand(this.source, this.index, tag, name);
+    const operand = classifyAttributeOperand(this.source, this.index, { tag, name });
     if (!startsWithSlot && operand.kind === "quoted") {
       const valueStart = this.position();
       const kind = tag.toLowerCase() === "hson-part" ? part_argument_name(name)?.kind : undefined;
@@ -1833,10 +1860,22 @@ class HsonScanner {
 
   /** Discover this angle's matching closer without changing the source cursor. */
   private classifyAngleCloser(openPos: Position): CloseKind {
-    const stack: Array<"<" | "[" | "«"> = ["<"];
+    return this.structuralBoundary(openPos).kind;
+  }
+
+  private structuralBoundary(openPos: Position): { kind: CloseKind; end: number };
+  private structuralBoundary(openPos: Position, opener: "<" | "[" | "«" | '"' | "'"): { kind: CloseKind | "string" | "array"; end: number };
+  private structuralBoundary(openPos: Position, opener?: "<" | "[" | "«" | '"' | "'") {
+    // Admission classifies an angle. Framing can also enter this same walk
+    // at a top-level quote or array, without decoding its contents.
+    const framing = opener !== undefined;
+    const stack: Array<"<" | "[" | "«"> = [];
+    let quoted: '"' | "'" | undefined;
+    if (opener === '"' || opener === "'") quoted = opener;
+    else stack.push(opener ?? "<");
     let cursor = this.index + 1;
-    let quoted: `"` | "'" | undefined;
-    let quoteStart = -1;
+    let slotIndex = this.nextSlot;
+    let quoteStart = this.index;
     let quoteAttribute = false;
     let quoteMultiline = false;
     let expectAttributeValue = false;
@@ -1844,11 +1883,14 @@ class HsonScanner {
 
     while (cursor < this.source.length) {
       const ch = this.source[cursor];
-      const next = this.source[cursor + 1];
+      if (framing) {
+        while (slotIndex < this.templateSlots.length && this.templateSlots[slotIndex]!.offset <= cursor) slotIndex++;
+      }
+      const next = framing ? this.literalNext(cursor, slotIndex) : this.source[cursor + 1];
 
       if (quoted !== undefined) {
         if (ch === "\\") {
-          if (cursor + 1 >= this.source.length || next.charCodeAt(0) < 0x20) {
+          if (!framing && (next === undefined || next.charCodeAt(0) < 0x20)) {
             this.fail(
               quoted === `"`
                 ? `[invalid-json-escape] invalid escape termination in quoted Hson string`
@@ -1857,11 +1899,15 @@ class HsonScanner {
               quoted === `"` ? "invalid-json-escape" : "invalid-name-escape",
             );
           }
-          cursor += 2;
+          // Even an invalid escape stays inside the quote. A slot or EOF
+          // ends the literal escape before it can consume a following quote.
+          cursor += next === undefined ? 1 : 2;
           continue;
         }
         if (ch === "\n" || ch === "\r") quoteMultiline = true;
-        if (ch.charCodeAt(0) < 0x20 && (quoted !== `"` || quoteAttribute || !["\n", "\r", "\t"].includes(ch))) {
+        // A forbidden control character does not end a quote. Framing still
+        // requires its literal closing quote and the enclosing angle closer.
+        if (!framing && ch.charCodeAt(0) < 0x20 && (quoted !== `"` || quoteAttribute || !["\n", "\r", "\t"].includes(ch))) {
           this.fail(
             quoted === `"`
               ? `unescaped control character in quoted Hson string`
@@ -1871,6 +1917,7 @@ class HsonScanner {
           );
         }
         if (ch === quoted) {
+          if (stack.length === 0) return { kind: "string", end: cursor + 1 };
           quoted = undefined;
           quoteStart = -1;
         }
@@ -1884,7 +1931,7 @@ class HsonScanner {
 
       const startsAttributeQuote = expectAttributeValue;
       if (expectAttributeValue) {
-        if (isHsonTrivia(ch)) {
+        if (isHsonTrivia(ch) || framing && isUnsupportedWhitespace(ch)) {
           cursor += 1;
           continue;
         }
@@ -1902,12 +1949,16 @@ class HsonScanner {
           }
           continue;
         }
-        if (ch === "/" && next === ">") {
+        if (ch === "/" && (next === ">" || framing && next === "*")) {
           expectAttributeValue = false;
         } else if (ch !== `"` && ch !== "'" && ch !== "<" && ch !== ">") {
           expectAttributeValue = false;
-          const operand = classifyAttributeOperand(this.source, cursor);
-          if (operand.kind === "invalid" && operand.code === "HSON_PART_REFERENCE_INVALID"
+          // The operand lookahead recognizes reference sigils, quoted keys
+          // and escapes. Keep those searches within one literal segment.
+          const slotOffset = framing ? this.templateSlots[slotIndex]?.offset : undefined;
+          const segment = slotOffset === undefined ? this.source : this.source.slice(0, slotOffset);
+          const operand = classifyAttributeOperand(segment, cursor, { framing });
+          if (!framing && operand.kind === "invalid" && operand.code === "HSON_PART_REFERENCE_INVALID"
             && !this.templateSlots.some(slot => slot.offset >= cursor && slot.offset <= operand.end)) {
             invalidReference ??= { start: cursor, operand };
           }
@@ -1943,7 +1994,7 @@ class HsonScanner {
         );
       }
 
-      if (isUnsupportedWhitespace(ch)) {
+      if (!framing && isUnsupportedWhitespace(ch)) {
         this.fail(
           `unsupported whitespace character U+${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}`,
           this.positionAt(cursor),
@@ -1951,7 +2002,7 @@ class HsonScanner {
         );
       }
 
-      if (ch === "/" && next !== ">" && stack.at(-1) === "<") {
+      if (!framing && ch === "/" && next !== ">" && stack.at(-1) === "<") {
         let afterSlash = cursor + 1;
         while (afterSlash < this.source.length && isHsonTrivia(this.source[afterSlash])) afterSlash += 1;
         if (this.source[afterSlash] === ">") {
@@ -1988,24 +2039,26 @@ class HsonScanner {
       if (ch === "/" && next === ">" && stack.at(-1) === "<") {
         expectAttributeValue = false;
         stack.pop();
-        if (stack.length === 0) return CLOSE_KIND.elem;
+        if (stack.length === 0) return { kind: CLOSE_KIND.elem, end: cursor + 2 };
         cursor += 2;
         continue;
       }
       if (ch === ">" && stack.at(-1) === "<") {
         expectAttributeValue = false;
         stack.pop();
-        if (stack.length === 0) return CLOSE_KIND.obj;
+        if (stack.length === 0) return { kind: CLOSE_KIND.obj, end: cursor + 1 };
         cursor += 1;
         continue;
       }
       if (ch === "]" && stack.at(-1) === "[") {
         stack.pop();
+        if (stack.length === 0) return { kind: "array", end: cursor + 1 };
         cursor += 1;
         continue;
       }
       if (ch === "»" && stack.at(-1) === "«") {
         stack.pop();
+        if (stack.length === 0) return { kind: "array", end: cursor + 1 };
         cursor += 1;
         continue;
       }
@@ -2030,10 +2083,11 @@ class HsonScanner {
     this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
   }
 
-  private skipTrivia(): boolean {
+  private skipTrivia(framing = false): boolean {
     const start = this.index;
     while (true) {
-      while (this.slotHere() === undefined && !this.atEnd() && isHsonTrivia(this.peek())) this.consume();
+      while (this.slotHere() === undefined && !this.atEnd()
+        && (isHsonTrivia(this.peek()) || framing && isUnsupportedWhitespace(this.peek()))) this.consume();
       if (this.slotHere() !== undefined) return this.index !== start;
       if (isUnsupportedWhitespace(this.peek())) {
         const ch = this.peek();
@@ -2043,26 +2097,29 @@ class HsonScanner {
           "HSON_UNSUPPORTED_WHITESPACE",
         );
       }
-      if (this.startsWith("/*")) {
+      const afterSlash = framing ? this.literalNext(this.index, this.nextSlot) : this.peek(1);
+      if (this.peek() !== "/") return this.index !== start;
+      if (afterSlash === "*") {
         this.fail(
           `block comments are not supported in authored Hson`,
           this.position(),
           "HSON_BLOCK_COMMENT_UNSUPPORTED",
         );
       }
-      if (!this.startsWith("//")) return this.index !== start;
+      if (afterSlash !== "/") return this.index !== start;
 
       const commentStart = this.index;
       this.consumeExpected("/");
       this.consumeExpected("/");
-      while (!this.atEnd() && !this.isNewline()) {
+      while (true) {
         if (this.slotHere() !== undefined) {
+          if (framing) { this.nextSlot++; continue; }
           if (this.recoverRejectedSlots()) continue;
           this.rejectSlot("a comment");
         }
+        if (this.atEnd() || this.isNewline()) break;
         this.consume();
       }
-      if (this.slotHere() !== undefined && !this.recoverRejectedSlots()) this.rejectSlot("a comment");
       if (this.atEnd() || this.editorCursor !== undefined && this.editorCursor >= commentStart && this.editorCursor <= this.index) this.editorCommentEof = true;
       if (!this.atEnd()) this.consume();
     }
@@ -2130,6 +2187,12 @@ class HsonScanner {
 
   private peek(offset = 0): string {
     return this.source[this.index + offset] ?? "";
+  }
+
+  /** Lookahead within the current literal segment. */
+  private literalNext(index: number, nextSlot: number): string | undefined {
+    const next = index + 1;
+    return this.templateSlots[nextSlot]?.offset === next ? undefined : this.source[next];
   }
 
   private startsWith(text: string): boolean {

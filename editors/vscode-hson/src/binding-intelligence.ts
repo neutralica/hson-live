@@ -1,8 +1,10 @@
 import { create_hson_source_program, discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
-import { hson_interpolation_roles, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { completed_hson_element_ranges, hson_interpolation_roles, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { analyze_part_definition } from "../../../src/internal/part-definition.js";
+import { is_ordinary_element_node } from "../../../src/core/node-guards.js";
+import { PART_DECLARATION } from "../../../src/internal/part-placeholder.js";
 import { project_part_bindings, parse_part_binding_source, type PartBindingSources, type PartBindingDeclaration } from "../../../src/internal/editor-introspection/part-bindings.js";
 import type { PartSourceLocation } from "../../../src/internal/hson-schema/part-source.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
@@ -16,15 +18,32 @@ export type BindingSnapshot = Readonly<{
   tags?: ReturnType<typeof discover_hson_tagged_templates>;
   calls?: ReturnType<typeof discover_static_from_hson_sources>;
 }>;
-const empty: PartBindingSources = { declarations: [], references: [] };
 function standalone(source: string, map: (range: { start: number; end: number }) => PartSourceLocation | undefined,
   slots: readonly HsonTemplateSlot[] = []): PartBindingSources {
-  try {
-    if (slots.length && !hson_interpolation_roles(source, "document", slots).every(role => role === "quoted-string")) return empty;
-    const { root, provenance } = parse_part_binding_source(source, slots);
-    const analysis = analyze_part_definition(root, () => {});
-    return project_part_bindings(root, analysis, provenance, source, map).sources;
-  } catch { return empty; } // Incomplete/unavailable authoring retains TextMate's lexical fallback.
+  const parts: PartBindingSources[] = [];
+  let nextSlot = 0;
+  for (const { start, end } of completed_hson_element_ranges(source, slots)) {
+    // Slots at the edges are siblings. The scanner takes substitution indices
+    // relative to the supplied list, while the host map takes region offsets.
+    while (nextSlot < slots.length && slots[nextSlot]!.offset <= start) nextSlot++;
+    const localSlots: HsonTemplateSlot[] = [];
+    while (nextSlot < slots.length && slots[nextSlot]!.offset < end) {
+      localSlots.push({ offset: slots[nextSlot++]!.offset - start, substitution: localSlots.length });
+    }
+    const element = source.slice(start, end);
+    try {
+      if (localSlots.length && !hson_interpolation_roles(element, "document", localSlots).every(role => role === "quoted-string")) continue;
+      const { root, provenance } = parse_part_binding_source(element, localSlots);
+      const node = root.$_content[0];
+      if (root.$_content.length !== 1 || !is_ordinary_element_node(node) || !Object.hasOwn(node.$_attrs ?? {}, PART_DECLARATION)) continue;
+      const analysis = analyze_part_definition(root, () => {});
+      parts.push(project_part_bindings(root, analysis, provenance, element, range =>
+        map({ start: start + range.start, end: start + range.end })).sources);
+    } catch {
+      // A framed but invalid element retains lexical highlighting.
+    }
+  }
+  return { declarations: parts.flatMap(part => part.declarations), references: parts.flatMap(part => part.references) };
 }
 
 /** One bounded document-version snapshot shared by highlighting and navigation.

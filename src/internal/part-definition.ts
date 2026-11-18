@@ -9,15 +9,27 @@ import { fail_part_event_binding, fail_part_event_reference, part_event_attachme
 import { copy_event_attachments, event_attachment_position } from "../core/authored-event-names.js";
 import { PART_DECLARATION, PART_OPTIONAL, PART_LOCAL_REFERENCE_MIGRATION, part_declaration_issue, part_direction_issue, part_argument_name, is_part_scalar_argument, is_part_scalar_qualifier, part_optional_issue, is_part_iterator_attribute, part_node_iterator, is_part_receiving_attribute, part_receiving_declaration, has_part_reference, part_structural_reference, part_reference_text, part_placeholder_placement_issue, whole_part_reference, part_placeholder_matches, type PartArgumentKind, type PartScalarQualifier, type PartReference, type PartReceivingDeclaration, type PartIteratorDeclaration } from "./part-placeholder.js";
 
+function receiving_declarations(element: HsonNode | undefined): PartReceivingDeclaration[] {
+  if (element === undefined) return [];
+  return Object.entries(element.$_attrs ?? {}).filter(([name]) => is_part_receiving_attribute(element.$_tag, name))
+    .map(([name, value]) => part_receiving_declaration(name, value));
+}
+
+function register_receiving_name(seen: Set<string>, name: string): string | undefined {
+  if (seen.has(name)) return `Conflicting Part local binding ${JSON.stringify(name)}.`;
+  seen.add(name);
+}
+
 /** Part admission validates flags and receiving contracts even for definitions never invoked. */
 export function validate_part_definition_flags(root: HsonNode, events?: PartEvents): void {
   const element = root.$_content[0];
   if (!is_ordinary_element_node(element) || !Object.hasOwn(element.$_attrs ?? {}, PART_DECLARATION)) {
     throw new TypeError("Part definition root requires the hson:part flag.");
   }
-  // Validate the receiving contract even when this member is never invoked.
-  for (const [name, value] of Object.entries(element.$_attrs ?? {})) {
-    if (is_part_receiving_attribute(element.$_tag, name)) part_receiving_declaration(name, value);
+  const names = new Set<string>();
+  for (const declaration of receiving_declarations(element)) {
+    const conflict = register_receiving_name(names, declaration.name);
+    if (conflict !== undefined) throw new TypeError(conflict);
   }
   const stack = [root];
   while (stack.length) {
@@ -56,8 +68,7 @@ export function transform_part_parameter_strings(root: HsonNode,
     scalarArgument?: (value: unknown, node: HsonNode, kind: PartScalarQualifier, attribute: string) => void;
   }>): void {
   const element = root.$_tag === ROOT_TAG && root.$_content.length === 1 && is_Node(root.$_content[0]) ? root.$_content[0] : undefined;
-  const declarations = Object.entries(element?.$_attrs ?? {}).filter(([name]) => element !== undefined && is_part_receiving_attribute(element.$_tag, name))
-    .map(([name, value]) => part_receiving_declaration(name, value));
+  const declarations = receiving_declarations(element);
   receiving?.(declarations);
   const stack: { node: HsonNode; owner: HsonNode; parent?: HsonNode; leaving?: boolean }[] = [{ node: root, owner: root }];
   while (stack.length) {
@@ -187,6 +198,7 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   let execution: readonly HsonNode[] = [];
   const outerExecution = new Map<HsonNode, readonly HsonNode[]>();
   let locals = new Map<string, PartLocalDeclaration>();
+  const ambiguousReceiving = new Set<string>();
   const previous = new Map<HsonNode, Map<string, PartLocalDeclaration>>();
   const issue = (node: HsonNode, message: string, attribute?: string, use?: PartReferenceUse, eventInput?: PartEventReference,
     conflictingEventLocal?: PartLocalDeclaration): void => {
@@ -205,23 +217,27 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
     parameters.set(name, kind);
   };
   const observe = (reference: PartReference, node: HsonNode, context: PartReferenceUse["context"] = "value", supply?: PartReceivingDeclaration["kind"], attribute?: string, eventInput?: PartEventReference, conditional?: true, eventArgument?: AuthoredEventArgument) => {
-    const declared = reference.namespace === "incoming" ? parameters.get(reference.name) : undefined;
-    const incomingScalar = is_part_scalar_qualifier(declared)
-      ? receiving.find(local => local.receiving.reference.name === reference.name) : undefined;
-    const binding = reference.namespace === "local" ? locals.get(reference.name) : incomingScalar;
+    const incoming = reference.namespace === "incoming";
+    const receiver = incoming ? receiving.find(local =>
+      !ambiguousReceiving.has(local.name) && local.receiving.reference.name === reference.name) : undefined;
+    // Retain the recorded type for diagnostics when no eligible receiver exists.
+    const declared = incoming ? receiver?.kind ?? parameters.get(reference.name) : undefined;
+    const incomingScalar = is_part_scalar_qualifier(declared) ? receiver : undefined;
+    const binding = incoming ? incomingScalar : locals.get(reference.name);
     const use: PartReferenceUse = { reference, node, context, scope: locals, iterators: execution, ...(attribute === undefined ? {} : { attribute }), ...(binding === undefined ? {} : { binding }), ...(supply === undefined ? {} : { supply }), ...(conditional === undefined ? {} : { conditional }), ...(eventArgument === undefined ? {} : { eventArgument }) };
     uses.push(use);
-    if (reference.namespace === "incoming") {
+    if (incoming) {
       if (reference.path.length || context !== "value" && context !== "event" && !is_part_scalar_qualifier(supply)) issue(node, context === "forwarding"
         ? "Typed Part forwarding requires a declared local binding and ^{} reference."
         : "Structured Part inputs require a declared local binding and ^{} reference.", attribute, use, eventInput);
-      if (incomingScalar !== undefined) {
-        used.add(incomingScalar);
-        if (is_part_scalar_qualifier(supply) && !part_scalar_source_possible(supply, incomingScalar.kind)) {
-          issue(node, `Part :${supply} reference requires a ${supply} value; incoming ${reference.name} is declared ${incomingScalar.kind}.`, attribute, use, eventInput);
+      if (is_part_scalar_qualifier(declared)) {
+        if (binding !== undefined) used.add(binding);
+        if (is_part_scalar_qualifier(supply) && !part_scalar_source_possible(supply, declared)) {
+          issue(node, `Part :${supply} reference requires a ${supply} value; incoming ${reference.name} is declared ${declared}.`, attribute, use, eventInput);
         }
       } else add(reference.name, "scalar", node, attribute, use, eventInput);
     } else if (binding === undefined) {
+      if (ambiguousReceiving.has(reference.name)) return use; // Already diagnosed at the declarations.
       const native = eventInput === undefined ? undefined : missing_native_event_binding(reference);
       const message = native === undefined ? `Missing Part local declaration ${JSON.stringify(reference.name)}.`
         : `${native} Declare a Part local named ${JSON.stringify(reference.name)} to use a composition-time value here.`;
@@ -250,11 +266,19 @@ export function analyze_part_definition(root: HsonNode, report?: (issue: PartDef
   }, (reference, node, kind, attribute) => observe(reference, node, "forwarding", kind, attribute), declarations => {
     const node = root.$_content[0];
     if (!is_Node(node)) return;
+    const names = new Set<string>();
     for (const declaration of declarations) {
       const attribute = `${declaration.kind}:${declaration.name}`;
-      if (locals.has(declaration.name)) issue(node, `Conflicting Part local binding ${JSON.stringify(declaration.name)}.`, attribute);
       const local: PartReceivingLocal = { name: declaration.name, kind: declaration.kind, node, receiving: declaration };
-      locals.set(local.name, local); receiving.push(local); add(declaration.reference.name, declaration.kind, node, attribute);
+      const conflict = register_receiving_name(names, local.name);
+      if (conflict !== undefined) {
+        issue(node, conflict, attribute);
+        // A reporting consumer retains each receiving contract, but neither
+        // declaration owns the local. Descendant iterators may still shadow it.
+        locals.delete(local.name);
+        ambiguousReceiving.add(local.name);
+      } else locals.set(local.name, local);
+      receiving.push(local); add(declaration.reference.name, declaration.kind, node, attribute);
     }
   }, {
     inspect: true,

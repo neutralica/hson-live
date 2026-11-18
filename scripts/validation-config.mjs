@@ -240,7 +240,7 @@ const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","d7b0145cd
 
 export const declaredExecution = Object.freeze({
   "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "8d9b41fb67dfbd4b33968b9e0a19fb53e7419dc78de34e69804246f1b51f9882", route: "Two awaited isolated VS Code launches execute the build-tests appearance.ts bundle. Default uses extensionTestsPath; --scratchpads selects the startup driver, passes real workspace Memento, awaits run() across native restarts and requires both result files to report success. The second process reuses the temporary profile without hot-exit backups.",
-    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","a2f8d28fa380d278aef0baba56f81ce69b037ced0ffe39a3461a4bb6b2eda6c1"]] },
+    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","ade3f55bf715e86b56b3c4c6153e55663d7df13f00cb32ff66885beb7a8aec6d"]] },
   "tests/livemap-graph-mutations.acceptance.mts": { sha256: "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341", route: workerRoute,
     targets: [["tests/fixtures/livemap-graph-mutations.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/livemap-graph-reads.acceptance.mts": { sha256: "e458b4ecea665f09b1ef32a9ba459dfc7be7421871f9e77445bab826485ed2c3", route: workerRoute,
@@ -327,7 +327,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/hson-schema-any.worker.mts","worker-launch"]], sources: [...workerSources] },
   "tests/html-source-producer.acceptance.mts": { sha256: "1d47248165874a9f6aa490f83a3c1477751371b2377b01e1dac4b5b6109fdf0f", route: "Top-level awaited check invokes the actual source-loaded Worker callback and awaits its result.",
     targets: [["tests/fixtures/html-source-producer.worker.mts","worker-launch"]], sources: [...workerSources] },
-  "tests/hson-tokenizer.acceptance.mts": { sha256: "bfbf23c7aefa0f19b5af5546b22d0314f5eeef207136e199ac78e3e26043496f", route: workerRoute,
+  "tests/hson-tokenizer.acceptance.mts": { sha256: "1a820dec0838d1644f6b47f8525c1ddd26d5c1cfd5ca0e07e5415104c0fbf4ca", route: workerRoute,
     targets: [["tests/fixtures/hson-attribute-quoting.worker.mts","worker-launch"]], sources: [...workerSources] },
   "tests/inline-style.acceptance.mts": { sha256: "173af7468d9da2fd1301f1299d59e047b0642576393944c7d995088d30278103", route: workerRoute,
     targets: [["tests/fixtures/inline-style.worker.mts","worker-launch"]], sources: [...workerSources] },

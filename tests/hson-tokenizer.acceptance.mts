@@ -8,7 +8,8 @@ import { parse_tokens } from "../src/api/transform/parsers/parse-tokens.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { split_attrs_meta } from "../src/api/transform/utils/hson-utils/split-attrs-meta.ts";
-import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { completed_hson_element_ranges, scan_hson_template_segments, tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { encode_persisted_quid, is_persisted_quid } from "../src/core/persisted-quid.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { JsonValue } from "../src/core/types.ts";
@@ -44,6 +45,184 @@ function check(name: string, fn: () => void): void {
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
+
+check("editor framing retains closed roots through malformed quotes without admitting them", () => {
+  const first = '<main hson:part data:x=%{x} <p title=^{x}/>/>', last = '<main hson:part "😀"/>';
+  const broken = '<aside title="a\r\nb <fake/> 😀"/>';
+  const secondBroken = '<aside title="c\nd"/>';
+  const trivia = '\r\n// 😀 <ignored/>\r\n';
+  const unfinished = '<aside title="unterminated <fake/>';
+  const source = [first, broken, secondBroken, last, unfinished, first].join(trivia);
+  assert.deepEqual(completed_hson_element_ranges(source, []), [first, broken, secondBroken, last].map(root => {
+    const start = source.indexOf(root);
+    return { start, end: start + root.length };
+  }));
+  const newline = source.indexOf('\r\n', source.indexOf(broken));
+  assert.throws(() => tokenize_hson(source), (error: TransformError) =>
+    error.code === "HSON_STRING_CONTROL_UNESCAPED" && error.source?.index === newline);
+  assert.deepEqual(completed_hson_element_ranges(unfinished + trivia + first, []), []);
+});
+
+check("escaped controls retain quote state until a literal quote and closer", () => {
+  const first = '<header "😀"/>', part = '<main hson:part data:x=%{x} <p title=^{x}/>/>';
+  const trivia = '\r\n// <ignored/>\r\n';
+  for (const quote of ['"', "'"]) {
+    const open = quote === '"' ? '<aside title="' : "<'aside";
+    for (let code = 0; code < 0x20; code++) {
+      const escape = '\\' + String.fromCharCode(code);
+      const unfinished = open + 'a' + escape + 'b\\' + quote + '/> <decoy/>';
+      const bad = unfinished + quote + '/>';
+      const start = first.length + trivia.length, next = start + bad.length + trivia.length;
+      assert.deepEqual(completed_hson_element_ranges([first, bad, part].join(trivia), []), [
+        { start: 0, end: first.length }, { start, end: start + bad.length }, { start: next, end: next + part.length },
+      ]);
+      assert.throws(() => tokenize_hson(bad), (error: TransformError) =>
+        error.code === (quote === '"' ? "invalid-json-escape" : "invalid-name-escape")
+        && error.source?.index === open.length + 1);
+      for (const trailing of [unfinished, unfinished + quote]) {
+        assert.deepEqual(completed_hson_element_ranges([first, trailing, part].join(trivia), []),
+          [{ start: 0, end: first.length }]);
+      }
+    }
+  }
+  const broken = '<aside title="a\nb' + '\\' + '\nc"/>';
+  assert.deepEqual(completed_hson_element_ranges(broken + part, []), [
+    { start: 0, end: broken.length }, { start: broken.length, end: broken.length + part.length },
+  ]);
+  assert.throws(() => tokenize_hson(broken + part), (error: TransformError) =>
+    error.code === "HSON_STRING_CONTROL_UNESCAPED" && error.source?.index === broken.indexOf('\n'));
+});
+
+check("top-level bare tokens stop at lexical boundaries and never promote nested elements", () => {
+  const first = '<header "😀"/>', part = '<main hson:part/>', trivia = '\r\n// <ignored/>\r\n';
+  for (const [bare, code] of [
+    ['note', 'HSON_TRAILING_SOURCE'], ['*', 'HSON_TRAILING_SOURCE'],
+    ['01', 'HSON_NUMBER_LEADING_ZERO'], ['1e999', 'HSON_NUMBER_NONFINITE'],
+    [',', 'HSON_TOKENIZATION_ERROR'], ['=', 'HSON_TOKENIZATION_ERROR'], ['\u00a0', 'HSON_UNSUPPORTED_WHITESPACE'],
+  ] as const) {
+    const prefix = first + trivia + bare;
+    assert.deepEqual(completed_hson_element_ranges(prefix + part, []), [
+      { start: 0, end: first.length }, { start: prefix.length, end: prefix.length + part.length },
+    ]);
+    assert.throws(() => tokenize_hson(prefix + part), { code });
+    for (const suffix of ['"' + part, '<aside ' + part, '[' + part, '>' + part]) {
+      assert.deepEqual(completed_hson_element_ranges(prefix + suffix, []), [{ start: 0, end: first.length }]);
+    }
+  }
+});
+
+check("editor framing recognizes delimiters only within a literal template segment", () => {
+  const part = '<main hson:part data:x=%{x} <p title=^{x}/>/>', child = Hson.document`<b/>`;
+  const ranges = (raw: readonly string[], expected: readonly string[]) => {
+    const { source, slots } = scan_hson_template_segments(raw, Array(raw.length - 1).fill(child));
+    let search = 0;
+    assert.deepEqual(completed_hson_element_ranges(source, slots), expected.map(root => {
+      const start = source.indexOf(root, search);
+      search = start + root.length;
+      return { start, end: search };
+    }));
+  };
+  ranges([part + '<aside /', '>\r\n' + part], [part, part]);
+  assert.throws(() => Hson.document`<aside /${child}>`, { code: "HSON_INTERPOLATION_POSITION_INVALID" });
+  ranges(['<aside /', '/ <small/>/>' + part], ['<aside // <small/>/>', part]);
+  ranges(['<aside title=', '/','/ <small/>/>' + part], ['<aside title=// <small/>/>', part]);
+  ranges(['/', '/' + part], [part]);
+  ranges([part + '/', '/ note ' + part], [part, part]);
+  ranges([part + '/', '*' + part], [part, part]);
+  ranges(['// note <ignored/>\r\n' + part], [part]);
+  ranges([part + '/* note ' + part], [part]);
+  ranges(['no', 'te' + part], [part]);
+  ranges(['', part, ''], [part]);
+  assert.throws(() => Hson.document`/${child}/ note <main hson:part/>`, { code: "HSON_INTERPOLATION_POSITION_INVALID" });
+  assert.throws(() => Hson.document`/${child}*<main hson:part/>`, { code: "HSON_BLOCK_COMMENT_UNSUPPORTED" });
+  ranges(['<aside /', '* <small/>/>' + part], ['<aside /* <small/>/>', part]);
+
+  ranges(['<aside ', '/>// <ignored/>\r\n', part], ['<aside />', part]);
+  assert.equal(Hson.document`<aside ${child}/>// <ignored/>
+${child}<p/>`, '<aside\n  <b/>\n/>\n<b/>\n<p/>');
+
+  // A split escape must not mask the following literal quote and closer.
+  ranges(['<aside title="a\\', '"/>' + part], ['<aside title="a\\"/>', part]);
+  // A quoted key spanning a slot still shields apparent tag syntax inside it.
+  ranges(['<aside title=^{x["a', ' <fake/>"]}/>' + part], ['<aside title=^{x["a <fake/>"]}/>', part]);
+});
+
+check("invalid operand diagnostics never set the editor's structural cursor", () => {
+  const part = '<main hson:part data:x=%{x} <p title=^{x}/>/>', earlier = '<header "😀"/>';
+  const original = "<aside a=^{bad'/> " + part + " '/>" + part;
+  assert.deepEqual(completed_hson_element_ranges(original, []), [{ start: 0, end: 67 }, { start: 67, end: 112 }]);
+  expect_transform_error(original, 'HSON_PART_REFERENCE_INVALID', { index: 9, line: 1, column: 10 });
+  for (const [open, close] of [
+    ["^{bad'/> \\' ", "'"], ['%{bad"/> \\" ', '"'], ['#{bad[/> ', ']'],
+    ['^{bad«/> ', '»'], ['^{good}^{bad[«[/> ', ']»]'],
+    ['^{bad["escaped \\" /> ', '"]'], ["^{bad['outer [ /> ", "']"],
+  ]) {
+    const prefix = earlier + '\r\n<aside a=' + open + part;
+    const end = prefix.length + close.length + 2;
+    assert.deepEqual(completed_hson_element_ranges(prefix + close + '/>' + part, []), [
+      { start: 0, end: earlier.length }, { start: earlier.length + 2, end }, { start: end, end: end + part.length },
+    ], open);
+    assert.deepEqual(completed_hson_element_ranges(prefix + '/>' + part, []), [{ start: 0, end: earlier.length }], open);
+  }
+  // A failed reference can start *inside* a square enclosure. Its closing
+  // bracket must return ownership of the next /> to the surrounding angle.
+  const bad = '<aside [x=^{bad]/>';
+  assert.deepEqual(completed_hson_element_ranges(bad + part, []), [
+    { start: 0, end: bad.length }, { start: bad.length, end: bad.length + part.length },
+  ]);
+  const commented = '<aside a=bare// /> ' + part + '\r\n/>';
+  assert.deepEqual(completed_hson_element_ranges(commented + part, []), [
+    { start: 0, end: commented.length }, { start: commented.length, end: commented.length + part.length },
+  ]);
+  const unsupported = '<aside a=/* /> ' + part;
+  assert.deepEqual(completed_hson_element_ranges(earlier + unsupported, []), [{ start: 0, end: earlier.length }]);
+  assert.throws(() => tokenize_hson(unsupported), { code: 'HSON_BLOCK_COMMENT_UNSUPPORTED' });
+  const selector = '<hson-part at=lib/*literal/>';
+  assert.doesNotThrow(() => tokenize_hson(selector));
+  assert.deepEqual(completed_hson_element_ranges(selector + part, []), [
+    { start: 0, end: selector.length }, { start: selector.length, end: selector.length + part.length },
+  ]);
+  const spacing = '<aside\u00a0a=\u00a0"quoted /> ' + part + '"/>';
+  assert.throws(() => tokenize_hson(spacing), { code: 'HSON_UNSUPPORTED_WHITESPACE' });
+  assert.deepEqual(completed_hson_element_ranges(spacing + part, []), [
+    { start: 0, end: spacing.length }, { start: spacing.length, end: spacing.length + part.length },
+  ]);
+});
+
+check("closed malformed content strings share quote framing with attributes", () => {
+  const part = '<main hson:part data:x=%{x} <p title=^{x}/>/>', earlier = '<header/>';
+  const malformed = '"a' + '\\' + '\n' + 'b"';
+  assert.deepEqual(completed_hson_element_ranges(malformed + part, []), [{ start: 6, end: 51 }]);
+  expect_transform_error(malformed + part, 'invalid-json-escape', { index: 2, line: 1, column: 3 });
+  for (const bad of ['\\\r\n', '\\q', '\\u12', '\u0000', '\u001f']) {
+    const open = earlier + '"😀' + bad + '\\" ' + part;
+    assert.deepEqual(completed_hson_element_ranges(open, []), [{ start: 0, end: earlier.length }]);
+    assert.deepEqual(completed_hson_element_ranges(open + '"' + part, []), [
+      { start: 0, end: earlier.length }, { start: open.length + 1, end: open.length + 1 + part.length },
+    ]);
+    const array = '[' + open.slice(earlier.length) + '"]';
+    assert.deepEqual(completed_hson_element_ranges(array + part, []), [{ start: array.length, end: array.length + part.length }]);
+  }
+});
+
+check("interpolation never completes an escape, reference key or closer across literal segments", () => {
+  const part = '<main hson:part data:x=%{x} <p title=^{x}/>/>';
+  for (const [raw, closedElement] of [
+    [['"a\\', '"' + part], false],
+    [['"a\\q', '\\" ' + part + '"', part], false],
+    [['<aside a=^', '{bad[/> ' + part + ']/>', part], true],
+    [['<aside a=^{bad[', "'/> " + part + "'", ']/>', part], true],
+    [['<aside a=^{bad["a\\', '"/> ' + part + ']/>', part], true],
+    // With a slot between / and > the outer angle closes as an object.
+    [['<aside a=^{bad[/> ', part + '] /', '>' + part], false],
+  ] as const) {
+    const {source, slots} = scan_hson_template_segments(raw, Array(raw.length - 1).fill(null));
+    const start = source.length - part.length;
+    assert.deepEqual(completed_hson_element_ranges(source, slots), [
+      ...(closedElement ? [{ start: 0, end: start }] : []), { start, end: source.length },
+    ], JSON.stringify(raw));
+  }
+});
 
 function token_summary(tokens: readonly Tokens[]) {
   return tokens.map((token) => {

@@ -86,10 +86,14 @@ export function monitor_appearance_ui(workspace, port) {
           controls: group.textContent.includes('Hson Appearance'), native: !!group.querySelector('.monaco-editor .view-lines')};
       }))`, sessionId).then(JSON.parse);
     }
-    if(request.action==='native-pick') {
+    if(request.action==='native-pick'||request.action==='cancel-name') {
       const sessionId=await workbench();
       const ready=await evaluate(`document.activeElement?.tagName==='INPUT' && !!document.activeElement.closest('.quick-input-widget')`,sessionId);
       if(!ready)throw new Error('Quick pick not ready');
+      if(request.action==='cancel-name'){
+        await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27},sessionId);
+        await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27},sessionId);return {};
+      }
       await send('Input.insertText',{text:request.label},sessionId);await pause();
       await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13},sessionId);
       await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13},sessionId);return {};
@@ -134,7 +138,7 @@ export function monitor_appearance_ui(workspace, port) {
       await send('Page.bringToFront', {}, target);
       const focused = await evaluate(`(() => {
         const node = document.getElementById(${JSON.stringify(request.control)});
-        for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;node.scrollIntoView({block:'nearest'});node.focus();
+        for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS'&&!parent.firstElementChild.contains(node))parent.open=true;node.scrollIntoView({block:'nearest'});node.focus();
         return document.activeElement === node;
       })()`, sessionId, contextId);
       if (!focused) throw new Error('Cannot focus ' + request.control);
@@ -148,20 +152,30 @@ export function monitor_appearance_ui(workspace, port) {
       return {focused};
     }
     return evaluate(`(${function (request) {
-      function reveal(node){for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;node.scrollIntoView({block:'nearest'});}
+      function reveal(node){for(let parent=node.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS'&&!parent.firstElementChild.contains(node))parent.open=true;node.scrollIntoView({block:'nearest'});}
       if(request.action==='events'){
         if(!window.appearanceEvents){window.appearanceEvents=[];for(const type of ['focus','blur','pointerdown','keydown','input','change'])document.addEventListener(type,event=>{if(event.target?.type==='color')window.appearanceEvents.push({type,key:event.key,trusted:event.isTrusted,value:event.target.value,active:document.activeElement?.id,focused:document.hasFocus()});},true);}
         return window.appearanceEvents;
       }else if(request.action==='focus'){document.getElementById(request.control).focus();
       }else if(request.action==='confirm-revert'){if(!document.getElementById('revert-dialog').open)throw new Error('Confirmation not open');document.getElementById(request.cancel?'cancel-revert':'confirm-revert').click();
+      }else if(request.action==='confirm-palette'){const dialog=document.getElementById('palette-dialog');if(!dialog.open)throw new Error('Palette confirmation not open');document.getElementById(request.cancel?'cancel-palette':'confirm-palette').click();
       }else if(request.action==='select-role'){
-        const node=document.getElementById('role-'+request.role);reveal(node);if(node.getAttribute('aria-expanded')!=='true')node.click();
+        const node=document.getElementById('role-'+request.role);reveal(node);if(node.getAttribute('aria-pressed')!=='true')node.click();
+        const advanced=document.getElementById('advanced');if(request.advanced&&advanced.getAttribute('aria-expanded')!=='true')advanced.click();
       }else if(request.action==='details'){document.getElementById(request.control).open=request.open;
       }else if(request.action==='catalog-top'){document.getElementById('catalog').scrollTop=0;
       }else if(request.action==='metrics'){
         const catalog=document.getElementById('catalog'),box=catalog.getBoundingClientRect();
         const rows=[...document.querySelectorAll('.role-row')];
         return {activeControl:document.activeElement.id,width:innerWidth,height:innerHeight,scrollWidth:document.documentElement.scrollWidth,catalogScrollWidth:catalog.scrollWidth,catalogClientWidth:catalog.clientWidth,
+          obstructedRows:rows.filter(row=>{
+            if(!row.getBoundingClientRect().height)return false;
+            const inherit=row.querySelector('.inherit-check');
+            if(inherit.scrollWidth>inherit.clientWidth+1||!inherit.querySelector('input').getBoundingClientRect().width)return true;
+            const boxes=[...row.children].map(control=>control.getBoundingClientRect());
+            return boxes.some((a,index)=>!a.width||!a.height||boxes.slice(index+1).some(b=>
+              Math.min(a.right,b.right)-Math.max(a.left,b.left)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>1));
+          }).map(row=>row.dataset.role),
           roles:rows.map(row=>row.dataset.role),editableRows:rows.filter(row=>!row.querySelector('.hex').disabled).length,visibleRows:rows.filter(row=>{const r=row.getBoundingClientRect();return r.top>=box.top&&r.bottom<=box.bottom&&r.height>0;}).length,
           firstRowTop:rows[0].getBoundingClientRect().top,headerBottom:document.querySelector('header').getBoundingClientRect().bottom,
           properties:[...document.querySelectorAll('#properties input,#properties select')].map(node=>node.id),
@@ -177,6 +191,8 @@ export function monitor_appearance_ui(workspace, port) {
           resetDisabled:document.getElementById('reset-foreground').disabled,intensityInvalid:document.getElementById('intensity').getAttribute('aria-invalid'),
           application:document.getElementById('scope-note').textContent,
           rowHeights:rows.map(row=>row.getBoundingClientRect().height),
+          contextNote:document.getElementById('context-note').textContent,
+          paletteMenuOpen:document.getElementById('management').open,saveOptionsOpen:document.getElementById('save-options').open,
           swatches:Object.fromEntries(rows.map(row=>{const swatch=row.querySelector('.swatch');return [row.dataset.role,{color:getComputedStyle(swatch).backgroundColor,hex:swatch.style.getPropertyValue('--swatch'),picker:row.querySelector('input[type=color]').value,inherit:row.querySelector('input[type=checkbox]').checked,source:row.querySelector('.from').value,acceptedSource:row.querySelector('.from').dataset.acceptedSource,sourceInvalid:row.querySelector('.from').getAttribute('aria-invalid'),disabled:row.querySelector('.from').disabled}];})),
           groupLabels:[...document.querySelectorAll('.group-heading')].map(node=>node.textContent),
           expanded:document.getElementById('inspector').hidden===false};
@@ -186,7 +202,9 @@ export function monitor_appearance_ui(workspace, port) {
         input.dispatchEvent(new Event("input", { bubbles: true })); if(!request.keepFocus&&!request.keepActive){if(input.type==='color')input.dispatchEvent(new Event('change',{bubbles:true}));input.blur();}
       } else if (request.action === "blur") {document.getElementById(request.control).blur();
       } else if (request.action === "click") {const node=document.getElementById(request.control);reveal(node);node.click();}
-      return { status: document.getElementById("status").textContent,revertDisabled:document.getElementById("revert").disabled,
+      const family=['document','data'].find(id=>document.getElementById('context-'+id).getAttribute('aria-pressed')==='true');
+      const editTarget=family?'override:'+family:document.getElementById('global-overrides').getAttribute('aria-pressed')==='true'?'override:all':document.getElementById('target').value;
+      return {editTarget, saveLabel:document.getElementById('save').textContent, sharedPressed:document.getElementById('context-hson').getAttribute('aria-pressed'), status: document.getElementById("status").textContent,revertDisabled:document.getElementById("revert").disabled,
         saved: document.getElementById("saved").getAttribute("aria-pressed"),
         error: document.getElementById("error").textContent,
         values: Object.fromEntries([...document.querySelectorAll('input,select')].map(input=>[input.id,input.value])),

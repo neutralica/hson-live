@@ -15,7 +15,7 @@ import { document_semantic_tokens, hsonSemanticLegend } from "../../src/semantic
 
 const pause = () => new Promise(resolve => setTimeout(resolve, 100));
 let sequence = 0;
-type UiState = { revertDisabled:boolean; status: string; saved: string; error: string; values: Record<string,string>; targets:{value:string;label:string}[] };
+type UiState = { saveLabel:string; sharedPressed:string; editTarget:string; revertDisabled:boolean; status: string; saved: string; error: string; values: Record<string,string>; targets:{value:string;label:string}[] };
 export async function ui<T = UiState>(workspace: string, request: Record<string, unknown>): Promise<T> {
   const id = ++sequence;
   await writeFile(join(workspace, "appearance-ui-request.json"), JSON.stringify({ ...request, id }));
@@ -25,6 +25,15 @@ export async function ui<T = UiState>(workspace: string, request: Record<string,
     await pause();
   }
   assert.fail("Rendered UI probe timed out");
+}
+export async function selectTarget(workspace: string, target: string) {
+  if (target.startsWith('palette:')) await ui(workspace,{action:'input',control:'target',value:target});
+  else await ui(workspace,{action:'click',control:target==='override:all'?'global-overrides':'context-'+target.slice(9)});
+}
+export async function namePalette(workspace: string, action: 'new'|'duplicate'|'rename', name: string) {
+  await ui(workspace,{action:'key-activate',control:action});
+  await ui(workspace,{action:'native-pick',label:name});
+  await pause();
 }
 const rgb = (hex: string) => `rgb(${[1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)).join(", ")})`;
 export async function rendered(workspace: string, document: vscode.TextDocument, label: string,
@@ -256,7 +265,7 @@ async function checkRenderedTransitions(workspace: string): Promise<void> {
     await until(state=>state.previewMode.includes(mode+' editor background')||state.editingMode===mode);
   };
   const revert = async () => {await click('revert');await ui(workspace,{action:'confirm-revert'});};
-  await input('target','override:all');
+  await selectTarget(workspace,'override:all');
   await input('from-comment.line','value.attributeString');
   await input('from-value.attributeString','comment.line');
   assert.equal((await metrics()).saveDisabled,true,'cycle alone blocks Save');
@@ -278,11 +287,11 @@ async function checkRenderedTransitions(workspace: string): Promise<void> {
   await input('inherits','');assert.equal((await metrics()).inputInvalid,'true','source correction retains hex validation');
   await click('reset-foreground');assert.equal((await metrics()).inputInvalid,null);
   assert.equal((await metrics()).saveDisabled,false,'Reset clears rejection and retains the earlier accepted link');
-  await ui(workspace,{action:'select-role',role:'comment.line'});
+  await ui(workspace,{action:'select-role',role:'comment.line',advanced:true});
   await input('intensity','bad');
   await ui(workspace,{action:'select-role',role:'value.attributeString'});
   assert.equal((await metrics()).saveDisabled,true,'role navigation retains independent validation');
-  await ui(workspace,{action:'select-role',role:'comment.line'});
+  await ui(workspace,{action:'select-role',role:'comment.line',advanced:true});
   assert.equal((await ui(workspace,{action:'inspect'})).values.intensity,'bad','advanced rejection remains reachable');
   await input('intensity','0.5');
   await ui(workspace,{action:'select-role',role:'value.attributeString'});
@@ -449,19 +458,24 @@ export async function run(scratchpadStorage?: vscode.Memento): Promise<void> {
 async function runEditor(workspace: string, extensionPath: string): Promise<void> {
   const settingsPath=join(workspace,'.vscode/settings.json'), userPath=join(workspace,'../user/User/settings.json');
   const settings=await readFile(settingsPath,'utf8');
-  const input=async(control:string,value:string)=>{await ui(workspace,control==='role'?{action:'select-role',role:value}:{action:'input',control,value});await pause();};
+  const input=async(control:string,value:string)=>{
+    if(control==='target')await selectTarget(workspace,value);
+    else await ui(workspace,control==='role'?{action:'select-role',role:value,advanced:true}:{action:'input',control,value});
+    await pause();
+  };
   const click=async(control:string)=>{
     const state=await ui(workspace,{action:'click',control});
+    if(control==='delete'||control==='restore')await ui(workspace,{action:'confirm-palette'});
     if(control==='revert'&&!state.revertDisabled)await ui(workspace,{action:'confirm-revert'});
     if(['Document','Data','Interpolation'].includes(control)) {
       // Assignment/override coverage uses an explicit Overrides scratchpad.
       // Palette-pinned behavior is covered by the separate scratchpad suite.
-      const target=(await ui(workspace,{action:'inspect'})).values.target;
+      const target=(await ui(workspace,{action:'inspect'})).editTarget;
       const {editingMode:mode}=await ui<{editingMode:string}>(workspace,{action:'metrics'});
-      await ui(workspace,{action:'input',control:'target',value:'override:all'});
+      await selectTarget(workspace,'override:all');
       await ui(workspace,{action:'click',control:'open-scratchpad'});
-      for(let i=0;i<100&&!vscode.window.visibleTextEditors.some(editor=>editor.document.fileName.includes(`Hson ${control} - all overrides ${mode}`));i++)await pause();
-      await ui(workspace,{action:'input',control:'target',value:target});
+      for(let i=0;i<100&&!vscode.window.visibleTextEditors.some(editor=>editor.document.fileName.includes(`${control==='Interpolation'?'TS + Hson':'Hson '+control} ${mode==='dark'?'Dark':'Light'} - All Hson overrides`));i++)await pause();
+      await selectTarget(workspace,target);
     }
     await pause();
   };
@@ -479,17 +493,38 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   const layout=await ui<{x:number;y:number;width:number;height:number;controls:boolean;native:boolean}[]>(workspace,{action:'layout'});
   const left=layout.find(g=>g.controls)!,right=layout.find(g=>g.native&&g.x>left.x)!;
   assert.ok(left&&right&&left.width>=250&&right.width>=350,JSON.stringify(layout));assert.ok(Math.abs(left.y-right.y)<2&&left.x+left.width<=right.x+2);
-  const compact=await ui<{width:number;visibleRows:number;firstRowTop:number;roles:string[];properties:string[];groups:string[];groupLabels:string[];rowHeights:number[];controlsColor:string;inputColor:string}>(workspace,{action:'metrics'});
+  const compact=await ui<{width:number;visibleRows:number;firstRowTop:number;obstructedRows:string[];roles:string[];properties:string[];groups:string[];groupLabels:string[];rowHeights:number[];controlsColor:string;inputColor:string}>(workspace,{action:'metrics'});
+  assert.deepEqual(compact.obstructedRows,[],'all row controls are visible and distinct');
   assert.deepEqual([...compact.roles].sort(),Object.keys(roleCatalog).sort());assert.deepEqual(['foreground',...compact.properties],[...styleProperties]);
   assert.deepEqual(compact.groups,[...new Set(Object.keys(roleCatalog).map(id=>id.split('.')[0]))]);
   assert.equal(compact.groupLabels[0],'Tag');assert.ok(Math.max(...compact.rowHeights)<=30,'default roles fit on one compact line');assert.ok(compact.visibleRows>=12,'compact catalog exposes substantially more roles');assert.ok(compact.firstRowTop<300,'colors above the fold');
   await ui(workspace,{action:'screenshot',name:'pass2-compact'});
   const shipped=await readFile(join(extensionPath,'palettes/house.json'),'utf8');
   const metrics=()=>ui<{application:string;foreground:string;foregroundCaret:number;activeControl:string;saveDisabled:boolean;inputInvalid:string|null;intensityInvalid:string|null;resetDisabled:boolean;expanded:boolean;editingMode:string;previewMode:string;swatches:Record<string,{color:string;hex:string;picker:string;inherit:boolean;source:string;acceptedSource:string;sourceInvalid:string|null;disabled:boolean}>}>(workspace,{action:'metrics'});
+  const menuMetrics=()=>ui<{paletteMenuOpen:boolean;saveOptionsOpen:boolean;activeControl:string}>(workspace,{action:'metrics'});
+  await keyActivate('management-toggle');assert.ok((await menuMetrics()).paletteMenuOpen);
+  await ui(workspace,{action:'key',key:'Tab'});assert.equal((await menuMetrics()).activeControl,'new');
+  await ui(workspace,{action:'key',key:'Escape'});assert.equal((await menuMetrics()).activeControl,'management-toggle');
+  await keyActivate('new');await ui(workspace,{action:'cancel-name'});
+  assert.equal((await inspect()).editTarget,'palette:house');assert.equal((await metrics()).saveDisabled,true);
+  await keyActivate('save-options-toggle');assert.ok((await menuMetrics()).saveOptionsOpen);
+  await ui(workspace,{action:'key',key:'Escape'});assert.equal((await menuMetrics()).activeControl,'save-options-toggle');
+  assert.equal((await inspect()).saveLabel,'Save · User');
+  await selectTarget(workspace,'override:all');await pause();
+  assert.equal((await inspect()).sharedPressed,'false');
+  await keyActivate('context-document');
+  assert.equal((await inspect()).editTarget,'override:document');assert.equal((await inspect()).values.target,'native');
+  await keyActivate('context-hson');assert.equal((await inspect()).editTarget,'palette:house');
+  await input('filter','Tag');await keyActivate('advanced');
+  assert.equal((await metrics()).expanded,true,'Advanced opens a role in the filtered list');
+  await keyActivate('close-advanced');await input('filter','');
+  await click('role-value.attributeString');assert.equal((await metrics()).expanded,false);
   assert.match((await metrics()).application,/Not applied/);
   await input('foreground','#4c89ab');
   await click('apply');
+  await ui(workspace,{action:'details',control:'assignments',open:false});
   await rendered(workspace,scratch.document,'direct House edit without duplication',[{needle:'Attribute text',expected:rgb('#4c89ab')}]);
+  await input('filter','attribute string');await ui(workspace,{action:'screenshot',name:'live-color-controls'});await input('filter','');
   await input('foreground','#4c89ac');await click('undo');
   await keyActivate('save');
   assert.equal(config().palettes.find(p=>p.id==='house')?.roles['value.attributeString']?.dark?.foreground,'#4c89ab');
@@ -619,17 +654,22 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   assert.equal(await readFile(join(extensionPath,'palettes/house.json'),'utf8'),shipped,'Save and export never rewrite shipped source');
   await click('Document');scratch=vscode.window.visibleTextEditors.find(e=>e.document===scratch.document)!;await input('role','value.attributeString');
   await click('role-value.attributeString');
+  assert.equal((await metrics()).expanded,false,'selecting a role name leaves the inspector closed');
   await ui(workspace,{action:'details',control:'management',open:false});await ui(workspace,{action:'catalog-top'});
   await ui(workspace,{action:'screenshot',name:'direct-house-compact'});
   const baseline=await rendered(workspace,scratch.document,'saved House baseline',samples);
   const brackets=[{needle:'<section',length:1},{needle:'<h1',length:1}];
   const bracketColors=await rendered(workspace,scratch.document,'native standalone brackets',brackets);
-  await input('name','Document Palette');await click('duplicate');
+  await namePalette(workspace,'duplicate','House');
   const target=(await inspect()).values.target!,id=target.slice(8);
+  assert.ok((await inspect()).targets.some(option=>option.value===target&&option.label.includes(id)));
+  await input('target','palette:house');await input('target',target);
   assert.ok(id&&id!=='house');await input('all',id);
   assert.equal((await ui<{editableRows:number}>(workspace,{action:'metrics'})).editableRows,Object.keys(roleCatalog).length,'every catalog role can be edited');
-  await input('name','Document renamed');await click('rename');assert.equal((await inspect()).values.target,target);
-  await keyActivate('save');assert.equal(config().palettes.find(p=>p.id===id)?.id,id);assert.equal(config().palettes.find(p=>p.id===id)?.name,'Document renamed');
+  await namePalette(workspace,'rename','Document renamed');assert.equal((await inspect()).values.target,target);
+  await keyActivate('save');
+  await ui(workspace,{action:'details',control:'assignments',open:false});await click('light');await ui(workspace,{action:'catalog-top'});await ui(workspace,{action:'screenshot',name:'palette-light'});await click('dark');
+  assert.equal(config().palettes.find(p=>p.id===id)?.id,id);assert.equal(config().palettes.find(p=>p.id===id)?.name,'Document renamed');
   assert.deepEqual(JSON.parse(await readFile(userPath,'utf8'))['hson.appearance.state'],config(),'explicit User persistence');
   const savedUser=await readFile(userPath,'utf8');
   // An inline row edits its own role without opening the advanced inspector.
@@ -745,14 +785,17 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   assert.equal(await readFile(userPath,'utf8'),savedUser,'color changes do not persist');assert.equal(await readFile(settingsPath,'utf8'),settings);
   await keyActivate('revert');await rendered(workspace,scratch.document,'Revert Draft',samples.map((s,i)=>({...s,expected:baseline[i]})));
   assert.match((await inspect()).status,/All saved/);
-  // Remove the extra top-level scroll probe before testing valid Part binding resolution.
+  // Restore the original scratchpad source for the family override.
   await scratch.edit(edit=>edit.replace(new vscode.Range(scratch.document.positionAt(0),scratch.document.positionAt(scratch.document.getText().length)),original));
   await input('target','override:document');await set('part.receivingArgument','#7f9a55');
+  await click('role-part.receivingArgument');await input('filter','Receiving');
+  await ui(workspace,{action:'screenshot',name:'family-override'});await input('filter','');
+  await input('role','part.receivingArgument');
   await rendered(workspace,scratch.document,'resolved binding declaration and local root share the authored role',[
     {needle:'data:message',offset:5,length:7,expected:rgb('#7f9a55')},{needle:'^{message}',offset:2,length:7,expected:rgb('#7f9a55')}]);
   await click('reset-foreground');await click('reset-intensity');await input('target',target);
   await set('value.string','#21a2b3');
-  await input('name','Data palette');await click('new');const dataTarget=(await inspect()).values.target!,dataId=dataTarget.slice(8);
+  await namePalette(workspace,'new','Document renamed');await namePalette(workspace,'rename','HOUSE');await namePalette(workspace,'rename','Data palette');const dataTarget=(await inspect()).values.target!,dataId=dataTarget.slice(8);
   await set('value.string','#e05060');await set('element.name','#e07020');await input('data',dataId);
   const retained=scratch.document.getText();await click('Data');
   const data=vscode.window.visibleTextEditors.find(e=>e.document.isUntitled&&e.document!==scratch.document)!;
@@ -767,14 +810,17 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
     {needle:'Content text',length:12,expected:rgb('#21a2b3')},{needle:'Data text',expected:rgb('#e05060')},{needle:'true "Data text"',length:4,expected:rgb('#e07020')}]);
   const native=[{needle:'${hostValue',offset:2,length:9},{needle:'${',offset:1,length:1},{needle:'<catalog',length:1},{needle:'Hson.document',length:1}];
   const nativeBefore=await rendered(workspace,mixed.document,'native host, brackets and branding before scoped overrides',native);
-  await input('target','override:data');await set('value.string','#808080');
+  await input('target','override:data');
+  assert.equal((await inspect()).values.target,dataTarget,'Data shows its separately assigned base');
+  await click('context-hson');assert.equal((await inspect()).editTarget,dataTarget);
+  await click('context-data');await set('value.string','#808080');
   await rendered(workspace,mixed.document,'Data override does not alter Document or native owners',[
     {needle:'Data text',expected:rgb('#808080')},{needle:'Content text',length:12,expected:rgb('#21a2b3')},...native.map((s,i)=>({...s,expected:nativeBefore[i]}))]);
   await click('reset-foreground');await rendered(workspace,mixed.document,'override reset inherits selected Data palette',[{needle:'Data text',expected:rgb('#e05060')}]);
   await input('data','native');await click('saved');const nativeData=await rendered(workspace,mixed.document,'Native baseline for Data',[{needle:'Data text'}]);
   await click('draft');await rendered(workspace,mixed.document,'explicit Native family delegates',[{needle:'Data text',expected:nativeData[0]},{needle:'Content text',length:12,expected:rgb('#21a2b3')}]);
   await input('data','');await rendered(workspace,mixed.document,'family reset inherits All',[{needle:'Data text',expected:rgb('#21a2b3')}]);await input('data',dataId);
-  await input('destination','workspace');await click('save');const persisted=config();
+  await input('destination','workspace');assert.equal((await inspect()).saveLabel,'Save · Workspace');await click('save');const persisted=config();
   assert.equal(persisted.assignments.data,dataId);assert.equal(persisted.assignments.all,id);
   assert.deepEqual(JSON.parse(await readFile(settingsPath,'utf8'))['hson.appearance.state'],persisted);
   assert.equal(await readFile(userPath,'utf8'),savedUser,'Workspace save does not alter User state');
@@ -786,7 +832,7 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   await input('target','palette:house');await click('export');assert.deepEqual(JSON.parse(vscode.window.activeTextEditor!.document.getText()),{...housePalette,...paletteById(persisted,'house')},'House export preserves edited palette source');
   await input('target',dataTarget);await click('export');const exported=vscode.window.activeTextEditor!.document;
   assert.equal(exported.languageId,'json');const palette=JSON.parse(exported.getText());assert.equal(palette.id,dataId);assert.equal(palette.name,'Data palette');assert.deepEqual(palette.roles,persisted.palettes.find(p=>p.id===dataId)!.roles);assert.ok(exported.isUntitled);
-  await input('name','Disposable');await click('duplicate');const disposable=(await inspect()).values.target;await click('delete');assert.ok(!(await inspect()).targets.some(t=>t.value===disposable));
+  await namePalette(workspace,'duplicate','Disposable');const disposable=(await inspect()).values.target;await click('delete');assert.ok(!(await inspect()).targets.some(t=>t.value===disposable));
   await input('target',dataTarget);await click('delete');assert.match((await inspect()).error,/Reassign/);
   await click('revert');assert.deepEqual(config(),persisted);
   await click('Interpolation');
@@ -799,9 +845,10 @@ async function runEditor(workspace: string, extensionPath: string): Promise<void
   // Actual native editor group widths, not a simulated HTML-only viewport.
   await vscode.commands.executeCommand('vscode.setEditorLayout',{orientation:0,groups:[{size:.32},{size:.68}]});await pause();
   await ui(workspace,{action:'catalog-top'});
-  const narrow=await ui<{width:number;scrollWidth:number;visibleRows:number;catalogScrollWidth:number;catalogClientWidth:number}>(workspace,{action:'metrics'});
+  const narrow=await ui<{width:number;scrollWidth:number;visibleRows:number;catalogScrollWidth:number;catalogClientWidth:number;obstructedRows:string[]}>(workspace,{action:'metrics'});
   const narrowLayout=await ui<typeof layout>(workspace,{action:'layout'});
   assert.ok(narrow.width<compact.width&&narrow.width>=220);assert.ok(narrow.scrollWidth<=narrow.width,'no horizontal panel overflow');assert.ok(narrow.catalogScrollWidth<=narrow.catalogClientWidth,'no hidden horizontal scrolling within the role list');
+  assert.deepEqual(narrow.obstructedRows,[],'wrapping retains the checkbox, source and all edit controls');
   assert.ok(narrowLayout.some(g=>g.native&&g.width>=350));
   await ui(workspace,{action:'screenshot',name:'pass2-narrow'});
   await vscode.commands.executeCommand('workbench.action.closeSidebar');

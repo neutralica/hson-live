@@ -20,6 +20,68 @@ const signature = (document: string) => analyze_part_definition(parse_authored_d
 let groups = 0;
 function check(_name: string, run: () => void) { run(); groups++; }
 
+check("incoming reads credit only eligible receiving locals", () => {
+  for (const [attributes, duplicate] of [
+    ['str:x=%{v} str:y=%{v} num:x=%{w}', 'num:x'],
+    ['num:x=%{w} str:y=%{v} str:x=%{v}', 'str:x'],
+  ]) {
+    const document = '<p hson:part ' + attributes + ' title=%{v} alt=^{x} width=%{w}/>';
+    const issues: Array<[string | undefined, string]> = [];
+    const analysis = analyze_part_definition(parse_authored_document_library(document).root,
+      issue => issues.push([issue.attribute, issue.message]));
+    assert.deepEqual(issues, [[duplicate, 'Conflicting Part local binding "x".']]);
+    const y = analysis.receiving.find(local => local.name === 'y' && local.kind === 'str');
+    assert.ok(y);
+    assert.equal(analysis.uses.find(use => use.attribute === 'title')?.binding, y);
+    assert.deepEqual(analysis.uses.filter(use => use.binding === undefined).map(use => use.attribute), ['alt', 'width']);
+    assert.ok(analysis.used.has(y));
+    assert.equal(analysis.used.size, 1);
+    assert.equal(analysis.parameters.get('w'), 'num');
+  }
+});
+
+check("conflicting local types cannot direct an incoming read or typed forwarding", () => {
+  for (const [attributes, declarationIssues] of [
+    ['str:x=%{w} str:y=%{v} num:x=%{v}', [
+      ['num:x', 'Conflicting Part local binding "x".'], ['num:x', 'Conflicting Part input "v".'],
+    ]],
+    ['num:x=%{v} str:y=%{v} str:x=%{w}', [
+      ['str:y', 'Conflicting Part input "v".'], ['str:x', 'Conflicting Part local binding "x".'],
+    ]],
+  ] as const) {
+    for (const forwarding of ['', ' <hson-part at=leaf caption:str=%{v} size:num=%{v}/>']) {
+      const document = '<p hson:part ' + attributes + ' title=%{v} alt=^{x}' + forwarding + '/>';
+      const issues: Array<[string | undefined, string]> = [];
+      const analysis = analyze_part_definition(parse_authored_document_library(document).root,
+        issue => issues.push([issue.attribute, issue.message]));
+      const receiver = analysis.receiving.find(local => local.name === 'y' && local.kind === 'str');
+      assert.ok(receiver, document);
+      assert.deepEqual(analysis.uses.map(use => [use.attribute, use.binding]), [
+        ['title', receiver], ['alt', undefined],
+        ...(forwarding ? [['caption:str', receiver], ['size:num', receiver]] : []),
+      ], document);
+      assert.deepEqual([...analysis.used], [receiver], document);
+      assert.deepEqual(issues, [
+        ...declarationIssues,
+        ...(forwarding ? [['size:num', 'Part :num reference requires a num value; incoming v is declared str.']] : []),
+      ], document);
+    }
+  }
+});
+
+check("distinct scalar aliases for one input retain their declaration order and local identities", () => {
+  for (const [first, second] of [['left', 'right'], ['right', 'left']]) {
+    const document = `<p hson:part str:${first}=%{v} str:${second}=%{v} title=%{v} alt=^{${second}}/>`;
+    const analysis = signature(document);
+    assert.deepEqual(analysis.receiving.map(local => local.name), [first, second]);
+    assert.deepEqual(analysis.uses.map(use => use.binding), [analysis.receiving[0], analysis.receiving[1]]);
+    assert.deepEqual([...analysis.used], analysis.receiving);
+    const map = fixture(document);
+    map.addLibraries({ page: { document: map.parts.components.x.write({ v: 'shared' }) } });
+    assert.equal(map.doc.must('page').render(), complete_html('<p alt="shared" title="shared"></p>'));
+  }
+});
+
 check("write completeness uses incoming names and the immutable admitted definition", () => {
   for (const [body, kind] of [
     ['<p hson:part <b "%{content}"/>/>', 'scalar'],
