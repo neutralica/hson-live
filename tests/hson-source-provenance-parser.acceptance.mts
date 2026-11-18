@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { is_Node } from "../src/core/node-guards.ts";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
-import type { HsonNodeSourceRole } from "../src/internal/hson-source-provenance/hson-source-provenance.ts";
+import type { HsonNodeSourceRole, ParsedHsonWithProvenance } from "../src/internal/hson-source-provenance/hson-source-provenance.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -28,14 +29,58 @@ function check(name: string, body: () => void): void {
 function range(source: string, path: readonly number[], role: HsonNodeSourceRole) {
   return parse_hson_with_provenance(source).provenance.range({ kind: "node", path, role });
 }
+function assertEmptyObjectRange({ value, provenance }: ParsedHsonWithProvenance, path: readonly number[], start: number, end: number): void {
+  let node = value;
+  for (const index of path) {
+    const child = node.$_content[index];
+    assert.ok(is_Node(child));
+    node = child;
+  }
+  assert.deepEqual(node, { $_tag: "_hson_obj", $_content: [] });
+  assert.deepEqual(provenance.range({ kind: "node", path, role: "open" }), { start, end: start + 1 });
+  assert.deepEqual(provenance.range({ kind: "node", path, role: "close" }), { start: end - 1, end });
+  assert.deepEqual(provenance.range({ kind: "node", path, role: "coverage" }), { start, end });
+}
 
 check("primitive root carrier has semantic coverage", () => assert.deepEqual(range(`42`, [], "coverage"), { start: 0, end: 2 }));
 check("primitive payload has value coverage", () => assert.deepEqual(range(`42`, [0], "value"), { start: 0, end: 2 }));
 check("quoted string payload includes authored quotes", () => assert.deepEqual(range(`"a\\n"`, [0], "value"), { start: 0, end: 5 }));
 check("negative zero retains its authored value range", () => assert.deepEqual(range(`-0`, [0], "value"), { start: 0, end: 2 }));
 check("empty object owns authored delimiters", () => {
-  assert.deepEqual(range(`<>`, [], "open"), { start: 0, end: 1 });
-  assert.deepEqual(range(`<>`, [], "close"), { start: 1, end: 2 });
+  assertEmptyObjectRange(parse_hson_with_provenance("<>"), [], 0, 2);
+});
+check("a named member's empty object owns the inner delimiters", () => {
+  const parsed = parse_hson_with_provenance("<string <>>");
+  assertEmptyObjectRange(parsed, [0, 0], 8, 10);
+  assert.equal(parsed.provenance.range({ kind: "node", path: [0], role: "open" }), undefined);
+  assert.equal(parsed.provenance.range({ kind: "node", path: [0], role: "close" }), undefined);
+  assert.deepEqual(parsed.provenance.range({ kind: "node", path: [], role: "close" }), { start: 10, end: 11 });
+  assert.throws(() => parse_hson_with_provenance("<string>"), /missing its value/);
+});
+check("adjacent empty and populated members retain distinct nested object ranges", () => {
+  const parsed = parse_hson_with_provenance("<outer <empty <> full <n 1>>>");
+  assertEmptyObjectRange(parsed, [0, 0, 0, 0], 14, 16);
+  const full = [0, 0, 1, 0];
+  assert.deepEqual(parsed.provenance.range({ kind: "node", path: full, role: "open" }), { start: 22, end: 23 });
+  assert.deepEqual(parsed.provenance.range({ kind: "node", path: full, role: "close" }), { start: 26, end: 27 });
+  const scalarWrapper = [...full, 0, 0];
+  assert.deepEqual(parsed.provenance.range({ kind: "node", path: scalarWrapper, role: "coverage" }), { start: 25, end: 26 });
+  assert.equal(parsed.provenance.range({ kind: "node", path: scalarWrapper, role: "open" }), undefined);
+  assert.equal(parsed.provenance.range({ kind: "node", path: scalarWrapper, role: "close" }), undefined);
+});
+check("direct and member-valued empty objects retain their paths inside arrays", () => {
+  const parsed = parse_hson_with_provenance("[<>, <item <>>]");
+  assertEmptyObjectRange(parsed, [0, 0], 1, 3);
+  assertEmptyObjectRange(parsed, [1, 0, 0, 0], 11, 13);
+  assert.deepEqual(parsed.provenance.range({ kind: "node", path: [0], role: "coverage" }), { start: 1, end: 3 });
+  assert.equal(parsed.provenance.range({ kind: "node", path: [0], role: "open" }), undefined);
+  assert.equal(parsed.provenance.range({ kind: "node", path: [0], role: "close" }), undefined);
+});
+check("nested empty object ranges follow authored delimiters through comments and CRLF", () => {
+  const compact = "<string // before <>\r\n  <> // after <>\r\n>";
+  assertEmptyObjectRange(parse_hson_with_provenance(compact), [0, 0], 24, 26);
+  const spaced = "<string < // inside\r\n >>";
+  assertEmptyObjectRange(parse_hson_with_provenance(spaced), [0, 0], 8, 23);
 });
 check("populated object owns full coverage", () => assert.deepEqual(range(`<a 1>`, [], "coverage"), { start: 0, end: 5 }));
 check("object member has authored name but no fabricated open", () => {
@@ -67,11 +112,12 @@ check("array scalar payload owns value spelling", () => assert.deepEqual(range(`
 check("nested arrays receive physical content paths", () => assert.deepEqual(range(`[[true]]`, [0, 0], "coverage"), { start: 1, end: 7 }));
 
 check("adjacent member openers retain exact authored name, coverage and value delimiter ranges", () => {
-  for (const value of ['<id 1>', '«1»', '[1]']) {
+  for (const value of ['<>', '<id 1>', '«1»', '[1]']) {
     const source = '<content' + value + '>';
     assert.deepEqual(range(source, [0], 'name'), { start: 1, end: 8 });
     assert.deepEqual(range(source, [0], 'coverage'), { start: 1, end: source.length - 1 });
     assert.equal(range(source, [0], 'open'), undefined);
+    assert.equal(range(source, [0], 'close'), undefined);
     assert.deepEqual(range(source, [0, 0], 'open'), { start: 8, end: 9 });
     assert.deepEqual(range(source, [0, 0], 'close'), { start: source.length - 2, end: source.length - 1 });
   }

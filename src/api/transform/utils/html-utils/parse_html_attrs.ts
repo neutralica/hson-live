@@ -10,6 +10,7 @@ import {
   admit_hson_metadata_markup,
 } from "../../../../core/hson-metadata.js";
 import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
+import { define_materialized_property } from "../../../../core/projected-value-materialization.js";
 import { normalize_attr_ws } from "../attrs-utils/normalize_attrs_ws.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
 import {
@@ -226,14 +227,7 @@ export function parse_html_attrs(
     }
     admittedKeys.add(key);
 
-    // F) presence-only flags canonicalized as key="key"
-    if (isPresenceAttr(key, name, v)) {
-      (attrs as any)[key] = key;
-      continue;
-    }
-
-    // G) default: normalized user attribute value, preserving the chosen key
-    (attrs as any)[key] = normalize_attr_ws(v);
+    define_materialized_property(attrs, key, isPresenceAttr(key, name, v) ? key : normalize_attr_ws(v));
   }
 
   return {

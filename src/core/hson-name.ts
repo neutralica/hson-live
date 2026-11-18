@@ -37,6 +37,7 @@ export function is_bare_hson_name(value: string): boolean {
 export function quote_hson_name(value: string): string {
   let escaped = "";
   for (const char of value) {
+    const unit = char.charCodeAt(0);
     if (char === "\\") escaped += "\\\\";
     else if (char === "'") escaped += "\\'";
     else if (char === "\b") escaped += "\\b";
@@ -44,7 +45,10 @@ export function quote_hson_name(value: string): string {
     else if (char === "\n") escaped += "\\n";
     else if (char === "\r") escaped += "\\r";
     else if (char === "\t") escaped += "\\t";
-    else if (char.charCodeAt(0) < 0x20) escaped += `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
+    // String iteration keeps valid surrogate pairs together.
+    else if (unit < 0x20 || (char.length === 1 && unit >= 0xd800 && unit <= 0xdfff)) {
+      escaped += `\\u${unit.toString(16).padStart(4, "0")}`;
+    }
     else escaped += char;
   }
   return `'${escaped}'`;

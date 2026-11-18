@@ -128,6 +128,14 @@ check("fromNode accepts only established document boundary shapes and always roo
   }
 });
 
+check("own __proto__ attributes satisfy exact Document notation closure", () => {
+  const graph = root({ $_tag: "item", $_attrs: { ["__proto__"]: "literal" }, $_content: [] });
+  const document = Hson.document.fromNode(graph);
+  assert.equal(document, '<item __proto__="literal"/>');
+  assert.equal(Hson.document.fromHson(document), document);
+  assert.equal(canonical_hson_graph_equal(graph, Hson.document.toNode(document)), true);
+});
+
 check("data and malformed structural graphs reject document admission", () => {
   const invalid: HsonNode[] = [
     node("_hson_obj"),

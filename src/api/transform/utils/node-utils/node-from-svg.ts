@@ -15,6 +15,7 @@ import {
 import { admit_hson_metadata_markup } from "../../../../core/hson-metadata.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
 import { assert_invariants } from "../../../../core/assert-invariants.js";
+import { define_materialized_property } from "../../../../core/projected-value-materialization.js";
 import {
   assign_ingested_hson_node_quid,
   scan_ingested_hson_node_quids,
@@ -122,7 +123,7 @@ function convert_svg_element(el: Element, exactRuntimeIdentity: boolean): HsonNo
     } else if (lowerName === "xlink:href") {
       if (!hasHref) attrs.href = a.value;
     } else {
-      attrs[name] = a.value;
+      define_materialized_property(attrs, name, a.value);
     }
   }
   if (quid !== undefined && tag.startsWith(HSON_SYS_PREFIX)) {

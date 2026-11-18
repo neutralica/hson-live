@@ -6,6 +6,7 @@ import {
   hson_metadata_value_is_valid,
 } from "../../../../core/hson-metadata.js";
 import { HSON_META_QUID } from "../../../../core/constants.js";
+import { define_materialized_property } from "../../../../core/projected-value-materialization.js";
 import { HsonNode } from "../../../../core/types.js";
 import { serialize_style } from "../attrs-utils/serialize-style.js";
 
@@ -52,8 +53,7 @@ export function build_wire_attrs(n: HsonNode): Record<string, string> {
         continue; //  done with style
       }
 
-      // un primitives/other attrs
-      out[k] = String(v as any);
+      define_materialized_property(out, k, String(v));
     }
   }
 

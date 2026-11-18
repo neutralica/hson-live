@@ -348,7 +348,11 @@ export function assemble_hson_tokens(
                     $_tag: OBJ_TAG,
                     $_content: kids as NodeContent
                 });
-                provenance?.bindSynthetic(cluster, kids);
+                if (sawEmptyObject && kids.length === 0) {
+                    provenance?.bindEmptyObject(cluster, sawEmptyObject);
+                } else {
+                    provenance?.bindSynthetic(cluster, kids);
+                }
                 node.$_content = [cluster];
             }
 

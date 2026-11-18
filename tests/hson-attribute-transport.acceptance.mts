@@ -293,6 +293,60 @@ check("ordinary duplicates are last-wins and case-equivalent in HTML", () => {
   }
 });
 
+check("trusted HTML strings preserve special own attributes through parsing and normalization", () => {
+  const root = worker(
+    '<main __proto__="  first   value  " constructor="ctor"><a __PROTO__="first" __proto__="" title="next"/></main>',
+  );
+  assert.deepEqual({ ...must_tag(root, "main").$_attrs }, {
+    ["__proto__"]: "first value",
+    constructor: "ctor",
+  });
+  assert.deepEqual({ ...must_tag(root, "a").$_attrs }, {
+    ["__proto__"]: "__proto__",
+    title: "next",
+  });
+  const sibling = worker('<main><i __proto__="literal"/><b title="neighbor"/></main>');
+  assert.deepEqual({ ...must_tag(sibling, "b").$_attrs }, { title: "neighbor" });
+});
+
+check("untrusted HTML filters the same attributes after parser recovery", () => {
+  const source = '<main __proto__="literal" title="kept" style="color:red"></main>';
+  const root = hsonTransform.fromUntrustedHtml(source).toNode();
+  assert.deepEqual({ ...must_tag(root, "main").$_attrs }, { title: "kept" });
+});
+
+check("trusted HTML egress emits independently admitted special own attributes", () => {
+  const graph: HsonNode = { $_tag: "_hson_elem", $_content: [
+    { $_tag: "main", $_attrs: { ["__proto__"]: "literal", title: "neighbor" }, $_content: [] },
+  ] };
+  const wire = hsonTransform.fromNode(graph).toHtml().serialize();
+  assert.equal(wire, '<main __proto__="literal" title="neighbor"></main>');
+  const element = graph.$_content[0];
+  assert.ok(is_node(element));
+  assert.equal(canonical_hson_graph_equal(element, must_tag(worker(wire), "main")), true);
+});
+
+check("direct HTML elements and SVG converters retain special own attributes", () => {
+  const main = parse_html(direct_element("main", [
+    { name: "__PROTO__", value: "literal" },
+    { name: "toString", value: "neighbor" },
+  ]));
+  assert.deepEqual({ ...must_tag(main, "main").$_attrs }, {
+    ["__proto__"]: "literal",
+    tostring: "neighbor",
+  });
+
+  const expected = { ["__proto__"]: "literal", viewBox: "0 0 10 10" };
+  const source = '<svg __proto__="literal" viewBox="0 0 10 10"/>';
+  const dom = direct_element("svg", [
+    { name: "__proto__", value: "literal" },
+    { name: "viewBox", value: "0 0 10 10" },
+  ], SVG_NS);
+  for (const root of [worker(source), worker(`<main>${source}</main>`), node_from_svg(dom)]) {
+    assert.deepEqual({ ...must_tag(root, "svg").$_attrs }, expected);
+  }
+});
+
 check("duplicate colonized ordinary attrs use semantic identity and never suffix", () => {
   const source = `<main a:b="first" A:B="last"/>`;
   for (const root of [worker(source), browser(source)]) {

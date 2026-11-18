@@ -1,5 +1,5 @@
 import { isComment, isTag, isText, type ChildNode, type Element } from "domhandler";
-import { parseDocument } from "htmlparser2";
+import { DomHandler, Parser } from "htmlparser2";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import {
   ARR_TAG,
@@ -34,6 +34,7 @@ import {
 } from "../utils/hson-utils/quid-ingress.js";
 import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
 import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
+import { define_materialized_property } from "../../../core/projected-value-materialization.js";
 import { normalize_html_source_attributes } from "../utils/html-preflights/ordinary-attribute-transit.js";
 import { classify_ordinary_hson_structure } from "../../../core/hson-structural-mode.js";
 import { decode_html_raw_text, decode_html_text_boundary } from "../utils/html-utils/html-text-transport.js";
@@ -152,10 +153,10 @@ function attributes_from_element(
 
     const normalizedKey = lower === "xlink:href" ? "href" : key;
     if (normalizedKey === "href" && lower === "xlink:href" && attrs.href !== undefined) continue;
-    attrs[normalizedKey] =
+    define_materialized_property(attrs, normalizedKey,
       value === "" || value === authoredName || value === lower
         ? normalizedKey
-        : normalize_attr_ws(value);
+        : normalize_attr_ws(value));
   }
 
   if (sanitize && attrs.target === "_blank") {
@@ -475,7 +476,7 @@ function standalone_svg_node(element: Element): HsonNode {
     } else if (lower === "xlink:href") {
       if (!hasHref) attrs.href = value;
     } else {
-      attrs[name] = value;
+      define_materialized_property(attrs, name, value);
     }
   }
   if (quid !== undefined && element.name.startsWith(HSON_SYS_PREFIX)) {
@@ -519,6 +520,26 @@ function root_is_empty(root: HsonNode): boolean {
   );
 }
 
+/** Retain the decoded attribute that htmlparser2's plain attribute bag drops. */
+class HtmlSourceHandler extends DomHandler {
+  private protoAttribute: string | undefined;
+
+  onopentagname(): void {
+    this.protoAttribute = undefined;
+  }
+
+  onattribute(name: string, value: string): void {
+    if (name === "__proto__") this.protoAttribute ??= value;
+  }
+
+  override onopentag(name: string, attrs: Record<string, string>): void {
+    if (this.protoAttribute !== undefined) {
+      define_materialized_property(attrs, "__proto__", this.protoAttribute);
+    }
+    super.onopentag(name, attrs);
+  }
+}
+
 /**
  * Parse an HTML string without browser globals. When `sanitize` is true, the
  * parsed tree is filtered before it is converted into canonical Hson.
@@ -526,13 +547,16 @@ function root_is_empty(root: HsonNode): boolean {
 export function parse_html_string(input: string, sanitize: boolean): HsonNode {
   const normalizedInput = normalize_html_source_attributes(input);
   const xmlShaped = /<\/?_hson_(?:arr|ii|obj|elem|str|val|root)(?=[\s/>])/i.test(normalizedInput);
-  const document = parseDocument(normalizedInput, {
+  const options = {
     decodeEntities: true,
     lowerCaseAttributeNames: false,
     lowerCaseTags: false,
     recognizeSelfClosing: true,
     xmlMode: xmlShaped,
-  });
+  };
+  const handler = new HtmlSourceHandler(undefined, options);
+  new Parser(handler, options).end(normalizedInput);
+  const document = handler.root;
   let root: HsonNode | undefined;
   const sourceChildren = document.children.filter(child => isTag(child) || (isText(child) && child.data.trim() !== "")
     || (isComment(child) && child.data.startsWith("hson-text")));

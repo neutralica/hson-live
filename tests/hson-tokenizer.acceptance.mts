@@ -7,6 +7,7 @@ import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { parse_tokens } from "../src/api/transform/parsers/parse-tokens.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { split_attrs_meta } from "../src/api/transform/utils/hson-utils/split-attrs-meta.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { encode_persisted_quid, is_persisted_quid } from "../src/core/persisted-quid.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -649,6 +650,7 @@ for (const [name, source] of [
   ["flag/flag", `<tag disabled disabled/>`],
   ["flag/value", `<tag disabled disabled="1"/>`],
   ["value/flag", `<tag disabled="1" disabled/>`],
+  ["__proto__ value/flag", `<tag __proto__="literal" __proto__/>`],
   ["style/style", `<tag style="color:red" style="color:blue"/>`],
   ["colonized", `<tag data:item="1" data:item="2"/>`],
   ["whitespace-separated", `<tag a="1"    a="2"/>`],
@@ -664,6 +666,33 @@ for (const [name, source] of [
 
 check("Hson attribute duplicate identity is case-sensitive", () => {
   assert.deepEqual(authored_node(`<tag a="1" A="2"/>`).$_attrs, { a: "1", A: "2" });
+});
+
+check("Hson stores special attribute names as own data before node assembly", () => {
+  for (const [header, value, canonicalHeader] of [
+    ['__proto__="literal"', "literal", '__proto__="literal"'],
+    ["__proto__", "__proto__", "__proto__"],
+    ['__proto__="__proto__"', "__proto__", "__proto__"],
+    ['__proto__=""', "", '__proto__=""'],
+  ]) {
+    const source = `<item ${header}/>`;
+    const open = tokenize_hson(source).find(token => token.kind === "OPEN" && token.tag === "item");
+    assert.ok(open?.kind === "OPEN");
+    const { attrs } = split_attrs_meta(open.rawAttrs);
+    assert.equal(Object.getOwnPropertyDescriptor(attrs, "__proto__")?.enumerable, true);
+    assert.equal(attrs.__proto__, value);
+
+    const expected = { ["__proto__"]: value };
+    assert.deepEqual(authored_node(source).$_attrs, expected);
+    const wire = hsonTransform.fromHson(source).toHson().noBreak().serialize();
+    assert.equal(wire, `<item ${canonicalHeader}/>`);
+    assert.deepEqual(authored_node(wire).$_attrs, expected);
+  }
+  assert.deepEqual(authored_node(`<item constructor="ctor" __proto__="literal" toString="method"/>`).$_attrs, {
+    constructor: "ctor",
+    ["__proto__"]: "literal",
+    toString: "method",
+  });
 });
 
 check("distinct colonized Hson attribute names remain distinct", () => {

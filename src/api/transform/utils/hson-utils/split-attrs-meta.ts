@@ -1,10 +1,10 @@
 // split-attrs-meta.ts
 
 import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
+import { define_materialized_property } from "../../../../core/projected-value-materialization.js";
 import type { RawAttr } from "../../token.types.js";
 import { unescape_hson_string } from "./unescape-hson.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
-import { Primitive } from "../../../../core/types.js";
 import { PART_DECLARATION, part_declaration_issue } from "../../../../internal/part-placeholder.js";
 
 /*******
@@ -53,13 +53,8 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
  * - Flags:
  *   - If the attribute has no value (bare key), it is treated as a boolean-present
  *     flag and stored as `attrs[k] = k`.
- *   - Additionally, `disabled=""` and `disabled="disabled"` (and equivalents) are
- *     normalized to the same flag representation (`attrs[k] = k`).
- *
- * Debug hygiene (optional):
- * - In non-production builds, may warn if decoded values still contain patterns
- *   that suggest missed decoding (JSON-style escapes) or cross-edge leakage
- *   (HTML entities).
+ *   - A value equal to its name uses the same flag representation.
+ *     Explicit empty values remain empty strings.
  *
  * @param raw - Tokenizer-emitted raw attribute list for one open tag.
  * @returns An object containing:
@@ -90,20 +85,14 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
 
     // Flags & normal values (Hson edge — JSON-literal quotes only, no HTML entities)
     if (!ra.value) {
-      // flag === key="key"
-      attrs[k] = k as unknown as Primitive; 
+      define_materialized_property(attrs, k, k);
       continue;
     }
 
     // decode quoted Hson once
     const val: string = ra.value.direct && !ra.value.rawInterpolated ? ra.value.text : decode_hson_value(ra.value.text, ra.value.quoted);
 
-    // Maintain disabled="" / disabled="disabled" → key flag behavior
-    if (val === k) {
-      attrs[k] = k as unknown as Primitive;
-    } else {
-      attrs[k] = val as unknown as Primitive;
-    }
+    define_materialized_property(attrs, k, val);
   }
 
 

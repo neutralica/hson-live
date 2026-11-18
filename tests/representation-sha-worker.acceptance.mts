@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { hsonTransform } from "../src/api/transform/index.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 
 const LAUNCHER = "transform.representation-sha-worker";
 const SOURCE = '{"note":"café","values":[-0,"\\ud800"]}';
@@ -87,6 +88,29 @@ await check("actual Worker Binary bytes and native SHA match Node", async () => 
   assert.deepEqual(worker.binary.serialized, nodeRepresentation.serialize());
   assert.equal(worker.binary.production, worker.binary.native);
   assert.equal(worker.binary.production, await nodeRepresentation.sha256());
+});
+
+await check("Hson preserves isolated surrogate member names and order across UTF-8", async () => {
+  const forward = hsonTransform.fromHson("<'\\uD800' 1 '\\uD801' 1>");
+  const reverse = hsonTransform.fromHson("<'\\uD801' 1 '\\uD800' 1>");
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const forwardNode = forward.toNode();
+  const reverseNode = reverse.toNode();
+  assert.equal(canonical_hson_graph_equal(forwardNode, reverseNode), false);
+
+  for (const [first, second] of [
+    [forward.toHson(), reverse.toHson()],
+    [forward.toHson().noBreak(), reverse.toHson().noBreak()],
+  ]) {
+    for (const [output, expected] of [[first, forwardNode], [second, reverseNode]] as const) {
+      const serialized = output.serialize();
+      const utf8 = decoder.decode(encoder.encode(serialized));
+      assert.equal(canonical_hson_graph_equal(expected, hsonTransform.fromHson(serialized).toNode()), true);
+      assert.equal(canonical_hson_graph_equal(expected, hsonTransform.fromHson(utf8).toNode()), true);
+    }
+    assert.notEqual(await first.sha256(), await second.sha256());
+  }
 });
 
 process.stdout.write(`1..${checks}\n`);

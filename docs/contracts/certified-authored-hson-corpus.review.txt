@@ -2411,7 +2411,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact Hson output: "<'high\ud800name' 1>"
+exact Hson output: "<'high\\ud800name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2511,7 +2511,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact Hson output: "<'low\udc00name' 1>"
+exact Hson output: "<'low\\udc00name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —

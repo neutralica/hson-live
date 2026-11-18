@@ -110,6 +110,8 @@ check("quoted-name Unicode escapes preserve isolated surrogate code units", () =
   assert.equal(firstPropertyName("<'high\\uD800name' 1>"), "high\uD800name");
   assert.equal(firstPropertyName("<'low\\uDC00name' 1>"), "low\uDC00name");
   assert.equal(firstPropertyName("<'pair\\uD83D\\uDE00name' 1>"), "pair😀name");
+  assert.equal(compact("<'high\\uD800 low\\uDC00 pair\\uD83D\\uDE00 雪' 1>"),
+    "<'high\\ud800 low\\udc00 pair😀 雪' 1>");
 });
 
 check("backticks are ordinary unescaped quoted-name data", () => {
