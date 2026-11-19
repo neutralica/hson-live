@@ -1,10 +1,10 @@
-<data [
-  <members
-    <'displayName' <string minlen="1" maxlen="80">>
-    <'address' <object
-      <'line1' <string>>
-      <'line2' optional <string>>
-      <'city' <string>>
+<data
+  <object <
+    'displayName' <string minlen="1" maxlen="80">
+    'address' <object <
+      'line1' <string>
+      'line2' optional <string>
+      'city' <string>
     >>
-  >
-]>
+  >>
+>

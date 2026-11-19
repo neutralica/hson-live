@@ -26,13 +26,7 @@ export type ReadSchemaSource = Readonly<{
   rangeOf(origin: SchemaOrigin): HsonSourceRange | undefined;
 }>;
 
-/**
- * Provisional private spelling: <data [<defs ...>, <members ...>]>.
- * A present root group is explicit even for a single clause. Object, members
- * and defs take successive named declarations, or <> for a present empty map.
- * Tuple and union govern expression arrays. Exact and ref govern Data literals.
- * A quoted application head never selects the grammar of an operation.
- */
+/** Read one governed declaration, attaching authored ranges to its owned occurrences. */
 export function read_schema_source(source: string): ReadSchemaSource {
   if (typeof source !== "string") throw new TypeError("Expected authored Schema source text.");
   const cursor = hson_lexical_cursor(source);
@@ -64,53 +58,67 @@ export function read_schema_source(source: string): ReadSchemaSource {
     }
   }
 
+  function openObject(depth: number) {
+    const start = cursor.offset();
+    cursor.assertNesting(depth);
+    cursor.consume("<");
+    cursor.skipTrivia();
+    const entries: SchemaOccurrence[] = [];
+    while (cursor.peek() !== ">") {
+      if (!cursor.peek()) invalid("Missing > for open object.", start);
+      if (cursor.peek() !== "'") invalid("Expected a single-quoted member name or >.");
+      const memberStart = cursor.offset();
+      const name = cursor.quotedName();
+      const { headers, body, end } = contents(name, depth + 1, true);
+      entries.push(located(application_name(name, body, headers), memberStart, end));
+      cursor.skipTrivia();
+    }
+    cursor.consume(">");
+    return located(member_map(entries), start);
+  }
+
+  function rootClauses(depth: number): SchemaBody {
+    const start = cursor.offset();
+    const first = declaration(depth);
+    cursor.skipTrivia();
+    if (cursor.peek() !== "<") return first;
+    const clauses = [first];
+    let end: number;
+    do {
+      clauses.push(declaration(depth));
+      end = cursor.offset();
+      cursor.skipTrivia();
+    } while (cursor.peek() === "<");
+    // The group covers the actual clause sequence. Only tuple and union consume array delimiters.
+    return located(expression_group(clauses), start, end);
+  }
+
   function readBody(role: string | undefined, depth: number): SchemaBody {
     const start = cursor.offset(), ch = cursor.peek();
-    if ((ch === "[" || ch === "«") && (role === "data" || role === "tuple" || role === "union")) {
+    if (role === "data") return rootClauses(depth);
+    if ((ch === "[" || ch === "«") && (role === "tuple" || role === "union")) {
       const items: SchemaOccurrence[] = [];
       cursor.arrayItems(depth, () => items.push(declaration(depth + 1)));
       return located(expression_group(items), start);
     }
-    if (ch === "<" && (role === "members" || role === "object" || role === "defs")) {
-      const entries: SchemaOccurrence[] = [];
-      if (cursor.emptyObjectAhead()) {
-        cursor.assertNesting(depth);
-        cursor.consume("<");
-        cursor.skipTrivia();
-        cursor.consume(">");
-        return located(member_map(entries), start);
-      }
-      let end: number;
-      do {
-        entries.push(declaration(depth));
-        end = cursor.offset();
-        cursor.skipTrivia();
-      } while (cursor.peek() === "<");
-      return located(member_map(entries), start, end);
-    }
+    if (ch === "<" && (role === "object" || role === "defs")) return openObject(depth);
     if (ch === "<" && role !== "exact" && role !== "ref" && !cursor.emptyObjectAhead()) {
       return declaration(depth);
     }
     return dataValue();
   }
 
-  function declaration(depth: number): SchemaOccurrence {
-    const start = cursor.offset();
-    if (depth >= HSON_MAX_NESTING) invalid("Schema declaration exceeds the HSON nesting limit.");
-    if (cursor.peek() !== "<") invalid("Expected a Schema declaration beginning with <.");
-    cursor.consume("<");
-    cursor.skipTrivia();
-    const quoted = cursor.peek() === "'";
-    const name = quoted ? cursor.quotedName() : cursor.bareName();
+  // bodyDepth counts authored containers. The unwrapped name itself adds no level.
+  function contents(name: string, bodyDepth: number, member: boolean) {
+    const headEnd = cursor.offset();
     const headers: SchemaHeader[] = [];
     let body: SchemaBody | undefined;
     let separated = cursor.skipTrivia();
-    while (cursor.peek() !== ">") {
-      if (!cursor.peek()) invalid(`Missing > for ${JSON.stringify(name)}.`, start);
+    while (cursor.peek() && cursor.peek() !== ">" && !(member && cursor.peek() === "'")) {
       if (!separated) invalid("Expected trivia before a header or body.");
       const itemStart = cursor.offset();
       if (!is_hson_bare_name_start(cursor.peek())) {
-        body = readBody(quoted ? undefined : name, depth + 1);
+        body = readBody(member ? undefined : name, bodyDepth);
         break;
       }
 
@@ -144,11 +152,23 @@ export function read_schema_source(source: string): ReadSchemaSource {
       headers.push(located(header(word, operand), itemStart));
       separated = cursor.skipTrivia();
     }
+    const last = body ?? headers.at(-1);
+    return { headers, body, end: last ? ranges.get(last)!.end : headEnd };
+  }
+
+  function declaration(depth: number): SchemaOccurrence {
+    const start = cursor.offset();
+    if (depth >= HSON_MAX_NESTING) invalid("Schema declaration exceeds the HSON nesting limit.");
+    if (cursor.peek() !== "<") invalid("Expected a Schema operation beginning with <.");
+    cursor.consume("<");
+    cursor.skipTrivia();
+    const name = cursor.bareName();
+    const { headers, body } = contents(name, depth + 1, false);
     cursor.skipTrivia();
     if (!cursor.peek()) invalid(`Missing > for ${JSON.stringify(name)}.`, start);
     if (cursor.peek() !== ">") invalid(`Expected > after the body of ${JSON.stringify(name)}.`);
     cursor.consume(">");
-    return located((quoted ? application_name : operation)(name, body, headers), start);
+    return located(operation(name, body, headers), start);
   }
 
   try {

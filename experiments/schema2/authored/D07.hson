@@ -1,14 +1,14 @@
-<data [
-  <defs
-    <'Timestamp' <number int min="0">>
-    <'Temperature' <union [<number min="-80" max="80">, <null>]>>
-    <'Sample' <tuple [<ref "Timestamp">, <ref "Temperature">]>>
-  >,
-  <members
-    <'deviceId' <string prefix="env-">>
-    <'location' <tuple [<number min="-90" max="90">, <number min="-180" max="180">]>>
-    <'calibration' <tuple [<number>, <number>, <number>]>>
-    <'quarterHourReadings' <array len="4" <ref "Temperature">>>
-    <'samples' <array minlen="1" maxlen="96" <ref "Sample">>>
-  >
-]>
+<data
+  <defs <
+    'Timestamp' <number int min="0">
+    'Temperature' <union [<number min="-80" max="80">, <null>]>
+    'Sample' <tuple [<ref "Timestamp">, <ref "Temperature">]>
+  >>
+  <object <
+    'deviceId' <string prefix="env-">
+    'location' <tuple [<number min="-90" max="90">, <number min="-180" max="180">]>
+    'calibration' <tuple [<number>, <number>, <number>]>
+    'quarterHourReadings' <array len="4" <ref "Temperature">>
+    'samples' <array minlen="1" maxlen="96" <ref "Sample">>
+  >>
+>

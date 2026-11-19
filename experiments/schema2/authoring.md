@@ -1,29 +1,50 @@
 # Authoring a private Schema 2.0 definition
 
-A source string contains one declaration. The bare head selects a Schema operation. A single-quoted head introduces an application member or a definition. Use double quotes for string values and text operands. Put modifiers before the body, in the order they should appear in the definition.
+This experiment reads a Data Schema declaration and lowers it to Schema 1.0 for compilation and certification. Its authoring grammar is private and provisional.
+
+## Objects and names
+
+A bare operation selects a Schema expression. Inside an `object`, one pair of angle brackets encloses all the application members in encounter order. Each single-quoted name starts a member. The next sibling name or the map’s closing `>` ends it. Double quotes enclose string operands and header text.
 
 ```hson
-<data [
-  <members
-    <'age' optional <number int min="0">>
-    <'address' <object <'city' <string>>>>
-    <'position' <tuple [<number>, <number>]>>
-  >
-]>
+<data <object <
+  'name' <string>
+  'age' optional <number int min="0">
+  'active' <boolean>
+>>>
 ```
 
-## Root roles
+This closed object requires a string `name` and a boolean `active`. An `age`, when present, must be a nonnegative integer. The member owns `optional`. The `number` expression owns the ordered headers `int` and `min="0"`. Put headers before their owner’s expression or literal. The reader records a name standing alone as a distinct member with an absent body. Schema lowering requires each object member and definition to have one type expression.
 
-The explicit root group is provisional to this experiment. Use `<data>` to omit root content. For a present body, supply an HSON array containing an optional `defs` clause followed by at most one content clause. A content clause may be `members`, `object`, `ref` or `any`. Direct member maps use `members`. Use `object` for an explicit object descriptor, including a sole member named `ref` or a sole `content` member whose descriptor would collide with Schema 1.0 root dispatch.
+Nested objects use the same production.
 
 ```hson
-<data [
-  <defs <'Score' <number int min="0" max="100">>>,
+<data <object <
+  'address' <object <
+    'city' <string>
+    'state' <string>
+  >>
+>>>
+```
+
+Names such as `'content'`, `'ref'`, `'object'`, `'members'` and `'defs'` all declare application properties. HSON name escapes are decoded before checking for duplicate names within each map. A duplicate is reported at its second occurrence.
+
+## Root composition and references
+
+A `data` declaration may contain one `defs` clause followed by one root content operation. Both are optional. Write the clauses directly in that order. A single clause is the direct structural body. When both are present, the root owns their ordered sequence. The definitions use the same open-object boundaries as properties.
+
+```hson
+<data
+  <defs <
+    'Score' <number int min="0" max="100">
+  >>
   <ref "Score">
-]>
+>
 ```
 
-Map clauses contain successive named declarations. Use `<members <>>`, `<object <>>` and `<defs <>>` for explicit empty maps. A contentless operation has an absent body. In literal positions, `null`, `<>`, `[]` and `""` keep their distinct Data values.
+Here the bare `ref` selects the definition named by its string operand. Direct root content supports `object`, `ref` and `any`. To select another expression at the root, give it a definition and refer to it, as with `Score`. This follows the available Schema 1.0 root roles. `<data>` omits content, `<data <any>>` explicitly selects any Data value, and `<data <object <>>>` describes an empty closed object.
+
+Lowering emits an ordinary root member map when Schema 1.0 can read it as such. A sole property named `ref`, or a sole `content` property whose emitted type is an object (including an `optional` descriptor), gets a generated object wrapper. Nested object expressions always lower to object descriptors. These choices preserve the declared application keys and the paths back to their source.
 
 ## Expressions and operands
 
@@ -39,7 +60,18 @@ Map clauses contain successive named declarations. Use `<members <>>`, `<object 
 | `tuple` | An HSON array of positional expressions | `len`, `minlen`, `maxlen` |
 | `union` | An HSON array of branches | None |
 
-Both `[...]` and `«...»` take comma-separated expressions and allow a trailing comma. HSON whitespace and `//` comments are accepted. Quoted numeric modifiers are decoded by the lowerer. Configured uniqueness takes one braced HSON Data operand, for example `unique={<by "slot" cases [["A", ["left"]]]>}`. The compiler checks operand domains, references, and union distinguishability. The authored [D11 definition](authored/D11.hson) exercises configured uniqueness, and the [D10 definition](authored/D10.hson) exercises the Deck corpus Schema.
+Tuple positions and union alternatives are ordered expression groups. Both HSON array spellings, `[...]` and `«...»`, take comma-separated items and allow a trailing comma. This declaration uses both operations.
+
+```hson
+<data <object <
+  'position' <tuple [<number>, <number>]>
+  'label' <union [<string>, <number>, <null>]>
+>>>
+```
+
+`exact` accepts a finite primitive Data value such as `<exact -0>`, `<exact null>` or `<exact "">`. A bare `null` is a literal operand. The reader distinguishes absent content from null, the empty Data object `<>`, the empty array `[]` and the empty string `""`. In an `object` or `defs` map position, `<>` supplies a present empty member map.
+
+A braced header operand contains one ordinary HSON Data value. For example, `unique={<by "slot" cases [["A", ["left"]]]>}` configures array uniqueness. HSON whitespace, `//` comments, quoted-name escapes and source coordinates follow the existing scanner. Quoted numeric headers preserve the sign of zero when lowered. The compiler checks operand domains, references and union distinguishability. The fixtures include complete [configured uniqueness](authored/D11.hson) and [Deck](authored/D10.hson) declarations.
 
 ## Trying a source
 
@@ -67,4 +99,4 @@ JS
 
 For structural inspection alone, call `read_schema_source` in `source-reader.ts`. Its `rangeOf(record)` returns half-open UTF-16 offsets for that read. Syntax and lowering failures throw `SchemaSourceError` with an authored range. A lowering failure retains the original error and its owned origin. Compiler issues retain their code, path and generated range and carry an additional `authoredRange`. A range-only issue can be projected to a generated value with exactly matching coverage. An issue with no matching evidence anchors to the root. Locations inside a structured header operand currently identify its owning header.
 
-Collection shorthand emits content first, followed by refinements in header order. Other historical Schema 1.0 field orders and Document Schema authoring remain open.
+Collection expressions emit content first and then refinements in authored header order. Historical permutations of those fields have no dedicated spelling. Document Schema roots, element definitions, tags, attributes, sequences and counted repetition remain outside this private Data Schema grammar.

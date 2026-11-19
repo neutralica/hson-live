@@ -1,7 +1,7 @@
-<data [
-  <members
-    <'dashboardId' <string>>
-    <'widgets' <array maxlen="12" unique={
+<data
+  <object <
+    'dashboardId' <string>
+    'widgets' <array maxlen="12" unique={
       <by "position" cases [
         ["top-left", ["TL"]],
         ["top-right", ["TR"]],
@@ -14,10 +14,10 @@
         ["full", ["TL", "TR", "BL", "BR"]],
         ["decorative", []]
       ]>
-    } <object
-      <'position' <string>>
-      <'title' <string minlen="1">>
-      <'payload' <any>>
+    } <object <
+      'position' <string>
+      'title' <string minlen="1">
+      'payload' <any>
     >>>
-  >
-]>
+  >>
+>

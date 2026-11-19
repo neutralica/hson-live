@@ -7,8 +7,7 @@ import {
 } from "./structure.js";
 
 export const optional = (name: string, body: SchemaOccurrence) => member(name, body, [header("optional")]);
-export const data = (...clauses: SchemaOccurrence[]) => op("data", clauses.length ? expression_group(clauses) : undefined);
-export const members = (...fields: SchemaOccurrence[]) => op("members", member_map(fields));
+export const data = (...clauses: SchemaOccurrence[]) => op("data", clauses.length > 1 ? expression_group(clauses) : clauses[0]);
 export const object = (...fields: SchemaOccurrence[]) => op("object", member_map(fields));
 export const defs = (...definitions: SchemaOccurrence[]) => op("defs", member_map(definitions));
 export const ref = (name: string) => op("ref", value(name));
@@ -20,7 +19,7 @@ export const tuple = (...items: SchemaOccurrence[]) => op("tuple", expression_gr
 export const union = (...branches: SchemaOccurrence[]) => op("union", expression_group(branches));
 
 // These declarations are independent inputs. The frozen 1.0 targets are in corpus-goldens.ts.
-const D02 = data(members(
+const D02 = data(object(
   member("customerId", str(header("prefix", "cus-"), header("minlen", "5"), header("maxlen", "32"))),
   member("displayName", str(header("minlen", "1"), header("maxlen", "80"))),
   member("active", op("boolean")),
@@ -40,7 +39,7 @@ const D07 = data(defs(
   member("Timestamp", num(header("int"), header("min", "0"))),
   member("Temperature", union(num(header("min", "-80"), header("max", "80")), op("null"))),
   member("Sample", tuple(ref("Timestamp"), ref("Temperature"))),
-), members(
+), object(
   member("deviceId", str(header("prefix", "env-"))),
   member("location", tuple(num(header("min", "-90"), header("max", "90")), num(header("min", "-180"), header("max", "180")))),
   member("calibration", tuple(num(), num(), num())),
@@ -53,7 +52,7 @@ const D09 = data(defs(
   member("Entry", union(ref("Link"), ref("Section"))),
   member("Link", object(member("kind", exact("link")), label(), member("href", str(header("prefix", "/"))), optional("newWindow", op("boolean")))),
   member("Section", object(member("kind", exact("section")), label(), member("children", array(ref("Entry"))), optional("collapsed", op("boolean")))),
-), members(member("application", exact("workbench")), member("entries", array(ref("Entry")))));
+), object(member("application", exact("workbench")), member("entries", array(ref("Entry")))));
 
 const block = (kind: string, ...fields: SchemaOccurrence[]) =>
   object(member("kind", exact(kind)), ...fields, member("content", str()));
@@ -69,7 +68,7 @@ const D10 = data(defs(
     member("column1", ref("Column")), optional("column2", ref("Column")), optional("column3", ref("Column")),
     optional("footer", str()),
   )),
-), members(member("slides", array(ref("Slide")))));
+), object(member("slides", array(ref("Slide")))));
 
 const row = (selector: string, ...keys: string[]) => ordered_projected_array([selector, ordered_projected_array(keys)]);
 const relation = ordered_projected_object([
@@ -80,7 +79,7 @@ const relation = ordered_projected_object([
     row("right-half", "TR", "BR"), row("full", "TL", "TR", "BL", "BR"), row("decorative"),
   ])],
 ]);
-const D11 = data(members(
+const D11 = data(object(
   member("dashboardId", str()),
   member("widgets", array(object(
     member("position", str()), member("title", str(header("minlen", "1"))), member("payload", op("any")),

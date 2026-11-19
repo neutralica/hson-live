@@ -7,7 +7,7 @@ import { assert_canonical_hson_data_value } from "../../src/core/projected-value
  * literal Data value, a member map and an expression group have distinct
  * representations, including when empty.
  * The data root accepts an optional defs clause followed by at most one content
- * clause (members, object, ref or any). Other Data expressions can be named in defs
+ * clause (object, ref or any). Other Data expressions can be named in defs
  * and selected with a root ref.
  *
  * The private source reader decodes names, header text and bounded Data operands,

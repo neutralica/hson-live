@@ -17,7 +17,7 @@ import {
   type DataOperand, type SchemaHeader, type SchemaOccurrence, type SchemaOrigin,
 } from "./structure.js";
 import {
-  array, data, declarations, defs, exact, members, num, object, optional, ref, str, tuple, union,
+  array, data, declarations, defs, exact, num, object, optional, ref, str, tuple, union,
 } from "./structural-fixtures.js";
 
 function compare(declaration: SchemaOccurrence, source: string) {
@@ -80,11 +80,11 @@ function structural_error(root: SchemaOccurrence, message: RegExp, origin?: Sche
 }
 
 function field(expression: SchemaOccurrence) {
-  return data(members(member("v", expression)));
+  return data(object(member("v", expression)));
 }
 
 test("the investigated D02 excerpt retains the optional line2 contract", () => {
-  const excerpt = data(members(
+  const excerpt = data(object(
     member("displayName", str(header("minlen", "1"), header("maxlen", "80"))),
     member("address", object(member("line1", str()), optional("line2", str()), member("city", str()))),
   ));
@@ -103,17 +103,14 @@ test("the investigated D02 excerpt retains the optional line2 contract", () => {
 
 test("fixed root roles retain both opposite-outcome witness pairs", () => {
   const collision = member("content", exact("string"));
-  structural_error(data(members(collision)), /Ambiguous direct root/, collision);
-  structural_error(data(members(optional("content", str()))), /Ambiguous direct root/);
-  compare(data(members(member("content", str()))), '<type "data" content <content "string">>');
-  compare(data(members(member("ref", str()), member("content", exact(false)))),
+  compare(data(object(member("content", str()))), '<type "data" content <content "string">>');
+  compare(data(object(member("ref", str()), member("content", exact(false)))),
     '<type "data" content <ref "string" content <exact false>>>');
-  const first = compare(data(object(member("exact", str()))), '<type "data" content <content <exact "string">>>');
+  const first = compare(data(object(member("exact", str()))), '<type "data" content <exact "string">>');
   const second = compare(data(object(collision)), '<type "data" content <content <content <exact "string">>>>');
 
   const definitions = defs(member("string", num()));
   const refMember = member("ref", str());
-  structural_error(data(definitions, members(refMember)), /Ambiguous direct root/, refMember);
   const third = compare(data(definitions, ref("string")), '<type "data" defs <string "number"> content <ref "string">>');
   const fourth = compare(data(definitions, object(refMember)), '<type "data" defs <string "number"> content <content <ref "string">>>');
 
@@ -129,13 +126,12 @@ test("fixed root roles retain both opposite-outcome witness pairs", () => {
   opposite(third.actual, fourth.actual, '2', '<ref "P">');
 });
 
-test("omitted fields, explicit broad content, empty defs and both empty object root roles have separate identities", () => {
+test("omitted fields, explicit broad content, empty defs and the empty object root have separate identities", () => {
   const forms = [
     compare(data(), '<type "data">'),
     compare(data(op("any")), '<type "data" content "any">'),
     compare(data(defs()), '<type "data" defs <>>'),
-    compare(data(members()), '<type "data" content <>>'),
-    compare(data(object()), '<type "data" content <content <>>>'),
+    compare(data(object()), '<type "data" content <>>'),
   ];
   assert.equal(new Set(forms.map(({ actual }) => hson_schema_digest(actual))).size, forms.length);
 });
@@ -186,7 +182,7 @@ test("absent, null and empty operands reach their own lowering or compiler resul
     assert.ok(ordered_projected_value_equal(lowered.orderedDefinition, target));
     assert.equal(compile_hson_schema(lowered.schema1Source).ok, operand === null || typeof operand === "string");
   }
-  const pair = compare(data(members(optional("v", op("any")))), '<type "data" content <v <optional "any">>>');
+  const pair = compare(data(object(optional("v", op("any")))), '<type "data" content <v <optional "any">>>');
   for (const source of ['<>', '<v null>', '<v <>>', '<v []>', '<v "">']) {
     const candidate = HsonDataValue.fromSource(source);
     assert.equal(pair.actual.certify(candidate).toHson(), candidate.toHson());
@@ -196,7 +192,7 @@ test("absent, null and empty operands reach their own lowering or compiler resul
 test("nullable and optional vary independently", () => {
   for (const nullable of [true, false]) for (const omittable of [true, false]) {
     const expr = nullable ? union(str(), op("null")) : str();
-    const declaration = data(members(omittable ? optional("v", expr) : member("v", expr)));
+    const declaration = data(object(omittable ? optional("v", expr) : member("v", expr)));
     const schema = HsonSchema.fromHson(lower_schema_definition(declaration).schema1Source);
     for (const [source, expected] of [['<>', omittable], ['<v null>', nullable], ['<v "">', true], ['<v 0>', false]] as const) {
       assert.equal(certify(schema, HsonDataValue.fromSource(source)).ok, expected);
@@ -207,7 +203,7 @@ test("nullable and optional vary independently", () => {
 test("ordered names, definitions, modifiers, branches and signed zero reach identity", () => {
   compare(data(
     defs(member("10", tuple()), member("2", exact(true)), member("__proto__", ref("10"))),
-    members(member("10", ref("__proto__")), member("2", ref("2")), member("__proto__", object())),
+    object(member("10", ref("__proto__")), member("2", ref("2")), member("__proto__", object())),
   ), `<type "data" defs <'10' <tuple []> '2' <exact true> __proto__ <ref "10">>
       content <'10' <ref "__proto__"> '2' <ref "2"> __proto__ <content <>>>>`);
   const negative = compare(field(exact(-0)), '<type "data" content <v <exact -0>>>');
@@ -321,7 +317,7 @@ test("the minlen getter cannot substitute a slot or strip a configured unique op
     }, later];
     const child = { ...array(row), headers: rules };
     const named = { ...member("v"), body: child };
-    const foreign = foreign_data({ ...members(), body: { kind: "members", entries: [named] } });
+    const foreign = foreign_data({ ...object(), body: { kind: "members", entries: [named] } });
     assert.throws(() => lower_schema_definition(foreign), /owned Schema occurrence at the root/);
     assert.throws(() => op("array", row, rules), /owned Schema header/);
     assert.equal(rules[1], later);
@@ -351,7 +347,7 @@ test("only original completed occurrences can enter lowering or become structura
     assert.throws(() => member("v", foreign), /owned Schema body/);
   }
   assert.throws(() => op("data", { ...expression_group([]) }), /owned Schema body/);
-  assert.throws(() => op("members", { ...member_map([]) }), /owned Schema body/);
+  assert.throws(() => op("object", { ...member_map([]) }), /owned Schema body/);
   assert.throws(() => header("unique", { ...relation }), /owned Data operand/);
   assert.throws(() => value(Object.freeze([true])), /ordered carrier factories/);
   const config = ordered_projected_object([["by", "slot"]]);
@@ -397,7 +393,7 @@ test("misplaced occurrences and body-bearing header records reject during constr
   const valid = header("optional");
   assert.equal(Reflect.set(valid, "body", value(false)), false);
   assert.equal(Reflect.set(valid, "kind", "operation"), false);
-  const { actual } = compare(data(members(member("v", str(), [valid]))), '<type "data" content <v <optional "string">>>');
+  const { actual } = compare(data(object(member("v", str(), [valid]))), '<type "data" content <v <optional "string">>>');
   assert.ok(certify(actual, HsonDataValue.fromSource("<>")).ok);
 });
 
@@ -431,7 +427,7 @@ test("a shortened length read cannot hide the second required member", () => {
   assert.equal(map.entries.length, 2);
   assert.equal(map.entries[0], a);
   assert.equal(map.entries[1], b);
-  const { actual, expected } = compare(data(op("members", map)), '<type "data" content <a "string" b "string">>');
+  const { actual, expected } = compare(data(op("object", map)), '<type "data" content <a "string" b "string">>');
   for (const [source, ok] of [['<a "yes">', false], ['<a "yes" b "yes">', true]] as const) {
     const candidate = HsonDataValue.fromSource(source);
     const result = certify(actual, candidate);
@@ -480,7 +476,7 @@ test(indexedSetterTest, () => {
   }
   assert.equal(setterCalls, 0);
 
-  const { actual, expected } = compare(data(op("members", map)), '<type "data" content <a "string" b "string">>');
+  const { actual, expected } = compare(data(op("object", map)), '<type "data" content <a "string" b "string">>');
   assert.equal(hson_schema_digest(actual), hson_schema_digest(expected));
   for (const [spelling, ok] of [['<a "yes">', false], ['<a "yes" b "yes">', true]] as const) {
     const candidate = HsonDataValue.fromSource(spelling);
@@ -530,7 +526,7 @@ test("root, member, header, tuple and union lists preserve every physical entry 
     const rule = header("minlen", "2");
     const title = member("title", op("string", undefined, single_use([rule])));
     const fields = member_map(single_use([title, member("items", op(collection, items))]));
-    const root = op("data", expression_group(single_use([defs(), op("members", fields)])));
+    const root = op("data", expression_group(single_use([defs(), op("object", fields)])));
     const { actual } = compare(root, `<type "data" defs <> content <title <string <minlen 2>> items <${collection} ["string", "number"]>>>`);
     assert.ok(!certify(actual, HsonDataValue.fromSource("<>")).ok);
     const lowered = lower_schema_definition(root);
@@ -545,20 +541,19 @@ test("root, member, header, tuple and union lists preserve every physical entry 
 
 test("changing map role and cardinality cannot substitute for explicit object context", () => {
   const collision = optional("content", str());
-  const direct = members(collision);
+  const declared = object(collision);
   let nameReads = 0, entryReads = 0;
-  const changingRole = { ...direct, get name() { return ++nameReads <= 2 ? "members" : "object"; } };
+  const changingRole = { ...declared, get name() { return ++nameReads <= 2 ? "object" : "defs"; } };
   const changingBody = {
     kind: "members" as const,
     get entries() { return ++entryReads === 1 ? [collision] : [collision, member("other", str())]; },
   };
-  for (const clause of [changingRole, { ...direct, body: changingBody }]) {
+  for (const clause of [changingRole, { ...declared, body: changingBody }]) {
     assert.throws(() => lower_schema_definition(foreign_data(clause)), /owned Schema occurrence at the root/);
     assert.throws(() => expression_group([clause]), /owned Schema occurrence/);
   }
-  assert.throws(() => op("members", changingBody), /owned Schema body/);
+  assert.throws(() => op("object", changingBody), /owned Schema body/);
   assert.deepEqual([nameReads, entryReads], [0, 0]);
-  structural_error(data(direct), /Ambiguous direct root/, collision);
   const { actual } = compare(data(object(collision)), '<type "data" content <content <content <optional "string">>>>');
   const substituted = HsonSchema.fromHson('<type "data" content <content <optional "string">>>');
   for (const [source, accepted] of [['<>', true], ['<optional "ok">', false]] as const) {
@@ -575,7 +570,7 @@ test("retained buffers cannot change a completed declaration or its diagnostic s
   const named = member("v", rule);
   const fields = [named];
   const map = member_map(fields);
-  const clauses = [op("members", map)];
+  const clauses = [op("object", map)];
   const body = expression_group(clauses);
   const root = op("data", body);
   const before = lower_schema_definition(root);
@@ -611,7 +606,7 @@ test("retained buffers cannot change a completed declaration or its diagnostic s
   const duplicate = member("v", rule);
   assert.notEqual(duplicate, named);
   const duplicates = [named, duplicate];
-  const invalid = data(op("members", member_map(duplicates)));
+  const invalid = data(op("object", member_map(duplicates)));
   structural_error(invalid, /Duplicate name/, duplicate);
   duplicates.pop();
   structural_error(invalid, /Duplicate name/, duplicate);
@@ -619,7 +614,7 @@ test("retained buffers cannot change a completed declaration or its diagnostic s
   const repeated = member_map([named, named]);
   assert.equal(repeated.entries[0], named);
   assert.equal(repeated.entries[1], named);
-  structural_error(data(op("members", repeated)), /Duplicate name/, named);
+  structural_error(data(op("object", repeated)), /Duplicate name/, named);
 });
 
 test("duplicate headers report the second authored header", () => {
@@ -628,7 +623,7 @@ test("duplicate headers report the second authored header", () => {
   assert.notEqual(first, duplicate);
   structural_error(field(array(row, first, duplicate)), /Duplicate array header/, duplicate);
   const extra = header("optional");
-  structural_error(data(members(member("v", str(), [header("optional"), extra]))), /only one optional/, extra);
+  structural_error(data(object(member("v", str(), [header("optional"), extra]))), /only one optional/, extra);
 });
 
 test("a required nested operation identifies the wrong child or the owner of a missing child", () => {
@@ -640,7 +635,7 @@ test("a required nested operation identifies the wrong child or the owner of a m
 
 test("member maps, literal operands and expression groups report the child when present", () => {
   for (const [name, place, message] of [
-    ["object", field, /ordered member map/], ["members", data, /ordered member map/], ["defs", data, /ordered member map/],
+    ["object", field, /ordered member map/], ["defs", data, /ordered member map/],
     ["exact", field, /explicit literal operand/], ["ref", field, /explicit literal operand/],
     ["tuple", field, /ordered group of expressions/], ["union", field, /ordered group of expressions/],
   ] as const) {
@@ -652,8 +647,8 @@ test("member maps, literal operands and expression groups report the child when 
 });
 
 test("a present invalid data group owns the root body diagnostic", () => {
-  const child = str();
-  structural_error(op("data", child), /group of root declarations/, child);
+  const child = member_map([]);
+  structural_error(op("data", child), /ordered data root declarations/, child);
   const empty = expression_group([]);
   structural_error(op("data", empty), /nonempty group/, empty);
   compare(data(), '<type "data">');
@@ -674,21 +669,21 @@ test("unsupported roles, missing operands and malformed headers report structura
   structural_error(data(array(str())), /Unsupported data root role/);
   structural_error(op("document"), /Only Data Schema/);
   structural_error(op("data", expression_group([])), /nonempty group/);
-  structural_error(data(members(), defs()), /before root content/);
+  structural_error(data(object(), defs()), /before root content/);
   structural_error(data(op("any"), op("any")), /only one content/);
-  structural_error(data(op("members", expression_group([]))), /ordered member map/);
-  structural_error(data(op("members", member_map([str()]))), /user-defined names/);
+  structural_error(data(op("object", expression_group([]))), /ordered member map/);
+  structural_error(data(op("object", member_map([str()]))), /user-defined names/);
   const missing = member("a");
-  structural_error(data(members(missing)), /nested Schema operation/, missing);
+  structural_error(data(object(missing)), /nested Schema operation/, missing);
   structural_error(field(tuple(member("string", str()))), /Expected a Schema operation/);
   structural_error(field(op("tuple", value(ordered_projected_array([])))), /group of expressions/);
   const duplicate = member("a", str());
-  structural_error(data(members(member("a", num()), duplicate)), /Duplicate name/, duplicate);
-  structural_error(data(members(member("$_reserved", str()))), /Invalid Data name/);
+  structural_error(data(object(member("a", num()), duplicate)), /Duplicate name/, duplicate);
+  structural_error(data(object(member("$_reserved", str()))), /Invalid Data name/);
   const optionalDef = header("optional");
   structural_error(data(defs(member("T", str(), [optionalDef]))), /Unsupported header/, optionalDef);
-  structural_error(data(members(member("a", str(), [header("optional", "true")]))), /optional flag/);
-  structural_error(data(members(member("a", str(), [header("optional"), header("optional")]))), /only one optional/);
+  structural_error(data(object(member("a", str(), [header("optional", "true")]))), /optional flag/);
+  structural_error(data(object(member("a", str(), [header("optional"), header("optional")]))), /only one optional/);
   structural_error(field(str(header("minlen", "1"), header("minlen", "2"))), /Duplicate string header/);
   structural_error(field(num(header("int", "true"))), /requires a flag/);
   structural_error(field(str(header("future", "x"))), /Unsupported string header/);
@@ -703,7 +698,7 @@ test("unsupported roles, missing operands and malformed headers report structura
 test("compiler validation is a separate step with structural owners for generated paths", () => {
   const badLength = header("minlen", "-1");
   const flag = header("optional");
-  const lowered = lower_schema_definition(data(members(member("2", array(str(badLength)), [flag]))));
+  const lowered = lower_schema_definition(data(object(member("2", array(str(badLength)), [flag]))));
   assert.equal(lowered.originAt(["content", "2"]), flag);
   const checked = compile_hson_schema(lowered.schema1Source);
   assert.ok(!checked.ok);

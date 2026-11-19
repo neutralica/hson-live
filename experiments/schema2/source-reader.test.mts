@@ -7,19 +7,20 @@ import { HsonSchema, compiled_hson_schema_of, hson_schema_digest } from "../../s
 import { read_transform_error_details } from "../../src/core/errors.js";
 import { parse_canonical_hson_data, serialize_canonical_hson_data } from "../../src/core/hson-data-canonical-codec.js";
 import { ordered_projected_value_equal } from "../../src/core/ordered-projected-value.js";
+import { compile_hson_schema } from "../../src/internal/hson-schema/compiler.js";
 import { schema_definition_identity } from "../../src/internal/hson-schema/definition-identity.js";
 import { compile_schema_source } from "./compile-source.js";
 import { corpus } from "./corpus-goldens.js";
 import { SchemaLoweringError } from "./lower-definition.js";
 import { read_schema_source, SchemaSourceError, type ReadSchemaSource } from "./source-reader.js";
-import { data, declarations, members, object, optional, str } from "./structural-fixtures.js";
+import { data, declarations, object, optional, str } from "./structural-fixtures.js";
 import { application_name, header, is_schema_occurrence, type SchemaOrigin } from "./structure.js";
 
 function authored(id: string) {
   return readFileSync(new URL(`./authored/${id}.hson`, import.meta.url), "utf8");
 }
 
-const field = (expr: string) => `<data [<members <'v' ${expr}>>]>`;
+const field = (expr: string) => `<data <object <'v' ${expr}>>>`;
 
 function assertOwned(read: ReadSchemaSource, source: string) {
   const seen = new Set<SchemaOrigin>();
@@ -36,8 +37,8 @@ function assertOwned(read: ReadSchemaSource, source: string) {
       next = read.rangeOf(item)!.end;
     }
     if (is_schema_occurrence(record)) {
-      assert.equal(source[range.start], "<");
-      assert.equal(source[range.end - 1], ">");
+      assert.equal(source[range.start], record.kind === "name" ? "'" : "<");
+      if (record.kind === "operation") assert.equal(source[range.end - 1], ">");
       assert.ok(Object.isFrozen(record.headers));
       record.headers.forEach(child);
       if (record.body !== undefined) child(record.body);
@@ -83,7 +84,7 @@ test("authored D02 excerpt retains its ordered definition, identity and optional
     displayName <string <minlen 1 maxlen 80>>
     address <content <line1 "string" line2 <optional "string"> city "string">>
   >>`);
-  assert.deepEqual(result.root, data(members(
+  assert.deepEqual(result.root, data(object(
     application_name("displayName", str(header("minlen", "1"), header("maxlen", "80"))),
     application_name("address", object(application_name("line1", str()),
       optional("line2", str()), application_name("city", str()))),
@@ -123,9 +124,109 @@ for (const golden of corpus) {
   });
 }
 
+test("an ordinary closed object owns required properties and the optional refined age", () => {
+  const source = `<data <object <
+  'name' <string>
+  'age' optional <number int min="0">
+  'active' <boolean>
+>>>`;
+  const { actual, expected } = compare(source, '<type "data" content <name "string" age <optional <number <int true min 0>>> active "boolean">>');
+  for (const [candidate, accept] of [
+    ['<name "A" active false>', true], ['<name "A" age 0 active true>', true],
+    ['<name "A" age -1 active true>', false], ['<name "A" age 1.5 active true>', false],
+    ['<name "A">', false], ['<name "A" active true other 0>', false], ["[]", false],
+  ] as const) {
+    const result = certify(actual, candidate);
+    assert.equal(result.ok, accept);
+    assert.deepEqual(result, certify(expected, candidate));
+  }
+});
+
+test("nested open objects preserve field paths and distinct compiler issue origins", () => {
+  const source = `<data <object <
+  'address' <object <
+    'city' <string>
+    'state' <string>
+  >>
+>>>`;
+  const schema1 = '<type "data" content <address <content <city "string" state "string">>>>';
+  const { actual, expected } = compare(source, schema1);
+  assert.ok(certify(actual, '<address <city "Madison" state "WI">>').ok);
+  for (const [candidate, key] of [
+    ['<address <city 1 state "WI">>', "city"], ['<address <city "Madison">>', "state"],
+  ]) {
+    const result = certify(actual, candidate);
+    assert.deepEqual(result, certify(expected, candidate));
+    assert.ok(!result.ok);
+    assert.deepEqual(result.issues[0].path, ["address", key]);
+  }
+
+  const invalid = source.replaceAll("<string>", '<string minlen="-1">');
+  const result = compile_schema_source(invalid);
+  const target = parse_canonical_hson_data(schema1.replaceAll('"string"', '<string <minlen -1>>'));
+  const control = compile_hson_schema(serialize_canonical_hson_data(target));
+  assert.ok(!result.ok && !control.ok);
+  assert.deepEqual(result.issues.map(({ origin, authoredRange, ...issue }) => issue), control.issues);
+  assert.deepEqual(result.issues.map(issue => issue.path), ["city", "state"].map(key =>
+    ["content", "address", "content", key, "string", "minlen"]));
+  const header = 'minlen="-1"';
+  assert.deepEqual(result.issues.map(issue => issue.authoredRange),
+    [invalid.indexOf(header), invalid.lastIndexOf(header)].map(start => ({ start, end: start + header.length })));
+});
+
+test("quoted system vocabulary is application data throughout an object", () => {
+  const keys = ["content", "ref", "object", "type", "data", "members", "defs", "any", "optional", "exact"];
+  const source = `<data <object <${keys.map(key => `'${key}' <string>`).join(" ")}>>>`;
+  const fields = keys.map(key => `${key} "string"`).join(" ");
+  const result = compare(source, `<type "data" content <${fields}>>`);
+  assert.ok(certify(result.actual, `<${fields}>`).ok);
+  const map = result.root.body;
+  assert.ok(map?.kind === "operation" && map.body?.kind === "members");
+  assert.deepEqual(map.body.entries.map(member => [member.kind, member.name]), keys.map(key => ["name", key]));
+  for (const key of keys) {
+    const rejected = certify(result.actual, `<${fields.replace(`${key} "string"`, `${key} true`)}>`);
+    assert.ok(!rejected.ok);
+    assert.deepEqual(rejected.issues[0].path, [key]);
+  }
+});
+
+test("sibling quotes delimit contentless, flagged, valued and adjacent member occurrences", () => {
+  const source = "// 🧭\r\n<data <object <'first' // skipped > 'x'\r\n 'second' <string>'third' optional 'fourth' null 'last'>>>";
+  const read = read_schema_source(source);
+  assertOwned(read, source);
+  const object = read.root.body;
+  assert.ok(object?.kind === "operation" && object.body?.kind === "members");
+  const entries = object.body.entries;
+  assert.deepEqual(entries.map(entry => entry.name), ["first", "second", "third", "fourth", "last"]);
+  assert.deepEqual(entries.map(entry => Object.hasOwn(entry, "body")), [false, true, false, true, false]);
+  assert.deepEqual(entries.map(entry => entry.headers.map(h => h.name)), [[], [], ["optional"], [], []]);
+  assert.ok(entries[3].body?.kind === "value" && entries[3].body.value === null);
+  assert.deepEqual(entries.map(entry => {
+    const { start, end } = read.rangeOf(entry)!;
+    return source.slice(start, end);
+  }), ["'first'", "'second' <string>", "'third' optional", "'fourth' null", "'last'"]);
+  rejection(source, "SCHEMA_LOWERING", "'first'", /requires a nested Schema operation/);
+});
+
+test("tuple items and union alternatives can be objects inside a referenced definition", () => {
+  const source = `<data
+    <defs <'Pair' <tuple [<object <'x' <number>>>, <union [<object <'kind' <exact "text"> 'y' <string>>>, <object <'kind' <exact "end">>>]>]>>>
+    <ref "Pair">
+  >`;
+  const result = compare(source, '<type "data" defs <Pair <tuple [<content <x "number">>, <union [<content <kind <exact "text"> y "string">>, <content <kind <exact "end">>>]>]>> content <ref "Pair">>');
+  for (const [candidate, accept] of [
+    ['[<x 2>, <kind "text" y "v">]', true], ['[<x 2>, <kind "end">]', true],
+    ['[<x 2>, <kind "text">]', false], ['[<>, <kind "end">]', false],
+  ] as const) {
+    const checked = certify(result.actual, candidate);
+    assert.equal(checked.ok, accept);
+    assert.deepEqual(checked, certify(result.expected, candidate));
+  }
+});
+
 test("repeated contentless numbers have independent positions in both HSON array spellings", () => {
   for (const [open, close] of [["[", "]"], ["«", "»"]]) {
-    const source = `// 🧭\r\n<data [<members <'position' <tuple ${open}<number>, // > ]\r\n <number>,${close}>>>]>`;
+    const source = `// 🧭\r\n<data <object <'position' <tuple ${open}<number>, // > ]\r\n <number>,${close}>>>>`;
     const result = compare(source, '<type "data" content <position <tuple ["number","number"]>>>');
     const group = result.originAt(["content", "position", "tuple"]);
     assert.ok(group.kind === "group");
@@ -160,41 +261,76 @@ function rejection(source: string, code: string, fragment: string, message?: Reg
   });
 }
 
-test("explicit member, object and ref root roles retain opposite certification witnesses", () => {
-  const member = "<'content' <exact \"string\">>";
-  rejection(`<data [<members ${member}>]>`, "SCHEMA_LOWERING", member, /Ambiguous direct root/);
-  const optionalMember = "<'content' optional <string>>";
-  rejection(`<data [<members ${optionalMember}>]>`, "SCHEMA_LOWERING", optionalMember, /Ambiguous direct root/);
-  compare("<data [<members <'content' <string>>>]>", '<type "data" content <content "string">>');
-  compare("<data [<members <'ref' <number>> <'content' <string>>>]>", '<type "data" content <ref "number" content "string">>');
-  const first = compare("<data [<object <'exact' <string>>>]>", '<type "data" content <content <exact "string">>>');
-  const second = compare(`<data [<object ${member}>]>`, '<type "data" content <content <content <exact "string">>>>');
-  const defs = "<defs <'string' <number>>>";
-  const refMember = "<'ref' <string>>";
-  rejection(`<data [${defs}, <members ${refMember}>]>`, "SCHEMA_LOWERING", refMember, /Ambiguous direct root/);
-  const third = compare(`<data [${defs}, <ref "string">]>`, '<type "data" defs <string "number"> content <ref "string">>');
-  const fourth = compare(`<data [${defs}, <object ${refMember}>]>`, '<type "data" defs <string "number"> content <content <ref "string">>>');
-  for (const [left, right, yes, no] of [
-    [first, second, '<exact "abc">', '<content "string">'],
-    [third, fourth, "2", '<ref "P">'],
+test("the two Schema 1.0 root collisions select the authored meaning", () => {
+  const defs = `<defs <'string' <number>>>`;
+  const first = compare(`<data <object <'exact' <string>>>>`, '<type "data" content <exact "string">>');
+  const second = compare(`<data <object <'content' <exact "string">>>>`,
+    '<type "data" content <content <content <exact "string">>>>');
+  const third = compare(`<data ${defs} <ref "string">>`, '<type "data" defs <string "number"> content <ref "string">>');
+  const fourth = compare(`<data ${defs} <object <'ref' <string>>>>`,
+    '<type "data" defs <string "number"> content <content <ref "string">>>');
+  // Historical unwrapped alternatives both compile. Each reverses the two candidates.
+  for (const [alternative, intended, other, yes, no] of [
+    ['<type "data" content <content <exact "string">>>', second, first, '<content "string">', '<exact "abc">'],
+    ['<type "data" defs <string "number"> content <ref "string">>', fourth, third, '<ref "P">', "2"],
   ] as const) {
-    assert.notEqual(hson_schema_digest(left.actual), hson_schema_digest(right.actual));
-    for (const [candidate, ok] of [[yes, true], [no, false]] as const) {
-      assert.equal(certify(left.actual, candidate).ok, ok);
-      assert.equal(certify(right.actual, candidate).ok, !ok);
+    const historical = HsonSchema.fromHson(alternative);
+    for (const [candidate, accept] of [[yes, true], [no, false]] as const) {
+      assert.equal(certify(intended.actual, candidate).ok, accept);
+      assert.equal(certify(historical, candidate).ok, !accept);
+      assert.equal(certify(other.actual, candidate).ok, !accept);
     }
+  }
+  const optional = compare(`<data <object <'content' optional <string>>>>`,
+    '<type "data" content <content <content <optional "string">>>>');
+  assert.ok(certify(optional.actual, "<>").ok);
+  compare(`<data <object <'content' <string>>>>`, '<type "data" content <content "string">>');
+});
+
+test("data owns its ordered defs and root reference directly", () => {
+  const source = `<data
+  <defs <
+    'Score' <number int min="0" max="100">
+  >>
+  <ref "Score">
+>`;
+  const { root, rangeOf, actual } = compare(source,
+    '<type "data" defs <Score <number <int true min 0 max 100>>> content <ref "Score">>');
+  const clauses = root.body;
+  assert.ok(clauses?.kind === "group");
+  assert.deepEqual(clauses.items.map(clause => clause.name), ["defs", "ref"]);
+  assert.deepEqual(rangeOf(clauses), { start: source.indexOf("<defs"), end: source.indexOf('<ref "Score">') + '<ref "Score">'.length });
+  for (const [candidate, accept] of [["0", true], ["100", true], ["101", false], ["1.5", false]] as const) {
+    assert.equal(certify(actual, candidate).ok, accept);
   }
 });
 
-test("absent root, empty maps and explicit any retain five identities", () => {
+test("generated collision wrappers project compiler failures to the precise authored operand", () => {
+  for (const [name, modifier, child, path, fragment] of [
+    ["content", "", '<string len="-1">', ["content", "content", "content", "string", "len"], 'len="-1"'],
+    ["content", "optional ", '<ref "Missing">', ["content", "content", "content", "optional", "ref"], '"Missing"'],
+    ["ref", "", '<ref "Missing">', ["content", "content", "ref", "ref"], '"Missing"'],
+  ] as const) {
+    const source = `<data <object <'${name}' ${modifier}${child}>>>`;
+    const checked = compile_schema_source(source);
+    assert.ok(!checked.ok);
+    assert.equal(checked.issues.length, 1);
+    const [issue] = checked.issues;
+    assert.deepEqual(issue.path, path);
+    assert.equal(issue.origin, checked.originAt(path));
+    const start = source.indexOf(fragment);
+    assert.deepEqual(issue.authoredRange, { start, end: start + fragment.length });
+  }
+});
+
+test("absent root, empty maps and explicit any retain distinct identities", () => {
   const digests = [
     ["<data>", '<type "data">'],
-    ["<data [<any>]>", '<type "data" content "any">'],
-    ["<data [<defs <>>]>", '<type "data" defs <>>'],
-    ["<data [<members < // empty map\n >>]>", '<type "data" content <>>'],
-    ["<data [<object <>>]>", '<type "data" content <content <>>>'],
+    ["<data <any>>", '<type "data" content "any">'],
+    ["<data <defs <>>>", '<type "data" defs <>>'],
+    ["<data <object < // empty map\n >>>", '<type "data" content <>>'],
   ].map(([source, expected]) => hson_schema_digest(compare(source, expected).actual));
-  assert.equal(new Set(digests).size, 5);
+  assert.equal(new Set(digests).size, 4);
 });
 
 test("explicit literal bodies keep null, empty Data object, empty Data array and empty string", () => {
@@ -218,11 +354,11 @@ test("explicit literal bodies keep null, empty Data object, empty Data array and
 });
 
 test("quoted application names and header operands use HSON escaping and exact source order", () => {
-  const source = String.raw`<data [<members
-    <'obj\u0065ct' <object <'O\'Brien' optional <string contains="// >" suffix="\uD83C\uDF4E\t">>>>
-    <'2' <number over="-1e2" int min="-0">>
-    <'__proto__' <exact -0>>
-  >]>`;
+  const source = String.raw`<data <object <
+    'obj\u0065ct' <object <'O\'Brien' optional <string contains="// >" suffix="\uD83C\uDF4E\t">>>
+    '2' <number over="-1e2" int min="-0">
+    '__proto__' <exact -0>
+  >>>`;
   const result = compare(source, String.raw`<type "data" content <
     object <content <'O\'Brien' <optional <string <contains "// >" suffix "🍎\t">>>>>
     '2' <number <over -100 int true min -0>>
@@ -236,11 +372,6 @@ test("quoted application names and header operands use HSON escaping and exact s
   assert.notEqual(hson_schema_digest(a.actual), hson_schema_digest(b.actual));
   assert.equal(certify(a.actual, "<v -0>").ok, true);
   assert.equal(certify(a.actual, "<v 0>").ok, false);
-  for (const name of ["defs", "members", "object", "tuple", "exact", "ref", "data"]) {
-    const read = read_schema_source(`<'${name}' <string>>`);
-    assert.equal(read.root.kind, "name");
-    assert.ok(read.root.body?.kind === "operation" && read.root.body.name === "string");
-  }
 });
 
 test("bounded Data retains escaped delimiters, multiline strings, signed zero and ordered uniqueness rows", () => {
@@ -270,8 +401,10 @@ test("collection headers retain the authored field order after generated content
 
 test("duplicate names and headers are distinct physical records through semantic rejection", () => {
   for (const [source, fragment] of [
-    ["<data [<members <'v' <number>> <'v' <number>>>]>", "<'v' <number>>"],
-    ["<data [<defs <'T' <string>> <'T' <string>>>]>", "<'T' <string>>"],
+    ["<data <object <'v' <number> 'v' <number>>>>", "'v' <number>"],
+    ["<data <defs <'T' <string> 'T' <string>>>>", "'T' <string>"],
+    [String.raw`<data <object <'age' <number> '\u0061ge' <number>>>>`, String.raw`'\u0061ge' <number>`],
+    [String.raw`<data <defs <'T' <string> '\u0054' <string>>>>`, String.raw`'\u0054' <string>`],
     [field('<number int int>'), "int"],
     [field('<number min="1" min="1">'), 'min="1"'],
   ]) {
@@ -293,16 +426,14 @@ test("governed roles and bad operands reject at the authored occurrence", () => 
     [field("<number int={true}>"), "int={true}"], [field('<number min="01">'), 'min="01"'],
     [field("<string len>"), "len"], [field('<null optional>'), "optional"],
     [field("<array unique={false} <any>>"), "false"], [field("<union <number>>"), "<number>"],
-    [field("<tuple [<'number'>]>"), "<'number'>"], [field("<array []>"), "[]"],
-    [field("<object []>"), "[]"], [field("<ref>"), "<ref>"],
-    ["<data []>", "[]"], ["<data <members <>>>", "<members <>>"],
-    ["<data [<ref \"R\">, <defs <>>]>", "<defs <>>"],
-    ["<data [<any>, <any>]>", "<any>"], ["<data [<'object'>]>", "<'object'>"],
-    ["<data [<number>]>", "<number>"], ["<document>", "<document>"],
-    ["<data [<members <number>>]>", "<number>"],
-    ["<data [<defs <'T' optional <number>>>]>", "optional"],
-    ["<data [<members <'n' optional optional <number>>>]>", "optional"],
-    ["<data [<members <'$_reserved' <number>>>]>", "<'$_reserved' <number>>"],
+    [field("<array []>"), "[]"], [field("<object []>"), "[]"], [field("<ref>"), "<ref>"],
+    ["<data <members>>", "<members>"],
+    ['<data <ref "R"> <defs <>>>', "<defs <>>"],
+    ["<data <defs <>> <defs <>>>", "<defs <>>"], ["<data <any> <any>>", "<any>"],
+    ["<data <number>>", "<number>"], ["<document>", "<document>"],
+    ["<data <defs <'T' optional <number>>>>", "optional"],
+    ["<data <object <'n' optional optional <number>>>>", "optional"],
+    ["<data <object <'$_reserved' <number>>>>", "'$_reserved' <number>"],
   ]) rejection(source, "SCHEMA_LOWERING", fragment);
 });
 
@@ -317,7 +448,13 @@ test("syntax rejects incomplete, malformed, unaccounted or trailing input", () =
     '<array unique={<by "a" by "b">} <any>>', '<array unique={{"by":"a"}} <any>>',
     '<array unique={<a 1>} {<b 1>} <any>>', "<exact <missing>>",
     "<exact -01>", "<exact 1e999>", "<exact true false>", '<exact null="true">',
-    "<'v' <number> <string>>", "<'v' <number> optional>", "<'v' , <number>>",
+    "<object <'v' <number> <string>>>", "<object <'v' <number> optional>>", "<object <'v' , <number>>>",
+    "<object <'v' <string> bare <number>>>", "<object <'v' <string> 'w' <number>>",
+    "<object <'one' <number>> <'two' <number>>>", "<object <<'one' <number>>>>",
+    "<object <'one' <number>, 'two' <number>>>", "<object <bare <number>>>",
+    '<object <"v" <string>>>', String.raw`<object <'bad\u123X' <number>>>`,
+    "<object <'unterminated <number>>>", "<tuple [<'number'>]>", "<data []>", "<data [<any>]>",
+    "<data [<members <'name' <string>>>]>", "<data <defs <>>, <any>>",
     "<tuple [<number><string>]>", "<tuple «<number>]>", "<tuple [<number>»>",
     "<tuple [,<number>]>", "<tuple [<number>,,<number>]>", "<tuple [<number>,",
     "<tuple [2]>", "<tuple [@abc <number>]>", "<data [<members <> <'x' <any>>>]>",
@@ -341,18 +478,18 @@ test("Data operand admission and expression groups account for authored identity
 });
 
 test("UTF-16 CRLF diagnostics identify malformed name escapes and missing closers", () => {
-  const source = "// 🧭\r\n<data [\r\n <members <'x\\q' <string>>>]>";
-  rejection(source, "invalid-name-escape", "\\", /3:14/);
-  const missing = "// 🧭\r\n  <'x' <number>";
-  rejection(missing, "SCHEMA_SOURCE_SYNTAX", "<", /2:3 Missing >/);
+  const source = "// 🧭\r\n<data\r\n <object <'x\\q' <string>>>>";
+  rejection(source, "invalid-name-escape", "\\", /3:13/);
+  const missing = "// 🧭\r\n  <object <'x' <number>";
+  rejection(missing, "SCHEMA_SOURCE_SYNTAX", "<", /2:11 Missing >/);
 });
 
 test("embedded Data failures display authored coordinates and preserve the operand-relative cause", () => {
   const prefix = "// check\r\n";
   for (const [source, start, position, operandColumn] of [
     [prefix + "<exact [<p/>]>", 18, "2:9", 2],
-    [prefix + field("<exact <v [<p/>]>>"), 42, "2:33", 5],
-    [prefix + field('<array unique={\r\n <by "🧭" cases [[<p/>]]>\r\n} <any>>'), 66, "3:19", 18],
+    [prefix + field("<exact <v [<p/>]>>"), 40, "2:31", 5],
+    [prefix + field('<array unique={\r\n <by "🧭" cases [[<p/>]]>\r\n} <any>>'), 64, "3:19", 18],
   ] as const) {
     assert.throws(() => compile_schema_source(source), error => {
       assert.ok(error instanceof SchemaSourceError);
@@ -370,15 +507,15 @@ test("embedded Data failures display authored coordinates and preserve the opera
   }
 });
 
-// The field expression starts at depth 4. Each enclosing tuple adds a declaration and an array.
+// The field expression starts at depth 3. Each enclosing tuple adds a declaration and an array.
 function insideTuples(count: number, expression: string): string {
   return field("<tuple [".repeat(count) + expression + "]>".repeat(count));
 }
 
 for (const [expression, body] of [["<tuple []>", "[]"], ["<object <>>", "<>"]]) {
   test(`the structural body of ${expression} admits depth 255 and rejects depth 256`, () => {
-    assert.ok(compile_schema_source(insideTuples(125, expression)).ok);
-    const source = insideTuples(125, `<array ${expression}>`);
+    assert.ok(compile_schema_source(insideTuples(125, `<array ${expression}>`)).ok);
+    const source = insideTuples(125, `<array <array ${expression}>>`);
     assert.throws(() => compile_schema_source(source), error => {
       assert.ok(error instanceof SchemaSourceError);
       assert.equal(error.code, "HSON_NESTING_LIMIT");
@@ -391,8 +528,8 @@ for (const [expression, body] of [["<tuple []>", "[]"], ["<object <>>", "<>"]]) 
 
 test("populated groups and maps enforce the depth of their nested declarations", () => {
   for (const expression of ["<tuple «<any>,»>", "<object <'k' <any>>>"]) {
-    assert.ok(compile_schema_source(insideTuples(124, `<array ${expression}>`)).ok);
-    const source = insideTuples(124, `<array <array ${expression}>>`);
+    assert.ok(compile_schema_source(insideTuples(125, expression)).ok);
+    const source = insideTuples(125, `<array ${expression}>`);
     assert.throws(() => compile_schema_source(source), error => {
       assert.ok(error instanceof SchemaSourceError);
       assert.equal(error.code, "SCHEMA_SOURCE_SYNTAX");
@@ -415,14 +552,14 @@ test("braced Data operands use their own HSON nesting budget", () => {
 
 test("compiler path and generated coverage identify the authored refinement and the nested invalid union", () => {
   const invalid = '<union [<number>, <number>]>';
-  const source = `<data [<members <'items' <tuple [<union [<null>, <number>]>, ${invalid}]>>>]>`;
+  const source = field(`<tuple [<union [<null>, <number>]>, ${invalid}]>`);
   const result = compile_schema_source(source);
   assert.ok(!result.ok);
   assert.equal(result.issues.length, 1);
   const [issue] = result.issues;
   assert.equal(issue.code, "INVALID_UNION");
   assert.deepEqual(issue.path, []);
-  assert.equal(issue.origin, result.originAt(["content", "items", "tuple", 1]));
+  assert.equal(issue.origin, result.originAt(["content", "v", "tuple", 1]));
   assert.equal(source.slice(issue.authoredRange.start, issue.authoredRange.end), invalid);
   assert.ok(issue.range);
   assert.ok(result.schema1Source.slice(issue.range.start, issue.range.end).includes("union"));
@@ -453,8 +590,8 @@ test("a range-only union issue retains its generated and authored intervals", ()
   assert.equal(issue.code, "INVALID_UNION");
   assert.deepEqual(issue.path, []);
   assert.deepEqual(issue.range, { start: 99, end: 189 });
-  assert.deepEqual(issue.authoredRange, { start: 54, end: 78 });
-  assert.equal(source.slice(54, 78), "<union [<null>, <null>]>");
+  assert.deepEqual(issue.authoredRange, { start: 52, end: 76 });
+  assert.equal(source.slice(52, 76), "<union [<null>, <null>]>");
 });
 
 test("252 arrays reach exact operand validation and 253 own the generated nesting overflow", () => {
@@ -475,7 +612,7 @@ test("252 arrays reach exact operand validation and 253 own the generated nestin
 });
 
 test("private contentless expressions do not enter ordinary Data admission", () => {
-  for (const source of ["<number>", "<'age' <number>>"]) {
+  for (const source of ["<number>", "<object <'age' <number>>>"]) {
     assert.ok(is_schema_occurrence(read_schema_source(source).root));
     assert.throws(() => HsonDataValue.fromSource(source));
   }

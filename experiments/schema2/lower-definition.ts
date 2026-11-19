@@ -114,9 +114,10 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
     return entries;
   }
 
-  function members(context: "members" | "object" | "defs", owner: SchemaOccurrence, path: Path): OrderedProjectedObject {
+  function members(owner: SchemaOccurrence, path: Path): OrderedProjectedObject {
     no_headers(owner);
     const body = owner.body;
+    const context = owner.name;
     if (body?.kind !== "members") fail(body ?? owner, `${context} requires an ordered member map.`);
     locate(path, body);
     const entries: Entry[] = [];
@@ -141,15 +142,27 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
       } else {
         value = expression(child, memberPath);
       }
-      // Schema 1.0 dispatches these direct root maps as descriptors. Test the emitted
-      // operand *after* applying optional, which itself produces an object.
-      if (context === "members" && body.entries.length === 1
-        && (name === "ref" || name === "content" && is_ordered_projected_object(value))) {
-        fail(member, `Ambiguous direct root member ${JSON.stringify(name)}. Use an explicit object root for this member.`);
-      }
       entries.push([name, value]);
     }
     return ordered_projected_object(entries);
+  }
+
+  // Unmodified primitives are the only expressions emitted as Schema 1.0 strings.
+  function primitiveShorthand(owner: SchemaOccurrence): boolean {
+    return !owner.headers.length && ["any", "null", "boolean", "number", "string"].includes(owner.name);
+  }
+
+  function rootObject(owner: SchemaOccurrence, path: Path): OrderedProjectedValue {
+    const map = owner.body;
+    const sole = map?.kind === "members" && map.entries.length === 1 ? map.entries[0] : undefined;
+    // The 1.0 compiler dispatches a sole ref, or a sole object-valued content, as a
+    // descriptor. In either case put the application map inside an object descriptor.
+    if (sole?.name === "ref") return expression(owner, path);
+    if (sole?.name === "content" && sole.body?.kind === "operation"
+      && (sole.headers.length > 0 || !primitiveShorthand(sole.body))) {
+      return expression(owner, path);
+    }
+    return members(owner, path);
   }
 
   function expression(owner: SchemaOccurrence, path: Path): OrderedProjectedValue {
@@ -157,15 +170,16 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
     locate(path, owner);
     const name = owner.name;
     const operandPath = [...path, name];
+    if (primitiveShorthand(owner)) {
+      no_body(owner);
+      return name;
+    }
     switch (name) {
       case "any": case "null": case "boolean":
-        no_headers(owner);
-        no_body(owner);
-        return name;
+        return fail(owner.headers[0], `${name} does not take a ${owner.headers[0].name} header.`);
       case "number": case "string": {
         no_body(owner);
         const rules = refinements(owner, name, operandPath);
-        if (!rules.length) return name;
         return ordered_projected_object([[name, ordered_projected_object(rules)]]);
       }
       case "exact": case "ref": {
@@ -176,7 +190,7 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
         return ordered_projected_object([[name, body.value]]);
       }
       case "object":
-        return ordered_projected_object([["content", members("object", owner, [...path, "content"])]]);
+        return ordered_projected_object([["content", members(owner, [...path, "content"])]]);
       case "array": case "tuple": case "union": {
         if (name === "union") no_headers(owner);
         const rules = name === "union" ? [] : refinements(owner, name, operandPath);
@@ -203,30 +217,33 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
   locate([], root);
   locate(["type"], root);
   const entries: Entry[] = [["type", "data"]];
-  const body = root.body;
-  if (body !== undefined) {
-    if (body.kind !== "group") fail(body, "A present data body requires a group of root declarations.");
-    const clauses = body.items;
-    if (!clauses.length) fail(body, "A present data body requires a nonempty group of root declarations.");
-    for (const clause of clauses) {
-      if (clause.kind !== "operation") fail(clause, "A data root clause must be an operation.");
-      if (clause.name === "defs") {
-        if (entries.length !== 1) fail(clause, "defs may occur once, before root content.");
-        entries.push(["defs", members("defs", clause, ["defs"])]);
-        continue;
-      }
-      if (entries.at(-1)?.[0] === "content") fail(clause, "A data root accepts only one content declaration.");
-      switch (clause.name) {
-        case "members":
-          entries.push(["content", members("members", clause, ["content"])]);
-          break;
-        case "object": case "ref": case "any":
-          entries.push(["content", expression(clause, ["content"])]);
-          break;
-        default:
-          fail(clause, `Unsupported data root role ${JSON.stringify(clause.name)}. Expected defs, members, object, ref or any.`);
-      }
+  function rootClause(clause: SchemaOccurrence): void {
+    if (clause.kind !== "operation") fail(clause, "A data root clause must be an operation.");
+    if (clause.name === "defs") {
+      if (entries.length !== 1) fail(clause, "defs may occur once, before root content.");
+      entries.push(["defs", members(clause, ["defs"])]);
+      return;
     }
+    if (entries.at(-1)?.[0] === "content") fail(clause, "A data root accepts only one content declaration.");
+    switch (clause.name) {
+      case "object":
+        entries.push(["content", rootObject(clause, ["content"])]);
+        break;
+      case "ref": case "any":
+        entries.push(["content", expression(clause, ["content"])]);
+        break;
+      default:
+        fail(clause, `Unsupported data root role ${JSON.stringify(clause.name)}. Select another Data expression through defs and ref.`);
+    }
+  }
+
+  const body = root.body;
+  if (body?.kind === "group") {
+    if (!body.items.length) fail(body, "A present data body requires a nonempty group of root declarations.");
+    for (const clause of body.items) rootClause(clause);
+  } else if (body !== undefined) {
+    if (!is_schema_occurrence(body)) fail(body, "Expected ordered data root declarations.");
+    rootClause(body);
   }
   const orderedDefinition = ordered_projected_object(entries);
   let schema1Source: string;
