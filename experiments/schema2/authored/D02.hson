@@ -1,0 +1,19 @@
+<data [
+  <members
+    <'customerId' <string prefix="cus-" minlen="5" maxlen="32">>
+    <'displayName' <string minlen="1" maxlen="80">>
+    <'active' <boolean>>
+    <'loyaltyScore' <number>>
+    <'nickname' optional <union [<string>, <null>]>>
+    <'phones' optional <array <string>>>
+    <'address' <object
+      <'line1' <string>>
+      <'line2' optional <string>>
+      <'city' <string>>
+      <'postalCode' <string minlen="3" maxlen="12">>
+      <'country' <string len="2" alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ">>
+    >>
+    <'legacyRecord' <null>>
+    <'integrationPayload' <any>>
+  >
+]>

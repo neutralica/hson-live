@@ -3,6 +3,7 @@
     { "path": "tsconfig.json", "role": "primary", "authority": "check:source" },
     { "path": "tests/tsconfig.json", "role": "primary", "authority": "check:tests" },
     { "path": "scripts/tsconfig.json", "role": "primary", "authority": "check:tooling" },
+    { "path": "experiments/schema2/tsconfig.json", "role": "primary", "authority": "tsc -p experiments/schema2/tsconfig.json --noEmit" },
     { "path": "editors/vscode-hson/tsconfig.json", "role": "primary", "authority": "check:editor" },
     { "path": "editors/vscode-hson/src/tsserver-plugin/tsconfig.json", "role": "primary", "authority": "check:editor" },
     { "path": "tests/entrypoints/public/tsconfig.json", "role": "primary", "authority": "check:entrypoints" },

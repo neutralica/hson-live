@@ -80,7 +80,7 @@ export type LoweredDefinition = Readonly<{
  * identifies the offending input occurrence. On success, pass schema1Source to
  * compile_hson_schema for definition validation. Use originAt(issue.path) to anchor
  * its diagnostics. Compiler ranges refer to the generated Schema 1.0 text.
- * A range-only issue with an empty path currently anchors to the root.
+ * The private source entry also projects range-only issues using generated HSON provenance.
  *
  * Run the structural proof with:
  *   node --import=tsx --test experiments/schema2/lower-definition.test.mts
@@ -91,6 +91,14 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
   function locate(path: Path, origin: SchemaOrigin): void {
     if (path.length >= HSON_MAX_NESTING) fail(origin, "Lowered definition exceeds the HSON nesting limit.");
     origins.set(JSON.stringify(path), origin);
+  }
+
+  function originAt(path: Path): SchemaOrigin {
+    for (let length = path.length; length > 0; length--) {
+      const origin = origins.get(JSON.stringify(path.slice(0, length)));
+      if (origin) return origin;
+    }
+    return root;
   }
 
   function refinements(owner: SchemaOccurrence, domain: keyof typeof allowedHeaders, path: Path): Entry[] {
@@ -225,16 +233,19 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
   try {
     schema1Source = serialize_canonical_hson_data(orderedDefinition);
   } catch (error) {
-    fail(root, `Cannot emit the lowered Data definition. ${error instanceof Error ? error.message : String(error)}`);
-  }
-  return {
-    orderedDefinition, schema1Source,
-    originAt(path) {
-      for (let length = path.length; length > 0; length--) {
-        const origin = origins.get(JSON.stringify(path.slice(0, length)));
-        if (origin) return origin;
+    // A bounded literal can fit by itself and overflow inside the generated
+    // definition. Only inspect the rejected tree, leaving admission to the codec.
+    function overflowingOrigin(node: OrderedProjectedValue, path: Path): SchemaOrigin | undefined {
+      if (path.length >= HSON_MAX_NESTING) return originAt(path);
+      if (node === null || typeof node !== "object") return undefined;
+      const children = is_ordered_projected_object(node) ? node.entries : node.entries();
+      for (const [key, child] of children) {
+        const found = overflowingOrigin(child, [...path, key]);
+        if (found) return found;
       }
-      return root;
-    },
-  };
+    }
+    fail(overflowingOrigin(orderedDefinition, []) ?? root,
+      `Cannot emit the lowered Data definition. ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return { orderedDefinition, schema1Source, originAt };
 }

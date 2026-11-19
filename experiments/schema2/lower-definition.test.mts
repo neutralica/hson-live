@@ -664,7 +664,7 @@ test("a literal within the Data depth limit can exceed it inside the generated d
   for (let depth = 0; depth < HSON_MAX_NESTING - 3; depth++) literal = ordered_projected_array([literal]);
   const body = value(literal);
   const root = field(op("exact", body));
-  // Source-reader diagnostic target: anchor this emission error to body. It currently reports root.
+  // The literal body owns the overflow when embedded in the generated definition.
   structural_error(root, /nesting depth/);
 });
 

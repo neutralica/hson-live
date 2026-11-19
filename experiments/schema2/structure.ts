@@ -10,10 +10,9 @@ import { assert_canonical_hson_data_value } from "../../src/core/projected-value
  * clause (members, object, ref or any). Other Data expressions can be named in defs
  * and selected with a root ref.
  *
- * TODO: Implement the private Schema 2.0 source reader. Decode names, quoted text
- * and finite Data operands there. Retain spans separately, keyed by occurrence,
- * header or body. The later shared HsonDeclarative parser can supply this same
- * boundary through an adapter. Keep Schema interpretation in lower_schema_definition.
+ * The private source reader decodes names, header text and bounded Data operands,
+ * and keeps authored spans in an identity-keyed sidecar. Schema interpretation
+ * belongs to lower_schema_definition.
  *
  * Coverage roadmap: Data collection shorthand emits content first, followed by
  * headers in order. Historical permutations need an explicit ordered-field form.

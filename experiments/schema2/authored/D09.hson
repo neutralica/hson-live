@@ -1,0 +1,21 @@
+<data [
+  <defs
+    <'Entry' <union [<ref "Link">, <ref "Section">]>>
+    <'Link' <object
+      <'kind' <exact "link">>
+      <'label' <string minlen="1" maxlen="60">>
+      <'href' <string prefix="/">>
+      <'newWindow' optional <boolean>>
+    >>
+    <'Section' <object
+      <'kind' <exact "section">>
+      <'label' <string minlen="1" maxlen="60">>
+      <'children' <array <ref "Entry">>>
+      <'collapsed' optional <boolean>>
+    >>
+  >,
+  <members
+    <'application' <exact "workbench">>
+    <'entries' <array <ref "Entry">>>
+  >
+]>

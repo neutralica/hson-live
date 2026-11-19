@@ -254,6 +254,11 @@ export function tokenize_authored_event(source: string) {
   return new HsonScanner(source, 0).scanEventDeclaration();
 }
 
+/** @internal Lexical access for a private source consumer with its own declaration grammar. */
+export function hson_lexical_cursor(source: string) {
+  return new HsonScanner(source, 0).lexicalCursor();
+}
+
 /** Check the boundary that will follow a completed whole Event operand. @internal */
 export function authored_event_operand_ends_at(source: string, end: number, quoted: boolean): boolean {
   if (end === source.length) return true;
@@ -327,6 +332,33 @@ class HsonScanner {
   private editorCommentEof = false;
   private editorElement: HsonGrammarCheckpoint["element"];
   private editorAttribute: string | undefined;
+
+  public lexicalCursor() {
+    return {
+      offset: () => this.index,
+      peek: () => this.peek(),
+      consume: (delimiter: string) => this.consumeExpected(delimiter),
+      skipTrivia: () => this.skipTrivia(),
+      bareName: () => this.scanBareName("name"),
+      quotedName: () => this.scanQuotedName(),
+      headerText: (name: string): string => JSON.parse('"' + this.scanAttributeString(name).text + '"'),
+      emptyObjectAhead: () => this.peek() === "<" && this.nextNonTriviaIs(">", this.index + 1),
+      assertNesting: (depth: number) => this.assertNesting(depth),
+      // Bound one value exactly as for an inline Data operand. Admission of that
+      // slice still belongs to the canonical Data reader, including QUID checks.
+      dataSource: () => {
+        const start = this.index, first = this.tokens.length;
+        this.scanObjectMemberValue(0, "operand", "}");
+        this.tokens.length = first;
+        return this.source.slice(start, this.index);
+      },
+      arrayItems: (depth: number, readItem: () => void) => {
+        const first = this.tokens.length;
+        this.scanArray(depth, readItem);
+        this.tokens.length = first;
+      },
+    };
+  }
 
   public scanEventDeclaration(observeValue?: EventValueObserver, observeHeader?: EventHeaderObserver,
     onHeaderEnd?: () => void, observeGap?: EventHeaderGapObserver): Readonly<{
@@ -1270,7 +1302,7 @@ class HsonScanner {
     }
   }
 
-  private scanArray(depth: number): void {
+  private scanArray(depth: number, readItem?: () => void): void {
     this.observeData({ kind: "array" }, this.index);
     this.editorContainers.push("array");
     this.assertNesting(depth);
@@ -1283,6 +1315,8 @@ class HsonScanner {
     this.skipTrivia();
     let quid: { value: string; start: Position; end: Position } | undefined;
     if (this.peek() === "@") {
+      // An items-only consumer has no receiving array node for identity metadata.
+      if (readItem !== undefined) this.fail("An item group cannot carry array identity metadata.", this.position(), "HSON_ARRAY_QUID_FORBIDDEN");
       const quidPos = this.position();
       this.consumeExpected("@");
       if (this.atEnd() || isHsonTrivia(this.peek()) || this.peek() === closer) {
@@ -1373,7 +1407,8 @@ class HsonScanner {
       }
 
       this.editorPath.push(itemIndex++);
-      this.scanArrayItem(depth + 1);
+      if (readItem === undefined) this.scanArrayItem(depth + 1);
+      else readItem();
       this.editorPath.pop();
       sawItem = true;
       expectItem = false;
@@ -2125,8 +2160,8 @@ class HsonScanner {
     }
   }
 
-  private nextNonTriviaIs(expected: string): boolean {
-    let ix = this.index;
+  private nextNonTriviaIs(expected: string, start = this.index): boolean {
+    let ix = start;
     while (ix < this.source.length) {
       const ch = this.source[ix];
       if (isHsonTrivia(ch)) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import ts from "typescript";
 import {
@@ -62,7 +62,9 @@ assert.equal(tracked.includes("tests/typescript-observability.acceptance.mts"), 
 assert.equal(inventory.owners.has("tests/typescript-observability.acceptance.mts"), true);
 assert.equal(inventory.owners.get("scripts/hson-schema.mts")?.some((owner) => owner.project === "scripts/tsconfig.json" && owner.role === "primary" && owner.inclusion === "root"), true);
 
-const repairedPrimaryProjects = new Map<string, string>([
+const expectedPrimaryProjects = new Map<string, string>([
+  ["src/api/transform/parsers/tokenize-hson.ts", "tsconfig.json"],
+  ["editors/vscode-hson/src/extension.ts", "editors/vscode-hson/tsconfig.json"],
   ["editors/vscode-hson/src/tsserver-plugin/tsserver-plugin.ts", "editors/vscode-hson/src/tsserver-plugin/tsconfig.json"],
   ["scripts/hson-schema.mts", "scripts/tsconfig.json"],
   ["scripts/typescript-observability.mts", "scripts/tsconfig.json"],
@@ -76,11 +78,24 @@ const repairedPrimaryProjects = new Map<string, string>([
   ["tests/entrypoints/node/livehost-node.ts", "tests/entrypoints/node/tsconfig.json"],
   ["tests/entrypoints/browser/livetree-browser.ts", "tests/entrypoints/browser/tsconfig.json"],
 ]);
-const repairedAudit = audit_editor_parity(repositoryRoot, [...repairedPrimaryProjects.keys()], manifest.projects, inventory);
+const schema2Directory = "experiments/schema2";
+const schema2Project = `${schema2Directory}/tsconfig.json`;
+const schema2Files = tracked.filter((file) => dirname(file) === schema2Directory);
+assert.ok(schema2Files.length > 0, "Expected TypeScript sources in the private Schema 2.0 project.");
+for (const file of schema2Files) {
+  const owners = inventory.owners.get(file) ?? [];
+  assert.ok(owners.some((owner) => owner.project === schema2Project && owner.role === "primary" && owner.inclusion === "root"),
+    `${file} must be a root of the primary Schema 2.0 project.`);
+  assert.equal(owners.some((owner) => owner.project === "tsconfig.json"), false,
+    `${file} must stay outside the production TypeScript program.`);
+  expectedPrimaryProjects.set(file, schema2Project);
+}
+
+const repairedAudit = audit_editor_parity(repositoryRoot, [...expectedPrimaryProjects.keys()], manifest.projects, inventory);
 assert.deepEqual(repairedAudit.errors, []);
-assert.equal(repairedAudit.configuredOrdinary, 12);
-assert.equal(repairedAudit.parityOrdinary, 12);
-assert.deepEqual(repairedAudit.primaryProjects, repairedPrimaryProjects);
+assert.equal(repairedAudit.configuredOrdinary, expectedPrimaryProjects.size);
+assert.equal(repairedAudit.parityOrdinary, expectedPrimaryProjects.size);
+assert.deepEqual(repairedAudit.primaryProjects, expectedPrimaryProjects);
 
 const aggregationSelection: EditorSelection = Object.freeze({
   primaryProjects: new Map([["a.ts", "one/tsconfig.json"], ["b.ts", "one/tsconfig.json"], ["c.ts", "two/tsconfig.json"]]),
@@ -144,11 +159,16 @@ assert.equal(toolingConfig.options.types?.includes("node"), true);
 
 const temporary = mkdtempSync(join(tmpdir(), "hson-observability-"));
 try {
+  const git = spawnSync("git", ["init", "--quiet", "--template="], { cwd: temporary, encoding: "utf8" });
+  assert.equal(git.status, 0, git.error?.message ?? git.stderr);
   writeFileSync(join(temporary, "latent-error.mts"), "const value: string = 1;\nvoid value;\n");
   writeFileSync(join(temporary, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, noEmit: true }, files: ["latent-error.mts"] }));
+  const temporaryFiles = tracked_typescript_files(temporary);
+  assert.deepEqual(temporaryFiles, ["latent-error.mts"]);
   const temporaryProjects: readonly ProjectSpec[] = [{ path: "tsconfig.json", role: "primary", authority: "acceptance test" }];
   const temporaryInventory = resolved_project_inventory(temporary, temporaryProjects);
-  const editorAudit = audit_editor_parity(temporary, ["latent-error.mts"], temporaryProjects, temporaryInventory);
+  assert.deepEqual(audit_coverage(temporaryFiles, temporaryInventory.owners, []).errors, []);
+  const editorAudit = audit_editor_parity(temporary, temporaryFiles, temporaryProjects, temporaryInventory);
   assert.deepEqual(editorAudit.errors, []);
   assert.equal(editorAudit.configuredOrdinary, 1);
   assert.equal(editorAudit.parityOrdinary, 1);
@@ -158,13 +178,16 @@ try {
   assert.match(compiler.stdout, /TS2322/);
 
   rmSync(join(temporary, "tsconfig.json"));
-  const inferredAudit = audit_editor_parity(temporary, ["latent-error.mts"], [], { owners: new Map() });
+  const orphanInventory = resolved_project_inventory(temporary, []);
+  assert.deepEqual(audit_coverage(temporaryFiles, orphanInventory.owners, []).errors,
+    ["Ordinary TypeScript file has no authoritative project: latent-error.mts"]);
+  const inferredAudit = audit_editor_parity(temporary, temporaryFiles, [], orphanInventory);
   assert.match(inferredAudit.errors[0] ?? "", /inferred or missing project/);
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }
 
-console.log(JSON.stringify({ typescriptObservabilityAcceptance: "ok", checks: 33 }));
+console.log(JSON.stringify({ typescriptObservabilityAcceptance: "ok", projectAssignments: expectedPrimaryProjects.size }));
   testEvents.case_end(observabilityCase, "pass");
   testEvents.terminal("pass");
 } catch (error) {
