@@ -62,7 +62,7 @@ const invocation = map.parts.components.submit.write();
 assert.equal(invocation, map.parts.components.at(['submit']).write());
 map.addLibraries({page: {document: invocation}});
 assert.match(JSON.stringify(map.doc.must('page').root()), /button/);
-const RecordSchema = Hson.schema\`<type "data" content <count "number" label "string">>\`;
+const RecordSchema = Hson.schema\`<type "data" root <object <count "number" label "string">>>\`;
 const direct = hsonLiveMap.fromLibraries({components: {parts: {
   record: {kind: 'document', document: '<p hson:part data:d="%{incoming}" "^{d.label}:^{d.count}"/>'}
 }}});

@@ -463,7 +463,7 @@ check("governing Schemas validate the resulting strings and retain authored qual
   assert.deepEqual(Hson.document.toNode(ANY_DOCUMENT.certify(certified)).$_content[0], Hson.document.toNode(Reflect.apply(ANY_DOCUMENT.certify, ANY_DOCUMENT, [Reflect.apply(schema.certify, schema, [Hson.document`<a href="/slides/2" title="Slide 2 of 3"/>`])])).$_content[0]);
   assert.throws(() => schema.certify(Hson.document`<a href="/slides/${4}" title="Slide ${2} of ${3}"/>`));
   assert.throws(() => schema.certify(Hson.document`<a href="/slides/${'2" injected="yes'}" title="Slide ${2} of ${3}"/>`));
-  const data = Hson.schema`<type "data" content <label <exact "pre2post">>>`;
+  const data = Hson.schema`<type "data" root <object <label <exact "pre2post">>>>`;
   assert.deepEqual((ANY_DATA.certify(Reflect.apply(data.certify, data, [Hson.data.parse`<label "pre${2}post">`]))).materialize(), { label: "pre2post" });
   assert.throws(() => data.certify(Hson.data.parse`<label "pre${3}post">`));
   const authored = Hson.document`<a @:slide title="Slide ${2}"/>`;

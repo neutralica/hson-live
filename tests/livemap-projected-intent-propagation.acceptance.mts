@@ -24,12 +24,12 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const Schema = Hson.schema`<type "data" content <
+const Schema = Hson.schema`<type "data" root <object <
   source <optional "any"> destination <optional "any"> items <optional "any">
   kept <optional "any"> left <optional "any"> right <optional "any">
   copy <optional "any"> other <optional "any"> value <optional "any">
   a <optional "any"> z <optional "any">
->>`;
+>>>`;
 const registry = (data: string | JsonValue) => hsonLiveMap.fromLibraries({ state: { json: data, schema: Schema } });
 const state = (map: ReturnType<typeof registry>) => map.data.must("state");
 

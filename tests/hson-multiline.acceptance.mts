@@ -84,8 +84,8 @@ try {
     const back = hsonTransform.fromTrustedHtml(html).toHson().serialize();
     assert.ok(canonical_hson_graph_equal(Hson.document.toNode(document), Hson.document.toNode(Hson.document.fromHson(back))));
   }
-  const compactSchema = '<type "data" content <message <exact "hello\\nworld">>>';
-  const multilineSchema = '<type "data" content <message <exact "\n    hello\n    world\n  ">>>';
+  const compactSchema = '<type "data" root <object <message <exact "hello\\nworld">>>>';
+  const multilineSchema = '<type "data" root <object <message <exact "\n    hello\n    world\n  ">>>>';
   assert.equal(hson_schema_source_digest(compactSchema), hson_schema_source_digest(multilineSchema));
   assert.equal((HsonSchema.fromHson(multilineSchema).certify(Hson.data.from({ message: "hello\nworld" }))).toHson(), (Hson.data.from({ message: "hello\nworld" })).toHson());
   const readableOutput = hsonTransform.fromJson(JSON.stringify("hello\nworld")).toHson();

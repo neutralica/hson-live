@@ -3,9 +3,9 @@ import { Hson, hsonLiveMap, bind_locus_http } from "../../src/index.js";
 import { HsonSchema, ANY_DOCUMENT, ANY_DATA } from "../../src/api/schema/hson-schema.js";
 import { locus_map_internal, echo_map_internal } from "../../src/internal/governor-maps.js";
 
-const schema = Hson.schema`<type "data" content <count "number">>`;
+const schema = Hson.schema`<type "data" root <object <count "number">>>`;
 const same = HsonSchema.fromHson(schema.toHson());
-const other = Hson.schema`<type "data">`;
+const other = Hson.schema`<type "data" root "any">`;
 const definitions = { page: { document: '<main "hello"/>' }, state: { json: { count: 1 }, schema },
   components: { parts: { button: { kind: "document" as const, document: '<button hson:part/>' } } } };
 const collisions = ["must", "then", "toJSON", "name", "length", "call", "apply", "bind", "prototype",

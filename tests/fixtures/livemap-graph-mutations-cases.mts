@@ -181,7 +181,7 @@ export async function livemap_graph_mutation_cases(check: Check): Promise<void> 
   await check("complete candidate depth and governing Schema reject atomically", () => {
     let deep: JsonValue=0;
     for(let i=0;i<HSON_MAX_NESTING-2;i++) deep={n:deep};
-    const map=hsonLiveMap.fromLibraries({state:{json:{slot:0}},guard:{json:{n:0},schema:Hson.schema`<type "data" content <n <number <int true min 0>>>>`}});
+    const map=hsonLiveMap.fromLibraries({state:{json:{slot:0}},guard:{json:{n:0},schema:Hson.schema`<type "data" root <object <n <number <int true min 0>>>>>`}});
     const before=map.data.state.hson();
     assert.throws(()=>map.batch(d=>{d.data.state.at(["slot"]).set({extra:deep});d.data.guard.at(["n"]).set(1)}));
     assert.equal(map.data.state.hson(),before);assert.equal(map.rev,0);

@@ -18,7 +18,7 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 import { project_locus_live_transition_internal, LOCUS_LIVE_PROJECTED_WIRE_FORMAT } from "../src/api/locus/locus.live-projection.ts";
 import { create_locus_hosted_aggregate_authority_internal } from "../src/api/locus/locus.aggregate.authority.ts";
 
-const Schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const Schema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const map = hsonLiveMap.fromLibraries({
   A: { json: { value: "A0" }, schema: Schema },
   B: { json: { value: "B0" }, schema: Schema },

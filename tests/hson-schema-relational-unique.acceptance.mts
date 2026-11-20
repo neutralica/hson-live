@@ -30,8 +30,8 @@ const check = (name: string, run: () => void): void => {
   console.log(`ok ${++checks} - ${name}`);
 };
 
-const DecksSchema: HsonSchema = Hson.schema`<type "data" content <cells <array <
-  content <content <position <optional "any"> body "string">>
+const DecksSchema: HsonSchema = Hson.schema`<type "data" root <object <cells <array <
+  content <object <position <optional "any"> body "string">>
   unique <
     by "position"
     cases [
@@ -47,7 +47,7 @@ const DecksSchema: HsonSchema = Hson.schema`<type "data" content <cells <array <
       ["decorative", []]
     ]
   >
->>>>`;
+>>>>>`;
 
 function cells(positions: readonly string[]): ReturnType<typeof Hson.canonical> {
   return hsonTransform.fromJson({ cells: positions.map((position, index) => ({ position, body: `body-${index}` })) }).toHson().serialize();
@@ -113,14 +113,14 @@ check("HsonData and runtime-origin canonical ingress use the identical evaluator
 });
 
 check("selector and derived-key equality distinguish positive and negative zero", () => {
-  const selectors: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "any">> unique <by "position" cases [[0, ["positive"]], [-0, ["negative"]]]>>>>>`;
+  const selectors: HsonSchema = Hson.schema`<type "data" root <object <cells <array <content <object <position "any">> unique <by "position" cases [[0, ["positive"]], [-0, ["negative"]]]>>>>>>`;
   assert.equal(accepts(selectors, Hson.canonical`<cells [<position 0>, <position -0>]>`), true);
-  const keys: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", [0]], ["b", [-0]]]>>>>>`;
+  const keys: HsonSchema = Hson.schema`<type "data" root <object <cells <array <content <object <position "string">> unique <by "position" cases [["a", [0]], ["b", [-0]]]>>>>>>`;
   assert.equal(accepts(keys, Hson.canonical`<cells [<position "a">, <position "b">]>`), true);
 });
 
 check("ordinary and configured unique remain independent at different array locations", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", ["A"]], ["b", ["B"]]]>>> ids <array <content "number" unique true>>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <cells <array <content <object <position "string">> unique <by "position" cases [["a", ["A"]], ["b", ["B"]]]>>> ids <array <content "number" unique true>>>>>`;
   const valid = Hson.canonical`<cells [<position "a">, <position "b">] ids [0, -0]>`;
   assert.equal((schema.certify(Hson.data.fromSource(valid))).toHson(), valid);
   assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<cells [<position "a">, <position "b">] ids [1, 1]>`)));
@@ -128,25 +128,25 @@ check("ordinary and configured unique remain independent at different array loca
 });
 
 check("generic scheduling and hardware relations are not domain-specific", () => {
-  const scheduling: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["morning-hour", ["09:00", "09:30"]], ["single-0930", ["09:30"]], ["single-1000", ["10:00"]]]>>>>>`;
+  const scheduling: HsonSchema = Hson.schema`<type "data" root <object <items <array <content <object <kind "string">> unique <by "kind" cases [["morning-hour", ["09:00", "09:30"]], ["single-0930", ["09:30"]], ["single-1000", ["10:00"]]]>>>>>>`;
   assert.equal(accepts(scheduling, Hson.canonical`<items [<kind "morning-hour">, <kind "single-0930">]>`), false);
   assert.equal(accepts(scheduling, Hson.canonical`<items [<kind "morning-hour">, <kind "single-1000">]>`), true);
-  const hardware: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["video-call", ["camera", "microphone", "encoder"]], ["recording", ["camera", "encoder"]], ["speaker", ["speaker"]]]>>>>>`;
+  const hardware: HsonSchema = Hson.schema`<type "data" root <object <items <array <content <object <kind "string">> unique <by "kind" cases [["video-call", ["camera", "microphone", "encoder"]], ["recording", ["camera", "encoder"]], ["speaker", ["speaker"]]]>>>>>>`;
   assert.equal(accepts(hardware, Hson.canonical`<items [<kind "video-call">, <kind "recording">]>`), false);
   assert.equal(accepts(hardware, Hson.canonical`<items [<kind "video-call">, <kind "speaker">]>`), true);
 });
 
 check("configured unique compiler rejects every malformed closed relation shape", () => {
-  const compile = (unique: string) => compile_hson_schema(`<type "data" content <items <array <content "any" unique ${unique}>>>>`);
+  const compile = (unique: string) => compile_hson_schema(`<type "data" root <object <items <array <content "any" unique ${unique}>>>>>`);
   for (const unique of [
     "<by \"x\">", "<cases []>", "<by \"x\" cases [] extra true>", "<by \"x\" cases [\"bad\"]>",
     "<by \"x\" cases [[[\"array\"], []]]>", "<by \"x\" cases [[\"a\", [<bad true>]]]>",
     "<by \"x\" cases [[\"a\", []], [\"a\", []]]>", "<by \"x\" cases [[\"a\", [\"K\", \"K\"]]]>",
   ]) assert.equal(compile(unique).ok, false, unique);
-  const ranged = compile_hson_schema(`<type "data" content <items <array <content "any" unique <by "x" cases [["a", ["K"]], ["a", []]]>>>>>`);
+  const ranged = compile_hson_schema(`<type "data" root <object <items <array <content "any" unique <by "x" cases [["a", ["K"]], ["a", []]]>>>>>>`);
   assert.equal(ranged.ok, false);
   if (!ranged.ok) {
-    assert.deepEqual(ranged.issues[0]?.path, ["content", "items", "array", "unique", "cases", 1, 0]);
+    assert.deepEqual(ranged.issues[0]?.path, ["root", "object", "items", "array", "unique", "cases", 1, 0]);
     assert.notEqual(ranged.issues[0]?.range, undefined);
   }
 });
@@ -176,7 +176,7 @@ check("canonical verifier and round-trip close the rule", () => {
   ]) assert.equal(verifiesRule(rule), false);
   const tooManyCases = Array.from({ length: CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases + 1 }, (_, index) => [String(index), []]);
   assert.equal(verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule: { kind: "array-unique-by-cases", by: "position", cases: tooManyCases } }, { kind: "projected-array" }] }).ok, false);
-  const signed = compile_hson_schema(Hson.canonical`<type "data" content <items <array <content <content <value "any">> unique <by "value" cases [[0, [-0]], [-0, [0]]]>>>>>`);
+  const signed = compile_hson_schema(Hson.canonical`<type "data" root <object <items <array <content <object <value "any">> unique <by "value" cases [[0, [-0]], [-0, [0]]]>>>>>>`);
   assert.equal(signed.ok, true);
   if (signed.ok) {
     const signedRoundTrip = decode_canonical_schema_graph_hson(encode_canonical_schema_graph_hson(signed.value.graph));
@@ -186,8 +186,8 @@ check("canonical verifier and round-trip close the rule", () => {
 });
 
 check("case-row order is canonical identity but cannot change acceptance", () => {
-  const left: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["A"]], ["b", ["B"]]]>>>>>`;
-  const right: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["b", ["B"]], ["a", ["A"]]]>>>>>`;
+  const left: HsonSchema = Hson.schema`<type "data" root <object <items <array <content <object <kind "string">> unique <by "kind" cases [["a", ["A"]], ["b", ["B"]]]>>>>>>`;
+  const right: HsonSchema = Hson.schema`<type "data" root <object <items <array <content <object <kind "string">> unique <by "kind" cases [["b", ["B"]], ["a", ["A"]]]>>>>>>`;
   const candidate = Hson.canonical`<items [<kind "a">, <kind "b">]>`;
   assert.equal(accepts(left, candidate), accepts(right, candidate));
   const a = compile_hson_schema(left.toHson()), b = compile_hson_schema(right.toHson());

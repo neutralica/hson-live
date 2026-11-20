@@ -657,7 +657,19 @@ async function native_event_cases() {
   assert.equal(plain.rev, revision);
 
   // The current registry digest fences subjects and event argument plans together.
-  assert.equal(hson_schema_digest(interaction_schema_internal()), 'ec621c2e3d254641b24a07cbb9309f427605d5446dfdaeaab5fd9327025e68be');
+  const interactionSchema = interaction_schema_internal();
+  const interactionDigest = '6d15e9fb38135f5a93c15e628ab2da75380a22771f45da6d24d02dbceb172438';
+  assert.equal(hson_schema_digest(interactionSchema), interactionDigest);
+  assert.equal(hson_schema_digest(Hson.schema.fromHson(interactionSchema.toHson())), interactionDigest);
+  const obsoleteDigest = 'ec621c2e3d254641b24a07cbb9309f427605d5446dfdaeaab5fd9327025e68be';
+  const registry = snapshot.registry.libraries;
+  const reserved = registry.find(entry => entry.scope === "hson-internal");
+  assert.ok(reserved);
+  assert.equal(reserved.schema, interactionSchema.toHson());
+  assert.equal(reserved.schemaDigest, interactionDigest);
+  assert.equal(registry_from_entries(registry).digest, snapshot.registry.digest);
+  assert.throws(() => registry_from_entries(registry.map(entry => entry === reserved
+    ? { ...entry, schemaDigest: obsoleteDigest } : entry)), /Schema identity disagrees/);
   const persistence = new MemoryCheckpointAdapter();
   const authorizeProjection: LocusProjectionAuthorizer = ({ requested }) => requested;
   const config = { persistence, logicalMapId: "native-event-checkpoint", authorizeProjection };

@@ -27,8 +27,8 @@ import { create_locus_hosted_aggregate_authority_internal } from "../src/api/loc
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.aggregate.persistence.ts";
 
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
-const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <theme "string" count <number <int true min 0>>>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" root <object <theme "string" accent "string">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const QUID = "000008205";
 const RECOVERY_QUID = "000008207";

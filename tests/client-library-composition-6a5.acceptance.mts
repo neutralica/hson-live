@@ -30,7 +30,7 @@ import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.id
 import { project_authority_snapshot, authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <value "number">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const LocalSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
 

@@ -18,7 +18,7 @@ if (mode === "--child") {
   // as well so the 60 MiB case measures memory instead of failing setup.
   const payloadChunks = Math.ceil(requestedEncodedBytes * 3 / 4 / (2 * MIB));
   const hsonBytes = Math.floor(requestedEncodedBytes * 3 / 4) - 1_300 - 800 * payloadChunks;
-  const schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
   const schemaText = schema.toHson();
   const authority = { logicalMapId: "memory-map", incarnationId: "memory-incarnation" };
   const rootTemplate = encode_hosted_root(hsonTransform.fromJson({ value: "xxx" }).toNode()).payload;

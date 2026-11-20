@@ -25,7 +25,7 @@ function check(name: string, run: () => void): void {
   checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const ItemsSchema = Hson.schema`<type "data" content <items <array "any">>>`;
+const ItemsSchema = Hson.schema`<type "data" root <object <items <array "any">>>>`;
 const library = (value: string | { items: readonly JsonValue[] }): LiveMapDataLibrary<unknown> => hsonLiveMap.fromLibraries({ state: { json: typeof value === "string" ? Hson.data.fromSource(value) : Hson.data.from(value), schema: ItemsSchema } }).data.must("state");
 const moved = (items: readonly JsonValue[], from: number, to: number) => {
   const target = library({ items });

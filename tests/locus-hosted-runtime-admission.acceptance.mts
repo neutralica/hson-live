@@ -135,7 +135,7 @@ const beforeInvalid = locus.rev;
 await assert.rejects(locus.admit(new Proxy({ invalid: { json: 1 } }, { ownKeys: () => ["invalid", "invalid"] })), /duplicat/i);
 assert.equal(locus.rev, beforeInvalid);
 assert.throws(() => locus.data.must("invalid"), /Unknown/);
-const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
+const NumberSchema = Hson.schema`<type "data" root <object <value "number">>>`;
 await assert.rejects(locus.admit({ "valid": { json: { value: 1 }, access: "private" }, "invalidSchema": { json: { value: "wrong" }, schema: NumberSchema, access: "private" } }), /Schema|schema|number/i);
 assert.equal(locus.rev, beforeInvalid);
 assert.throws(() => locus.data.must("valid"), /Unknown/);

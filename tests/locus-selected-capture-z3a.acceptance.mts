@@ -16,7 +16,7 @@ import { validate_document_path } from "../src/api/livemap/livemap.document.path
 
 
 
-const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const Data: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const Page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
 const privateValue = `PRIVATE_ROOT_SENTINEL${"x".repeat(65 * 1024 * 1024)}`;
 assert.ok(privateValue.length > 64 * 1024 * 1024);

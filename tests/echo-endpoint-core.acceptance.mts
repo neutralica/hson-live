@@ -102,7 +102,7 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 await check("public endpoint-only Echo accepts the actual hosted Locus reply and can act", async () => {
   const map = hsonLiveMap.fromLibraries({
-    state: { json: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` },
+    state: { json: { value: 0 }, schema: Hson.schema`<type "data" root <object <value "number">>>` },
   });
   let actions = 0;
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]), defaultProjection: { libraries: ["state"] },

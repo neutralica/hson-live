@@ -66,9 +66,9 @@ check("official root and hson entrypoints are recognized in source order", () =>
 });
 
 check("all four semantic member tags share official binding discovery", () => {
-  const hostText = 'import { Hson as source } from "hson-live"; source.canonical`a`; source.data`1`; source.document`<main/>`; source.schema`<type "data" content "number">`;';
+  const hostText = 'import { Hson as source } from "hson-live"; source.canonical`a`; source.data`1`; source.document`<main/>`; source.schema`<type "data" root "number">`;';
   const found = discover(hostText);
-  assert.deepEqual(bodySlices(found), ["a", "1", "<main/>", '<type "data" content "number">']);
+  assert.deepEqual(bodySlices(found), ["a", "1", "<main/>", '<type "data" root "number">']);
   assert.deepEqual(found.sources.map(source => source.authoringKind), ["canonical", "data", "document", "schema"]);
 });
 

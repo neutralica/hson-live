@@ -20,7 +20,7 @@ import { create_locus_hosted_aggregate_internal } from './src/api/locus/locus.ag
 import { compose_client_portable_aggregate_internal } from './src/api/echo/echo.projection.ts';
 import { create_echo_aggregate_replica_capability_internal } from './src/api/echo/echo.aggregate-replica.lifecycle.ts';
 import { make_portable_aggregate_snapshot, make_portable_aggregate_commit } from './src/api/livemap/livemap.hosted.ts';
-const schema = Hson.schema\`<type "data" content <rows <array "number">>>\`;
+const schema = Hson.schema\`<type "data" root <object <rows <array "number">>>>\`;
 export function fixture(size, operation) {
   const rows = Array.from({length:size},(_,i)=>({id:i,score:i+.5,detail:{label:'row-'+i,flags:[true,false,null]},tags:['a','b']}));
   const value = operation==='investigation-leaf'
@@ -73,9 +73,15 @@ export async function held(size) {
   return {map,get token(){return token},release:async()=>{release();await pending;host.dispose();}};
 }
 `;
+// Use the fixture authored for the same revision as the compiler under test.
+const baselineSource = baseline
+  ? execFileSync('git', ['show', 'HEAD:scripts/measure-graph-mutations.mjs'], { encoding: 'utf8' })
+    .match(/^const source = `\n([\s\S]*?)^`;/m)?.[1].replaceAll('\\`', '`')
+  : undefined;
+if (baseline && baselineSource === undefined) throw new Error('Committed benchmark fixture is missing.');
 try {
   const output=join(directory,'measure.mjs');
-  await build({stdin:{contents:source,resolveDir:process.cwd(),loader:'ts'},outfile:output,bundle:true,platform:'node',format:'esm',target:'node22',
+  await build({stdin:{contents:baselineSource ?? source,resolveDir:process.cwd(),loader:'ts'},outfile:output,bundle:true,platform:'node',format:'esm',target:'node22',
     plugins:baseline?[{name:'committed-source',setup(b){b.onLoad({filter:/\/src\/.*\.ts$/},args=>({contents:execFileSync('git',['show','HEAD:'+relative(process.cwd(),args.path)],{encoding:'utf8'}),loader:'ts'}));}}]:[]});
   const api=await import(pathToFileURL(output).href);
   const inspector=new Session();inspector.connect();const post=promisify(inspector.post.bind(inspector));await post('HeapProfiler.enable');

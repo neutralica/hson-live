@@ -4,7 +4,7 @@ import { strict_tagged_receiver_controls } from "./strict-tagged-receivers.mts";
 import { Hson, hsonLiveMap, encode_ssr_bootstrap, decode_ssr_bootstrap, type HsonSchema } from "../../src/index.ts";
 
 const Page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
-const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const Data: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 
 /** Identical server-side SSR composition in Node and a Worker isolate. */
 export async function hosted_cut_fixture() {

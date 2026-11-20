@@ -25,7 +25,7 @@ function check(name: string, run: () => void): void {
 }
 const Empty = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const Paragraph = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p" content "string">]>>]>>]>>`;
-const Data = Hson.schema`<type "data" content <value "number">>`;
+const Data = Hson.schema`<type "data" root <object <value "number">>>`;
 const ordinary = (source = "<main/>") => hsonLiveMap.fromLibraries({ page: { document: source, schema: Empty } });
 const exact = (source: string, schema = Empty) => admit_exact_runtime_livemap_libraries({
   page: { document: parse_hson_exact_runtime(`<html <head/> <body ${source}/>/>`, { allowTopLevelDocumentText: true }), schema },

@@ -7,8 +7,8 @@ import { decode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { authority_definitions_from_catalog_fixture, create_locus_fixture } from "./helpers/locus-definition-fixture.mts";
 import { structured_css_fixture } from "./helpers/structured-css-fixture.mts";
 
-const Count = Hson.schema`<type "data" content <value "number">>`;
-const Secret = Hson.schema`<type "data" content <token "string">>`;
+const Count = Hson.schema`<type "data" root <object <value "number">>>`;
+const Secret = Hson.schema`<type "data" root <object <token "string">>>`;
 const listener = { event: "click", target: "element", capture: false, once: false, passive: false,
   missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false } as const;
 const descriptor: InteractionDescriptor = { id: "save", kind: "browser", key: "save", args: null,

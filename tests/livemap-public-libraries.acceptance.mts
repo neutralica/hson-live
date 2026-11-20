@@ -13,8 +13,8 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number" nested <content <value "number">>>>`;
-const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <primary "string">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <count "number" nested <object <value "number">>>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" root <object <primary "string">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <title <optional "string">>> content "empty">]>>]>>`;
 const ItemDocumentSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({

@@ -1,2 +1,2 @@
 import { Hson } from "hson-live";
-export const Same = Hson.schema`<type "data">`;
+export const Same = Hson.schema`<type "data" root "any">`;

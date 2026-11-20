@@ -14,17 +14,17 @@ export type CorpusGolden = Readonly<{
 export const corpus: readonly CorpusGolden[] = [
   {
     id: "D02",
-    digest: "d0d04880a4a8953655cd6bcd875cc10eb4eff7b3c0ee81752349937e44563bc8",
+    digest: "439775111ef3998d74d48366f6fade98b17a10ac770c19730f4472ce03e13133",
     schema: `<
   type "data"
-  content <
+  root <object <
     customerId <string <prefix "cus-" minlen 5 maxlen 32>>
     displayName <string <minlen 1 maxlen 80>>
     active "boolean"
     loyaltyScore "number"
     nickname <optional <union ["string", "null"]>>
     phones <optional <array "string">>
-    address <content <
+    address <object <
       line1 "string"
       line2 <optional "string">
       city "string"
@@ -33,7 +33,7 @@ export const corpus: readonly CorpusGolden[] = [
     >>
     legacyRecord "null"
     integrationPayload "any"
-  >
+  >>
 >`,
     valid: `<
   customerId "cus-2048"
@@ -75,7 +75,7 @@ export const corpus: readonly CorpusGolden[] = [
   },
   {
     id: "D07",
-    digest: "eaca843e431a89d8ac2300af308117d5d9df1c17a3395869cc1d71a1d8eea989",
+    digest: "bb0dccd0e63fe1e26c271ac7145fe59ec0d8e3e742068f9f03860b2d077adade",
     schema: `<
   type "data"
   defs <
@@ -83,13 +83,13 @@ export const corpus: readonly CorpusGolden[] = [
     Temperature <union [<number <min -80 max 80>>, "null"]>
     Sample <tuple [<ref "Timestamp">, <ref "Temperature">]>
   >
-  content <
+  root <object <
     deviceId <string <prefix "env-">>
     location <tuple [<number <min -90 max 90>>, <number <min -180 max 180>>]>
     calibration <tuple ["number", "number", "number"]>
     quarterHourReadings <array <content <ref "Temperature"> len 4>>
     samples <array <content <ref "Sample"> minlen 1 maxlen 96>>
-  >
+  >>
 >`,
     valid: `<
   deviceId "env-roof-7"
@@ -115,28 +115,28 @@ export const corpus: readonly CorpusGolden[] = [
   },
   {
     id: "D09",
-    digest: "e9930f350aa76c47494204251ace75c47fa0cfed806037c1c8dc5770286739e3",
+    digest: "43d726737a594114c89d639cdb95d4c34d6a740443d59db833769c8ed8a073e1",
     schema: `<
   type "data"
   defs <
     Entry <union [<ref "Link">, <ref "Section">]>
-    Link <content <
+    Link <object <
       kind <exact "link">
       label <string <minlen 1 maxlen 60>>
       href <string <prefix "/">>
       newWindow <optional "boolean">
     >>
-    Section <content <
+    Section <object <
       kind <exact "section">
       label <string <minlen 1 maxlen 60>>
       children <array <ref "Entry">>
       collapsed <optional "boolean">
     >>
   >
-  content <
+  root <object <
     application <exact "workbench">
     entries <array <ref "Entry">>
-  >
+  >>
 >`,
     valid: `<
   application "workbench"
@@ -166,25 +166,25 @@ export const corpus: readonly CorpusGolden[] = [
   },
   {
     id: "D10",
-    digest: "1f159e4889ec0b26a8e075c4a6bcd810591c19c029c840effd661de273613646",
+    digest: "e33cde0321db3ca371ff5fdb835fe70270eacef707d7fb9e67e0380cce4a7d91",
     schema: `<
   type "data"
   defs <
-    Paragraph <content <kind <exact "paragraph"> content "string">>
-    Heading <content <kind <exact "heading"> content "string">>
-    Code <content <
+    Paragraph <object <kind <exact "paragraph"> content "string">>
+    Heading <object <kind <exact "heading"> content "string">>
+    Code <object <
       kind <exact "code">
       language <optional <union [<exact "json">, <exact "html">, <exact "hson">]>>
       content "string"
     >>
-    List <content <
+    List <object <
       kind <exact "list">
       language <optional "string">
       content "string"
     >>
     Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
     Column <array <ref "Block">>
-    Slide <content <
+    Slide <object <
       id "string"
       title <optional "string">
       subtitle <optional "string">
@@ -194,7 +194,7 @@ export const corpus: readonly CorpusGolden[] = [
       footer <optional "string">
     >>
   >
-  content <slides <array <ref "Slide">>>
+  root <object <slides <array <ref "Slide">>>>
 >`,
     valid: `<slides [
   <id "intro" title "Quarterly release" subtitle "Platform team"
@@ -226,13 +226,13 @@ export const corpus: readonly CorpusGolden[] = [
   },
   {
     id: "D11",
-    digest: "642c34fc4d194751c28f29d66c1784834052b1edd1143e7bc6cde40bfc1cb113",
+    digest: "9779a52eaaffb105f8064031168259ba1ae6982f8e3be82147450afc00751bb2",
     schema: `<
   type "data"
-  content <
+  root <object <
     dashboardId "string"
     widgets <array <
-      content <content <
+      content <object <
         position "string"
         title <string <minlen 1>>
         payload "any"
@@ -254,7 +254,7 @@ export const corpus: readonly CorpusGolden[] = [
         ]
       >
     >>
-  >
+  >>
 >`,
     valid: `<
   dashboardId "ops-overview"

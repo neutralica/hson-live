@@ -8,7 +8,7 @@ import { create_registry_locus_internal } from "../../src/api/locus/locus.regist
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.js";
 import { MemoryCheckpointAdapter, deferred } from "../helpers/memory-checkpoint-adapter.mts";
 
-const Count = Hson.schema`<type "data" content <count "number">>`;
+const Count = Hson.schema`<type "data" root <object <count "number">>>`;
 const components = { button: { kind: "document" as const, document: '<button hson:part @:label "Hello"/>', stylesheet: ':scope{color:red}' } };
 const document = '<html <head/> <body <hson-part lib="components" at="button"/>/>/>';
 function capture(locus: Locus) {

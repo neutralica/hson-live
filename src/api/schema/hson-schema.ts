@@ -68,7 +68,7 @@ export class HsonSchema<
 }
 
 /** The ordinary broad Schema for every valid Hson data value. */
-export const ANY_DATA: HsonSchema<JsonValue, "data"> = HsonSchema.fromHson('<type "data">') as HsonSchema<JsonValue, "data">;
+export const ANY_DATA: HsonSchema<JsonValue, "data"> = HsonSchema.fromHson('<type "data" root "any">') as HsonSchema<JsonValue, "data">;
 
 /** The ordinary broad Schema for every valid Hson document. */
 export const ANY_DOCUMENT: HsonSchema<HsonNode, "document"> = HsonSchema.fromHson('<type "document">') as HsonSchema<HsonNode, "document">;

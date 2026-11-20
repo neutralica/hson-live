@@ -13,7 +13,7 @@ export const twinSchema = Hson.schema`
 `;
 
 export const RecordSchema = Hson.schema`
-<type "data" content <
+<type "data" root <object <
   name "string"
   nickname <optional "string">
   age <number <int true min 0>>
@@ -21,11 +21,11 @@ export const RecordSchema = Hson.schema`
   choice <union [<exact "left">, <exact "right">]>
   flags <array <content "boolean" unique true>>
   pair <tuple ["string", "number"]>
->>
+>>>
 `;
 
 export const TreeSchema = Hson.schema`
-<type "data" defs <Tree <content <value "string" children <array <ref "Tree">>>>> content <ref "Tree">>
+<type "data" defs <Tree <object <value "string" children <array <ref "Tree">>>>> root <ref "Tree">>
 `;
 
 export const PageSchema = Hson.schema`
@@ -37,10 +37,10 @@ export const CompletedPageSchema = Hson.schema`
 `;
 
 // These have no value-level refinement classes; only Schema identity distinguishes them.
-export const PlainA = Hson.schema`<type "data">`;
-export const PlainB = Hson.schema`<type "data">`;
+export const PlainA = Hson.schema`<type "data" root "any">`;
+export const PlainB = Hson.schema`<type "data" root "any">`;
 
-export const annotatedSchema: HsonSchema = Hson.schema`<type "data">`;
+export const annotatedSchema: HsonSchema = Hson.schema`<type "data" root "any">`;
 const unrelated: "leave me alone" = untouched;
 // Deliberately collide with the legacy generator's preferred local import names.
 const __HsonSchema = 1;

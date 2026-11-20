@@ -26,7 +26,7 @@ export type DeterministicLiveMapOperator = Readonly<{
   run: () => OperatorResult;
 }>;
 type State = LiveMapDataLibrary<unknown>;
-const Wide = Hson.schema`<type "data" content <
+const Wide = Hson.schema`<type "data" root <object <
   value <optional "any"> a <optional "any"> b <optional "any"> c <optional "any">
   d <optional "any"> renamed <optional "any"> '10' <optional "any">
   '2' <optional "any"> '1' <optional "any"> '__proto__' <optional "any">
@@ -34,7 +34,7 @@ const Wide = Hson.schema`<type "data" content <
   outer <optional "any"> missing <optional "any"> left <optional "any">
   right <optional "any"> source <optional "any"> destination <optional "any">
   kept <optional "any"> copy <optional "any"> other <optional "any">
->>`;
+>>>`;
 export function registry(initial: string | JsonValue) {
   return hsonLiveMap.fromLibraries({ state: { json: typeof initial === "string" ? Hson.data.fromSource(initial) : initial, schema: Wide } });
 }
@@ -135,7 +135,7 @@ export function error_code(error: unknown): string {
   return typeof code === "string" ? code : "Error";
 }
 export function schema_number_map(): State {
-  const schema = Hson.schema`<type "data" content <value "number">>`;
+  const schema = Hson.schema`<type "data" root <object <value "number">>>`;
   return hsonLiveMap.fromLibraries({ state: { json: { value: 1 }, schema } }).data.must("state");
 }
 

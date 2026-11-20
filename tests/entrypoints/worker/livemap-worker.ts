@@ -17,7 +17,7 @@ import {
 const map = hsonLiveMap.fromLibraries({
   state: {
     json: { ready: true, items: [1, 2] },
-    schema: Hson.schema`<type "data" content <ready "boolean" items <array "number">>>`,
+    schema: Hson.schema`<type "data" root <object <ready "boolean" items <array "number">>>>`,
   },
 });
 const pointerParts = hsonLiveMap.fromLibraries({

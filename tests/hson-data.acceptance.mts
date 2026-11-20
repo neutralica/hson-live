@@ -174,7 +174,7 @@ check("data-only receiver retains grammar and rejects document attributes before
 check("named data library exact reads preserve source order and values", () => {
   const map = hson.liveMap.fromLibraries({ state: {
     json: Hson.data.fromSource('{"value":{"10":-0,"2":{"__proto__":true},"tail":[1,{"constructor":2,"prototype":3}]}}'),
-    schema: Hson.schema`<type "data" content <value "any">>`,
+    schema: Hson.schema`<type "data" root <object <value "any">>>`,
   } });
   const exact = map.data.must("state").at([]).hson();
   const nested = Hson.data.fromSource(map.data.must("state").at(["value"]).hson()!);
@@ -186,7 +186,7 @@ check("named data library exact reads preserve source order and values", () => {
 });
 
 check("named data library rejects reserved names before state, revision, or publication", () => {
-  const schema = Hson.schema`<type "data" content <nested "any">>`;
+  const schema = Hson.schema`<type "data" root <object <nested "any">>>`;
   assert.throws(() => hson.liveMap.fromLibraries({ state: { json: { _hson_root: 1 }, schema } }));
   const map = hson.liveMap.fromLibraries({ state: { json: { nested: { value: 1 } }, schema } });
   const state = map.data.must("state");

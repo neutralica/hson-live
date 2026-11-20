@@ -33,7 +33,7 @@ async function check(name: string, run: () => unknown): Promise<void> {
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
-const schema = Hson.schema`<type "data" content "any">`;
+const schema = Hson.schema`<type "data" root "any">`;
 const create = () => hsonLiveMap.fromLibraries({
   state: { json: { items: [[]], other: 0, nested: { value: [] } }, schema },
 });
@@ -170,7 +170,7 @@ await check("frozen Proxy arrays detach, publish the captured value and survive 
 });
 
 await check("changing valid Proxy descriptors are captured once for graph, schema and operations", () => {
-  const finiteSchema = Hson.schema`<type "data" content <items <array "number"> other "number">>`;
+  const finiteSchema = Hson.schema`<type "data" root <object <items <array "number"> other "number">>>`;
   const map = hsonLiveMap.fromLibraries({ state: { json: { items: [], other: 0 }, schema: finiteSchema } });
   const state = map.data.must("state");
   let reads = 0;
@@ -270,7 +270,7 @@ await check("aggregate commands capture at enqueue time and late failures remain
 await check("schema rejects the captured candidate before any installation or publication", () => {
   const map = hsonLiveMap.fromLibraries({ state: {
     json: { items: [1], other: 0 },
-    schema: Hson.schema`<type "data" content <items <array "number"> other "number">>`,
+    schema: Hson.schema`<type "data" root <object <items <array "number"> other "number">>>`,
   } });
   const state = map.data.must("state"), before = map.capture();
   let reads = 0, publications = 0;

@@ -36,8 +36,8 @@ const check = (name: string, run: () => void) => {
     testEvents.terminal("fail");
     throw error;
   } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
-const ObjectSchema = Hson.schema`<type "data" content <a <optional "any"> b <optional "any">>>`;
-const ArraySchema = Hson.schema`<type "data" defs <Root <array "any">> content <ref "Root">>`;
+const ObjectSchema = Hson.schema`<type "data" root <object <a <optional "any"> b <optional "any">>>>`;
+const ArraySchema = Hson.schema`<type "data" defs <Root <array "any">> root <ref "Root">>`;
 const map = (value: JsonValue) => hson.liveMap.fromLibraries({ state: { json: value, schema: Array.isArray(value) ? ArraySchema : ObjectSchema } });
 const code = (expected: string) => (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === expected;
 

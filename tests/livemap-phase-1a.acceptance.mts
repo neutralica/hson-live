@@ -25,9 +25,9 @@ function check(name: string, run: () => void): void {
 }
 
 check("family tops use ordinary canonical Schema and generated evidence", () => {
-  assert.equal(ANY_DATA.toHson(), '<type "data">');
+  assert.equal(ANY_DATA.toHson(), '<\n  type "data"\n  root "any"\n>');
   assert.equal(ANY_DOCUMENT.toHson(), '<type "document">');
-  for (const source of ['<type "data">', '<type "data" content "any">', '<type "document">', '<type "document" tag "main">']) {
+  for (const source of ['<type "data" root "any">', '<type "document">', '<type "document" tag "main">']) {
     const compiled = compile_hson_schema(source);
     assert.equal(compiled.ok, true, source);
     if (!compiled.ok) continue;
@@ -35,7 +35,7 @@ check("family tops use ordinary canonical Schema and generated evidence", () => 
     assert.match(generated.declarations, source.includes('"data"') ? /JsonValue/ : /HsonNode/);
     if (source.includes('"document"')) assert.ok(generated.proofNodeCount > 0);
   }
-  assert.match(Hson.schema`<type "data" content "any">`.toHson(), /content "any"/);
+  assert.match(Hson.schema`<type "data" root "any">`.toHson(), /root "any"/);
 });
 
 check("data top certifies every supported data family and rejects invalid material", () => {

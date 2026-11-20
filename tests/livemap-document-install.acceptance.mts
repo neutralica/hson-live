@@ -118,7 +118,7 @@ check("restored state is detached from later source changes", () => {
 
 check("data libraries have no document snapshot method", () => {
   const map = hsonLiveMap.fromLibraries({ state: {
-    json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`,
+    json: { value: 1 }, schema: Hson.schema`<type "data" root <object <value "number">>>`,
   } });
   assert.equal(Reflect.get(map.data.must("state"), "install"), undefined);
   assert.equal(Reflect.get(map.data.must("state"), "restore"), undefined);

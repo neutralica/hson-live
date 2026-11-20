@@ -60,7 +60,7 @@ async function bounded<T>(promise: Promise<T>, milliseconds: number, message: ()
   } finally { clearTimeout(timer); }
 }
 
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <value "number">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 function make_map() {

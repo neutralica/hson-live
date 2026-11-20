@@ -8,7 +8,7 @@ import { create_locus_hosted_aggregate_authority_internal } from "../src/api/loc
 import { admit_locus_remote_action_internal } from "../src/api/locus/locus.remote-action.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const ValueSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
+const ValueSchema: HsonSchema = Hson.schema`<type "data" root <object <value <number <int true min 0>>>>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.aggregate-admission", title: "Hosted multi-library external admission", category: "Locus", runtime: "node", tags: Object.freeze(["locus", "livemap", "libraries", "actions", "admission"]) });
 const testEvents = create_test_event_emitter("locus.aggregate-admission");
 let checks = 0;

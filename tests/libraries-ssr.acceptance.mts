@@ -19,7 +19,7 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import type { HsonNode } from "../src/core/types.ts";
 import { orderedRootReconstructionFixtures, forbid_structural_js_enumeration } from "./fixtures/structural-json-order-fixtures.mts";
 
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>]>>]>>`;
 const AdminSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
 const QUID = "000009701";

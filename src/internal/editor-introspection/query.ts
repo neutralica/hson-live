@@ -197,10 +197,18 @@ function schema_candidates(context: HsonGrammarCheckpoint, source: string): read
     else if (name === "defs" && fact.kind !== "object") return [];
   }
   return HSON_SCHEMA_DATA_ROOT_ORDER.filter(name => {
-    if (!valid_data_root_fields([...before, name, ...after])) return false;
+    const fields = [...before, name, ...after];
+    const needsRoot = !fields.includes("root");
+    if (!valid_data_root_fields(needsRoot ? [...fields, "root"] : fields)) return false;
     if (context.range.start === context.range.end || context.schemaContinuation === "missing-operand") return true;
     const edited = source.slice(0, context.range.start) + name + source.slice(context.range.end);
-    return compile_hson_schema(context.schemaContinuation === "unterminated" ? edited + "\n>" : edited).ok;
+    const unterminated = context.schemaContinuation === "unterminated";
+    if (!needsRoot) return compile_hson_schema(unterminated ? edited + "\n>" : edited).ok;
+    if (compile_hson_schema(unterminated ? edited + "\n>" : edited).ok) return true;
+    if (unterminated) return compile_hson_schema(edited + '\nroot "any">').ok;
+    if (context.schemaRootClose === undefined) return false;
+    const close = context.schemaRootClose + name.length - (context.range.end - context.range.start);
+    return compile_hson_schema(edited.slice(0, close) + ' root "any"' + edited.slice(close)).ok;
   })
     .map((name, index) => item(name, "member", name, "Hson Schema root member", index));
 }

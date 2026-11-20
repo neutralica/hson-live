@@ -332,7 +332,7 @@ check("canonical equality and exact array admission both retain physical index o
 });
 
 check("LiveMap projection and every numeric path follow canonical physical order", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" defs <Root <array "string">> content <ref "Root">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" defs <Root <array "string">> root <ref "Root">>`;
   const source = array_root([
     scalar_item("0", "a"),
     scalar_item("1", "b"),
@@ -351,7 +351,7 @@ check("LiveMap projection and every numeric path follow canonical physical order
 });
 
 check("LiveMap splice and move regenerate dense indexes and preserve addressability", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <items <array "string">>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <items <array "string">>>>`;
   const map = hson.liveMap.fromLibraries({ data: {
     json: { items: ["a", "b", "c"] },
     schema,

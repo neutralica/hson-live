@@ -856,7 +856,7 @@ subscriptions, including on subjects that have moved to another root.
 ```ts
 const tree = hsonLiveTree.queryDom("#panel-controls").graft();
 const button = tree.find.must.byTag("button");
-const panelSchema = Hson.schema`<type "data" content <open "boolean">>`;
+const panelSchema = Hson.schema`<type "data" root <object <open "boolean">>>`;
 
 tree.actions.define("PANEL_TOGGLE", ({ tree }, args) => {
   const open = args?.entries()?.find(([name]) => name === "open")?.[1].scalar();

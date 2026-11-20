@@ -48,7 +48,7 @@ import { runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.t
 install_fake_document();
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 let quidSequence = 8340;
 let currentQ = "000008340";
 const listener: InteractionListener = Object.freeze({
@@ -592,7 +592,7 @@ await check("native and direct invocations enforce the same input contract and r
     calls++;
     if (event !== undefined) throw rejected;
     return input;
-  }, { args: { required: true, schema: Hson.schema`<type "data" content <value "number">>` } });
+  }, { args: { required: true, schema: Hson.schema`<type "data" root <object <value "number">>>` } });
   const dispose = activate_interactions({ map, tree: reflection.tree, onFailure: failure => { failures.push(failure); } });
   try {
     const directFailure = await map.actions.trigger("typed", {});
@@ -618,7 +618,7 @@ await check("native and direct invocations enforce the same input contract and r
 
 await check("canonical local clicks distinguish omitted arguments from an empty object", () => {
   const map = map_fixture();
-  const schema = Hson.schema`<type "data" content <>>`;
+  const schema = Hson.schema`<type "data" root <object <>>>`;
   const reflection = hsonMirror(map.doc.must("page"));
   const target = new Target();
   link_node_to_el(retained_subject(reflection.tree.find.must.byQuid(currentQ)), target as unknown as Element);

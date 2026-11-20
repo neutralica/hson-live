@@ -75,7 +75,7 @@ assert.equal(checkpoint("< // comment", "data"), undefined);
 assert.equal(checkpoint("<a <div />", "data"), undefined);
 assert.equal(hson_grammar_checkpoint("<div/>", 3, "data"), undefined);
 
-const compiled = compile_hson_schema('<type "data" content <count "number" color "string" presentation <content <theme "string">>>>');
+const compiled = compile_hson_schema('<type "data" root <object <count "number" color "string" presentation <object <theme "string">>>>>');
 assert.equal(compiled.ok, true);
 if (!compiled.ok) throw new Error("Schema fixture failed to compile");
 const complete = (source: string) => query_hson_editor_context({ mode: "data", source, cursor: source.length, schema: compiled.value });
@@ -84,24 +84,31 @@ assert.deepEqual(complete("<count 1 co").candidates.map(candidate => candidate.l
 assert.deepEqual(complete("<presentation <th").candidates.map(candidate => candidate.label), ["theme"]);
 assert.deepEqual(complete("<co").checkpoint?.range, { start: 1, end: 3 });
 assert.deepEqual(query_hson_editor_context({ mode: "data", source: "<co", cursor: 3 }).candidates, []);
-assert.deepEqual(query_hson_editor_context({ mode: "schema", source: '<type "data" co', cursor: 15 }).candidates.map(candidate => candidate.label), ["content"]);
+assert.deepEqual(query_hson_editor_context({ mode: "schema", source: '<type "data" ro', cursor: 15 }).candidates.map(candidate => candidate.label), ["root"]);
 for (const [source, labels] of [
-  ['<type "data" defs <> ', ["content", "expression"]],
-  ['<type "data" expression "string" ', []],
+  ['<type "data" defs <> ', ["root"]],
+  ['<type "data" root "string" ', []],
   ['<type "data" content <> ', []],
+  ['<type "data" expression "string" ', []],
+  ['<type "data" co', []],
+  ['<type "data" ex', []],
 ] as const) {
   assert.deepEqual(query_hson_editor_context({ mode: "schema", source, cursor: source.length }).candidates.map(candidate => candidate.label), labels);
 }
 
 for (const [marked, labels, replacement] of [
   ["<|", ["type"], ""], ['<| type "data">', [], ""],
-  ['<type "data" |', ["defs", "content", "expression"], ""],
-  ['<type "data" | defs <>>', [], ""], ['<type "data" defs <> |', ["content", "expression"], ""],
-  ['<type "data" | expression "string">', ["defs"], ""],
-  ['<type "data" defs <> | content <>>', [], ""],
-  ['<type "data" content <> |', [], ""], ['<type "data" expression "string" |', [], ""],
-  ['<type "data" co|ntent <>>', ["content"], "content"],
-  ['// 🧭\r\n<type "data" defs <> ex|pression "number">', ["expression"], "expression"],
+  ['<type "data" |', ["defs", "root"], ""],
+  ['<type "data" | defs <>>', [], ""], ['<type "data" defs <> |', ["root"], ""],
+  ['<type "data" | root "string">', ["defs"], ""],
+  ['<type "data" defs <> | root <object <>>>', [], ""],
+  ['<type "data" root <object <>> |', [], ""], ['<type "data" root "string" |', [], ""],
+  ['<type "data" ro|ot <object <>>>', ["root"], "root"],
+  ['// 🧭\r\n<type "data" defs <> ro|ot "number">', ["root"], "root"],
+  ['<type "data" de|fs <> // >\r\n> // trailing >', ["defs"], "defs"],
+  ['<type "data" de|fs <Foo <ref "Missing">>>', [], "defs"],
+  ['<ty|pe "data">', ["type"], "type"],
+  ['<ty|pe "document" content "empty">', [], "type"],
   ['<defs <> type "data" |', [], ""],
 ] as const) {
   const cursor = marked.indexOf("|"), source = marked.replace("|", "");
@@ -112,15 +119,15 @@ for (const [marked, labels, replacement] of [
 }
 
 for (const [marked, expected] of [
-  ['<type "data" e| <x> expression "string">', []],
-  ['<type "data" e| <x <y>> expression "string">', []],
-  ['<type "data" |expression "string">', ["expression"]],
-  ['<type "data" |content <> content <>>', ["defs"]],
-  ['<type "data" defs <> |defs "number">', ["expression"]],
-  ['<type "data" |defs "string">', ["expression"]],
-  ['<type "data" // first 🪷\r\n | // next\r\n expression "string">', ["defs"]],
-  ['<type "data" |// comment\r\n expression "string">', ["defs"]],
-  ['<type "data" // first 🪷| here\r\n expression "string">', []],
+  ['<type "data" r| <x> root "string">', []],
+  ['<type "data" r| <x <y>> root "string">', []],
+  ['<type "data" |root "string">', ["root"]],
+  ['<type "data" |root <> root <object <>>>', ["defs"]],
+  ['<type "data" defs <> |defs "number">', ["root"]],
+  ['<type "data" |defs "string">', ["root"]],
+  ['<type "data" // first 🪷\r\n | // next\r\n root "string">', ["defs"]],
+  ['<type "data" |// comment\r\n root "string">', ["defs"]],
+  ['<type "data" // first 🪷| here\r\n root "string">', []],
 ] as const) {
   const cursor = marked.indexOf("|"), source = marked.replace("|", "");
   const { checkpoint, candidates } = query_hson_editor_context({ mode: "schema", source, cursor });
@@ -133,7 +140,7 @@ for (const [marked, expected] of [
   }
 }
 
-const union = compile_hson_schema('<type "data" defs <U <union [<content <kind <exact "left"> shared "string" left "number">>, <content <kind <exact "right"> shared "string" right "number">>]>> content <ref "U">>');
+const union = compile_hson_schema('<type "data" defs <U <union [<object <kind <exact "left"> shared "string" left "number">>, <object <kind <exact "right"> shared "string" right "number">>]>> root <ref "U">>');
 assert.equal(union.ok, true);
 if (union.ok) assert.deepEqual(query_hson_editor_context({ mode: "data", source: "<", cursor: 1, schema: union.value }).candidates.map(candidate => candidate.label), ["kind", "shared"]);
 
@@ -144,7 +151,7 @@ for (const { name, body, expected } of contextual.cases) {
   const result = query_hson_editor_context({ mode: "data", source: body.replace("|", ""), cursor: body.indexOf("|"), schema: contextualSchema.value });
   assert.deepEqual(result.candidates.map(candidate => candidate.label), expected, name);
 }
-const optionalTuple = compile_hson_schema('<type "data" content <pair <tuple ["number", <optional "string">]>>>');
+const optionalTuple = compile_hson_schema('<type "data" root <object <pair <tuple ["number", <optional "string">]>>>>');
 assert.ok(!optionalTuple.ok && optionalTuple.issues.some(issue => issue.code === "ILLEGAL_OPTIONAL"), "Optional tuple entries are not accepted grammar");
 
 const roles = query_hson_editor_context({ mode: "document", source: '<main "" />', slots: [{ offset: 7, substitution: 0 }] }).interpolationRoles;

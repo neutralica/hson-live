@@ -24,13 +24,13 @@ function check(name: string, run: () => void): void {
   checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const RenameSchema = Hson.schema`<type "data" content <
+const RenameSchema = Hson.schema`<type "data" root <object <
   source <optional "any"> destination <optional "any"> a <optional "any">
   middle <optional "any"> z <optional "any"> kept <optional "any">
   outer <optional "any"> '__proto__' <optional "any"> constructor <optional "any">
   prototype <optional "any"> '10' <optional "any"> '2' <optional "any">
   '1' <optional "any"> '3' <optional "any">
->>`;
+>>>`;
 const library = (value: string | Record<string, unknown>): LiveMapDataLibrary<unknown> => hsonLiveMap.fromLibraries({ state: { json: typeof value === "string" ? Hson.data.fromSource(value) : value as JsonValue, schema: RenameSchema } }).data.must("state");
 const rename = (value: string | Record<string, unknown>, from: string, to: string) => {
   const target = library(value);

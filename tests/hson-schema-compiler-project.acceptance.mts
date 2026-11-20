@@ -141,8 +141,8 @@ check("packaged CLI withdraws stale native initializers through Data.from", () =
   const consumer = join(directory, "native.ts");
   const text = [
     'import { Hson } from "hson-live";',
-    'const S = Hson.schema`<type "data" content <n "number">>`;',
-    'const A = Hson.schema`<type "data" defs <Numbers <array "number">> content <ref "Numbers">>`;',
+    'const S = Hson.schema`<type "data" root <object <n "number">>>`;',
+    'const A = Hson.schema`<type "data" defs <Numbers <array "number">> root <ref "Numbers">>`;',
     'const value: { n: string | number } = { n: "before" }; value.n = 1;',
     'S.certify(Hson.data.from(value));',
     'const array: (string | number)[] = ["before"]; array[0] = 1;',
@@ -254,7 +254,7 @@ void empty; void exact;
 check("post-admission use cannot refine exported map declarations", () => {
   const other = prepare("unsupported-exported-map");
   writeFileSync(join(other, "flow-map.ts"), `import { Hson, hsonLiveMap } from "hson-live";
-export const S = Hson.schema\`<type "data" content <value "number">>\`;
+export const S = Hson.schema\`<type "data" root <object <value "number">>>\`;
 export const map = hsonLiveMap.fromLibraries({ state: { json: { value: 1 } } });
 map.data.must("state").schema.use(S);
 `);
@@ -351,7 +351,7 @@ check("a first run refuses existing unowned destinations", () => {
 
 check("finite regeneration removes obsolete owned evidence without history", () => {
   const temporarySource = join(project, "extra.ts");
-  writeFileSync(temporarySource, 'import { Hson } from "hson-live"; export const Extra = Hson.schema`<type "data">`;\n');
+  writeFileSync(temporarySource, 'import { Hson } from "hson-live"; export const Extra = Hson.schema`<type "data" root "any">`;\n');
   succeed(generate(project));
   output = stable;
   const artifact = join(output, "evidence/extra.ts/Extra.hson-schema.generated.ts");
@@ -379,8 +379,8 @@ check("invalid Schema compilation never falls back to rewriting source", () => {
 check("CLI duplicate Schema names withdraw all ambiguous evidence", () => {
   const other = prepare("duplicate-schema");
   writeFileSync(join(other, "duplicate.ts"), `import { Hson } from "hson-live";
-export const S = Hson.schema\`<type "data" content <a "string">\`;
-export const S = Hson.schema\`<type "data" content <b "number">\`;
+export const S = Hson.schema\`<type "data" root <object <a "string">>>\`;
+export const S = Hson.schema\`<type "data" root <object <b "number">>>\`;
 `);
   const result = generate(other);
   assert.notEqual(result.status, 0);
@@ -450,7 +450,7 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     + 'map.actions.define("run", () => {}, { args: { required: true } });\n'
     + 'const locus = hsonLiveMap.locus.create(' + definitions + ', { authorizeAction() { return true; }, actions: { cancel() {} } });\n'
     + 'locus.actions.define("run", () => {}, { args: { required: true } });\n'
-    + 'const Args = Hson.schema`<type "data" content <selection "string">>`;\n'
+    + 'const Args = Hson.schema`<type "data" root <object <selection "string">>>`;\n'
     + 'const optional = hsonLiveMap.fromLibraries({ components: { parts: { card: { kind: "document", document: "<p hson:part str:local=%{label?} event:go/>",'
     + ' events: { go: "<hson:event on:click local:go selection:str=%{label} <> >" } } } },'
     + ' page: { document: Hson.document`<hson-part at=components/card/>` } });\n'
@@ -591,7 +591,7 @@ check("producer admission gates CLI evidence and initially governed reads", () =
       "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")],
       "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")],
     } }, files: ["index.ts"] }));
-  const body = '<type "data" content <name "string">>';
+  const body = '<type "data" root <object <name "string">>>';
   const valid = `import { Hson, hsonLiveMap } from "hson-live";\r\nconst Bad = Hson.schema\`${body}\`;\r\nconst map = hsonLiveMap.fromLibraries({ state: { json: { name: "Ada" }, schema: Bad } });\r\nconst name: string = map.data.must("state").at(["name"]).snap();\r\nconst wrong: number = map.data.must("state").at(["name"]).snap();\r\n`;
   const currentRoot = join(directory, ".hson/compiler-input/tsconfig.json");
   const current = () => JSON.parse(readFileSync(join(currentRoot, "manifest.json"), "utf8")) as Manifest & { diagnostics: readonly string[] };
@@ -644,7 +644,7 @@ check("materialization binds every producer field to its admitted source and AST
   writeFileSync(join(directory, "package.json"), '{"type":"module"}');
   writeFileSync(configPath, JSON.stringify({ compilerOptions: { strict: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", types: [],
     paths: { "hson-live": [join(root, "dist/index.d.ts")] } }, files: ["good.ts", "bad.ts", "other.ts"] }));
-  const text = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`// ok\r\n<type "data" content <name "string">>`;\r\nconst ordinary = 1;\r\nexport const Extra = Hson.schema`<type "data" content <count "number">>`;\r\n';
+  const text = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`// ok\r\n<type "data" root <object <name "string">>>`;\r\nconst ordinary = 1;\r\nexport const Extra = Hson.schema`<type "data" root <object <count "number">>>`;\r\n';
   writeFileSync(join(directory, "good.ts"), text);
   writeFileSync(join(directory, "other.ts"), text);
   writeFileSync(join(directory, "bad.ts"), text.replace("// ok", "// \\8"));

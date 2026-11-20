@@ -20,21 +20,21 @@ export const DeckSchema = Hson.schema`
   defs <
 
     Paragraph <
-      content <
+      object <
         kind <exact "paragraph">
         content "string"
       >
     >
 
     Heading <
-      content <
+      object <
         kind <exact "heading">
         content "string"
       >
     >
 
     Code <
-      content <
+      object <
         kind <exact "code">
         language <
           optional <
@@ -50,7 +50,7 @@ export const DeckSchema = Hson.schema`
     >
 
     List <
-      content <
+      object <
         kind <exact "list">
         language <optional "string">
         content "string"
@@ -70,7 +70,7 @@ export const DeckSchema = Hson.schema`
       array <ref "Block">
     >
     Slide <
-      content <
+      object <
         id "string"
         title <optional "string">
         subtitle <optional "string">
@@ -84,9 +84,9 @@ export const DeckSchema = Hson.schema`
     >
 
   >
-  content <
+  root <object <
     slides <array <ref "Slide">>
-  >
+  >>
 >
 `;
 

@@ -9,9 +9,9 @@ type RuntimeShape = Readonly<{
 }>;
 type ArrayShape = Readonly<{ flags: readonly number[] }>;
 
-const DataSchema = Hson.schema`<type "data" content <count "number" nested <content <value "number">>>>` as HsonSchema<RuntimeShape, "data">;
-const ArraySchema = Hson.schema`<type "data" content <flags <array <content "number" unique true minlen 1 maxlen 3>>>>` as HsonSchema<ArrayShape, "data">;
-const DynamicSchema = Hson.schema`<type "data" content <maybe <optional "any"> choice "any">>`;
+const DataSchema = Hson.schema`<type "data" root <object <count "number" nested <object <value "number">>>>>` as HsonSchema<RuntimeShape, "data">;
+const ArraySchema = Hson.schema`<type "data" root <object <flags <array <content "number" unique true minlen 1 maxlen 3>>>>>` as HsonSchema<ArrayShape, "data">;
+const DynamicSchema = Hson.schema`<type "data" root <object <maybe <optional "any"> choice "any">>>`;
 const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" hidden <optional "flag">>> content <sequence [<tag "section" content "string">]>>]>>]>>`;
 
 const map = admit_exact_runtime_livemap_libraries({

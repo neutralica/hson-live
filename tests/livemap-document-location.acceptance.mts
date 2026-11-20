@@ -36,7 +36,7 @@ function check(name: string, run: () => void): void {
 const TreeSchema: HsonSchema = Hson.schema`<type "document" defs <Node <tag "item" content <repeat <ref "Node">>>> tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <ref "Node">>>]>>]>>`;
 const TextSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
 const MultiSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <items <array "string">>>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <items <array "string">>>>`;
 const item = (): HsonNode => ({ $_tag: "item", $_content: [] });
 const tag = (value: unknown): string | undefined => is_Node(value) ? value.$_tag : undefined;
 const tree = (source: string) => hsonLiveMap.fromLibraries({ page: { document: source, schema: TreeSchema } });

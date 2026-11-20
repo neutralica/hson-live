@@ -146,7 +146,7 @@ export async function collection_capability_cases() {
   assert.deepEqual(object.keys(), ["first", "2", "a"]);
 
   type Values = { values: number[]; record: { [key: string]: number }; choice: number[] | { n: number } };
-  const schema = Hson.schema`<type "data" content <values <array "number"> record "any" choice "any">>` as HsonSchema<Values, "data">;
+  const schema = Hson.schema`<type "data" root <object <values <array "number"> record "any" choice "any">>>` as HsonSchema<Values, "data">;
   const state = { values: [3, 1, 2], record: { a: 1, b: 2 }, choice: [1] };
   let actionReads = 0;
   const locus = hsonLiveMap.locus.create({ "deck": { json: initial, schema: DeckSchema, access: "shared" }, "state": { json: state, schema, access: "shared" }, "page": { document: page, schema: PageSchema, access: "shared" } }, { local: [{ name: "ui", initializer: { json: { values: [1] } } }], authorizeProjection: () => ({ libraries: ["deck", "state", "page", "ui"] }), authorizeAction: () => false, actions: { inspect(context) {
@@ -239,7 +239,7 @@ export async function collection_capability_cases() {
 
 export async function collection_command_parity_cases() {
   type State = { values: number[]; words: string[]; record: { [key: string]: number } };
-  const schema = Hson.schema`<type "data" content <values <array "number"> words <array "string"> record "any">>` as HsonSchema<State, "data">;
+  const schema = Hson.schema`<type "data" root <object <values <array "number"> words <array "string"> record "any">>>` as HsonSchema<State, "data">;
   const initial = { values: [3, 1, 2, 1], words: ["b", "a"], record: { a: 1, b: 2 } };
   const definition = { json: initial, schema };
   const commands = [

@@ -15,7 +15,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   category: "Locus", runtime: "node", tags: Object.freeze(["projection", "schema", "authority", "topology", "worker", "recovery"]),
 });
 
-const Count = Hson.schema`<type "data" content <count "number">>`;
+const Count = Hson.schema`<type "data" root <object <count "number">>>`;
 const map = hsonLiveMap.fromLibraries({ a: { json: { count: 0 }, schema: Count }, b: { json: { count: 0 }, schema: Count },
   page: { document: "<main/>" } });
 enable_interactions(map);

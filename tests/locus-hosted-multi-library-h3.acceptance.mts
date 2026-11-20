@@ -31,8 +31,8 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { admit_authority_projection_snapshot, project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
-const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <theme "string" count <number <int true min 0>> box <object <id "number">>>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" root <object <theme "string" accent "string">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const QUID = "000008203";
 

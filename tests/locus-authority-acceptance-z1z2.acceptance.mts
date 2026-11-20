@@ -12,7 +12,7 @@ import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.aggregate.persistence.ts";
 
-const schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const schema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 function make_map() {
   return hsonLiveMap.fromLibraries({
     A: { json: { value: "A0" }, schema },

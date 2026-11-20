@@ -10,14 +10,14 @@ import { validate_descriptor_event_plan } from "../../internal/event-argument-pl
 
 function interaction_schema(): HsonSchema {
   // Exact subject alternatives and cross-field placement are checked below.
-  const common = `id "string" subject <content <library "string" path <optional <array <number <int true min 0>>>> kind <optional <exact "document">>>>
-    listener <content <event "string" target <union [<exact "element">, <exact "document">, <exact "window">]>
+  const common = `id "string" subject <object <library "string" path <optional <array <number <int true min 0>>>> kind <optional <exact "document">>>>
+    listener <object <event "string" target <union [<exact "element">, <exact "document">, <exact "window">]>
       capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <exact "warn">, <exact "throw">]>
       preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">>`;
-  return HsonSchema.fromHson(`<type "data" content <descriptors <array <union [
-    <content <${common} kind <exact "browser"> key "string" args <optional "any"> eventArgs <optional <array <array "any">>>>>,
-    <content <${common} kind <exact "locus"> key "string" payload <optional "any"> eventArgs <optional <array <array "any">>>>>
-  ]>>>>`);
+  return HsonSchema.fromHson(`<type "data" root <object <descriptors <array <union [
+    <object <${common} kind <exact "browser"> key "string" args <optional "any"> eventArgs <optional <array <array "any">>>>>,
+    <object <${common} kind <exact "locus"> key "string" payload <optional "any"> eventArgs <optional <array <array "any">>>>>
+  ]>>>>>`);
 }
 
 // The registry digest fences the complete current canonical representation.

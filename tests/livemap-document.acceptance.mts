@@ -102,8 +102,8 @@ const MainP = Hson.schema`<type "document" tag "html" content <sequence [<tag "h
 const MainTwoP = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "p" content "string"> count 2>>]>>]>>`;
 const EmptyDocument = Hson.schema`<type "document" content <sequence []>>`;
 const TextDocument = Hson.schema`<type "document" content "string">`;
-const NumberData = Hson.schema`<type "data" content <value "number">>`;
-const NumberArray = Hson.schema`<type "data" defs <Root <array "number">> content <ref "Root">>`;
+const NumberData = Hson.schema`<type "data" root <object <value "number">>>`;
+const NumberArray = Hson.schema`<type "data" defs <Root <array "number">> root <ref "Root">>`;
 
 check("registry construction stays canonical and DOM-free", () => {
   for (const removed of ["fromNode", "fromHson", "fromJson", "fromData", "fromDocument", "fromTrustedHtml", "fromUntrustedHtml"]) {

@@ -712,7 +712,7 @@ check("collection source diagnostics belong to proven invocations, never a unive
   }
   assert.deepEqual(inspect(literal('<>')).codes, []);
   const annotated = (shape: string, input = '${records.toHson()}', definitionBody = body) => imports
-    + 'import type { HsonDataValue } from "hson-live"; const Records=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
+    + 'import type { HsonDataValue } from "hson-live"; const Records=Hson.schema`<type "data" defs <Input ' + shape + '> root <ref "Input">>`;'
     + 'declare const records: HsonDataValue<typeof Records>; const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + definitionBody + '`}}},'
     + 'page:{document:Hson.document`<hson-part lib="components" at="list" items:data="' + input + '"/>`}});';
   for (const shape of ['"number"', '<array "string">']) {
@@ -721,10 +721,10 @@ check("collection source diagnostics belong to proven invocations, never a unive
     assert.deepEqual(result.codes, ['HSON_PART_REFERENCE_INVALID']);
     assert.deepEqual(result.slices, ['items:data'], 'dynamic values use the exact sending attribute name');
   }
-  for (const shape of ['<content <first "string" second "number">>', '"any"']) assert.deepEqual(inspect(annotated(shape)).codes, []);
+  for (const shape of ['<object <first "string" second "number">>', '"any"']) assert.deepEqual(inspect(annotated(shape)).codes, []);
   assert.deepEqual(inspect(annotated('"number"', '${dynamic}')).codes, []);
   const nested = '<ul hson:part data:items="%{items}" <li per::value="^{items}" <b per:key="^{value}" "^{key}"/>/>/>';
-  assert.deepEqual(inspect(annotated('<content <first <optional "number">>>', '${records.toHson()}', nested)).codes, [], 'possibly empty outer iteration cannot prove execution');
+  assert.deepEqual(inspect(annotated('<object <first <optional "number">>>', '${records.toHson()}', nested)).codes, [], 'possibly empty outer iteration cannot prove execution');
   assert.deepEqual(inspect(application('<main/>', definition)).codes, [], 'an uninvoked reusable Part has no inferred source type');
 });
 check("nested iterator value diagnostics require enclosing execution across for and per", () => {
@@ -789,8 +789,8 @@ check("nested collection projections preserve source-before-shadow and conservat
       const result = inspect(application(`<hson-part lib="components" at="list" items:data="${data(value)}"/>`, definition));
       assert.deepEqual(result.codes, value === '2' ? ['HSON_PART_REFERENCE_INVALID'] : [], `${outer}/${inner} shadowed collection`);
     }
-    const shape = outer === 'for' ? '<array "number">' : '<content <first <optional "number">>>';
-    const annotated = imports + 'import type { HsonDataValue } from "hson-live"; const Items=Hson.schema`<type "data" defs <Input ' + shape + '> content <ref "Input">>`;'
+    const shape = outer === 'for' ? '<array "number">' : '<object <first <optional "number">>>';
+    const annotated = imports + 'import type { HsonDataValue } from "hson-live"; const Items=Hson.schema`<type "data" defs <Input ' + shape + '> root <ref "Input">>`;'
       + 'declare const items: HsonDataValue<typeof Items>; const loc=maps.fromLibraries({components:{parts:' + definition + '},page:{document:Hson.document`<hson-part lib="components" at="list" items:data="${items.toHson()}"/>`}});';
     assert.deepEqual(inspect(annotated).codes, [], 'Schema collection elements do not establish outer execution');
   }
@@ -798,7 +798,7 @@ check("nested collection projections preserve source-before-shadow and conservat
 check("independent inner Schemas require literal outer execution and deeper correlations remain conservative", () => {
   for (const outer of ['for:item', 'per:key:item']) for (const inner of ['for:value', 'per:name:value']) {
     const body = `<ul hson:part data:items="%{items}" data:other="%{other}" <li ${outer}="^{items}" <b ${inner}="^{other}"/>/>/>`;
-    const prefix = imports + 'import type { HsonDataValue } from "hson-live"; const Other=Hson.schema`<type "data" defs <Input "number"> content <ref "Input">>`; declare const other:HsonDataValue<typeof Other>;';
+    const prefix = imports + 'import type { HsonDataValue } from "hson-live"; const Other=Hson.schema`<type "data" defs <Input "number"> root <ref "Input">>`; declare const other:HsonDataValue<typeof Other>;';
     for (const nonempty of [false, true]) {
       const items = outer.startsWith('for:') ? nonempty ? '«0»' : '«»' : nonempty ? '<first 0>' : '<>';
       const result = inspect(prefix + 'const loc=maps.fromLibraries({components:{parts:{list:{kind:"document",document:Hson.document`' + body
@@ -973,7 +973,7 @@ check('event omissions only report proven required action arguments', () => {
   assert.deepEqual(inspect(hosted().replace('handler:()=>{}', 'handler(){}')).codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(inspect(hosted().replace('actions:{go', 'actions:{...dynamic,go')).codes, ['HSON_EVENT_INPUT_REQUIRED']);
   assert.deepEqual(inspect(hosted(omitted('local'))).codes, [], 'a hosted contract supplies no evidence for a local action');
-  assert.deepEqual(inspect(hosted(omitted('host'), '{schema:Hson.schema`<type "data" content <value "number">>`}')).codes, []);
+  assert.deepEqual(inspect(hosted(omitted('host'), '{schema:Hson.schema`<type "data" root <object <value "number">>>`}')).codes, []);
   assert.deepEqual(inspect(hosted(omitted('host'), '{required:condition}')).codes, []);
   assert.deepEqual(inspect(hosted(omitted('host'), '{required:true}', ',...dynamic')).codes, []);
   assert.deepEqual(inspect(hosted(`condition ? ${omitted('host')} : dynamic`)).codes, []);
@@ -1014,7 +1014,7 @@ check('event omissions only report proven required action arguments', () => {
 });
 
 check('named Event diagnostics retain the argument, schema registration, and attachment ranges', () => {
-  const schema = 'const Move = Hson.schema`<type "data" content <x "number" title "string" settings <optional "any">>>`;\n';
+  const schema = 'const Move = Hson.schema`<type "data" root <object <x "number" title "string" settings <optional "any">>>>`;\n';
   const event = (args: string, key = 'go') => JSON.stringify(`<hson:event on:click local:${key} ${args} <> >`);
   const local = (args: string, body = '<button hson:part event:go/>') => application('<main/>',
     '{card:{kind:"document",document:Hson.document`' + body + '`,events:{go:' + event(args) + '}}}')
@@ -1082,7 +1082,7 @@ check('Document Library declarations and imperative Events retain standalone dia
 });
 
 check('known Event fields retain exact Schema evidence beside unresolved operands', () => {
-  const schema = '<type "data" content <count <exact -0> label "string" settings <optional <content <speed "number">>>>>';
+  const schema = '<type "data" root <object <count <exact -0> label "string" settings <optional <object <speed "number">>>>>>';
   const source = (fields: string, definition = schema) => application('<main/>',
     '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
     + JSON.stringify('<hson:event on:click local:go ' + fields + ' <> >') + '}}}')
@@ -1103,7 +1103,7 @@ check('known Event fields retain exact Schema evidence beside unresolved operand
   }
   assert.deepEqual(inspect(source('count:num="-0" label:str=%{label} extra:num=%{extra?}')).codes, []);
   assert.deepEqual(inspect(source('count:num="-0" label:data=%{label}')).codes, []);
-  const union = '<type "data" defs <Left <content <kind <exact "left"> count <exact 0> label "string">> Right <content <kind <exact "right"> count <exact -0> label "string">> Choice <union [<ref "Left">, <ref "Right">]>> content <ref "Choice">>';
+  const union = '<type "data" defs <Left <object <kind <exact "left"> count <exact 0> label "string">> Right <object <kind <exact "right"> count <exact -0> label "string">> Choice <union [<ref "Left">, <ref "Right">]>> root <ref "Choice">>';
   assert.deepEqual(inspect(source('kind:str=%{kind} count:num="-0" label:str=%{label}', union)).codes, []);
   assert.deepEqual(inspect(source('kind:str=%{kind} count:num="1" label:str=%{label}', union)).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
 });
@@ -1112,7 +1112,7 @@ check('pointer Event diagnostics retain lexical, Action Schema, and source-range
   const event = (arguments_: string, family = 'pointer:move') => JSON.stringify(`<hson:event on:${family} local:go ${arguments_} <> >`);
   const make = (args: string, body = '<button hson:part event:go/>', family?: string) => application('<main/>',
     '{card:{kind:"document",document:Hson.document`' + body + '`, events:{go:' + event(args, family) + '}}}')
-    .replace('const page =', 'const Args = Hson.schema`<type "data" content <x "number" title "string">>`;\nconst page =')
+    .replace('const page =', 'const Args = Hson.schema`<type "data" root <object <x "number" title "string">>>`;\nconst page =')
     + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
   assert.deepEqual(inspect(make('x:num=^{pointer.clientX} title:str="Ready"')).codes, []);
   const missing = inspect(make('x:num=^{pointer.clientX}'));
@@ -1269,28 +1269,28 @@ check('native Event completion uses the selector, qualifier, and authored replac
 
 check('submission Event diagnostics retain native result categories and bounded operation grammar', () => {
   const tree = 'import {hsonLiveTree as trees, Hson} from "hson-live";\nconst tree = trees.fromHson("<form/>");\n';
-  const call = (operand: string, schema = '<type "data" content <value "any">>') => tree
+  const call = (operand: string, schema = '<type "data" root <object <value "any">>>') => tree
     + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`${schema}\`}});\n`
     + 'tree.listen.event(' + JSON.stringify(`<hson:event on:formdata local:go ${operand} <> >`) + ');';
   for (const operand of ['value:str=^{formdata:get("email")}', 'value:arr=^{formdata:getAll("tag")}',
     'value:bool=^{formdata:has("upload")}', 'value:arr={[false,null]}', 'value:bool="false"']) {
     assert.deepEqual(inspect(call(operand)).codes, []);
   }
-  assert.deepEqual(inspect(call('value:str=^{formdata:get("missing")}', '<type "data" content <value "null">>')).codes, []);
+  assert.deepEqual(inspect(call('value:str=^{formdata:get("missing")}', '<type "data" root <object <value "null">>>')).codes, []);
   for (const operand of ['value:str=^{formdata:get(name)}', 'value:str=^{formdata:get("a","b")}',
     'value:data=^{formdata:entries("a")}', 'value:data=^{formdata:get("a").name}']) {
     const result = inspect(call(operand));
     assert.deepEqual(result.codes, ['HSON_EVENT_DECLARATION_INVALID']);
     assert.match(result.diagnostics[0]!.message, /FormData Event operation/);
   }
-  assert.deepEqual(inspect(call('value:bool=^{formdata:has("a")}', '<type "data" content <value "string">>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(inspect(call('value:arr=^{formdata:getAll("a")}', '<type "data" content <value "string">>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+  assert.deepEqual(inspect(call('value:bool=^{formdata:has("a")}', '<type "data" root <object <value "string">>>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+  assert.deepEqual(inspect(call('value:arr=^{formdata:getAll("a")}', '<type "data" root <object <value "string">>>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
 });
 
 check('Event array categories admit tuple Schemas without weakening incompatible category diagnostics', () => {
   const tree = 'import {hsonLiveTree as trees, Hson} from "hson-live";\nconst tree = trees.fromHson("<form/>");\n';
   const call = (operand: string, schema: string, selector = 'formdata') => tree
-    + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`<type "data" content <value ${schema}>>\`}});\n`
+    + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`<type "data" root <object <value ${schema}>>>\`}});\n`
     + 'tree.listen.event(' + JSON.stringify(`<hson:event on:${selector} local:go ${operand} <> >`) + ');';
   const incompatible = (operand: string, schema: string, selector = 'formdata') => {
     const result = inspect(call(operand, schema, selector));
@@ -1380,7 +1380,7 @@ check('keyboard Event diagnostics retain lexical and Action Schema evidence acro
   const source = (args: string, body = '<button hson:part event:go/>', selector = 'on:key:up', schema = '<key "string" flag "boolean" location "number">') => application('<main/>',
     '{card:{kind:"document",document:Hson.document`' + body + '`, events:{go:'
     + JSON.stringify(`<hson:event ${selector} local:go ${args} <> >`) + '}}}')
-    .replace('const page =', 'const Args = Hson.schema`<type "data" content ' + schema + '>`;\nconst page =')
+    .replace('const page =', 'const Args = Hson.schema`<type "data" root <object ' + schema + '>>`;\nconst page =')
     + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
   const valid = 'key:data=^{key.key} flag:data=^{key.isComposing?} location:data=^{key.location}';
   assert.deepEqual(inspect(source(valid)).codes, []);
@@ -1424,7 +1424,7 @@ check('input and change Event diagnostics preserve target paths and native argum
   const source = (selector: string, args: string, schema = '<value "string" checked "boolean">', local = '') =>
     application('<main/>', '{card:{kind:"document",document:Hson.document`<input hson:part ' + local + ' event:go/>`,events:{go:'
       + JSON.stringify(`<hson:event on:${selector} local:go ${args} <> >`) + '}}}')
-      .replace('const page =', 'const Args = Hson.schema`<type "data" content ' + schema + '>`;\nconst page =')
+      .replace('const page =', 'const Args = Hson.schema`<type "data" root <object ' + schema + '>>`;\nconst page =')
       + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
   const args = 'value:data=^{change.target.value} checked:data=^{change.target.checked}';
   assert.deepEqual(inspect(source('change', args)).codes, []);
@@ -1450,7 +1450,7 @@ check('input and change Event diagnostics preserve target paths and native argum
 
 check('hosted Event Action contracts recognize Parts Libraries with known access metadata', () => {
   const event = JSON.stringify('<hson:event on:click host:go tag:num="1" <> >');
-  const registration = 'const Args = Hson.schema`<type "data" content <tag "string">>`;\n';
+  const registration = 'const Args = Hson.schema`<type "data" root <object <tag "string">>>`;\n';
   const config = '{actions:{go:{handler(){},args:{schema:Args}}}}';
   const definitions = (metadata: string) => '{components:{' + metadata + 'parts:{card:{kind:"document",'
     + 'document:Hson.document`<button hson:part event:go/>`,events:{go:' + event + '}}}},'
@@ -1506,7 +1506,7 @@ check('tree action ownership must survive registration argument evaluation', () 
   assert.deepEqual(inspect(setup + 'parent.append(tree);\n' + define + listen).codes, []);
   assertRequiredEventInput(inspect(setup + define.replace('handler,', '() => { parent.append(tree); },') + listen), event);
   assertRequiredEventInput(inspect(setup.replace('import { ANY_DATA,', 'import { Hson,')
-    + define.replace('schema: ANY_DATA', 'schema: Hson.schema`<type "data">`') + listen), event);
+    + define.replace('schema: ANY_DATA', 'schema: Hson.schema`<type "data" root "any">`') + listen), event);
   const stableBranches = setup.replace('const parent =', 'declare const branch: boolean;\nconst parent =');
   assertRequiredEventInput(inspect(stableBranches + define.replace('required: true', 'required: branch ? true : true') + listen), event,
     undefined, 'branch ? true : true');
@@ -1706,7 +1706,7 @@ check('shared event operands retain separate attachment ranges and navigation re
 });
 
 function schemaApplication(reference: string, shape = '<title "string">', value = '<title "ok">', receiving = '%{incoming}', supplied = true, body?: string, events?: string): string {
-  return imports + 'import type {HsonDataValue} from "hson-live"; const S=Hson.schema`<type "data" content ' + shape + '>`;'
+  return imports + 'import type {HsonDataValue} from "hson-live"; const S=Hson.schema`<type "data" root <object ' + shape + '>>`;'
     + 'const input:HsonDataValue<typeof S>=Hson.data.parse`' + value + '`; const map=maps.fromLibraries({components:{parts:{card:{kind:"document",document:Hson.document`'
     + (body ?? '<p hson:part data:record="' + receiving + '" "' + reference + '"/>')
     + '`' + (events === undefined ? '' : ',events:' + events)
@@ -1726,14 +1726,14 @@ check('event inputs reuse validated path proof and identify nested and repeated 
   const errors = memberErrors(repeated);
   assert.deepEqual(errors.map(error => [error.start, error.related?.at(-1)?.start]), flags.flatMap(flag => calls.map(call => [call, flag])));
   for (const error of errors) assert.deepEqual(error.related?.map(related => repeated.text.slice(related.start, related.end)),
-    [missing, 'record', 'S=Hson.schema`<type "data" content <title "string">>`', 'event:go']);
+    [missing, 'record', 'S=Hson.schema`<type "data" root <object <title "string">>>`', 'event:go']);
   assert.equal(memberErrors(inspect(eventSchema(missing, undefined, undefined, '"^{record.missing}" '))).length, 3);
   assert.deepEqual(memberErrors(inspect(eventSchema('^{record.missing?}'))), []);
   assert.equal(memberErrors(inspect(eventSchema('^{record.title.nested?}'))).length, 2);
   assert.deepEqual(memberErrors(inspect(eventSchema('^{record.title}'))), []);
   assert.deepEqual(memberErrors(inspect(eventSchema(missing, '<title "string" missing <optional "string">>'))), []);
   assert.deepEqual(memberErrors(inspect(source.replace('HsonDataValue<typeof S>', 'HsonDataValue'))), []);
-  const opaque = inspect(source.replace('<type "data" content <title "string">>', '<type "data">'));
+  const opaque = inspect(source.replace('<type "data" root <object <title "string">>>', '<type "data" root "any">'));
   assert.ok(opaque.facts.documents.some(document => part_data_contexts(opaque.facts, document, 'incoming')
     .some(context => context.executionCertain && context.evidence?.strength === 'validated')));
   assert.deepEqual(memberErrors(opaque), []);
@@ -1743,7 +1743,7 @@ check('statically absent Event operands are checked against the Action Schema', 
     application('<hson-part at=components/card ' + supplied + '/>',
       '{card:{kind:"document",document:Hson.document`<p hson:part ' + receiver + ' event:go/>`,events:{go:'
       + JSON.stringify('<hson:event on:click local:go ' + operand + ' <> >') + '}}}')
-      + '\nconst Args = Hson.schema`<type "data" content <' + fields + '>>`;'
+      + '\nconst Args = Hson.schema`<type "data" root <object <' + fields + '>>>`;'
       + '\nloc.actions.define("go", () => {}, {args:{schema:Args}});';
   const cases = [
     ['selection:str=%{label?}', '', ''],
@@ -1773,9 +1773,9 @@ check('statically absent Event operands are checked against the Action Schema', 
   assert.deepEqual(inspect(source('selection:str=^{record.label.nested?}', cases[2][1], 'input:data="<label null>"')).codes, []);
   assert.deepEqual(inspect(source(cases[0][0] + ' count:num=%{count}', '', 'count="unknown"', 'selection "string" count "number"')).codes,
     ['HSON_EVENT_ARGUMENT_MISSING']);
-  const union = 'defs <Left <content <kind <exact "left"> selection "string" extra "string">> Right <content <kind <exact "right"> extra "string">> Choice <union [<ref "Left">, <ref "Right">]>> content <ref "Choice">';
+  const union = 'defs <Left <object <kind <exact "left"> selection "string" extra "string">> Right <object <kind <exact "right"> extra "string">> Choice <union [<ref "Left">, <ref "Right">]>> root <ref "Choice">';
   const mixed = (kind: string) => source(cases[0][0] + ' kind:str="' + kind + '" extra:str=%{extra}', '', 'extra="${dynamic}"')
-    .replace('content <selection "string">', union);
+    .replace('root <object <selection "string">>', union);
   assert.deepEqual(inspect(mixed('left')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
   assert.deepEqual(inspect(mixed('right')).codes, []);
   assert.deepEqual(inspect(source(cases[0][0] + ' count:num="0"', '', '', 'selection "string" count <exact -0>')).codes,
@@ -1785,7 +1785,7 @@ check('optional Event lookup can omit a field required by a registered Action Sc
   const operand = 'selection:data=^{record.missing?}';
   const source = schemaApplication('', undefined, undefined, '%{incoming}', true,
     '<p hson:part data:record=%{incoming} event:go/>', '{go:' + eventDeclaration('^{record.missing?}') + '}')
-    + '\nconst Args = Hson.schema`<type "data" content <selection "string">>`;'
+    + '\nconst Args = Hson.schema`<type "data" root <object <selection "string">>>`;'
     + '\nmap.actions.define("go", () => {}, { args: { schema: Args } });';
   const result = inspect(source);
   assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_MISSING']);
@@ -1816,7 +1816,7 @@ check('partial event opacity preserves each independently invalid caller Schema 
     [source.replace('{go:', '{spare:dynamic,go:').replace('<aside ', '<aside event:spare '), 2],
     [source.replace('{go:', '{...dynamic,go:'), 2],
     [source.replace(eventDeclaration(missing) + '}', eventDeclaration(missing) + ',...dynamic}'), 0],
-    [source.replace('{go:', '{spare:dynamic,go:').replace('<type "data" content <title "string">>', '<type "data">'), 0],
+    [source.replace('{go:', '{spare:dynamic,go:').replace('<type "data" root <object <title "string">>>', '<type "data" root "any">'), 0],
   ] as const;
   for (const [text, count] of cases) {
     const result = inspect(text), caller = text.indexOf(selector);
@@ -1878,7 +1878,7 @@ check('optional incoming absence propagates while explicitly supplied values ret
 });
 check('two distinct caller Schemas produce an error only for the proven failing invocation', () => {
   const source = schemaApplication('^{record.typo}')
-    .replace('const map=', 'const Other=Hson.schema`<type "data" content <typo "string">>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<typo "valid">`; const map=')
+    .replace('const map=', 'const Other=Hson.schema`<type "data" root <object <typo "string">>>`; const other:HsonDataValue<typeof Other>=Hson.data.parse`<typo "valid">`; const map=')
     .replace('<hson-part at="components/card" incoming:data="${input.toHson()}"/>', '<main <hson-part at="components/card" incoming:data="${input.toHson()}"/> <hson-part at="components/card" incoming:data="${other.toHson()}"/>/>');
   const result = inspect(source), errors = memberErrors(result);
   assert.equal(errors.length, 1); assert.equal(errors[0]!.start, result.text.indexOf('"components/card"'));
@@ -1891,10 +1891,10 @@ check('unknown inputs advisory annotations and variant-dependent members remain 
     schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`', 'declare const input:HsonDataValue<typeof S>'),
     schemaApplication('^{record.typo}').replace('HsonDataValue<typeof S>', 'HsonDataValue'),
     schemaApplication('^{record.typo}').replace('Hson.data.parse`<title "ok">`', 'Hson.data.from(dynamic)'),
-    schemaApplication('^{record.choice.title}', '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'),
-    schemaApplication('^{record.title.typo}', '<title <optional <content <caption "string">>>>', '<>'),
+    schemaApplication('^{record.choice.title}', '<choice <union [<object <kind <exact "a"> title "string">>,<object <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'),
+    schemaApplication('^{record.title.typo}', '<title <optional <object <caption "string">>>>', '<>'),
   ]) assert.equal(memberErrors(inspect(source)).length, 0, source);
-  assert.equal(memberErrors(inspect(schemaApplication('^{record.choice.typo}', '<choice <union [<content <kind <exact "a"> title "string">>,<content <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'))).length, 1);
+  assert.equal(memberErrors(inspect(schemaApplication('^{record.choice.typo}', '<choice <union [<object <kind <exact "a"> title "string">>,<object <kind <exact "b"> name "string">>]>>', '<choice <kind "a" title "ok">>'))).length, 1);
 });
 check('potentially empty iteration conditional structures and nested forwarding do not manufacture execution', () => {
   const shape = '<title "string" rows <array "number">>', value = '<title "ok" rows «»>';
@@ -1927,9 +1927,9 @@ check('TS and TSX escaped authored references retain exact diagnostic correspond
   assert.equal(memberErrors(inspect(source.replace('^{record.typo}', '^{record.typo'))).length, 0);
 });
 check('upstream-only edits withdraw and restore validated diagnostic evidence without changing consumer text', () => {
-  const schema = (body: string) => 'import {Hson} from "hson-live";export const S=Hson.schema`<type "data" content ' + body + '>`;';
+  const schema = (body: string) => 'import {Hson} from "hson-live";export const S=Hson.schema`<type "data" root <object ' + body + '>>`;';
   edit('member-schema.ts', schema('<title "string">'));
-  const source = schemaApplication('^{record.typo}').replace('const S=Hson.schema`<type "data" content <title "string">>`;', 'import {S} from "./member-schema.js";');
+  const source = schemaApplication('^{record.typo}').replace('const S=Hson.schema`<type "data" root <object <title "string">>>`;', 'import {S} from "./member-schema.js";');
   assert.equal(memberErrors(inspect(source)).length, 1);
   const count = () => static_part_reference_diagnostics(collect_part_source_facts(ts, service.getProgram()!)).filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID').length;
   edit('member-schema.ts', 'export const S='); assert.equal(count(), 0);
@@ -1940,7 +1940,7 @@ check('upstream-only edits withdraw and restore validated diagnostic evidence wi
   edit('member-schema.ts', 'export {};');
 });
 check('introduced redirected and removed unsaved imports refresh member evidence', () => {
-  const input = 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;';
+  const input = 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" root <object <title "string">>>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;';
   const source = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;', 'import {input} from "./lifecycle-input.js";');
   const count = () => static_part_reference_diagnostics(collect_part_source_facts(ts, service.getProgram()!))
     .filter(diagnostic => diagnostic.code === 'HSON_PART_DATA_MEMBER_INVALID').length;
@@ -1962,12 +1962,12 @@ check('introduced redirected and removed unsaved imports refresh member evidence
 check('incomplete cross-file inputs and exhausted projection budgets cannot produce new member errors', () => {
   const unknown = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;', 'import {input} from "./missing-input.js";');
   assert.equal(memberErrors(inspect(unknown)).length, 0);
-  edit('member-input.ts', 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" content <title "string">>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;');
+  edit('member-input.ts', 'import {Hson,type HsonDataValue} from "hson-live";const S=Hson.schema`<type "data" root <object <title "string">>>`;export const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;');
   const imported = schemaApplication('^{record.typo}').replace('const input:HsonDataValue<typeof S>=Hson.data.parse`<title "ok">`;', 'import {input} from "./member-input.js";');
   assert.equal(memberErrors(inspect(imported)).length, 1);
   assert.equal(memberErrors(inspect(imported.replace('import {input}', 'import type {input}'))).length, 0, 'a type-only value alias supplies no runtime evidence');
   let shape = '<title "string">', value = '<title "ok">';
-  for (let depth = 0; depth < 70; depth++) { shape = '<next <content ' + shape + '>>'; value = '<next ' + value + '>'; }
+  for (let depth = 0; depth < 70; depth++) { shape = '<next <object ' + shape + '>>'; value = '<next ' + value + '>'; }
   const path = [...Array<string>(70).fill('next'), 'typo'];
   const result = inspect(schemaApplication('^{record.' + path.join('.') + '}', shape, value));
   const evidence = result.facts.documents.flatMap(document => document.connectors.flatMap(connector => connector.attributes.flatMap(attribute => attribute.dataEvidence ?? [])))[0]!;
@@ -1982,7 +1982,7 @@ check('C1 forwarding never extends direct member diagnostics or borrows guarante
     '<section hson:part data:outer="%{incoming}" <hson-part part:optional at="B" payload:data="^{outer}"/>/>',
     '<section hson:part data:outer="%{incoming}" <hson-part for:outer="^{outer.rows}" at="B" payload:data="^{outer}"/>/>',
   ]) {
-    const result = inspect(forwarding_fixture({ shape: '<rows <array <content <title "string">>>>', value: '<rows «»>', intermediate,
+    const result = inspect(forwarding_fixture({ shape: '<rows <array <object <title "string">>>>', value: '<rows «»>', intermediate,
       body: '<p hson:part data:record="%{payload}" "^{record.typo}"/>' }));
     const child = result.facts.documents.find(document => document.receivingDeclarations.some(binding => binding.name === 'record'))!;
     assert.ok(part_data_contexts(result.facts, child, 'payload').length);

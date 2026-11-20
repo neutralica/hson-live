@@ -83,8 +83,8 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
   });
 
   await check("native Data.from captures current mutable values without changing source semantics", () => {
-    const S = Hson.schema`<type "data" content <n "number">>`;
-    const A = Hson.schema`<type "data" defs <Numbers <array "number">> content <ref "Numbers">>`;
+    const S = Hson.schema`<type "data" root <object <n "number">>>`;
+    const A = Hson.schema`<type "data" defs <Numbers <array "number">> root <ref "Numbers">>`;
     const value: { n: string | number } = { n: "before" };
     value.n = 1;
     const exact = Hson.data.from(value);
@@ -108,7 +108,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
 
   await check("explicit Library channels preserve representation, complete validation and single capture", () => {
     const source = Hson.data`<slides []>`;
-    const schema = Hson.schema`<type "data" content <slides <array "any">>>`;
+    const schema = Hson.schema`<type "data" root <object <slides <array "any">>>>`;
     const fromSource = hsonLiveMap.fromLibraries({ slides: { hson: source, schema } });
     const fromNative = hsonLiveMap.fromLibraries({ slides: { json: { slides: [] }, schema } });
     assert.equal(fromSource.data.slides.hson(), fromNative.data.slides.hson());
@@ -171,7 +171,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
     const exact = Hson.data.fromSource(orderedJson);
     assert.deepEqual(exact.entries()?.map(([name]) => name), ["10", "2", "tail"]);
     assert.ok(Object.is(exact.entries()?.[0]?.[1].scalar(), -0));
-    const schema = Hson.schema`<type "data" content <count "number" label "string">>`;
+    const schema = Hson.schema`<type "data" root <object <count "number" label "string">>>`;
     const identity = hson_schema_digest(schema), source = schema.toHson();
     for (const text of ['{"count":-0,"label":"42"}', '<count -0 label "42">']) {
       const data = Hson.data.fromSource(text), expected = Hson.data.parse`<count -0 label "42">`;
@@ -292,7 +292,7 @@ export async function data_source_consumer_cases(check: Check): Promise<void> {
   });
 
   await check("Locus Schema admission, authorizers, handlers and results use authenticated values", async () => {
-    const schema = Hson.schema`<type "data" content <value "any">>`;
+    const schema = Hson.schema`<type "data" root <object <value "any">>>`;
     const received: HsonDataValue[] = [], authorized: HsonDataValue[] = [];
     let resultValue: HsonDataInput = {};
     const locus = hsonLiveMap.locus.create({ state: { json: { value: 0 } } }, {

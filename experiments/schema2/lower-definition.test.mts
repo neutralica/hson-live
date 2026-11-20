@@ -88,11 +88,11 @@ test("the investigated D02 excerpt retains the optional line2 contract", () => {
     member("displayName", str(header("minlen", "1"), header("maxlen", "80"))),
     member("address", object(member("line1", str()), optional("line2", str()), member("city", str()))),
   ));
-  const { actual, expected } = compare(excerpt, `<type "data" content <
+  const { actual, expected } = compare(excerpt, `<type "data" root <object <
     displayName <string <minlen 1 maxlen 80>>
-    address <content <line1 "string" line2 <optional "string"> city "string">>
-  >>`);
-  assert.equal(hson_schema_digest(actual), "8f3020ac06b47fed396638a5e1a41e55c123502cab5e0a49188d62251b59d3ff");
+    address <object <line1 "string" line2 <optional "string"> city "string">>
+  >>>`);
+  assert.equal(hson_schema_digest(actual), "604988600e675a505052366dd9314eb3b3d9b64e381911e2df81d2bbad905f97");
   for (const line2 of ["", 'line2 ""', "line2 null"]) {
     const candidate = HsonDataValue.fromSource(`<displayName "Mina" address <line1 "18 Cedar Lane" ${line2} city "Bristol">>`);
     const result = certify(actual, candidate);
@@ -103,16 +103,16 @@ test("the investigated D02 excerpt retains the optional line2 contract", () => {
 
 test("fixed root roles retain both opposite-outcome witness pairs", () => {
   const collision = member("content", exact("string"));
-  compare(data(object(member("content", str()))), '<type "data" content <content "string">>');
+  compare(data(object(member("content", str()))), '<type "data" root <object <content "string">>>');
   compare(data(object(member("ref", str()), member("content", exact(false)))),
-    '<type "data" content <ref "string" content <exact false>>>');
-  const first = compare(data(object(member("exact", str()))), '<type "data" content <exact "string">>');
-  const second = compare(data(object(collision)), '<type "data" content <content <content <exact "string">>>>');
+    '<type "data" root <object <ref "string" content <exact false>>>>');
+  const first = compare(data(object(member("exact", str()))), '<type "data" root <object <exact "string">>>');
+  const second = compare(data(object(collision)), '<type "data" root <object <content <exact "string">>>>');
 
   const definitions = defs(member("string", num()));
   const refMember = member("ref", str());
-  const third = compare(data(definitions, ref("string")), '<type "data" defs <string "number"> content <ref "string">>');
-  const fourth = compare(data(definitions, object(refMember)), '<type "data" defs <string "number"> content <content <ref "string">>>');
+  const third = compare(data(definitions, ref("string")), '<type "data" defs <string "number"> root <ref "string">>');
+  const fourth = compare(data(definitions, object(refMember)), '<type "data" defs <string "number"> root <object <ref "string">>>');
 
   function opposite(left: HsonSchema, right: HsonSchema, yes: string, no: string) {
     assert.notEqual(hson_schema_digest(left), hson_schema_digest(right));
@@ -126,14 +126,14 @@ test("fixed root roles retain both opposite-outcome witness pairs", () => {
   opposite(third.actual, fourth.actual, '2', '<ref "P">');
 });
 
-test("omitted fields, explicit broad content, empty defs and the empty object root have separate identities", () => {
+test("omitted and explicit any share identity while empty defs and the empty object retain theirs", () => {
   const forms = [
-    compare(data(), '<type "data">'),
-    compare(data(op("any")), '<type "data" content "any">'),
-    compare(data(defs()), '<type "data" defs <>>'),
-    compare(data(object()), '<type "data" content <>>'),
+    compare(data(), '<type "data" root "any">'),
+    compare(data(op("any")), '<type "data" root "any">'),
+    compare(data(defs()), '<type "data" defs <> root "any">'),
+    compare(data(object()), '<type "data" root <object <>>>'),
   ];
-  assert.equal(new Set(forms.map(({ actual }) => hson_schema_digest(actual))).size, forms.length);
+  assert.equal(new Set(forms.map(({ actual }) => hson_schema_digest(actual))).size, 3);
 });
 
 test("an omitted body stays absent across repeated lowering under prototype mutation", () => {
@@ -152,7 +152,7 @@ test("an omitted body stays absent across repeated lowering under prototype muta
     Reflect.deleteProperty(Object.prototype, "body");
   }
 
-  const control = HsonSchema.fromHson('<type "data">');
+  const control = HsonSchema.fromHson('<type "data" root "any">');
   const compiledControl = compiled_hson_schema_of(control);
   const identity = schema_definition_identity(compiledControl);
   const candidate = HsonDataValue.fromSource("7");
@@ -164,7 +164,7 @@ test("an omitted body stays absent across repeated lowering under prototype muta
     assert.equal(result.schema1Source, control.toHson());
     assert.deepEqual(schema_definition_identity(compiled_hson_schema_of(schema)), identity);
     assert.deepEqual(certify(schema, candidate), accepted);
-    assert.equal(result.originAt(["content", "content"]), root);
+    assert.equal(result.originAt(["root"]), root);
   }
   assert.equal(Object.getPrototypeOf(root), null);
   assert.ok(!Object.hasOwn(root, "body"));
@@ -178,11 +178,11 @@ test("absent, null and empty operands reach their own lowering or compiler resul
     const body = value(operand);
     structural_error(field(op("string", body)), /absent content/, body);
     const lowered = lower_schema_definition(field(op("exact", body)));
-    const target = parse_canonical_hson_data(`<type "data" content <v <exact ${spelling}>>>`);
+    const target = parse_canonical_hson_data(`<type "data" root <object <v <exact ${spelling}>>>>`);
     assert.ok(ordered_projected_value_equal(lowered.orderedDefinition, target));
     assert.equal(compile_hson_schema(lowered.schema1Source).ok, operand === null || typeof operand === "string");
   }
-  const pair = compare(data(object(optional("v", op("any")))), '<type "data" content <v <optional "any">>>');
+  const pair = compare(data(object(optional("v", op("any")))), '<type "data" root <object <v <optional "any">>>>');
   for (const source of ['<>', '<v null>', '<v <>>', '<v []>', '<v "">']) {
     const candidate = HsonDataValue.fromSource(source);
     assert.equal(pair.actual.certify(candidate).toHson(), candidate.toHson());
@@ -205,20 +205,20 @@ test("ordered names, definitions, modifiers, branches and signed zero reach iden
     defs(member("10", tuple()), member("2", exact(true)), member("__proto__", ref("10"))),
     object(member("10", ref("__proto__")), member("2", ref("2")), member("__proto__", object())),
   ), `<type "data" defs <'10' <tuple []> '2' <exact true> __proto__ <ref "10">>
-      content <'10' <ref "__proto__"> '2' <ref "2"> __proto__ <content <>>>>`);
-  const negative = compare(field(exact(-0)), '<type "data" content <v <exact -0>>>');
-  const positive = compare(field(exact(0)), '<type "data" content <v <exact 0>>>');
+      root <object <'10' <ref "__proto__"> '2' <ref "2"> __proto__ <object <>>>>>`);
+  const negative = compare(field(exact(-0)), '<type "data" root <object <v <exact -0>>>>');
+  const positive = compare(field(exact(0)), '<type "data" root <object <v <exact 0>>>>');
   assert.notEqual(hson_schema_digest(negative.actual), hson_schema_digest(positive.actual));
   assert.ok(certify(negative.actual, HsonDataValue.fromSource("<v -0>")).ok);
   assert.ok(!certify(negative.actual, HsonDataValue.fromSource("<v 0>")).ok);
-  const first = compare(field(num(header("min", "-0"), header("int"))), '<type "data" content <v <number <min -0 int true>>>>');
-  const second = compare(field(num(header("int"), header("min", "-0"))), '<type "data" content <v <number <int true min -0>>>>');
+  const first = compare(field(num(header("min", "-0"), header("int"))), '<type "data" root <object <v <number <min -0 int true>>>>>');
+  const second = compare(field(num(header("int"), header("min", "-0"))), '<type "data" root <object <v <number <int true min -0>>>>>');
   assert.notEqual(hson_schema_digest(first.actual), hson_schema_digest(second.actual));
-  compare(field(union(op("null"), str())), '<type "data" content <v <union ["null","string"]>>>');
-  compare(field(num(header("over", "-1e2"), header("under", "1e2"))), '<type "data" content <v <number <over -100 under 100>>>>');
-  compare(field(str(header("suffix", "🍎"), header("contains", ""))), '<type "data" content <v <string <suffix "🍎" contains "">>>>');
-  compare(field(op("tuple", expression_group([num(), str()]), [header("minlen", "2")])), '<type "data" content <v <tuple <content ["number","string"] minlen 2>>>>');
-  compare(field(array(op("any"), header("unique"))), '<type "data" content <v <array <content "any" unique true>>>>');
+  compare(field(union(op("null"), str())), '<type "data" root <object <v <union ["null","string"]>>>>');
+  compare(field(num(header("over", "-1e2"), header("under", "1e2"))), '<type "data" root <object <v <number <over -100 under 100>>>>>');
+  compare(field(str(header("suffix", "🍎"), header("contains", ""))), '<type "data" root <object <v <string <suffix "🍎" contains "">>>>>');
+  compare(field(op("tuple", expression_group([num(), str()]), [header("minlen", "2")])), '<type "data" root <object <v <tuple <content ["number","string"] minlen 2>>>>>');
+  compare(field(array(op("any"), header("unique"))), '<type "data" root <object <v <array <content "any" unique true>>>>>');
 });
 
 test("configured uniqueness preserves field order and both zero signs in relation rows", () => {
@@ -227,7 +227,7 @@ test("configured uniqueness preserves field order and both zero signs in relatio
   const config = ordered_projected_object([["cases", cases], ["by", "ref"]]);
   const item = object(member("ref", num()));
   const { actual } = compare(field(array(item, header("unique", value(config)))),
-    '<type "data" content <v <array <content <content <ref "number">> unique <cases [[0,[0]],[-0,[-0]]] by "ref">>>>>');
+    '<type "data" root <object <v <array <content <object <ref "number">> unique <cases [[0,[0]],[-0,[-0]]] by "ref">>>>>>');
   assert.ok(certify(actual, HsonDataValue.fromSource('<v [<ref 0>,<ref -0>]>')).ok);
   const conflict = certify(actual, HsonDataValue.fromSource('<v [<ref -0>,<ref -0>]>'));
   assert.ok(!conflict.ok);
@@ -242,7 +242,7 @@ test("a bare header keeps its category and omitted operand under prototype mutat
   const bare = header("unique");
   const configured = header("unique", relation);
   const root = field(array(row, bare));
-  const path = ["content", "v", "array", "unique"];
+  const path = ["root", "object", "v", "array", "unique"];
   const before = lower_schema_definition(root);
   const keys = ["operand", "body", "kind"];
   for (const key of keys) {
@@ -284,9 +284,9 @@ test("array headers distinguish configured uniqueness from a misplaced occurrenc
   // @ts-expect-error A complete occurrence cannot be assigned to a header slot.
   assert.throws(() => array(row, misplaced), /owned Schema header/);
 
-  const { actual } = compare(field(array(row, header("unique", relation))), `<type "data" content <v <array <
-    content <content <slot "string" id "number">> unique <by "slot" cases [["A", ["K"]]]>
-  >>>>`);
+  const { actual } = compare(field(array(row, header("unique", relation))), `<type "data" root <object <v <array <
+    content <object <slot "string" id "number">> unique <by "slot" cases [["A", ["K"]]]>
+  >>>>>`);
   assert_slot_conflict(actual);
 
   const bare = HsonSchema.fromHson(lower_schema_definition(field(array(row, header("unique")))).schema1Source);
@@ -327,9 +327,9 @@ test("the minlen getter cannot substitute a slot or strip a configured unique op
 
   const configured = header("unique", relation);
   const root = field(array(row, header("minlen", "0"), configured));
-  const { actual } = compare(root, '<type "data" content <v <array <content <content <slot "string" id "number">> minlen 0 unique <by "slot" cases [["A", ["K"]]]>>>>>');
+  const { actual } = compare(root, '<type "data" root <object <v <array <content <object <slot "string" id "number">> minlen 0 unique <by "slot" cases [["A", ["K"]]]>>>>>>');
   assert_slot_conflict(actual);
-  assert.equal(lower_schema_definition(root).originAt(["content", "v", "array", "unique"]), configured);
+  assert.equal(lower_schema_definition(root).originAt(["root", "object", "v", "array", "unique"]), configured);
 });
 
 test("only original completed occurrences can enter lowering or become structural children", () => {
@@ -393,7 +393,7 @@ test("misplaced occurrences and body-bearing header records reject during constr
   const valid = header("optional");
   assert.equal(Reflect.set(valid, "body", value(false)), false);
   assert.equal(Reflect.set(valid, "kind", "operation"), false);
-  const { actual } = compare(data(object(member("v", str(), [valid]))), '<type "data" content <v <optional "string">>>');
+  const { actual } = compare(data(object(member("v", str(), [valid]))), '<type "data" root <object <v <optional "string">>>>');
   assert.ok(certify(actual, HsonDataValue.fromSource("<>")).ok);
 });
 
@@ -427,7 +427,7 @@ test("a shortened length read cannot hide the second required member", () => {
   assert.equal(map.entries.length, 2);
   assert.equal(map.entries[0], a);
   assert.equal(map.entries[1], b);
-  const { actual, expected } = compare(data(op("object", map)), '<type "data" content <a "string" b "string">>');
+  const { actual, expected } = compare(data(op("object", map)), '<type "data" root <object <a "string" b "string">>>');
   for (const [source, ok] of [['<a "yes">', false], ['<a "yes" b "yes">', true]] as const) {
     const candidate = HsonDataValue.fromSource(source);
     const result = certify(actual, candidate);
@@ -476,7 +476,7 @@ test(indexedSetterTest, () => {
   }
   assert.equal(setterCalls, 0);
 
-  const { actual, expected } = compare(data(op("object", map)), '<type "data" content <a "string" b "string">>');
+  const { actual, expected } = compare(data(op("object", map)), '<type "data" root <object <a "string" b "string">>>');
   assert.equal(hson_schema_digest(actual), hson_schema_digest(expected));
   for (const [spelling, ok] of [['<a "yes">', false], ['<a "yes" b "yes">', true]] as const) {
     const candidate = HsonDataValue.fromSource(spelling);
@@ -527,12 +527,12 @@ test("root, member, header, tuple and union lists preserve every physical entry 
     const title = member("title", op("string", undefined, single_use([rule])));
     const fields = member_map(single_use([title, member("items", op(collection, items))]));
     const root = op("data", expression_group(single_use([defs(), op("object", fields)])));
-    const { actual } = compare(root, `<type "data" defs <> content <title <string <minlen 2>> items <${collection} ["string", "number"]>>>`);
+    const { actual } = compare(root, `<type "data" defs <> root <object <title <string <minlen 2>> items <${collection} ["string", "number"]>>>>`);
     assert.ok(!certify(actual, HsonDataValue.fromSource("<>")).ok);
     const lowered = lower_schema_definition(root);
-    assert.equal(lowered.originAt(["content", "title", "string", "minlen"]), rule);
-    assert.equal(lowered.originAt(["content", "items", collection, 0]), first);
-    assert.equal(lowered.originAt(["content", "items", collection, 1]), second);
+    assert.equal(lowered.originAt(["root", "object", "title", "string", "minlen"]), rule);
+    assert.equal(lowered.originAt(["root", "object", "items", collection, 0]), first);
+    assert.equal(lowered.originAt(["root", "object", "items", collection, 1]), second);
   }
   // An exhausted iterator also cannot hide a physically present invalid header.
   // @ts-expect-error An owned occurrence is still the wrong physical entry.
@@ -554,8 +554,8 @@ test("changing map role and cardinality cannot substitute for explicit object co
   }
   assert.throws(() => op("object", changingBody), /owned Schema body/);
   assert.deepEqual([nameReads, entryReads], [0, 0]);
-  const { actual } = compare(data(object(collision)), '<type "data" content <content <content <optional "string">>>>');
-  const substituted = HsonSchema.fromHson('<type "data" content <content <optional "string">>>');
+  const { actual } = compare(data(object(collision)), '<type "data" root <object <content <optional "string">>>>');
+  const substituted = HsonSchema.fromHson('<type "data" root <object <optional "string">>>');
   for (const [source, accepted] of [['<>', true], ['<optional "ok">', false]] as const) {
     const candidate = HsonDataValue.fromSource(source);
     assert.equal(certify(actual, candidate).ok, accepted);
@@ -574,7 +574,7 @@ test("retained buffers cannot change a completed declaration or its diagnostic s
   const body = expression_group(clauses);
   const root = op("data", body);
   const before = lower_schema_definition(root);
-  const uniquePath = ["content", "v", "array", "unique"];
+  const uniquePath = ["root", "object", "v", "array", "unique"];
   assert.equal(before.originAt(uniquePath), flag);
 
   rules.splice(0, 2, header("unique"));
@@ -594,8 +594,8 @@ test("retained buffers cannot change a completed declaration or its diagnostic s
   assert.equal(hson_schema_digest(HsonSchema.fromHson(after.schema1Source)), hson_schema_digest(HsonSchema.fromHson(before.schema1Source)));
   for (const lowered of [before, after]) {
     assert.equal(lowered.originAt([]), root);
-    assert.equal(lowered.originAt(["content"]), map);
-    assert.equal(lowered.originAt(["content", "v"]), rule);
+    assert.equal(lowered.originAt(["root", "object"]), map);
+    assert.equal(lowered.originAt(["root", "object", "v"]), rule);
     assert.equal(lowered.originAt([...uniquePath, "cases", 0]), flag);
     assert.equal(flag.operand, relation);
     assert_slot_conflict(HsonSchema.fromHson(lowered.schema1Source));
@@ -651,7 +651,7 @@ test("a present invalid data group owns the root body diagnostic", () => {
   structural_error(op("data", child), /ordered data root declarations/, child);
   const empty = expression_group([]);
   structural_error(op("data", empty), /nonempty group/, empty);
-  compare(data(), '<type "data">');
+  compare(data(), '<type "data" root "any">');
 });
 
 test("a literal within the Data depth limit can exceed it inside the generated definition", () => {
@@ -666,11 +666,11 @@ test("a literal within the Data depth limit can exceed it inside the generated d
 test("unsupported roles, missing operands and malformed headers report structural occurrences", () => {
   const alien = op("future");
   structural_error(field(union(num(), alien)), /Unsupported Data Schema operation/, alien);
-  structural_error(data(array(str())), /Unsupported data root role/);
+  structural_error(data(alien), /Unsupported Data Schema operation/, alien);
   structural_error(op("document"), /Only Data Schema/);
   structural_error(op("data", expression_group([])), /nonempty group/);
-  structural_error(data(object(), defs()), /before root content/);
-  structural_error(data(op("any"), op("any")), /only one content/);
+  structural_error(data(object(), defs()), /before the root expression/);
+  structural_error(data(op("any"), op("any")), /only one expression/);
   structural_error(data(op("object", expression_group([]))), /ordered member map/);
   structural_error(data(op("object", member_map([str()]))), /user-defined names/);
   const missing = member("a");
@@ -699,18 +699,18 @@ test("compiler validation is a separate step with structural owners for generate
   const badLength = header("minlen", "-1");
   const flag = header("optional");
   const lowered = lower_schema_definition(data(object(member("2", array(str(badLength)), [flag]))));
-  assert.equal(lowered.originAt(["content", "2"]), flag);
+  assert.equal(lowered.originAt(["root", "object", "2"]), flag);
   const checked = compile_hson_schema(lowered.schema1Source);
   assert.ok(!checked.ok);
   const issue = checked.issues[0];
   assert.equal(issue.code, "INVALID_SCHEMA_EXPRESSION");
-  assert.deepEqual(issue.path, ["content", "2", "optional", "array", "string", "minlen"]);
+  assert.deepEqual(issue.path, ["root", "object", "2", "optional", "array", "string", "minlen"]);
   assert.equal(lowered.originAt(issue.path), badLength);
   const badRelation = header("unique", value(ordered_projected_object([["by", "slot"], ["cases", ordered_projected_array([1])]])));
   const relation = lower_schema_definition(field(array(op("any"), badRelation)));
   const checkedRelation = compile_hson_schema(relation.schema1Source);
   assert.ok(!checkedRelation.ok);
-  assert.deepEqual(checkedRelation.issues[0].path, ["content", "v", "array", "unique", "cases", 0]);
+  assert.deepEqual(checkedRelation.issues[0].path, ["root", "object", "v", "array", "unique", "cases", 0]);
   assert.equal(relation.originAt(checkedRelation.issues[0].path), badRelation);
   for (const [root, code] of [
     [field(union(str(), str())), "INVALID_UNION"],

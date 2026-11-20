@@ -13,9 +13,9 @@ import { validate_document_path } from "../src/api/livemap/livemap.document.path
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
 
 const Page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "p" content "string">>>]>>]>>`;
-const Private: HsonSchema = Hson.schema`<type "data" content <PRIVATE_SCHEMA_SENTINEL "string">>`;
-const Unselected: HsonSchema = Hson.schema`<type "data" content <UNSELECTED_SCHEMA_SENTINEL "string">>`;
-const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const Private: HsonSchema = Hson.schema`<type "data" root <object <PRIVATE_SCHEMA_SENTINEL "string">>>`;
+const Unselected: HsonSchema = Hson.schema`<type "data" root <object <UNSELECTED_SCHEMA_SENTINEL "string">>>`;
+const Data: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false });
 

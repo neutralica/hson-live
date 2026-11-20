@@ -103,7 +103,7 @@ function action_result_echo(locus: object) {
 }
 
 async function action_result_admission_cases(check: Check): Promise<void> {
-  const schema = Hson.schema`<type "data" content <saved "boolean">>`;
+  const schema = Hson.schema`<type "data" root <object <saved "boolean">>>`;
   const exact = Hson.data.parse`<'10' -0 '2' <__proto__ true>>`;
   type ResultFactory = (lateWrite: () => void) => unknown;
   for (const route of ["direct", "Echo"] as const) {
@@ -485,7 +485,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
   });
 
   await check("Schema failures remain atomic and durable replay retains captured values", async () => {
-    const schema = Hson.schema`<type "data" content <n "number">>`;
+    const schema = Hson.schema`<type "data" root <object <n "number">>>`;
     const definitions = { state: { json: { n: 0 }, schema } };
     const storage = new MemoryCheckpointAdapter(), options = { logicalMapId: "d4b-ownership", persistence: storage };
     const locus = await hsonLiveMap.locus.resume(definitions, options);
@@ -548,7 +548,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
   });
 
   await check("direct ordered Schema evaluation matches graph diagnostics, qualification and certification identity", () => {
-    const schema = Hson.schema`<type "data" content <'10' <exact -0> '2' "number" note <optional "string">>>`;
+    const schema = Hson.schema`<type "data" root <object <'10' <exact -0> '2' "number" note <optional "string">>>>`;
     const good = ordered_projected_object([["10", -0], ["2", Number.MAX_VALUE]]);
     const exact = hson_data_from_value(good), identity = hson_schema_digest(schema);
     assert.strictEqual(schema.certify(exact), exact); assert.equal(hson_data_value(exact), good);
@@ -564,7 +564,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
   });
 
   await check("compiler bootstrap retains ordered definitions, source ranges, unions, optionals and generated types", () => {
-    const source = `<type "data" defs <Choice <union ["number", "boolean"]>> content <'10' <ref "Choice"> '2' <optional "string">>>`;
+    const source = `<type "data" defs <Choice <union ["number", "boolean"]>> root <object <'10' <ref "Choice"> '2' <optional "string">>>>`;
     const compiled = compile_hson_schema(source); assert.ok(compiled.ok);
     assert.equal(compiled.value.semantic.kind, "object");
     if (compiled.value.semantic.kind !== "object") throw Error("Expected object schema");
@@ -576,7 +576,7 @@ export async function locus_submission_ownership_cases(check: Check): Promise<vo
     assert.ok(generated.declarations.indexOf('"10"') < generated.declarations.indexOf('"2"'));
     const schema = HsonSchema.fromHson(source);
     assert.deepEqual(compiled_hson_schema_of(schema).graph, compiled.value.graph);
-    const invalid = compile_hson_schema('<type "data" content <value <union ["number", "number"]>>>');
+    const invalid = compile_hson_schema('<type "data" root <object <value <union ["number", "number"]>>>>');
     assert.equal(invalid.ok, false);
     if (!invalid.ok) assert.ok(invalid.issues.some(issue => issue.range !== undefined));
   });

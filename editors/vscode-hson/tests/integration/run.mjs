@@ -57,7 +57,7 @@ await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'im
 await writeFile(join(workspaceDir, "unopened-invalid.hson"), "+1\n");
 await writeFile(join(workspaceDir, "pragma-invalid.hson"), "// @hson-diagnostics-ignore-file\n+1\n");
 await writeFile(join(workspaceDir, "static-syntax.ts"), 'import { hsonTransform } from "hson-live/transform";\nhsonTransform.fromHson("\\x2b1").toNode();\n');
-await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson } from "hson-live";\nexport const SymbolSchema = Hson.schema`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>`;\nconst ordinary = "Age";\n');
+await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson } from "hson-live";\nexport const SymbolSchema = Hson.schema`<type "data" defs <Age <number <int true min 0>> User <object <age <ref "Age">>>> root <ref "User">>`;\nconst ordinary = "Age";\n');
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.ts"), "export {};\n");
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.json"), "{}\n");
 // Keep opened fixtures inside the isolated workspace: parent projects in the

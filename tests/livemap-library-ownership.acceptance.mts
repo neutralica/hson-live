@@ -4,8 +4,8 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
-const DataSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
-const ItemSchema = Hson.schema`<type "data" content <item <optional "any">>>`;
+const DataSchema = Hson.schema`<type "data" root <object <name "string" age "number">>>`;
+const ItemSchema = Hson.schema`<type "data" root <object <item <optional "any">>>>`;
 const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({

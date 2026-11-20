@@ -72,8 +72,8 @@ await locus.stage((draft) => {
   state.at(["value"]).set(2);
 });
 await locus.admit({ "privateState": { json: { secret: "PRIVATE_REPLAY_ROOT_SENTINEL",
-    PRIVATE_REPLAY_SCHEMA_SENTINEL: "private" }, schema: Hson.schema`<type "data" content <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>`, access: "private" }, "nextState": { json: { value: 3 }, access: "shared" }, "ungrantedState": { json: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
-    UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" }, schema: Hson.schema`<type "data" content <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>`, access: "shared" } });
+    PRIVATE_REPLAY_SCHEMA_SENTINEL: "private" }, schema: Hson.schema`<type "data" root <object <secret "string" PRIVATE_REPLAY_SCHEMA_SENTINEL "string">>>`, access: "private" }, "nextState": { json: { value: 3 }, access: "shared" }, "ungrantedState": { json: { secret: "UNGRANTED_REPLAY_ROOT_SENTINEL",
+    UNGRANTED_REPLAY_SCHEMA_SENTINEL: "ungranted" }, schema: Hson.schema`<type "data" root <object <secret "string" UNGRANTED_REPLAY_SCHEMA_SENTINEL "string">>>`, access: "shared" } });
 await locus.stage((draft) => {
   const next = draft.data.must("nextState"), hidden = draft.data.must("privateState");
   if (String(next.mode) === "document" || String(hidden.mode) === "document") throw new Error("Expected data Libraries.");

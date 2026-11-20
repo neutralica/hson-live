@@ -5,8 +5,8 @@ import { enumerate_livemap_issued_quids } from "../../src/api/livemap/livemap.id
 import type { ReadDataLocation } from "../../src/types/governor.types.js";
 
 export async function library_evidence_cases() {
-  const earlier = Hson.schema`<type "data" content <earlier "number">>`;
-  const later = Hson.schema`<type "data" content <later "string">>`;
+  const earlier = Hson.schema`<type "data" root <object <earlier "number">>>`;
+  const later = Hson.schema`<type "data" root <object <later "string">>>`;
   const definitions: { seed: { json: number }; maybe?: { json: { earlier: number }; schema: typeof earlier } } = { seed: { json: 1 } };
   const optionalMap = hsonLiveMap.fromLibraries(definitions);
   const receipt = optionalMap.addLibraries({ maybe: { json: { later: "present" }, schema: later } });
@@ -104,7 +104,7 @@ export async function library_evidence_cases() {
   assert.throws(() => stale.snap(), /another map authority/i);
   assert.throws(() => stale.array.push(3), /another map authority/i);
 
-  const schema = Hson.schema`<type "data" content <value <optional "any"> parent <optional <content <value "any">>>>>`;
+  const schema = Hson.schema`<type "data" root <object <value <optional "any"> parent <optional <object <value "any">>>>>>`;
   let retainedRead: ReturnType<ReadDataLocation["asArray"]>;
   const locus = hsonLiveMap.locus.create({ "state": { json: { value: [1], parent: { value: { n: 1 } } }, schema, access: "shared" } }, { actions: { inspect(context) {
       retainedRead = context.data.must("state").at(["value"]).asArray();

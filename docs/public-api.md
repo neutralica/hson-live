@@ -77,7 +77,7 @@ trust-ingress acceptance tests.
 import { hsonLiveMap } from "hson-live/livemap";
 import { Hson } from "hson-live/hson";
 
-const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: StateSchema } });
 map.data.must("state").at(["count"]).set(1);
 const count = map.data.must("state").at(["count"]).snap();

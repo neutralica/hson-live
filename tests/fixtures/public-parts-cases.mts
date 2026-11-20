@@ -54,7 +54,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
     const name: string = "parts", selected = map.parts.must(name), before = map.capture(), schema = selected.schema.get();
     let observations = 0; const stop = map.commits.observe(() => observations++);
     try {
-      for (const supplemental of [ANY_DATA, Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>`]) {
+      for (const supplemental of [ANY_DATA, Hson.schema`<type "data" root <object <p <object <kind "string" document "string">>>>>`]) {
         assert.throws(() => Reflect.get(selected.schema, "use")(supplemental), /Part collections do not support supplemental Schema/);
         assert.deepEqual(map.capture(), before); assert.equal(selected.schema.get(), schema); assert.equal(observations, 0);
       }
@@ -156,7 +156,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   });
 
   await check("public Parts reject supplemental Schemas at every admission surface atomically", async () => {
-    const custom = Hson.schema`<type "data" content <para <content <kind "string" document "string">>>>`;
+    const custom = Hson.schema`<type "data" root <object <para <object <kind "string" document "string">>>>>`;
     const map = hsonLiveMap.fromLibraries({ state: { json: 1 } });
     const locus = hsonLiveMap.locus.create({ "state": { json: 1, access: "shared" } });
     let mapEvents = 0, locusEvents = 0;
@@ -455,7 +455,7 @@ export async function public_parts_cases(check: (name: string, run: () => void |
   }
 
   await check("ordinary data Libraries retain custom Schema admission and mutation", async () => {
-    const schema = Hson.schema`<type "data" content <para <content <kind "string" document "string">>>>`;
+    const schema = Hson.schema`<type "data" root <object <para <object <kind "string" document "string">>>>>`;
     const definition = { json: { para: deckParts.para }, schema };
     const map = hsonLiveMap.fromLibraries({ data: definition });
     const locus = hsonLiveMap.locus.create({ "data": { ...definition, access: "private" } });

@@ -275,7 +275,7 @@ const directHsonDataSources = new Map<string, string>([
     import { hsonLiveMap } from "hson-live/livemap";
     import { Hson } from "hson-live/hson";
 
-    const schema = Hson.schema\`<type "data" content <value "number">>\`;
+    const schema = Hson.schema\`<type "data" root <object <value "number">>>\`;
     const map = hsonLiveMap.fromLibraries({ state: { json: { value: -0 }, schema } });
     if ("behaviors" in map || map.behaviors !== undefined) throw new Error("LiveMap exposes the retired receiver");
     const value = Hson.data.from(map.data.must("state").snap());
@@ -328,7 +328,7 @@ for (const order of [
     if (modules.some((module) => Object.hasOwn(module, "HsonData"))) throw new Error("retired public constructor returned");
     const { hsonLiveMap } = await import("hson-live/livemap");
     const { Hson } = await import("hson-live/hson");
-    const map = hsonLiveMap.fromLibraries({ state: { json: { value: -0 }, schema: Hson.schema\`<type "data" content <value "number">>\` } });
+    const map = hsonLiveMap.fromLibraries({ state: { json: { value: -0 }, schema: Hson.schema\`<type "data" root <object <value "number">>>\` } });
     if (!Object.is(map.data.must("state").snap(["value"]), -0)) throw new Error("conversion changed by import order");
   `);
 }

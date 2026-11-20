@@ -61,12 +61,12 @@ import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type LiveMap } from "hson-live/livemap";
 import type { LocusActionContext } from "hson-live/locus";
 import type { Echo } from "hson-live/echo";
-export const S = Hson.schema\`<type "data" content <name "string" format <union [<exact "hson">, <exact "html">]>>>\`;
+export const S = Hson.schema\`<type "data" root <object <name "string" format <union [<exact "hson">, <exact "html">]>>>>\`;
 export const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
-export const Any = Hson.schema\`<type "data">\`;
+export const Any = Hson.schema\`<type "data" root "any">\`;
 export const AnyPage = Hson.schema\`<type "document">\`;
-export const Twin = Hson.schema\`<type "data" content <name "string" format <union [<exact "hson">, <exact "html">]>>>\`;
-export const Tree = Hson.schema\`<type "data" defs <Node <content <value "string" children <array <ref "Node">>>>> content <ref "Node">>\`;
+export const Twin = Hson.schema\`<type "data" root <object <name "string" format <union [<exact "hson">, <exact "html">]>>>>\`;
+export const Tree = Hson.schema\`<type "data" defs <Node <object <value "string" children <array <ref "Node">>>>> root <ref "Node">>\`;
 export const certificate = S.certify(Hson.data.parse\`<name "Ada" format "hson">\`);
 export const authoredPlain = Hson.document\`<main "body"/>\`;
 export const authoredNamed = Hson.document\`<main @:main "body"/>\`;
@@ -138,7 +138,7 @@ export const chained: HsonData<typeof Chained> = Hson.data\`<name "Ada">\`;
 export const ordinary: HsonData<typeof Value> = Hson.data\`<name "Ada">\`;
 `;
   project(directory, source, { ...options, lib: ["ESNext", "DOM"] });
-  writeFileSync(join(directory, "schema.ts"), 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <name "string">>`; export const Alias = S; export const Next = Alias;');
+  writeFileSync(join(directory, "schema.ts"), 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" root <object <name "string">>>`; export const Alias = S; export const Next = Alias;');
   writeFileSync(join(directory, "bridge.ts"), 'export type { Alias as Reexported, Next as Chained } from "./schema.js";');
   const cli = join(installed, "dist/hson-schema.mjs");
   for (const action of ["generate", "check", "build"]) run([cli, action, "--project", join(directory, "tsconfig.json")]);
@@ -291,7 +291,7 @@ check("existing root imports publish the same inferred public types", () => {
   const rootProducer = join(temporary, "root-producer");
   const source = `
 import { Hson, hsonLiveMap } from "hson-live";
-export const S = Hson.schema\`<type "data" content <values <array "string">>>\`;
+export const S = Hson.schema\`<type "data" root <object <values <array "string">>>>\`;
 export const certificate = S.certify(Hson.data.parse\`<values []>\`);
 export const map = hsonLiveMap.fromLibraries({ state: { json: { values: [] }, schema: S } });
 export const library = map.data.must("state");
@@ -321,7 +321,7 @@ check("async and generator returns and required callable Parts publish through s
   const source = `
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
-export const S = Hson.schema\`<type "data" content <name "string">>\`;
+export const S = Hson.schema\`<type "data" root <object <name "string">>>\`;
 export const value = 1;
 export const promised = Promise.resolve(value);
 export async function load() { return value; }

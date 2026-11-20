@@ -27,7 +27,7 @@ async function run(): Promise<void> {
     assert.ok(depths(text).every(token => text[token.range.start] !== '/'));
   });
   check("defs, union, ref, and array schema delimiters share the same stack", () => {
-    const text = prefix + 'const schema=Hson.schema`<type "data" defs <Text "string" Block <union «<ref "Text">, <array <ref "Text">>»>> content <ref "Block">>`;';
+    const text = prefix + 'const schema=Hson.schema`<type "data" defs <Text "string" Block <union «<ref "Text">, <array <ref "Text">>»>> root <ref "Block">>`;';
     assert.deepEqual(shape(text).map(token => token[1]), [1, 2, 3, 4, 5, 5, 5, 6, 6, 5, 4, 3, 2, 2, 2, 1]);
     assert.ok(depths(text).every(token => !token.unexpected));
   });

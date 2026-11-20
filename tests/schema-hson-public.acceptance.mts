@@ -54,7 +54,7 @@ check("named Library Schemas retain admission evidence and equal no-op confirmat
   assert.match(declaration, /export type LiveMapDocumentLibraryInput<.*schema: TSchema;/s);
   assert.match(declaration, /schema: Readonly<\{\s*get: \(\) => LiveMapCurrentDataSchema<TSchema>;\s*use: LiveMapSchemaUse<LiveMapDataSchemaUse<TSchema>, TLibrary>;\s*\}>;/);
   assert.match(declaration, /schema: Readonly<\{\s*get: \(\) => LiveMapCurrentDocumentSchema<TSchema>;\s*use: LiveMapSchemaUse<LiveMapDocumentSchemaUse<TSchema>, TLibrary>;\s*\}>;/);
-  const schema = root.Hson.schema`<type "data" content <age "number">>`;
+  const schema = root.Hson.schema`<type "data" root <object <age "number">>>`;
   const registry = root.hsonLiveMap.fromLibraries({ state: { json: { age: 37 }, schema } });
   assert.equal(registry.data.must("state").schema.get(), schema);
   assert.equal(typeof registry.data.must("state").schema.use, "function");
@@ -63,7 +63,7 @@ check("named Library Schemas retain admission evidence and equal no-op confirmat
 });
 
 check("Schema object owns certification and portable Schema data", () => {
-  const schema: root.HsonSchema = root.Hson.schema`<type "data" content <age "number">>`;
+  const schema: root.HsonSchema = root.Hson.schema`<type "data" root <object <age "number">>>`;
   const canonical = root.Hson.data.parse`<age 37>`;
   assert.equal(schema.certify(canonical), canonical);
   assert.throws(() => schema.certify(root.Hson.canonical`<age "37">`));

@@ -358,7 +358,7 @@ check("one processor handles complete-template and positional codes but does not
   }
   const ordinaryCall = prefix + '// @hson-expect-error HSON_NUMBER_LEADING_PLUS\nhsonTransform.fromHson("+1");';
   assert.deepEqual(produce(ordinaryCall).map(item => item.code), ["HSON_NUMBER_LEADING_PLUS", "HSON_EXPECT_ERROR_UNUSED"]);
-  const schema = prefix + '// @hson-expect-error UNKNOWN_SCHEMA_MEMBER\nconst S = Hson.schema`<type "data" content <name <literal "x">>>`;';
+  const schema = prefix + '// @hson-expect-error UNKNOWN_SCHEMA_MEMBER\nconst S = Hson.schema`<type "data" root <object <name <literal "x">>>>`;';
   assert.deepEqual(produce(schema).map(item => item.code), ["HSON_EXPECT_ERROR_UNUSED"]);
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/expectations.ts", schema).map(item => item.code), ["UNKNOWN_SCHEMA_MEMBER"]);
 });

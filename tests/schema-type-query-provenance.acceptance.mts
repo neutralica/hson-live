@@ -24,7 +24,7 @@ const installed = join(directory, "node_modules/hson-live");
 mkdirSync(installed, { recursive: true });
 cpSync(join(root, "package.json"), join(installed, "package.json"));
 cpSync(join(root, "dist"), join(installed, "dist"), { recursive: true });
-const schemaSource = '<type "data" content <name "string">>';
+const schemaSource = '<type "data" root <object <name "string">>>';
 const imports = 'import { Hson, type HsonData } from "hson-live";\n';
 const assignment = (name: string, schema: string, content = '"Ada"') => `const ${name}: HsonData<typeof ${schema}> = Hson.data\`<name ${content}>\`;`;
 const completion = (binding: string, annotation = "HsonData<typeof S>", tag = "Hson.data") =>
@@ -96,13 +96,13 @@ const files: Readonly<Record<string, string>> = {
     'const alias = receiver; const badAlias = alias.admit({ bits: { parts: {} } });',
     'const badLocal = local.addLibraries({ bits: { parts: {} } });',
     'const typeDocument = TypeHson.document`<main/>`;',
-    'const Invalid = TypeHson.schema`<type "data" content <name "string">>`;',
+    'const Invalid = TypeHson.schema`<type "data" root <object <name "string">>>`;',
     'declare const fakeHson: typeof Hson, fakeMaps: typeof hsonLiveMap;',
-    'const Impostor = fakeHson.schema`<type "data" content <name "string">>`;',
+    'const Impostor = fakeHson.schema`<type "data" root <object <name "string">>>`;',
     'const fakeConstructor = fakeMaps.fromLibraries({ bits: { parts: {} } });',
     'const genuine = hsonLiveMap.fromLibraries({ bits: { parts: { heading: { kind: "document", document } } } });',
     assignment("invalidProducer", "Invalid"), assignment("impostorProducer", "Impostor"),
-    'const genuineSibling = Hson.schema`<type "data" content <name "string">>`;',
+    'const genuineSibling = Hson.schema`<type "data" root <object <name "string">>>`;',
     assignment("sibling", "genuineSibling"),
   ].join("\n"),
 };

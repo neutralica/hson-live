@@ -21,8 +21,8 @@ import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.id
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <negativeZero "number" ordered <content <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>`;
-const FlagSchema: HsonSchema = Hson.schema`<type "data" content <enabled "boolean">>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <negativeZero "number" ordered <object <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>>`;
+const FlagSchema: HsonSchema = Hson.schema`<type "data" root <object <enabled "boolean">>>`;
 const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const Q_RETIRED = "000008001";
 const Q_ACTIVE = "000008002";

@@ -23,7 +23,7 @@ function check(name: string, run: () => void): void {
   }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
-const Schema = Hson.schema`<type "data" content <value "any">>`;
+const Schema = Hson.schema`<type "data" root <object <value "any">>>`;
 const registry = (value: JsonValue) => hsonLiveMap.fromLibraries({ state: { json: { value }, schema: Schema } });
 const record = (entries: readonly (readonly [string, JsonValue])[]): Record<string, JsonValue> => {
   const result: Record<string, JsonValue> = Object.create(null);

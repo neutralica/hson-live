@@ -108,7 +108,7 @@ export async function topology_repair_cases(check: (name: string, run: () => Pro
           : { earlier: { json: 1 }, page };
         try {
           if (surface === "core-batch") {
-            const definitions = new Proxy([{ name: "earlier", family: "data" as const, root: hsonTransform.fromJson(1).toNode(), hsonSchema: Hson.schema`<type "data">` }],
+            const definitions = new Proxy([{ name: "earlier", family: "data" as const, root: hsonTransform.fromJson(1).toNode(), hsonSchema: Hson.schema`<type "data" root "any">` }],
               { get(target, key, receiver) { if (key === "length") revoke(); return Reflect.get(target, key, receiver); } });
             assert.throws(() => a.prepareAddLibrariesManaged(owner, definitions), /management|authority|changed/i);
           } else {

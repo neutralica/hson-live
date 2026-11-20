@@ -18,7 +18,7 @@ const root = resolve("."); mkdirSync(join(root, "tmp"), { recursive: true });
 const project = mkdtempSync(join(root, "tmp/schema-cutover-"));
 process.once("exit", () => rmSync(project, { recursive: true, force: true }));
 const config = join(project, "tsconfig.json");
-const schema = '<type "data" content <phase <exact "ready"> age <number <int true min 0>>>>';
+const schema = '<type "data" root <object <phase <exact "ready"> age <number <int true min 0>>>>>';
 const authored = new Map<string, Buffer>();
 function source(name: string, text: string): void { const bytes = Buffer.from(text); authored.set(name, bytes); writeFileSync(join(project, name), bytes); }
 source("schema.ts", '\uFEFF// preserve this comment\r\nimport { Hson } from "hson-live";\r\nimport type { HsonSchema } from "hson-live";\r\nconst unrelated  : number = 37; void unrelated;\r\n' + `export const S: HsonSchema = Hson.schema\`${schema}\`;\r\nexport const Twin = Hson.schema\`${schema}\`;\r\nexport function getSchema() { return S; }\r\nexport const arrow = () => S;\r\nexport const holder = { schema: S, method() { return S; } };`);

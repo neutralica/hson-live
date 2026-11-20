@@ -31,7 +31,7 @@ export async function local_behavior_cases() {
     assert.ok(second.ok && second.result?.entries()?.[0]?.[1].scalar() === "123");
     assert.equal(bareCalls, 2);
 
-    const schema = Hson.schema`<type "data" content <'10' "number" '2' "number">>`;
+    const schema = Hson.schema`<type "data" root <object <'10' "number" '2' "number">>>`;
     const exact = Hson.data.fromSource('{"10":-0,"2":2}');
     const options = { args: { schema } };
     actions.define("schema", echoInput, options);

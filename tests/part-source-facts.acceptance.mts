@@ -648,7 +648,7 @@ check('C1 whole and subtree forwarding retain original evidence and exact invoca
   }
 });
 check('C1 multiple forwarding edges accumulate paths and qualified transitions change the enclosing Library', () => {
-  const source = forwarding_fixture({ shape: '<nested <content <deep <content <title "number">>>>>', value: '<nested <deep <title 8>>>', forward: '^{outer.nested}',
+  const source = forwarding_fixture({ shape: '<nested <object <deep <object <title "number">>>>>', value: '<nested <deep <title 8>>>', forward: '^{outer.nested}',
     body: '<section hson:part data:record="%{payload}" <hson-part at="C" final:data="^{record.deep}"/>/>' })
     .replace('const page=', 'const C=Hson.document`<p hson:part data:leaf="%{final}" "^{leaf.title}"/>`;const page=')
     .replace('at="B"', 'at="other/B"')
@@ -664,7 +664,7 @@ check('C1 multiple forwarding edges accumulate paths and qualified transitions c
 });
 check('C1 shared connectors retain independent roots, argument correlations and batch Library authority', () => {
   const source = forwarding_fixture().replace('const page=',
-    'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title true>`;const page=')
+    'const T=Hson.schema`<type "data" root <object <title "boolean">>>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title true>`;const page=')
     .replace('<hson-part at="components/A" incoming:data="${input.toHson()}"/>',
       '<main <hson-part at="components/A" incoming:data="${input.toHson()}"/> <hson-part at="components/A" incoming:data="${other.toHson()}"/>/>');
   const test = evidenceProject('c1-independent', { 'index.ts': source });
@@ -681,7 +681,7 @@ check('C1 shared connectors retain independent roots, argument correlations and 
   assert.deepEqual(children.map(context => context.library.name), ['components', 'components', 'other']);
   const correlated = evidenceProject('c1-correlations', { 'index.ts': forwarding_fixture({
     intermediate: '<section hson:part data:outer="%{incoming}" data:second="%{extra}" <hson-part at="B" payload:data="^{second}"/>/>'
-  }).replace('const page=', 'const T=Hson.schema`<type "data" content <title "boolean">>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title true>`;const page=')
+  }).replace('const page=', 'const T=Hson.schema`<type "data" root <object <title "boolean">>>`;const other:HsonDataValue<typeof T>=Hson.data.parse`<title true>`;const page=')
     .replace('incoming:data="${input.toHson()}"', 'incoming:data="${input.toHson()}" extra:data="${other.toHson()}"') });
   const child = part_data_contexts(correlated.facts, correlated.document('B'), 'payload');
   assert.equal(child.length, 1, 'one frame per invocation, not per receiving argument');
@@ -689,8 +689,8 @@ check('C1 shared connectors retain independent roots, argument correlations and 
 });
 check('C1 existing iterator origins preserve array/object selectors, shadowing and optional uncertainty', () => {
   const cases = [
-    { shape: '<rows <array <content <title "number">>>>', value: '<rows «»>', directive: 'for:outer="^{outer.rows}"', path: ['rows', null] },
-    { shape: '<rows <content <one <content <title "number">>>>>', value: '<rows <one <title 1>>>', directive: 'per:key:outer="^{outer.rows}"', path: ['rows', OBJECT_VALUE] },
+    { shape: '<rows <array <object <title "number">>>>', value: '<rows «»>', directive: 'for:outer="^{outer.rows}"', path: ['rows', null] },
+    { shape: '<rows <object <one <object <title "number">>>>>', value: '<rows <one <title 1>>>', directive: 'per:key:outer="^{outer.rows}"', path: ['rows', OBJECT_VALUE] },
   ];
   for (const [index, item] of cases.entries()) {
     const source = forwarding_fixture({ shape: item.shape, value: item.value,

@@ -26,14 +26,14 @@ The 4 MiB exact-value bound applies to the whole prospective interaction root at
 
 Durable Locus checkpoints require the fixed interaction binding. Replay validates each original transition at its accepted boundary. Resume installs the validated checkpoint and replay result together, using the checkpoint format's manifest and chunk bounds for stored material. The final recovered topology can exceed the size of a single Library-add envelope. Recovery restores the accepted Descriptors in order with their original IDs, subjects, and exact Data.
 
-The reserved slot and registry use the same current structural Schema, including Document subjects and `eventArgs`. Its digest is `ec621c2e3d254641b24a07cbb9309f427605d5446dfdaeaab5fd9327025e68be`. Admission and recovery also enforce exact subject alternatives and the cross-field rules below; there is no legacy Schema binding.
+The reserved slot and registry use the same structural Schema, including Document subjects and `eventArgs`. Its definition digest is `6d15e9fb38135f5a93c15e628ab2da75380a22771f45da6d24d02dbceb172438`. Admission and recovery also enforce exact subject alternatives and the cross-field rules below.
 
 ```hson
-<type "data" content <descriptors <array <union [
-  <content <
+<type "data" root <object <descriptors <array <union [
+  <object <
     id "string"
-    subject <content <library "string" path <optional <array <number <int true min 0>>>> kind <optional <exact "document">>>>
-    listener <content <
+    subject <object <library "string" path <optional <array <number <int true min 0>>>> kind <optional <exact "document">>>>
+    listener <object <
       event "string"
       target <union [<exact "element">, <exact "document">, <exact "window">]>
       capture "boolean"
@@ -49,10 +49,10 @@ The reserved slot and registry use the same current structural Schema, including
     args <optional "any">
     eventArgs <optional <array <array "any">>>
   >>,
-  <content <
+  <object <
     id "string"
-    subject <content <library "string" path <optional <array <number <int true min 0>>>> kind <optional <exact "document">>>>
-    listener <content <
+    subject <object <library "string" path <optional <array <number <int true min 0>>>> kind <optional <exact "document">>>>
+    listener <object <
       event "string"
       target <union [<exact "element">, <exact "document">, <exact "window">]>
       capture "boolean"
@@ -68,7 +68,7 @@ The reserved slot and registry use the same current structural Schema, including
     payload <optional "any">
     eventArgs <optional <array <array "any">>>
   >>
-]>>>>
+]>>>>>
 ```
 
 Unknown fields, hybrid variants, malformed listener settings, invalid document paths, and duplicate IDs fail canonical admission before publication or revision movement. Descriptor IDs are globally unique across the entire root, including shared and local partitions. `replace_interaction` and `remove_interaction` select that global ID and reject missing IDs. Lower-level transitions, portable restoration, authority snapshots, replay, and reconcile enforce the same uniqueness rule.

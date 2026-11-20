@@ -109,15 +109,15 @@ export function direct_data_part_cases(): void {
 }
 
 export function direct_data_schema_cases(): void {
-  const number: HsonSchema = Hson.schema`<type "data" defs <Value "number"> content <ref "Value">>`;
-  const boolean: HsonSchema = Hson.schema`<type "data" defs <Value "boolean"> content <ref "Value">>`;
-  const nothing: HsonSchema = Hson.schema`<type "data" defs <Value "null"> content <ref "Value">>`;
-  const negativeZero: HsonSchema = Hson.schema`<type "data" defs <Value <exact -0>> content <ref "Value">>`;
-  const string: HsonSchema = Hson.schema`<type "data" defs <Value "string"> content <ref "Value">>`;
-  const object: HsonSchema = Hson.schema`<type "data" content <count "number" label "string" note <optional "boolean">>>`;
-  const array: HsonSchema = Hson.schema`<type "data" defs <Value <array "number">> content <ref "Value">>`;
-  const union: HsonSchema = Hson.schema`<type "data" defs <Value <union ["number", "boolean", "null"]>> content <ref "Value">>`;
-  const choice: HsonSchema = Hson.schema`<type "data" defs <Value <union [<content <kind <exact "count"> count "number">>, <content <kind <exact "label"> label "string">>]>> content <ref "Value">>`;
+  const number: HsonSchema = Hson.schema`<type "data" defs <Value "number"> root <ref "Value">>`;
+  const boolean: HsonSchema = Hson.schema`<type "data" defs <Value "boolean"> root <ref "Value">>`;
+  const nothing: HsonSchema = Hson.schema`<type "data" defs <Value "null"> root <ref "Value">>`;
+  const negativeZero: HsonSchema = Hson.schema`<type "data" defs <Value <exact -0>> root <ref "Value">>`;
+  const string: HsonSchema = Hson.schema`<type "data" defs <Value "string"> root <ref "Value">>`;
+  const object: HsonSchema = Hson.schema`<type "data" root <object <count "number" label "string" note <optional "boolean">>>>`;
+  const array: HsonSchema = Hson.schema`<type "data" defs <Value <array "number">> root <ref "Value">>`;
+  const union: HsonSchema = Hson.schema`<type "data" defs <Value <union ["number", "boolean", "null"]>> root <ref "Value">>`;
+  const choice: HsonSchema = Hson.schema`<type "data" defs <Value <union [<object <kind <exact "count"> count "number">>, <object <kind <exact "label"> label "string">>]>> root <ref "Value">>`;
   for (const [schema, candidates] of [[number, [42, -0]], [boolean, [true, false]], [nothing, [null]], [negativeZero, [-0]],
     [object, [{ count: 42, label: "Example" }, { count: -0, label: "", note: false }]],
     [array, [[], [42, -0]]], [union, [42, false, null]],

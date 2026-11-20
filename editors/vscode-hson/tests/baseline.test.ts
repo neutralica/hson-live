@@ -145,11 +145,11 @@ async function run(): Promise<void> {
   }
   const diagnose = (text: string) => produce_document_diagnostics({ fileName: "/workspace/baseline.ts", languageId: "typescript", text });
   check("standalone and embedded diagnostics agree on bare member/structural opener adjacency", () => {
-    const schema = '<type "data" defs<Age<number<int true min 0>> User<content<age<ref "Age">>>> content<ref "User">>';
+    const schema = '<type "data" defs<Age<number<int true min 0>> User<object<age<ref "Age">>>> root<ref "User">>';
     assert.deepEqual(local_hson_schema_diagnostics('/workspace/schema.ts', source(schema).replace('Hson.canonical', 'Hson.schema')), []);
-    assert.doesNotThrow(() => Hson.schema`<type "data" defs<Age<number<int true min 0>> User<content<age<ref "Age">>>> content<ref "User">>`);
+    assert.doesNotThrow(() => Hson.schema`<type "data" defs<Age<number<int true min 0>> User<object<age<ref "Age">>>> root<ref "User">>`);
     for (const body of ['<content<id "intro"> blocks«1, 2»>', '<blocks[1, 2]>',
-      '<type "data" content<id "string">>']) {
+      '<type "data" root<object <id "string">>>']) {
       assert.deepEqual(produce_document_diagnostics({ fileName: '/workspace/a.hson', languageId: 'hson', text: body }), []);
       assert.deepEqual(diagnose(source(body)), []);
       assert.deepEqual(produce_document_diagnostics({ fileName: '/workspace/a.tsx', languageId: 'typescriptreact', text: source(body) }), []);
@@ -269,7 +269,7 @@ async function run(): Promise<void> {
     assert.equal(markers(source('<thing 1>', "Hson", "Hson", "hson-live")).length, 4);
   });
   check("Schema authoring keeps soft Hson colors while lowercase hson alone owns the violet period", () => {
-    const text = 'import { Hson, hson } from "hson-live"; const S = Hson.schema`<type "data" content <name "string">>`; Hson.schema.fromHson(S, Hson.canonical`<name "Ada">`); hson.liveMap;';
+    const text = 'import { Hson, hson } from "hson-live"; const S = Hson.schema`<type "data" root <object <name "string">>>`; Hson.schema.fromHson(S, Hson.canonical`<name "Ada">`); hson.liveMap;';
     const authoringStarts = [text.indexOf("Hson.canonical`"), text.indexOf("Hson.schema.fromHson"), text.lastIndexOf("Hson.canonical`")];
     for (const start of authoringStarts) {
       const parts = referenceParts(text, "Hson", start);

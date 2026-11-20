@@ -14,34 +14,34 @@ testEvents.case_begin("ordered-definition-contracts", HSON_LIVE_TEST_METADATA.ti
 try {
   const digest = hson_schema_source_digest;
   const registry = (source: string) => make_hosted_registry([{ name: "state", identity: {}, mode: "data-object", schema: HsonSchema.fromHson(source) }]);
-  const a = '<type "data" defs <T <content <value "string">>> content <ref "T">>';
+  const a = '<type "data" defs <T <object <value "string">>> root <ref "T">>';
   const b = String.raw`// presentation
-  < type "data" defs <T <content <value "string"> >> content <ref "\u0054"> >`;
+  < type "data" defs <T <object <value "string"> >> root <ref "\u0054"> >`;
   assert.equal(digest(a), digest(b));
   assert.equal(registry(a).digest, registry(b).digest);
   const ra = registry(a);
   assert.equal(registry_from_entries(ra.libraries.map(entry => ({ ...entry, schema: b as typeof entry.schema }))).digest, ra.digest);
-  assert.throws(() => registry_from_entries(ra.libraries.map(entry => ({ ...entry, schema: '<type "data">' as typeof entry.schema }))));
+  assert.throws(() => registry_from_entries(ra.libraries.map(entry => ({ ...entry, schema: '<type "data" root "any">' as typeof entry.schema }))));
   const different = [
-    [a, '<type "data" defs <U <content <value "string">>> content <ref "U">>'],
-    [a, '<type "data" defs <T <content <value "string">>> content <value "string">>'],
-    ['<type "data">', '<type "data" defs <Unused "string">>'],
-    ['<type "data" content <v <union «"string","number"»>>>', '<type "data" content <v <union «"number","string"»>>>'],
-    [`<type "data" content <'10' "string" '2' "number">>`, `<type "data" content <'2' "number" '10' "string">>`],
-    ['<type "data" content <v <exact 0>>>', '<type "data" content <v <exact -0>>>'],
-    ['<type "data" content <v "string">>', '<type "data" content <v <optional "string">>>'],
+    [a, '<type "data" defs <U <object <value "string">>> root <ref "U">>'],
+    [a, '<type "data" defs <T <object <value "string">>> root <object <value "string">>>'],
+    ['<type "data" root "any">', '<type "data" defs <Unused "string"> root "any">'],
+    ['<type "data" root <object <v <union «"string","number"»>>>>', '<type "data" root <object <v <union «"number","string"»>>>>'],
+    [`<type "data" root <object <'10' "string" '2' "number">>>`, `<type "data" root <object <'2' "number" '10' "string">>>`],
+    ['<type "data" root <object <v <exact 0>>>>', '<type "data" root <object <v <exact -0>>>>'],
+    ['<type "data" root <object <v "string">>>', '<type "data" root <object <v <optional "string">>>>'],
     ['<type "document" content <sequence «<tag "a" content "empty">,<tag "b" content "empty">»>>', '<type "document" content <sequence «<tag "b" content "empty">,<tag "a" content "empty">»>>'],
-    ['<type "data">', '<type "document">'],
-    ['<type "data" defs <A "string" B "number">>', '<type "data" defs <B "number" A "string">>'],
-    ["<type \"data\" defs <'10' \"string\" '2' \"number\">>", "<type \"data\" defs <'2' \"number\" '10' \"string\">>"],
+    ['<type "data" root "any">', '<type "document">'],
+    ['<type "data" defs <A "string" B "number"> root "any">', '<type "data" defs <B "number" A "string"> root "any">'],
+    ["<type \"data\" defs <'10' \"string\" '2' \"number\"> root \"any\">", "<type \"data\" defs <'2' \"number\" '10' \"string\"> root \"any\">"],
   ];
   for (const [left, right] of different) assert.notEqual(digest(left!), digest(right!));
-  const ordered = HsonSchema.fromHson(`<type "data" content <'10' "string" '2' "number">>`);
+  const ordered = HsonSchema.fromHson(`<type "data" root <object <'10' "string" '2' "number">>>`);
   const semantic = compiled_hson_schema_of(ordered).semantic;
   assert.equal(semantic.kind, "object");
   if (semantic.kind === "object") assert.deepEqual(semantic.members.map(m => m.name), ["10", "2"]);
-  assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <bogus "string">>>'));
-  assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <ref "Missing">>>'));
+  assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <bogus "string">> root "any">'));
+  assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <ref "Missing">> root "any">'));
   for (let run = 0; run < 2; run++) {
     const child = spawnSync(process.execPath, ["--import=tsx", "--input-type=module", "-e", `import {hson_schema_source_digest} from './src/api/schema/hson-schema.ts'; process.stdout.write(hson_schema_source_digest(${JSON.stringify(a)}));`], { encoding: "utf8" });
     assert.equal(child.status, 0, child.stderr); assert.equal(child.stdout, digest(a));
@@ -58,7 +58,7 @@ try {
   assert.equal(hson_schema_digest(HsonSchema.fromHson(a)), digest(b));
   console.log("ordered definition identity and relaxed admission passed");
 
-  const unique = (cases: string) => `<type "data" content <items <array <content <content <key "string">> unique <by "key" cases ${cases}>>>>>`;
+  const unique = (cases: string) => `<type "data" root <object <items <array <content <object <key "string">> unique <by "key" cases ${cases}>>>>>>`;
   assert.notEqual(digest(unique('[["a",["A"]],["b",["B"]]]')), digest(unique('[["b",["B"]],["a",["A"]]]')));
   assert.notEqual(digest(unique('[["a",["A","B"]]]')), digest(unique('[["a",["B","A"]]]')));
   const authority = hsonLiveMap.fromLibraries({ shared: { json: {} } });
@@ -71,10 +71,10 @@ try {
   assert.equal(first.fingerprint, second.fingerprint);
   assert.notEqual(first.fingerprint, catalog(a, "y").local.get("local")!.fingerprint);
   assert.equal(admit_locus_local_initializers([{ ...first, schema: b }])[0]!.fingerprint, first.fingerprint);
-  assert.throws(() => admit_locus_local_initializers([{ ...first, schema: '<type "data">' }]));
+  assert.throws(() => admit_locus_local_initializers([{ ...first, schema: '<type "data" root "any">' }]));
 
-  assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <ref "Unused">>>'), /consuming/);
-  assert.throws(() => HsonSchema.fromHson('<type "data" defs <A <ref "B"> B <ref "A">>>'), /consuming/);
+  assert.throws(() => HsonSchema.fromHson('<type "data" defs <Unused <ref "Unused">> root "any">'), /consuming/);
+  assert.throws(() => HsonSchema.fromHson('<type "data" defs <A <ref "B"> B <ref "A">> root "any">'), /consuming/);
 
   const sourceMap = hsonLiveMap.fromLibraries({ state: { json: { value: "x" }, schema: HsonSchema.fromHson(a) } });
   const snapshot = sourceMap.capture();

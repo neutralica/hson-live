@@ -11,9 +11,9 @@ import { materialize_projected_value } from "../src/core/projected-value-materia
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
-const LocalSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const LocalSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const authority = hsonLiveMap.fromLibraries({
   visibleA: { json: { value: "A0" }, schema: DataSchema },
   visibleB: { json: { value: "B0" }, schema: DataSchema },

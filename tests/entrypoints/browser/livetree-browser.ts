@@ -46,7 +46,7 @@ hsonLiveMap.create().actions.define("click", (ctx, args) => {
 
 const tree = hsonLiveTree.fromHson("<button/>");
 const actions: LiveTreeActions = tree.actions;
-const argsSchema = Hson.schema`<type "data" content <open "boolean">>`;
+const argsSchema = Hson.schema`<type "data" root <object <open "boolean">>>`;
 const toggle: LiveTreeActionHandler = async (ctx, args) => {
   ctx satisfies LiveTreeActionContext;
   ctx.tree satisfies LiveTree;

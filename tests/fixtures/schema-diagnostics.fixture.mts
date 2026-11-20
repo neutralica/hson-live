@@ -21,7 +21,7 @@ function reference_definitions(count: number, leaf = '"string"'): string {
 
 export function check_reference_transport(received?: readonly HsonSchemaData[]): readonly HsonSchemaData[] {
   return [1800, 2400].map((count, index) => {
-    const source = received?.[index] ?? `<type "data" defs <${reference_definitions(count)}> expression <array <ref "D0">>>`;
+    const source = received?.[index] ?? `<type "data" defs <${reference_definitions(count)}> root <array <ref "D0">>>`;
     const schema = received ? Hson.schema.fromHson(received[index]!) : SchemaHandle.fromHson(source);
     const { graph, recursiveSccCount } = compiled_hson_schema_of(schema);
     assert.equal(recursiveSccCount, 0);
@@ -29,7 +29,7 @@ export function check_reference_transport(received?: readonly HsonSchemaData[]):
     assert.deepEqual(graph.nodes[0], { kind: "projected-array", item: 1 });
     for (let ref = 1; ref <= count; ref++) assert.deepEqual(graph.nodes[ref], { kind: "projected-ref", target: ref + 1 });
     assert.deepEqual(graph.nodes.at(-1), { kind: "projected-string" });
-    assert.equal(hson_schema_digest(schema), ["903e05f526ede61e3c37474219308a3b78ad3b16c0e64c8ff6fcf0f4e5cffa12", "b44fb7baa652621663a06699d51239d9038f51befbd8536c471e2795b136e545"][index]);
+    assert.equal(hson_schema_digest(schema), ["6c5310a8def330d6dc84b46a8058be27afd1cfe9650fab5adf81a4a4fb1c5ba8", "6fe1129e64155dde5158b4c6bf818753f6b3929a21d6f66a59b7088e1c7df82c"][index]);
     assert.equal(schema.certify([]).toHson(), "«»");
     if (received) assert.equal(schema.toHson(), source);
     return schema.toHson();
@@ -38,10 +38,10 @@ export function check_reference_transport(received?: readonly HsonSchemaData[]):
 
 export function run_schema_diagnostic_cases(): void {
   const longChain = reference_definitions(6500);
-  const requiresX = '<content <k <exact "no"> x <ref "D0">>>';
-  const other = '<content <k <exact "yes">>>';
+  const requiresX = '<object <k <exact "no"> x <ref "D0">>>';
+  const other = '<object <k <exact "yes">>>';
   for (const choices of [[requiresX, other], [other, requiresX]]) {
-    const schema = SchemaHandle.fromHson(`<type "data" defs <${longChain}> expression <union [${choices.join(", ")}]>>`);
+    const schema = SchemaHandle.fromHson(`<type "data" defs <${longChain}> root <union [${choices.join(", ")}]>>`);
     assert.equal(schema.certify({ k: "yes" }).toHson(), '<k "yes">');
     for (const [candidate, code, expected, received] of [
       [{ k: "no" }, "MISSING_REQUIRED", "string", "missing"],
@@ -59,7 +59,7 @@ export function run_schema_diagnostic_cases(): void {
     ['<ref "D0">', false], ['<union [<ref "D0">, "number"]>', false],
     ['<union ["number", <ref "D0">]>', false], ['<array <union [<ref "D0">, "number"]>>', true],
   ] as const) {
-    const schema = SchemaHandle.fromHson(`<type "data" defs <${defs}> expression ${expression}>`);
+    const schema = SchemaHandle.fromHson(`<type "data" defs <${defs}> root ${expression}>`);
     assert.throws(() => schema.certify(nested ? ["x"] : "x"), error => {
       assert.ok(error instanceof HsonSchemaError);
       assert.deepEqual(error.issues, [{ code: "INVALID_SCHEMA", path: nested ? [0] : [],
@@ -69,14 +69,14 @@ export function run_schema_diagnostic_cases(): void {
     if (expression.includes("union")) assert.ok(schema.certify(nested ? [3] : 3));
   }
   const finiteDefs = reference_definitions(520, '<exact "x">');
-  const nestedUnion = SchemaHandle.fromHson(`<type "data" defs <${finiteDefs}> expression <union [<union [<ref "D0">, <exact 0>]>, <exact false>]>>`);
+  const nestedUnion = SchemaHandle.fromHson(`<type "data" defs <${finiteDefs}> root <union [<union [<ref "D0">, <exact 0>]>, <exact false>]>>`);
   assert.throws(() => nestedUnion.certify("x"), error => {
     assert.ok(error instanceof HsonSchemaError);
     assert.deepEqual(error.issues, [{ code: "INVALID_SCHEMA", path: [], expected: "resource budget",
       received: "exhausted", message: "Schema validation failed at root." }]);
     return true;
   });
-  const ordinary = Hson.schema`<type "data" expression <union ["string", "number"]>>`;
+  const ordinary = Hson.schema`<type "data" root <union ["string", "number"]>>`;
   assert.throws(() => ordinary.certify(false), error => {
     assert.ok(error instanceof HsonSchemaError);
     assert.deepEqual(error.issues, [{ code: "TYPE_MISMATCH", path: [], expected: "string | number",
@@ -84,10 +84,45 @@ export function run_schema_diagnostic_cases(): void {
     return true;
   });
   for (const depth of [169, 170]) {
-    const result = compile_hson_schema('<type "data" expression ' + "<array ".repeat(depth) + '"string"' + ">".repeat(depth + 1));
+    const result = compile_hson_schema('<type "data" root ' + "<array ".repeat(depth) + '"string"' + ">".repeat(depth + 1));
     assert.equal(result.ok, depth === 169);
-    if (!result.ok) assert.deepEqual(result.issues, [{ code: "INVALID_SCHEMA_EXPRESSION", path: ["expression", ...Array(depth).fill("array")],
+    if (!result.ok) assert.deepEqual(result.issues, [{ code: "INVALID_SCHEMA_EXPRESSION", path: ["root", ...Array(depth).fill("array")],
       message: "Hson Schema exceeds the MVP resource limits." }]);
+  }
+  for (const depth of [168, 169, 252, 253]) {
+    const nested = "<array ".repeat(depth) + '"string"' + ">".repeat(depth);
+    const result = compile_hson_schema(`<type "data" root <object <value ${nested}>>>`);
+    assert.equal(result.ok, depth === 168);
+    if (!result.ok) {
+      assert.equal(result.issues[0]?.code, depth === 253 ? "INVALID_ROOT" : "INVALID_SCHEMA_EXPRESSION");
+      assert.match(result.issues[0]?.message ?? "", depth === 253 ? /Hson nesting depth/ : /MVP resource limits/);
+    }
+  }
+  for (const depth of [167, 168, 169]) {
+    const nested = "<array ".repeat(depth) + "<exact 0>" + ">".repeat(depth);
+    const source = `<type "data" root <object <value ${nested}>>>`;
+    const result = compile_hson_schema(source);
+    if (depth === 169) {
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.deepEqual(result.issues, [{ code: "INVALID_SCHEMA_EXPRESSION",
+        path: ["root", "object", "value", ...Array(depth).fill("array")],
+        message: "Hson Schema exceeds the MVP resource limits." }]);
+      assert.throws(() => SchemaHandle.fromHson(source), /exceeds the MVP resource limits/);
+      continue;
+    }
+    assert.ok(result.ok);
+    const schema = SchemaHandle.fromHson(source);
+    const readmitted = Hson.schema.fromHson(schema.toHson());
+    assert.deepEqual(compiled_hson_schema_of(readmitted).graph, result.value.graph);
+    const candidate = (leaf: "0" | "-0") => Hson.data.fromSource("<value " + "[".repeat(depth) + leaf + "]".repeat(depth) + ">");
+    const valid = candidate("0");
+    assert.equal(readmitted.certify(valid), valid);
+    assert.throws(() => readmitted.certify(candidate("-0")), (error: unknown) => {
+      assert.ok(error instanceof HsonSchemaError);
+      assert.equal(error.issues[0]?.code, "INVALID_LITERAL");
+      assert.deepEqual(error.issues[0]?.path, ["value", ...Array(depth).fill(0)]);
+      return true;
+    });
   }
   // Capture real JS template objects; runtime, rather than a test escape
   // approximation, determines which cooked segments are unavailable.
@@ -112,10 +147,10 @@ export function run_schema_diagnostic_cases(): void {
 <name "Ada">`).materialize(), { name: "Ada" });
   assert.deepEqual((Hson.data.parse`<name "\n">`).materialize(), { name: "\n" });
   const schema: HsonSchema = Hson.schema`<type "data" defs <
-    Title <content <kind <exact "title">>>
-    Code <content <kind <exact "code"> language "string" body "string">>
-    Image <content <kind <exact "image"> url "string">>
-  > content <items <array <union [<ref "Title">, <ref "Image">, <ref "Code">]>>>>`;
+    Title <object <kind <exact "title">>>
+    Code <object <kind <exact "code"> language "string" body "string">>
+    Image <object <kind <exact "image"> url "string">>
+  > root <object <items <array <union [<ref "Title">, <ref "Image">, <ref "Code">]>>>>>`;
   const compiled = compiled_hson_schema_of(schema);
   const evaluate = (candidate: unknown) => evaluate_canonical_projected_schema(compiled.graph, admit_projected_value(candidate));
   assert.deepEqual(evaluate({ items: [{ kind: "code" }] }).issues.map(issue => [issue.code, issue.path]), [
@@ -150,22 +185,22 @@ export function run_schema_diagnostic_cases(): void {
     assert.equal((candidate).toHson().slice(staticFailure.range?.start, staticFailure.range?.end), ">");
   }
 
-  const multiKey: HsonSchema = Hson.schema`<type "data" content <value <union [
-    <content <x <exact "a"> y <exact "a">>>,
-    <content <x <exact "b"> z <exact "a"> one "string" two "string" three "string" four "string">>,
-    <content <y <exact "b"> z <exact "b">>>
-  ]>>>`;
+  const multiKey: HsonSchema = Hson.schema`<type "data" root <object <value <union [
+    <object <x <exact "a"> y <exact "a">>>,
+    <object <x <exact "b"> z <exact "a"> one "string" two "string" three "string" four "string">>,
+    <object <y <exact "b"> z <exact "b">>>
+  ]>>>>`;
   const multiKeyResult = evaluate_canonical_projected_schema(compiled_hson_schema_of(multiKey).graph, admit_projected_value({ value: { x: "b", z: "a" } }));
   assert.deepEqual(multiKeyResult.issues.map(issue => issue.path), [["value", "one"], ["value", "two"], ["value", "three"], ["value", "four"]]);
-  const conflicting: HsonSchema = Hson.schema`<type "data" content <value <union [
-    <content <kind <exact "title"> mode <exact "title">>>,
-    <content <kind <exact "code"> mode <exact "code"> language "string" body "string">>
-  ]>>>`;
+  const conflicting: HsonSchema = Hson.schema`<type "data" root <object <value <union [
+    <object <kind <exact "title"> mode <exact "title">>>,
+    <object <kind <exact "code"> mode <exact "code"> language "string" body "string">>
+  ]>>>>`;
   const conflictingResult = evaluate_canonical_projected_schema(compiled_hson_schema_of(conflicting).graph, admit_projected_value({ value: { kind: "code", mode: "title" } }));
   assert.deepEqual(conflictingResult.issues.map(issue => issue.path), [["value", "kind"]], "Contradictory discriminators retain the fallback");
-  const reversed: HsonSchema = Hson.schema`<type "data" content <value <union [
-    <content <kind <exact "code"> language "string" body "string">>, <content <kind <exact "title">>>
-  ]>>>`;
+  const reversed: HsonSchema = Hson.schema`<type "data" root <object <value <union [
+    <object <kind <exact "code"> language "string" body "string">>, <object <kind <exact "title">>>
+  ]>>>>`;
   assert.deepEqual(evaluate_canonical_projected_schema(compiled_hson_schema_of(reversed).graph, admit_projected_value({ value: { kind: "code" } })).issues.map(issue => issue.path), [["value", "language"], ["value", "body"]]);
 
   const nodes: readonly CanonicalSchemaNode[] = [
@@ -230,7 +265,7 @@ export function run_schema_diagnostic_cases(): void {
       assert.ok(source.slice(failure.range.start, failure.range.end).length > 0);
     }
   }
-  const unique: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["K"]], ["b", ["K"]]]>>>>>`;
+  const unique: HsonSchema = Hson.schema`<type "data" root <object <items <array <content <object <kind "string">> unique <by "kind" cases [["a", ["K"]], ["b", ["K"]]]>>>>>>`;
   const collision = '<items [<kind "a">, <kind "b">]>';
   const failure = evaluate_static_schema_candidate(compiled_hson_schema_of(unique), { source: collision, family: "data" });
   assert.equal(failure.kind, "invalid");

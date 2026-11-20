@@ -463,7 +463,7 @@ check("all four semantic member tags share structural regions and formatting", (
     + 'const a=Hson.canonical`<a  1>`;\n'
     + 'const b=Hson.data`<b  2>`;\n'
     + 'const c=Hson.document`<main/>`;\n'
-    + 'const d=Hson.schema`<type "data" content <count "number">>`;\n';
+    + 'const d=Hson.schema`<type "data" root <object <count "number">>>`;\n';
   assert.equal(structural_regions("/workspace/source.ts", "typescript", text).length, 4);
   const formatted = format(text);
   assert.ok(formatted.includes('Hson.canonical`<a 1>`'));
@@ -901,7 +901,7 @@ check("bare member/value opener adjacency normalizes to one space through all fo
   for (const [body, expected] of [
     ['<content<id "intro"> blocks«1, 2»>', '<content <id "intro"> blocks «1,2»>'],
     ['<content<> blocks[1, 2]>', '<content <> blocks «1,2»>'],
-    ['<type "data" content<array<ref "Item">>>', '<type "data" content <array <ref "Item">>>'],
+    ['<type "data" root<object <array<ref "Item">>>>', '<type "data" root <object <array <ref "Item">>>>'],
   ]) {
     assert.equal(format(template(body)), template(expected));
     const standalone = applyEdits(body, structural_formatting_edits('/workspace/a.hson', 'hson', body, { tabSize: 8, insertSpaces: false }));

@@ -14,7 +14,7 @@ import type { LocusHostedAggregateDataStage, LocusHostedAggregateStageWriter } f
 import type { LocusWebSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <value <number <int true min 0>>>>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.aggregate-recovery-fencing",

@@ -41,8 +41,8 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 }
 const SlideSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <title <optional "string">>> content "empty">]>>]>>` as HsonSchema<unknown, "document">;
 const OtherSlideSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "section" content "empty">]>>]>>` as HsonSchema<unknown, "document">;
-const StateSchema = Hson.schema`<type "data" content <count "number">>` as HsonSchema<unknown, "data">;
-const OtherStateSchema = Hson.schema`<type "data" content <name "string">>` as HsonSchema<unknown, "data">;
+const StateSchema = Hson.schema`<type "data" root <object <count "number">>>` as HsonSchema<unknown, "data">;
+const OtherStateSchema = Hson.schema`<type "data" root <object <name "string">>>` as HsonSchema<unknown, "data">;
 
 // Capture both public state and exact internal authority/identity evidence.
 function evidence(map: LiveMap) {
@@ -294,7 +294,7 @@ await check("restore and authority-position observers remain fair, isolated and 
   assert.equal(observerReports.length, reports + 2);
 });
 
-const BoundedState = Hson.schema`<type "data" content <count <number <min 0>>>>`;
+const BoundedState = Hson.schema`<type "data" root <object <count <number <min 0>>>>>`;
 const PlainPage = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 function reject_restore(map: LiveMap, snapshot: LiveMapSnapshot, expected: RegExp = /immutable|topology|metadata|registry/i) {

@@ -31,12 +31,11 @@ function ordered_definition_view(value: OrderedProjectedValue): unknown {
 }
 
 /** Data-root order is shared by validation and editor introspection. */
-export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "content", "expression"] as const;
+export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "root"] as const;
 
 export function valid_data_root_fields(fields: readonly string[]): boolean {
   const terminal = fields[1] === "defs" ? 2 : 1;
-  return fields[0] === "type" && (fields.length === terminal ||
-    fields.length === terminal + 1 && (fields[terminal] === "content" || fields[terminal] === "expression"));
+  return fields[0] === "type" && fields.length === terminal + 1 && fields[terminal] === "root";
 }
 
 export type HsonSchemaIssueCode =
@@ -188,6 +187,11 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
     return failure("INVALID_ROOT", [], error instanceof Error ? error.message : "Schema must be ordinary data Hson.");
   }
 
+  if (!is_object(materialized)) return failure("INVALID_ROOT", [], "Hson Schema root must be an object.");
+  const rootKeys = Object.keys(materialized);
+  if (materialized.type === "data" && !valid_data_root_fields(rootKeys)) {
+    return failure("INVALID_ROOT", [], 'Data Hson Schema requires `type "data"`, optional `defs`, then required `root`.');
+  }
   const bootstrapResult = evaluate_canonical_projected_schema(HSON_SCHEMA_MVP_BOOTSTRAP, orderedDefinition);
   const exhausted = bootstrapResult.issues.find(entry => entry.evidence.kind === "resource-limit");
   if (exhausted) {
@@ -197,8 +201,6 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   const issues: HsonSchemaIssue[] = [];
   const ranges = new Map<HsonSchemaRangedNode, HsonSourceRange>();
   const referenceUses: HsonSchemaReferenceUse[] = [];
-  if (!is_object(materialized)) return failure("INVALID_ROOT", [], "Hson Schema root must be an object.");
-  const rootKeys = Object.keys(materialized);
   const definitionsInput = materialized.defs;
   if (definitionsInput !== undefined && !is_object(definitionsInput)) {
     return failure("INVALID_ROOT", ["defs"], "`defs` must be one closed object of local Schema definitions.");
@@ -214,20 +216,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
   let semantic: HsonSchemaSemanticNode | undefined;
   if (materialized.type === "data") {
-    // The terminal key selects the grammar and is part of ordered definition identity.
-    // In particular, content <array "string"> is a member map, even at the root.
-    if (!valid_data_root_fields(rootKeys)) {
-      return failure("INVALID_ROOT", [], 'Data Hson Schema root requires `type "data"`, optional `defs`, then at most one of `content` or `expression`.');
-    }
-    const rootField = "expression" in materialized ? "expression" : "content";
-    const input = materialized[rootField];
-    if (rootField === "expression" || is_root_schema_descriptor(input)) {
-      semantic = decode_expression(input, [rootField], false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)?.schema;
-    } else if (input === undefined || input === "any") {
-      semantic = Object.freeze({ kind: "any" });
-    } else {
-      semantic = decode_object_members(input, ["content"], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
-    }
+    semantic = decode_expression(materialized.root, ["root"], false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)?.schema;
   } else if (materialized.type === "document") {
     if (rootKeys[0] !== "type") return failure("INVALID_ROOT", [], 'Document Hson Schema root must begin with `type "document"`.');
     semantic = decode_document_schema(materialized, [], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
@@ -339,8 +328,8 @@ function decode_expression(
       if (!is_primitive(operand)) issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`exact` requires one finite primitive or null.");
       else schema = Object.freeze({ kind: "exact", value: operand });
       break;
-    case "content":
-      schema = decode_object_members(operand, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses);
+    case "object":
+      schema = decode_object_members(operand, [...path, "object"], issues, ranges, root, provenance, definitionNames, referenceUses);
       break;
     case "optional": {
       if (!memberPosition) {
@@ -529,7 +518,7 @@ function has_duplicate_string_units(value: string): boolean {
 
 function decode_object_members(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDataSemanticNode | undefined {
   if (!is_object(input)) {
-    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`content` requires one closed data object.");
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`object` requires one closed data object.");
     return undefined;
   }
   const members: { name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }[] = [];
@@ -996,9 +985,6 @@ function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaData
 
 function is_object(value: unknown): value is JsonObject { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function is_ref_descriptor(value: unknown): value is Readonly<{ ref: unknown }> { return is_object(value) && Object.keys(value).length === 1 && "ref" in value; }
-function is_root_schema_descriptor(value: unknown): boolean {
-  return is_ref_descriptor(value) || is_object(value) && Object.keys(value).length === 1 && is_object(value.content);
-}
 function is_primitive(value: unknown): value is string | number | boolean | null { return value === null || typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value)); }
 function issue(issues: HsonSchemaIssue[], code: HsonSchemaIssueCode, path: readonly (string | number)[], message: string): void { issues.push(Object.freeze({ code, path: Object.freeze([...path]), message })); }
 function failure(code: HsonSchemaIssueCode, path: readonly (string | number)[], message: string): HsonSchemaCompilation { return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({ code, path: Object.freeze([...path]), message })]) }); }
@@ -1123,9 +1109,11 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const root = reserve();
   const data = reserve();
   const dataType = literal("data");
-  const optionalRootContent = reserve();
-  const rootContent = reserve();
-  const content = reserve();
+  const optionalDefinitions = reserve();
+  const definitions = reserve();
+  const definitionValue = add({ kind: "projected-any" });
+  nodes[definitions] = { kind: "projected-record", value: definitionValue };
+  nodes[optionalDefinitions] = { kind: "projected-optional", base: definitions };
   const expression = reserve();
   const refExpression = (): number => add({ kind: "projected-ref", target: expression });
 
@@ -1140,9 +1128,9 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   nodes[exact] = { kind: "projected-object", exact: true, properties: [["exact", exactValue]] };
   const object = reserve();
   const objectMembers = reserve();
-  const objectMemberValue = refExpression();
-  nodes[objectMembers] = { kind: "projected-record", value: objectMemberValue };
-  nodes[object] = { kind: "projected-object", exact: true, properties: [["content", objectMembers]] };
+  // The record consumes each member value before following the recursive edge.
+  nodes[objectMembers] = { kind: "projected-record", value: expression };
+  nodes[object] = { kind: "projected-object", exact: true, properties: [["object", objectMembers]] };
   const optionalDescriptor = reserve();
   const optionalExpression = refExpression();
   nodes[optionalDescriptor] = { kind: "projected-object", exact: true, properties: [["optional", optionalExpression]] };
@@ -1219,15 +1207,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   nodes[refinedTuple] = { kind: "projected-object", exact: true, properties: [["tuple", tupleRules]] };
 
   nodes[expression] = { kind: "projected-union", choices: [primitiveAtoms, exact, object, optionalDescriptor, array, tuple, union, authoredRef, refinedNumber, refinedString, refinedArray, refinedTuple] };
-  nodes[content] = { kind: "projected-record", value: expression };
-  nodes[rootContent] = { kind: "projected-union", choices: [content, expression] };
-  nodes[optionalRootContent] = { kind: "projected-optional", base: rootContent };
-  const optionalDefinitions = reserve();
-  const definitions = reserve();
-  const definitionValue = add({ kind: "projected-any" });
-  nodes[definitions] = { kind: "projected-record", value: definitionValue };
-  nodes[optionalDefinitions] = { kind: "projected-optional", base: definitions };
-  nodes[data] = { kind: "projected-object", exact: true, properties: [["type", dataType], ["content", optionalRootContent], ["defs", optionalDefinitions], ["expression", optional(expression)]] };
+  nodes[data] = { kind: "projected-object", exact: true, properties: [["type", dataType], ["defs", optionalDefinitions], ["root", expression]] };
 
   const document = reserve();
   const documentType = literal("document");

@@ -84,7 +84,7 @@ try {
     assert.doesNotMatch(cut.html, /hson:quid/);
     return { multiple, cut, serverQuids };
   });
-  const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
+  const LocalLibrariesStateSchema = Hson.schema`<type "data" root <object <count "number">>>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>]>>]>>`;
   const localSelectionMap = admit_exact_runtime_livemap_libraries({
     state: { json: { count: 7 }, schema: LocalLibrariesStateSchema },
@@ -95,7 +95,7 @@ try {
   assert.doesNotMatch(localSelection.html, /hson:quid|000005204/);
   assert.doesNotMatch(JSON.stringify(localSelection.libs), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
 
-  const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+  const StateSchema = Hson.schema`<type "data" root <object <count "number">>>`;
   const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>]>>]>>`;
   const AdminSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">]>>]>>`;
   const browserInteraction = Object.freeze({

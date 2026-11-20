@@ -220,7 +220,7 @@ check("empty document Schema governs runtime graphs without certifying empty tex
   assert.throws(() => validate_hson_schema_graph(nonemptyRequiring, root));
   assert.throws(() => nonemptyRequiring.certify("" as never), /has no semantic value/);
   assert.equal(emptyPermitting.certify(Hson.document`<item/>`), Hson.document`<item/>`);
-  const dataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+  const dataSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
   assert.throws(() => dataSchema.certify("" as never),
     (cause) => cause instanceof HsonSchemaError && cause.issues.some(issue => issue.code === "TYPE_MISMATCH" && issue.received === "string"));
   assert.equal(ANY_DATA.certify("").materialize(), "");

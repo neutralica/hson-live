@@ -152,19 +152,6 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
     return !owner.headers.length && ["any", "null", "boolean", "number", "string"].includes(owner.name);
   }
 
-  function rootObject(owner: SchemaOccurrence, path: Path): OrderedProjectedValue {
-    const map = owner.body;
-    const sole = map?.kind === "members" && map.entries.length === 1 ? map.entries[0] : undefined;
-    // The 1.0 compiler dispatches a sole ref, or a sole object-valued content, as a
-    // descriptor. In either case put the application map inside an object descriptor.
-    if (sole?.name === "ref") return expression(owner, path);
-    if (sole?.name === "content" && sole.body?.kind === "operation"
-      && (sole.headers.length > 0 || !primitiveShorthand(sole.body))) {
-      return expression(owner, path);
-    }
-    return members(owner, path);
-  }
-
   function expression(owner: SchemaOccurrence, path: Path): OrderedProjectedValue {
     if (owner.kind !== "operation") fail(owner, `Expected a Schema operation, received name ${owner.name}.`);
     locate(path, owner);
@@ -190,7 +177,7 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
         return ordered_projected_object([[name, body.value]]);
       }
       case "object":
-        return ordered_projected_object([["content", members(owner, [...path, "content"])]]);
+        return ordered_projected_object([[name, members(owner, operandPath)]]);
       case "array": case "tuple": case "union": {
         if (name === "union") no_headers(owner);
         const rules = name === "union" ? [] : refinements(owner, name, operandPath);
@@ -220,21 +207,14 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
   function rootClause(clause: SchemaOccurrence): void {
     if (clause.kind !== "operation") fail(clause, "A data root clause must be an operation.");
     if (clause.name === "defs") {
-      if (entries.length !== 1) fail(clause, "defs may occur once, before root content.");
+      if (entries.length !== 1) fail(clause, "defs may occur once, before the root expression.");
       entries.push(["defs", members(clause, ["defs"])]);
       return;
     }
-    if (entries.at(-1)?.[0] === "content") fail(clause, "A data root accepts only one content declaration.");
-    switch (clause.name) {
-      case "object":
-        entries.push(["content", rootObject(clause, ["content"])]);
-        break;
-      case "ref": case "any":
-        entries.push(["content", expression(clause, ["content"])]);
-        break;
-      default:
-        fail(clause, `Unsupported data root role ${JSON.stringify(clause.name)}. Select another Data expression through defs and ref.`);
-    }
+    if (entries.at(-1)?.[0] === "root") fail(clause, "A data root accepts only one expression.");
+    const optional = clause.name === "optional" ? clause : clause.headers.find(header => header.name === "optional");
+    if (optional) fail(optional, "Only a named object member can be optional. A Data root always has a value.");
+    entries.push(["root", expression(clause, ["root"])]);
   }
 
   const body = root.body;
@@ -244,6 +224,10 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
   } else if (body !== undefined) {
     if (!is_schema_occurrence(body)) fail(body, "Expected ordered data root declarations.");
     rootClause(body);
+  }
+  if (entries.at(-1)?.[0] !== "root") {
+    locate(["root"], root);
+    entries.push(["root", "any"]);
   }
   const orderedDefinition = ordered_projected_object(entries);
   let schema1Source: string;

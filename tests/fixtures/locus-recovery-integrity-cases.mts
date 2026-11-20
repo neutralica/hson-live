@@ -11,7 +11,7 @@ import { MemoryCheckpointAdapter } from "../helpers/memory-checkpoint-adapter.mt
 
 type RunCase = (name: string, test: () => Promise<void>) => Promise<void>;
 const startup = {
-  state: { json: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` },
+  state: { json: { count: 0 }, schema: Hson.schema`<type "data" root <object <count "number">>>` },
   parts: { parts: { button: {
     kind: "document", document: '<button hson:part event:run/>',
     events: { run: '<hson:event on:click local:run label:str="exact" count:num="-0" <> >' },
@@ -112,8 +112,8 @@ export async function locus_recovery_integrity_cases(run: RunCase) {
     const persistence = new MemoryCheckpointAdapter(), logicalMapId = "registry-transition";
     const config = { persistence, logicalMapId };
     const locus = await hsonLiveMap.locus.resume(startup, config);
-    const number = Hson.schema`<type "data" content <count "number">>`;
-    const any = Hson.schema`<type "data" content <count "any">>`;
+    const number = Hson.schema`<type "data" root <object <count "number">>>`;
+    const any = Hson.schema`<type "data" root <object <count "any">>>`;
     await locus.stage(stage => stage.data.state.at(["count"]).set(1));
     await locus.admit({ added: { json: { count: 1 }, schema: number }, next: { json: { count: 2 } } });
     const authority = internal_livemap_aggregate_authority(locus_map_internal(locus));

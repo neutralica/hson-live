@@ -62,7 +62,7 @@ await check("cross-file producer records cannot publish proof and invalidation w
     "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")],
     "hson-live/livemap": [join(root, "dist/api/livemap/index.d.ts")],
   } }, files: ["good.ts", "bad.ts", "consumer.ts"] }));
-  const producer = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`// ok\r\n<type "data" content <name "string">>`;\r\n';
+  const producer = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`// ok\r\n<type "data" root <object <name "string">>>`;\r\n';
   const invalid = producer.replace("// ok", "// \\8");
   const badPath = join(directory, "bad.ts"), consumerPath = join(directory, "consumer.ts");
   writeFileSync(join(directory, "good.ts"), producer); writeFileSync(badPath, invalid);
@@ -339,7 +339,7 @@ function preserve(): void {
   for (const [path, bytes] of authored) assert.deepEqual(readFileSync(join(project, path)), bytes, path);
   assert.equal(existsSync(join(output, "revisions")), false);
 }
-const schema = (name: string, value = "a") => `export const ${name} = Hson.schema\`<type "data" content <value <exact "${value}">>>\`;\n`;
+const schema = (name: string, value = "a") => `export const ${name} = Hson.schema\`<type "data" root <object <value <exact "${value}">>>>\`;\n`;
 const imports = 'import { Hson } from "hson-live";\r\n';
 const valid = () => imports + schema("S") + schema("Twin") + schema("B", "b");
 const base = { compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true,
@@ -469,7 +469,7 @@ try {
   });
   await check("static proof overlays, document mode and refinement evidence share the existing compiler", async () => {
     write("precision.ts", `import { Hson, type HsonAuthored, type HsonDataValue, type HsonDocument, type JsonFromSchema } from "hson-live";
-export const Refined = Hson.schema\`<type "data" content <age <number <int true min 0>>>>\`;
+export const Refined = Hson.schema\`<type "data" root <object <age <number <int true min 0>>>>>\`;
 export const Document = Hson.schema\`<type "document">\`;
 export const Text = Hson.schema\`<type "document" content "string">\`;
 const authoredText: HsonAuthored = Hson.document\`"hello"\`;

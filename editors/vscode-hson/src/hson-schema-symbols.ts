@@ -163,5 +163,5 @@ function contains(range: Readonly<{ start: number; end: number }>, offset: numbe
 function valid_definition_name(name: string): boolean {
   if (name.length === 0) return false;
   const rendered = serialize_hson_tag_name(name);
-  return compile_hson_schema(`<type "data" defs <${rendered} "string"> content <ref ${JSON.stringify(name)}>>`).ok;
+  return compile_hson_schema(`<type "data" defs <${rendered} "string"> root <ref ${JSON.stringify(name)}>>`).ok;
 }

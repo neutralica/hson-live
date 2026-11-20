@@ -126,7 +126,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
 
   await check("installed Parts reject direct, widened, replayed, and reconstructed Schema attachment atomically", () => {
     const definitions = { collection: { parts: { p: { kind: "document", document: "<p hson:part/>" } } }, state: { json: 1 } } as const;
-    const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
+    const schema = Hson.schema`<type "data" root <object <p <object <kind "string" document "string">>>>>` as HsonSchema<unknown, "data">;
     const ordinary = hsonLiveMap.fromLibraries({ collection: { json: definitions.collection.parts }, state: { json: 1 } });
     const replay = { kind: "map" as const, changed: true, prevRev: 0, rev: 1,
       operations: [{ library: "collection", operation: { kind: "library-schema-use" as const,
@@ -187,7 +187,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
 
   await check("reconstructed and hosted contracts cannot claim Parts plus a supplemental Schema", () => {
-    const schema = Hson.schema`<type "data" content <p <content <kind "string" document "string">>>>` as HsonSchema<unknown, "data">;
+    const schema = Hson.schema`<type "data" root <object <p <object <kind "string" document "string">>>>>` as HsonSchema<unknown, "data">;
     const ordinary = hsonLiveMap.fromLibraries({ collection: { json: { p: { kind: "document", document: "<p hson:part/>" } }, schema } });
     const snapshot = ordinary.capture();
     const entries = snapshot.registry.libraries.map(entry => entry.scope === undefined ? { ...entry, validation } : entry);
@@ -202,7 +202,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
   });
 
   await check("ordinary data and document Schemas fixed at admission retain governance", () => {
-    const dataSchema = Hson.schema`<type "data" content <count "number">>`;
+    const dataSchema = Hson.schema`<type "data" root <object <count "number">>>`;
     const pageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
     const map = hsonLiveMap.fromLibraries({ state: { json: { count: 1 }, schema: dataSchema }, page: { document: "<main/>", schema: pageSchema } });
     const state = map.data.must("state"), page = map.doc.must("page");

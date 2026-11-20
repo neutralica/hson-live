@@ -42,12 +42,12 @@ function check(name: string, run: () => void): void {
   checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const WideSchema = Hson.schema`<type "data" content <
+const WideSchema = Hson.schema`<type "data" root <object <
   value <optional "any"> items <optional "any"> nested <optional "any">
   a <optional "any"> other <optional "any"> left <optional "any"> right <optional "any">
   '10' <optional "any"> '2' <optional "any"> '1' <optional "any">
   '__proto__' <optional "any"> constructor <optional "any"> prototype <optional "any">
->>`;
+>>>`;
 const registry = (data: string | Record<string, unknown>) => hsonLiveMap.fromLibraries({ state: { json: typeof data === "string" ? Hson.data.fromSource(data) : data as JsonValue, schema: WideSchema } });
 const dataLibrary = (map: ReturnType<typeof registry>): LiveMapDataLibrary<unknown> => map.data.must("state");
 const root = (map: ReturnType<typeof registry>) => dataLibrary(map).root();

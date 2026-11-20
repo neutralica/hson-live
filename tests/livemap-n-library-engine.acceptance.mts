@@ -11,9 +11,9 @@ import {
 import { prepare_livemap_root } from "../src/api/livemap/livemap.document.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const DataSchema = Hson.schema`<type "data" content <value "number">>`;
-const ColorSchema = Hson.schema`<type "data" content <value "string">>`;
-const ViewSchema = Hson.schema`<type "data" content <value "boolean">>`;
+const DataSchema = Hson.schema`<type "data" root <object <value "number">>>`;
+const ColorSchema = Hson.schema`<type "data" root <object <value "string">>>`;
+const ViewSchema = Hson.schema`<type "data" root <object <value "boolean">>>`;
 const DocumentSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence []>>]>>]>>`;
 const Q1 = "000000001";
 const Q2 = "000000002";
@@ -79,7 +79,7 @@ check("the internal registry rejects duplicate opaque identities", () => {
 });
 
 check("library equality is authority identity, not structural root equality", () => {
-  const SameSchema = Hson.schema`<type "data" content <value "number">>`;
+  const SameSchema = Hson.schema`<type "data" root <object <value "number">>>`;
   const map = hsonLiveMap.fromLibraries({
     first: { json: { value: 1 }, schema: SameSchema },
     second: { json: { value: 1 }, schema: SameSchema },
@@ -187,7 +187,7 @@ check("data and document libraries coexist under one map authority with separate
 });
 
 check("one global QUID ledger resolves library-qualified locations, rejects collision and ABA, and defers cross-library movement", () => {
-  const AnyData = Hson.schema`<type "data" content <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any"> incoming <optional "any">>>`;
+  const AnyData = Hson.schema`<type "data" root <object <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any"> incoming <optional "any">>>>`;
   const map = hsonLiveMap.fromLibraries({
     data: { json: { active: {}, retired: {}, duplicate: {}, reuse: {}, incoming: {} }, schema: AnyData },
     colors: { json: { active: {}, retired: {}, reuse: {}, duplicate: {}, incoming: {} }, schema: AnyData },

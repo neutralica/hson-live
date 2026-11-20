@@ -68,7 +68,7 @@ const canonical: HsonCanonical = Hson.canonical`<main/>`;
 const data: HsonDataValue = Hson.data`<count -0>`;
 const authored: HsonAuthored = Hson.document`<main/><aside/>`;
 const document: HsonDocument = Hson.document.fromHson(Hson.canonical`<main/><aside/>`);
-const schema = Hson.schema`<type "data" content <count "number">>`;
+const schema = Hson.schema`<type "data" root <object <count "number">>>`;
 ```
 
 `Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses nonempty authored document source and retains declarations/connectors for later governed admission. `Hson.document.fromHson` and `.fromNode` qualify canonical `HsonDocument` values separately. All returned text values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.

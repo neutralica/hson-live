@@ -31,21 +31,21 @@ const compile = (source: string) => compile_hson_schema(source);
 
 const compositionSource = `<
   type "data"
-  defs <Address <content <city "string" country "string">>>
-  content <content <billing <ref "Address"> shipping <ref "Address">>>
+  defs <Address <object <city "string" country "string">>>
+  root <object <billing <ref "Address"> shipping <ref "Address">>>
 >`;
 const treeSource = `<
   type "data"
-  defs <Tree <content <value "string" children <array <ref "Tree">>>>>
-  content <ref "Tree">
+  defs <Tree <object <value "string" children <array <ref "Tree">>>>>
+  root <ref "Tree">
 >`;
 const mutualSource = `<
   type "data"
   defs <
-    A <content <name <exact "a"> bs <array <ref "B">>>>
-    B <content <name <exact "b"> as <array <ref "A">>>>
+    A <object <name <exact "a"> bs <array <ref "B">>>>
+    B <object <name <exact "b"> as <array <ref "A">>>>
   >
-  content <ref "A">
+  root <ref "A">
 >`;
 
 check("defs/ref ordinary composition shares one canonical definition authority", () => {
@@ -60,15 +60,15 @@ check("defs/ref ordinary composition shares one canonical definition authority",
 });
 
 check("forward, backward, and case-sensitive local refs resolve deterministically", () => {
-  const source = `<type "data" defs <A <content <b <ref "B">>> B <content <value "string">>> content <ref "A">>`;
+  const source = `<type "data" defs <A <object <b <ref "B">>> B <object <value "string">>> root <ref "A">>`;
   const left = compile(source), right = compile(source);
   assert.equal(left.ok, true); assert.equal(right.ok, true);
   if (left.ok && right.ok) assert.deepEqual(left.value.graph, right.value.graph);
-  assert.equal(compile(`<type "data" defs <Name "string"> content <ref "name">>`).ok, false);
+  assert.equal(compile(`<type "data" defs <Name "string"> root <ref "name">>`).ok, false);
 });
 
 check("compiler exposes stable authored def/ref facts for editor-neutral tooling", () => {
-  const source = `<type "data" defs <'display name' <content <next <ref "display name">>> Later "string"> content <ref "Later">>`;
+  const source = `<type "data" defs <'display name' <object <next <ref "display name">>> Later "string"> root <ref "Later">>`;
   const result = compile(source);
   assert.equal(result.ok, true);
   if (!result.ok) return;
@@ -78,7 +78,7 @@ check("compiler exposes stable authored def/ref facts for editor-neutral tooling
   assert.equal(definition.referenceRanges.length, 1);
   assert.equal(source.slice(definition.referenceRanges[0]!.start, definition.referenceRanges[0]!.end), '"display name"');
   assert.equal(result.value.symbols.references.every(reference => reference.targetId !== undefined), true);
-  const unresolved = compile(`<type "data" defs <Known "string"> content <ref "Missing">>`);
+  const unresolved = compile(`<type "data" defs <Known "string"> root <ref "Missing">>`);
   assert.equal(unresolved.ok, false);
   if (!unresolved.ok) {
     assert.equal(unresolved.symbols?.definitions[0]?.name, "Known");
@@ -88,10 +88,10 @@ check("compiler exposes stable authored def/ref facts for editor-neutral tooling
 
 check("malformed, missing, nested, and extra-member refs reject with source ranges", () => {
   for (const source of [
-    `<type "data" defs <Known "string"> content <ref "Missing">>`,
-    `<type "data" defs <Known "string"> content <ref 1>>`,
-    `<type "data" defs <Known "string"> content <ref "Known" extra true>>`,
-    `<type "data" defs <Outer <defs <Inner "string"> content <value "string">>> content <ref "Outer">>`,
+    `<type "data" defs <Known "string"> root <ref "Missing">>`,
+    `<type "data" defs <Known "string"> root <ref 1>>`,
+    `<type "data" defs <Known "string"> root <object <ref "Known" extra true>>>`,
+    `<type "data" defs <Outer <defs <Inner "string"> content <value "string">>> root <ref "Outer">>`,
   ]) {
     const result = compile(source);
     assert.equal(result.ok, false, source);
@@ -100,12 +100,12 @@ check("malformed, missing, nested, and extra-member refs reject with source rang
 });
 
 check("duplicate definitions reject through authored Hson parsing", () => {
-  assert.equal(compile(`<type "data" defs <Thing "string" Thing "number"> content <ref "Thing">>`).ok, false);
+  assert.equal(compile(`<type "data" defs <Thing "string" Thing "number"> root <ref "Thing">>`).ok, false);
 });
 
 check("unused definitions are excluded under canonical reachability authority", () => {
-  const base = compile(`<type "data" content <value "string">>`);
-  const unused = compile(`<type "data" defs <Unused <content <n "number">>> content <value "string">>`);
+  const base = compile(`<type "data" root <object <value "string">>>`);
+  const unused = compile(`<type "data" defs <Unused <object <n "number">>> root <object <value "string">>>`);
   assert.equal(base.ok, true); assert.equal(unused.ok, true);
   if (base.ok && unused.ok) {
     assert.equal(unused.value.definitions.length, 1);
@@ -136,7 +136,7 @@ check("productive mutual recursion lowers and emits finite mutually recursive al
 });
 
 check("existing canonical productivity authority rejects zero-progress recursion at the ref range", () => {
-  const result = compile(`<type "data" defs <Loop <ref "Loop">> content <ref "Loop">>`);
+  const result = compile(`<type "data" defs <Loop <ref "Loop">> root <ref "Loop">>`);
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.equal(result.issues[0]?.code, "INVALID_SCHEMA_GRAPH");
@@ -149,7 +149,7 @@ check("refs compose through array, tuple, restricted union, and refinements", ()
   const result = compile(`<
     type "data"
     defs <Age <number <int true min 0>> Text "string" Count "number">
-    content <content <age <ref "Age"> ages <array <ref "Age">> pair <tuple [<ref "Text">, <ref "Count">]> choice <union [<ref "Text">, <ref "Count">]>>>
+    root <object <age <ref "Age"> ages <array <ref "Age">> pair <tuple [<ref "Text">, <ref "Count">]> choice <union [<ref "Text">, <ref "Count">]>>>
   >`);
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.value.graph.nodes.filter((node) => node.kind === "projected-refinement").length, 2);
@@ -163,7 +163,7 @@ check("refs preserve finite exact-domain distinguishability through nested union
       Ready <exact "ready">
       Active <union [<ref "Lobby">, <union [<ref "Ready">, <exact "playing">]>]>
     >
-    content <content <pair <union [<ref "Lobby">, <ref "Ready">]> phase <ref "Active">>>
+    root <object <pair <union [<ref "Lobby">, <ref "Ready">]> phase <ref "Active">>>
   >`);
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.value.graph.nodes.filter((node) => node.kind === "projected-union").length, 3);
@@ -171,9 +171,9 @@ check("refs preserve finite exact-domain distinguishability through nested union
 
 check("finite exact-domain duplicates and cycles reached through refs fail closed", () => {
   for (const source of [
-    `<type "data" defs <Left <exact "same"> Right <exact "same">> content <value <union [<ref "Left">, <ref "Right">]>>>`,
-    `<type "data" defs <Domain <union [<exact "a">, <exact "b">]> Duplicate <exact "b">> content <value <union [<ref "Domain">, <ref "Duplicate">]>>>`,
-    `<type "data" defs <Cycle <union [<exact "a">, <ref "Cycle">]>> content <ref "Cycle">>`,
+    `<type "data" defs <Left <exact "same"> Right <exact "same">> root <object <value <union [<ref "Left">, <ref "Right">]>>>>`,
+    `<type "data" defs <Domain <union [<exact "a">, <exact "b">]> Duplicate <exact "b">> root <object <value <union [<ref "Domain">, <ref "Duplicate">]>>>>`,
+    `<type "data" defs <Cycle <union [<exact "a">, <ref "Cycle">]>> root <ref "Cycle">>`,
   ]) {
     const result = compile(source);
     assert.equal(result.ok, false, source);
@@ -182,7 +182,7 @@ check("finite exact-domain duplicates and cycles reached through refs fail close
 });
 
 check("data/document capability mismatches reject in the single local namespace", () => {
-  const result = compile(`<type "data" defs <Element <tag "x" content "empty">> content <ref "Element">>`);
+  const result = compile(`<type "data" defs <Element <tag "x" content "empty">> root <ref "Element">>`);
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.issues.some((entry) => entry.code === "INVALID_REFERENCE"), true);
 });
@@ -202,11 +202,11 @@ check("document item composition and productive recursion use existing document 
 });
 
 check("runtime certification validates finite recursive candidates and preserves exact identity", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" defs <Tree <content <value "string" children <array <ref "Tree">>>>> content <ref "Tree">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" defs <Tree <object <value "string" children <array <ref "Tree">>>>> root <ref "Tree">>`;
   const valid = Hson.canonical`<value "root" children [<value "leaf" children []>]>`;
   assert.equal((schema.certify(Hson.data.fromSource(valid))).toHson(), valid);
   assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<value "root" children [<value 1 children []>]>`)));
-  const mutual: HsonSchema = Hson.schema`<type "data" defs <A <content <name <exact "a"> bs <array <ref "B">>>> B <content <name <exact "b"> as <array <ref "A">>>>> content <ref "A">>`;
+  const mutual: HsonSchema = Hson.schema`<type "data" defs <A <object <name <exact "a"> bs <array <ref "B">>>> B <object <name <exact "b"> as <array <ref "A">>>>> root <ref "A">>`;
   const mutualCandidate = Hson.canonical`<name "a" bs [<name "b" as []>]>`;
   assert.equal((mutual.certify(Hson.data.fromSource(mutualCandidate))).toHson(), mutualCandidate);
 });
@@ -217,7 +217,7 @@ check("moderately nested recursive validation and generation remain bounded", ()
   if (!result.ok) return;
   const generated = generate_hson_schema_types("TreeSchema", result.value.semantic, result.value.definitions);
   const candidate = Hson.canonical`<value "0" children [<value "1" children [<value "2" children [<value "3" children [<value "4" children []>]>]>]>]>`;
-  const schema: HsonSchema = Hson.schema`<type "data" defs <Tree <content <value "string" children <array <ref "Tree">>>>> content <ref "Tree">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" defs <Tree <object <value "string" children <array <ref "Tree">>>>> root <ref "Tree">>`;
   const started = performance.now();
   assert.equal((schema.certify(Hson.data.fromSource(candidate))).toHson(), candidate);
   const elapsed = performance.now() - started;

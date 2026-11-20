@@ -22,10 +22,10 @@ import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 
-const VisibleSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
-const PrivateSchema: HsonSchema = Hson.schema`<type "data" content <PRIVATE_SCHEMA_SENTINEL "string">>`;
-const UnselectedSchema: HsonSchema = Hson.schema`<type "data" content <UNSELECTED_SCHEMA_SENTINEL "string">>`;
-const LocalSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const VisibleSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
+const PrivateSchema: HsonSchema = Hson.schema`<type "data" root <object <PRIVATE_SCHEMA_SENTINEL "string">>>`;
+const UnselectedSchema: HsonSchema = Hson.schema`<type "data" root <object <UNSELECTED_SCHEMA_SENTINEL "string">>>`;
+const LocalSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 
 for (const kind of ["empty metadata", "nested empty metadata", "permuted array"] as const) {
   const authority = hsonLiveMap.fromLibraries({ state: { json: { items: ["a", "b"] } } });

@@ -61,11 +61,11 @@ function portable_private_free(raw: string) {
     "hson:quid", "$_quid", "issuedQuids", "identityEpoch"]) assert.equal(raw.includes(hidden), false, hidden);
 }
 
-const Data = Hson.schema`<type "data" content <value "string">>`;
+const Data = Hson.schema`<type "data" root <object <value "string">>>`;
 for (const strategy of ["replay", "reconcile"] as const) {
   const map = hsonLiveMap.fromLibraries({
     visible: { json: { value: "INITIAL" }, schema: Data },
-    PRIVATE_NAME: { json: { PRIVATE_SCHEMA: "PRIVATE_ROOT" }, schema: Hson.schema`<type "data" content <PRIVATE_SCHEMA "string">>` },
+    PRIVATE_NAME: { json: { PRIVATE_SCHEMA: "PRIVATE_ROOT" }, schema: Hson.schema`<type "data" root <object <PRIVATE_SCHEMA "string">>>` },
     UNSELECTED_NAME: { json: { value: "UNSELECTED_ROOT" }, schema: Data },
   });
   const options: LocusRegistryOptions<typeof map> = { map,

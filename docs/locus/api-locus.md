@@ -81,7 +81,7 @@ A resumed durable authority gives reconnecting clients a projected snapshot for 
 `locus.actions.define(name, handler, options?)` adds a function to the owning Locus. Names are nonempty strings. Duplicate names and reserved built-in Document action names throw. Construction and resume seed the same registry from `configuration.actions`. Registration leaves the authority revision and canonical state unchanged. Snapshots and checkpoints carry symbolic Descriptor references. Application setup supplies executable definitions each time a runtime starts.
 
 ```ts
-const advanceSchema = Hson.schema`<type "data" content <step "number">>`;
+const advanceSchema = Hson.schema`<type "data" root <object <step "number">>>`;
 locus.actions.define("deck.advance", advanceSlide, {
   args: { required: true, schema: advanceSchema },
 });

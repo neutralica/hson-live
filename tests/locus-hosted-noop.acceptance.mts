@@ -432,7 +432,7 @@ for (const strategy of ["replay", "reconcile"] as const) {
 }
 
 {
-  const schema = Hson.schema`<type "data" content <count "number">>`;
+  const schema = Hson.schema`<type "data" root <object <count "number">>>`;
   let map = hsonLiveMap.fromLibraries({ state: { json: { count: 0 }, schema } });
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(map, [{ name: "state", ownership: "shared" }]) });
   map = locus_map_internal(locus);

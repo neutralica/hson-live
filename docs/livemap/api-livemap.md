@@ -6,7 +6,7 @@ LiveMap is one registry with one global revision and named data, document, and g
 import { Hson } from "hson-live/hson";
 import * as hsonLiveMap from "hson-live/livemap";
 
-const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 
 const map = hsonLiveMap.fromLibraries({
@@ -29,7 +29,7 @@ Public staged graph instructions require own enumerable data fields, including t
 
 `hsonLiveMap.create()` creates a fully initialized map with no application libraries at revision 0. `hsonLiveMap.fromLibraries({})` has the same empty-registry semantics. An empty map can be captured, cut, and restored; family selector calls such as `map.doc(name)` return `undefined` until admission.
 
-`ANY_DATA` and `ANY_DOCUMENT` are ordinary Hson Schemas for the full data and document families. They are exported from `hson-live` and `hson-live/hson`. The equivalent authored forms are `<type "data">` and `<type "document">`.
+`ANY_DATA` and `ANY_DOCUMENT` are ordinary Hson Schemas for the full data and document families. They are exported from `hson-live` and `hson-live/hson`. The equivalent authored forms are `<type "data" root "any">` and `<type "document">`.
 
 ## Complete governed Documents
 

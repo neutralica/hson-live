@@ -10,7 +10,7 @@ import { decode_locus_live_projected_envelope_internal, LOCUS_LIVE_PROJECTED_WIR
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "string">>>]>>]>>`;
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const authority = hsonLiveMap.fromLibraries({
   page: { document: "<main <item \"old\"/>/>", schema: PageSchema },
   privateData: { json: { value: "PRIVATE_SENTINEL" }, schema: DataSchema },

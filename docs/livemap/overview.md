@@ -55,7 +55,7 @@ the [completed page](api-livemap.md#complete-governed-documents), not only its a
 body content; the API reference includes a complete-page Schema example.
 
 ```ts
-const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 
 const map = hsonLiveMap.fromLibraries({
   state: { data: { count: 0 }, schema: StateSchema },

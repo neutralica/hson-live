@@ -361,15 +361,15 @@ function structural_history(initial: OrderedProjectedValue, prefix: readonly Rep
 async function container_provenance_cases(check: Check): Promise<void> {
   const shapes: readonly { name: string; leaf: readonly (string | number)[]; wrap: (n: number) => JsonValue; schema: HsonSchema }[] = [
     { name: "nested arrays", leaf: [0], wrap: n => [n],
-      schema: Hson.schema`<type "data" content <rows <array <array <number <int true min 0>>>> n "number">>` },
+      schema: Hson.schema`<type "data" root <object <rows <array <array <number <int true min 0>>>> n "number">>>` },
     { name: "deeper arrays", leaf: [0, 0], wrap: n => [[n]],
-      schema: Hson.schema`<type "data" content <rows <array <array <array <number <int true min 0>>>>> n "number">>` },
+      schema: Hson.schema`<type "data" root <object <rows <array <array <array <number <int true min 0>>>>> n "number">>>` },
     { name: "object children", leaf: ["value"], wrap: n => ({ value: n }),
-      schema: Hson.schema`<type "data" content <rows <array <content <value <number <int true min 0>>>>> n "number">>` },
+      schema: Hson.schema`<type "data" root <object <rows <array <object <value <number <int true min 0>>>>> n "number">>>` },
     { name: "objects containing arrays", leaf: ["values", 0], wrap: n => ({ values: [n] }),
-      schema: Hson.schema`<type "data" content <rows <array <content <values <array <number <int true min 0>>>>>> n "number">>` },
+      schema: Hson.schema`<type "data" root <object <rows <array <object <values <array <number <int true min 0>>>>>> n "number">>>` },
     { name: "arrays containing objects", leaf: [0, "value"], wrap: n => [{ value: n }],
-      schema: Hson.schema`<type "data" content <rows <array <array <content <value <number <int true min 0>>>>>> n "number">>` },
+      schema: Hson.schema`<type "data" root <object <rows <array <array <object <value <number <int true min 0>>>>>> n "number">>>` },
   ];
   for (const route of ["hosted", "durable", "echo"] as const) for (const local of route === "echo" ? [false, true] : [false]) {
     for (const shape of shapes) {
@@ -550,7 +550,7 @@ async function structural_provenance_cases(check: Check): Promise<void> {
       }
     });
     await check(`${label}: final Schema validation also omits equal-coordinate structural ambiguity`, () => {
-      const schema: HsonSchema = Hson.schema`<type "data" content <rows <array <number <min 0>>> n "number">>`;
+      const schema: HsonSchema = Hson.schema`<type "data" root <object <rows <array <number <min 0>>> n "number">>>`;
       for (const count of [0, 2]) {
         const f = expanded_fixture(count, schema), base = route === "hosted" ? f.commit : f.expanded;
         const input = { ...base, operations: [...(count ? base.operations : []),
@@ -782,9 +782,9 @@ function array_value(value: OrderedProjectedValue | undefined): readonly Ordered
 }
 
 async function final_validation_cases(check: Check): Promise<void> {
-  const nonnegative: HsonSchema = Hson.schema`<type "data" content <rows "any" n <number <int true min 0>>>>`;
-  const unique: HsonSchema = Hson.schema`<type "data" content <rows <array <content "number" unique true>> n "number">>`;
-  const nonnegativeRows: HsonSchema = Hson.schema`<type "data" content <rows <array <number <min 0>>> n "number">>`;
+  const nonnegative: HsonSchema = Hson.schema`<type "data" root <object <rows "any" n <number <int true min 0>>>>>`;
+  const unique: HsonSchema = Hson.schema`<type "data" root <object <rows <array <content "number" unique true>> n "number">>>`;
+  const nonnegativeRows: HsonSchema = Hson.schema`<type "data" root <object <rows <array <number <min 0>>> n "number">>>`;
   for (const route of ["hosted", "durable", "echo"] as const) {
     await check(`${route} final Schema failures retain submitted provenance and permit retry`, () => {
       for (const count of [0, 1, 2, 3]) for (const prefix of [false, true]) {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ANY_DATA } from "../src/api/schema/hson-schema.ts";
 import { Hson, hsonLiveMap, type LiveMap, type LiveMapDefinitions } from "../src/index.ts";
 import type { JsonValue } from "../src/core/types.ts";
 import type { LocusHostedAggregateStageWriter } from "../src/api/locus/locus.aggregate.ts";
@@ -60,7 +61,7 @@ await case_("empty authority persists topology, writes, batches, checkpoint, and
   assert.equal(addA.registryDigest, locus.registryDigest);
   assert.notEqual(addA.registryDigest, emptyDigest);
   assert.deepEqual(addA.topology?.operation.libraries.map((item) => item.name), ["A"]);
-  assert.equal(addA.topology?.operation.libraries[0]?.schema, '<type "data">');
+  assert.equal(addA.topology?.operation.libraries[0]?.schema, ANY_DATA.toHson());
   assert.equal(data_value(map, "A", "count"), 0);
   await locus.stage((draft) => { set_data(draft, "A", "count", 1); });
 
@@ -182,7 +183,7 @@ await case_("failed durable topology append leaves authority and publication unt
   assert.deepEqual(published, []);
   assert.deepEqual(adapter.state(locus.logicalMapId)?.commits, []);
   assert.throws(() => map.data.must("rejected"), /Unknown/);
-  const numberSchema = Hson.schema`<type "data" content <value "number">>`;
+  const numberSchema = Hson.schema`<type "data" root <object <value "number">>>`;
   await assert.rejects(add_private(locus, {
     valid: { json: { value: 1 } },
     invalid: { json: { value: "wrong" }, schema: numberSchema },

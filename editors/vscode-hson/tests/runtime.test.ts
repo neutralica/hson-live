@@ -159,21 +159,25 @@ check("standalone astral point spans the complete surrogate pair", () => {
 const officialImport = 'import { Hson, hson } from "hson-live";';
 
 check("local Hson Schema diagnostics reuse the proof compiler without workspace execution", () => {
-  const valid = 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <name <string <alphabet "abc">>>>`; throw new Error("not executed");';
+  const valid = 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" root <object <name <string <alphabet "abc">>>>>`; throw new Error("not executed");';
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", valid), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('name <string <alphabet "abc">>', 'name <literal "x">'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('alphabet "abc"', "alphabet 1"))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('alphabet "abc"', 'alphabet "abca"'))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
-  const document = valid.replace('<type "data" content <name <string <alphabet "abc">>>>', '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>');
+  const document = valid.replace('<type "data" root <object <name <string <alphabet "abc">>>>>', '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>');
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", document), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", document.replace('tag "main"', 'tag "main" element true'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
   const any = valid.replace('name <string <alphabet "abc">>', 'args "any"');
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", any), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", any.replace('args "any"', 'args "anyy"'))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
+  for (const root of ['content "any"', 'expression "string"']) {
+    const obsolete = valid.replace('root <object <name <string <alphabet "abc">>>>', root);
+    assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", obsolete)[0]?.code, "INVALID_ROOT");
+  }
 });
 
 check("Schema evidence discovery stays binding-aware and does not generate", () => {
-  const source = 'import { Hson } from "hson-live"; export const UserSchema = Hson.schema`<type "data" content "string">`;';
+  const source = 'import { Hson } from "hson-live"; export const UserSchema = Hson.schema`<type "data" root "string">`;';
   assert.deepEqual(local_hson_schema_declarations(source).map(declaration => declaration.name), ["UserSchema"]);
   assert.deepEqual(local_hson_schema_declarations(source.replace('Hson.schema', 'markup.schema').replace('Hson }', 'Hson as markup }')).map(declaration => declaration.name), ["UserSchema"]);
   assert.deepEqual(local_hson_schema_declarations(source.replace('from "hson-live"', 'from "other"')), []);
@@ -183,8 +187,8 @@ check("Schema evidence discovery stays binding-aware and does not generate", () 
 
 check("local defs/ref symbols are compiler-resolved, scoped, and source-exact", () => {
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const FooSchema: HsonSchema = Hson.schema\`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>\`;
-const BarSchema: HsonSchema = Hson.schema\`<type "data" defs <Age "string"> content <ref "Age">>\`;
+const FooSchema: HsonSchema = Hson.schema\`<type "data" defs <Age <number <int true min 0>> User <object <age <ref "Age">>>> root <ref "User">>\`;
+const BarSchema: HsonSchema = Hson.schema\`<type "data" defs <Age "string"> root <ref "Age">>\`;
 const ordinary = "Age";`;
   const symbols = local_hson_schema_symbols("/workspace/schema.ts", text);
   assert.equal(symbols.definitions.length, 3);
@@ -201,7 +205,7 @@ const ordinary = "Age";`;
 
 check("local ref completion and rename use compiler facts without executing workspace code", () => {
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const TreeSchema: HsonSchema = Hson.schema\`<type "data" defs <Tree <content <children <array <ref "Tree">>>> 'display name' "string"> content <ref "Tree">>\`;
+const TreeSchema: HsonSchema = Hson.schema\`<type "data" defs <Tree <object <children <array <ref "Tree">>>> 'display name' "string"> root <ref "Tree">>\`;
 const ordinary = "Tree";`;
   const cursor = text.indexOf('"Tree"') + 2;
   assert.deepEqual(local_hson_schema_completion("/workspace/tree.ts", text, cursor).map(symbol => symbol.name), ["Tree", "display name"]);
@@ -220,7 +224,7 @@ const ordinary = "Tree";`;
 
 check("half-written ref completion recovers delimiters only before compiling", () => {
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const S: HsonSchema = Hson.schema\`<type "data" defs <Age "number" Address "string"> content <ref "Ag\`;`;
+const S: HsonSchema = Hson.schema\`<type "data" defs <Age "number" Address "string"> root <ref "Ag\`;`;
   const cursor = text.lastIndexOf("Ag") + 2;
   assert.deepEqual(local_hson_schema_completion("/workspace/incomplete.ts", text, cursor).map(symbol => symbol.name), ["Age", "Address"]);
 });
@@ -228,7 +232,7 @@ const S: HsonSchema = Hson.schema\`<type "data" defs <Age "number" Address "stri
 check("local defs/ref symbol queries remain interactive for a moderate namespace", () => {
   const definitions = Array.from({ length: 100 }, (_, index) => `D${index} "string"`).join(" ");
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const Large: HsonSchema = Hson.schema\`<type "data" defs <${definitions}> content <ref "D0">>\`;`;
+const Large: HsonSchema = Hson.schema\`<type "data" defs <${definitions}> root <ref "D0">>\`;`;
   const offset = text.indexOf('"D0"') + 2;
   const started = performance.now();
   const symbols = local_hson_schema_symbols("/workspace/large.ts", text);
@@ -370,13 +374,13 @@ check("member context remains tied to official bindings", () => {
 });
 
 check("Schema member tags validate data before the Schema language in any expression", () => {
-  const valid = `${officialImport}\nvoid Hson.schema\`<type "data" content <name "string">>\`;`;
+  const valid = `${officialImport}\nvoid Hson.schema\`<type "data" root <object <name "string">>>\`;`;
   assert.deepEqual(diagnose(valid, "typescript", "/workspace/schema.ts"), []);
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", valid), []);
   const document = `${officialImport}\nvoid Hson.schema\`<main/>\`;`;
   assert.equal(diagnose(document, "typescript", "/workspace/schema.ts").length, 1);
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", document), []);
-  const invalidSchema = `${officialImport}\nvoid Hson.schema\`<type "data" content "unknown">\`;`;
+  const invalidSchema = `${officialImport}\nvoid Hson.schema\`<type "data" root "unknown">\`;`;
   assert.deepEqual(diagnose(invalidSchema, "typescript", "/workspace/schema.ts"), []);
   assert.ok(local_hson_schema_diagnostics("/workspace/schema.ts", invalidSchema).length > 0);
 });
@@ -653,7 +657,7 @@ check("editor completion uses current same-file Schema and exact partial token r
     host.readFile = name => name === file ? text : read(name);
     return cache.complete(file, text, version, offset, ts.createProgram([file], options, host));
   };
-  const source = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonData<typeof S> = Hson.data`<co`';
+  const source = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" root <object <count "number" color "string" presentation <object <theme "string">>>>>`; const x: HsonData<typeof S> = Hson.data`<co`';
   const result = complete("/workspace/completion.ts", source, 1, source.length - 1);
   assert.deepEqual(result.map(entry => entry.candidate.label), ["count", "color"]);
   const parsed = source.replaceAll('HsonData', 'HsonDataValue').replace('Hson.data`', 'Hson.data.parse`');
@@ -665,8 +669,8 @@ check("editor completion uses current same-file Schema and exact partial token r
   assert.deepEqual(complete("/workspace/completion.ts", used, 3, used.length - 1).map(entry => entry.candidate.label), ["color"]);
   const noSchema = 'import { Hson } from "hson-live"; const x = Hson.data`<co`';
   assert.deepEqual(complete("/workspace/no-schema.ts", noSchema, 1, noSchema.length - 1), []);
-  const schema = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "data" co`';
-  assert.deepEqual(complete("/workspace/schema-completion.ts", schema, 1, schema.length - 1).map(entry => entry.candidate.label), ["content"]);
+  const schema = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "data" ro`';
+  assert.deepEqual(complete("/workspace/schema-completion.ts", schema, 1, schema.length - 1).map(entry => entry.candidate.label), ["root"]);
   const interpolated = source.replace('Hson.data`<co`', 'Hson.data`<count ${count} co`');
   assert.deepEqual(complete("/workspace/completion.ts", interpolated, 4, interpolated.indexOf("${count}") + 3), []);
   assert.deepEqual(complete("/workspace/completion.ts", interpolated, 4, interpolated.length - 1).map(entry => entry.candidate.label), ["color"]);
@@ -726,7 +730,7 @@ check("literal escape failures survive opaque partial quoted slots with exact ho
 });
 
 check("static interpolation diagnostics report position failures without inferring branded source", () => {
-  const prefix = 'import { Hson, type HsonDataValue, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonDataValue<typeof S> = Hson.data.parse`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
+  const prefix = 'import { Hson, type HsonDataValue, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" root <object <value "string">>>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonDataValue<typeof S> = Hson.data.parse`<value "x">`; const document: HsonDocument<typeof D> = D.certify(Hson.document`<main/>`); const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
   const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/interpolation.ts").map(d => d.code).filter(code => code?.includes("STATIC_TYPE") || code?.includes("DATA_IN_DOCUMENT") || code?.includes("DOCUMENT_IN_DATA"));
   assert.deepEqual(codes('Hson.document`<main ${data}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
   assert.deepEqual(codes('Hson.document`<main ${data.toHson()}/>`;'), []);

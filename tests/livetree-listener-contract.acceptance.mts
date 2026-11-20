@@ -534,7 +534,7 @@ await check("standalone action definitions follow owned roots and preserve exact
       assert.equal(Object.isFrozen(context), true);
       return args;
     }
-    const schema = Hson.schema`<type "data" content <'10' "number" '2' "number">>`;
+    const schema = Hson.schema`<type "data" root <object <'10' "number" '2' "number">>>`;
     const options = { args: { schema } };
     for (const args of [["", echo], ["copy", 42], ["copy", echo, { unknown: true }],
       ["copy", echo, { args: { required: "yes" } }], ["copy", echo, { args: { schema: ANY_DOCUMENT } }]]) {
@@ -667,7 +667,7 @@ await check("attached and detached aliases resolve through current graph ownersh
 await check("invalid standalone declarations and missing actions fail before native attachment", () => {
   const { tree, element } = fixture();
   const valid = "<hson:event on:click local:run open:data={true} <> >";
-  const schema = Hson.schema`<type "data" content <open "boolean">>`;
+  const schema = Hson.schema`<type "data" root <object <open "boolean">>>`;
   try {
     let calls = 0;
     const before = tree.node;
@@ -707,8 +707,8 @@ await check("standalone optional action arguments distinguish omission from a nu
   const { tree, element } = fixture();
   const optional = "<hson:event on:click local:optional <> >";
   const nullInput = optional.replace("<>", "value:data={null} <>");
-  const numbers = Hson.schema`<type "data" content <value "number">>`;
-  const nulls = Hson.schema`<type "data" content <value "null">>`;
+  const numbers = Hson.schema`<type "data" root <object <value "number">>>`;
+  const nulls = Hson.schema`<type "data" root <object <value "null">>>`;
   const seen: unknown[] = [];
   const record: Parameters<typeof tree.actions.define>[1] =
     (_ctx, input) => { seen.push(input?.entries()?.[0]?.[1].scalar()); };

@@ -54,6 +54,8 @@ export type HsonGrammarCheckpoint = Readonly<{
   dataFacts?: readonly HsonEditorDataFact[];
   /** Incomplete source at a Schema root member checkpoint. */
   schemaContinuation?: "missing-operand" | "unterminated";
+  /** Scanner-confirmed closing delimiter for a complete Schema envelope. */
+  schemaRootClose?: number;
   /** Scanner-owned header observation, including attributes after the cursor. */
   element?: Readonly<{ tag: string; start: number; attributes: readonly RawAttr[]; contentTags: readonly string[] }>;
   attribute?: string;
@@ -97,7 +99,8 @@ export function hson_grammar_checkpoint(
     }
   }
   if (result && (mode === "data" || mode === "schema" && result.kind === "member" && result.path.length === 0)) {
-    return { ...result, dataFacts };
+    return { ...result, dataFacts, ...(mode === "schema" && scanner.schemaRootClose !== undefined
+      ? { schemaRootClose: scanner.schemaRootClose } : {}) };
   }
   return result;
 }
@@ -345,6 +348,7 @@ class HsonScanner {
   private readonly editorClosingDelimiters: string[] = [];
   private editorExisting: readonly string[] = [];
   private editorRootType: "data" | "document" | undefined;
+  schemaRootClose: number | undefined;
   private editorCommentEof = false;
   private editorElement: HsonGrammarCheckpoint["element"];
   private editorAttribute: string | undefined;
@@ -910,6 +914,7 @@ class HsonScanner {
       if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
       if (this.peek() === ">") {
         const closePos = this.position();
+        if (this.editorMode === "schema" && this.editorContainers.length === 1) this.schemaRootClose = closePos.index;
         this.consumeExpected(">");
         const token = this.emit(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
         if (this.collector !== undefined) this.recordToken(token, {

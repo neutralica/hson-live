@@ -31,7 +31,7 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { cut8_checkpoint_cases } from "./fixtures/cut8-checkpoint-cases.mts";
 
-const Data: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const Data: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const Page: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "item" content "empty">>>]>>]>>`;
 const Buttons: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "button" content "empty">>>]>>]>>`;
 

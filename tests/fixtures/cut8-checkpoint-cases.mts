@@ -17,9 +17,9 @@ import { write_semantic_checkpoint } from "../../src/api/locus/locus.aggregate.p
 import { FileCheckpointAdapter } from "../helpers/file-checkpoint-adapter.mts";
 import { style_branch, style_leaf, assert_style_fidelity } from "./cut8-copy-cases.mts";
 
-const Data = Hson.schema`<type "data">`;
-const Numeric = Hson.schema`<type "data" content <negative "number" ordinary "number">>`;
-const Exact = Hson.schema`<type "data" content <negative <exact -0>>>`;
+const Data = Hson.schema`<type "data" root "any">`;
+const Numeric = Hson.schema`<type "data" root <object <negative "number" ordinary "number">>>`;
+const Exact = Hson.schema`<type "data" root <object <negative <exact -0>>>>`;
 const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const data_fixture = (negative = -0) => ({ negative, ordinary: 0, other: 1,
   nested: { pair: [-0, 0], deeper: [{ negative: -0 }] } });

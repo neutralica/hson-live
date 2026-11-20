@@ -444,8 +444,8 @@ for (const stage of ["message", "close"] as const) {
 // Local definitions are session-authorized initializers. Missing instances are
 // installed once; existing client-owned state survives scope and sync changes.
 {
-  const StateSchema = Hson.schema`<type "data" content <value "number">>`;
-  const LocalSchema = Hson.schema`<type "data" content <value "number">>`;
+  const StateSchema = Hson.schema`<type "data" root <object <value "number">>>`;
+  const LocalSchema = Hson.schema`<type "data" root <object <value "number">>>`;
   const PanelSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
   const cssSource = hsonLiveMap.fromLibraries({ panel: { document: "<aside/>", schema: PanelSchema } });
   cssSource.doc.must("panel").css.sel("aside").set.color("red");

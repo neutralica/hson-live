@@ -11,11 +11,11 @@ import { make_locus_session_manager } from "../src/api/locus/locus.session.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content "empty">]>>]>>`;
 const LocalDocSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "aside" content "empty">]>>]>>`;
-const PrivateSchema: HsonSchema = Hson.schema`<type "data" content <PRIVATE_SCHEMA_SENTINEL "string">>`;
-const UnselectedSchema: HsonSchema = Hson.schema`<type "data" content <UNSELECTED_SCHEMA_SENTINEL "string">>`;
+const PrivateSchema: HsonSchema = Hson.schema`<type "data" root <object <PRIVATE_SCHEMA_SENTINEL "string">>>`;
+const UnselectedSchema: HsonSchema = Hson.schema`<type "data" root <object <UNSELECTED_SCHEMA_SENTINEL "string">>>`;
 const HiddenDocSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "hidden" content "empty">]>>]>>`;
 const listener = Object.freeze({ event: "click", target: "element" as const, capture: false, once: false,
   passive: false, missingTarget: "ignore" as const, preventDefault: false, stopPropagation: false, stopImmediatePropagation: false });
@@ -67,7 +67,7 @@ assert.deepEqual(decoded, projected);
 const equivalentSource = { ...decoded, libraries: decoded.libraries.map(entry => ({ ...entry, schema: ` ${entry.schema} ` })) };
 assert.deepEqual(admit_authority_projection_snapshot(equivalentSource), decoded);
 assert.throws(() => admit_authority_projection_snapshot({ ...equivalentSource,
-  libraries: equivalentSource.libraries.map(entry => ({ ...entry, schema: '<type "data">' })) }), /malformed/i);
+  libraries: equivalentSource.libraries.map(entry => ({ ...entry, schema: '<type "data" root "any">' })) }), /malformed/i);
 assert.equal(decoded.revision, map.rev);
 assert.equal(decoded.projectionDigest, effective.digest);
 assert.deepEqual(decoded.writableDocuments, ["allowedPage"]);

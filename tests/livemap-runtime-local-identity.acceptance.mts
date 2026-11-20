@@ -43,7 +43,7 @@ function check(name: string, run: () => void): void {
 const docTarget = (...segments: number[]) => Object.freeze({ kind: "path" as const, path: validate_document_path([0, 0, 1, 0, 0, ...segments]) });
 const Q1 = "00004b001";
 const Q2 = "00004b002";
-const DataSchema = Hson.schema`<type "data" content <child <optional "any"> value <optional "any"> first <optional "any"> second <optional "any"> moved <optional "any">>>`;
+const DataSchema = Hson.schema`<type "data" root <object <child <optional "any"> value <optional "any"> first <optional "any"> second <optional "any"> moved <optional "any">>>>`;
 
 check("document identity changes only runtime overlay and issued ledger", () => {
   const map = element(`<main/>`);

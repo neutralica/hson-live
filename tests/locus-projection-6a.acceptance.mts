@@ -11,10 +11,10 @@ import { make_locus_hosted_projection_policy, normalize_locus_effective_projecti
 import type { LocusLibraryCatalogEntry, LocusProjectionAuthorization } from "../src/types/locus.types.ts";
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <repeat <tag "p" content "empty">>>]>>]>>`;
-const PresentationSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
-const PresentationSchemaChanged: HsonSchema = Hson.schema`<type "data" content <value "string" extra "string">>`;
-const CredentialsSchema: HsonSchema = Hson.schema`<type "data" content <password "string">>`;
-const CredentialsSchemaChanged: HsonSchema = Hson.schema`<type "data" content <password "string" token "string">>`;
+const PresentationSchema: HsonSchema = Hson.schema`<type "data" root <object <value "string">>>`;
+const PresentationSchemaChanged: HsonSchema = Hson.schema`<type "data" root <object <value "string" extra "string">>>`;
+const CredentialsSchema: HsonSchema = Hson.schema`<type "data" root <object <password "string">>>`;
+const CredentialsSchemaChanged: HsonSchema = Hson.schema`<type "data" root <object <password "string" token "string">>>`;
 const CATALOG: readonly LocusLibraryCatalogEntry[] = Object.freeze([
   { name: "page", ownership: "shared" },
   { name: "presentation", ownership: "shared" },

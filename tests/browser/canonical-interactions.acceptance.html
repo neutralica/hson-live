@@ -32,7 +32,7 @@
 
     const QUID = "000008398";
     const PageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
-    const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+    const StateSchema = Hson.schema`<type "data" root <object <count "number">>>`;
     const page = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } }).doc.must("page").root();
     page.$_content[0].$_content[0].$_content[1].$_content[0].$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
     const map = admit_exact_runtime_livemap_libraries({
@@ -372,7 +372,7 @@
       const standalone = graft(container, { unsafe: false });
       const target = standalone.find.must.byId("native");
       const native = target.dom.must.el();
-      const schema = Hson.schema`<type "data" content <x <number <min 0>> dx "number" y "number" dy "number" offset <exact -0>>>`;
+      const schema = Hson.schema`<type "data" root <object <x <number <min 0>> dx "number" y "number" dy "number" offset <exact -0>>>>`;
       const onError = event => {
         if (event.error?.message.startsWith("LiveTree action ")) { errors.push(event.error.cause); event.preventDefault(); }
       };
@@ -732,7 +732,7 @@
       map.actions.define("CAPTURE", (ctx, args) => { captures.push({ ctx, args }); });
       map.actions.define("FILE", () => { throw new Error("A selected File reached an Action."); });
       map.actions.define("STRICT", () => { throw new Error("Null bypassed the local Action Schema."); },
-        { args: { required: true, schema: Hson.schema`<type "data" content <value "string">>` } });
+        { args: { required: true, schema: Hson.schema`<type "data" root <object <value "string">>>` } });
       const frame = document.createElement("iframe");
       let continued;
       try {
@@ -901,7 +901,7 @@
             check(!("event" in ctx) && !("subject" in ctx), "A native object entered a hosted Action context.");
             calls.push(args);
           } },
-          STRICT: { args: { required: true, schema: Hson.schema`<type "data" content <email "string">>` },
+          STRICT: { args: { required: true, schema: Hson.schema`<type "data" root <object <email "string">>>` },
             handler() { throw new Error("Native null bypassed the hosted Action Schema."); } },
           FILE: { args: { required: true, schema: ANY_DATA }, handler() { throw new Error("File crossed hosted transport."); } },
           SUBMIT: { args: { required: true, schema: ANY_DATA }, handler(ctx, args) { submissions.push(args); } },
@@ -1044,10 +1044,10 @@
       const selector = keys ? "on:key:down" : "on:pointer:move";
       const coordinate = keys ? "key.location" : "pointer.clientX";
       const keyboardFields = keys ? " key:str=^{key.key} code:str=^{key.code} repeat:data=^{key.repeat} composing:data=^{key.isComposing} ctrl:data=^{key.ctrlKey}" : "";
-      const stateSchema = Hson.schema`<type "data" content <x "number" offset "number">>`;
+      const stateSchema = Hson.schema`<type "data" root <object <x "number" offset "number">>>`;
       const schema = keys
-        ? Hson.schema`<type "data" content <x <number <min 1>> slide "any" offset <exact -0> key "string" code "string" repeat "boolean" composing "boolean" ctrl "boolean">>`
-        : Hson.schema`<type "data" content <x <number <min 1>> slide "any" offset <exact -0>>>`;
+        ? Hson.schema`<type "data" root <object <x <number <min 1>> slide "any" offset <exact -0> key "string" code "string" repeat "boolean" composing "boolean" ctrl "boolean">>>`
+        : Hson.schema`<type "data" root <object <x <number <min 1>> slide "any" offset <exact -0>>>>`;
       const calls = [], authorizations = [], failures = [], requests = [], wire = [];
       const locus = hsonLiveMap.locus.create({
         state: { json: { x: 0, offset: 0 }, schema: stateSchema, access: "shared" },
@@ -1957,7 +1957,7 @@
         authorizeAction: ({ action }) => action === "deck.advance" || action === "deck.reset",
         actions: {
           "deck.advance": {
-            args: { required: true, schema: Hson.schema`<type "data" content <step "number" offset "number" title "string" settings "any">>` },
+            args: { required: true, schema: Hson.schema`<type "data" root <object <step "number" offset "number" title "string" settings "any">>>` },
             handler: (_context, payload) => { payloads.push(payload); },
           },
           "deck.reset": { args: { schema: ANY_DATA }, handler: (_context, payload) => { payloads.push(payload); } },

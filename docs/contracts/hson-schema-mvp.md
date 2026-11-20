@@ -6,11 +6,11 @@ A Schema is authored as Hson data and compiled into a frozen, nominal runtime ob
 import { Hson, type HsonFromSchema, type JsonFromSchema } from "hson-live";
 
 export const UserSchema = Hson.schema`
-  <type "data" content <
+  <type "data" root <object <
     name "string"
     nickname <optional "string">
     score "number"
-  >>
+  >>>
 `;
 
 export type UserHson = HsonFromSchema<typeof UserSchema>;
@@ -25,7 +25,7 @@ The packaged `hson-schema` tool discovers direct, substitution-free official `Hs
 For example, a data Schema can use this representation pair:
 
 ```ts
-const DeckSchema = Hson.schema`<type "data" content <title "string">>`;
+const DeckSchema = Hson.schema`<type "data" root <object <title "string">>>`;
 type DeckHson = HsonFromSchema<typeof DeckSchema>;
 type DeckJson = JsonFromSchema<typeof DeckSchema>;
 const deck: DeckHson = Hson.data`<title "Introduction">`;
@@ -43,15 +43,17 @@ const reconstructed = Hson.schema.fromHson(portableDefinition);
 
 `certify` validates the candidate in the Schema's data mode and returns an authenticated Schema-specific `HsonDataValue`; ordinary string candidates are literal Data and source requires `Hson.data.fromSource()`. Document certification returns canonical Document text. `fromHson` validates the portable Schema definition again; reconstructed object identity need not equal the original. LiveMap admission uses `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` and validates future mutations against that Schema.
 
+A Data Schema contains `type "data"`, optional `defs <…>`, and a required `root` expression, in that order. Use `root "any"` for unrestricted Data and `root <object <…>>` for an exact object with an ordered member map. An empty map is `root <object <>>`. Definitions using the former Data `content` or `expression` envelope fields fail admission.
+
 An authored `union` takes an ordered array of at least two branches. Every pair must be distinguishable. For closed objects, a shared required member with different direct exact-string values establishes distinction, including when the branches are local refs:
 
 ```hson
 <type "data" defs <
-  Paragraph <content <kind <exact "paragraph"> text "string">>
-  Heading <content <kind <exact "heading"> text "string">>
-  Code <content <kind <exact "code"> source "string">>
+  Paragraph <object <kind <exact "paragraph"> text "string">>
+  Heading <object <kind <exact "heading"> text "string">>
+  Code <object <kind <exact "code"> source "string">>
   Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">]>
-> content <content <block <ref "Block">>>>
+> root <object <block <ref "Block">>>>
 ```
 
 Generated data projections are structural and readonly as API discipline, without runtime freezing or certification. Ordinary objects, reconstruction, collection transforms, and arithmetic may inhabit those projections when structurally valid. Schema handles and Schema-bound Hson retain certification identity; runtime admission validates refinements and whole-value invariants before publishing state. Static authored Hson tags with substitutions do not receive Schema-specific certification.

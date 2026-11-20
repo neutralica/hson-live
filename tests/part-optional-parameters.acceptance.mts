@@ -127,8 +127,8 @@ check("optional Event sources compose an empty object checked by the Action Sche
     const input = interaction.data === undefined ? undefined : hson_data_from_value(interaction.data);
     assert.deepEqual(input?.materialize(), operand === '' ? undefined : {});
     for (const [schema, error] of [
-      [Hson.schema`<type "data" content <selection "string">>`, 'MISSING_REQUIRED at ["selection"]'],
-      [Hson.schema`<type "data" content <selection <optional "string">>>`, undefined],
+      [Hson.schema`<type "data" root <object <selection "string">>>`, 'MISSING_REQUIRED at ["selection"]'],
+      [Hson.schema`<type "data" root <object <selection <optional "string">>>>`, undefined],
     ] as const) {
       const contract = capture_action_args({ args: { schema } }, 'Action', 'Action');
       assert.equal(action_args_error(contract, input, 'Action'), operand === '' ? undefined : error);

@@ -7,8 +7,8 @@ import {
 import { create_test_event_emitter } from "./test-events.mjs";
 import type { JsonValue } from "../src/core/types.ts";
 
-const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
-const StringSchema = Hson.schema`<type "data" content <value "string">>`;
+const NumberSchema = Hson.schema`<type "data" root <object <value "number">>>`;
+const StringSchema = Hson.schema`<type "data" root <object <value "string">>>`;
 const Q1 = "000000001";
 const Q2 = "000000002";
 const Q3 = "000000003";
@@ -152,7 +152,7 @@ check("a schema rejection in one affected library atomically rejects every candi
 });
 
 check("QUID claims are globally issued, resolve to library targets, and reject cross-library ABA reuse", () => {
-  const AnyData = Hson.schema`<type "data" content <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any">>>`;
+  const AnyData = Hson.schema`<type "data" root <object <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any">>>>`;
   const { map, aggregate, data, colors } = pair(
     { active: {}, retired: {}, duplicate: {}, reuse: {} },
     { active: {}, retired: {}, reuse: {}, duplicate: {} },
@@ -188,7 +188,7 @@ check("QUID claims are globally issued, resolve to library targets, and reject c
 });
 
 check("failure in another library cannot partially issue a QUID claim", () => {
-  const AnyData = Hson.schema`<type "data" content <item <optional "any">>>`;
+  const AnyData = Hson.schema`<type "data" root <object <item <optional "any">>>>`;
   const { map, aggregate, data, colors } = pair({ item: {} }, { value: "blue" }, AnyData, StringSchema);
   const issuedBefore = aggregate.identityEpoch().issued().size;
 

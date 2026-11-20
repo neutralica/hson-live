@@ -52,7 +52,7 @@ try {
 } finally { standalone.remove(); }
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content "empty">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "button" content "empty">]>>]>>]>>`;
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 const QUID = "000008399";
 const listener: InteractionListener = Object.freeze({
   event: "click", target: "element", capture: false, once: false, passive: false,

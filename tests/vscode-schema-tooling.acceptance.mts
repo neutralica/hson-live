@@ -39,7 +39,7 @@ const config = join(project, "tsconfig.json");
 const baseConfig = join(project, "tsconfig.base.json");
 writeFileSync(baseConfig, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", forceConsistentCasingInFileNames: false } }, null, 2));
 writeFileSync(config, JSON.stringify({ extends: "./tsconfig.base.json", include: ["./*.ts"] }, null, 2));
-writeFileSync(source, 'import { Hson } from "hson-live";\nexport const UserSchema = Hson.schema`<type "data" content <name "string">>`;\n');
+writeFileSync(source, 'import { Hson } from "hson-live";\nexport const UserSchema = Hson.schema`<type "data" root <object <name "string">>>`;\n');
 writeFileSync(candidate, 'import { Hson, type HsonData } from "hson-live"; import { UserSchema } from "./schema.js";\nconst candidate: HsonData<typeof UserSchema> = Hson.data`<name "Ada">`; void candidate;\n');
 
 const tool = resolve_workspace_hson_schema_tool(project);

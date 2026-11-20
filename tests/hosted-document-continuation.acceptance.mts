@@ -396,7 +396,7 @@ for (const invalid of ["old", "new", "library", "replay"] as const) {
     root.dispatchEvent(new Event("click")); assert.equal(calls, 1);
   } finally { owner.releaseManagement(manager); grafted.dispose(); locus.dispose(); }
 }
-const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" root <object <count "number">>>`;
 
 function socketPair(observeSend?: (raw: string) => void): Readonly<{
   client: LocusWebSocketLike;
@@ -456,7 +456,7 @@ function socketPair(observeSend?: (raw: string) => void): Readonly<{
     id: key, subject, kind: "locus", key, listener: descriptor.listener, ...(key === "null" ? { payload: { selection: null } } : {}),
   });
   let handled: HsonDataValue | undefined;
-  const optionalInput = Hson.schema`<type "data" content <selection "null">>`;
+  const optionalInput = Hson.schema`<type "data" root <object <selection "null">>>`;
   const inputs = new Map<string, HsonDataValue | undefined>();
   const locus = create_locus_fixture({ ...authority_definitions_from_map_fixture(authority, [...test_application_catalog(authority),
       { name: "ui", ownership: "local", initializer: { json: { value: 0 } } }]), defaultProjection: { libraries: ["page", "ui"], systemFeatures: ["interactions"] }, authorizeProjection: () => ({ libraries: ["page", "ui"], systemFeatures: ["interactions"] }),

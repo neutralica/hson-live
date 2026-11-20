@@ -30,10 +30,10 @@ function check(name: string, run: () => void): void {
 }
 
 // Runtime Schemas keep these regressions independent of generated Schema fixtures.
-const StateSchema = Hson.schema`<type "data" content <count <number <int true min 0>> keep "number" nested <content <a "number" b <optional "number">>>>>`;
-const ArraySchema = Hson.schema`<type "data" defs <Value <array "number">> content <ref "Value">>`;
-const TupleSchema = Hson.schema`<type "data" defs <Value <tuple ["string", "number"]>> content <ref "Value">>`;
-const NumberSchema = Hson.schema`<type "data" defs <Value "number"> content <ref "Value">>`;
+const StateSchema = Hson.schema`<type "data" root <object <count <number <int true min 0>> keep "number" nested <object <a "number" b <optional "number">>>>>>`;
+const ArraySchema = Hson.schema`<type "data" defs <Value <array "number">> root <ref "Value">>`;
+const TupleSchema = Hson.schema`<type "data" defs <Value <tuple ["string", "number"]>> root <ref "Value">>`;
+const NumberSchema = Hson.schema`<type "data" defs <Value "number"> root <ref "Value">>`;
 
 function governed() {
   const map = hsonLiveMap.fromLibraries({

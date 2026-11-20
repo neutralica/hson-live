@@ -4,16 +4,16 @@ import { SameShapeOneSchema, SameShapeTwoSchema, TreeSchema, UserSchema } from "
 
 export const DeckSchema = Hson.schema`<type "data" defs <
   Block <union [
-    <content <kind <exact "paragraph"> text "string">>,
-    <content <kind <exact "heading"> text "string">>,
-    <content <kind <exact "code"> language <optional <union [<exact "json">, <exact "html">, <exact "hson">]>> source "string">>
+    <object <kind <exact "paragraph"> text "string">>,
+    <object <kind <exact "heading"> text "string">>,
+    <object <kind <exact "code"> language <optional <union [<exact "json">, <exact "html">, <exact "hson">]>> source "string">>
   ]>
-  Slide <content <id "string" title <optional "string"> column1 <array <ref "Block">>>>
-> content <slides <array <ref "Slide">>>>`;
+  Slide <object <id "string" title <optional "string"> column1 <array <ref "Block">>>>
+> root <object <slides <array <ref "Slide">>>>>`;
 export const MutualSchema = Hson.schema`<type "data" defs <
-  A <content <kind <exact "a"> children <array <ref "B">>>>
-  B <content <kind <exact "b"> children <array <ref "A">>>>
-> content <ref "A">>`;
+  A <object <kind <exact "a"> children <array <ref "B">>>>
+  B <object <kind <exact "b"> children <array <ref "A">>>>
+> root <ref "A">>`;
 
 type Block =
   | { readonly kind: "paragraph"; readonly text: string }
@@ -140,12 +140,12 @@ void [narrow, recursive, deepAge, mutualKind, two, helperSlides];
 
 // Authored names must not shadow syntax or built-ins used in generated types.
 const ReservedRefsSchema = Hson.schema`<type "data" defs <
-  Evidence <content <name "string">>
+  Evidence <object <name "string">>
   ReadonlyArray <array "string">
   'string' "number"
   '$SchemaRef2' "boolean"
   'dash-name' <tuple []>
-> content <a <ref "Evidence"> b <ref "ReadonlyArray"> c <ref "string"> d <ref "$SchemaRef2"> e <ref "dash-name">>>`;
+> root <object <a <ref "Evidence"> b <ref "ReadonlyArray"> c <ref "string"> d <ref "$SchemaRef2"> e <ref "dash-name">>>>`;
 const reservedRefs: JsonFromSchema<typeof ReservedRefsSchema> = { a: { name: "Ada" }, b: ["one"], c: 3, d: true, e: [] };
 const reservedMap = hsonLiveMap.fromLibraries({ refs: { json: { a: { name: "Ada" }, b: [], c: 3, d: true, e: [] }, schema: ReservedRefsSchema } });
 reservedMap.data.must("refs").at(["e"]).replace(reservedRefs.e);

@@ -31,7 +31,7 @@ Names such as `'content'`, `'ref'`, `'object'`, `'members'` and `'defs'` all dec
 
 ## Root composition and references
 
-A `data` declaration may contain one `defs` clause followed by one root content operation. Both are optional. Write the clauses directly in that order. A single clause is the direct structural body. When both are present, the root owns their ordered sequence. The definitions use the same open-object boundaries as properties.
+A `data` declaration may contain one `defs` clause followed by one root expression. Both are optional. Write the clauses directly in that order. A single clause is the direct structural body. When both are present, the root owns their ordered sequence. The definitions use the same open-object boundaries as properties.
 
 ```hson
 <data
@@ -42,9 +42,9 @@ A `data` declaration may contain one `defs` clause followed by one root content 
 >
 ```
 
-Here the bare `ref` selects the definition named by its string operand. Direct root content supports `object`, `ref` and `any`. To select another expression at the root, give it a definition and refer to it, as with `Score`. This follows the available Schema 1.0 root roles. `<data>` omits content, `<data <any>>` explicitly selects any Data value, and `<data <object <>>>` describes an empty closed object.
+Here the bare `ref` selects the definition named by its string operand. Every Data expression can also appear directly at the root, for example `<data <number int min="0">>` or `<data <array <string>>>`. Only a named object member can be optional. `<data>` and `<data <any>>` both describe any Data value. `<data <object <>>>` describes an empty closed object.
 
-Lowering emits an ordinary root member map when Schema 1.0 can read it as such. A sole property named `ref`, or a sole `content` property whose emitted type is an object (including an `optional` descriptor), gets a generated object wrapper. Nested object expressions always lower to object descriptors. These choices preserve the declared application keys and the paths back to their source.
+Lowering emits one required `root` after `type` and any `defs`. An omitted authored root emits `root "any"`. For example, `<type "data" root <array "string">>` certifies arrays of strings. The expression `<type "data" root <object <array "string">>>` certifies objects with a required string member named `array`. Each `object` operation takes an ordered member map and preserves application keys and their authored source ranges.
 
 ## Expressions and operands
 

@@ -158,7 +158,7 @@ void encodedHostedLibraries;
 const hostedSession = await librariesAuthority.session.create({ libraries: ["page"] });
 const hostedLibrariesCut: LocusSessionHtmlNow = hostedSession.now({ html: "page" });
 void hostedLibrariesCut.libs;
-const dataMap = hsonLiveMap.fromLibraries({ state: { json: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
+const dataMap = hsonLiveMap.fromLibraries({ state: { json: { count: 0 }, schema: Hson.schema`<type "data" root <object <count "number">>>` } });
 void dataMap.cut().libs;
 void installedLibraries.map;
 void librariesSsr.document;
@@ -1161,7 +1161,7 @@ const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<html <h
   void documentAcquisitionIsPublic;
 }
 
-const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { json: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" content <value "any">>` } }).data.must("state");
+const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { json: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" root <object <value "any">>>` } }).data.must("state");
 bindingTree.bind.text(projectedHsonLookalike.at(["value"]));
 bindingTree.bind.attr(projectedHsonLookalike.at(["value"]), "data-projected");
 

@@ -25,8 +25,8 @@ const check = (name: string, run: () => void): void => {
     throw error;
   } console.log(`ok ${++checks} - ${name}`); };
 
-const PersonSchema: HsonSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
-const OtherSchema: HsonSchema = Hson.schema`<type "data" content <name "string">>`;
+const PersonSchema: HsonSchema = Hson.schema`<type "data" root <object <name "string" age "number">>>`;
+const OtherSchema: HsonSchema = Hson.schema`<type "data" root <object <name "string">>>`;
 
 check("HsonSchema governs a named data library from admission", () => {
   const map = hsonLiveMap.fromLibraries({ person: { json: { name: "Ada", age: 37 }, schema: PersonSchema } });
@@ -41,7 +41,7 @@ check("HsonSchema rejects invalid mutation before changing state", () => {
 });
 
 check("alphabet refinement governs LiveMap admission and mutation through the shared evaluator", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <key <string <len 3 alphabet "abc">>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <key <string <len 3 alphabet "abc">>>>>`;
   const map = hsonLiveMap.fromLibraries({ state: { json: { key: "abc" }, schema } });
   map.data.must("state").at(["key"]).set("cba");
   assert.deepEqual(map.data.must("state").snap(), { key: "cba" });
@@ -51,7 +51,7 @@ check("alphabet refinement governs LiveMap admission and mutation through the sh
 });
 
 check("any governs canonical data while preserving negative zero and object order", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload "any">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <args "any" payload "any">>>`;
   const map = hsonLiveMap.fromLibraries({ state: { json: { args: -0, payload: { z: 1, a: [true, null, {}] } }, schema } });
   const state = map.data.must("state");
   assert.equal(Object.is(state.snap(["args"]), -0), true);
@@ -63,7 +63,7 @@ check("any governs canonical data while preserving negative zero and object orde
 });
 
 check("primitive union branches govern null values", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <value <union ["string", "null"]>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <value <union ["string", "null"]>>>>`;
   const map = hsonLiveMap.fromLibraries({ state: { json: { value: null }, schema } });
   assert.deepEqual(map.data.must("state").snap(), { value: null });
   map.data.must("state").at(["value"]).set("ready");

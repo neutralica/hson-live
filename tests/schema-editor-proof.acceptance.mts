@@ -207,7 +207,7 @@ with_program(mvpConfig, new Map([[mvpConsumer, consumerText.replace(
 const escapeSpellings = ["\\8", "\\9", "\\unicode", "\\xG0", "\\u{110000}"];
 const adversarialText = '\uFEFF' + [
   'import { Hson, type HsonData, type HsonDocument, type JsonFromSchema } from "hson-live";',
-  'const S = Hson.schema`<type "data" content <name "string">>`;',
+  'const S = Hson.schema`<type "data" root <object <name "string">>>`;',
   'const Doc = Hson.schema`<type "document" tag "main" content "empty">`;',
   'declare const dynamic: string;',
   'const unused: HsonData<typeof S> = Hson.data`<name ${(() => {\r\n// @hson-expect-error HSON_NUMBER_LEADING_PLUS\r\nreturn "Ada";\r\n})()}>`;',
@@ -250,7 +250,7 @@ with_program(mvpConfig, new Map([[mvpConsumer,
 // producers. Parentheses around the expression preserve the syntax violation;
 // parentheses around only the tag end the chain and are valid JS syntax.
 for (const member of ["data", "schema"]) for (const tag of [`Hson?.${member}`, `Hson.${member}?.`]) for (const parenthesized of [false, true]) {
-  const schema = '<type "data" content <name "string">>';
+  const schema = '<type "data" root <object <name "string">>>';
   const template = `${tag}\`${member === "schema" ? schema : '<name "Ada">'}\``;
   const initializer = parenthesized ? `(${template})` : template;
   const source = 'import { Hson, type HsonData } from "hson-live";\r\n'
@@ -269,8 +269,8 @@ for (const member of ["data", "schema"]) for (const tag of [`Hson?.${member}`, `
   });
 }
 for (const parenthesizedTag of [
-  'import { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`<type "data" content <name "string">>`;\r\nconst value: HsonData<typeof S> = (Hson?.data)`<name "Ada">`;',
-  'import { Hson, type HsonData } from "hson-live";\r\nconst S = (Hson?.schema)`<type "data" content <name "string">>`;\r\nconst value: HsonData<typeof S> = Hson.data`<name "Ada">`;',
+  'import { Hson, type HsonData } from "hson-live";\r\nconst S = Hson.schema`<type "data" root <object <name "string">>>`;\r\nconst value: HsonData<typeof S> = (Hson?.data)`<name "Ada">`;',
+  'import { Hson, type HsonData } from "hson-live";\r\nconst S = (Hson?.schema)`<type "data" root <object <name "string">>>`;\r\nconst value: HsonData<typeof S> = Hson.data`<name "Ada">`;',
 ]) {
   with_program(mvpConfig, new Map([[mvpConsumer, parenthesizedTag]]), (validParenthesizedTag) => {
     assert.equal(validParenthesizedTag.getSemanticDiagnostics(validParenthesizedTag.getSourceFile(mvpConsumer)).filter(error => error.code === 1358).length, 0);
@@ -283,7 +283,7 @@ for (const parenthesizedTag of [
 {
   const source = [
     'import { Hson, hsonLiveMap } from "hson-live";',
-    'const NumberValue = Hson.schema`<type "data" defs <Value "number"> content <ref "Value">>`;',
+    'const NumberValue = Hson.schema`<type "data" defs <Value "number"> root <ref "Value">>`;',
     'NumberValue.certify("42");',
     'NumberValue.certify(Hson.data.from("42"));',
     'NumberValue.certify(Hson.data.fromSource("42"));',
@@ -309,8 +309,8 @@ for (const parenthesizedTag of [
 {
   const source = [
     'import { Hson } from "hson-live";',
-    'const S = Hson.schema`<type "data" content <n "number">>`;',
-    'const A = Hson.schema`<type "data" defs <Numbers <array "number">> content <ref "Numbers">>`;',
+    'const S = Hson.schema`<type "data" root <object <n "number">>>`;',
+    'const A = Hson.schema`<type "data" defs <Numbers <array "number">> root <ref "Numbers">>`;',
     'const value: { n: string | number } = { n: "before" }; value.n = 1;',
     'S.certify(Hson.data.from(value));',
     'const array: (string | number)[] = ["before"]; array[0] = 1;',
@@ -340,7 +340,7 @@ for (const parenthesizedTag of [
 const failedRange = [{ start: 10, end: 15, failed: true as const }];
 with_program(mvpConfig, new Map([[mvpConsumer, [
   'import { Hson, type HsonData, type HsonDataValue } from "hson-live";',
-  'const S = Hson.schema`<type "data" content <name "string">>`;',
+  'const S = Hson.schema`<type "data" root <object <name "string">>>`;',
   'const source: HsonData<typeof S> = Hson.data`<name "Ada">`;',
   'const exact: HsonDataValue<typeof S> = Hson.data.parse`<name "Ada">`;',
   'const wrongValue: HsonDataValue<typeof S> = Hson.data`<name "Ada">`;',
@@ -354,7 +354,7 @@ with_program(mvpConfig, new Map([[mvpConsumer, [
 
 with_program(mvpConfig, new Map([[mvpConsumer, [
   'import { Hson, type JsonFromSchema } from "hson-live";',
-  'const S = Hson.schema`<type "data" content <name "string">>`;',
+  'const S = Hson.schema`<type "data" root <object <name "string">>>`;',
   'const projected: JsonFromSchema<typeof S> = Hson.data.parse`<name "Ada">`;',
 ].join('\n')]]), (program) => {
   const diagnostics = static_schema_candidate_diagnostics(ts, authoredPrograms.get(program)!).filter(entry => entry.file === mvpConsumer);

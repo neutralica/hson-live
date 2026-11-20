@@ -4,7 +4,7 @@ import * as hsonLiveMap from "hson-live/livemap";
 import type { LocusActionContext, LocusActionDefinitionOptions, LocusClientActionResult, LocusPersistenceAdapter, LocusTriggerResult } from "hson-live/locus";
 import type { HsonSchema } from "hson-live";
 
-const Count = Hson.schema`<type "data" content <value "number">>`;
+const Count = Hson.schema`<type "data" root <object <value "number">>>`;
 const Page = Hson.schema`<type "document" tag "main" content "empty">`;
 const sheet: string = "main { display: block; }";
 const definitions = {

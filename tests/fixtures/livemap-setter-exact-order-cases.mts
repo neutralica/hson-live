@@ -193,7 +193,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
   });
 
   await check("changing descriptors are read once and the captured candidate governs Schema", () => {
-    const schema = Hson.schema`<type "data" content <value <array "number"> spare "number">>`;
+    const schema = Hson.schema`<type "data" root <object <value <array "number"> spare "number">>>`;
     for (const staged of [false, true]) for (const first of [1, "invalid"]) {
       const map = hsonLiveMap.fromLibraries({ state: { json: { value: [0], spare: 0 }, schema } });
       const before = map.capture(); let reads = 0, publications = 0;
@@ -245,7 +245,7 @@ export async function livemap_setter_exact_order_cases(check: Check): Promise<vo
   });
 
   await check("late staged Schema failure rolls back exact Data and Document candidates together", () => {
-    const schema = Hson.schema`<type "data" content <value "any" spare "number">>`;
+    const schema = Hson.schema`<type "data" root <object <value "any" spare "number">>>`;
     const map = hsonLiveMap.fromLibraries({ state: { json: { value: {}, spare: 0 }, schema }, page: { document: '<main title="old"/>' } });
     const owner = internal_livemap_aggregate_authority(map), before = owner.captureSemanticCheckpoint(), ledger = owner.identityEpoch().issued();
     let publications = 0; map.commits.observe(() => { publications++; });

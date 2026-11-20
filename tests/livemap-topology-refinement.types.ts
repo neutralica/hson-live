@@ -2,7 +2,7 @@ import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.js";
 
 const mainShell = Hson.document`<main/>`;
 const initialState = { count: 0 };
-const schema = Hson.schema`<type "data" content <count "number">>`;
+const schema = Hson.schema`<type "data" root <object <count "number">>>`;
 
 const map = hsonLiveMap.create();
 const commit = map.addLibraries({ home: { document: mainShell } }).commit;

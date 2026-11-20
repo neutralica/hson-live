@@ -37,7 +37,7 @@ function actionError(result: LocusClientActionResult, code: string) {
   return result.error;
 }
 
-const countSchema = Hson.schema`<type "data" content <value "number">>`;
+const countSchema = Hson.schema`<type "data" root <object <value "number">>>`;
 const definitions = {
   state: { json: { value: 0 }, schema: countSchema },
   page: { document: "<main <button/>/>", access: "shared" },
@@ -122,7 +122,7 @@ await check("input contracts distinguish omission, null, and Schema mismatch", a
 });
 
 await check("Schema admission preserves the exact input and result carrier", async () => {
-  const schema = Hson.schema`<type "data" content <'10' "number" '2' "number">>`;
+  const schema = Hson.schema`<type "data" root <object <'10' "number" '2' "number">>>`;
   const locus = hsonLiveMap.locus.create({});
   const exact = Hson.data.fromSource('{"10":-0,"2":2}');
   const materialize = HsonDataValue.prototype.materialize;
@@ -271,7 +271,7 @@ await check("direct admission keeps the original name and input when payload ref
       validatedCalls++;
       return args;
     }, { args: { schema: countSchema, required: true } });
-    locus.actions.define("other", () => { otherCalls++; }, { args: { schema: Hson.schema`<type "data" content <value "string">>` } });
+    locus.actions.define("other", () => { otherCalls++; }, { args: { schema: Hson.schema`<type "data" root <object <value "string">>>` } });
     const result = await locus.dispatchAction(message);
     assert.equal(message.name, "other");
     assert.ok(result.type === "ack" && result.id === "original-id");

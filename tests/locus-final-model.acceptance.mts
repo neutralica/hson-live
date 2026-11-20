@@ -121,7 +121,7 @@ await reject_corrupt(absentCheckpointLibrary);
 await assert.rejects(hsonLiveMap.locus.resume({ ...definition[0], C: { json: { value: 3 }, access: "shared" } }, { ...definition[1], persistence: storage }), /conflict/i);
 await assert.rejects(hsonLiveMap.locus.resume({  }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
 await assert.rejects(hsonLiveMap.locus.resume({ "A": { document: "<main/>", access: "shared" } }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
-await assert.rejects(hsonLiveMap.locus.resume({ "A": { json: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>`, access: "shared" } }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
+await assert.rejects(hsonLiveMap.locus.resume({ "A": { json: { value: 1 }, schema: Hson.schema`<type "data" root <object <value "number">>>`, access: "shared" } }, { logicalMapId: definition[1].logicalMapId, persistence: storage }), /conflict/i);
 
 const failed = new MemoryCheckpointAdapter();
 const held = await hsonLiveMap.locus.resume({ ...definition[0] }, { ...definition[1], persistence: failed });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
-import { hson_schema_digest } from "../src/api/schema/hson-schema.ts";
+import { HsonSchema as SchemaHandle, hson_schema_digest } from "../src/api/schema/hson-schema.ts";
 import { make_hosted_registry } from "../src/api/livemap/livemap.hosted.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
@@ -32,7 +32,7 @@ const check = (name: string, run: () => void): void => {
     testEvents.terminal("fail");
     throw error;
   } console.log(`ok ${++checks} - ${name}`); };
-const compile = (body: string) => compile_hson_schema(`<type "data" content <${body}>>`);
+const compile = (body: string) => compile_hson_schema(`<type "data" root <object <${body}>>>`);
 
 check("ordinary Data certification shares exact admission and production validation", direct_data_schema_cases);
 
@@ -44,7 +44,7 @@ check("valid primitive and closed structure lower deterministically", () => {
 });
 
 check('rich Data projection preserves presence alternatives invalid traversal and bounded unknown states', () => {
-  const compiled = compile('record <union [<content <title "string" note <optional "number"> tag <exact "one">>>,<content <name "string" tag <exact "two">>>]>');
+  const compiled = compile('record <union [<object <title "string" note <optional "number"> tag <exact "one">>>,<object <name "string" tag <exact "two">>>]>');
   assert.equal(compiled.ok, true); if (!compiled.ok) return;
   const schema = compiled.value;
   assert.deepEqual(inspect_schema_data(schema, ['record', 'title']).alternatives.map(alternative => alternative.kind), ['supported', 'absent']);
@@ -74,7 +74,7 @@ check("authored any is the sole broad data atom and lowers directly", () => {
   }
 });
 check("authored any certifies canonical nested data but not document Hson", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload "any">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <args "any" payload "any">>>`;
   const values = [
     Hson.canonical`<args null payload null>`,
     Hson.canonical`<args "local" payload 37>`,
@@ -87,9 +87,9 @@ check("authored any certifies canonical nested data but not document Hson", () =
   assert.throws(() => Hson.canonical`<_hson_private true>`);
 });
 check("invalid root envelope rejects", () => assert.equal(compile_hson_schema('<type "document" content <>>').ok, false));
-check("Data root expression and historical member map have distinct wire contracts", () => {
-  const array: HsonSchema = Hson.schema`<type "data" expression <array "string">>`;
-  const member: HsonSchema = Hson.schema`<type "data" content <array "string">>`;
+check("Data root operators distinguish array and exact object contracts", () => {
+  const array: HsonSchema = Hson.schema`<type "data" root <array "string">>`;
+  const member: HsonSchema = Hson.schema`<type "data" root <object <array "string">>>`;
   const list = Hson.data.parse`["s"]`;
   const object = Hson.data.parse`<array "s">`;
   assert.notEqual(hson_schema_digest(array), hson_schema_digest(member));
@@ -98,18 +98,24 @@ check("Data root expression and historical member map have distinct wire contrac
   assert.throws(() => array.certify(object));
   assert.throws(() => member.certify(list));
   for (const source of [
+    '<type "data">', '<type "data" defs <Unused "string">>',
+    '<type "data" content <>>', '<type "data" expression "string">',
     '<type "data" content <> expression "string">', '<type "data" expression "string" content <>>',
-    '<type "data" expression "string" defs <>>', '<expression "string" type "data">',
+    '<type "data" root "string" content <>>', '<type "data" root "string" expression "any">',
+    '<type "data" root "string" defs <>>', '<root "string" type "data">',
   ]) {
     const result = compile_hson_schema(source);
     assert.ok(!result.ok, source);
     assert.deepEqual(result.issues.map(({ code, path }) => [code, path]), [["INVALID_ROOT", []]]);
+    assert.throws(() => SchemaHandle.fromHson(source), /required `root`/);
+    assert.throws(() => Reflect.apply(Hson.schema.fromHson, Hson.schema, [source]), /required `root`/);
   }
   for (const [source, code, path] of [
-    ['<type "data" expression <optional "string">>', "ILLEGAL_OPTIONAL", ["expression"]],
-    ['<type "data" expression <anyField "number">>', "UNKNOWN_SCHEMA_MEMBER", ["expression", "anyField"]],
-    ['<type "data" expression null>', "INVALID_SCHEMA_EXPRESSION", ["expression"]],
-    ['<type "document" expression "string">', "UNKNOWN_SCHEMA_MEMBER", ["expression"]],
+    ['<type "data" root <optional "string">>', "ILLEGAL_OPTIONAL", ["root"]],
+    ['<type "data" root <anyField "number">>', "UNKNOWN_SCHEMA_MEMBER", ["root", "anyField"]],
+    ['<type "data" root null>', "INVALID_SCHEMA_EXPRESSION", ["root"]],
+    ['<type "data" root <content <id "string">>>', "UNKNOWN_SCHEMA_MEMBER", ["root", "content"]],
+    ['<type "document" root "string">', "UNKNOWN_SCHEMA_MEMBER", ["root"]],
   ] as const) {
     const result = compile_hson_schema(source);
     assert.ok(!result.ok, source);
@@ -134,7 +140,7 @@ check("optional, array, tuple and empty tuple lower", () => {
 });
 check("primitive and discriminated unions lower", () => {
   assert.equal(compile('value <union ["string", "number"]>').ok, true);
-  assert.equal(compile('account <union [<content <kind <exact "user">>>, <content <kind <exact "admin">>>]>').ok, true);
+  assert.equal(compile('account <union [<object <kind <exact "user">>>, <object <kind <exact "admin">>>]>').ok, true);
   assert.equal(compile('bad <union ["string", <exact "x">]>').ok, false);
 });
 check("authored unions require at least two branches", () => {
@@ -174,9 +180,9 @@ check("n-ary primitive choices preserve order and exact equality", () => {
   ]) assert.equal(compile(source).ok, false, source);
 });
 check("n-ary inline object discriminators prove every pair", () => {
-  const result = compile('value <union [<content <kind <exact "a">>>, <content <kind <exact "b">>>, <content <kind <exact "c">>>]>');
+  const result = compile('value <union [<object <kind <exact "a">>>, <object <kind <exact "b">>>, <object <kind <exact "c">>>]>');
   assert.equal(result.ok, true);
-  const duplicate = compile('value <union [<content <kind <exact "a">>>, <content <kind <exact "b">>>, <content <kind <exact "a">>>]>');
+  const duplicate = compile('value <union [<object <kind <exact "a">>>, <object <kind <exact "b">>>, <object <kind <exact "a">>>]>');
   assert.equal(duplicate.ok, false);
   if (!duplicate.ok) {
     assert.equal(duplicate.issues[0]?.code, "INVALID_UNION");
@@ -185,12 +191,12 @@ check("n-ary inline object discriminators prove every pair", () => {
   }
 });
 const deckSource = `<type "data" defs <
-  Paragraph <content <kind <exact "paragraph"> text "string">>
-  Heading <content <kind <exact "heading"> text "string">>
-  Code <content <kind <exact "code"> language <optional "string"> source "string">>
-  List <content <kind <exact "list"> items <array "string">>>
+  Paragraph <object <kind <exact "paragraph"> text "string">>
+  Heading <object <kind <exact "heading"> text "string">>
+  Code <object <kind <exact "code"> language <optional "string"> source "string">>
+  List <object <kind <exact "list"> items <array "string">>>
   Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
-> content <content <blocks <array <ref "Block">>>>>`;
+> root <object <blocks <array <ref "Block">>>>>`;
 check("Deck four-way ref union compiles, certifies, and generates four alternatives", () => {
   const compiled = compile_hson_schema(deckSource);
   assert.equal(compiled.ok, true, compiled.ok ? undefined : JSON.stringify(compiled.issues));
@@ -200,12 +206,12 @@ check("Deck four-way ref union compiles, certifies, and generates four alternati
   const graphUnion = compiled.value.graph.nodes.find((node) => node.kind === "projected-union");
   assert.equal(graphUnion?.kind === "projected-union" ? graphUnion.choices.length : -1, 4);
   const schema: HsonSchema = Hson.schema`<type "data" defs <
-    Paragraph <content <kind <exact "paragraph"> text "string">>
-    Heading <content <kind <exact "heading"> text "string">>
-    Code <content <kind <exact "code"> language <optional "string"> source "string">>
-    List <content <kind <exact "list"> items <array "string">>>
+    Paragraph <object <kind <exact "paragraph"> text "string">>
+    Heading <object <kind <exact "heading"> text "string">>
+    Code <object <kind <exact "code"> language <optional "string"> source "string">>
+    List <object <kind <exact "list"> items <array "string">>>
     Block <union [<ref "Paragraph">, <ref "Heading">, <ref "Code">, <ref "List">]>
-  > content <content <blocks <array <ref "Block">>>>>`;
+  > root <object <blocks <array <ref "Block">>>>>`;
   const values = Hson.canonical`<blocks [<kind "paragraph" text "body">, <kind "heading" text "title">, <kind "code" language "ts" source "const x = 1">, <kind "list" items ["a", "b"]>]>`;
   assert.equal((schema.certify(Hson.data.fromSource(values))).toHson(), values);
   assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<blocks [<kind "unknown" text "body">]>`)));
@@ -223,7 +229,7 @@ check("Deck four-way ref union compiles, certifies, and generates four alternati
   assert.match(evidence.metadata, /semanticGraphDigest/);
 });
 check("pair diagnostics name refs and retain the union source range", () => {
-  const source = `<type "data" defs <First <content <kind <exact "same">>> Second <content <kind <exact "other">>> Third <content <kind <exact "same">>> Block <union [<ref "First">, <ref "Second">, <ref "Third">]>> content <ref "Block">>`;
+  const source = `<type "data" defs <First <object <kind <exact "same">>> Second <object <kind <exact "other">>> Third <object <kind <exact "same">>> Block <union [<ref "First">, <ref "Second">, <ref "Third">]>> root <ref "Block">>`;
   const result = compile_hson_schema(source);
   assert.equal(result.ok, false);
   if (result.ok) return;
@@ -265,7 +271,7 @@ check("finite-domain analysis work is shared across two unions", () => {
   const outer = (prefix: string): string => `<union [<ref "D9">, ${Array.from({ length: 7 }, (_, index) => `<exact "${prefix}${index}">`).join(", ")}]>`;
   const left = outer("left");
   const right = outer("right");
-  const source = (content: string): string => `<type "data" defs <${defs.join(" ")}> content <${content}>>`;
+  const source = (content: string): string => `<type "data" defs <${defs.join(" ")}> root <object <${content}>>>`;
   // Each outer union has only 28 direct pairs; repeated finite-domain expansion consumes the budget.
   for (const content of [`left ${left}`, `right ${right}`]) {
     const result = compile_hson_schema(source(content));
@@ -287,7 +293,7 @@ check("nested finite primitive unions through refs retain ordinary behavior", ()
   for (let index = 1; index <= 6; index += 1) {
     defs.push(`D${index} <union [<ref "D${index - 1}">, <exact "${String.fromCharCode(98 + index)}">]>`);
   }
-  const result = compile_hson_schema(`<type "data" defs <${defs.join(" ")}> content <value <union [<ref "D6">, <exact "z">]>>>`);
+  const result = compile_hson_schema(`<type "data" defs <${defs.join(" ")}> root <object <value <union [<ref "D6">, <exact "z">]>>>>`);
   assert.equal(result.ok, true, result.ok ? undefined : JSON.stringify(result.issues));
 });
 check("compact repeated-ref finite domains fail through the Schema work guard", () => {
@@ -296,7 +302,7 @@ check("compact repeated-ref finite domains fail through the Schema work guard", 
     defs.push(`D${index} <union [<ref "D${index - 1}">, <ref "D${index - 1}">]>`);
   }
   const outerUnion = '<union [<ref "D19">, <exact "z">]>';
-  const source = `<type "data" defs <${defs.join(" ")}> content <value ${outerUnion}>>`;
+  const source = `<type "data" defs <${defs.join(" ")}> root <object <value ${outerUnion}>>>`;
   const result = compile_hson_schema(source);
   assert.equal(result.ok, false);
   if (!result.ok) {
@@ -308,7 +314,7 @@ check("compact repeated-ref finite domains fail through the Schema work guard", 
 });
 check("finite-domain comparison avoids a quadratic cross-product", () => {
   const branches = (prefix: string): string => Array.from({ length: 280 }, (_, index) => `<exact "${prefix}-${index}">`).join(", ");
-  const source = `<type "data" defs <Left <union [${branches("left")}]> Right <union [${branches("right")}]>> content <value <union [<ref "Left">, <ref "Right">]>>>`;
+  const source = `<type "data" defs <Left <union [${branches("left")}]> Right <union [${branches("right")}]>> root <object <value <union [<ref "Left">, <ref "Right">]>>>>`;
   const result = compile_hson_schema(source);
   assert.equal(result.ok, true, result.ok ? undefined : JSON.stringify(result.issues));
 });
@@ -365,13 +371,13 @@ check("finite exact primitive domains reject every unproved or overlapping combi
   ]) assert.equal(compile(source).ok, false, source);
 });
 check("runtime certification accepts every finite-domain member and rejects outsiders", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <
     phase <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]>
     turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]>
     score <union [<exact 1>, <exact 2>]>
     zero <union [<exact 0>, <exact -0>]>
     flag <union [<exact true>, <exact false>]>
-  >>`;
+  >>>`;
   for (const candidate of [
     Hson.canonical`<phase "lobby" turn "player1" score 1 zero 0 flag true>`,
     Hson.canonical`<phase "ready" turn "player2" score 2 zero -0 flag false>`,
@@ -429,12 +435,12 @@ check("refinement diagnostics retain exact authored source provenance", () => {
   const result = compile('x <number <min "bad">>');
   assert.equal(result.ok, false);
   if (!result.ok) {
-    assert.deepEqual(result.issues[0]?.path, ["content", "x", "number", "min"]);
+    assert.deepEqual(result.issues[0]?.path, ["root", "object", "x", "number", "min"]);
     assert.ok(result.issues[0]?.range !== undefined);
   }
 });
 check("refinement evaluation covers numeric, Unicode, literals, length, and uniqueness", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> glyph <string <len 1>> values <array <content "number" unique true minlen 1 maxlen 2>>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> glyph <string <len 1>> values <array <content "number" unique true minlen 1 maxlen 2>>>>>`;
   const valid = Hson.canonical`<age 0 code "ID-7" glyph "😀" values [0, -0]>`;
   assert.equal((schema.certify(Hson.data.fromSource(valid))).toHson(), valid);
   const dynamic = hsonTransform.fromJson({ age: 12, code: "ID-7", glyph: "😀", values: [1, 2] }).toHson().serialize();
@@ -453,16 +459,16 @@ check("refinement evaluation covers numeric, Unicode, literals, length, and uniq
     Hson.canonical`<age 1 code "ID-7" glyph "😀" values []>`,
     Hson.canonical`<age 1 code "ID-7" glyph "😀" values [1, 1]>`,
   ]) assert.throws(() => schema.certify(Hson.data.fromSource(invalid)));
-  const bounds: HsonSchema = Hson.schema`<type "data" content <n <number <over 0 max 2>>>>`;
+  const bounds: HsonSchema = Hson.schema`<type "data" root <object <n <number <over 0 max 2>>>>>`;
   assert.doesNotThrow(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 1>`)));
   assert.doesNotThrow(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 2>`)));
   assert.throws(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 0>`)));
   assert.throws(() => bounds.certify(Hson.data.fromSource(Hson.canonical`<n 3>`)));
-  const empty: HsonSchema = Hson.schema`<type "data" content <s <string <len 0 prefix "" suffix "" contains "">> xs <array <content "number" len 0 unique true>>>>`;
+  const empty: HsonSchema = Hson.schema`<type "data" root <object <s <string <len 0 prefix "" suffix "" contains "">> xs <array <content "number" len 0 unique true>>>>>`;
   assert.doesNotThrow(() => empty.certify(Hson.data.fromSource(Hson.canonical`<s "" xs []>`)));
 });
 check("alphabet composes conjunctively with length and literal string refinements", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <code <string <len 4 alphabet "ID-7" prefix "ID" suffix "7" contains "-">>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <code <string <len 4 alphabet "ID-7" prefix "ID" suffix "7" contains "-">>>>>`;
   assert.doesNotThrow(() => schema.certify(Hson.data.fromSource(Hson.canonical`<code "ID-7">`)));
   for (const invalid of [
     Hson.canonical`<code "ID7">`,
@@ -472,17 +478,17 @@ check("alphabet composes conjunctively with length and literal string refinement
     Hson.canonical`<code "ID77">`,
     Hson.canonical`<code "ID_7">`,
   ]) assert.throws(() => schema.certify(Hson.data.fromSource(invalid)));
-  const ranged: HsonSchema = Hson.schema`<type "data" content <code <string <minlen 2 maxlen 4 alphabet "ab">>>>`;
+  const ranged: HsonSchema = Hson.schema`<type "data" root <object <code <string <minlen 2 maxlen 4 alphabet "ab">>>>>`;
   for (const valid of [Hson.canonical`<code "aa">`, Hson.canonical`<code "abab">`]) assert.doesNotThrow(() => ranged.certify(Hson.data.fromSource(valid)));
   for (const invalid of [Hson.canonical`<code "a">`, Hson.canonical`<code "ababa">`, Hson.canonical`<code "abc">`]) assert.throws(() => ranged.certify(Hson.data.fromSource(invalid)));
-  const empty: HsonSchema = Hson.schema`<type "data" content <onlyEmpty <string <alphabet "">>>>`;
+  const empty: HsonSchema = Hson.schema`<type "data" root <object <onlyEmpty <string <alphabet "">>>>>`;
   assert.doesNotThrow(() => empty.certify(Hson.data.fromSource(Hson.canonical`<onlyEmpty "">`)));
   assert.throws(() => empty.certify(Hson.data.fromSource(Hson.canonical`<onlyEmpty "a">`)));
-  const impossible: HsonSchema = Hson.schema`<type "data" content <value <string <len 1 alphabet "">>>>`;
+  const impossible: HsonSchema = Hson.schema`<type "data" root <object <value <string <len 1 alphabet "">>>>>`;
   assert.throws(() => impossible.certify(Hson.data.fromSource(Hson.canonical`<value "">`)));
 });
 check("alphabet follows string iteration for Unicode, controls, repetition, and case", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <value <string <alphabet "aé😀e\u0301\n\ud800">>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <value <string <alphabet "aé😀e\u0301\n\ud800">>>>>`;
   for (const valid of ["", "aaa", "é", "😀", "e\u0301", "\n", "\ud800"]) {
     const candidate = hsonTransform.fromJson({ value: valid }).toHson().serialize();
     assert.doesNotThrow(() => schema.certify(Hson.data.fromSource(candidate)), JSON.stringify(valid));
@@ -493,7 +499,7 @@ check("alphabet follows string iteration for Unicode, controls, repetition, and 
   }
 });
 check("generic length plus alphabet expresses persisted QUID validation", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <quid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <quid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>>>>`;
   for (const value of ["000000000", "012345678", "abcdefghj", "zzzzzzzzz"]) {
     assert.doesNotThrow(() => schema.certify(Hson.data.fromSource(hsonTransform.fromJson({ quid: value }).toHson().serialize())), value);
   }
@@ -516,7 +522,7 @@ check("alphabet canonical Hson round trips repertoire order and Unicode units", 
   if (reordered.ok) assert.notDeepEqual(reordered.value.graph, result.value.graph);
 });
 check("runtime validation returns unchanged canonical identity", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <name "string" score "number">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" root <object <name "string" score "number">>>`;
   const candidate = Hson.canonical`<name "Ada" score 37>`;
   assert.equal((schema.certify(Hson.data.fromSource(candidate))).toHson(), candidate);
   assert.throws(() => schema.certify(Hson.data.fromSource(Hson.canonical`<name "Ada" score "37">`)));

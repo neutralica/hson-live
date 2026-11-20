@@ -34,7 +34,7 @@ check("authored aliases and keyword refs compile through safe generated names", 
     // TypeScript keyword to remain an ordinary name in the Schema language.
     const definition = name === "as" || name === "infer" ? name : `'${name}'`;
     const generated = generate_hson_schema_evidence("KeywordSchema",
-      `<type "data" defs <${definition} "string"> content <ref "${name}">>`, `keyword#${name}`);
+      `<type "data" defs <${definition} "string"> root <ref "${name}">>`, `keyword#${name}`);
     assert.equal(generated.proofNodeCount, 0);
     assert.doesNotMatch(generated.declaration, /__Value|Proof\d|MutationCandidate/);
     if (ordinaryNames.includes(name)) assert.ok(generated.declaration.includes(`export type ${name} = string;`));

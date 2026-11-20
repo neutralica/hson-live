@@ -111,7 +111,7 @@ check("empty map admits a document and data atomically with top Schemas", () => 
 });
 
 check("existing handles survive unrelated admission and explicit Schema governs", () => {
-  const schema = Hson.schema`<type "data" content <count "number">>`;
+  const schema = Hson.schema`<type "data" root <object <count "number">>>`;
   const map = hsonLiveMap.fromLibraries({ state: { json: { count: 2 } } });
   const state = map.data.must("state");
   const root = state.at([]);
