@@ -31,7 +31,8 @@ export function verify_canonical_schema_graph(input: unknown): CanonicalGraphVer
   const fail = (path: readonly (string | number)[], message: string): void => {
     issues.push(Object.freeze({ code: "INVALID_GRAPH", path: Object.freeze([...path]), message }));
   };
-  if (!preflight_data(input, [], fail)) return invalid(issues);
+  const freezeOrder = preflight_data(input, fail);
+  if (issues.length > 0) return invalid(issues);
   if (!is_record(input)) {
     fail([], "Canonical Schema graph must be an object.");
     return invalid(issues);
@@ -61,11 +62,13 @@ export function verify_canonical_schema_graph(input: unknown): CanonicalGraphVer
 
   nodes.forEach((node, index) => verify_node(node, index, nodes, fail));
   verify_metadata(input, nodes, fail);
+  // Cross-node checks rely on well-shaped edges and property tables.
+  if (issues.length > 0) return invalid(issues);
   verify_capability_domains(capabilities, nodes, fail);
   verify_reachability_and_order(capabilities, nodes, fail);
   verify_productivity(nodes, fail);
   if (issues.length > 0) return invalid(issues);
-  deep_freeze(input);
+  for (const container of freezeOrder) Object.freeze(container);
   return Object.freeze({ ok: true, graph: input as unknown as VerifiedCanonicalSchemaGraph });
 }
 
@@ -81,7 +84,7 @@ function verify_node(
     return;
   }
   const node = input;
-  const ref = (value: unknown, field: string): void => check_ref(value, [...path, field], nodes.length, fail);
+  const ref = (value: unknown, field: string) => check_ref(value, [...path, field], nodes.length, fail);
   const refs = (value: unknown, field: string): void => {
     if (!Array.isArray(value)) { fail([...path, field], `${field} must be an array.`); return; }
     value.forEach((item, itemIndex) => check_ref(item, [...path, field, itemIndex], nodes.length, fail));
@@ -98,9 +101,13 @@ function verify_node(
       });
       break;
     case "projected-object":
-      exact_fields(node, ["kind", "exact", "properties"], path, fail);
+      exact_fields(node, ["kind", "exact", "properties", "additional"], path, fail);
       if (typeof node.exact !== "boolean") fail([...path, "exact"], "Object exact state must be boolean.");
       verify_pairs(node.properties, [...path, "properties"], nodes.length, fail);
+      if (Object.hasOwn(node, "additional")) {
+        if (node.exact === true) fail([...path, "additional"], "Exact objects cannot declare an additional value Schema.");
+        else ref(node.additional, "additional");
+      }
       break;
     case "projected-array":
       exact_fields(node, ["kind", "item"], path, fail);
@@ -123,8 +130,9 @@ function verify_node(
       exact_fields(node, ["kind", "target"], path, fail); ref(node.target, "target"); break;
     case "projected-refinement":
       exact_fields(node, ["kind", "base", "rule", "label"], path, fail);
-      ref(node.base, "base"); verify_refinement(node.rule, [...path, "rule"], fail);
-      if (is_record(node.rule) && node.rule.kind === "array-unique-by-cases"
+      const baseValid = ref(node.base, "base");
+      verify_refinement(node.rule, [...path, "rule"], fail);
+      if (baseValid && is_record(node.rule) && node.rule.kind === "array-unique-by-cases"
         && !resolves_to_projected_array(node.base, nodes)) {
         fail([...path, "base"], "Configured unique base must resolve to a projected array Schema.");
       }
@@ -156,7 +164,7 @@ function verify_node(
 
 function resolves_to_projected_array(value: unknown, nodes: readonly unknown[]): boolean {
   const seen = new Set<number>();
-  while (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < nodes.length && !seen.has(value)) {
+  while (is_node_ref(value, nodes.length) && !seen.has(value)) {
     seen.add(value);
     const node = nodes[value];
     if (!is_record(node)) return false;
@@ -213,7 +221,7 @@ function verify_refinement(value: unknown, path: readonly (string | number)[], f
   } else if (rule.kind === "string-pattern") {
     exact_fields(rule, ["kind", "dialect", "mode", "pattern"], path, fail);
     if (rule.dialect !== "literal-string") fail([...path, "dialect"], "Unsupported deterministic pattern dialect.");
-    if (!["full", "prefix", "suffix", "contains"].includes(String(rule.mode))) fail([...path, "mode"], "Unsupported deterministic pattern mode.");
+    if (typeof rule.mode !== "string" || !["full", "prefix", "suffix", "contains"].includes(rule.mode)) fail([...path, "mode"], "Unsupported deterministic pattern mode.");
     if (typeof rule.pattern !== "string") fail([...path, "pattern"], "Pattern must be a string.");
   } else if (rule.kind === "string-repertoire") {
     exact_fields(rule, ["kind", "repertoire"], path, fail);
@@ -292,14 +300,18 @@ function verify_metadata(graph: UnknownRecord, nodes: readonly unknown[], fail: 
       else {
         const labeled = new Set<number>();
         value.labels.forEach((pair, index) => {
-        if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[1] !== "string") fail(["semanticDiagnosticMetadata", "labels", index], "Label must be a [ref, string] pair.");
-        else {
-          check_ref(pair[0], ["semanticDiagnosticMetadata", "labels", index, 0], nodes.length, fail);
-          const target = nodes[pair[0] as number];
-          if (is_record(target) && (typeof target.kind !== "string" || !PROJECTED_KINDS.has(target.kind))) fail(["semanticDiagnosticMetadata", "labels", index, 0], "Semantic diagnostic label must target a projected node.");
-          if (typeof pair[0] === "number" && labeled.has(pair[0])) fail(["semanticDiagnosticMetadata", "labels", index, 0], "Semantic diagnostic labels cannot duplicate a node reference.");
-          if (typeof pair[0] === "number") labeled.add(pair[0]);
-        }
+          const path = ["semanticDiagnosticMetadata", "labels", index];
+          if (!Array.isArray(pair) || pair.length !== 2 || typeof pair[1] !== "string") {
+            fail(path, "Label must be a [ref, string] pair.");
+            return;
+          }
+          const ref: unknown = pair[0];
+          const refPath = [...path, 0];
+          if (!check_ref(ref, refPath, nodes.length, fail)) return;
+          const target = nodes[ref];
+          if (is_record(target) && (typeof target.kind !== "string" || !PROJECTED_KINDS.has(target.kind))) fail(refPath, "Semantic diagnostic label must target a projected node.");
+          if (labeled.has(ref)) fail(refPath, "Semantic diagnostic labels cannot duplicate a node reference.");
+          labeled.add(ref);
         });
       }
     }
@@ -325,16 +337,18 @@ function verify_capability_domains(capabilities: UnknownRecord, nodes: readonly 
   };
   for (const key of CANONICAL_CAPABILITY_KEYS) {
     const ref = capabilities[key];
-    const target = nodes[ref as number];
-    if (!Number.isInteger(ref) || !is_record(target)) continue;
+    if (!is_node_ref(ref, nodes.length)) continue;
+    const target = nodes[ref];
+    if (!is_record(target)) continue;
     const kind = target.kind;
     if (typeof kind !== "string" || !expected[key](kind)) fail(["capabilities", key], `${key} points to an incompatible node kind.`);
   }
   nodes.forEach((raw, index) => {
     if (!is_record(raw) || typeof raw.kind !== "string") return;
     const check = (ref: unknown, accepts: Set<string> | readonly string[], field: string): void => {
-      const target = nodes[ref as number];
-      if (!Number.isInteger(ref) || !is_record(target)) return;
+      if (!is_node_ref(ref, nodes.length)) return;
+      const target = nodes[ref];
+      if (!is_record(target)) return;
       const kind = target.kind;
       const ok = accepts instanceof Set ? typeof kind === "string" && accepts.has(kind) : typeof kind === "string" && accepts.includes(kind);
       if (!ok) fail(["nodes", index, field], `${raw.kind}.${field} points to an incompatible node kind.`);
@@ -356,7 +370,7 @@ function verify_reachability_and_order(capabilities: UnknownRecord, nodes: reado
   const pending = CANONICAL_CAPABILITY_KEYS.map(key => capabilities[key]).reverse();
   while (pending.length) {
     const ref = pending.pop();
-    if (typeof ref !== "number" || !Number.isInteger(ref) || ref < 0 || ref >= nodes.length || seen.has(ref)) continue;
+    if (!is_node_ref(ref, nodes.length) || seen.has(ref)) continue;
     seen.add(ref);
     discovered.push(ref);
     const node = nodes[ref];
@@ -387,7 +401,13 @@ function verify_productivity(nodes: readonly unknown[], fail: (path: readonly (s
 function outgoing(node: UnknownRecord): readonly (readonly [string, unknown])[] {
   if (["projected-optional", "projected-nullable", "projected-refinement"].includes(String(node.kind))) return [["base", node.base]];
   if (node.kind === "projected-ref") return [["target", node.target]];
-  if (node.kind === "projected-object") return Array.isArray(node.properties) ? node.properties.map((pair) => ["properties", Array.isArray(pair) ? pair[1] : undefined] as const) : [];
+  if (node.kind === "projected-object") {
+    const edges: Array<readonly [string, unknown]> = Array.isArray(node.properties)
+      ? node.properties.map((pair) => ["properties", Array.isArray(pair) ? pair[1] : undefined])
+      : [];
+    if (Object.hasOwn(node, "additional")) edges.push(["additional", node.additional]);
+    return edges;
+  }
   if (node.kind === "projected-array") return node.item === undefined ? [] : [["item", node.item]];
   if (node.kind === "projected-tuple" || node.kind === "document-sequence") return Array.isArray(node.items) ? node.items.map((ref) => ["items", ref] as const) : [];
   if (node.kind === "projected-record") return [["value", node.value]];
@@ -418,8 +438,14 @@ function exact_fields(value: UnknownRecord, allowed: readonly string[], path: re
   for (const key of Object.keys(value)) if (!allowedSet.has(key)) fail([...path, key], `Unknown field ${JSON.stringify(key)}.`);
 }
 
-function check_ref(value: unknown, path: readonly (string | number)[], size: number, fail: (path: readonly (string | number)[], message: string) => void): void {
-  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) >= size) fail(path, "Node reference is out of range.");
+function is_node_ref(value: unknown, size: number): value is CanonicalSchemaNodeRef {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < size;
+}
+
+function check_ref(value: unknown, path: readonly (string | number)[], size: number, fail: (path: readonly (string | number)[], message: string) => void): value is CanonicalSchemaNodeRef {
+  if (is_node_ref(value, size)) return true;
+  fail(path, "Node reference is out of range.");
+  return false;
 }
 
 function is_record(value: unknown): value is UnknownRecord {
@@ -432,50 +458,91 @@ function invalid(issues: CanonicalGraphVerificationIssue[]): CanonicalGraphVerif
   return Object.freeze({ ok: false, issues: Object.freeze(issues) });
 }
 
-function deep_freeze(value: unknown, seen = new Set<object>()): void {
-  if (typeof value !== "object" || value === null || seen.has(value)) return;
-  seen.add(value);
-  for (const child of Object.values(value)) deep_freeze(child, seen);
-  Object.freeze(value);
+/** Inspect untrusted data by descriptor and collect admitted containers in freeze order. */
+function preflight_data(
+  input: unknown,
+  fail: (path: readonly (string | number)[], message: string) => void,
+): readonly object[] {
+  const path: (string | number)[] = [];
+  const active = new WeakSet<object>();
+  const seen = new WeakSet<object>();
+  const freezeOrder: object[] = [];
+  const stack: { value: object; arrayLength: number | undefined; fields: [string, PropertyDescriptor][]; next: number }[] = [];
+
+  const enter = (value: unknown): boolean => {
+    if (value === undefined) {
+      fail(path, "Canonical Schema graph cannot contain explicit undefined values.");
+      return false;
+    }
+    if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+      fail(path, "Canonical Schema graph contains an executable or unsupported value.");
+      return false;
+    }
+    // Factory-owned ordered objects and their descendants are already immutable.
+    if (typeof value !== "object" || value === null || is_ordered_projected_object(value)) return false;
+    if (active.has(value)) {
+      fail(path, "Canonical Schema object representation must be acyclic; recursion uses numeric references.");
+      return false;
+    }
+    if (seen.has(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    const isArray = Array.isArray(value);
+    if (isArray && prototype !== Array.prototype) {
+      fail(path, "Canonical Schema arrays must use Array.prototype.");
+      return false;
+    }
+    if (!isArray && prototype !== Object.prototype && prototype !== null) {
+      fail(path, "Canonical Schema graph objects must be plain records.");
+      return false;
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Object.getOwnPropertySymbols(descriptors).length > 0) {
+      fail(path, "Canonical Schema graph cannot contain symbol fields.");
+      return false;
+    }
+    const fields = Object.entries(descriptors);
+    const arrayLength: number | undefined = isArray ? descriptors.length.value : undefined;
+    if (arrayLength !== undefined) {
+      // Stop at the first hole so a sparse array's declared length cannot dictate the work.
+      let firstHole = 0;
+      while (firstHole < arrayLength && Object.hasOwn(descriptors, firstHole)) firstHole++;
+      if (firstHole < arrayLength) fail([...path, firstHole], "Canonical Schema arrays must be dense.");
+      for (const [key] of fields) {
+        if (key !== "length" && array_index(key, arrayLength) === undefined) fail([...path, key], "Canonical Schema arrays cannot contain extra properties.");
+      }
+    }
+    active.add(value);
+    seen.add(value);
+    stack.push({ value, arrayLength, fields, next: 0 });
+    return true;
+  };
+
+  enter(input);
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1];
+    const field = frame.fields[frame.next++];
+    if (field === undefined) {
+      stack.pop();
+      active.delete(frame.value);
+      freezeOrder.push(frame.value);
+      path.pop();
+      continue;
+    }
+    const [key, descriptor] = field;
+    if (frame.arrayLength !== undefined && key === "length") continue;
+    if (!Object.hasOwn(descriptor, "value")) {
+      fail([...path, key], "Canonical Schema fields must be data properties; accessors are executable.");
+      continue;
+    }
+    if (!descriptor.enumerable) fail([...path, key], "Canonical Schema fields must be enumerable data properties.");
+    const index = frame.arrayLength === undefined ? undefined : array_index(key, frame.arrayLength);
+    path.push(index ?? key);
+    if (!enter(descriptor.value)) path.pop();
+  }
+  return freezeOrder;
 }
 
-function preflight_data(
-  value: unknown,
-  path: readonly (string | number)[],
-  fail: (path: readonly (string | number)[], message: string) => void,
-  active = new Set<object>(),
-  seen = new Set<object>(),
-): boolean {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
-  if (value === undefined) { fail(path, "Canonical Schema graph cannot contain explicit undefined values."); return false; }
-  if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
-    fail(path, "Canonical Schema graph contains an executable or unsupported value."); return false;
-  }
-  if (typeof value !== "object") return true;
-  if (is_ordered_projected_object(value)) {
-    try { assert_ordered_projected_value(value); return true; } catch { fail(path, "Canonical literal is malformed."); return false; }
-  }
-  if (active.has(value)) { fail(path, "Canonical Schema object representation must be acyclic; recursion uses numeric references."); return false; }
-  if (seen.has(value)) return true;
-  const prototype = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
-    fail(path, "Canonical Schema graph objects must be plain records."); return false;
-  }
-  const descriptors = Object.getOwnPropertyDescriptors(value);
-  const symbols = Object.getOwnPropertySymbols(value);
-  if (symbols.length > 0) { fail(path, "Canonical Schema graph cannot contain symbol fields."); return false; }
-  active.add(value); seen.add(value);
-  let ok = true;
-  if (Array.isArray(value)) {
-    for (let index = 0; index < value.length; index += 1) if (!Object.hasOwn(value, index)) { fail([...path, index], "Canonical Schema arrays must be dense."); ok = false; }
-    for (const key of Object.keys(descriptors)) if (key !== "length" && !/^\d+$/.test(key)) { fail([...path, key], "Canonical Schema arrays cannot contain extra properties."); ok = false; }
-  }
-  for (const [key, descriptor] of Object.entries(descriptors)) {
-    if (Array.isArray(value) && key === "length") continue;
-    if (!("value" in descriptor)) { fail([...path, key], "Canonical Schema fields must be data properties; accessors are executable."); ok = false; continue; }
-    if (!descriptor.enumerable) { fail([...path, key], "Canonical Schema fields must be enumerable data properties."); ok = false; }
-    if (!preflight_data(descriptor.value, [...path, Array.isArray(value) && /^\d+$/.test(key) ? Number(key) : key], fail, active, seen)) ok = false;
-  }
-  active.delete(value);
-  return ok;
+function array_index(key: string, length: number): number | undefined {
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 0 && index < length && String(index) === key ? index : undefined;
 }

@@ -383,6 +383,7 @@
     "test:hson-schema-compiler-project": "npm run build && node --import=tsx tests/hson-schema-compiler-project.acceptance.mts",
     "test:hson-schema-analyzer": "npm run build && node --import=tsx tests/hson-schema-analyzer.acceptance.mts",
     "test:canonical-schema-verifier": "node --import=tsx tests/canonical-schema-verifier.acceptance.mts",
+    "test:livemap-canonical-wildcard": "node --import=tsx tests/livemap-canonical-wildcard.acceptance.mts",
     "test:canonical-schema-refinement": "node --import=tsx tests/canonical-schema-refinement.acceptance.mts",
     "test:canonical-schema-resource-semantics": "node --import=tsx tests/canonical-schema-resource-semantics.acceptance.mts",
     "test:canonical-schema-static-authoring": "node --import=tsx tests/canonical-schema-static-authoring.acceptance.mts",

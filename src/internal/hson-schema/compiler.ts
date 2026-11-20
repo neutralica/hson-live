@@ -1044,7 +1044,11 @@ function with_issue_range(value: HsonSchemaIssue, root: HsonNode, provenance: Hs
 function count_recursive_sccs(graph: VerifiedCanonicalSchemaGraph): number {
   const edges = graph.nodes.map((node): readonly number[] => {
     switch (node.kind) {
-      case "projected-object": return node.properties.map((pair) => pair[1]);
+      case "projected-object": {
+        const children = node.properties.map((pair) => pair[1]);
+        if (node.additional !== undefined) children.push(node.additional);
+        return children;
+      }
       case "projected-array": return node.item === undefined ? [] : [node.item];
       case "projected-tuple": case "document-sequence": return node.items;
       case "projected-record": return [node.value];

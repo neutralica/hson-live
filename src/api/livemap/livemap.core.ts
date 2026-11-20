@@ -4722,7 +4722,7 @@ function schema_validation_dependency(schema: HsonSchema, path: LivePath): LiveP
     if (node?.kind === "projected-ref") { ref = node.target; continue; }
     if (node?.kind === "projected-optional" || node?.kind === "projected-nullable") { ref = node.base; continue; }
     const child = node?.kind === "projected-object" && typeof part === "string"
-      ? node.properties.find(([name]) => name === part)?.[1]
+      ? node.properties.find(([name]) => name === part)?.[1] ?? node.additional
       : node?.kind === "projected-record" && typeof part === "string" ? node.value
       : node?.kind === "projected-array" && typeof part === "number" ? node.item
       : node?.kind === "projected-tuple" && typeof part === "number" ? node.items[part] : undefined;

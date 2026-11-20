@@ -22,9 +22,14 @@ export function encode_canonical_schema_graph_hson(graph: VerifiedCanonicalSchem
   const machine = {
     format: graph.format,
     capabilities: graph.capabilities,
-    nodes: graph.nodes.map((node) => node.kind === "projected-literal"
-      ? { ...node, values: node.values.map(literal_to_wire) }
-      : node),
+    nodes: graph.nodes.map((node) => {
+      if (node.kind === "projected-literal") return { ...node, values: node.values.map(literal_to_wire) };
+      if (node.kind === "projected-object" && node.additional !== undefined) {
+        // Place the new edge after the named members regardless of input field order.
+        return { kind: node.kind, exact: node.exact, properties: node.properties, additional: node.additional };
+      }
+      return node;
+    }),
     ...(graph.semanticDiagnosticMetadata === undefined ? {} : { semanticDiagnosticMetadata: graph.semanticDiagnosticMetadata }),
     ...(graph.documentationMetadata === undefined ? {} : { documentationMetadata: graph.documentationMetadata }),
   };

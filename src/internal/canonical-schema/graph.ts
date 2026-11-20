@@ -74,7 +74,12 @@ type ProjectedPrimitiveNode = Readonly<{
 export type CanonicalProjectedSchemaNode =
   | ProjectedPrimitiveNode
   | Readonly<{ kind: "projected-literal"; values: readonly OrderedProjectedValue[] }>
-  | Readonly<{ kind: "projected-object"; exact: boolean; properties: readonly (readonly [string, CanonicalSchemaNodeRef])[] }>
+  | Readonly<{
+    kind: "projected-object";
+    exact: boolean;
+    properties: readonly (readonly [string, CanonicalSchemaNodeRef])[];
+    additional?: CanonicalSchemaNodeRef;
+  }>
   | Readonly<{ kind: "projected-array"; item?: CanonicalSchemaNodeRef }>
   | Readonly<{ kind: "projected-tuple"; items: readonly CanonicalSchemaNodeRef[] }>
   | Readonly<{ kind: "projected-record"; value: CanonicalSchemaNodeRef }>

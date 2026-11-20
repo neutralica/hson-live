@@ -106,9 +106,9 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   }
   if (node.kind === "projected-any") return valid();
   if (node.kind === "projected-null") return value === null ? valid() : mismatch(graph, ref, path, projected_type(value));
+  if (node.kind === "projected-literal" && node.values.some((literal) => ordered_projected_value_equal(literal, value))) return valid();
   if (value === null) return mismatch(graph, ref, path, "null");
   if (node.kind === "projected-literal") {
-    if (node.values.some((literal) => ordered_projected_value_equal(literal, value))) return valid();
     if (value === state.partialObject && node.values.some(is_ordered_projected_object)) return valid();
     return invalid([make_issue("INVALID_LITERAL", path, ref, projected_label(graph, ref), emit_ordered_json(value), { kind: "literal-mismatch" })]);
   }
@@ -153,10 +153,17 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   }
   if (node.kind === "projected-object") {
     if (!is_ordered_projected_object(value)) return mismatch(graph, ref, path, projected_type(value));
-    const props = new Map(node.properties); const values = new Map(value.entries);
+    const values = new Map(value.entries);
     const properties = value === state.partialObject ? node.properties.filter(([key]) => values.has(key)) : node.properties;
     const results = properties.map(([key, child]) => projected(graph, child, values.has(key) ? values.get(key) as OrderedProjectedValue : MISSING, [...path, key], state, depth + 1));
-    if (node.exact) for (const [key] of value.entries) if (!props.has(key)) results.push(invalid([make_issue("UNKNOWN_KEY", [...path, key], ref, undefined, undefined, { kind: "unknown-key", detail: key })]));
+    if (node.exact || node.additional !== undefined) {
+      const declared = new Set(node.properties.map(([key]) => key));
+      for (const [key, child] of value.entries) {
+        if (declared.has(key)) continue;
+        if (node.additional !== undefined) results.push(projected(graph, node.additional, child, [...path, key], state, depth + 1));
+        else results.push(invalid([make_issue("UNKNOWN_KEY", [...path, key], ref, undefined, undefined, { kind: "unknown-key", detail: key })]));
+      }
+    }
     return merge(results, state);
   }
   if (node.kind === "projected-record") {
