@@ -1,7 +1,8 @@
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { CompiledHsonSchema } from "./compiler.js";
 import { parse_hson_with_provenance } from "../hson-source-provenance/parse-hson-with-provenance.js";
-import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import { canonical_hson_data_from_node } from "../../core/hson-data-canonical-codec.js";
+import { assert_canonical_hson_data_value } from "../../core/projected-value-graph.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
 import { resolve_document_schema_issue_source } from "../document-schema-source-lowering/document-schema-source-lowering.js";
@@ -52,9 +53,19 @@ export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, c
     // diagnostic anchor instead of applying realized paths to unexpanded source.
     const parsed = realized === undefined && "source" in candidate
       ? parse_hson_with_provenance(candidate.source, { allowTopLevelDocumentText: family === "document" }) : undefined;
-    const result = realized !== undefined ? evaluate_canonical_document_schema(compiled.graph, realized)
-      : document && parsed !== undefined ? evaluate_canonical_document_schema(compiled.graph, parsed.value)
-      : evaluate_canonical_projected_schema(compiled.graph, "json" in candidate ? admit_projected_value(candidate.json) : "data" in candidate ? candidate.data : projected_value_from_hson_node(parsed!.value));
+    const documentRoot = realized ?? (document ? parsed?.value : undefined);
+    let result;
+    if (documentRoot !== undefined) {
+      result = evaluate_canonical_document_schema(compiled.graph, documentRoot);
+    } else if ("json" in candidate || "data" in candidate) {
+      const value = "json" in candidate ? admit_projected_value(candidate.json) : candidate.data;
+      assert_canonical_hson_data_value(value);
+      result = evaluate_canonical_projected_schema(compiled.graph, value);
+    } else if (parsed !== undefined) {
+      result = evaluate_canonical_projected_schema(compiled.graph, canonical_hson_data_from_node(parsed.value));
+    } else {
+      return { kind: "unknown" };
+    }
     if (result.ok) return { kind: "valid" };
     const issue = result.issues[0];
     if (issue === undefined || issue.evidence.kind === "resource-limit" || issue.code === "INVALID_SCHEMA") return { kind: "unknown" };

@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
-import { Hson, type HsonSchema, type HsonSchemaData } from "../../src/hson-authoring.ts";
+import { ANY_DATA, Hson, type HsonSchema, type HsonSchemaData } from "../../src/hson-authoring.ts";
+import { hson_data_from_value } from "../../src/api/data/hson-data.ts";
 import { HsonSchemaError } from "../../src/api/livemap/livemap.error.ts";
 import { hsonTransform } from "../../src/api/transform/index.ts";
 import { HsonSchema as SchemaHandle, compiled_hson_schema_of, hson_schema_digest } from "../../src/api/schema/hson-schema.ts";
 import { admit_projected_value } from "../../src/core/projected-value-admission.ts";
+import { HSON_MAX_NESTING } from "../../src/core/constants.ts";
+import { parse_ordered_json_text } from "../../src/core/exact-data-codec.ts";
+import { ordered_projected_array, type OrderedProjectedValue } from "../../src/core/ordered-projected-value.ts";
 import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../../src/internal/canonical-schema/evaluate.ts";
 import { CANONICAL_SCHEMA_FORMAT, type CanonicalSchemaNode } from "../../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../../src/internal/canonical-schema/verify.ts";
@@ -34,6 +38,93 @@ export function check_reference_transport(received?: readonly HsonSchemaData[]):
     if (received) assert.equal(schema.toHson(), source);
     return schema.toHson();
   });
+}
+
+function static_data_routes(source: string, jsonSource: string) {
+  const json = JSON.parse(jsonSource);
+  return [
+    { candidate: { source, family: "data" }, admit: () => Hson.data.parse(source) },
+    { candidate: { json }, admit: () => Hson.data.from(json) },
+    { candidate: { data: parse_ordered_json_text(jsonSource) }, admit: () => Hson.data.fromSource(jsonSource) },
+  ] as const;
+}
+
+function check_static_data_qualification(): void {
+  const broad = compiled_hson_schema_of(ANY_DATA);
+  const named = Hson.schema`<type "data" root <object <__proto__ "boolean" constructor "null"
+    toString <string <minlen 2>> '' <array <object <zero <exact -0>>>>>>>`;
+  const source = String.raw`<__proto__ true constructor null '\u0074oString' "ok" '' «<zero -0>»>`;
+  const jsonSource = String.raw`{"__proto__":true,"constructor":null,"\u0074oString":"ok","":[{"zero":-0}]}`;
+  for (const [hson, json, code, path, token] of [
+    [source, jsonSource, undefined, undefined, undefined],
+    [source.replace("-0", "0"), jsonSource.replace("-0", "0"), "INVALID_LITERAL", ["", 0, "zero"], "0"],
+    [source.replace('"ok"', '"x"'), jsonSource.replace('"ok"', '"x"'), "INVALID_CONSTRAINT", ["toString"], '"x"'],
+  ] as const) {
+    for (const { candidate, admit } of static_data_routes(hson, json)) {
+      const value = admit();
+      assert.ok(ANY_DATA.certify(value).equals(value));
+      assert.equal(evaluate_static_schema_candidate(broad, candidate).kind, "valid");
+      const result = evaluate_static_schema_candidate(compiled_hson_schema_of(named), candidate);
+      if (code === undefined) {
+        assert.ok(named.certify(value).equals(value));
+        assert.equal(result.kind, "valid");
+        continue;
+      }
+      assert.throws(() => named.certify(value), error => {
+        assert.ok(error instanceof HsonSchemaError);
+        assert.equal(error.issues[0]?.code, code);
+        assert.deepEqual(error.issues[0]?.path, path);
+        return true;
+      });
+      assert.equal(result.kind, "invalid");
+      assert.equal(result.issue.code, code);
+      assert.deepEqual(result.issue.path, path);
+      if ("source" in candidate) {
+        const start = hson.lastIndexOf(token);
+        assert.deepEqual(result.range, { start, end: start + token.length });
+      } else assert.equal(result.range, undefined);
+    }
+  }
+
+  const closed = Hson.schema`<type "data" root <object <known "number">>>`;
+  for (const { candidate, admit } of static_data_routes("<known 1 '10' -0 '2' 0>", '{"known":1,"10":-0,"2":0}')) {
+    const value = admit();
+    const key = "json" in candidate ? "2" : "10";
+    assert.deepEqual(value.entries()?.map(([name]) => name), "json" in candidate ? ["2", "10", "known"] : ["known", "10", "2"]);
+    assert.equal(evaluate_static_schema_candidate(broad, candidate).kind, "valid");
+    assert.throws(() => closed.certify(value), error => error instanceof HsonSchemaError
+      && error.issues[0]?.code === "UNKNOWN_KEY" && error.issues[0]?.path[0] === key);
+    const result = evaluate_static_schema_candidate(compiled_hson_schema_of(closed), candidate);
+    assert.equal(result.kind, "invalid");
+    assert.equal(result.issue.code, "UNKNOWN_KEY");
+    assert.deepEqual(result.issue.path, [key]);
+    if ("source" in candidate) {
+      assert.ok(result.range);
+      assert.equal(candidate.source.slice(result.range.start, result.range.end), "'10'");
+    } else assert.equal(result.range, undefined);
+  }
+
+  for (const source of [String.raw`<toString 1 '\u0074oString' 2>`, '<value title="attribute" 1>', "<value 1", "<p/>"]) {
+    assert.throws(() => Hson.data.parse(source));
+    assert.equal(evaluate_static_schema_candidate(broad, { source, family: "data" }).kind, "unknown");
+  }
+  let reads = 0;
+  const accessor = Object.defineProperty([null], 0, { get() { reads++; return null; } });
+  for (const json of [accessor, [undefined], Array(1), { nested: { invalid: Infinity } }, Object.create({ inherited: true })]) {
+    assert.throws(() => Reflect.apply(Hson.data.from, Hson.data, [json]));
+    assert.equal(evaluate_static_schema_candidate(broad, { json }).kind, "unknown");
+  }
+  assert.throws(() => hson_data_from_value(accessor), /must be owned/);
+  assert.equal(evaluate_static_schema_candidate(broad, { data: accessor }).kind, "unknown");
+  assert.equal(reads, 0);
+
+  let deep: OrderedProjectedValue = -0;
+  for (let depth = 0; depth < HSON_MAX_NESTING - 1; depth++) deep = ordered_projected_array([deep]);
+  assert.ok(hson_data_from_value(deep));
+  assert.equal(evaluate_static_schema_candidate(broad, { data: deep }).kind, "valid");
+  const tooDeep = ordered_projected_array([deep]);
+  assert.throws(() => hson_data_from_value(tooDeep), /nesting depth/);
+  assert.equal(evaluate_static_schema_candidate(broad, { data: tooDeep }).kind, "unknown");
 }
 
 export function run_schema_diagnostic_cases(): void {
@@ -76,6 +167,9 @@ export function run_schema_diagnostic_cases(): void {
       received: "exhausted", message: "Schema validation failed at root." }]);
     return true;
   });
+  for (const { candidate } of static_data_routes('"x"', '"x"')) {
+    assert.deepEqual(evaluate_static_schema_candidate(compiled_hson_schema_of(nestedUnion), candidate), { kind: "unknown" });
+  }
   const ordinary = Hson.schema`<type "data" root <union ["string", "number"]>>`;
   assert.throws(() => ordinary.certify(false), error => {
     assert.ok(error instanceof HsonSchemaError);
@@ -330,4 +424,5 @@ export function run_schema_diagnostic_cases(): void {
   assert.equal(JSON.stringify(parts), before.parts); assert.equal(candidateDoc.source, before.shell);
   const realized = hsonLiveMap.fromLibraries({ page: { document: shell, schema: page }, bits: { parts } });
   assert.match(realized.doc.must("page").render(), /<h1>Hello<\/h1>/);
+  check_static_data_qualification();
 }

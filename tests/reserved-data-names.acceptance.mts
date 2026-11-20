@@ -3,6 +3,9 @@ import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, hsonTransform, type LiveMapD
 import type { JsonValue } from "../src/core/types.js";
 import { is_Node } from "../src/core/node-guards.js";
 import { HsonDataValue, decode_hson_data_internal } from "../src/api/data/hson-data.js";
+import { compiled_hson_schema_of } from "../src/api/schema/hson-schema.js";
+import { parse_ordered_json_text } from "../src/core/exact-data-codec.js";
+import { evaluate_static_schema_candidate } from "../src/internal/hson-schema/candidate-evaluation.js";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.js";
 import { add_interaction, enable_interactions, replace_interaction } from "../src/api/interactions/interactions.js";
 import type { InteractionDescriptor } from "../src/types/interaction.types.js";
@@ -54,6 +57,22 @@ await check("exact values, Hson source, and D2 certification reject reserved nam
   for (const source of sources) {
     assert.throws(() => data_source(source));
     assert.throws(() => certify(Hson.data.fromSource(source)));
+  }
+});
+
+await check("all static Data routes withhold evidence for reserved names rejected by public admission", () => {
+  const schema = compiled_hson_schema_of(ANY_DATA);
+  for (const source of [...sources, String.raw`<outer «<'\u0024_tag' 1>»>`]) {
+    assert.throws(() => Hson.data.parse(source));
+    assert.equal(evaluate_static_schema_candidate(schema, { source, family: "data" }).kind, "unknown", source);
+  }
+  for (const source of [...invalidValues.map(value => JSON.stringify(value)), String.raw`{"outer":[{"\u005fhson_future":1}]}`]) {
+    const json = JSON.parse(source);
+    const data = parse_ordered_json_text(source);
+    assert.throws(() => Hson.data.from(json), /Reserved Hson prefix/);
+    assert.throws(() => data_source(source));
+    assert.equal(evaluate_static_schema_candidate(schema, { json }).kind, "unknown", `JSON ${source}`);
+    assert.equal(evaluate_static_schema_candidate(schema, { data }).kind, "unknown", `Ordered Data ${source}`);
   }
 });
 
