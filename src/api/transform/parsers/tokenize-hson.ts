@@ -52,6 +52,8 @@ export type HsonGrammarCheckpoint = Readonly<{
   quoted?: Readonly<{ complete: boolean; closingDelimiters: readonly string[] }>;
   /** Authored data observed by the scanner; interpolation values remain unknown. */
   dataFacts?: readonly HsonEditorDataFact[];
+  /** Incomplete source at a Schema root member checkpoint. */
+  schemaContinuation?: "missing-operand" | "unterminated";
   /** Scanner-owned header observation, including attributes after the cursor. */
   element?: Readonly<{ tag: string; start: number; attributes: readonly RawAttr[]; contentTags: readonly string[] }>;
   attribute?: string;
@@ -73,17 +75,31 @@ export function hson_grammar_checkpoint(
   const dataFacts: HsonEditorDataFact[] = [];
   const scanner = new HsonScanner(source, 0, undefined, mode === "data" || mode === "document" ? slots : slots.filter(slot => slot.offset < cursor),
     mode === "schema" ? "data" : mode, slots.map(() => ""), mode, cursor, checkpoint => {
-      if (result === undefined || mode === "document" && result.kind === checkpoint.kind
+      if (result === undefined || (mode === "document" || mode === "schema" && result.kind === "member" && result.path.length === 0) && result.kind === checkpoint.kind
         && result.range.start === result.range.end && checkpoint.range.start < checkpoint.range.end) result = checkpoint;
-      // Data discriminators and Document attributes may follow the cursor. Stop at
+      // Schema root fields, Data discriminators and Document attributes may follow the cursor. Stop at
       // the first syntax failure, retaining only facts the scanner actually saw.
-      if (mode !== "data" && mode !== "document") throw stop;
+      if (mode !== "data" && mode !== "document" && !(mode === "schema" && result.kind === "member" && result.path.length === 0)) throw stop;
     }, undefined, undefined, mode === "document", fact => { dataFacts.push(fact); });
   try { scanner.scan(); } catch (error) {
     if (error !== stop && result === undefined) return undefined;
-    if (mode === "data" && read_transform_error_details(error)?.code === "HSON_OBJECT_DUPLICATE_MEMBER") return undefined;
+    const details = read_transform_error_details(error);
+    const code = details?.code;
+    if ((mode === "data" || mode === "schema") && code === "HSON_OBJECT_DUPLICATE_MEMBER") return undefined;
+    if (mode === "schema" && result?.kind === "member" && result.path.length === 0) {
+      if (code === "HSON_CONTAINER_UNTERMINATED") return { ...result, schemaContinuation: "unterminated", dataFacts };
+      // A missing operand is editable only at the observed name. An error in
+      // a nested operand may still hide later siblings of the root.
+      if (code === "missing-object-member-value" && details?.source?.index === result.range.start) {
+        return { ...result, schemaContinuation: "missing-operand", dataFacts };
+      }
+      return undefined;
+    }
   }
-  return result === undefined || mode !== "data" ? result : { ...result, dataFacts };
+  if (result && (mode === "data" || mode === "schema" && result.kind === "member" && result.path.length === 0)) {
+    return { ...result, dataFacts };
+  }
+  return result;
 }
 
 /** Observe roles only on original source and complete slots; recover in place. */
@@ -557,7 +573,7 @@ class HsonScanner {
   }
 
   private observeData(value: { kind: "scalar"; value: string | number | boolean | null } | { kind: "object" | "array" | "unknown" | "member" }, start: number): void {
-    if (this.editorMode === "data") this.editorDataFact?.({ ...value, path: [...this.editorPath], range: { start, end: this.index } });
+    if (this.editorMode === "data" || this.editorMode === "schema" && this.editorPath.length === 1) this.editorDataFact?.({ ...value, path: [...this.editorPath], range: { start, end: this.index } });
   }
 
   private bareValueCheckpoint(start: number, raw: string): void {
@@ -747,7 +763,7 @@ class HsonScanner {
       return;
     }
 
-    this.skipTrivia();
+    this.skipTrivia(false, true);
     this.completionSlot("member");
     if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
@@ -763,7 +779,7 @@ class HsonScanner {
         this.fail(`invalid persisted QUID "${value}"`, quidPos, "HSON_OBJECT_QUID_INVALID");
       }
       quid = { value, start: quidPos, end: this.previousPosition() };
-      const separated = this.skipTrivia();
+      const separated = this.skipTrivia(false, true);
       if (this.peek() !== ">" && !separated) {
         this.fail(
           `required trivia is missing after persisted object QUID declaration`,
@@ -835,8 +851,12 @@ class HsonScanner {
       const nameEnd = this.index;
       this.completionSlot("member", namePos.index);
       assert_authored_hson_source_name(name, namePos);
+      // The edited name is removed by replacement. All other declarations
+      // still participate in the scanner's ordinary duplicate check.
+      const editingName = this.editorMode === "schema" && this.editorPath.length === 0 &&
+        this.editorCursor !== undefined && this.editorCursor >= namePos.index && this.editorCursor <= nameEnd;
       const first = declarations.get(name);
-      if (first !== undefined) {
+      if (!editingName && first !== undefined) {
         this.fail(
           `[duplicate-object-member] duplicate Hson object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
           namePos,
@@ -844,7 +864,7 @@ class HsonScanner {
           [{ role: "first-declaration", pos: first }],
         );
       }
-      declarations.set(name, namePos);
+      if (!editingName) declarations.set(name, namePos);
       this.editorExisting = [...declarations.keys()];
       this.editorPath.push(name);
       this.observeData({ kind: "member" }, namePos.index);
@@ -885,7 +905,7 @@ class HsonScanner {
         coverageEnd: memberEnd,
       });
 
-      const separated = this.skipTrivia();
+      const separated = this.skipTrivia(false, true);
       if (separated) this.completionSlot("member");
       if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
       if (this.peek() === ">") {
@@ -921,10 +941,11 @@ class HsonScanner {
     if (ch === `"`) {
       const pos = this.position();
       const value = this.scanContentString();
-      if (this.editorMode === "schema" && this.editorPath.length === 1 && memberName === "type") {
+      if (this.editorMode === "schema" && this.editorPath.length === 1) {
         try {
           const parsed: unknown = JSON.parse(value.raw);
-          if (parsed === "data" || parsed === "document") this.editorRootType = parsed;
+          if (typeof parsed === "string") this.observeData({ kind: "scalar", value: parsed }, pos.index);
+          if (memberName === "type" && (parsed === "data" || parsed === "document")) this.editorRootType = parsed;
         } catch { /* Invalid strings are handled by the scanner. */ }
       }
       const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), ...(value.directValue === undefined ? {} : { directValue: value.directValue }) });
@@ -2118,7 +2139,7 @@ class HsonScanner {
     this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
   }
 
-  private skipTrivia(framing = false): boolean {
+  private skipTrivia(framing = false, memberTrivia = false): boolean {
     const start = this.index;
     while (true) {
       while (this.slotHere() === undefined && !this.atEnd()
@@ -2143,6 +2164,10 @@ class HsonScanner {
       }
       if (afterSlash !== "/") return this.index !== start;
 
+      // A following comment ends this whitespace interval. Observe its member
+      // slot now, before scanning on to the next token or comment.
+      if (memberTrivia && this.editorMode === "schema" && this.editorPath.length === 0 &&
+        this.editorCursor !== undefined && this.editorCursor <= this.index) this.completionSlot("member");
       const commentStart = this.index;
       this.consumeExpected("/");
       this.consumeExpected("/");

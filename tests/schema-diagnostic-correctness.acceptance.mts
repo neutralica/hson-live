@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { run_schema_diagnostic_cases } from "./fixtures/schema-diagnostics.fixture.mts";
+import { check_reference_transport, run_schema_diagnostic_cases } from "./fixtures/schema-diagnostics.fixture.mts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -15,7 +15,10 @@ for (const runtime of ["Node", "Worker"]) {
     else await new Promise<void>((resolve, reject) => {
       const worker = repository_typescript_worker(new URL("./fixtures/schema-diagnostics.worker.mts", import.meta.url));
       let passed = false;
-      worker.once("message", value => { passed = value === "passed"; });
+      worker.once("message", value => {
+        try { assert.ok(Array.isArray(value) && value.length === 2); check_reference_transport(value); passed = true; }
+        catch (error) { reject(error); }
+      });
       worker.once("error", reject);
       worker.once("exit", code => { try { assert.equal(code, 0); assert.ok(passed); resolve(); } catch (error) { reject(error); } });
     });

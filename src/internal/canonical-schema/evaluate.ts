@@ -89,11 +89,9 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     if (!add_union_work(state, node.choices.length)) return resource(ref, path);
     const branches = node.choices.map((choice) => projected(graph, choice, value, path, state, depth + 1));
     if (branches.some((branch) => branch.ok)) return valid();
-    if (state.partialObject !== undefined) {
-      for (const branch of branches) {
-        const unknown = branch.issues.find(issue => issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph");
-        if (unknown !== undefined) return invalid([unknown]);
-      }
+    for (const branch of branches) {
+      const incomplete = branch.issues.find(issue => issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph");
+      if (incomplete) return invalid([incomplete]);
     }
     if (is_ordered_projected_object(value)) {
       const intended = discriminated_branch(graph, node.choices, value, state);
@@ -106,11 +104,9 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     }
     return invalid([make_issue("TYPE_MISMATCH", path, ref, projected_label(graph, ref), projected_type(value), { kind: "union-failure", branches: node.choices })]);
   }
-  if (value === null) {
-    if (node.kind === "projected-null" || node.kind === "projected-any") return valid();
-    return mismatch(graph, ref, path, "null");
-  }
   if (node.kind === "projected-any") return valid();
+  if (node.kind === "projected-null") return value === null ? valid() : mismatch(graph, ref, path, projected_type(value));
+  if (value === null) return mismatch(graph, ref, path, "null");
   if (node.kind === "projected-literal") {
     if (node.values.some((literal) => ordered_projected_value_equal(literal, value))) return valid();
     if (value === state.partialObject && node.values.some(is_ordered_projected_object)) return valid();
@@ -340,7 +336,11 @@ function document_attrs(graph: VerifiedCanonicalSchemaGraph, ref: number, input:
     const result = admitted === undefined
       ? invalid([make_issue("TYPE_MISMATCH", path, property.value, undefined, undefined, { kind: "attr-invalid" }, property.name)])
       : projected(graph, property.value, admit_attr(admitted), [], state, depth + 1);
-    for (const problem of result.issues) issues.push(Object.freeze({ ...problem, path: Object.freeze([...path]), attributeName: property.name, evidence: Object.freeze({ kind: "attr-invalid", detail: problem.evidence.kind }) }));
+    for (const problem of result.issues) {
+      const evidence: CanonicalGraphIssueEvidence = problem.evidence.kind === "resource-limit"
+        ? problem.evidence : { kind: "attr-invalid", detail: problem.evidence.kind };
+      issues.push(make_issue(problem.code, path, problem.schemaNode, problem.expected, problem.received, evidence, property.name));
+    }
   }
   if (node.exact) for (const name of Object.keys(attrs)) if (!rules.has(name)) issues.push(make_issue("UNKNOWN_KEY", path, ref, "declared attribute", JSON.stringify(name), { kind: "unknown-key" }, name));
   if (issues.length > state.limits.maxIssues) return resource(ref, path);
@@ -373,6 +373,10 @@ function document_content(graph: VerifiedCanonicalSchemaGraph, ref: number, chil
 }
 
 function document_union_failure(ref: number, choices: readonly number[], branches: readonly CanonicalGraphEvaluation[], path: readonly number[], expected: string, received: string): CanonicalGraphEvaluation {
+  for (const branch of branches) {
+    const exhausted = branch.issues.find(issue => issue.evidence.kind === "resource-limit");
+    if (exhausted) return invalid([exhausted]);
+  }
   const closest = [...branches].sort((left, right) => {
     const leftDepth = left.issues[0]?.path.length ?? 0; const rightDepth = right.issues[0]?.path.length ?? 0;
     return leftDepth !== rightDepth ? rightDepth - leftDepth : left.issues.length - right.issues.length;
@@ -380,21 +384,44 @@ function document_union_failure(ref: number, choices: readonly number[], branche
   return invalid([make_issue("TYPE_MISMATCH", path, ref, expected, received, { kind: "union-failure", branches: choices }), ...(closest?.issues ?? [])]);
 }
 
-function projected_label(graph: VerifiedCanonicalSchemaGraph, ref: number, seen = new Set<number>()): string {
-  const semanticLabel = graph.semanticDiagnosticMetadata?.labels.find(([node]) => node === ref)?.[1];
-  if (semanticLabel !== undefined) return semanticLabel;
-  if (seen.has(ref)) return "recurse"; seen.add(ref);
-  const node = graph.nodes[ref]; if (node === undefined) return "invalid schema";
-  if (node.kind === "projected-literal") return node.values.map(emit_ordered_json).join(" | ");
-  if (node.kind === "projected-union") return node.choices.map((choice) => projected_label(graph, choice, new Set(seen))).join(" | ") || "pick";
-  if (node.kind === "projected-ref") return projected_label(graph, node.target, seen);
-  if (node.kind === "projected-optional") return projected_label(graph, node.base, seen);
-  if (node.kind === "projected-nullable") {
-    const label = projected_label(graph, node.base, seen); return label === "null" ? label : `${label} | null`;
+const projectedNames: Record<string, string> = { "projected-any": "unknown", "projected-string": "string", "projected-number": "number", "projected-boolean": "boolean", "projected-null": "null", "projected-object": "object", "projected-array": "array", "projected-tuple": "tuple", "projected-record": "record" };
+
+function projected_label(graph: VerifiedCanonicalSchemaGraph, ref: number): string {
+  type Work = { kind: "visit" | "leave"; ref: number } | { kind: "join"; start: number } | { kind: "nullable" };
+  const work: Work[] = [{ kind: "visit", ref }];
+  const active = new Set<number>();
+  const labels: string[] = [];
+  while (work.length) {
+    const task = work.pop()!;
+    if (task.kind === "join") {
+      labels.push(labels.splice(task.start).join(" | ") || "pick");
+    } else if (task.kind === "nullable") {
+      const base = labels.pop()!;
+      labels.push(base === "null" ? base : `${base} | null`);
+    } else if (task.kind === "leave") {
+      active.delete(task.ref);
+    } else {
+      const label = graph.semanticDiagnosticMetadata?.labels.find(([index]) => index === task.ref)?.[1];
+      const node = graph.nodes[task.ref];
+      if (label !== undefined) labels.push(label);
+      else if (active.has(task.ref)) labels.push("recurse");
+      else if (!node) labels.push("invalid schema");
+      else if (node.kind === "projected-literal") labels.push(node.values.map(emit_ordered_json).join(" | "));
+      else if (node.kind === "projected-refinement") labels.push(node.label ?? "constraint");
+      else if (node.kind === "projected-union" || node.kind === "projected-ref" || node.kind === "projected-optional" || node.kind === "projected-nullable") {
+        active.add(task.ref);
+        work.push({ kind: "leave", ref: task.ref });
+        if (node.kind === "projected-union") {
+          work.push({ kind: "join", start: labels.length });
+          for (const choice of node.choices.slice().reverse()) work.push({ kind: "visit", ref: choice });
+        } else {
+          if (node.kind === "projected-nullable") work.push({ kind: "nullable" });
+          work.push({ kind: "visit", ref: node.kind === "projected-ref" ? node.target : node.base });
+        }
+      } else labels.push(projectedNames[node.kind] ?? node.kind);
+    }
   }
-  if (node.kind === "projected-refinement") return node.label ?? "constraint";
-  const names: Record<string, string> = { "projected-any": "unknown", "projected-string": "string", "projected-number": "number", "projected-boolean": "boolean", "projected-null": "null", "projected-object": "object", "projected-array": "array", "projected-tuple": "tuple", "projected-record": "record" };
-  return names[node.kind] ?? node.kind;
+  return labels[0]!;
 }
 
 function mismatch(graph: VerifiedCanonicalSchemaGraph, ref: number, path: LivePath, received: string): CanonicalGraphEvaluation {
@@ -429,7 +456,17 @@ function first_repertoire_failure(repertoire: string, value: string): Readonly<{
 function within(value: number, minimum?: number, maximum?: number): boolean { return (minimum === undefined || value >= minimum) && (maximum === undefined || value <= maximum); }
 function refinement_label(rule: CanonicalRefinementRule): string { return rule.kind; }
 function projected_type(value: OrderedProjectedValue): string { return value === null ? "null" : Array.isArray(value) ? "array" : typeof value; }
-function unwrap(graph: VerifiedCanonicalSchemaGraph, ref: number, seen = new Set<number>()): number { if (seen.has(ref)) return ref; seen.add(ref); const node = graph.nodes[ref]; return node?.kind === "projected-optional" || node?.kind === "projected-nullable" || node?.kind === "projected-refinement" ? unwrap(graph, node.base, seen) : node?.kind === "projected-ref" ? unwrap(graph, node.target, seen) : ref; }
+function unwrap(graph: VerifiedCanonicalSchemaGraph, ref: number): number {
+  const seen = new Set<number>();
+  while (!seen.has(ref)) {
+    seen.add(ref);
+    const node = graph.nodes[ref];
+    if (node?.kind === "projected-ref") ref = node.target;
+    else if (node?.kind === "projected-optional" || node?.kind === "projected-nullable" || node?.kind === "projected-refinement") ref = node.base;
+    else break;
+  }
+  return ref;
+}
 
 function make_issue(code: HsonSchemaIssueCode, path: LivePath, schemaNode: number, expected: string | undefined, received: string | undefined, evidence: CanonicalGraphIssueEvidence, attributeName?: string): CanonicalGraphIssue {
   return Object.freeze({ code, path: Object.freeze([...path]), schemaNode, ...(expected === undefined ? {} : { expected }), ...(received === undefined ? {} : { received }), ...(attributeName === undefined ? {} : { attributeName }), evidence: Object.freeze(evidence) });

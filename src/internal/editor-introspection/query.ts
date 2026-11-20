@@ -2,7 +2,7 @@ import { authored_event_completion_checkpoint, authored_event_operand_ends_at, h
 import { serialize_hson_tag_name } from "../../api/transform/utils/hson-utils/hson-tag-helpers.js";
 import { serialize_primitive_hson } from "../../api/transform/utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
-import { HSON_SCHEMA_DATA_ROOT_ORDER, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
+import { compile_hson_schema, HSON_SCHEMA_DATA_ROOT_ORDER, valid_data_root_fields, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
 import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
 import { part_candidates } from "./part-completion.js";
 import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
@@ -146,7 +146,7 @@ export function query_hson_editor_context(input: Readonly<{
     return { checkpoint, candidates: source === undefined ? [] : part_candidates(input.source, input.cursor!, checkpoint, input.parts.facts, source.document, input.parts.offset),
       interpolationRoles, expectedKinds: expected_kinds(checkpoint) };
   }
-  const candidates = input.mode === "schema" ? schema_candidates(checkpoint)
+  const candidates = input.mode === "schema" ? schema_candidates(checkpoint, input.source)
     : input.mode === "data" && input.schema !== undefined ? data_candidates(input.schema, checkpoint)
     : input.mode === "data" || input.mode === "canonical" ? grammar_candidates(checkpoint) : [];
   let prefix = input.source.slice(checkpoint.range.start, input.cursor);
@@ -181,11 +181,27 @@ function grammar_candidates(context: HsonGrammarCheckpoint): readonly HsonEditor
     item("«", "syntax", "«", "Hson array", 4)];
 }
 
-function schema_candidates(context: HsonGrammarCheckpoint): readonly HsonEditorCandidate[] {
-  if (context.kind !== "member" || context.path.length !== 0 || context.rootType !== "data") return [];
-  const existing = new Set(context.existing);
-  const next = existing.has("content") ? [] : !existing.has("type") ? ["type"] : existing.has("defs") ? ["content"] : ["defs", "content"];
-  return HSON_SCHEMA_DATA_ROOT_ORDER.filter(name => next.includes(name) && !existing.has(name))
+function schema_candidates(context: HsonGrammarCheckpoint, source: string): readonly HsonEditorCandidate[] {
+  if (context.kind !== "member" || context.path.length !== 0) return [];
+  const before: string[] = [], after: string[] = [];
+  let editingMember = false;
+  for (const fact of context.dataFacts ?? []) {
+    const name = fact.path[0];
+    if (typeof name !== "string" || fact.path.length !== 1) continue;
+    if (fact.kind === "member") {
+      editingMember = fact.range.start === context.range.start && fact.range.end === context.range.end;
+      if (fact.range.end <= context.range.start) before.push(name);
+      else if (fact.range.start >= context.range.end) after.push(name);
+    } else if (editingMember) continue;
+    else if (name === "type" && (fact.kind !== "scalar" || fact.value !== "data")) return [];
+    else if (name === "defs" && fact.kind !== "object") return [];
+  }
+  return HSON_SCHEMA_DATA_ROOT_ORDER.filter(name => {
+    if (!valid_data_root_fields([...before, name, ...after])) return false;
+    if (context.range.start === context.range.end || context.schemaContinuation === "missing-operand") return true;
+    const edited = source.slice(0, context.range.start) + name + source.slice(context.range.end);
+    return compile_hson_schema(context.schemaContinuation === "unterminated" ? edited + "\n>" : edited).ok;
+  })
     .map((name, index) => item(name, "member", name, "Hson Schema root member", index));
 }
 

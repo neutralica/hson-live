@@ -129,18 +129,60 @@ export function parse_ordered_json_text(source: string): OrderedProjectedValue {
 
 /** Emit one deterministic structural encoding directly from the ordered carrier. */
 export function emit_ordered_json(value: OrderedProjectedValue, depth = 0): string {
-  if (value === null) return "null";
-  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError(`cannot serialize non-finite JSON number ${String(value)}`);
-    return Object.is(value, -0) ? "-0" : JSON.stringify(value);
+  type Frame = {
+    container: OrderedProjectedObject | readonly OrderedProjectedValue[];
+    index: number;
+    length: number;
+    depth: number;
+    indent: string;
+    childIndent: string;
+    parent: Frame | undefined;
+  };
+  let frame: Frame | undefined;
+  let output = "";
+  const active = new Set<Frame["container"]>();
+
+  function write(node: OrderedProjectedValue, level: number): void {
+    if (node === null) output += "null";
+    else if (typeof node === "string" || typeof node === "boolean") output += JSON.stringify(node);
+    else if (typeof node === "number") {
+      if (!Number.isFinite(node)) throw new TypeError(`cannot serialize non-finite JSON number ${String(node)}`);
+      output += Object.is(node, -0) ? "-0" : JSON.stringify(node);
+    } else {
+      const indent = "  ".repeat(level), childIndent = "  ".repeat(level + 1);
+      const object = is_ordered_projected_object(node);
+      if (!object && !Array.isArray(node)) throw new TypeError("invalid ordered JSON value");
+      const length = object ? node.entries.length : node.length;
+      if (length === 0) { output += object ? "{}" : "[]"; return; }
+      // Owned carriers are acyclic. Preserve the former error for a raw array
+      // that refers to an open ancestor without overflowing the host stack.
+      if (active.has(node)) throw new RangeError("Maximum call stack size exceeded");
+      active.add(node);
+      output += object ? "{" : "[";
+      frame = { container: node, index: 0, length, depth: level, indent, childIndent, parent: frame };
+    }
   }
-  const indent = "  ".repeat(depth), childIndent = "  ".repeat(depth + 1);
-  if (Array.isArray(value)) {
-    if (value.length === 0) return "[]";
-    return `[\n${value.map((child) => `${childIndent}${emit_ordered_json(child, depth + 1)}`).join(",\n")}\n${indent}]`;
+
+  write(value, depth);
+  while (frame !== undefined) {
+    const { container, index } = frame;
+    const object = is_ordered_projected_object(container);
+    if (index === frame.length) {
+      output += "\n" + frame.indent + (object ? "}" : "]");
+      active.delete(container);
+      frame = frame.parent;
+      continue;
+    }
+    frame.index++;
+    output += index === 0 ? "\n" : ",\n";
+    if (object) {
+      const [key, child] = container.entries[index]!;
+      output += frame.childIndent + JSON.stringify(key) + ": ";
+      write(child, frame.depth + 1);
+    } else if (index in container) {
+      output += frame.childIndent;
+      write(container[index]!, frame.depth + 1);
+    }
   }
-  if (!is_ordered_projected_object(value)) throw new TypeError("invalid ordered JSON value");
-  if (value.entries.length === 0) return "{}";
-  return `{\n${value.entries.map(([key, child]) => `${childIndent}${JSON.stringify(key)}: ${emit_ordered_json(child, depth + 1)}`).join(",\n")}\n${indent}}`;
+  return output;
 }

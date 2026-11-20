@@ -85,6 +85,53 @@ assert.deepEqual(complete("<presentation <th").candidates.map(candidate => candi
 assert.deepEqual(complete("<co").checkpoint?.range, { start: 1, end: 3 });
 assert.deepEqual(query_hson_editor_context({ mode: "data", source: "<co", cursor: 3 }).candidates, []);
 assert.deepEqual(query_hson_editor_context({ mode: "schema", source: '<type "data" co', cursor: 15 }).candidates.map(candidate => candidate.label), ["content"]);
+for (const [source, labels] of [
+  ['<type "data" defs <> ', ["content", "expression"]],
+  ['<type "data" expression "string" ', []],
+  ['<type "data" content <> ', []],
+] as const) {
+  assert.deepEqual(query_hson_editor_context({ mode: "schema", source, cursor: source.length }).candidates.map(candidate => candidate.label), labels);
+}
+
+for (const [marked, labels, replacement] of [
+  ["<|", ["type"], ""], ['<| type "data">', [], ""],
+  ['<type "data" |', ["defs", "content", "expression"], ""],
+  ['<type "data" | defs <>>', [], ""], ['<type "data" defs <> |', ["content", "expression"], ""],
+  ['<type "data" | expression "string">', ["defs"], ""],
+  ['<type "data" defs <> | content <>>', [], ""],
+  ['<type "data" content <> |', [], ""], ['<type "data" expression "string" |', [], ""],
+  ['<type "data" co|ntent <>>', ["content"], "content"],
+  ['// 🧭\r\n<type "data" defs <> ex|pression "number">', ["expression"], "expression"],
+  ['<defs <> type "data" |', [], ""],
+] as const) {
+  const cursor = marked.indexOf("|"), source = marked.replace("|", "");
+  const result = query_hson_editor_context({ mode: "schema", source, cursor });
+  const start = replacement ? source.indexOf(replacement) : cursor;
+  assert.deepEqual(result.checkpoint?.range, { start, end: start + replacement.length });
+  assert.deepEqual(result.candidates.map(item => item.label), labels);
+}
+
+for (const [marked, expected] of [
+  ['<type "data" e| <x> expression "string">', []],
+  ['<type "data" e| <x <y>> expression "string">', []],
+  ['<type "data" |expression "string">', ["expression"]],
+  ['<type "data" |content <> content <>>', ["defs"]],
+  ['<type "data" defs <> |defs "number">', ["expression"]],
+  ['<type "data" |defs "string">', ["expression"]],
+  ['<type "data" // first 🪷\r\n | // next\r\n expression "string">', ["defs"]],
+  ['<type "data" |// comment\r\n expression "string">', ["defs"]],
+  ['<type "data" // first 🪷| here\r\n expression "string">', []],
+] as const) {
+  const cursor = marked.indexOf("|"), source = marked.replace("|", "");
+  const { checkpoint, candidates } = query_hson_editor_context({ mode: "schema", source, cursor });
+  assert.deepEqual(candidates.map(item => item.label), expected, marked);
+  for (const candidate of candidates) {
+    assert.ok(checkpoint);
+    const { start, end } = checkpoint.range;
+    const text = start === end ? candidate.insertText + " <>" : candidate.insertText;
+    assert.ok(compile_hson_schema(source.slice(0, start) + text + source.slice(end)).ok, marked);
+  }
+}
 
 const union = compile_hson_schema('<type "data" defs <U <union [<content <kind <exact "left"> shared "string" left "number">>, <content <kind <exact "right"> shared "string" right "number">>]>> content <ref "U">>');
 assert.equal(union.ok, true);

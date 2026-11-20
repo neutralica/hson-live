@@ -154,15 +154,17 @@ function verify_node(
   }
 }
 
-function resolves_to_projected_array(value: unknown, nodes: readonly unknown[], seen = new Set<number>()): boolean {
-  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) >= nodes.length || seen.has(value as number)) return false;
-  const ref = value as number;
-  seen.add(ref);
-  const node = nodes[ref];
-  if (!is_record(node)) return false;
-  if (node.kind === "projected-array") return true;
-  if (node.kind === "projected-refinement") return resolves_to_projected_array(node.base, nodes, seen);
-  if (node.kind === "projected-ref") return resolves_to_projected_array(node.target, nodes, seen);
+function resolves_to_projected_array(value: unknown, nodes: readonly unknown[]): boolean {
+  const seen = new Set<number>();
+  while (typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value < nodes.length && !seen.has(value)) {
+    seen.add(value);
+    const node = nodes[value];
+    if (!is_record(node)) return false;
+    if (node.kind === "projected-array") return true;
+    if (node.kind === "projected-ref") value = node.target;
+    else if (node.kind === "projected-refinement") value = node.base;
+    else return false;
+  }
   return false;
 }
 
@@ -351,28 +353,35 @@ function verify_capability_domains(capabilities: UnknownRecord, nodes: readonly 
 function verify_reachability_and_order(capabilities: UnknownRecord, nodes: readonly unknown[], fail: (path: readonly (string | number)[], message: string) => void): void {
   const discovered: number[] = [];
   const seen = new Set<number>();
-  const visit = (ref: unknown): void => {
-    if (!Number.isInteger(ref) || (ref as number) < 0 || (ref as number) >= nodes.length || seen.has(ref as number)) return;
-    seen.add(ref as number); discovered.push(ref as number);
-    const node = nodes[ref as number]; if (!is_record(node)) return;
-    outgoing(node).forEach(([, child]) => visit(child));
-  };
-  CANONICAL_CAPABILITY_KEYS.forEach((key) => visit(capabilities[key]));
+  const pending = CANONICAL_CAPABILITY_KEYS.map(key => capabilities[key]).reverse();
+  while (pending.length) {
+    const ref = pending.pop();
+    if (typeof ref !== "number" || !Number.isInteger(ref) || ref < 0 || ref >= nodes.length || seen.has(ref)) continue;
+    seen.add(ref);
+    discovered.push(ref);
+    const node = nodes[ref];
+    if (is_record(node)) for (const [, child] of outgoing(node).slice().reverse()) pending.push(child);
+  }
   if (seen.size !== nodes.length) fail(["nodes"], "Canonical node table contains unreachable nodes.");
   discovered.forEach((ref, index) => { if (ref !== index) fail(["nodes", ref], `Node table is not in deterministic first-discovery order; expected node ${index}.`); });
 }
 
 function verify_productivity(nodes: readonly unknown[], fail: (path: readonly (string | number)[], message: string) => void): void {
   const state = new Uint8Array(nodes.length);
-  const visit = (ref: number): boolean => {
-    if (state[ref] === 1) return true;
-    if (state[ref] === 2) return false;
-    state[ref] = 1;
-    const node = nodes[ref];
-    if (is_record(node)) for (const child of nonconsuming(node)) if (visit(child)) return true;
-    state[ref] = 2; return false;
-  };
-  for (let index = 0; index < nodes.length; index += 1) if (visit(index)) { fail(["nodes", index], "Recursive cycle makes no consuming validation progress."); return; }
+  for (let index = 0; index < nodes.length; index++) {
+    if (state[index]) continue;
+    const pending = [{ ref: index, leaving: false }];
+    while (pending.length) {
+      const { ref, leaving } = pending.pop()!;
+      if (leaving) { state[ref] = 2; continue; }
+      if (state[ref] === 1) { fail(["nodes", index], "Recursive cycle makes no consuming validation progress."); return; }
+      if (state[ref] === 2) continue;
+      state[ref] = 1;
+      pending.push({ ref, leaving: true });
+      const node = nodes[ref];
+      if (is_record(node)) for (const child of nonconsuming(node).slice().reverse()) pending.push({ ref: child, leaving: false });
+    }
+  }
 }
 
 function outgoing(node: UnknownRecord): readonly (readonly [string, unknown])[] {

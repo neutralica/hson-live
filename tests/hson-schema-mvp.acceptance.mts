@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { hson_schema_digest } from "../src/api/schema/hson-schema.ts";
 import { make_hosted_registry } from "../src/api/livemap/livemap.hosted.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
@@ -86,6 +87,35 @@ check("authored any certifies canonical nested data but not document Hson", () =
   assert.throws(() => Hson.canonical`<_hson_private true>`);
 });
 check("invalid root envelope rejects", () => assert.equal(compile_hson_schema('<type "document" content <>>').ok, false));
+check("Data root expression and historical member map have distinct wire contracts", () => {
+  const array: HsonSchema = Hson.schema`<type "data" expression <array "string">>`;
+  const member: HsonSchema = Hson.schema`<type "data" content <array "string">>`;
+  const list = Hson.data.parse`["s"]`;
+  const object = Hson.data.parse`<array "s">`;
+  assert.notEqual(hson_schema_digest(array), hson_schema_digest(member));
+  assert.equal(array.certify(list), list);
+  assert.equal(member.certify(object), object);
+  assert.throws(() => array.certify(object));
+  assert.throws(() => member.certify(list));
+  for (const source of [
+    '<type "data" content <> expression "string">', '<type "data" expression "string" content <>>',
+    '<type "data" expression "string" defs <>>', '<expression "string" type "data">',
+  ]) {
+    const result = compile_hson_schema(source);
+    assert.ok(!result.ok, source);
+    assert.deepEqual(result.issues.map(({ code, path }) => [code, path]), [["INVALID_ROOT", []]]);
+  }
+  for (const [source, code, path] of [
+    ['<type "data" expression <optional "string">>', "ILLEGAL_OPTIONAL", ["expression"]],
+    ['<type "data" expression <anyField "number">>', "UNKNOWN_SCHEMA_MEMBER", ["expression", "anyField"]],
+    ['<type "data" expression null>', "INVALID_SCHEMA_EXPRESSION", ["expression"]],
+    ['<type "document" expression "string">', "UNKNOWN_SCHEMA_MEMBER", ["expression"]],
+  ] as const) {
+    const result = compile_hson_schema(source);
+    assert.ok(!result.ok, source);
+    assert.deepEqual(result.issues.map(issue => [issue.code, issue.path]), [[code, path]]);
+  }
+});
 check("unknown Schema member rejects", () => { const result = compile('value <literal "x">'); assert.equal(result.ok, false); if (!result.ok) assert.equal(result.issues[0]?.code, "UNKNOWN_SCHEMA_MEMBER"); });
 check("optional is direct-member-only", () => { const result = compile('items <array <optional "string">>'); assert.equal(result.ok, false); if (!result.ok) assert.equal(result.issues[0]?.code, "ILLEGAL_OPTIONAL"); });
 check("exact primitives preserve zero sign", () => {

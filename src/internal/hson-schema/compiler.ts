@@ -31,7 +31,13 @@ function ordered_definition_view(value: OrderedProjectedValue): unknown {
 }
 
 /** Data-root order is shared by validation and editor introspection. */
-export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "content"] as const;
+export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "content", "expression"] as const;
+
+export function valid_data_root_fields(fields: readonly string[]): boolean {
+  const terminal = fields[1] === "defs" ? 2 : 1;
+  return fields[0] === "type" && (fields.length === terminal ||
+    fields.length === terminal + 1 && (fields[terminal] === "content" || fields[terminal] === "expression"));
+}
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -183,8 +189,9 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
 
   const bootstrapResult = evaluate_canonical_projected_schema(HSON_SCHEMA_MVP_BOOTSTRAP, orderedDefinition);
-  if (!bootstrapResult.ok && bootstrapResult.issues.some((entry) => entry.evidence.kind === "resource-limit")) {
-    return failure("INVALID_SCHEMA_EXPRESSION", bootstrapResult.issues[0]?.path ?? [], "Hson Schema exceeds the MVP resource limits.");
+  const exhausted = bootstrapResult.issues.find(entry => entry.evidence.kind === "resource-limit");
+  if (exhausted) {
+    return failure("INVALID_SCHEMA_EXPRESSION", exhausted.path, "Hson Schema exceeds the MVP resource limits.");
   }
 
   const issues: HsonSchemaIssue[] = [];
@@ -207,15 +214,20 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
   let semantic: HsonSchemaSemanticNode | undefined;
   if (materialized.type === "data") {
-    const expected = HSON_SCHEMA_DATA_ROOT_ORDER.filter(member => member === "type" || member === "defs" && definitionsInput !== undefined || member === "content" && "content" in materialized);
-    if (rootKeys.length !== expected.length || rootKeys.some((key, index) => key !== expected[index])) {
-      return failure("INVALID_ROOT", [], 'Data Hson Schema root must contain `type "data"`, optional `defs`, then optional `content`.');
+    // The terminal key selects the grammar and is part of ordered definition identity.
+    // In particular, content <array "string"> is a member map, even at the root.
+    if (!valid_data_root_fields(rootKeys)) {
+      return failure("INVALID_ROOT", [], 'Data Hson Schema root requires `type "data"`, optional `defs`, then at most one of `content` or `expression`.');
     }
-    semantic = !("content" in materialized) ? Object.freeze({ kind: "any" as const })
-      : materialized.content === "any" ? Object.freeze({ kind: "any" as const })
-      : is_root_schema_descriptor(materialized.content)
-      ? decode_expression(materialized.content, ["content"], false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)?.schema
-      : decode_object_members(materialized.content, ["content"], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
+    const rootField = "expression" in materialized ? "expression" : "content";
+    const input = materialized[rootField];
+    if (rootField === "expression" || is_root_schema_descriptor(input)) {
+      semantic = decode_expression(input, [rootField], false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)?.schema;
+    } else if (input === undefined || input === "any") {
+      semantic = Object.freeze({ kind: "any" });
+    } else {
+      semantic = decode_object_members(input, ["content"], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
+    }
   } else if (materialized.type === "document") {
     if (rootKeys[0] !== "type") return failure("INVALID_ROOT", [], 'Document Hson Schema root must begin with `type "document"`.');
     semantic = decode_document_schema(materialized, [], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
@@ -666,49 +678,62 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
   const byName = new Map(definitions.map((definition) => [definition.name, definition]));
   const loweredDefinitions = new Map<string, number>();
   const reserve = (source: HsonSchemaRangedNode): number => { const ref = nodes.length; nodes.push({ kind: "projected-null" }); sources.push(source); return ref; };
-  const lowerDefinition = (name: string): number => {
-    const existing = loweredDefinitions.get(name);
-    if (existing !== undefined) return existing;
-    const definition = byName.get(name);
-    if (definition === undefined || definition.schema.kind === "document-element") throw new Error(`Invalid projected definition reference ${JSON.stringify(name)}.`);
-    const ref = reserve(definition.schema);
-    loweredDefinitions.set(name, ref);
-    lowerInto(definition.schema, ref);
-    return ref;
-  };
-  const lower = (schema: HsonSchemaDataSemanticNode, optional = false): number => {
-    const ref = reserve(schema);
-    if (optional) {
-      nodes[ref] = { kind: "projected-optional", base: lower(schema) };
+  // Allocate children at visitation time so a shared target keeps its original
+  // first-discovery index even when a prior sibling reaches it transitively.
+  const lower = (rootSchema: HsonSchemaDataSemanticNode): number => {
+    const pending: (() => void)[] = [];
+    function allocate(schema: HsonSchemaDataSemanticNode, optional = false): number {
+      const ref = reserve(schema);
+      pending.push(() => {
+        if (optional) nodes[ref] = { kind: "projected-optional", base: allocate(schema) };
+        else expand(schema, ref);
+      });
       return ref;
     }
-    lowerInto(schema, ref);
-    return ref;
-  };
-  const lowerInto = (schema: HsonSchemaDataSemanticNode, ref: number): void => {
-    const refinements = "refinements" in schema ? schema.refinements : Object.freeze([]);
-    if (refinements.length > 0) {
-      let current = ref;
-      refinements.forEach((refinement, index) => {
+    function expand(schema: HsonSchemaDataSemanticNode, ref: number): void {
+      if ("refinements" in schema) for (const refinement of schema.refinements) {
         const base = reserve(schema);
-        nodes[current] = { kind: "projected-refinement", base, rule: refinement.rule, label: refinement.member };
-        current = base;
-        if (index === refinements.length - 1) lowerCoreInto(schema, current);
-      });
-      return;
+        nodes[ref] = { kind: "projected-refinement", base, rule: refinement.rule, label: refinement.member };
+        ref = base;
+      }
+      switch (schema.kind) {
+        case "string": case "number": case "boolean": case "null": case "any":
+          nodes[ref] = { kind: `projected-${schema.kind}` }; break;
+        case "exact":
+          nodes[ref] = schema.value === null ? { kind: "projected-null" } : { kind: "projected-literal", values: [schema.value] }; break;
+        case "array":
+          nodes[ref] = { kind: "projected-array", item: allocate(schema.item) }; break;
+        case "object": {
+          const properties: [string, number][] = [];
+          nodes[ref] = { kind: "projected-object", exact: true, properties };
+          for (const member of schema.members.slice().reverse()) {
+            pending.push(() => properties.push([member.name, allocate(member.schema, member.optional)]));
+          }
+          break;
+        }
+        case "tuple": case "union": {
+          const children: number[] = [];
+          nodes[ref] = schema.kind === "tuple" ? { kind: "projected-tuple", items: children } : { kind: "projected-union", choices: children };
+          const schemas = schema.kind === "tuple" ? schema.items : schema.choices;
+          for (const child of schemas.slice().reverse()) pending.push(() => children.push(allocate(child)));
+          break;
+        }
+        case "ref": {
+          let target = loweredDefinitions.get(schema.name);
+          if (target === undefined) {
+            const definition = byName.get(schema.name);
+            if (!definition || definition.schema.kind === "document-element") throw new Error(`Invalid projected definition reference ${JSON.stringify(schema.name)}.`);
+            target = allocate(definition.schema);
+            loweredDefinitions.set(schema.name, target);
+          }
+          nodes[ref] = { kind: "projected-ref", target };
+          break;
+        }
+      }
     }
-    lowerCoreInto(schema, ref);
-  };
-  const lowerCoreInto = (schema: HsonSchemaDataSemanticNode, ref: number): void => {
-    switch (schema.kind) {
-      case "string": case "number": case "boolean": case "null": case "any": nodes[ref] = { kind: `projected-${schema.kind}` }; break;
-      case "exact": nodes[ref] = schema.value === null ? { kind: "projected-null" } : { kind: "projected-literal", values: Object.freeze([schema.value]) }; break;
-      case "object": nodes[ref] = { kind: "projected-object", exact: true, properties: Object.freeze(schema.members.map((member) => Object.freeze([member.name, lower(member.schema, member.optional)] as const))) }; break;
-      case "array": nodes[ref] = { kind: "projected-array", item: lower(schema.item) }; break;
-      case "tuple": nodes[ref] = { kind: "projected-tuple", items: Object.freeze(schema.items.map((item) => lower(item))) }; break;
-      case "union": nodes[ref] = { kind: "projected-union", choices: Object.freeze(schema.choices.map((choice) => lower(choice))) }; break;
-      case "ref": nodes[ref] = { kind: "projected-ref", target: lowerDefinition(schema.name) }; break;
-    }
+    const result = allocate(rootSchema);
+    while (pending.length) pending.pop()!();
+    return result;
   };
   const lowerDocumentItem = (item: HsonSchemaDocumentItem, source: HsonSchemaRangedNode): number => {
     if (item.kind === "document-string") { const ref = reserve(source); nodes[ref] = { kind: "document-text" }; return ref; }
@@ -1051,18 +1076,38 @@ function count_recursive_sccs(graph: VerifiedCanonicalSchemaGraph): number {
   const indices = new Int32Array(edges.length); indices.fill(-1);
   const low = new Int32Array(edges.length), stack: number[] = [];
   const active = new Set<number>();
-  const visit = (node: number): void => {
-    indices[node] = next; low[node] = next; next += 1; stack.push(node); active.add(node);
-    for (const child of edges[node] ?? []) {
-      if (indices[child] === -1) { visit(child); low[node] = Math.min(low[node], low[child] ?? 0); }
-      else if (active.has(child)) low[node] = Math.min(low[node], indices[child] ?? 0);
+  const frames: { node: number; edge: number }[] = [];
+  function enter(node: number): void {
+    indices[node] = low[node] = next++;
+    stack.push(node);
+    active.add(node);
+    frames.push({ node, edge: 0 });
+  }
+  for (let root = 0; root < edges.length; root++) {
+    if (indices[root] !== -1) continue;
+    enter(root);
+    while (frames.length) {
+      const frame = frames[frames.length - 1]!;
+      const node = frame.node;
+      const child = edges[node]![frame.edge++];
+      if (child !== undefined) {
+        if (indices[child] === -1) enter(child);
+        else if (active.has(child)) low[node] = Math.min(low[node]!, indices[child]!);
+        continue;
+      }
+      frames.pop();
+      const parent = frames.at(-1);
+      if (parent) low[parent.node] = Math.min(low[parent.node]!, low[node]!);
+      if (low[node] !== indices[node]) continue;
+      let size = 0, member: number;
+      do {
+        member = stack.pop()!;
+        active.delete(member);
+        size++;
+      } while (member !== node);
+      if (size > 1 || edges[node]!.includes(node)) count++;
     }
-    if (low[node] !== indices[node]) return;
-    const component: number[] = [];
-    while (stack.length > 0) { const member = stack.pop(); if (member === undefined) break; active.delete(member); component.push(member); if (member === node) break; }
-    if (component.length > 1 || (edges[node] ?? []).includes(node)) count += 1;
-  };
-  edges.forEach((_, index) => { if (indices[index] === -1) visit(index); });
+  }
   return count;
 }
 
@@ -1182,7 +1227,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const definitionValue = add({ kind: "projected-any" });
   nodes[definitions] = { kind: "projected-record", value: definitionValue };
   nodes[optionalDefinitions] = { kind: "projected-optional", base: definitions };
-  nodes[data] = { kind: "projected-object", exact: true, properties: [["type", dataType], ["content", optionalRootContent], ["defs", optionalDefinitions]] };
+  nodes[data] = { kind: "projected-object", exact: true, properties: [["type", dataType], ["content", optionalRootContent], ["defs", optionalDefinitions], ["expression", optional(expression)]] };
 
   const document = reserve();
   const documentType = literal("document");

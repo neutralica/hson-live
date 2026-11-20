@@ -1,19 +1,94 @@
 import assert from "node:assert/strict";
-import { Hson, type HsonSchema } from "../../src/hson-authoring.ts";
+import { Hson, type HsonSchema, type HsonSchemaData } from "../../src/hson-authoring.ts";
 import { HsonSchemaError } from "../../src/api/livemap/livemap.error.ts";
 import { hsonTransform } from "../../src/api/transform/index.ts";
-import { compiled_hson_schema_of } from "../../src/api/schema/hson-schema.ts";
+import { HsonSchema as SchemaHandle, compiled_hson_schema_of, hson_schema_digest } from "../../src/api/schema/hson-schema.ts";
 import { admit_projected_value } from "../../src/core/projected-value-admission.ts";
 import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../../src/internal/canonical-schema/evaluate.ts";
 import { CANONICAL_SCHEMA_FORMAT, type CanonicalSchemaNode } from "../../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../../src/internal/canonical-schema/verify.ts";
 import { parse_hson_with_provenance } from "../../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
+import { compile_hson_schema } from "../../src/internal/hson-schema/compiler.ts";
 import { evaluate_static_schema_candidate } from "../../src/internal/hson-schema/candidate-evaluation.ts";
 import { hsonLiveMap } from "../../src/api/livemap/livemap.facade.ts";
 import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
 import type { LiveMapPartCollection } from "../../src/types/livemap.types.ts";
 
+function reference_definitions(count: number, leaf = '"string"'): string {
+  return Array.from({ length: count }, (_, i) =>
+    `D${i} ${i + 1 === count ? leaf : `<ref "D${i + 1}">`}`).join(" ");
+}
+
+export function check_reference_transport(received?: readonly HsonSchemaData[]): readonly HsonSchemaData[] {
+  return [1800, 2400].map((count, index) => {
+    const source = received?.[index] ?? `<type "data" defs <${reference_definitions(count)}> expression <array <ref "D0">>>`;
+    const schema = received ? Hson.schema.fromHson(received[index]!) : SchemaHandle.fromHson(source);
+    const { graph, recursiveSccCount } = compiled_hson_schema_of(schema);
+    assert.equal(recursiveSccCount, 0);
+    assert.equal(graph.nodes.length, count + 2);
+    assert.deepEqual(graph.nodes[0], { kind: "projected-array", item: 1 });
+    for (let ref = 1; ref <= count; ref++) assert.deepEqual(graph.nodes[ref], { kind: "projected-ref", target: ref + 1 });
+    assert.deepEqual(graph.nodes.at(-1), { kind: "projected-string" });
+    assert.equal(hson_schema_digest(schema), ["903e05f526ede61e3c37474219308a3b78ad3b16c0e64c8ff6fcf0f4e5cffa12", "b44fb7baa652621663a06699d51239d9038f51befbd8536c471e2795b136e545"][index]);
+    assert.equal(schema.certify([]).toHson(), "«»");
+    if (received) assert.equal(schema.toHson(), source);
+    return schema.toHson();
+  });
+}
+
 export function run_schema_diagnostic_cases(): void {
+  const longChain = reference_definitions(6500);
+  const requiresX = '<content <k <exact "no"> x <ref "D0">>>';
+  const other = '<content <k <exact "yes">>>';
+  for (const choices of [[requiresX, other], [other, requiresX]]) {
+    const schema = SchemaHandle.fromHson(`<type "data" defs <${longChain}> expression <union [${choices.join(", ")}]>>`);
+    assert.equal(schema.certify({ k: "yes" }).toHson(), '<k "yes">');
+    for (const [candidate, code, expected, received] of [
+      [{ k: "no" }, "MISSING_REQUIRED", "string", "missing"],
+      [{ k: "no", x: "text" }, "INVALID_SCHEMA", "resource budget", "exhausted"],
+    ] as const) {
+      assert.throws(() => schema.certify(candidate), error => {
+        assert.ok(error instanceof HsonSchemaError);
+        assert.deepEqual(error.issues, [{ code, path: ["x"], expected, received, message: "Schema validation failed at x." }]);
+        return true;
+      });
+    }
+  }
+  const defs = reference_definitions(520);
+  for (const [expression, nested] of [
+    ['<ref "D0">', false], ['<union [<ref "D0">, "number"]>', false],
+    ['<union ["number", <ref "D0">]>', false], ['<array <union [<ref "D0">, "number"]>>', true],
+  ] as const) {
+    const schema = SchemaHandle.fromHson(`<type "data" defs <${defs}> expression ${expression}>`);
+    assert.throws(() => schema.certify(nested ? ["x"] : "x"), error => {
+      assert.ok(error instanceof HsonSchemaError);
+      assert.deepEqual(error.issues, [{ code: "INVALID_SCHEMA", path: nested ? [0] : [],
+        expected: "resource budget", received: "exhausted", message: `Schema validation failed at ${nested ? "0" : "root"}.` }]);
+      return true;
+    });
+    if (expression.includes("union")) assert.ok(schema.certify(nested ? [3] : 3));
+  }
+  const finiteDefs = reference_definitions(520, '<exact "x">');
+  const nestedUnion = SchemaHandle.fromHson(`<type "data" defs <${finiteDefs}> expression <union [<union [<ref "D0">, <exact 0>]>, <exact false>]>>`);
+  assert.throws(() => nestedUnion.certify("x"), error => {
+    assert.ok(error instanceof HsonSchemaError);
+    assert.deepEqual(error.issues, [{ code: "INVALID_SCHEMA", path: [], expected: "resource budget",
+      received: "exhausted", message: "Schema validation failed at root." }]);
+    return true;
+  });
+  const ordinary = Hson.schema`<type "data" expression <union ["string", "number"]>>`;
+  assert.throws(() => ordinary.certify(false), error => {
+    assert.ok(error instanceof HsonSchemaError);
+    assert.deepEqual(error.issues, [{ code: "TYPE_MISMATCH", path: [], expected: "string | number",
+      received: "boolean", message: "Schema validation failed at root." }]);
+    return true;
+  });
+  for (const depth of [169, 170]) {
+    const result = compile_hson_schema('<type "data" expression ' + "<array ".repeat(depth) + '"string"' + ">".repeat(depth + 1));
+    assert.equal(result.ok, depth === 169);
+    if (!result.ok) assert.deepEqual(result.issues, [{ code: "INVALID_SCHEMA_EXPRESSION", path: ["expression", ...Array(depth).fill("array")],
+      message: "Hson Schema exceeds the MVP resource limits." }]);
+  }
   // Capture real JS template objects; runtime, rather than a test escape
   // approximation, determines which cooked segments are unavailable.
   const capture = (strings: TemplateStringsArray): TemplateStringsArray => strings;
@@ -108,6 +183,18 @@ export function run_schema_diagnostic_cases(): void {
     const verified = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, capabilities: { projectedRoot: 0 }, nodes: entries });
     assert.ok(verified.ok, JSON.stringify(verified)); return verified.graph;
   };
+  for (const [entries, accepted, rejected, path, schemaNode] of [
+    [[{ kind: "projected-null" }], null, false, [], 0],
+    [[{ kind: "projected-array", item: 1 }, { kind: "projected-null" }], [null], [false], [0], 1],
+    [[{ kind: "projected-ref", target: 1 }, { kind: "projected-null" }], null, false, [], 1],
+  ] as const) {
+    const verified = graph(entries);
+    assert.deepEqual(evaluate_canonical_projected_schema(verified, admit_projected_value(accepted)), { ok: true, issues: [] });
+    assert.deepEqual(evaluate_canonical_projected_schema(verified, admit_projected_value(rejected)), {
+      ok: false, issues: [{ code: "TYPE_MISMATCH", path, schemaNode, expected: "null", received: "boolean",
+        evidence: { kind: "type-mismatch" } }],
+    });
+  }
   {
     const nested = graph(nodes);
     const result = evaluate_canonical_projected_schema(nested, admit_projected_value({ kind: "code" }));
