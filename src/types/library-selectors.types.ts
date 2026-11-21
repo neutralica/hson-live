@@ -1,7 +1,7 @@
 import type { PartsLibrary } from "./parts-library.types.js";
-import type { JsonValue } from "../core/types.js";
+import type { DataValueRead } from "../core/data-value.types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
-import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
+import type { DataLibraryProposal, DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
 import type { LibraryCertainNames, LibraryDefinitionEvidence, LibraryLiteralDefinitions } from "./library-evidence.types.js";
 import type { LiveMapDataLibrary, LiveMapDocumentLibrary, LiveMapPartCollection, LiveMapDocumentPart, LiveMapLibraryPathHandle, LiveMapStagedDataPath,
   LiveMapStagedDataLibrary, LiveMapStagedDocumentLibrary } from "./livemap.types.js";
@@ -11,7 +11,7 @@ import type { LocusDataLibrary, LocusDocumentLibrary, ReadDataLibrary, ReadDocum
 export type LibraryFamily = "doc" | "data" | "parts";
 export type LibrarySelectorContext = "local" | "locus" | "read" | "stage" | "echo";
 
-type DataValue<V> = unknown extends V ? JsonValue : V;
+type DataValue<V> = unknown extends V ? DataValueRead : V;
 
 type Handle<C extends LibrarySelectorContext, F extends LibraryFamily, V, S extends HsonSchema, N extends string, R> =
   C extends "local" ? F extends "doc" ? LiveMapDocumentLibrary<V, N, S>
@@ -19,7 +19,7 @@ type Handle<C extends LibrarySelectorContext, F extends LibraryFamily, V, S exte
       : LiveMapDataLibrary<DataValue<V>, N, S>
   : C extends "locus" ? F extends "doc" ? LocusDocumentLibrary<V, S> : LocusDataLibrary<DataValue<V>, S>
   : C extends "read" ? F extends "doc" ? ReadDocumentLibrary<V, S> : ReadDataLibrary<DataValue<V>, S>
-  : C extends "stage" ? F extends "doc" ? LiveMapStagedDocumentLibrary<V, R> : LiveMapStagedDataLibrary<DataValue<V>, R>
+  : C extends "stage" ? F extends "doc" ? LiveMapStagedDocumentLibrary<V, R> : LiveMapStagedDataLibrary<DataLibraryProposal<S, DataValue<V>>, R>
   : F extends "doc" ? EchoProjectedDocumentLibrary<V, S> | EchoLocalDocumentLibrary<V, S>
     : EchoProjectedDataLibrary<DataValue<V>, S> | (F extends "parts"
       ? Omit<EchoLocalDataLibrary<DataValue<V>, S>, "schema"> & { readonly schema: { readonly get: () => HsonSchema<unknown, "data"> } }
@@ -45,7 +45,7 @@ type DynamicSchema<H, C, F> = C extends "local" ? F extends "parts" ? H
   : H extends { schema: { get: infer G } } ? Omit<H, "schema"> & { readonly schema: { readonly get: G; readonly use: (schema: HsonSchema) => import("./livemap.types.js").LiveMapCommit } } : H
   : H;
 type BroadHandle<C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
-  DynamicSchema<Handle<C, F, F extends "doc" ? unknown : F extends "parts" ? LiveMapPartCollection : JsonValue,
+  DynamicSchema<Handle<C, F, F extends "doc" ? unknown : F extends "parts" ? LiveMapPartCollection : DataValueRead,
     HsonSchema<unknown, F extends "doc" ? "document" : "data">, N, R>, C, F>;
 type Broad<C extends LibrarySelectorContext, F extends LibraryFamily, N extends string, R> =
   F extends "parts" ? WithParts<{}, BroadHandle<C, F, N, R>, C, N, R> : BroadHandle<C, F, N, R>;

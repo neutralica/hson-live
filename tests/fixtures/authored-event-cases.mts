@@ -1449,7 +1449,7 @@ async function document_event_cases() {
   const map = hsonLiveMap.fromLibraries(input);
   const expected = state(map);
   assert.equal(expected.length, 2);
-  assert.deepEqual(expected.map(value => value && typeof value === "object" && !Array.isArray(value) ? value.subject : undefined),
+  assert.deepEqual(expected.map(value => value && typeof value === "object" && "subject" in value ? value.subject : undefined),
     [{ library: "page", kind: "document" }, { library: "page", kind: "document" }]);
   assert.match(JSON.stringify(expected), /document-event\/page\/shortcut/);
   assert.match(JSON.stringify(expected), /"target":"document"/);

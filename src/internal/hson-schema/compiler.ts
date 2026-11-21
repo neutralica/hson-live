@@ -65,7 +65,7 @@ export type HsonSchemaDataSemanticNode =
   | (Readonly<{ kind: "string" | "number" }> & Refined)
   | Readonly<{ kind: "boolean" | "null" | "any" }>
   | Readonly<{ kind: "exact"; value: string | number | boolean | null }>
-  | Readonly<{ kind: "object"; members: readonly Readonly<{ name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }>[] }>
+  | Readonly<{ kind: "object"; members: readonly Readonly<{ name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }>[]; additional?: HsonSchemaDataSemanticNode }>
   | (Readonly<{ kind: "array"; item: HsonSchemaDataSemanticNode }> & Refined)
   | (Readonly<{ kind: "tuple"; items: readonly HsonSchemaDataSemanticNode[] }> & Refined)
   | Readonly<{ kind: "union"; choices: readonly HsonSchemaDataSemanticNode[] }>
@@ -238,14 +238,19 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
   const lowered = lower_hson_schema_semantic_with_sources(semantic, definitions);
   const verified = verify_canonical_schema_graph(lowered.graph);
-  if (!verified.ok) {
-    const first = verified.issues[0];
+  const graphFailure = (result: Extract<typeof verified, { ok: false }>, sources: readonly HsonSchemaRangedNode[],
+    detached?: HsonSchemaDefinition): HsonSchemaCompilation => {
+    const first = result.issues[0];
     const nodeIndex = first?.path[0] === "nodes" && typeof first.path[1] === "number" ? first.path[1] : undefined;
-    const source = nodeIndex === undefined ? undefined : lowered.sources[nodeIndex];
-    const range = source === undefined ? undefined : ranges.get(source);
+    const source = nodeIndex === undefined ? undefined : sources[nodeIndex];
+    const range = (source && ranges.get(source)) ?? detached?.range;
     const label = source?.kind === "ref" || source?.kind === "document-ref" ? ` Reference ${JSON.stringify(source.name)} is involved.` : "";
-    return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({ code: "INVALID_SCHEMA_GRAPH", path: Object.freeze([]), message: `${verified.issues.map((entry) => entry.message).join(" ")}${label}`, ...(range === undefined ? {} : { range }) })]), symbols: hson_schema_symbols(definitions, referenceUses) });
-  }
+    return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({
+      code: "INVALID_SCHEMA_GRAPH", path: Object.freeze(detached ? ["defs", detached.name] : []),
+      message: `${result.issues.map(entry => entry.message).join(" ")}${label}`, ...(range === undefined ? {} : { range }),
+    })]), symbols: hson_schema_symbols(definitions, referenceUses) });
+  };
+  if (!verified.ok) return graphFailure(verified, lowered.sources);
   // Unused definitions are authored contracts too. Decode checks alone cannot
   // detect non-consuming reference cycles or verifier-level refinement defects.
   const validatedSources = new Set(lowered.sources);
@@ -253,10 +258,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
     if (validatedSources.has(definition.schema)) continue;
     const detached = lower_hson_schema_semantic_with_sources(definition.schema, definitions);
     const validated = verify_canonical_schema_graph(detached.graph);
-    if (!validated.ok) return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({
-      code: "INVALID_SCHEMA_GRAPH", path: Object.freeze(["defs", definition.name]), range: definition.range,
-      message: validated.issues.map(entry => entry.message).join(" "),
-    })]), symbols: hson_schema_symbols(definitions, referenceUses) });
+    if (!validated.ok) return graphFailure(validated, detached.sources, definition);
     for (const source of detached.sources) validatedSources.add(source);
   }
   const recursiveSccCount = count_recursive_sccs(verified.graph);
@@ -303,11 +305,15 @@ function decode_expression(
     return undefined;
   }
   const keys = Object.keys(input);
-  if (keys.length !== 1) {
-    issue(issues, "UNKNOWN_SCHEMA_MEMBER", path, "Schema descriptor must contain exactly one known member.");
+  const governedObject = keys.length === 2 && keys[0] === "object" && keys[1] === "any";
+  if (keys.length !== 1 && !governedObject) {
+    if (keys[0] === "object" || keys.includes("any")) {
+      const field = keys[0] === "object" ? keys[keys[1] === "any" ? 2 : 1]! : "any";
+      issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, field], "Only a trailing `any` field may follow the `object` member map.");
+    } else issue(issues, "UNKNOWN_SCHEMA_MEMBER", path, "Schema descriptor must contain exactly one known member.");
     return undefined;
   }
-  const operator = keys[0] as string;
+  const operator = keys[0]!;
   const operand = input[operator];
   let schema: HsonSchemaDataSemanticNode | undefined;
   switch (operator) {
@@ -329,7 +335,7 @@ function decode_expression(
       else schema = Object.freeze({ kind: "exact", value: operand });
       break;
     case "object":
-      schema = decode_object_members(operand, [...path, "object"], issues, ranges, root, provenance, definitionNames, referenceUses);
+      schema = decode_object_descriptor(input, path, issues, ranges, root, provenance, definitionNames, referenceUses);
       break;
     case "optional": {
       if (!memberPosition) {
@@ -516,19 +522,21 @@ function has_duplicate_string_units(value: string): boolean {
   return false;
 }
 
-function decode_object_members(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDataSemanticNode | undefined {
-  if (!is_object(input)) {
-    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`object` requires one closed data object.");
+function decode_object_descriptor(input: JsonObject, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDataSemanticNode | undefined {
+  const memberPath = [...path, "object"];
+  if (!is_object(input.object)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", memberPath, "`object` requires an ordered member map.");
     return undefined;
   }
   const members: { name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }[] = [];
-  for (const [name, value] of Object.entries(input)) {
-    const decoded = decode_expression(value, [...path, name], true, issues, ranges, root, provenance, definitionNames, referenceUses);
+  for (const [name, value] of Object.entries(input.object)) {
+    const decoded = decode_expression(value, [...memberPath, name], true, issues, ranges, root, provenance, definitionNames, referenceUses);
     if (decoded !== undefined) members.push(Object.freeze({ name, optional: decoded.optional, schema: decoded.schema }));
   }
-  const schema = Object.freeze({ kind: "object", members: Object.freeze(members) } as const);
-  bind_range(schema, path, ranges, root, provenance);
-  return schema;
+  const additional = "any" in input
+    ? decode_expression(input.any, [...path, "any"], false, issues, ranges, root, provenance, definitionNames, referenceUses)?.schema
+    : undefined;
+  return Object.freeze({ kind: "object", members: Object.freeze(members), ...(additional === undefined ? {} : { additional }) });
 }
 
 function decode_document_element(input: JsonObject, path: readonly (string | number)[], rootDescriptor: boolean, issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDocumentElement | undefined {
@@ -694,7 +702,12 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
           nodes[ref] = { kind: "projected-array", item: allocate(schema.item) }; break;
         case "object": {
           const properties: [string, number][] = [];
-          nodes[ref] = { kind: "projected-object", exact: true, properties };
+          const { additional } = schema;
+          nodes[ref] = { kind: "projected-object", exact: additional === undefined, properties };
+          // The stack visits each named subtree before discovering the wildcard.
+          if (additional !== undefined && additional.kind !== "any") pending.push(() => {
+            nodes[ref] = { kind: "projected-object", exact: false, properties, additional: allocate(additional) };
+          });
           for (const member of schema.members.slice().reverse()) {
             pending.push(() => properties.push([member.name, allocate(member.schema, member.optional)]));
           }
@@ -872,8 +885,10 @@ function validate_unions(root: HsonSchemaSemanticNode, definitions: ReadonlyMap<
         }
       }
       schema.choices.forEach(visitData);
-    } else if (schema.kind === "object") schema.members.forEach((member) => visitData(member.schema));
-    else if (schema.kind === "array") visitData(schema.item);
+    } else if (schema.kind === "object") {
+      schema.members.forEach(member => visitData(member.schema));
+      if (schema.additional !== undefined) visitData(schema.additional);
+    } else if (schema.kind === "array") visitData(schema.item);
     else if (schema.kind === "tuple") schema.items.forEach(visitData);
   };
   const visitDocument = (element: HsonSchemaDocumentElement): void => {
@@ -1134,7 +1149,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const objectMembers = reserve();
   // The record consumes each member value before following the recursive edge.
   nodes[objectMembers] = { kind: "projected-record", value: expression };
-  nodes[object] = { kind: "projected-object", exact: true, properties: [["object", objectMembers]] };
+  nodes[object] = { kind: "projected-object", exact: true, properties: [["object", objectMembers], ["any", optional(expression)]] };
   const optionalDescriptor = reserve();
   const optionalExpression = refExpression();
   nodes[optionalDescriptor] = { kind: "projected-object", exact: true, properties: [["optional", optionalExpression]] };

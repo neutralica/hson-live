@@ -1,5 +1,5 @@
 import { hsonLiveMap, type HsonSchema, type LocusDefinitions } from "../src/index.js";
-import type { JsonValue } from "../src/core/types.js";
+import type { DataValueRead } from "../src/core/data-value.types.js";
 declare const schema: HsonSchema<{ rows: readonly { title: string }[]; optional?: number }, "data">;
 const definitions = { deck: { json: { rows: [] }, schema }, page: { document: "<main/>", stylesheet: "main{color:red}", access: "shared" },
   components: { parts: { button: { kind: "document", document: "<button hson:part/>", stylesheet: "button{color:red}" } } } } as const satisfies LocusDefinitions;
@@ -62,7 +62,7 @@ union.data.a.snap();
 const roots = hsonLiveMap.locus.create({ array: { json: [1] }, object: { json: { first: 1 } } });
 roots.data.array.at([]).array.push("next");
 roots.data.object.at([]).object.setKey("other", true);
-roots.data.array.snap() satisfies readonly JsonValue[];
+roots.data.array.snap() satisfies readonly DataValueRead[];
 // @ts-expect-error Initial contents are not persistent field evidence.
 roots.data.object.at(["first"]).snap() satisfies number;
 hsonLiveMap.locus.create(definitions, { actions: { inspect(context) {

@@ -8,7 +8,7 @@ import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { split_attrs_meta } from "../../api/transform/utils/hson-utils/split-attrs-meta.js";
 import { PART_DECLARATION, PART_OPTIONAL, PART_QUALIFIERS, is_part_scalar_qualifier, has_part_reference, is_part_iterator_attribute, is_part_parameter_name, is_part_receiving_attribute, part_argument_name, part_placeholder_matches, part_placeholder_placement_issue, scan_part_reference } from "../part-placeholder.js";
 import { part_source_bindings_at, type PartSourceFacts, type PartDocumentSource, type PartLocalSource } from "../hson-schema/part-source.js";
-import { OBJECT_VALUE, project_ordered_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
+import { OBJECT_VALUE, project_ordered_data, schema_object_member, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import type { PartDataSchemaEvidence } from "../hson-schema/part-source.js";
 import { part_data_contexts, part_data_projection, part_data_context_description } from "./part-data-evidence.js";
 import type { HsonEditorCandidate } from "./query.js";
@@ -264,7 +264,7 @@ function schema_paths(evidence: PartDataSchemaEvidence, origin: SchemaDataPath, 
       // Preserve existing iterator suggestions: heterogeneous element/value
       // origins offer common members, while retaining their richer type detail.
       if ([...contextPath, ...origin].some(selector => selector === null || selector === OBJECT_VALUE)
-        && projection.alternatives.some(alternative => alternative.kind !== "supported" || alternative.node.kind !== "object" || !alternative.node.members.some(member => member.name === name))) continue;
+        && projection.alternatives.some(alternative => alternative.kind !== "supported" || alternative.node.kind !== "object" || schema_object_member(alternative.node, name) === undefined)) continue;
       const spelling = member_path(current.spelling, name), path = [...current.path, name];
       result.push({ path: spelling, selectors: path });
       pending.push({ path, spelling, depth: current.depth + 1 });

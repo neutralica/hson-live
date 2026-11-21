@@ -1,26 +1,26 @@
 import { required_reads } from "./required-reads.js";
 import { forward_part_write } from "./part-write.js";
-import type { JsonValue } from "../core/types.js";
+import type { DataObjectRead, DataValueRead } from "../core/data-value.types.js";
 import type { LiveMapDocumentLibrary, LibraryArrayRead, LibraryObjectRead, AuthorityDocumentLocation } from "../types/livemap.types.js";
 import type { ReadDataLocation } from "../types/governor.types.js";
 /** Structural read boundary also accepts a checked handle without its narrower write proposals. */
 export interface DataLocationObservations {
   readonly rev: number;
   path(): import("../types/livemap.types.js").LivePath;
-  snap(): JsonValue | undefined;
-  readonly must: import("../types/livemap.types.js").RequiredReads<JsonValue | undefined, import("../api/transform/transform.types.js").HsonData>;
+  snap(): unknown;
+  readonly must: import("../types/livemap.types.js").RequiredReads<unknown, import("../api/transform/transform.types.js").HsonData>;
   hson(): import("../api/transform/transform.types.js").HsonData | undefined;
   kind(): import("../types/livemap.types.js").LiveMapPathKind;
-  watch(listener: (value: JsonValue | undefined) => void): () => void;
+  watch(listener: (value: unknown) => void): () => void;
   at(path: import("../types/livemap.types.js").LivePath): DataLocationObservations;
   present(): DataLocationObservations | undefined;
-  asArray(): (DataLocationObservations & { readonly array: LibraryArrayRead<JsonValue> }) | undefined;
-  asObject(): (DataLocationObservations & { readonly object: LibraryObjectRead<JsonValue> }) | undefined;
+  asArray(): (DataLocationObservations & { readonly array: LibraryArrayRead<readonly DataValueRead[]> }) | undefined;
+  asObject(): (DataLocationObservations & { readonly object: LibraryObjectRead<DataObjectRead> }) | undefined;
   asScalar(): DataLocationObservations | undefined;
 }
 
-const ARRAY_READS = ["toArray", "slice", "take", "drop", "takeLast", "dropLast", "map", "length", "isEmpty", "at", "first", "last", "includes", "indexOf"] as const satisfies readonly (keyof LibraryArrayRead<JsonValue>)[];
-const OBJECT_READS = ["toObject", "pick", "omit", "hasKey", "getKey", "keys", "isEmpty", "size", "values", "entries"] as const satisfies readonly (keyof LibraryObjectRead<JsonValue>)[];
+const ARRAY_READS = ["toArray", "slice", "take", "drop", "takeLast", "dropLast", "map", "length", "isEmpty", "at", "first", "last", "includes", "indexOf"] as const satisfies readonly (keyof LibraryArrayRead<readonly DataValueRead[]>)[];
+const OBJECT_READS = ["toObject", "pick", "omit", "hasKey", "getKey", "keys", "isEmpty", "size", "values", "entries"] as const satisfies readonly (keyof LibraryObjectRead<DataObjectRead>)[];
 
 /** Live reads recheck lifetime after caller callbacks/conversion; returned data stays detached. */
 export function live_observation(assertReadable: () => void) {
@@ -58,7 +58,7 @@ function observations<T extends object, TName extends keyof T>(api: T, names: re
 }
 /** Share the existing canonical read implementations, never their mutation methods. */
 export function collection_observations(raw: DataLocationObservations, assertReadable: () => void = () => {}): Readonly<{
-  array?: LibraryArrayRead<JsonValue>; object?: LibraryObjectRead<JsonValue>;
+  array?: LibraryArrayRead<readonly DataValueRead[]>; object?: LibraryObjectRead<DataObjectRead>;
 }> {
   assertReadable();
   const array = raw.asArray()?.array, object = raw.asObject()?.object;

@@ -2,9 +2,9 @@ import type { PARTS_FACADE_RESERVED } from "../internal/parts-facade.js";
 import type { LibraryCertainNames, LibraryLiteralDefinitions, LibraryRefinedValue } from "./library-evidence.types.js";
 import type { HsonAuthored } from "../api/transform/transform.types.js";
 import type { HsonDataInputCheck } from "../api/data/hson-data.js";
-import type { LivePath, LiveMapPathValue, LiveMapPartCollection, LiveMapDocumentPart, LiveMapLibraryPathHandle, LiveMapStagedDataPath,
+import type { LivePath, LiveMapPathValue, LiveMapPathProposal, LiveMapPartCollection, LiveMapDocumentPart, LiveMapLibraryPathHandle, LiveMapStagedDataPath,
   LiveMapPartInputCheck, LiveMapPartMembersCheck, LiveMapObjectValue, LiveMapObjectShape, LiveMapObjectKey, LiveMapObjectSetValue,
-  LiveMapObjectBranch, LiveMapArrayBranch, LiveMapScalarBranch } from "./livemap.types.js";
+  LiveMapObjectBranch, LiveMapArrayBranch, LiveMapScalarBranch, LiveMapObjectPick, LiveMapObjectOmit } from "./livemap.types.js";
 import type { LocusDataLocation, ReadDataLocation } from "./governor.types.js";
 
 type Members<D> = D extends { parts: infer P } ? LibraryLiteralDefinitions<P> : {};
@@ -24,8 +24,8 @@ type Authoring = Readonly<{
 }>;
 
 type Context = "local" | "locus" | "read" | "stage";
-type Location<C, V, N extends string, R> = C extends "local" ? LiveMapLibraryPathHandle<V, N>
-  : C extends "locus" ? LocusDataLocation<V> : C extends "stage" ? LiveMapStagedDataPath<V, R> : ReadDataLocation<V>;
+type Location<C, V, N extends string, R, W = V> = C extends "local" ? LiveMapLibraryPathHandle<V, N, V, W>
+  : C extends "locus" ? LocusDataLocation<V, V, W> : C extends "stage" ? LiveMapStagedDataPath<W, R> : ReadDataLocation<V>;
 
 type Refinement = "present" | "asObject" | "asArray" | "asScalar";
 type Refined<V, K> = K extends "present" ? Exclude<V, undefined> : K extends "asObject" ? LiveMapObjectBranch<V>
@@ -35,11 +35,11 @@ type AtValue<Read, P extends LivePath, Child extends LivePath> = P extends reado
   : LiveMapPathValue<Read, Child>;
 
 /** Shared selector signature: ordinary locations keep their existing value projection. */
-export type DataLocationAt<C, V, Read, N extends string = string, R = void, P extends LivePath | undefined = undefined> =
+export type DataLocationAt<C, V, Read, N extends string = string, R = void, P extends LivePath | undefined = undefined, W = V> =
   <const Child extends LivePath>(path: Child & ([LiveMapPathValue<V, Child>] extends [never] ? never : unknown) & (P extends LivePath ? PublicPartPath<[...P, ...Child]> : unknown)) =>
     P extends LivePath
       ? GovernedLocation<Location<C, AtValue<Read, P, Child>, N, R>, C, [...P, ...Child], AtValue<Read, P, Child>, N, R>
-      : Location<C, LiveMapPathValue<Read, Child>, N, R>;
+      : Location<C, LiveMapPathValue<Read, Child>, N, R, LiveMapPathProposal<W, Child>>;
 
 type CssField = "css" | "stylesheet";
 /** Coordinates, never value shape, establish the protected field boundary. */
@@ -61,9 +61,9 @@ type MemberObject<O, V> = {
     : K extends "setKey" ? <const Key extends LiveMapObjectKey<V>>(
         key: Key & KeyCheck<Key>, value: NoInfer<LiveMapObjectSetValue<V, Key>>) => Result<O[K]>
     : K extends "pick" ? <const Keys extends readonly string[]>(keys: Keys & KeyCheck<Keys[number]>) =>
-        Pick<LiveMapObjectShape<V>, Extract<Keys[number], keyof LiveMapObjectShape<V>>>
+        LiveMapObjectPick<LiveMapObjectShape<V>, Keys>
     : K extends "omit" ? <const Keys extends readonly string[]>(keys: Keys & KeyCheck<Keys[number]>) =>
-        Omit<LiveMapObjectShape<V>, Extract<Keys[number], keyof LiveMapObjectShape<V>>>
+        LiveMapObjectOmit<LiveMapObjectShape<V>, Keys>
     : K extends "setMany" ? <const T extends MemberPatch>(
         value: T & LiveMapPartInputCheck<NoInfer<T>> & KeyCheck<keyof T>) => Result<O[K]>
     : K extends "hasKey" | "deleteKey" | "renameKey" | "deleteMany"

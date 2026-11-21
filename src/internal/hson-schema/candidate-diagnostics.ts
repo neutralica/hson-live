@@ -12,7 +12,7 @@ import { library_source_admission, library_source_definitions, library_source_fi
 import { library_json_has_hson_source } from "./library-json-source.js";
 import { static_source_candidates } from "./source-candidates.js";
 import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
-import { OBJECT_VALUE, project_ordered_data, project_schema_data } from "./data-projection.js";
+import { OBJECT_VALUE, inspect_schema_data, project_ordered_data, project_schema_data, schema_object_member } from "./data-projection.js";
 import { is_ordered_projected_object, ordered_projected_object, type OrderedProjectedObject, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { is_part_argument_attribute, is_part_scalar_qualifier, part_argument_name, part_argument_issue, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
@@ -166,7 +166,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
       const { name, qualifier, operand } = argument;
       if (operand.kind === "literal" || maybeAbsent?.has(argument)) continue;
       if (objects.length > 0 && roots.every(root => root.kind !== "any")
-        && objects.every(root => root.members.every(member => member.name !== name))) {
+        && objects.every(root => schema_object_member(root, name) === undefined)) {
         incompatible(name, `unknown key at ${name}`);
         continue;
       }
@@ -303,9 +303,10 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
           }
           // Unknown member multiplicity can be zero; withhold unconditional errors.
           if (argument.dataSchema !== undefined && !origin.path.some(step => step === null || step === OBJECT_VALUE)) {
-            const nodes = project_schema_data(argument.dataSchema, origin.path);
-            invalid ||= nodes.length > 0 && nodes.every(node => node.kind !== "any" && node.kind !== "ref"
-              && (kind === "object" ? node.kind !== "object" : node.kind !== "array" && node.kind !== "tuple"));
+            const { alternatives } = inspect_schema_data(argument.dataSchema, origin.path);
+            invalid ||= alternatives.length > 0 && alternatives.every(alternative => alternative.kind === "supported"
+              && alternative.presence === "required" && alternative.node.kind !== "any"
+              && (kind === "object" ? alternative.node.kind !== "object" : alternative.node.kind !== "array" && alternative.node.kind !== "tuple"));
           }
           if (invalid) report(argument.valueLocation?.precision === "exact" ? argument.valueLocation : argument.nameLocation,
             "HSON_PART_REFERENCE_INVALID", `Part iterator ${JSON.stringify(iterator.declaration!.attribute)} requires ${kind} Data for this invocation.`, iterator.location);

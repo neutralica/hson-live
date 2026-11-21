@@ -3,6 +3,7 @@ import { require_data_location, type DataLocationCheck } from "./livemap.data-re
 // handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
+import type { DataValueRead } from "../../core/data-value.types.js";
 import type {
   LiveMapCoreCommit,
   LiveMapCore,
@@ -111,7 +112,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
     must: required_reads(() => read() as TValue, hson),
     at: ((path: LivePath) => {
       const childPath = [...handlePath, ...must_live_path(path)];
-      return make_livemap_path_handle(core, childPath, listener => core.at(childPath).watch(listener), check);
+      return make_livemap_path_handle<DataValueRead | undefined>(core, childPath, listener => core.at(childPath).watch(listener), check);
     }) as unknown as LiveMapPathHandle<TValue>["at"],
     set: (value) => projected.commit([{ kind: "set", path: handlePath, value: must_ordered_projected_value(value, handlePath) }]),
     replace: (value) => projected.commit([{ kind: "replace", path: handlePath, value: must_ordered_projected_value(value, handlePath) }]),

@@ -105,7 +105,7 @@ export async function library_evidence_cases() {
   assert.throws(() => stale.array.push(3), /another map authority/i);
 
   const schema = Hson.schema`<type "data" root <object <value <optional "any"> parent <optional <object <value "any">>>>>>`;
-  let retainedRead: ReturnType<ReadDataLocation["asArray"]>;
+  let retainedRead: ReturnType<ReadDataLocation<unknown>["asArray"]>;
   const locus = hsonLiveMap.locus.create({ "state": { json: { value: [1], parent: { value: { n: 1 } } }, schema, access: "shared" } }, { actions: { inspect(context) {
       retainedRead = context.data.must("state").at(["value"]).asArray();
       assert.ok(retainedRead);

@@ -158,7 +158,7 @@ check("refinement and composite failures reject before revision or publication",
   assert.equal(state.at(["age"]).snap(), 38);
 });
 
-check("detached structural snapshots forward as proposals and invalid updates stay atomic", () => {
+check("exact snapshots forward as proposals and invalid detached updates stay atomic", () => {
   const map = hsonLiveMap.fromLibraries({ state: { json: user(), schema: UserSchema } });
   const state = map.data.must("state");
   const publications: unknown[] = [];
@@ -166,7 +166,7 @@ check("detached structural snapshots forward as proposals and invalid updates st
   const snapshot = state.snap();
   assert.equal(Object.isFrozen(snapshot), false);
   assert.equal(Object.isFrozen(snapshot.flags), false);
-  state.at([]).replace(snapshot);
+  state.at([]).replace(Hson.data.fromSource(state.must.hson()));
   state.at(["account"]).update(current => current);
   state.at(["flags"]).update(current => current);
   state.at(["pair"]).replace(snapshot.pair);
@@ -177,7 +177,8 @@ check("detached structural snapshots forward as proposals and invalid updates st
   const detached: { code: string } = snapshot;
   detached.code = "bad";
   assert.equal(state.snap().code, "ID-7");
-  assert.throws(() => state.at([]).replace(snapshot));
+  const replaceRoot = state.at([]).replace;
+  assert.throws(() => Reflect.apply(replaceRoot, undefined, [snapshot]));
   assert.throws(() => state.at(["age"]).update(() => -1));
   assert.equal(map.rev, 0);
   assert.equal(publications.length, 0);

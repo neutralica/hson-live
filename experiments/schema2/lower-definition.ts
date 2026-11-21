@@ -73,6 +73,8 @@ export type LoweredDefinition = Readonly<{
   schema1Source: string;
   /** Nearest structural owner of a compiler path, including paths inside a braced operand. */
   originAt(path: Path): SchemaOrigin;
+  /** Named member or wildcard owning this generated field, before optional or value lowering. */
+  declarationAt(path: Path): SchemaOccurrence | undefined;
 }>;
 
 /**
@@ -88,6 +90,7 @@ export type LoweredDefinition = Readonly<{
 export function lower_schema_definition(root: SchemaOccurrence): LoweredDefinition {
   if (!is_schema_occurrence(root)) throw new TypeError("Expected an owned Schema occurrence at the root.");
   const origins = new Map<string, SchemaOrigin>();
+  const declarations = new Map<string, SchemaOccurrence>();
   function locate(path: Path, origin: SchemaOrigin): void {
     if (path.length >= HSON_MAX_NESTING) fail(origin, "Lowered definition exceeds the HSON nesting limit.");
     origins.set(JSON.stringify(path), origin);
@@ -114,21 +117,42 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
     return entries;
   }
 
-  function members(owner: SchemaOccurrence, path: Path): OrderedProjectedObject {
+  function memberFields(owner: SchemaOccurrence, parent: Path): Entry[] {
     no_headers(owner);
     const body = owner.body;
     const context = owner.name;
+    const path = [...parent, context];
+    if (context === "object" && body === undefined) {
+      locate(path, owner);
+      return [[context, ordered_projected_object([])]];
+    }
     if (body?.kind !== "members") fail(body ?? owner, `${context} requires an ordered member map.`);
     locate(path, body);
     const entries: Entry[] = [];
     const seen = new Set<string>();
+    let additional: Entry | undefined;
     for (const member of body.entries) {
+      if (context === "object" && member.kind === "operation" && member.name === "any") {
+        if (additional) fail(member, "Duplicate object wildcard.");
+        const [header] = member.headers;
+        if (header) fail(header, `Object wildcard any does not accept the ${header.name} header. Only named members can be optional.`);
+        const wildcardPath = [...parent, "any"];
+        declarations.set(JSON.stringify(wildcardPath), member);
+        if (member.body === undefined) {
+          locate(wildcardPath, member);
+          additional = ["any", "any"];
+        } else {
+          additional = ["any", expression(nested_expression(member), wildcardPath)];
+        }
+        continue;
+      }
       if (member.kind !== "name") fail(member, `${context} requires user-defined names, received operation ${member.name}.`);
       const name = member.name;
       if (!is_valid_hson_data_name(name)) fail(member, `Invalid Data name ${JSON.stringify(name)}.`);
       if (seen.has(name)) fail(member, `Duplicate name ${JSON.stringify(name)} in ${context}.`);
       seen.add(name);
       const memberPath = [...path, name];
+      declarations.set(JSON.stringify(memberPath), member);
       const child = nested_expression(member);
       let value: OrderedProjectedValue;
       const [flag, extra] = member.headers;
@@ -144,7 +168,9 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
       }
       entries.push([name, value]);
     }
-    return ordered_projected_object(entries);
+    const fields: Entry[] = [[context, ordered_projected_object(entries)]];
+    if (additional) fields.push(additional);
+    return fields;
   }
 
   // Unmodified primitives are the only expressions emitted as Schema 1.0 strings.
@@ -177,7 +203,7 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
         return ordered_projected_object([[name, body.value]]);
       }
       case "object":
-        return ordered_projected_object([[name, members(owner, operandPath)]]);
+        return ordered_projected_object(memberFields(owner, path));
       case "array": case "tuple": case "union": {
         if (name === "union") no_headers(owner);
         const rules = name === "union" ? [] : refinements(owner, name, operandPath);
@@ -208,7 +234,7 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
     if (clause.kind !== "operation") fail(clause, "A data root clause must be an operation.");
     if (clause.name === "defs") {
       if (entries.length !== 1) fail(clause, "defs may occur once, before the root expression.");
-      entries.push(["defs", members(clause, ["defs"])]);
+      entries.push(...memberFields(clause, []));
       return;
     }
     if (entries.at(-1)?.[0] === "root") fail(clause, "A data root accepts only one expression.");
@@ -248,5 +274,5 @@ export function lower_schema_definition(root: SchemaOccurrence): LoweredDefiniti
     fail(overflowingOrigin(orderedDefinition, []) ?? root,
       `Cannot emit the lowered Data definition. ${error instanceof Error ? error.message : String(error)}`);
   }
-  return { orderedDefinition, schema1Source, originAt };
+  return { orderedDefinition, schema1Source, originAt, declarationAt: path => declarations.get(JSON.stringify(path)) };
 }

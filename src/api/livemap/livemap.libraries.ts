@@ -25,6 +25,7 @@ import { capture_document_click, capture_document_event, synchronous_document_li
 import { document_callback_listener } from "./livemap.document.native-listener.js";
 import { render_portable_document_stylesheet_carriers, decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type { LiveMapCutOptions, LiveMapCut, LiveMapHtmlCut } from "../../types/livemap.types.js";
+import type { DataValueRead } from "../../core/data-value.types.js";
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { clone_node } from "../../core/clone-node.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
@@ -1487,18 +1488,15 @@ function make_data_library(
     return Object.freeze(facade) as unknown as LiveMapLibraryPathHandle<TValue>;
   };
 
-  function library_snap(): JsonValue | undefined;
-  function library_snap<const TPath extends LivePath>(path: TPath): import("../../types/livemap.types.js").LiveMapPathValue<JsonValue | undefined, TPath>;
-  function library_snap(path: LivePath = []): JsonValue | undefined {
+  function library_snap(): DataValueRead | undefined;
+  function library_snap<const TPath extends LivePath>(path: TPath): import("../../types/livemap.types.js").LiveMapPathValue<DataValueRead | undefined, TPath>;
+  function library_snap(path: LivePath = []): DataValueRead | undefined {
     if (contract?.validation === PART_COLLECTION_VALIDATION) assert_part_public_path(must_live_path(path));
     return snap(path);
   }
-  function library_at<const TPath extends LivePath>(
-    path: TPath,
-  ): LiveMapLibraryPathHandle<import("../../types/livemap.types.js").LiveMapPathValue<JsonValue | undefined, TPath>> {
-    return handle<import("../../types/livemap.types.js").LiveMapPathValue<JsonValue | undefined, TPath>>(path);
+  function library_at(path: LivePath): LiveMapLibraryPathHandle {
+    return handle(path);
   }
-
   const facade: LiveMapDataLibrary = {
     mode: contract.mode,
     get rev() { aggregate.librarySchema(library.identity); return aggregate.hostedPosition().revision; },
@@ -1506,7 +1504,7 @@ function make_data_library(
     snap: library_snap,
     hson: () => canonical(),
     must: required_reads(() => library_snap(), canonical),
-    at: library_at as LiveMapDataLibrary["at"],
+    at: library_at as unknown as LiveMapDataLibrary["at"],
     schema: Object.freeze({
       get: () => aggregate.librarySchema(library.identity) as HsonSchemaHandle<unknown, "data">,
       use: (schema: HsonSchemaHandle) => public_commit(aggregate.useLibrarySchema(library.identity, schema)),

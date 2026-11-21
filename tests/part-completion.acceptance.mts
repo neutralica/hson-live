@@ -797,6 +797,13 @@ function typedPart(body: string, shape = typedShape, value = typedValue): string
     + body + '`}}},page:{document:Hson.document`<hson-part at="components/card" incoming:data="${input.toHson()}"/>`}});';
 }
 const hoverText = (program: ts.Program, text: string, spelling: string) => part_data_hover(collect_part_source_facts(ts, program), file('app.ts'), text.indexOf(spelling) + 3)?.text;
+check('a wildcard key may be absent and its declared children complete under that optional ancestor', () => {
+  const shape = '<title "string"> any <object <count "number">>';
+  const body = '<p hson:part data:record="%{incoming}" "^{record.extra.co|unt}"/>';
+  const result = complete(typedPart(body, shape, '<title "a">'));
+  assert.match(hoverText(result.program, result.text, '^{record.extra.count}')!, /number \(optional\); validated/);
+  assert.ok(result.entries.some(entry => entry.candidate.label === 'record.extra.count'));
+});
 check('direct receiving aliases expose typed optional literal union and nested member completion', () => {
   const result = complete(typedPart('<p hson:part data:record="%{incoming}" "^{record.|}"/>'));
   assert.deepEqual(result.labels, ['record.kind', 'record.nested', 'record.nested.caption', 'record.note', 'record.state', 'record.title']);

@@ -14,12 +14,23 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
   const definitionsByName = new Map(definitions.map((definition) => [definition.name, definition]));
   const reachableDefinitions: HsonSchemaDefinition[] = [];
   const aliases = new Map<string, string>();
-  const visitData = (schema: HsonSchemaDataSemanticNode): void => {
-    if (schema.kind === "ref") { visitDefinition(schema.name); return; }
-    if (schema.kind === "object") schema.members.forEach((member) => visitData(member.schema));
-    else if (schema.kind === "array") visitData(schema.item);
-    else if (schema.kind === "tuple") schema.items.forEach(visitData);
-    else if (schema.kind === "union") schema.choices.forEach(visitData);
+  const visitData = (root: HsonSchemaDataSemanticNode): void => {
+    // A flat defs map can form a reference chain much deeper than the HSON text.
+    const pending = [root];
+    while (pending.length) {
+      const node = pending.pop()!;
+      if (node.kind === "ref") {
+        const target = registerDefinition(node.name);
+        if (target && target.schema.kind !== "document-element") pending.push(target.schema);
+      } else if (node.kind === "object") {
+        if (node.additional !== undefined) pending.push(node.additional);
+        for (let i = node.members.length - 1; i >= 0; i--) pending.push(node.members[i]!.schema);
+      } else if (node.kind === "array") pending.push(node.item);
+      else if (node.kind === "union" || node.kind === "tuple") {
+        const children = node.kind === "tuple" ? node.items : node.choices;
+        for (let i = children.length - 1; i >= 0; i--) pending.push(children[i]!);
+      }
+    }
   };
   const visitDocument = (element: HsonSchemaDocumentElement): void => {
     element.attrs.forEach((attr) => { if (!attr.flag) visitData(attr.schema); });
@@ -29,7 +40,7 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
       else if (item.kind === "document-element") visitDocument(item);
     });
   };
-  const visitDefinition = (definitionName: string): void => {
+  const registerDefinition = (definitionName: string): HsonSchemaDefinition | undefined => {
     if (aliases.has(definitionName)) return;
     const definition = definitionsByName.get(definitionName);
     if (definition === undefined) throw new Error(`Missing generated Schema definition ${JSON.stringify(definitionName)}.`);
@@ -37,7 +48,11 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
       ? `__${name}Definition${aliases.size}`
       : structural_definition_name(definitionName, aliases.size));
     reachableDefinitions.push(definition);
-    if (definition.schema.kind === "document-element") visitDocument(definition.schema); else visitData(definition.schema);
+    return definition;
+  };
+  const visitDefinition = (name: string): void => {
+    const definition = registerDefinition(name);
+    if (definition?.schema.kind === "document-element") visitDocument(definition.schema);
   };
   if (root.kind === "document") {
     const items = root.content.kind === "document-sequence" ? root.content.items : root.content.kind === "document-repeat" ? [root.content.item] : [];
@@ -54,28 +69,53 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     proofDeclarations.push(`abstract class ${className} { declare private readonly __hsonSchemaProof${proofIndex}: void; }`);
     return className;
   };
+  const proposalAliases = new Map<string, string>();
+  const proposalDefinitions: Array<Readonly<{ alias: string; schema: HsonSchemaDataSemanticNode }>> = [];
+  const proposalReference = (name: string): string => {
+    const terminal = terminalReference(name);
+    const existing = proposalAliases.get(terminal);
+    if (existing !== undefined) return existing;
+    const definition = definitionsByName.get(terminal);
+    if (definition === undefined || definition.schema.kind === "document-element") {
+      throw new Error(`Missing Data proposal definition ${JSON.stringify(terminal)}.`);
+    }
+    const alias = `$SchemaProposal${proposalAliases.size}`;
+    proposalAliases.set(terminal, alias);
+    proposalDefinitions.push({ alias, schema: definition.schema });
+    return alias;
+  };
   // Data reads express structure only. Constraints beyond TypeScript's shape
   // model are checked at admission, while Schema identity lives in Evidence.
-  const emitData = (schema: HsonSchemaDataSemanticNode): string => {
+  const emitData = (schema: HsonSchemaDataSemanticNode, proposal = false): string => {
     switch (schema.kind) {
       case "string": return "string";
       case "number": return "number";
       case "boolean": return "boolean";
       case "null": return "null";
-      case "any": return "JsonValue";
+      case "any": return proposal ? "$SchemaDataInput" : "$SchemaDataRead";
       case "exact": {
         if (schema.value === null) return "null";
         if (typeof schema.value === "string" || typeof schema.value === "boolean") return JSON.stringify(schema.value);
         return Object.is(schema.value, -0) ? "0" : String(schema.value);
       }
       case "object": {
-        const fields = schema.members.map((member) => `readonly ${property_name(member.name)}${member.optional ? "?" : ""}: ${emitData(member.schema)};`).join(" ");
-        return `{ ${fields} }`;
+        const open = schema.additional !== undefined;
+        if (proposal && !open && schema.members.length === 0) return "{ readonly [key: string | symbol]: never }";
+        const fields = schema.members.map(member => {
+          // Absent own members can inherit arbitrary values through a mutable prototype.
+          const type = member.optional && !proposal ? "unknown" : emitData(member.schema, proposal);
+          return `readonly ${property_name(member.name)}${member.optional ? "?" : ""}: ${type};`;
+        });
+        // A string index cannot exclude the named members. Runtime evaluation
+        // applies the wildcard to extras and the named rule to each declared key.
+        const index = proposal ? " & { readonly [key: string]: $SchemaDataInput }" : " & $SchemaObjectRead";
+        return `{ ${fields.join(" ")} }${open ? index : ""}`;
       }
-      case "array": return `ReadonlyArray<${emitData(schema.item)}>`;
-      case "tuple": return `readonly [${schema.items.map(emitData).join(", ")}]`;
-      case "union": return schema.choices.map((choice) => `(${emitData(choice)})`).join(" | ");
+      case "array": return `ReadonlyArray<${emitData(schema.item, proposal)}>`;
+      case "tuple": return `readonly [${schema.items.map(item => emitData(item, proposal)).join(", ")}]`;
+      case "union": return schema.choices.map(choice => `(${emitData(choice, proposal)})`).join(" | ");
       case "ref": {
+        if (proposal) return proposalReference(schema.name);
         const alias = aliases.get(schema.name);
         if (alias === undefined) throw new Error(`Unreachable generated Schema ref ${JSON.stringify(schema.name)}.`);
         return alias;
@@ -139,11 +179,35 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return `readonly [${items.join(", ")}]`;
   };
 
-  // Recursive application declarations must be able to name authored ref targets.
+  const referenceTerminals = new Map<string, string>();
+  const terminalReference = (name: string): string => {
+    const chain = new Set<string>();
+    let current = name;
+    while (true) {
+      const cached = referenceTerminals.get(current);
+      if (cached !== undefined) {
+        current = cached;
+        break;
+      }
+      const target = definitionsByName.get(current);
+      if (target?.schema.kind !== "ref") break;
+      if (chain.has(current)) throw new Error(`Circular generated Schema alias ${JSON.stringify(current)}.`);
+      chain.add(current);
+      current = target.schema.name;
+    }
+    for (const alias of chain) referenceTerminals.set(alias, current);
+    return current;
+  };
+
+  // Keep names at use sites and skip transparent hops in alias bodies. Structural
+  // definitions remain named boundaries, including in productive recursive cycles.
   const definitionDeclarations = reachableDefinitions.map((definition, index) => {
     const alias = aliases.get(definition.name);
     if (alias === undefined) throw new Error(`Missing generated alias for ${JSON.stringify(definition.name)}.`);
-    const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema);
+    const schema = definition.schema;
+    const body = schema.kind === "document-element" ? emitDocumentElement(schema, `D${index}`)
+      : schema.kind === "ref" ? emitData({ kind: "ref", name: terminalReference(schema.name) })
+        : emitData(schema);
     return definition.schema.kind === "document-element"
       ? `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`
       : `export type ${alias} = ${body};`;
@@ -153,9 +217,20 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     : root.kind === "document-element"
       ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: readonly [${emitDocumentElement(root, "RootItem")}]; }> & ${proof("RootDocument")}`
     : emitData(root);
+  const document = root.kind === "document" || root.kind === "document-element";
+  const proposal = document ? "unknown" : emitData(root, true);
+  // Only named structural targets used by proposals need private aliases. The
+  // worklist also closes productive recursive references without inlining them.
+  const proposalDeclarations: string[] = [];
+  for (const { alias, schema } of proposalDefinitions) {
+    proposalDeclarations.push(`type ${alias} = ${emitData(schema, true)};`);
+  }
   return Object.freeze({
     proofNodeCount,
-    declarations: `${proofDeclarations.join("\n")}${proofDeclarations.length === 0 ? "" : "\n"}${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}declare const __Identity: unique symbol;\nexport type Evidence = Readonly<{ value: ${type}; mode: ${JSON.stringify(root.kind === "document" || root.kind === "document-element" ? "document" : "data")}; identity: typeof __Identity }>;`,
+    declarations: [...proofDeclarations, ...definitionDeclarations, ...proposalDeclarations,
+      "declare const __Identity: unique symbol;",
+      `export type Evidence = Readonly<{ value: ${type}; mode: ${JSON.stringify(document ? "document" : "data")}; identity: typeof __Identity; proposal: ${proposal} }>;`,
+    ].join("\n"),
   });
 }
 
@@ -173,6 +248,7 @@ function structural_definition_name(name: string, index: number): string {
   // Keywords and contextual keywords must not be emitted as type-alias names
   // or refs. Let TypeScript classify them rather than maintaining a keyword list.
   return /^[$A-Z_a-z][$\w]*$/.test(name) && !reserved.has(name) && !name.startsWith("$SchemaRef")
+    && !name.startsWith("$SchemaProposal") && !["$SchemaDataRead", "$SchemaObjectRead", "$SchemaDataInput"].includes(name)
     && ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, name).scan() === ts.SyntaxKind.Identifier
     ? name : `$SchemaRef${index}`;
 }

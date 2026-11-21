@@ -101,7 +101,7 @@ await check("caller methods and species never run; getters are independent array
   assert.equal(tree.form.setSelected(selected), tree);
   selected[0] = "c";
   assert.deepEqual(tree.form.getSelected(), ["b", "a", "b"]);
-  const result = tree.form.getSelected(); assert.ok(Array.isArray(result)); result.push("caller");
+  const result = tree.form.getSelected(); assert.ok(Array.isArray(result)); Reflect.apply(Array.prototype.push, result, ["caller"]);
   assert.deepEqual(tree.form.getSelected(), ["b", "a", "b"]); assert.deepEqual(tree.node, before);
   tree.form.setSelected([]); assert.deepEqual(tree.form.getSelected(), []);
   tree.attrs.set("title", "valid"); assert.equal(tree.attrs.get("values"), undefined);

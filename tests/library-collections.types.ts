@@ -13,6 +13,7 @@ locus.data.must("deck").at(["slides", 0, "unknown"]);
 // @ts-expect-error Indexed absence is preserved.
 const requiredTitle: string = locus.data.must("deck").at(["slides", 0, "title"]).snap();
 locus.data.must("deck").at(["slides", 0, "column1"]).asArray()!.array.map(block => {
+  // @ts-expect-error An optional member needs a value check before reading it as a declared literal.
   if (block.kind === "code") block.language satisfies "json" | "html" | "hson" | undefined;
   if (block.kind === "heading") {
     block.content satisfies string;
@@ -96,10 +97,11 @@ map.batch(writer => {
   const refined = column.asArray();
   refined.array.push({ kind: "paragraph", content: "x" });
   refined.array.push({ kind: "code", content: "x", language: "hson" });
-  // @ts-expect-error Refinement retains the Deck Block union.
-  refined.array.push({ kind: "paragraph", content: "x", language: "hson" });
-  // @ts-expect-error Refinement retains the field's element type.
-  refined.array.push({ kind: "wrong", content: "x" });
+  const requiredColumn = writer.data.must("deck").at(["slides", 0, "column1"]).asArray();
+  // @ts-expect-error Refinement retains the Deck Block union for required members.
+  requiredColumn.array.push({ kind: "paragraph", content: "x", language: "hson" });
+  // @ts-expect-error Refinement retains the required field's element type.
+  requiredColumn.array.push({ kind: "wrong", content: "x" });
   // @ts-expect-error Refinement does not grant snapshot access.
   refined.snap();
   // @ts-expect-error Refinement does not grant array observations.

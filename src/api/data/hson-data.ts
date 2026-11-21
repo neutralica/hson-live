@@ -1,4 +1,5 @@
-import type { JsonValue, Primitive } from "../../core/types.js";
+import type { Primitive } from "../../core/types.js";
+import type { DataValueInput } from "../../core/data-value.types.js";
 import {
   is_ordered_projected_object,
   ordered_projected_value_equal,
@@ -25,7 +26,6 @@ export function is_hson_data_value(value: unknown): value is HsonDataValue {
 }
 
 /** Supported ordinary values. Nested carriers require explicit materialization. */
-type DataValueInput = Primitive | readonly DataValueInput[] | { readonly [key: string]: DataValueInput };
 export type HsonDataInput = DataValueInput | HsonDataValue;
 
 /** Preserve interfaces, readonly structure, and optional fields without accepting arbitrary objects. */
@@ -96,9 +96,11 @@ export class HsonDataValue<TSchema extends HsonSchema<unknown, "data"> = HsonSch
     )));
   }
 
-  /** Materialize a fresh ordinary-JavaScript convenience view. */
-  materialize(): JsonValue & JsonFromSchema<TSchema> {
-    return materialize_projected_value(hson_data_value(this)) as JsonValue & JsonFromSchema<TSchema>;
+  /** Materialize a fresh ordinary JavaScript view with any certified Schema's read types. */
+  materialize(): JsonFromSchema<TSchema>;
+  // Certification validates the carrier before providing the Schema type.
+  materialize(): unknown {
+    return materialize_projected_value(hson_data_value(this));
   }
 
   /** Serialize this exact data value through the canonical Hson serializer. */

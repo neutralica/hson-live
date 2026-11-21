@@ -81,19 +81,19 @@ export function make_livemap_array_api<
       const item = must_ordered_projected_value(value, handlePath);
       return read().findIndex((arrayItem) => ordered_projected_value_equal(arrayItem, item));
     },
-    push: (value) => {
+    push: (value: unknown) => {
       const current = { length: length() };
       return splice(current.length, 0, [must_ordered_projected_value(value, [...handlePath, current.length])]);
     },
-    pushMany: (values) => {
+    pushMany: (values: unknown) => {
       const current = { length: length() };
       return splice(current.length, 0, mustOrderedArrayValue(values, handlePath));
     },
-    unshift: (value) => {
+    unshift: (value: unknown) => {
       length();
       return splice(0, 0, [must_ordered_projected_value(value, [...handlePath, 0])]);
     },
-    unshiftMany: (values) => {
+    unshiftMany: (values: unknown) => {
       length();
       return splice(0, 0, mustOrderedArrayValue(values, handlePath));
     },
@@ -112,7 +112,7 @@ export function make_livemap_array_api<
     reverse: () => set([...read()].reverse()),
     sortNumbers: (direction) => set(arraySortNumbers(read(), handlePath, direction)),
     sortStrings: (direction) => set(arraySortStrings(read(), handlePath, direction)),
-    splice: (...args) => {
+    splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: unknown[]]) => {
       const current = { length: length() };
       const [start, deleteCount, ...items] = args;
       const normalizedStart = normalizeHandleSpliceStart(current.length, arraySpliceStart(start, handlePath));
@@ -123,7 +123,7 @@ export function make_livemap_array_api<
         must_ordered_projected_value(item, [...handlePath, normalizedStart + index])
       )));
     },
-    insert: (index, value) => {
+    insert: (index: number, value: unknown) => {
       const current = { length: length() };
       const resolvedIndex = arrayInsertIndex(current, handlePath, index);
       return splice(resolvedIndex, 0, [must_ordered_projected_value(value, [...handlePath, resolvedIndex])]);
@@ -132,7 +132,7 @@ export function make_livemap_array_api<
       const current = { length: length() };
       return splice(arrayIndex(current, handlePath, index), 1);
     },
-    replace: (index, value) => {
+    replace: (index: number, value: unknown) => {
       const current = { length: length() };
       const resolvedIndex = arrayIndex(current, handlePath, index);
       return splice(resolvedIndex, 1, [must_ordered_projected_value(value, [...handlePath, resolvedIndex])]);

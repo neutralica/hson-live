@@ -8,6 +8,8 @@ import type {
   LiveMapCoreCommit,
   LiveMapObjectEntry,
   LiveMapObjectKey,
+  LiveMapObjectOmit,
+  LiveMapObjectPick,
   LiveMapObjectShape,
   LiveMapObjectValue,
   LiveMapPathObjectApi,
@@ -55,24 +57,24 @@ export function make_livemap_object_api<
   return {
     is: () => projected.kind(handlePath) === "object",
     toObject: () => { assertObject(); return projected.snap(handlePath) as LiveMapObjectShape<TValue>; },
-    pick: (selected) => {
+    pick: <const TKeys extends readonly string[]>(selected: TKeys) => {
       // Capture the selected container before caller-controlled key-list access.
       const value = read(), wanted = new Set(mustObjectKeyList(selected, handlePath));
-      return materialize_projected_value(ordered_projected_object(value.entries.filter(([key]) => wanted.has(key)))) as ReturnType<LiveMapPathObjectApi<TValue, TCommit>["pick"]>;
+      return materialize_projected_value(ordered_projected_object(value.entries.filter(([key]) => wanted.has(key)))) as LiveMapObjectPick<LiveMapObjectShape<TValue>, TKeys>;
     },
-    omit: (omitted) => {
+    omit: <const TKeys extends readonly string[]>(omitted: TKeys) => {
       const value = read(), unwanted = new Set(mustObjectKeyList(omitted, handlePath));
-      return materialize_projected_value(ordered_projected_object(value.entries.filter(([key]) => !unwanted.has(key)))) as ReturnType<LiveMapPathObjectApi<TValue, TCommit>["omit"]>;
+      return materialize_projected_value(ordered_projected_object(value.entries.filter(([key]) => !unwanted.has(key)))) as LiveMapObjectOmit<LiveMapObjectShape<TValue>, TKeys>;
     },
     hasKey: (key: unknown) => { assertObject(); return projected.kind([...handlePath, must_object_key(key, handlePath)]) !== "missing"; },
     getKey: <const TKey extends string>(key: TKey): LiveMapObjectValue<TValue, TKey> => {
       assertObject();
       return projected.snap([...handlePath, must_object_key(key, handlePath)]) as LiveMapObjectValue<TValue, TKey>;
     },
-    keys: () => keys() as readonly LiveMapObjectKey<TValue>[],
+    keys: () => keys() as readonly LiveMapObjectEntry<TValue>[0][],
     isEmpty: () => keys().length === 0,
     size: () => keys().length,
-    values: () => read().entries.map(([, value]) => materialize_projected_value(value)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
+    values: () => read().entries.map(([, value]) => materialize_projected_value(value)) as unknown as readonly LiveMapObjectEntry<TValue>[1][],
     entries: () => read().entries.map(([key, value]) => [key, materialize_projected_value(value)]) as unknown as readonly LiveMapObjectEntry<TValue>[],
     setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: unknown) => {
       const objectKey = must_object_key(key, handlePath);

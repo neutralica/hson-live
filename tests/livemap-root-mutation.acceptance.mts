@@ -270,7 +270,7 @@ check("multi-library root assignments preserve other values, identity, and the i
     unchanged(root.set(initial), 0);
     unchanged(root.update(current => {
       assert.ok(current !== undefined);
-      return current;
+      return Hson.data.fromSource(root.must.hson());
     }), 0);
     assert.equal(endpointIdentity?.active, Array.isArray(initial) ? true : undefined);
     assert.equal(publications.length, 0);
@@ -298,7 +298,7 @@ check("multi-library root assignments preserve other values, identity, and the i
     unchanged(root.set(next), 1);
     unchanged(root.update(current => {
       assert.ok(current !== undefined);
-      return current;
+      return Hson.data.fromSource(root.must.hson());
     }), 1);
     assert.equal(reacquired?.active, Array.isArray(next) ? true : undefined);
     let calls = 0;
@@ -404,7 +404,10 @@ check("multi-library null roots retain fixed root-kind constraints", () => {
   const map = hsonLiveMap.fromLibraries({ state: { json: null }, other: { json: {} } });
   const root = map.data.must("state").at([]);
   unchanged(root.set(null), 0);
-  unchanged(root.update(current => current), 0);
+  unchanged(root.update(current => {
+    assert.ok(current === null);
+    return current;
+  }), 0);
   assert.throws(() => root.set(1), /root mode is fixed/);
   assert.equal(root.snap(), null);
   assert.equal(map.rev, 0);

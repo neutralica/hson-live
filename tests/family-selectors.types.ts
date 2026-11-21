@@ -1,4 +1,4 @@
-import type { JsonValue } from "../src/core/types.js";
+import type { DataValueRead } from "../src/core/data-value.types.js";
 import { ANY_DATA, ANY_DOCUMENT, hsonLiveMap, type HsonSchema, type LiveMap } from "../src/index.js";
 import type { LocusActionContext, Echo } from "../src/types/locus.core.types.js";
 
@@ -16,7 +16,7 @@ const map = hsonLiveMap.fromLibraries({
 map.doc.page.render();
 map.data.deck.at(["slides"]).array.map(slide => slide.title satisfies string);
 map.parts.components.at(["button", "document"]).snap() satisfies string | undefined;
-map.data.array.at([]).array.toArray() satisfies readonly JsonValue[];
+map.data.array.at([]).array.toArray() satisfies readonly DataValueRead[];
 map.doc.must("name").render(); map.doc.must("must").render(); map.doc.must("then").render();
 // @ts-expect-error Old family-neutral selection is removed.
 map.lib;

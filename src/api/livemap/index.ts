@@ -1,3 +1,6 @@
+import type { DataValueRead } from "../../core/data-value.types.js";
+import { snap_live_path as read_live_path } from "./livemap.editor.js";
+
 export { hsonLiveMap } from "./livemap.public.js";
 // Native ESM bindings let a namespace import select one subsystem without
 // retaining its siblings' implementations.
@@ -34,7 +37,7 @@ export {
   LiveMapDocumentPathError,
   validate_document_path,
 } from "./livemap.document.path.js";
-export { snap_live_path } from "./livemap.editor.js";
+export const snap_live_path: (...args: Parameters<typeof read_live_path>) => DataValueRead | undefined = read_live_path;
 export type {
   LiveMapDocumentIdentityProvenanceErrorCode,
   LiveMapDocumentIdentityRegistrationErrorCode,

@@ -66,7 +66,8 @@ check("authored any is the sole broad data atom and lowers directly", () => {
     assert.deepEqual(result.value.semantic, { kind: "object", members: [{ name: "value", optional: false, schema: { kind: "any" } }] });
     assert.deepEqual(result.value.graph.nodes.map((node) => node.kind), ["projected-object", "projected-any"]);
     const generated = generate_hson_schema_types("AnySchema", result.value.semantic);
-    assert.match(generated.declarations, /readonly value: JsonValue/);
+    assert.match(generated.declarations, /readonly value: \$SchemaDataRead/);
+    assert.match(generated.declarations, /proposal: \{ readonly value: \$SchemaDataInput/);
     assert.doesNotMatch(generated.declarations, /\bany\b/);
   }
   for (const body of ['value "Any"', 'value "data"', 'value "record"', "value <any true>", "value <record true>"]) {

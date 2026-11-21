@@ -66,7 +66,7 @@ export type HsonFromSchema<TSchema extends HsonSchema> =
     : TSchema extends HsonSchema<unknown, "document"> ? HsonDocument<TSchema>
       : HsonData | HsonDocument;
 
-/** Readonly structural JS/JSON projection; Schema refinements remain runtime constraints. */
+/** Readonly structural JavaScript projection. Optional own members may read as inherited values. */
 export type JsonFromSchema<TSchema extends HsonSchema<unknown, "data">> =
   TSchema extends HsonSchema<infer TValue, "data"> ? TValue : never;
 

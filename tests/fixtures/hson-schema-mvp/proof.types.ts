@@ -6,6 +6,7 @@ import type { HsonCanonical } from "hson-live/hson";
 declare const projected: JsonFromSchema<typeof UserSchema>;
 declare const canonical: HsonCanonical;
 
+// @ts-expect-error Optional reads require a value check, including when the member is absent.
 const optionalRead: string | undefined = projected.nickname;
 const indexedRead: boolean | undefined = projected.flags[0];
 const tupleRead: number = projected.pair[1];
@@ -23,7 +24,9 @@ const recursiveChild: JsonFromSchema<typeof TreeSchema> | undefined = recursive.
 const recursiveAge: JsonFromSchema<typeof TreeSchema>["age"] = recursive.age;
 const sharedDefinitionCompatibility: typeof reuse.again = reuse.left;
 declare const interactionFields: JsonFromSchema<typeof InteractionFieldsSchema>;
+// @ts-expect-error Broad local arguments can materialize with inherited values.
 const localArgs: JsonValue = interactionFields.args;
+// @ts-expect-error Broad payload reads have the same JavaScript semantics.
 const authoritativePayload: JsonValue = interactionFields.payload;
 
 const fabricated: JsonFromSchema<typeof UserSchema> = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", key: "abc", status: "ready", phase: "lobby", turn: "player1", zero: 0, negativeZero: -0, signedZeroChoice: 0, flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
@@ -50,8 +53,8 @@ declare function consumeCertified(value: HsonData<typeof UserSchema>): void;
 consumeCertified(Hson.data`<name "Ada">`);
 // Runtime certification grants this Schema's proof after validation.
 consumeCertified(UserSchema.certify(Hson.data.fromSource(canonical)).toHson());
-// @ts-expect-error optional means absence, not explicit undefined
-const explicitUndefined: JsonFromSchema<typeof UserSchema> = { ...projected, nickname: undefined };
+// @ts-expect-error Ordinary Data qualification rejects explicit undefined.
+const explicitUndefined = Hson.data.from({ nickname: undefined });
 const fabricatedRecursive: JsonFromSchema<typeof TreeSchema> = { value: "root", age: 1, children: [] };
 const plainReferencedAge: JsonFromSchema<typeof TreeSchema>["age"] = 1;
 const unrelatedDefinitionShape: typeof reuse.right = reuse.left;

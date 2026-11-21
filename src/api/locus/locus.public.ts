@@ -56,7 +56,7 @@ function construct_locus_definition<D extends LocusDefinitionCandidates, A exten
       const override = entry.stylesheet;
       const stylesheet = override === undefined ? ownStylesheet === undefined ? undefined : Reflect.get(initializer, "stylesheet") : override;
       if (stylesheet !== undefined) {
-        const descriptors = Object.getOwnPropertyDescriptors(initializer);
+        const descriptors: PropertyDescriptorMap = Object.getOwnPropertyDescriptors(initializer);
         descriptors.stylesheet = { value: typeof stylesheet === "string" ? stylesheet : normalize_css_map(stylesheet), enumerable: true };
         initializer = Object.create(Object.getPrototypeOf(initializer), descriptors);
       }

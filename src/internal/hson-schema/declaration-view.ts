@@ -89,7 +89,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
         const evidence = (): ts.TypeNode => ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral(specifier)), undefined, ts.factory.createIdentifier("Evidence"));
         const field = (key: string): ts.TypeNode => ts.factory.createIndexedAccessTypeNode(evidence(), ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral(key)));
         return { changed: true, node: origin.field === undefined
-          ? ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral("hson-live/hson")), undefined, ts.factory.createIdentifier("HsonSchema"), [field("value"), field("mode"), field("identity")])
+          ? ts.factory.createImportTypeNode(ts.factory.createLiteralTypeNode(ts.factory.createStringLiteral("hson-live/hson")), undefined, ts.factory.createIdentifier("HsonSchema"), [field("value"), field("mode"), field("identity"), field("proposal")])
           : field(origin.field) };
       }
       const fallback = (flags = ts.NodeBuilderFlags.None): { node: ts.TypeNode; changed: boolean } => {

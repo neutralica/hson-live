@@ -6,9 +6,9 @@ import { assert_canonical_hson_data_value } from "../../src/core/projected-value
  * Completing the root occurrence finishes the declaration. A missing body, a
  * literal Data value, a member map and an expression group have distinct
  * representations, including when empty.
- * The data root accepts an optional defs clause followed by at most one content
- * clause (object, ref or any). Other Data expressions can be named in defs
- * and selected with a root ref.
+ * The data root accepts an optional defs clause followed by one Data expression,
+ * defaulting to any. An object's member map retains named and wildcard clauses
+ * in authored order, including repeated clauses until semantic validation.
  *
  * The private source reader decodes names, header text and bounded Data operands,
  * and keeps authored spans in an identity-keyed sidecar. Schema interpretation

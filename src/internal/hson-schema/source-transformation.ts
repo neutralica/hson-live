@@ -18,7 +18,7 @@ export function schema_type_association(
 ): Readonly<{ reexport: string; schemaAssociation: string }> {
   return {
     reexport: `import type { Evidence as ${evidenceName} } from ${JSON.stringify(specifier)};`,
-    schemaAssociation: `${schemaTypeName}<${evidenceName}["value"], ${evidenceName}["mode"], ${evidenceName}["identity"]>`,
+    schemaAssociation: `${schemaTypeName}<${evidenceName}["value"], ${evidenceName}["mode"], ${evidenceName}["identity"], ${evidenceName}["proposal"]>`,
   };
 }
 

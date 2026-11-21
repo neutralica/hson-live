@@ -642,7 +642,8 @@ test("member maps, literal operands and expression groups report the child when 
     const child = str();
     structural_error(place(op(name, child)), message, child);
     const missing = op(name);
-    structural_error(place(missing), message, missing);
+    if (name === "object") compare(place(missing), '<type "data" root <object <v <object <>>>>>');
+    else structural_error(place(missing), message, missing);
   }
 });
 

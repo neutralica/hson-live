@@ -1,4 +1,5 @@
-import type { JsonValue, HsonNode } from "../core/types.js";
+import type { HsonNode } from "../core/types.js";
+import type { DataObjectRead, DataValueRead } from "../core/data-value.types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
 import type { LiveMapPartCollection, LiveMapLibraryDefinition } from "./livemap.types.js";
@@ -37,10 +38,10 @@ export type LibraryGroupDefinitions<T> = {
 
 /** Only the root category is stable without a Schema; initial members are not evidence. */
 type DataRoot<T> = T extends import("../api/data/hson-data.js").HsonDataValue<infer S extends HsonSchema<unknown, "data">>
-  ? JsonValue extends DataSchemaValue<S> ? JsonValue : OrdinaryDataRoot<DataSchemaValue<S>>
+  ? OrdinaryDataRoot<DataSchemaValue<S>>
   : OrdinaryDataRoot<T>;
-type OrdinaryDataRoot<T> = T extends readonly unknown[] ? readonly JsonValue[]
-  : T extends object ? Readonly<Record<string, JsonValue>> : JsonValue;
+type OrdinaryDataRoot<T> = T extends readonly unknown[] ? readonly DataValueRead[]
+  : T extends object ? DataObjectRead : DataValueRead;
 type DefinitionSchema<T, F extends "data" | "document"> = T extends { schema: infer S extends HsonSchema } ? S
   : "schema" extends keyof T ? HsonSchema<unknown, F>
     : F extends "data" ? typeof import("../api/schema/hson-schema.js").ANY_DATA
@@ -52,7 +53,7 @@ export type LibraryDefinitionEvidence<T> = T extends { parts: unknown }
   : T extends { json: infer Initial }
     ? { family: "data"; value: T extends { schema: infer S extends HsonSchema } ? DataSchemaValue<S> : DataRoot<Initial>; schema: DefinitionSchema<T, "data"> }
     : T extends { hson: string }
-      ? { family: "data"; value: T extends { schema: infer S extends HsonSchema } ? DataSchemaValue<S> : JsonValue; schema: DefinitionSchema<T, "data"> }
+      ? { family: "data"; value: T extends { schema: infer S extends HsonSchema } ? DataSchemaValue<S> : DataValueRead; schema: DefinitionSchema<T, "data"> }
     : T extends { document: unknown }
       ? { family: "document"; value: T extends { schema: infer S extends HsonSchema } ? DocumentSchemaGraph<S> : HsonNode; schema: DefinitionSchema<T, "document"> }
       : never;

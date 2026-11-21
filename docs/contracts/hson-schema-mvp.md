@@ -18,9 +18,13 @@ export type UserJson = JsonFromSchema<typeof UserSchema>;
 const authored: UserHson = Hson.data`<name "Ada" score 37>`;
 ```
 
-The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in current tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `HsonFromSchema<typeof UserSchema>` and `JsonFromSchema<typeof UserSchema>`; it does not import generated suffix names.
+The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence for JavaScript reads, Data proposals, mode, and Schema identity in the current tool-owned `.hson/` compiler project. Applications use the authored Schema symbol with `HsonFromSchema<typeof UserSchema>` and `JsonFromSchema<typeof UserSchema>`.
 
-`HsonFromSchema<S>` chooses `HsonDataValue<S>` or `HsonDocument<S>` from the Schema family. `JsonFromSchema<S>` projects a data Schema to its ordinary JS/JSON-shaped TypeScript value, including readonly structure, exact literals, unions and recursive refs, without nominal refinement or ref proof. Numeric/string refinements and relational uniqueness remain runtime constraints. Every governed JSON read uses this structural projection. Mutation proposals are derived separately and accept structurally valid readonly snapshots; document Schemas are rejected. The lower-level `HsonDataValue<S>` and `HsonDocument<S>` remain precise nominal Data carrier and canonical Document text proof types.
+`HsonFromSchema<S>` chooses the canonical Hson proof representation from the Schema family. `JsonFromSchema<S>` projects a Data Schema to a JavaScript-facing structure with exact literals, unions and recursive references. `HsonDataValue<S>.materialize()` returns this projection. A carrier without static Schema evidence materializes as `unknown`.
+
+Schema validation checks own Data members. A required named member keeps its declared read type because it is present as an own property. A declared optional member reads as `unknown`, since an omitted member can resolve to an inherited value, including a user-added prototype property. Arbitrary string reads on open objects and objects reached through bare `any` or `ANY_DATA` also return `unknown`. LiveMap applies the same read contract to snapshots, refinements, and object selections.
+
+LiveMap write proposals retain the declared types of required and optional named members and accept readonly Data candidates. Runtime admission checks refinements, relational uniqueness, and wildcard constraints on extra keys. Use an exact carrier such as `Hson.data.fromSource(location.must.hson())` to forward a snapshot whose JavaScript read type includes unknown members.
 
 For example, a data Schema can use this representation pair:
 

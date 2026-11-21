@@ -605,7 +605,7 @@ export async function part_collection_cases(check: (name: string, run: () => voi
     try {
       owner(mirror).replayClientHostedManaged(manager, replay, snapshot.revision);
       assert.deepEqual(data(mirror).snap(["added"]), parts()["二"]);
-      const badSource = hsonLiveMap.fromLibraries({ collection: { json: data(map).snap()! } });
+      const badSource = hsonLiveMap.fromLibraries({ collection: { hson: data(map).must.hson() } });
       owner(badSource).setInitialHostedAuthority(snapshot.authority);
       const badCommit = owner(badSource).commit([{ target: owner(badSource).target(owner(badSource).libraries()[0]!, ["二", "document"]), kind: "set", value: admit_projected_value('<p') }]);
       const bad = { ...make_portable_aggregate_commit(badCommit.hosted!)!, registryDigest: owner(mirror).clientProjection()!.registry.digest };

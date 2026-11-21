@@ -614,7 +614,7 @@ check("producer admission gates CLI evidence and initially governed reads", () =
     assert.ok(manifest.diagnostics.some(message => /invalid Hson tagged template|optional chain|non-optional/.test(message)), JSON.stringify(manifest.diagnostics));
     assert.equal(manifest.files.some(file => file.path.startsWith("evidence/")), false);
     assert.doesNotMatch(mirrored(), /__hson_assert_library_schema/);
-    assert.match(stock_check(join(currentRoot, "tsconfig.json")).stdout, /JsonValue.*string/);
+    assert.match(stock_check(join(currentRoot, "tsconfig.json")).stdout, /DataValueRead.*string/);
     assertValid();
   }
   // The same source-generation admission boundary must protect assignment

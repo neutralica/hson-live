@@ -305,7 +305,9 @@ await check("trigger waits for an awaiting handler and durable acceptance in the
     locus.actions.define("follow", (context) => {
       order.push("follow");
       context.stage.data.must("state").at(["value"]).set(2);
-      return context.data.must("state").snap(["value"]);
+      const value = context.data.must("state").snap(["value"]);
+      assert.ok(typeof value === "number");
+      return value;
     });
     const stop = locus.commits.observe((commit) => order.push(`commit ${commit.rev}`));
     let completed = false;
@@ -591,7 +593,11 @@ await check("durable restoration keeps symbolic state and takes executable defin
     actionError(await restored.actions.trigger(advance.key), "LOCUS_UNKNOWN_ACTION");
     const startup = await restored.actions.trigger("startup");
     assert.ok(startup.type === "ack" && startup.result?.scalar() === "restored");
-    restored.actions.define(advance.key, (context) => context.data.must("state").snap(["value"]));
+    restored.actions.define(advance.key, (context) => {
+      const value = context.data.must("state").snap(["value"]);
+      assert.ok(typeof value === "number");
+      return value;
+    });
     const added = await restored.actions.trigger(advance.key);
     assert.ok(added.type === "ack" && added.result?.scalar() === 4);
     assert.equal(added.completionRev, revision + 1);

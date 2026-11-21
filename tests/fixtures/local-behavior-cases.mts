@@ -84,7 +84,10 @@ export async function local_behavior_cases() {
     let finish: (() => void) | undefined;
     actions.define("async", async (_ctx, data) => {
       await new Promise<void>(resolve => { finish = resolve; });
-      return { input: data?.materialize() ?? null, computed: [-0, true] };
+      const input = data?.materialize();
+      assert.ok(input && typeof input === "object" && "count" in input && typeof input.count === "number");
+      assert.deepEqual(input, { count: 2 });
+      return { input: { count: input.count }, computed: [-0, true] };
     });
     const ordinary = { count: 2 };
     const pending = actions.trigger("async", ordinary);

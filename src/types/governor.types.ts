@@ -2,11 +2,13 @@ import type { DocumentListener } from "./interaction.descriptor.types.js";
 import type { RequiredReads, EndpointRepresentation } from "./livemap.types.js";
 import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
-import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayBranch, LiveMapObjectBranch, LiveMapScalarBranch } from "./livemap.types.js";
-import type { JsonValue, HsonNode, Primitive } from "../core/types.js";
+import type { LibraryShapeCapabilities, LibraryArrayRead, LibraryObjectRead, LibraryArrayCommands, LibraryObjectCommands, LiveMapArrayBranch, LiveMapObjectBranch, LiveMapScalarBranch, LiveMapArrayProposal, LiveMapObjectProposal } from "./livemap.types.js";
+import type { HsonNode, Primitive } from "../core/types.js";
+import type { DataValueRead } from "../core/data-value.types.js";
+import type { DataLibraryProposal } from "../internal/hson-schema/schema-evidence.types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
-  LiveMapPathValue, LiveMapSetValue,
+  LiveMapPathValue, LiveMapProposalCommand, LiveMapSetValue,
   LiveMapWriteValue, LivePath, LiveMapRootMode, LiveMapCssOp,
   LiveMapDocumentContent, LiveMapDocumentAttrs, LiveMapDocumentAttributeValue,
   LiveMapDocumentRequestTarget, LiveMapCut, LiveMapHtmlCut, LiveMapCutOptions,
@@ -15,34 +17,34 @@ import type {
 import type { HsonData } from "../api/transform/transform.types.js";
 import type { DocumentCallbackListener, DocumentLibraryCallbackListener } from "./native-listener.types.js";
 
-export type LocusDataLocation<TValue = JsonValue | undefined, TRead = TValue> = Readonly<{
+export type LocusDataLocation<TValue = DataValueRead | undefined, TRead = TValue, TProposal = TValue> = Readonly<{
   readonly rev: number;
   path: () => LivePath;
   snap: () => TRead;
   hson: () => EndpointRepresentation<TRead, HsonData>;
   readonly must: RequiredReads<TRead, HsonData>;
-  at: DataLocationAt<"locus", TValue, TRead>;
+  at: DataLocationAt<"locus", TValue, TRead, string, void, undefined, TProposal>;
   watch: (listener: (value: TRead) => void) => () => void;
   kind: () => "missing" | "object" | "array" | "scalar";
-  present: () => LocusDataLocation<Exclude<TValue, undefined>, LibraryRefinedValue<TRead, Exclude<TValue, undefined>>> | undefined;
-  asArray: () => LocusDataLocation<LiveMapArrayBranch<TValue>, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>> | undefined;
-  asObject: () => LocusDataLocation<LiveMapObjectBranch<TValue>, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>> | undefined;
-  asScalar: () => LocusDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
-  set: (value: LiveMapSetValue<TValue>) => Promise<void>;
-  replace: (value: LiveMapWriteValue<TValue>) => Promise<void>;
+  present: () => LocusDataLocation<Exclude<TValue, undefined>, LibraryRefinedValue<TRead, Exclude<TValue, undefined>>, Exclude<TProposal, undefined>> | undefined;
+  asArray: () => LocusDataLocation<LiveMapArrayBranch<TValue>, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>, LiveMapArrayProposal<TProposal>> | undefined;
+  asObject: () => LocusDataLocation<LiveMapObjectBranch<TValue>, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>, LiveMapObjectProposal<TProposal>> | undefined;
+  asScalar: () => LocusDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>, LiveMapScalarBranch<TProposal>> | undefined;
+  set: LiveMapProposalCommand<LiveMapSetValue<TProposal>, Promise<void>>;
+  replace: LiveMapProposalCommand<LiveMapWriteValue<TProposal>, Promise<void>>;
   delete: () => Promise<void>;
 }> & LibraryShapeCapabilities<TValue,
-  LibraryArrayRead<TValue> & LibraryArrayCommands<TValue, Promise<void>>,
-  LibraryObjectRead<TValue> & LibraryObjectCommands<TValue, Promise<void>>>;
+  LibraryArrayRead<TValue> & LibraryArrayCommands<TValue, Promise<void>, TProposal>,
+  LibraryObjectRead<TValue> & LibraryObjectCommands<TValue, Promise<void>, TProposal>>;
 
-export type LocusDataLibrary<TValue = JsonValue | undefined, TSchema extends HsonSchema = HsonSchema> = Readonly<{
+export type LocusDataLibrary<TValue = DataValueRead | undefined, TSchema extends HsonSchema = HsonSchema> = Readonly<{
   readonly mode: Exclude<LiveMapRootMode, "document">;
   readonly rev: number;
   root: () => HsonNode;
   snap: LiveMapDataLibrary<TValue, string, TSchema>["snap"];
   hson: LiveMapDataLibrary<TValue, string, TSchema>["hson"];
   readonly must: RequiredReads<TValue, HsonData>;
-  at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => LocusDataLocation<LiveMapPathValue<TValue, TPath>>;
+  at: DataLocationAt<"locus", TValue, TValue, string, void, undefined, DataLibraryProposal<TSchema, TValue>>;
   schema: Readonly<{ get: LiveMapDataLibrary<TValue, string, TSchema>["schema"]["get"] }>;
 }>;
 
@@ -94,7 +96,7 @@ export type LocusDocumentLibrary<TEvidence = HsonNode, TSchema extends HsonSchem
 
 export type LocusLibrary = LocusDataLibrary | LocusDocumentLibrary;
 
-export type ReadDataLocation<TValue = JsonValue | undefined, TRead = TValue> = Readonly<{
+export type ReadDataLocation<TValue = DataValueRead | undefined, TRead = TValue> = Readonly<{
   readonly rev: number;
   path: () => LivePath;
   snap: () => TRead;
@@ -108,7 +110,7 @@ export type ReadDataLocation<TValue = JsonValue | undefined, TRead = TValue> = R
   asObject: () => ReadDataLocation<LiveMapObjectBranch<TValue>, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>> | undefined;
   asScalar: () => ReadDataLocation<LiveMapScalarBranch<TValue>, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
 }> & LibraryShapeCapabilities<TValue, LibraryArrayRead<TValue>, LibraryObjectRead<TValue>>;
-export type ReadDataLibrary<TValue = JsonValue | undefined, TSchema extends HsonSchema = HsonSchema> =
+export type ReadDataLibrary<TValue = DataValueRead | undefined, TSchema extends HsonSchema = HsonSchema> =
   Pick<LocusDataLibrary<TValue, TSchema>, "mode" | "rev" | "root" | "snap" | "hson" | "must" | "schema"> & Readonly<{
     at: <const TPath extends LivePath>(path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown)) => ReadDataLocation<LiveMapPathValue<TValue, TPath>>;
   }>;
@@ -142,7 +144,7 @@ export type LibraryCut = {
 
 export type LibraryCommits = LiveMapRegistryCommitObserverApi;
 
-export type EchoProjectedDataLibrary<TValue = JsonValue, TSchema extends HsonSchema = HsonSchema> = Readonly<{
+export type EchoProjectedDataLibrary<TValue = DataValueRead, TSchema extends HsonSchema = HsonSchema> = Readonly<{
   source: "authority-projected";
   readonly mode: Exclude<LiveMapRootMode, "document">;
   readonly rev: number;
@@ -156,7 +158,7 @@ export type EchoProjectedDataLibrary<TValue = JsonValue, TSchema extends HsonSch
 
 export type EchoProjectedDataPath = ReadDataLocation;
 
-export type EchoLocalDataLibrary<TValue = JsonValue, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDataLibrary<TValue, string, TSchema>, "mode" | "rev" | "root" | "snap" | "hson" | "must" | "at" | "schema"> & {
+export type EchoLocalDataLibrary<TValue = DataValueRead, TSchema extends HsonSchema = HsonSchema> = Readonly<Pick<LiveMapDataLibrary<TValue, string, TSchema>, "mode" | "rev" | "root" | "snap" | "hson" | "must" | "at" | "schema"> & {
   source: "client-local";
 }>;
 

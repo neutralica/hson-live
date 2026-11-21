@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -18,14 +18,12 @@ const temporary = mkdtempSync(join(root, "tmp/schema-public-declarations-"));
 process.once("exit", () => rmSync(temporary, { recursive: true, force: true }));
 const installed = join(temporary, "node_modules/hson-live");
 mkdirSync(installed, { recursive: true });
-cpSync(join(root, "package.json"), join(installed, "package.json"));
-cpSync(join(root, "dist"), join(installed, "dist"), { recursive: true });
-// The CLI fingerprints its packaged source/build inputs when certifying evidence.
-cpSync(join(root, "src"), join(installed, "src"), { recursive: true });
-mkdirSync(join(installed, "scripts"));
-for (const file of ["scripts/hson-schema.mts", "scripts/build-hson-schema-cli.mjs", "scripts/scout-browser-build.mjs", "tsconfig.json"]) {
-  cpSync(join(root, file), join(installed, file));
-}
+const packed = spawnSync("npm", ["pack", "--ignore-scripts", "--json", "--cache", join(temporary, "npm-cache"),
+  "--pack-destination", temporary], { cwd: root, encoding: "utf8", shell: process.platform === "win32" });
+assert.equal(packed.status, 0, packed.stderr + (packed.error?.message ?? ""));
+const [{ filename }] = JSON.parse(packed.stdout);
+const unpacked = spawnSync("tar", ["-xzf", join(temporary, filename), "-C", installed, "--strip-components", "1"], { encoding: "utf8" });
+assert.equal(unpacked.status, 0, unpacked.stderr + (unpacked.error?.message ?? ""));
 const producer = join(temporary, "producer");
 const consumer = join(temporary, "consumer");
 const options = {
@@ -55,6 +53,249 @@ function declarations(directory) {
     ? declarations(join(directory, entry.name))
     : entry.name.endsWith(".d.ts") ? [readFileSync(join(directory, entry.name), "utf8")] : []);
 }
+
+check("packed Hson imports preserve stock Array.isArray narrowing", () => {
+  const source = `
+function render(value: string | readonly number[]): string {
+  if (Array.isArray(value)) return value.join(",");
+  // @ts-expect-error A structurally readonly array can fail the runtime array-brand check.
+  return value.toUpperCase();
+}
+const values: readonly number[] = [7];
+const view: readonly number[] = { ...values, length: values.length };
+Reflect.setPrototypeOf(view, Array.prototype);
+if (Array.isArray(view) || view.join(",") !== "7") throw new Error("Expected a structural readonly array");
+function ordinary(value: string | number[], unknownValue: unknown) {
+  if (Array.isArray(value)) {
+    value.push(7);
+    // @ts-expect-error Mutable arrays retain their element type.
+    value.push("text");
+  } else {
+    value.toUpperCase();
+  }
+  if (Array.isArray(unknownValue)) unknownValue.push(7);
+}
+void [render, ordinary];
+`;
+  for (const [name, prefix] of [
+    ["stock", ""],
+    ["hson", 'import type {} from "hson-live/hson";\n'],
+    ["root", 'import type {} from "hson-live";\n'],
+  ]) {
+    const directory = join(temporary, `array-narrowing-${name}`);
+    project(directory, prefix + source, { ...options, lib: ["ESNext", "DOM"] });
+    const tsc = join(root, "node_modules/typescript/bin/tsc");
+    for (const exact of ["false", "true"]) for (const indexed of ["false", "true"]) {
+      run([tsc, "-p", join(directory, "tsconfig.json"), "--pretty", "false",
+        "--exactOptionalPropertyTypes", exact, "--noUncheckedIndexedAccess", indexed]);
+    }
+    run([join(directory, "out/index.js")]);
+  }
+});
+
+check("generated utility types resolve independently of authored aliases", () => {
+  const directory = join(temporary, "helper-names");
+  const source = `
+import { Hson } from "hson-live/hson";
+export const Names = Hson.schema\`<type "data" defs <
+  Extract "number" Exclude "string" Partial "boolean" Pick "null" ReadonlyArray "number" globalThis "number"
+  '$SchemaDataRead' "number" '$SchemaTupleRead' "number" '$SchemaProposal0' "number"
+> root <object <
+  a <ref "Extract"> b <ref "Exclude"> c <ref "Partial"> d <ref "Pick"> e <ref "ReadonlyArray">
+  f <ref "$SchemaDataRead"> g <ref "$SchemaTupleRead"> h <ref "$SchemaProposal0">
+  namespace <ref "globalThis"> values <tuple [<array "any">]>
+> any "number">>\`;
+export const value = Names.certify({ a: 1, b: "two", c: true, d: null, e: 5, f: 6, g: 7, h: 8, values: [[9]], extra: 10, namespace: 11 });
+`;
+  project(directory, source, { ...options, lib: ["ESNext", "DOM"] });
+  const cli = join(installed, "dist/hson-schema.mjs");
+  const config = join(directory, "tsconfig.json");
+  const summary = JSON.parse(run([cli, "generate", "--project", config]));
+  const manifest = JSON.parse(readFileSync(summary.manifest, "utf8"));
+  const evidence = join(dirname(summary.manifest), manifest.sources[0].schemas[0].evidence);
+  const original = readFileSync(evidence, "utf8");
+  for (const name of ["Extract", "Exclude", "Partial", "Pick", "globalThis"]) assert.match(original, new RegExp(`export type ${name} = `));
+  run([cli, "check", "--project", config]);
+  run([join(root, "node_modules/typescript/bin/tsc"), "-p", summary.project, "--pretty", "false", "--noEmit"]);
+  const regenerated = JSON.parse(run([cli, "generate", "--project", config]));
+  assert.equal(regenerated.revision, summary.revision);
+  assert.equal(readFileSync(evidence, "utf8"), original);
+});
+
+check("packed union reads and Data proposals hold across strict optional and indexed access settings", () => {
+  const directory = join(temporary, "schema-data-contracts");
+  project(directory, `
+import { Hson } from "hson-live/hson";
+import { hsonLiveMap } from "hson-live/livemap";
+const Closed = Hson.schema\`<type "data" root <union [
+  <object <kind <exact "note"> title "string">>,
+  <object <kind <exact "count"> hits "number">>
+]>>\`;
+const Mixed = Hson.schema\`<type "data" root <union [
+  <object <kind <exact "note"> title "string"> any "number">,
+  <object <kind <exact "count"> hits "number">>
+]>>\`;
+const Shape = Hson.schema\`<type "data" defs <
+  Row <object <toString "number"> any "number">
+  Node <object <length "number" constructor <optional "number"> children <array <ref "Node">>>>
+> root <object <
+  exact <object <length "number">> open <object <length "number"> any "number">
+  node <ref "Node"> view <union [
+    <object <kind <exact "scalar"> choice "number" tuple "null">>,
+    <object <kind <exact "series"> choice <array <ref "Row">> tuple <tuple [<array <ref "Row">>, "number"]>>>
+  ]>
+  empty <object <>>
+>>>\`;
+const data = {
+  exact: { length: 1 }, open: { length: 2, extra: 3 }, node: { length: 4, children: [] },
+  view: { kind: "series", choice: [{ toString: 5 }], tuple: [[{ toString: 6 }], 7] }, empty: {},
+} as const;
+const world = {
+  closed: { json: { kind: "count", hits: 17 }, schema: Closed },
+  mixed: { json: { kind: "note", title: "text", extra: 9 }, schema: Mixed },
+  shape: { json: data, schema: Shape },
+} as const;
+const map = hsonLiveMap.fromLibraries(world);
+const closed = map.data.closed.at([]).object;
+const mixed = map.data.mixed.at([]).object;
+const shape = map.data.shape.at([]);
+const exact = shape.at(["exact"]);
+const open = shape.at(["open"]);
+const callback = () => 1;
+const array: readonly number[] = [1];
+function same(actual: unknown, expected: unknown): void {
+  if (!Object.is(actual, expected)) throw new Error("Unexpected value: " + String(actual));
+}
+const keys: readonly ("kind" | "title" | "hits")[] = closed.keys();
+same(keys.join(","), "kind,hits");
+same(closed.keys().includes("title"), false);
+same(closed.values().includes(17), true);
+for (const [key, value] of closed.entries()) {
+  if (key === "hits") { const hits: number = value; same(hits, 17); }
+  if (key === "kind") { const kind: "note" | "count" = value; same(kind, "count"); }
+}
+same(mixed.keys().includes("extra"), true);
+same(mixed.values().includes(9), true);
+same(mixed.entries().find(([key]) => key === "extra")?.[1], 9);
+const node = shape.at(["node"]);
+same(node.object.keys().includes("constructor"), false);
+for (const [key, value] of node.object.entries()) {
+  if (key === "length") { const length: number = value; same(length, 4); }
+  if (key === "children") same(value.length, 0);
+}
+const certificate = Shape.certify(data);
+type View = ReturnType<typeof certificate.materialize>["view"];
+function readView(view: View): number {
+  if (view.kind === "scalar") {
+    const value: number = view.choice;
+    same(view.tuple, null);
+    return value;
+  }
+  for (const row of view.choice) {
+    const value: number = row.toString;
+    same(value, 5);
+  }
+  for (const row of view.tuple[0]) { const value: number = row.toString; same(value, 6); }
+  return view.tuple[1];
+}
+const scalarView = { kind: "scalar", choice: 10, tuple: null } as const;
+same(readView(certificate.materialize().view), 7);
+same(readView(Shape.certify({ ...data, view: scalarView }).materialize().view), 10);
+const choicePath = shape.at(["view", "choice"]);
+const arrayChoice = choicePath.asArray();
+if (arrayChoice === undefined) throw new Error("Expected an array path");
+for (const row of arrayChoice.array.toArray()) { const value: number = row.toString; same(value, 5); }
+shape.at(["view"]).replace(scalarView);
+same(choicePath.asArray(), undefined);
+function unsafeArrayReads(view: View) {
+  if (view.kind !== "series") return;
+  for (const row of view.choice) {
+    // @ts-expect-error An own numeric Data field is not callable.
+    row.toString();
+    // @ts-expect-error The generated array has readonly element slots.
+    view.choice[0] = row;
+    // @ts-expect-error The generated array does not expose mutators.
+    view.choice.push(row);
+  }
+  // @ts-expect-error The second tuple slot is readonly.
+  view.tuple[1] = 8;
+  // @ts-expect-error The second tuple slot is a number.
+  const text: string = view.tuple[1];
+  void text;
+}
+void unsafeArrayReads;
+const locus = hsonLiveMap.locus.create(world);
+try {
+  interface Length { readonly length: number; }
+  const length: Length = { length: 8 };
+  exact.replace(length);
+  open.replace({ length: 9, wildcard: 10 } as const);
+  shape.at(["empty"]).replace({});
+  node.replace({ length: 1, children: [{ length: 2, children: [] }] } as const);
+  await locus.stage(stage => stage.data.must("shape").at(["exact"]).replace({ length: 11 }));
+  same(locus.data.shape.at(["exact", "length"]).snap(), 11);
+  const stagedRev = locus.rev;
+  let stagedFailure: unknown;
+  try {
+    await locus.stage(stage => {
+      const location = stage.data.must("shape").at(["exact"]);
+      location.replace({ length: 12 });
+      Reflect.apply(location.replace, location, [callback]);
+    });
+  } catch (error) { stagedFailure = error; }
+  if (!(stagedFailure instanceof Error)) throw new Error("Expected rejected stage");
+  same(locus.rev, stagedRev);
+  same(locus.data.shape.at(["exact", "length"]).snap(), 11);
+  for (const value of [callback, array]) {
+    const before = map.rev;
+    let failure: unknown;
+    try { Reflect.apply(exact.replace, exact, [value]); } catch (error) { failure = error; }
+    if (!(failure instanceof Error)) throw new Error("Expected rejected replacement");
+    if (value === callback) same(Reflect.get(failure, "reasonCode"), "UNSUPPORTED_TYPE");
+    same(map.rev, before);
+    same(exact.snap().length, 8);
+  }
+} finally { locus.dispose(); }
+async function unsafe() {
+  // @ts-expect-error The count branch contributes numeric values.
+  const narrowed: readonly ("note" | "count")[] = closed.values();
+  // @ts-expect-error Enumeration does not prove the active branch has a title.
+  const hasTitle: { readonly title: string } = closed.toObject();
+  // @ts-expect-error A dynamic wildcard has no Object method guarantee.
+  mixed.toObject().toString();
+  // @ts-expect-error Functions cannot satisfy an ordinary object proposal via length.
+  exact.replace(callback);
+  // @ts-expect-error Readonly arrays cannot satisfy an ordinary object proposal via length.
+  exact.replace(array);
+  // @ts-expect-error Open objects still require the object category.
+  open.replace(callback);
+  // @ts-expect-error Object patching also excludes arrays.
+  exact.set(array);
+  // @ts-expect-error Update proposals have the same category constraint.
+  exact.update(() => callback);
+  // @ts-expect-error Whole-value replacements check nested categories.
+  shape.replace({ ...data, exact: callback });
+  // @ts-expect-error Recursive array mutations enforce the element category.
+  node.at(["children"]).array.splice(0, 0, array);
+  // @ts-expect-error Governed replacement shares the object category constraint.
+  await locus.data.shape.at(["exact"]).replace(callback);
+  // @ts-expect-error Staged replacement shares the object category constraint.
+  await locus.stage(stage => stage.data.must("shape").at(["exact"]).replace(callback));
+  void [narrowed, hasTitle];
+}
+void unsafe;
+`, { ...options, lib: ["ESNext", "DOM"] });
+  const cli = join(installed, "dist/hson-schema.mjs");
+  const config = join(directory, "tsconfig.json");
+  const { project: generated } = JSON.parse(run([cli, "generate", "--project", config]));
+  run([cli, "check", "--project", config]);
+  for (const exact of ["false", "true"]) for (const indexed of ["false", "true"]) {
+    run([join(root, "node_modules/typescript/bin/tsc"), "-p", generated, "--pretty", "false", "--noEmit",
+      "--exactOptionalPropertyTypes", exact, "--noUncheckedIndexedAccess", indexed]);
+  }
+  run([cli, "build", "--project", config]);
+  run([join(directory, "out/index.js")]);
+});
 
 project(producer, `
 import { Hson } from "hson-live/hson";
@@ -250,7 +491,9 @@ if (echo.source === "authority-projected") {
   echo.at(["name"]).set("new");
 }
 const mismatchedDocument: string | undefined = lookupWrongFamily()?.snap();
-const uncertainValue: JsonValue | undefined = uncertain?.snap();
+const uncertainValue: JsonFromSchema<typeof import("hson-live/hson").ANY_DATA> | undefined = uncertain?.snap();
+// @ts-expect-error A broad JavaScript view can read inherited functions.
+const uncertainJson: JsonValue | undefined = uncertain?.snap();
 // @ts-expect-error Optional construction membership remains uncertain in publication.
 uncertain.snap();
 const requiredValue: string = required.snap();

@@ -7,7 +7,8 @@ import { compile_hson_schema, type CompiledHsonSchema } from "../../internal/hso
 import { validate_hson_schema_graph, validate_hson_schema_data } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { hson_data_value } from "../data/hson-data.js";
 import { schema_definition_identity } from "../../internal/hson-schema/definition-identity.js";
-import type { HsonNode, JsonValue } from "../../core/types.js";
+import type { HsonNode } from "../../core/types.js";
+import type { DataValueInput, DataValueRead } from "../../core/data-value.types.js";
 
 type Compiled = Extract<ReturnType<typeof compile_hson_schema>, { ok: true }>["value"];
 type Certified<TSchema extends HsonSchema, TCandidate> = TSchema extends HsonSchema<unknown, "data">
@@ -25,8 +26,9 @@ export class HsonSchema<
   TValue = unknown,
   TMode extends HsonSchemaMode = HsonSchemaMode,
   TIdentity = unknown,
+  TProposal = unknown,
 > {
-  declare readonly [HSON_SCHEMA_EVIDENCE]: Readonly<{ value: TValue; mode: TMode; identity: TIdentity }>;
+  declare readonly [HSON_SCHEMA_EVIDENCE]: Readonly<{ value: TValue; mode: TMode; identity: TIdentity; proposal: TProposal }>;
 
   private constructor(source: HsonSchemaData, compiled: Compiled, key: object) {
     if (key !== authority) throw new TypeError("Hson Schema construction requires validated Schema data.");
@@ -68,7 +70,8 @@ export class HsonSchema<
 }
 
 /** The ordinary broad Schema for every valid Hson data value. */
-export const ANY_DATA: HsonSchema<JsonValue, "data"> = HsonSchema.fromHson('<type "data" root "any">') as HsonSchema<JsonValue, "data">;
+export const ANY_DATA: HsonSchema<DataValueRead, "data", unknown, DataValueInput> =
+  HsonSchema.fromHson('<type "data" root "any">') as HsonSchema<DataValueRead, "data", unknown, DataValueInput>;
 
 /** The ordinary broad Schema for every valid Hson document. */
 export const ANY_DOCUMENT: HsonSchema<HsonNode, "document"> = HsonSchema.fromHson('<type "document">') as HsonSchema<HsonNode, "document">;

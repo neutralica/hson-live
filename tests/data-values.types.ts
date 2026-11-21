@@ -93,6 +93,7 @@ void projected; void encoded; void narrow; void inferred; void wrong; void unpro
 // Carrier evidence is semantic, never the physical wrapper's object shape.
 import { Hson as DedicatedHson, ANY_DATA as DedicatedAny } from "../src/hson-authoring.js";
 import type { JsonValue } from "../src/core/types.js";
+import type { DataObjectRead, DataValueRead } from "../src/core/data-value.types.js";
 type EqualData<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type CheckData<T extends true> = T;
 const unknownRoots = hsonLiveMap.fromLibraries({
@@ -101,14 +102,14 @@ const unknownRoots = hsonLiveMap.fromLibraries({
   array: { json: Hson.data.from([1]) }, object: { json: Hson.data.from({ x: 1 }) },
 });
 const unknownSnapshot = unknownRoots.data.nil.snap();
-type UnknownRoot = CheckData<EqualData<typeof unknownSnapshot, JsonValue>>;
+type UnknownRoot = CheckData<EqualData<typeof unknownSnapshot, DataValueRead>>;
 // @ts-expect-error An unqualified carrier cannot establish object-root certainty.
 const objectRoot: Readonly<Record<string, JsonValue>> = unknownRoots.data.nil.snap();
 declare const typedNull: HsonDataValue<HsonSchema<null, "data">>;
 declare const typedArray: HsonDataValue<HsonSchema<readonly number[], "data">>;
 const knownRoots = hsonLiveMap.fromLibraries({ nil: { json: typedNull }, array: { json: typedArray }, governed: { json: certified, schema: A } });
-knownRoots.data.nil.snap() satisfies JsonValue;
-knownRoots.data.array.snap() satisfies readonly JsonValue[];
+knownRoots.data.nil.snap() satisfies DataValueRead;
+knownRoots.data.array.snap() satisfies readonly DataValueRead[];
 knownRoots.data.governed.snap() satisfies { readonly count: number };
 const opaque: object = new Date();
 // @ts-expect-error Opaque object supplies no structural Data evidence.
@@ -133,9 +134,9 @@ declare const typedNumber: HsonDataValue<HsonSchema<number, "data">>;
 declare const typedBoolean: HsonDataValue<HsonSchema<boolean, "data">>;
 declare const typedObject: HsonDataValue<HsonSchema<{ readonly x: number }, "data">>;
 const semanticRoots = hsonLiveMap.fromLibraries({ text: { json: typedString }, num: { json: typedNumber }, bool: { json: typedBoolean }, obj: { json: typedObject } });
-semanticRoots.data.text.snap() satisfies JsonValue;
-semanticRoots.data.num.snap() satisfies JsonValue;
-semanticRoots.data.bool.snap() satisfies JsonValue;
-semanticRoots.data.obj.snap() satisfies Readonly<Record<string, JsonValue>>;
+semanticRoots.data.text.snap() satisfies DataValueRead;
+semanticRoots.data.num.snap() satisfies DataValueRead;
+semanticRoots.data.bool.snap() satisfies DataValueRead;
+semanticRoots.data.obj.snap() satisfies DataObjectRead;
 // @ts-expect-error A seed certificate does not install a governing Schema.
 semanticRoots.data.obj.snap() satisfies { readonly x: number };

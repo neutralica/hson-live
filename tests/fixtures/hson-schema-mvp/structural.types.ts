@@ -18,8 +18,8 @@ export const MutualSchema = Hson.schema`<type "data" defs <
 type Block =
   | { readonly kind: "paragraph"; readonly text: string }
   | { readonly kind: "heading"; readonly text: string }
-  | { readonly kind: "code"; readonly language?: "json" | "html" | "hson"; readonly source: string };
-type Slide = { readonly id: string; readonly title?: string; readonly column1: readonly Block[] };
+  | { readonly kind: "code"; readonly language?: unknown; readonly source: string };
+type Slide = { readonly id: string; readonly title?: unknown; readonly column1: readonly Block[] };
 type Deck = { readonly slides: readonly Slide[] };
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 type Assert<T extends true> = T;
@@ -36,7 +36,7 @@ type ReadRoot = Assert<Equal<typeof rootSnapshot, Deck>>;
 type ReadSlide = Assert<Equal<typeof slideSnapshot, Slide | undefined>>;
 type ReadPath = Assert<Equal<typeof pathSnapshot, typeof slideSnapshot>>;
 type ReadChained = Assert<Equal<typeof chainedSnapshot, typeof slideSnapshot>>;
-type ReadTitle = Assert<Equal<typeof titleSnapshot, string | undefined>>;
+type ReadTitle = Assert<Equal<typeof titleSnapshot, unknown>>;
 slideSnapshot?.id;
 slideSnapshot?.column1[0]?.kind;
 function narrow(block: Block) {
@@ -56,15 +56,19 @@ lib.at(["slides", 0]).watch(current => {
   const exact: Assert<Equal<typeof current, Slide | undefined>> = true;
   void exact;
 });
+const readonlySlides = [{ id: "one", title: "Draft", column1: [{ kind: "code", language: "hson", source: "<p/>" }] }] as const;
 lib.at([]).update(current => {
   const exact: Assert<Equal<typeof current, Deck>> = true;
   void exact;
-  return current;
+  return { slides: readonlySlides };
 });
-lib.at(["slides"]).update(current => current);
+const slides = lib.at(["slides"]);
+slides.update(() => Hson.data.fromSource(slides.must.hson()));
+lib.at([]).replace(Hson.data.fromSource(lib.must.hson()));
+lib.at([]).set({ slides: readonlySlides });
+slides.replace(readonlySlides);
+// @ts-expect-error Plain reads with optional unknown slots carry no proposal typing.
 lib.at([]).replace(rootSnapshot);
-lib.at([]).set({ slides: rootSnapshot.slides });
-lib.at(["slides"]).replace(rootSnapshot.slides);
 lib.at(["slides", 0]).set({ title: "New" });
 // @ts-expect-error Root replacement retains required members.
 lib.at([]).replace({});
@@ -74,10 +78,8 @@ lib.at(["slides"]).replace([true]);
 lib.at(["slides"]).update(() => ["wrong"]);
 // @ts-expect-error Update object patches retain member types.
 lib.at([]).update(() => ({ slides: [true] }));
-// @ts-expect-error Optional proposals accept absence, not explicit undefined.
-lib.at(["slides", 0]).replace({ id: "one", column1: [], title: undefined });
-// @ts-expect-error Exact literal unions reject outsiders.
-lib.at(["slides", 0, "column1", 0, "language"]).set("ts");
+// @ts-expect-error Direct optional proposals still require a Data value.
+lib.at(["slides", 0, "column1", 0, "language"]).set(() => "json");
 // @ts-expect-error Read discipline applies to collections.
 rootSnapshot.slides.push({ id: "two", column1: [] });
 // @ts-expect-error Required fields remain required.
@@ -151,7 +153,7 @@ const reservedMap = hsonLiveMap.fromLibraries({ refs: { json: { a: { name: "Ada"
 reservedMap.data.must("refs").at(["e"]).replace(reservedRefs.e);
 const mutableEmpty: [] = [];
 const readonlyEmpty: readonly [] = [];
-type EmptyProposal = Assert<Equal<LiveMapWriteValue<readonly []>, HsonDataValue | [] | readonly []>>;
+type EmptyProposal = Assert<Equal<LiveMapWriteValue<readonly []>, HsonDataValue | readonly []>>;
 type MutableEmptyProposal = Assert<Equal<LiveMapWriteValue<[]>, HsonDataValue | []>>;
 const emptyProposal: LiveMapWriteValue<readonly []> = mutableEmpty;
 const readonlyEmptyProposal: LiveMapWriteValue<readonly []> = readonlyEmpty;
@@ -174,9 +176,8 @@ const nestedReadonly: readonly (readonly string[])[] = [["one"], []];
 const nestedProposal: LiveMapWriteValue<typeof nestedReadonly> = nestedReadonly;
 // @ts-expect-error Nested readonly forwarding must preserve the element domain.
 const badNestedProposal: LiveMapWriteValue<typeof nestedReadonly> = [[true]];
-const objectProposal: LiveMapWriteValue<Deck> = rootSnapshot;
-const unionSnapshot = example.slides[0]!.column1[0]!;
-const unionProposal: LiveMapWriteValue<Block> = unionSnapshot;
+const objectProposal: LiveMapWriteValue<Deck> = { slides: readonlySlides };
+const unionProposal: LiveMapWriteValue<Block> = readonlySlides[0].column1[0];
 // @ts-expect-error Discriminated replacement proposals retain branch correlations.
 const badUnionProposal: LiveMapWriteValue<Block> = { kind: "code", text: "wrong" };
 const recursiveProposal: LiveMapWriteValue<typeof recursiveSnapshot> = recursiveSnapshot;
@@ -189,3 +190,26 @@ users.data.must("user").at(["pair"]).update(current => current);
 void [reservedRefs, emptyProposal, readonlyEmptyProposal, badEmptyProposal, badMutableEmptyProposal,
   nestedProposal, badNestedProposal, objectProposal, unionProposal, badUnionProposal,
   recursiveProposal, mutualProposal, badRecursiveProposal, badMutualProposal];
+
+export const WildcardSchema = Hson.schema`<type "data" defs <
+  Branch <object <id "string" next <optional <ref "Branch">> constructor "boolean" valueOf <optional "number">> any <ref "number">>
+  'number' "number"
+> root <ref "Branch">>`;
+function wildcardReads(carrier: HsonDataValue<typeof WildcardSchema>, key: string) {
+  const value = carrier.materialize();
+  const read = value[key];
+  const id: string = value.id;
+  const shadow: boolean = value.constructor;
+  const method = value.toString;
+  const optionalShadow = value.valueOf;
+  type Dynamic = Assert<Equal<typeof read, unknown>>;
+  type Shadowable = Assert<Equal<typeof method, unknown>>;
+  type OptionalShadow = Assert<Equal<JsonFromSchema<typeof WildcardSchema>["valueOf"], unknown>>;
+  // @ts-expect-error An optional recursive member requires a value check before traversal.
+  value.next?.id;
+  // @ts-expect-error An absent own valueOf can resolve to Object.prototype.valueOf.
+  const ownNumber: number | undefined = optionalShadow;
+  // @ts-expect-error A string key can select an absent or inherited property.
+  const number: number | undefined = read;
+  return { id, shadow };
+}

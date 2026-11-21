@@ -1029,7 +1029,7 @@ function retained_composition_cases(check: (name: string, run: () => void) => vo
     const map = hsonLiveMap.fromLibraries({config:{json:configuration}});
     const expected = traverse(shell, configuration), before = JSON.stringify(configuration);
     for (const input of [Hson.data.from(configuration).toHson(), Hson.data.from(hsonTransform.fromJson(configuration).toJson().value()).toHson(),
-      Hson.data.from(map.data.must("config").snap()).toHson(), JSON.parse(before)]) assert.deepEqual(traverse(shell, input), expected);
+      map.data.must("config").must.hson(), JSON.parse(before)]) assert.deepEqual(traverse(shell, input), expected);
     assert.equal(JSON.stringify(configuration), before); assert.deepEqual(leaves(expected.root), ["One", "", "Default", "Cross"]);
     assert.deepEqual(expected.quads?.find(entry => entry.name === "caption")?.path, [0,0,0,0,0]);
     const shared = {at:{heading:{text:"Shared"}}};

@@ -1,4 +1,4 @@
-import type { HsonDataInput, HsonDataValue } from "../api/data/hson-data.js";
+import type { HsonDataInput, HsonDataInputCheck, HsonDataValue } from "../api/data/hson-data.js";
 import type { PartsLibrary, DataLocationAt } from "./parts-library.types.js";
 import type { LibraryFamilySelector, LibraryFamilyNamespaces } from "./library-selectors.types.js";
 import type { LibraryLiteralDefinitions, LibraryCertainNames, LibraryDefinitionEvidence, LibraryRefinedValue } from "./library-evidence.types.js";
@@ -7,7 +7,8 @@ import type { DocumentElementListener, DocumentListener, DocumentLibraryListener
 import type { DocumentCallbackListener } from "./native-listener.types.js";
 // livemap.types.ts
 
-import type { DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
+import type { DataLibraryProposal, DataSchemaProposal, DataSchemaValue, DocumentSchemaGraph } from "../internal/hson-schema/schema-evidence.types.js";
+import type { DataObjectInput, DataObjectRead, DataValueInput, DataValueRead } from "../core/data-value.types.js";
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
 import type { HsonSchema, HsonSchemaMode } from "../api/transform/transform.types.js";
@@ -188,18 +189,23 @@ type LiveMapArraySegment<TValue extends readonly unknown[], THead extends number
   ? TValue[number] | undefined
   : LiveMapTupleSegment<TValue, THead>;
 
-type LiveMapObjectSegment<TValue extends object, THead> =
+/** Named keys survive inspection even when a string index covers them. */
+type NamedDataKey<T> = keyof { [K in keyof T as string extends K ? never : K]: T[K] } & string;
+type OwnDataMember<TValue, TKey extends keyof TValue, TFallback> = TKey extends NamedDataKey<TValue> ? TValue[TKey]
+  : unknown extends TValue[TKey] ? TFallback : TValue[TKey] | undefined;
+
+type LiveMapObjectSegment<TValue extends object, THead, TFallback> =
   THead extends string
   ? string extends THead
-  ? JsonValue | undefined
+  ? TFallback
   : THead extends keyof TValue
-  ? TValue[THead] | (string extends keyof TValue ? undefined : never)
+  ? OwnDataMember<TValue, THead, TFallback>
   : LiveMapInvalidStaticPath
   : LiveMapInvalidStaticPath;
 
-type LiveMapPathSegmentBranch<TValue, THead> =
+type LiveMapPathSegmentBranch<TValue, THead, TFallback> =
   unknown extends TValue
-  ? JsonValue | undefined
+  ? TFallback
   : TValue extends null | undefined
   ? LiveMapInvalidStaticPath
   : TValue extends readonly unknown[]
@@ -207,36 +213,29 @@ type LiveMapPathSegmentBranch<TValue, THead> =
   ? LiveMapArraySegment<TValue, THead>
   : LiveMapInvalidStaticPath
   : TValue extends object
-  ? LiveMapObjectSegment<TValue, THead>
+  ? LiveMapObjectSegment<TValue, THead, TFallback>
   : LiveMapInvalidStaticPath;
 
-type LiveMapPathSegmentBranches<TValue, THead> =
-  TValue extends unknown ? LiveMapPathSegmentBranch<TValue, THead> : never;
+type LiveMapPathSegmentBranches<TValue, THead, TFallback> =
+  TValue extends unknown ? LiveMapPathSegmentBranch<TValue, THead, TFallback> : never;
 
-type LiveMapReachablePathSegment<TValue, THead> = Exclude<
-  LiveMapPathSegmentBranches<TValue, THead>,
-  LiveMapInvalidStaticPath
->;
-
-type LiveMapPathSegmentValue<TValue, THead> =
-  [LiveMapReachablePathSegment<TValue, THead>] extends [never]
+type LiveMapPathSegmentValue<TBranches> = [Exclude<TBranches, LiveMapInvalidStaticPath>] extends [never]
   ? LiveMapInvalidStaticPath
-  : LiveMapReachablePathSegment<TValue, THead>
-    | ([Extract<LiveMapPathSegmentBranches<TValue, THead>, LiveMapInvalidStaticPath>] extends [never]
-      ? never
-      : undefined);
+  : Exclude<TBranches, LiveMapInvalidStaticPath>
+    | ([Extract<TBranches, LiveMapInvalidStaticPath>] extends [never] ? never : undefined);
 
-type ResolveLiveMapPathValue<TValue, TPath extends LivePath> =
+type ResolveLiveMapPathValue<TValue, TPath extends LivePath, TFallback> =
   number extends TPath["length"]
-  ? JsonValue | undefined
+  ? TFallback
   : TPath extends readonly []
   ? TValue
   : TPath extends readonly [infer THead, ...infer TRest]
   ? ResolveLiveMapPathValue<
-    LiveMapPathSegmentValue<TValue, THead>,
-    Extract<TRest, LivePath>
+    LiveMapPathSegmentValue<LiveMapPathSegmentBranches<TValue, THead, TFallback>>,
+    Extract<TRest, LivePath>,
+    TFallback
   >
-  : JsonValue | undefined;
+  : TFallback;
 
 /**
  * Static value projection for a LivePath.
@@ -244,7 +243,7 @@ type ResolveLiveMapPathValue<TValue, TPath extends LivePath> =
  * Exact literal paths narrow recursively. Branches that cannot continue below
  * an optional, nullable, union, or indexed ancestor contribute `undefined`.
  * A literal path that cannot traverse any branch resolves to `never`, while a
- * broad runtime `LivePath` retains the validated `JsonValue | undefined` route.
+ * broad runtime `LivePath` uses the ordinary Data read shape.
  */
 type PublicLiveMapPathValue<TResult> =
   [TResult] extends [LiveMapInvalidStaticPath]
@@ -252,34 +251,96 @@ type PublicLiveMapPathValue<TResult> =
   : TResult;
 
 export type LiveMapPathValue<TValue, TPath extends LivePath> = PublicLiveMapPathValue<
-  ResolveLiveMapPathValue<TValue, TPath>
+  ResolveLiveMapPathValue<TValue, TPath, DataValueRead | undefined>
+>;
+export type LiveMapPathProposal<TValue, TPath extends LivePath> = PublicLiveMapPathValue<
+  ResolveLiveMapPathValue<TValue, TPath, DataValueInput | undefined>
 >;
 
-/** Structural proposals are derived independently of Schema certification.
- * Readonly inputs are accepted because admission reads/copies them, never mutates them.
+type IsBroadReadObject<TValue> = string extends keyof TValue
+  ? [DataObjectRead] extends [TValue] ? true : false
+  : false;
+
+/** Ordinary Data objects have string keys. Array and function types expose
+ * symbol members through their prototypes even when their string keys fit. */
+type DataProposalObjectCategory = { readonly [key: symbol]: never } & {
+  readonly [Symbol.iterator]?: never;
+  readonly [Symbol.hasInstance]?: never;
+};
+
+/** Preserve Data-compatible shapes, including readonly tuples and recursive aliases.
+ * Legacy shapes can expose read uncertainty or input conventions from another
+ * API. Their object candidates must also qualify as ordinary Data.
  */
 type LiveMapMutationCandidateValue<TValue> =
-  TValue extends readonly []
-    ? []
-    : TValue extends readonly [infer THead, ...infer TTail]
-      ? [LiveMapMutationCandidateValue<THead>, ...LiveMapMutationCandidateTuple<TTail>]
-      : TValue extends readonly (infer TItem)[]
-        ? Array<LiveMapMutationCandidateValue<TItem>>
-        : TValue extends object
-          ? { -readonly [TKey in keyof TValue]: LiveMapMutationCandidateValue<TValue[TKey]> }
-          : TValue;
+  [JsonValue] extends [TValue] ? DataValueInput
+    : TValue extends unknown
+      ? UsesPartCssOmission<TValue> extends true ? DataObjectInput
+        : TValue extends Function ? never
+          : TValue extends readonly unknown[] ? CandidateMembers<TValue>
+            : TValue extends object ? IsBroadReadObject<TValue> extends true ? DataObjectInput
+              : CandidateMembers<TValue> & DataProposalObjectCategory & (TValue extends DataValueInput ? TValue : DataObjectInput)
+              : TValue extends DataValueInput ? TValue : never
+      : never;
 
-type LiveMapMutationCandidateTuple<TValue extends readonly unknown[]> =
-  TValue extends readonly [infer THead, ...infer TTail]
-    ? [LiveMapMutationCandidateValue<THead>, ...LiveMapMutationCandidateTuple<TTail>]
-    : [];
+type PartCssInput = NonNullable<LiveMapDocumentPart["css"]>;
+/** Part CSS has its own omission rules. A generic Data route still takes ordinary Data. */
+type UsesPartCssOmission<TValue> = `&${string}` extends keyof TValue
+  ? PartCssInput extends TValue ? true : false
+  : "css" extends keyof TValue
+    ? [PartCssInput] extends [NonNullable<TValue["css"]>]
+      ? [NonNullable<TValue["css"]>] extends [PartCssInput] ? true : false
+      : false
+    : false;
+type CandidateMembers<TValue> = { [K in keyof TValue]: LiveMapMutationCandidateValue<Required<TValue>[K]> };
 
-/** Remove `undefined` from write positions, accepting detached reads as proposals. */
-export type LiveMapWriteValue<TValue> = HsonDataValue | ([Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
-  ? Exclude<LiveMapMutationCandidateValue<TValue> | TValue, undefined>
-  : JsonValue);
+/** Data proposals undergo exact runtime validation. A carrier can forward an exact snapshot. */
+export type LiveMapWriteValue<TValue> = HsonDataValue | LiveMapMutationCandidateValue<TValue>;
 
-export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
+/** TypeScript supplies Object members even when a Data candidate has no such key.
+ * Model missing keys for the assignability check. Explicitly declared keys retain
+ * their types, and synthetic optional keys cannot satisfy required Schema members.
+ */
+type DataProposalOwnKeys<T> = DataObjectInput extends T ? T
+  : T extends readonly unknown[] ? readonly DataValueInput[] extends T ? T : { [K in keyof T]: DataProposalOwnKeys<T[K]> }
+    : T extends HsonDataValue | Function ? T
+      : T extends object
+        ? { [K in keyof T]: DataProposalOwnKeys<T[K]> } & { readonly [K in Exclude<keyof Object, keyof T>]?: never }
+        : T;
+
+/** Ordinary Data qualification already checks wildcard payloads. Ignore a broad
+ * Data index on named shapes here, since loose optional checking can treat the
+ * synthetic absent members as undefined values when checking an index signature.
+ */
+type DataProposalNamedShape<T> = DataValueInput extends T ? T
+  : T extends readonly unknown[] ? { [K in keyof T]: DataProposalNamedShape<T[K]> }
+    : T extends HsonDataValue | Function ? T
+      : T extends object ? [NamedDataKey<T>] extends [never] ? T
+        : { [K in keyof T as string extends K ? DataValueInput extends T[K] ? never : K : K]: DataProposalNamedShape<T[K]> }
+      : T;
+
+// Only use the inferred shape to repair an assignability failure. Otherwise the
+// ordinary signature still performs TypeScript's contextual excess-key checks.
+type CheckedDataProposal<TCandidate, TProposal, TInput = HsonDataInputCheck<TCandidate>> = TCandidate & NoInfer<
+  [TCandidate] extends [TProposal] ? never
+    : [TCandidate] extends [TInput]
+      ? [TCandidate] extends [DataProposalNamedShape<TProposal>] ? never
+        : [DataProposalOwnKeys<TCandidate>] extends [DataProposalNamedShape<TProposal>] ? unknown : never
+      : never
+>;
+
+/** Preserve ordinary contextual typing and use the inferred keys for omission checks. */
+export type LiveMapProposalCommand<TProposal, TResult, TPrefix extends unknown[] = []> = {
+  <const TCandidate>(...args: [...TPrefix, value: CheckedDataProposal<TCandidate, TProposal>]): TResult;
+  (...args: [...TPrefix, value: NoInfer<TProposal>]): TResult;
+};
+
+type LiveMapProposalUpdate<TRead, TProposal, TResult> = {
+  (updater: (value: TRead) => TProposal): TResult;
+  <const TCandidate>(updater: (value: TRead) => TProposal | CheckedDataProposal<TCandidate, TProposal>): TResult;
+};
+
+export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathProposal<TValue, TPath>>;
 /**
  * Value accepted by `set` at one path.
  *
@@ -287,15 +348,17 @@ export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWrite
  * shallow object patch shape because runtime `set` preserves unspecified object
  * siblings. Use `replace` for exact object replacement.
  */
-export type LiveMapSetValue<TValue> = HsonDataValue | (NonNullable<LiveMapMutationCandidateValue<TValue>> extends readonly unknown[]
+export type LiveMapSetValue<TValue> = unknown extends TValue
   ? LiveMapWriteValue<TValue>
-  : NonNullable<LiveMapMutationCandidateValue<TValue>> extends object
-  ? LiveMapObjectSetManyValues<TValue>
-  : LiveMapWriteValue<TValue>);
-export type LiveMapPathSetValue<TValue, TPath extends LivePath> = LiveMapSetValue<LiveMapPathValue<TValue, TPath>>;
+  : NonNullable<TValue> extends readonly unknown[]
+    ? LiveMapWriteValue<TValue>
+    : NonNullable<TValue> extends object
+      ? LiveMapObjectSetManyValues<TValue>
+      : LiveMapWriteValue<TValue>;
+export type LiveMapPathSetValue<TValue, TPath extends LivePath> = LiveMapSetValue<LiveMapPathProposal<TValue, TPath>>;
 /** Object patch shape accepted by `setMany` at a data path. */
 export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
-  LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
+  LiveMapObjectSetManyValues<LiveMapPathProposal<TValue, TPath>>;
 
 export type LiveMapReplaceFn<TValue = JsonValue | undefined> = {
   (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapCoreCommit<LiveMapDataOp>;
@@ -1334,13 +1397,15 @@ export type LiveMapCommit<
 
 /** One selected data handle relative to its Library, never to a library name path segment. */
 export type LiveMapLibraryPathHandle<
-  TValue = JsonValue | undefined,
+  TValue = DataValueRead | undefined,
   TLibrary extends string = string,
   TRead = TValue,
-> = LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead> & LiveMapPathCapabilities<
+  TProposal = TValue,
+> = LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead, TProposal> & LiveMapPathCapabilities<
   TValue,
   LiveMapCommit<TLibrary, LiveMapDataOp>,
-  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead>
+  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead, TProposal>,
+  TProposal
 >;
 
 /** A library-local data change carried by the ordinary map commit stream. */
@@ -1348,7 +1413,7 @@ export type LiveMapLibraryFeedEvent<TLibrary extends string = string> = Readonly
   op: LiveMapDataOp;
   ops: readonly LiveMapDataOp[];
   path: LivePath;
-  value: JsonValue | undefined;
+  value: DataValueRead | undefined;
   commit: LiveMapCommit<TLibrary, LiveMapDataOp>;
 }>;
 
@@ -1356,6 +1421,7 @@ type LiveMapLibraryPathHandleBase<
   TValue,
   TLibrary extends string,
   TRead = TValue,
+  TProposal = TValue,
 > = Readonly<{
   readonly rev: number;
   path: () => LivePath;
@@ -1363,36 +1429,36 @@ type LiveMapLibraryPathHandleBase<
   /** Read this path as exact canonical data. */
   hson: () => EndpointRepresentation<TRead, HsonData>;
   readonly must: RequiredReads<TRead, HsonData>;
-  at: DataLocationAt<"local", TValue, TRead, TLibrary>;
-  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
-  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  at: DataLocationAt<"local", TValue, TRead, TLibrary, void, undefined, TProposal>;
+  set: LiveMapProposalCommand<LiveMapSetValue<TProposal>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
+  replace: LiveMapProposalCommand<LiveMapWriteValue<TProposal>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
   delete: () => LiveMapCommit<TLibrary, LiveMapDataOp>;
-  update: (updater: (value: TRead) => LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  update: LiveMapProposalUpdate<TRead, LiveMapSetValue<TProposal>, LiveMapCommit<TLibrary, LiveMapDataOp>>;
   feed: (listener: (event: LiveMapLibraryFeedEvent<TLibrary>) => void) => LiveMapDisposer;
   watch: (listener: (next: TRead) => void) => LiveMapDisposer;
   /** Observe the current runtime endpoint category. This is not permanent proof. */
   kind: () => LiveMapPathKind;
   /** Refine a currently present endpoint. Every acquired capability revalidates before use. */
-  present: () => LiveMapLibraryPathHandle<Exclude<TValue, undefined>, TLibrary, LibraryRefinedValue<TRead, Exclude<TValue, undefined>>> | undefined;
-  asObject: () => LiveMapLibraryObjectPathHandle<LiveMapObjectBranch<TValue>, TLibrary, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>> | undefined;
-  asArray: () => LiveMapLibraryArrayPathHandle<LiveMapArrayBranch<TValue>, TLibrary, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>> | undefined;
-  asScalar: () => LiveMapLibraryScalarPathHandle<LiveMapScalarBranch<TValue>, TLibrary, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>> | undefined;
+  present: () => LiveMapLibraryPathHandle<Exclude<TValue, undefined>, TLibrary, LibraryRefinedValue<TRead, Exclude<TValue, undefined>>, Exclude<TProposal, undefined>> | undefined;
+  asObject: () => LiveMapLibraryObjectPathHandle<LiveMapObjectBranch<TValue>, TLibrary, LibraryRefinedValue<TRead, LiveMapObjectBranch<TValue>>, LiveMapObjectProposal<TProposal>> | undefined;
+  asArray: () => LiveMapLibraryArrayPathHandle<LiveMapArrayBranch<TValue>, TLibrary, LibraryRefinedValue<TRead, LiveMapArrayBranch<TValue>>, LiveMapArrayProposal<TProposal>> | undefined;
+  asScalar: () => LiveMapLibraryScalarPathHandle<LiveMapScalarBranch<TValue>, TLibrary, LibraryRefinedValue<TRead, LiveMapScalarBranch<TValue>>, LiveMapScalarBranch<TProposal>> | undefined;
 }>;
 
-export type LiveMapLibraryObjectPathHandle<TValue, TLibrary extends string, TRead = TValue> =
-  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead>
-  & LiveMapPathObjectCapabilities<TValue, LiveMapCommit<TLibrary, LiveMapDataOp>>;
+export type LiveMapLibraryObjectPathHandle<TValue, TLibrary extends string, TRead = TValue, TProposal = TValue> =
+  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead, TProposal>
+  & LiveMapPathObjectCapabilities<TValue, LiveMapCommit<TLibrary, LiveMapDataOp>, TProposal>;
 
-export type LiveMapLibraryArrayPathHandle<TValue, TLibrary extends string, TRead = TValue> =
-  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead>
-  & LiveMapPathArrayCapabilities<TValue, LiveMapCommit<TLibrary, LiveMapDataOp>>;
+export type LiveMapLibraryArrayPathHandle<TValue, TLibrary extends string, TRead = TValue, TProposal = TValue> =
+  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead, TProposal>
+  & LiveMapPathArrayCapabilities<TValue, LiveMapCommit<TLibrary, LiveMapDataOp>, TProposal>;
 
-export type LiveMapLibraryScalarPathHandle<TValue, TLibrary extends string, TRead = TValue> =
-  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead>;
+export type LiveMapLibraryScalarPathHandle<TValue, TLibrary extends string, TRead = TValue, TProposal = TValue> =
+  LiveMapLibraryPathHandleBase<TValue, TLibrary, TRead, TProposal>;
 
 /** Read authority for one selected data Library. */
 export type LiveMapDataLibrary<
-  TValue = JsonValue | undefined,
+  TValue = DataValueRead | undefined,
   TLibrary extends string = string,
   TSchema extends HsonSchema = HsonSchema,
 > = Readonly<{
@@ -1407,9 +1473,7 @@ export type LiveMapDataLibrary<
   };
   hson: () => EndpointRepresentation<TValue, HsonData>;
   readonly must: RequiredReads<TValue, HsonData>;
-  at: <const TPath extends LivePath>(
-    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
+  at: DataLocationAt<"local", TValue, TValue, TLibrary, void, undefined, DataLibraryProposal<TSchema, TValue>>;
   schema: Readonly<{
     get: () => LiveMapCurrentDataSchema<TSchema>;
     use: LiveMapSchemaUse<LiveMapDataSchemaUse<TSchema>, TLibrary>;
@@ -1417,9 +1481,9 @@ export type LiveMapDataLibrary<
 }>;
 
 type LiveMapCurrentDataSchema<TSchema extends HsonSchema> =
-  JsonValue extends DataSchemaValue<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
+  DataValueInput extends DataSchemaProposal<TSchema, DataSchemaValue<TSchema>> ? HsonSchema<unknown, "data"> : TSchema;
 type LiveMapDataSchemaUse<TSchema extends HsonSchema> =
-  JsonValue extends DataSchemaValue<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
+  DataValueInput extends DataSchemaProposal<TSchema, DataSchemaValue<TSchema>> ? HsonSchema<unknown, "data"> : TSchema;
 type LiveMapSchemaUse<TSchema extends HsonSchema, TLibrary extends string> = {
   /** Canonically equal Schema is a no-op; replacing the admitted binding throws. */
   bivarianceHack(schema: TSchema): LiveMapCommit<TLibrary>;
@@ -1741,21 +1805,21 @@ type LiveMapEffectiveKnownNames<TMap> = Extract<
 export type LiveMapStagedDataPath<TValue, TResult> = Readonly<{
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LiveMapStagedDataPath<LiveMapPathValue<TValue, TPath>, TResult>;
-  set: (value: LiveMapSetValue<TValue>) => TResult;
-  replace: (value: LiveMapWriteValue<TValue>) => TResult;
+  ) => LiveMapStagedDataPath<LiveMapPathProposal<TValue, TPath>, TResult>;
+  set: LiveMapProposalCommand<LiveMapSetValue<TValue>, TResult>;
+  replace: LiveMapProposalCommand<LiveMapWriteValue<TValue>, TResult>;
   delete: () => TResult;
   /** Enqueue a required array assertion at this point in candidate order, not a conditional read. Failure rejects the stage. */
-  asArray: () => LiveMapStagedDataPath<LiveMapArrayBranch<TValue>, TResult>;
+  asArray: () => LiveMapStagedDataPath<LiveMapArrayProposal<TValue>, TResult>;
   /** Enqueue a required object assertion at this point in candidate order, not a conditional read. Failure rejects the stage. */
-  asObject: () => LiveMapStagedDataPath<LiveMapObjectBranch<TValue>, TResult>;
+  asObject: () => LiveMapStagedDataPath<LiveMapObjectProposal<TValue>, TResult>;
 }> & LibraryShapeCapabilities<TValue, LibraryArrayCommands<TValue, TResult>, LibraryObjectCommands<TValue, TResult>>;
 
 export type LiveMapStagedDataLibrary<TValue, TResult> = Readonly<{
   readonly mode: DataLiveMapMode;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LiveMapStagedDataPath<LiveMapPathValue<TValue, TPath>, TResult>;
+  ) => LiveMapStagedDataPath<LiveMapPathProposal<TValue, TPath>, TResult>;
 }>;
 
 type LiveMapStagedDocumentLocation<TDescriptor, TResult> = Readonly<{
@@ -2278,40 +2342,80 @@ export type LiveMapMappedLinkOptions = Readonly<{
 
 
 export type LiveMapObjectShape<TValue> = NonNullable<TValue> extends readonly unknown[]
-  ? Readonly<Record<string, JsonValue>>
+  ? DataObjectRead
   : NonNullable<TValue> extends object
   ? NonNullable<TValue>
-  : Readonly<Record<string, JsonValue>>;
+  : DataObjectRead;
 
+/** Keys shared by the object branches for statically addressed operations. */
 export type LiveMapObjectKey<TValue> = Extract<keyof LiveMapObjectShape<TValue>, string>;
 
 
 export type LiveMapObjectValue<TValue, TKey extends string> = TKey extends keyof LiveMapObjectShape<TValue>
-  ? LiveMapObjectShape<TValue>[TKey] | (string extends keyof LiveMapObjectShape<TValue> ? undefined : never)
-  : JsonValue | undefined;
+  ? OwnDataMember<LiveMapObjectShape<TValue>, TKey, DataValueRead | undefined>
+  : DataValueRead | undefined;
 
-export type LiveMapObjectWriteValue<TValue, TKey extends LiveMapObjectKey<TValue>> = LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
-export type LiveMapObjectSetValue<TValue, TKey extends LiveMapObjectKey<TValue>> = LiveMapSetValue<LiveMapObjectShape<TValue>[TKey]>;
+type ObjectProposalValue<TValue, TKey extends string> =
+  TKey extends keyof TValue ? TValue[TKey] : DataValueInput;
+export type LiveMapObjectWriteValue<TValue, TKey extends string> = LiveMapWriteValue<ObjectProposalValue<TValue, TKey>>;
+export type LiveMapObjectSetValue<TValue, TKey extends string> = LiveMapSetValue<ObjectProposalValue<TValue, TKey>>;
 
-export type LiveMapObjectSetManyValues<TValue> = HsonDataValue | (string extends LiveMapObjectKey<TValue>
-  ? LiveMapSetManyValues
-  : Readonly<{
-    [TKey in LiveMapObjectKey<TValue>]?: Exclude<LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>, HsonDataValue>;
-  }>);
+type ObjectPatch<T> = { readonly [K in keyof T]?: LiveMapMutationCandidateValue<Required<T>[K]> };
+export type LiveMapObjectSetManyValues<TValue> = HsonDataValue
+  | (unknown extends TValue ? DataObjectInput
+    : IsBroadReadObject<NonNullable<TValue>> extends true ? DataObjectInput
+      : ObjectPatch<NonNullable<TValue>> & DataProposalObjectCategory
+        & (string extends keyof NonNullable<TValue> ? DataObjectInput : unknown));
 
-export type LiveMapObjectEntry<TValue> = {
-  [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
-}[LiveMapObjectKey<TValue>];
+type EnumeratedObjectKey<TObject> = Extract<keyof TObject, string | number>;
+type EnumeratedObjectValue<TObject, TKey extends keyof TObject> =
+  unknown extends TObject[TKey] ? DataValueRead : TObject[TKey];
+/** Enumerate own members of each possible object independently. An open
+ * branch contributes a string-key entry with the conservative Data domain. */
+type EnumeratedObjectEntry<TObject> = TObject extends unknown ? {
+  [TKey in EnumeratedObjectKey<TObject>]-?: readonly [`${TKey}`, EnumeratedObjectValue<TObject, TKey>];
+}[EnumeratedObjectKey<TObject>] : never;
+
+export type LiveMapObjectEntry<TValue> = EnumeratedObjectEntry<LiveMapObjectShape<TValue>>;
 
 export type LiveMapArrayShape<TValue> = NonNullable<TValue> extends readonly unknown[]
   ? NonNullable<TValue>
-  : readonly JsonValue[];
+  : readonly DataValueRead[];
 
 export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonly (infer TItem)[]
   ? TItem
-  : JsonValue;
+  : DataValueRead;
 
-export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<LiveMapArrayItem<TValue>>;
+export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<
+  NonNullable<TValue> extends readonly (infer TItem)[] ? TItem : DataValueInput
+>;
+type LiveMapArrayWriteMany<TValue> = HsonDataValue | readonly Exclude<LiveMapArrayWriteItem<TValue>, HsonDataValue>[];
+
+/** A named key is definite only when every list has a slot confined to that key. */
+type ListIncludesKey<TKeys extends readonly string[], TKey extends string> =
+  TKeys extends readonly [infer THead extends string, ...infer TTail extends readonly string[]]
+    ? [THead] extends [TKey] ? true : ListIncludesKey<TTail, TKey>
+    : TKeys extends readonly [...infer TInit extends readonly string[], infer TLast extends string]
+      ? [TLast] extends [TKey] ? true : ListIncludesKey<TInit, TKey>
+      : false;
+type DefiniteObjectKeys<TKeys extends readonly string[], TKey extends string> =
+  TKey extends unknown ? false extends ListIncludesKey<TKeys, TKey> ? never : TKey : never;
+type PossibleObjectKeys<TKeys extends readonly string[], TKey extends string> =
+  TKey extends unknown ? [TKey & TKeys[number]] extends [never] ? never : TKey : never;
+
+type ObjectSelection<TObject, TKept, TMaybe> =
+  Pick<TObject, Extract<TKept, keyof TObject>>
+  & { readonly [K in Extract<TMaybe, string>]?: unknown }
+  & (string extends keyof TObject ? DataObjectRead : unknown);
+
+export type LiveMapObjectPick<TObject, TKeys extends readonly string[]> = TObject extends unknown ? ObjectSelection<TObject,
+  DefiniteObjectKeys<TKeys, NamedDataKey<TObject>>,
+  Exclude<PossibleObjectKeys<TKeys, NamedDataKey<TObject>>, DefiniteObjectKeys<TKeys, NamedDataKey<TObject>>>
+> : never;
+export type LiveMapObjectOmit<TObject, TKeys extends readonly string[]> = TObject extends unknown ? ObjectSelection<TObject,
+  Exclude<NamedDataKey<TObject>, PossibleObjectKeys<TKeys, NamedDataKey<TObject>>>,
+  Exclude<PossibleObjectKeys<TKeys, NamedDataKey<TObject>>, DefiniteObjectKeys<TKeys, NamedDataKey<TObject>>>
+> : never;
 
 export type LiveMapPathKind = "missing" | "object" | "array" | "scalar";
 
@@ -2354,13 +2458,15 @@ type LiveMapCanonicalShape<TValue> =
         : TValue extends object ? "object"
           : "scalar";
 
-export type LiveMapObjectBranch<TValue> = unknown extends TValue ? Readonly<Record<string, JsonValue>> : TValue extends Primitive | undefined
+export type LiveMapObjectBranch<TValue, TFallback = DataObjectRead> = unknown extends TValue ? TFallback : TValue extends Primitive | undefined
   ? never
   : TValue extends readonly unknown[]
     ? never
     : TValue extends object ? TValue : never;
 
-export type LiveMapArrayBranch<TValue> = unknown extends TValue ? readonly JsonValue[] : TValue extends readonly unknown[] ? TValue : never;
+export type LiveMapArrayBranch<TValue, TFallback = readonly DataValueRead[]> = unknown extends TValue ? TFallback : TValue extends readonly unknown[] ? TValue : never;
+export type LiveMapObjectProposal<TValue> = LiveMapObjectBranch<TValue, DataObjectInput>;
+export type LiveMapArrayProposal<TValue> = LiveMapArrayBranch<TValue, readonly DataValueInput[]>;
 
 export type LiveMapScalarBranch<TValue> = unknown extends TValue ? Primitive : TValue extends Primitive ? TValue : never;
 
@@ -2368,31 +2474,33 @@ type LiveMapShapeDomain<TValue> = unknown extends TValue
   ? LiveMapPathKind
   : TValue extends unknown ? LiveMapCanonicalShape<TValue> : never;
 
-type LiveMapPathCapabilities<TValue, TCommit, TBase> =
+type LiveMapPathCapabilities<TValue, TCommit, TBase, TProposal = TValue> =
   [LiveMapShapeDomain<TValue>] extends ["object"]
-    ? LiveMapPathObjectCapabilities<TValue, TCommit>
+    ? LiveMapPathObjectCapabilities<TValue, TCommit, TProposal>
     : [LiveMapShapeDomain<TValue>] extends ["array"]
-      ? LiveMapPathArrayCapabilities<TValue, TCommit>
+      ? LiveMapPathArrayCapabilities<TValue, TCommit, TProposal>
       : TBase;
 
 export type LiveMapArrayMutationName = "push" | "pushMany" | "unshift" | "unshiftMany" | "pop" | "shift" | "clear" | "reverse" | "sortNumbers" | "sortStrings" | "splice" | "insert" | "remove" | "replace" | "move" | "unique" | "removeValue" | "removeAll";
 export type LiveMapObjectMutationName = "setKey" | "setMany" | "clear" | "deleteKey" | "deleteMany" | "renameKey";
 export type LibraryArrayRead<TValue> = Omit<LiveMapPathArrayApi<TValue>, LiveMapArrayMutationName | "is">;
 export type LibraryObjectRead<TValue> = Omit<LiveMapPathObjectApi<TValue>, LiveMapObjectMutationName | "is">;
-export type LibraryArrayCommands<TValue, TResult> = Pick<LiveMapPathArrayApi<TValue, TResult>, LiveMapArrayMutationName>;
-export type LibraryObjectCommands<TValue, TResult> = Pick<LiveMapPathObjectApi<TValue, TResult>, LiveMapObjectMutationName>;
+export type LibraryArrayCommands<TValue, TResult, TProposal = TValue> = Pick<LiveMapPathArrayApi<TValue, TResult, TProposal>, LiveMapArrayMutationName>;
+export type LibraryObjectCommands<TValue, TResult, TProposal = TValue> = Pick<LiveMapPathObjectApi<TValue, TResult, TProposal>, LiveMapObjectMutationName>;
 export type LibraryShapeCapabilities<TValue, TArray, TObject> =
   [TValue] extends [never] ? {} : [LiveMapShapeDomain<TValue>] extends ["array"] ? Readonly<{ array: TArray }>
     : [LiveMapShapeDomain<TValue>] extends ["object"] ? Readonly<{ object: TObject }> : {};
 
-export type LiveMapPathObjectCapabilities<TValue, TCommit = LiveMapCoreCommit<LiveMapDataOp>> = Readonly<{ object: Omit<LiveMapPathObjectApi<TValue, TCommit>, "is"> }>;
+export type LiveMapPathObjectCapabilities<TValue, TCommit = LiveMapCoreCommit<LiveMapDataOp>, TProposal = TValue> =
+  Readonly<{ object: Omit<LiveMapPathObjectApi<TValue, TCommit, TProposal>, "is"> }>;
 
-export type LiveMapPathArrayCapabilities<TValue, TCommit = LiveMapCoreCommit<LiveMapDataOp>> = Readonly<{ array: Omit<LiveMapPathArrayApi<TValue, TCommit>, "is"> }>;
+export type LiveMapPathArrayCapabilities<TValue, TCommit = LiveMapCoreCommit<LiveMapDataOp>, TProposal = TValue> =
+  Readonly<{ array: Omit<LiveMapPathArrayApi<TValue, TCommit, TProposal>, "is"> }>;
 
-export type LiveMapObjectPathHandle<TValue = Readonly<Record<string, JsonValue>>, TRead = TValue> =
+export type LiveMapObjectPathHandle<TValue = DataObjectRead, TRead = TValue> =
   LiveMapPathHandleBase<TValue, TRead> & LiveMapPathObjectCapabilities<TValue>;
 
-export type LiveMapArrayPathHandle<TValue = readonly JsonValue[], TRead = TValue> =
+export type LiveMapArrayPathHandle<TValue = readonly DataValueRead[], TRead = TValue> =
   LiveMapPathHandleBase<TValue, TRead> & LiveMapPathArrayCapabilities<TValue>;
 
 export type LiveMapScalarPathHandle<TValue = Primitive, TRead = TValue> = LiveMapPathHandleBase<TValue, TRead>;
@@ -2403,26 +2511,30 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined, TRead = TValue> = 
 >;
 
 export type LiveMapPathObjectApi<
-  TValue = JsonValue | undefined,
+  TValue = DataValueRead | undefined,
   TCommit = LiveMapCoreCommit<LiveMapDataOp>,
+  TProposal = TValue,
 > = Readonly<{
   is: () => boolean;
   toObject: () => LiveMapObjectShape<TValue>;
-  pick: <const TKeys extends readonly string[]>(keys: TKeys) => string extends LiveMapObjectKey<TValue>
-    ? Partial<Pick<LiveMapObjectShape<TValue>, Extract<TKeys[number], keyof LiveMapObjectShape<TValue>>>>
-    : Pick<LiveMapObjectShape<TValue>, Extract<TKeys[number], keyof LiveMapObjectShape<TValue>>>;
-  omit: <const TKeys extends readonly string[]>(keys: TKeys) => Omit<LiveMapObjectShape<TValue>, Extract<TKeys[number], keyof LiveMapObjectShape<TValue>>>;
+  pick: <const TKeys extends readonly string[]>(keys: TKeys) => LiveMapObjectPick<LiveMapObjectShape<TValue>, TKeys>;
+  omit: <const TKeys extends readonly string[]>(keys: TKeys) => LiveMapObjectOmit<LiveMapObjectShape<TValue>, TKeys>;
   hasKey: <const TKey extends string>(key: TKey) => boolean;
   getKey: <const TKey extends string>(key: TKey) => LiveMapObjectValue<TValue, TKey>;
-  keys: () => readonly LiveMapObjectKey<TValue>[];
+  keys: () => readonly LiveMapObjectEntry<TValue>[0][];
   isEmpty: () => boolean;
   size: () => number;
-  values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
+  values: () => readonly LiveMapObjectEntry<TValue>[1][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   /** Set one child key under this object path, creating that key if needed. */
-  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => TCommit;
+  setKey: {
+    <const TKey extends LiveMapObjectKey<TValue>, const TCandidate>(
+      key: TKey, value: CheckedDataProposal<TCandidate, LiveMapObjectSetValue<TProposal, TKey>>,
+    ): TCommit;
+    <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TProposal, TKey>>): TCommit;
+  };
   /** Shallow child-key writes under this object path, preserving unspecified siblings. */
-  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => TCommit;
+  setMany: LiveMapProposalCommand<LiveMapObjectSetManyValues<TProposal>, TCommit>;
   clear: () => TCommit;
   deleteKey: (key: string) => TCommit;
   deleteMany: (keys: readonly string[]) => TCommit;
@@ -2435,8 +2547,9 @@ export type LiveMapPathObjectApi<
  * movement intent; other whole-array transformations may use endpoint writes.
  */
 export type LiveMapPathArrayApi<
-  TValue = JsonValue | undefined,
+  TValue = DataValueRead | undefined,
   TCommit = LiveMapCoreCommit<LiveMapDataOp>,
+  TProposal = TValue,
 > = Readonly<{
   is: () => boolean;
   toArray: () => LiveMapArrayShape<TValue>;
@@ -2454,20 +2567,26 @@ export type LiveMapPathArrayApi<
   last: () => LiveMapArrayItem<TValue>;
   includes: (value: HsonDataInput) => boolean;
   indexOf: (value: HsonDataInput) => number;
-  push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
-  pushMany: (values: HsonDataValue | readonly NoInfer<Exclude<LiveMapArrayWriteItem<TValue>, HsonDataValue>>[]) => TCommit;
-  unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
-  unshiftMany: (values: HsonDataValue | readonly NoInfer<Exclude<LiveMapArrayWriteItem<TValue>, HsonDataValue>>[]) => TCommit;
+  push: LiveMapProposalCommand<LiveMapArrayWriteItem<TProposal>, TCommit>;
+  pushMany: LiveMapProposalCommand<LiveMapArrayWriteMany<TProposal>, TCommit>;
+  unshift: LiveMapProposalCommand<LiveMapArrayWriteItem<TProposal>, TCommit>;
+  unshiftMany: LiveMapProposalCommand<LiveMapArrayWriteMany<TProposal>, TCommit>;
   pop: () => TCommit;
   shift: () => TCommit;
   clear: () => TCommit;
   reverse: () => TCommit;
   sortNumbers: (direction?: LiveMapSortDirection) => TCommit;
   sortStrings: (direction?: LiveMapSortDirection) => TCommit;
-  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => TCommit;
-  insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
+  splice: {
+    <const TItems extends readonly unknown[]>(
+      start: number, deleteCount: number, ...items: CheckedDataProposal<TItems, readonly LiveMapArrayWriteItem<TProposal>[],
+        { [K in keyof TItems]: HsonDataInputCheck<TItems[K]> }>
+    ): TCommit;
+    (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TProposal>>[]]): TCommit;
+  };
+  insert: LiveMapProposalCommand<LiveMapArrayWriteItem<TProposal>, TCommit, [index: number]>;
   remove: (index: number) => TCommit;
-  replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
+  replace: LiveMapProposalCommand<LiveMapArrayWriteItem<TProposal>, TCommit, [index: number]>;
   move: (fromIndex: number, toIndex: number) => TCommit;
   unique: () => TCommit;
   removeValue: (value: HsonDataInput) => TCommit;

@@ -350,7 +350,7 @@ test("explicit literal bodies keep null, empty Data object, empty Data array and
   }
   compare(field("<tuple []>"), '<type "data" root <object <v <tuple []>>>>');
   rejection(field("<tuple>"), "SCHEMA_LOWERING", "<tuple>");
-  rejection(field("<object>"), "SCHEMA_LOWERING", "<object>");
+  compare(field("<object>"), '<type "data" root <object <v <object <>>>>>');
 });
 
 test("quoted application names and header operands use HSON escaping and exact source order", () => {

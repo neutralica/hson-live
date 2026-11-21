@@ -84,12 +84,12 @@ check("application declarations expose structural roots and path values", () => 
   assert.doesNotMatch(reads, /__Value|__\w*Definition\d|Proof\d|HSON_SCHEMA_MUTATION_CANDIDATE|HsonSchemaMutationCandidate|\.Evidence/);
   assert.match(reads, /rootSnapshot: \{\s+readonly slides:/);
   assert.match(reads, /slideSnapshot: import\([^)]+\)\.Slide \| undefined/);
-  assert.match(reads, /titleSnapshot: string \| undefined/);
+  assert.match(reads, /titleSnapshot: unknown/);
   const evidence = readFileSync(resolve(fixture, "out/internal/hson-schema/structural.types.ts/DeckSchema.hson-schema.generated.d.ts"), "utf8");
   assert.doesNotMatch(evidence, /Proof\d|MutationCandidate|__Value|__\w*Definition\d/);
   assert.match(evidence, /type Slide =/);
   assert.match(evidence, /readonly id: string/);
-  assert.match(evidence, /readonly language\?:.*"json".*"html".*"hson"/);
+  assert.match(evidence, /readonly language\?: unknown;/);
   assert.match(reads, /recursiveSnapshot: import\([^)]+\)\.Tree/);
   assert.match(reads, /mutualSnapshot: import\([^)]+\)\.A/);
   assert.match(evidence, /type Block =/);
@@ -115,7 +115,7 @@ check("stock TypeScript hovers contain precise ordinary application shapes", () 
       assert.ok(hover, name);
       const display = ts.displayPartsToString(hover.displayParts);
       assert.doesNotMatch(display, /__Value|__\w*Definition\d|Proof\d|MutationCandidate|HSON_SCHEMA/);
-      assert.match(display, name === "titleSnapshot" ? /string \| undefined/ : name === "rootSnapshot" ? /readonly slides:/ : /Slide \| undefined/);
+      assert.match(display, name === "titleSnapshot" ? /titleSnapshot: unknown/ : name === "rootSnapshot" ? /readonly slides:/ : /Slide \| undefined/);
     }
   } finally { service.dispose(); }
 });

@@ -2,7 +2,7 @@ import { hson_lexical_cursor } from "../../src/api/transform/parsers/tokenize-hs
 import { HSON_MAX_NESTING } from "../../src/core/constants.js";
 import { read_transform_error_details } from "../../src/core/errors.js";
 import { parse_canonical_hson_data } from "../../src/core/hson-data-canonical-codec.js";
-import { is_hson_bare_name_start } from "../../src/core/hson-name.js";
+import { is_hson_bare_name_char, is_hson_bare_name_start } from "../../src/core/hson-name.js";
 import { host_source_position_at, source_point_range_at } from "../../src/internal/embedded-hson/embedded-hson-source.js";
 import type { HsonSourceRange } from "../../src/internal/hson-source-provenance/hson-source-provenance.js";
 import {
@@ -24,6 +24,7 @@ export class SchemaSourceError extends Error {
 export type ReadSchemaSource = Readonly<{
   root: SchemaOccurrence;
   rangeOf(origin: SchemaOrigin): HsonSourceRange | undefined;
+  nameRangeOf(occurrence: SchemaOccurrence): HsonSourceRange | undefined;
 }>;
 
 /** Read one governed declaration, attaching authored ranges to its owned occurrences. */
@@ -31,6 +32,7 @@ export function read_schema_source(source: string): ReadSchemaSource {
   if (typeof source !== "string") throw new TypeError("Expected authored Schema source text.");
   const cursor = hson_lexical_cursor(source);
   const ranges = new WeakMap<SchemaOrigin, HsonSourceRange>();
+  const names = new WeakMap<SchemaOccurrence, HsonSourceRange>();
 
   function located<T extends SchemaOrigin>(record: T, start: number, end = cursor.offset()): T {
     ranges.set(record, Object.freeze({ start, end }));
@@ -58,7 +60,33 @@ export function read_schema_source(source: string): ReadSchemaSource {
     }
   }
 
-  function openObject(depth: number) {
+  function wildcardAhead(): boolean {
+    const at = cursor.offset();
+    return source.startsWith("any", at) && !is_hson_bare_name_char(source.charAt(at + 3));
+  }
+
+  function wildcard(depth: number): SchemaOccurrence {
+    const start = cursor.offset();
+    cursor.bareName();
+    const headEnd = cursor.offset();
+    const { headers, body, end } = contents("any", depth, "wildcard");
+    const clause = located(operation("any", body, headers), start, end);
+    names.set(clause, Object.freeze({ start, end: headEnd }));
+    cursor.skipTrivia();
+    if (body !== undefined && cursor.peek() === "<") {
+      const extra = declaration(depth);
+      throw new SchemaSourceError(source, ranges.get(extra)!, "SCHEMA_SOURCE_SYNTAX", "A wildcard accepts at most one Schema expression.");
+    }
+    if (body !== undefined && is_hson_bare_name_start(cursor.peek()) && !wildcardAhead()) {
+      const start = cursor.offset();
+      const word = cursor.bareName();
+      throw new SchemaSourceError(source, { start, end: cursor.offset() }, "SCHEMA_SOURCE_SYNTAX",
+        `Unexpected ${word} after the object wildcard expression. Expected a sibling clause or >.`);
+    }
+    return clause;
+  }
+
+  function openObject(depth: number, object: boolean) {
     const start = cursor.offset();
     cursor.assertNesting(depth);
     cursor.consume("<");
@@ -66,11 +94,18 @@ export function read_schema_source(source: string): ReadSchemaSource {
     const entries: SchemaOccurrence[] = [];
     while (cursor.peek() !== ">") {
       if (!cursor.peek()) invalid("Missing > for open object.", start);
-      if (cursor.peek() !== "'") invalid("Expected a single-quoted member name or >.");
+      if (object && wildcardAhead()) {
+        entries.push(wildcard(depth + 1));
+        continue;
+      }
+      if (cursor.peek() !== "'") invalid(object ? "Expected a single-quoted member name, bare any, or >." : "Expected a single-quoted member name or >.");
       const memberStart = cursor.offset();
       const name = cursor.quotedName();
-      const { headers, body, end } = contents(name, depth + 1, true);
-      entries.push(located(application_name(name, body, headers), memberStart, end));
+      const headEnd = cursor.offset();
+      const { headers, body, end } = contents(name, depth + 1, object ? "member" : "definition");
+      const entry = located(application_name(name, body, headers), memberStart, end);
+      names.set(entry, Object.freeze({ start: memberStart, end: headEnd }));
+      entries.push(entry);
       cursor.skipTrivia();
     }
     cursor.consume(">");
@@ -101,7 +136,7 @@ export function read_schema_source(source: string): ReadSchemaSource {
       cursor.arrayItems(depth, () => items.push(declaration(depth + 1)));
       return located(expression_group(items), start);
     }
-    if (ch === "<" && (role === "object" || role === "defs")) return openObject(depth);
+    if (ch === "<" && (role === "object" || role === "defs")) return openObject(depth, role === "object");
     if (ch === "<" && role !== "exact" && role !== "ref" && !cursor.emptyObjectAhead()) {
       return declaration(depth);
     }
@@ -109,16 +144,24 @@ export function read_schema_source(source: string): ReadSchemaSource {
   }
 
   // bodyDepth counts authored containers. The unwrapped name itself adds no level.
-  function contents(name: string, bodyDepth: number, member: boolean) {
+  function contents(name: string, bodyDepth: number, role: "operation" | "member" | "wildcard" | "definition") {
     const headEnd = cursor.offset();
     const headers: SchemaHeader[] = [];
     let body: SchemaBody | undefined;
     let separated = cursor.skipTrivia();
-    while (cursor.peek() && cursor.peek() !== ">" && !(member && cursor.peek() === "'")) {
+    while (cursor.peek() && cursor.peek() !== ">" && !(role !== "operation" && cursor.peek() === "'")) {
+      if ((role === "member" || role === "wildcard") && wildcardAhead()) break;
+      if (role === "wildcard" && cursor.peek() === "=") invalid("An object wildcard accepts a nested Schema expression after any.");
       if (!separated) invalid("Expected trivia before a header or body.");
       const itemStart = cursor.offset();
+      if (role === "operation" && name === "object" && wildcardAhead()) {
+        const clauses = [wildcard(bodyDepth)];
+        while (wildcardAhead()) clauses.push(wildcard(bodyDepth));
+        body = located(member_map(clauses), itemStart, ranges.get(clauses[clauses.length - 1]!)!.end);
+        break;
+      }
       if (!is_hson_bare_name_start(cursor.peek())) {
-        body = readBody(member ? undefined : name, bodyDepth);
+        body = readBody(role === "operation" ? name : undefined, bodyDepth);
         break;
       }
 
@@ -163,12 +206,15 @@ export function read_schema_source(source: string): ReadSchemaSource {
     cursor.consume("<");
     cursor.skipTrivia();
     const name = cursor.bareName();
-    const { headers, body } = contents(name, depth + 1, false);
+    const headEnd = cursor.offset();
+    const { headers, body } = contents(name, depth + 1, "operation");
     cursor.skipTrivia();
     if (!cursor.peek()) invalid(`Missing > for ${JSON.stringify(name)}.`, start);
     if (cursor.peek() !== ">") invalid(`Expected > after the body of ${JSON.stringify(name)}.`);
     cursor.consume(">");
-    return located(operation(name, body, headers), start);
+    const record = located(operation(name, body, headers), start);
+    names.set(record, Object.freeze({ start: headEnd - name.length, end: headEnd }));
+    return record;
   }
 
   try {
@@ -176,7 +222,7 @@ export function read_schema_source(source: string): ReadSchemaSource {
     const root = declaration(0);
     cursor.skipTrivia();
     if (cursor.peek()) invalid("Trailing source after the Schema declaration.");
-    return { root, rangeOf: origin => ranges.get(origin) };
+    return { root, rangeOf: origin => ranges.get(origin), nameRangeOf: occurrence => names.get(occurrence) };
   } catch (cause) {
     const details = read_transform_error_details(cause);
     if (!details || !(cause instanceof Error)) throw cause;

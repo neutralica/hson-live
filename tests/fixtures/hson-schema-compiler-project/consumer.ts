@@ -1,6 +1,5 @@
 /// <reference path="./support/ambient.d.ts" />
 import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, type HsonData, type HsonDocument, type HsonSchema, type JsonFromSchema } from "hson-live";
-import type { JsonValue } from "hson-live/hson";
 import { slideSchema, twinSchema, RecordSchema, TreeSchema, PageSchema, CompletedPageSchema, PlainA, PlainB, annotatedSchema } from "./schema.js";
 import { slideSchema as sameSlide } from "./schema.js";
 import { Same as TsSchema } from "./names/foo.js";
@@ -15,7 +14,7 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
 type Identity<S> = S extends HsonSchema<unknown, "data" | "document", infer I> ? I : never;
 type NotAny<T> = 0 extends (1 & T) ? false : true;
 type ValueIsPrecise = Assert<NotAny<JsonFromSchema<typeof RecordSchema>>>;
-type PlainValue = Assert<Equal<JsonFromSchema<typeof PlainA>, JsonValue>>;
+type PlainValue = Assert<Equal<JsonFromSchema<typeof PlainA>, JsonFromSchema<typeof import("hson-live/hson").ANY_DATA>>>;
 type Mode = Assert<typeof slideSchema extends HsonSchema<unknown, "document"> ? true : false>;
 type CrossModuleIdentity = Assert<Equal<Identity<typeof slideSchema>, Identity<typeof sameSlide>>>;
 type DistinctDocumentIdentity = Assert<Equal<Identity<typeof slideSchema>, Identity<typeof twinSchema>> extends false ? true : false>;
@@ -30,16 +29,16 @@ type WrongMode = HsonData<typeof slideSchema>;
 // @ts-expect-error Identical document text does not make two declarations interchangeable.
 const otherDocument: HsonDocument<typeof twinSchema> = document;
 declare const plain: HsonData<typeof PlainA>;
-// @ts-expect-error Value types are both JsonValue; their Schema identities still differ.
+// @ts-expect-error Equal broad read types do not merge Schema identities.
 const otherPlain: HsonData<typeof PlainB> = plain;
 
 declare const value: JsonFromSchema<typeof RecordSchema>;
 const status: "ready" = value.status;
 const choice: "left" | "right" = value.choice;
-const nickname: string | undefined = value.nickname;
+const nickname = typeof value.nickname === "string" ? value.nickname : undefined;
 const pair: readonly [string, number] = value.pair;
-// @ts-expect-error Optional members remain optional.
-const requiredNickname: string = value.nickname;
+// @ts-expect-error Optional reads can return inherited values.
+const requiredNickname: string | undefined = value.nickname;
 // @ts-expect-error Literal precision is not widened.
 const wrongStatus: "waiting" = value.status;
 // @ts-expect-error Readonly evidence is retained.

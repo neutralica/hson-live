@@ -10,8 +10,8 @@ import { read_schema_source, SchemaSourceError } from "./source-reader.js";
 
 type Path = readonly (string | number)[];
 
-// The compiler's range-only union issues cite the coverage of the generated
-// descriptor. Recover that same logical value path only on an exact span match.
+// Union and graph diagnostics can identify an individual generated expression
+// by range, even when the issue path identifies its enclosing definition.
 function pathForCoverage(parsed: ParsedHsonWithProvenance, sought: HsonSourceRange,
   node: OrderedProjectedValue, path: Path): Path | undefined {
   const location = resolve_projected_hson_location(parsed.value, path);
@@ -50,7 +50,7 @@ export function compile_schema_source(source: string) {
   let generated: ParsedHsonWithProvenance | undefined;
   const issues = compilation.issues.map(issue => {
     let path = issue.path;
-    if (!path.length && issue.range) {
+    if (issue.range && (!path.length || issue.code === "INVALID_SCHEMA_GRAPH")) {
       generated ??= parse_hson_with_provenance(lowered.schema1Source);
       path = pathForCoverage(generated, issue.range, lowered.orderedDefinition, []) ?? path;
     }

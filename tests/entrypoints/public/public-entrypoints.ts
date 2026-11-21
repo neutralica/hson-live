@@ -228,7 +228,7 @@ import {
   Hson as HsonSubpath,
   type HsonCanonical as AuthoringCanonical,
 } from "hson-live/hson";
-import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/hson";
+import type { HsonNode, HsonSemanticPrimitive, Primitive } from "hson-live/hson";
 // @ts-expect-error The historical broad /types barrel was hard-removed.
 import type { LiveMapDocumentTarget } from "hson-live/types";
 // D1 tooling is private, including its capability-origin and lifecycle helpers.
@@ -793,12 +793,13 @@ type NestedTupleOptionalLeaf = Expect<Equal<typeof nestedTupleOptionalLeaf, stri
 type OptionalNestedTuplePosition = Expect<Equal<typeof optionalNestedTuplePosition, number | undefined>>;
 type AllUnionBranches = Expect<Equal<typeof allUnionBranches, string | number>>;
 type SomeUnionBranches = Expect<Equal<typeof someUnionBranches, boolean | undefined>>;
-type BroadDynamicPath = Expect<Equal<typeof broadDynamicPath, JsonValue | undefined>>;
+type BroadDataRead = import("hson-live/hson").JsonFromSchema<typeof import("hson-live/hson").ANY_DATA>;
+type BroadDynamicPath = Expect<Equal<typeof broadDynamicPath, BroadDataRead | undefined>>;
 type IndexedObjectLiteralKey = Expect<Equal<
   typeof indexedObjectLiteralKey,
   Readonly<{ value: number }> | undefined
 >>;
-type BroadDynamicObjectKey = Expect<Equal<typeof broadDynamicObjectKey, JsonValue | undefined>>;
+type BroadDynamicObjectKey = Expect<Equal<typeof broadDynamicObjectKey, BroadDataRead | undefined>>;
 type PreservedLiteral = Expect<Equal<typeof preservedLiteral, "ready">>;
 type PreservedReadonlyTuple = Expect<Equal<
   typeof preservedReadonlyTuple,

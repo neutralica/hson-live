@@ -5,7 +5,7 @@ import { decode_hson_content_string } from "../../core/hson-content-string.js";
 import { compile_hson_schema, HSON_SCHEMA_DATA_ROOT_ORDER, valid_data_root_fields, type CompiledHsonSchema, type HsonSchemaDataSemanticNode } from "../hson-schema/compiler.js";
 import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
 import { part_candidates } from "./part-completion.js";
-import { project_schema_data, type SchemaDataPath } from "../hson-schema/data-projection.js";
+import { project_schema_data, schema_object_member, type SchemaDataPath } from "../hson-schema/data-projection.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
 import { AUTHORED_EVENT_NAMES, formdata_operation, native_event_class, native_event_family, native_event_paths, native_event_scalar_qualifier } from "../event-argument-plan.js";
 import { scan_formdata_operation } from "../event-operation-source.js";
@@ -230,9 +230,8 @@ function data_candidates(schema: CompiledHsonSchema, context: HsonGrammarCheckpo
   };
   const nodes = project_schema_data(schema, context.path, narrow);
   if (context.kind === "value") return value_candidates(nodes, context);
-  if (nodes.length === 0 || nodes.some(node => node.kind !== "object")) return [];
-  const first = nodes[0];
-  if (first.kind !== "object") return [];
+  const objects = nodes.filter(node => node.kind === "object");
+  if (objects.length === 0 || objects.length !== nodes.length) return [];
   const already = new Set(context.existing);
   for (const fact of context.dataFacts ?? []) {
     if (fact.kind !== "member" || !samePath(fact.path.slice(0, -1), context.path)
@@ -240,11 +239,13 @@ function data_candidates(schema: CompiledHsonSchema, context: HsonGrammarCheckpo
     const name = fact.path.at(-1);
     if (typeof name === "string") already.add(name);
   }
-  return first.members.flatMap((member, index) => {
-    if (already.has(member.name) || nodes.some(node => node.kind !== "object" || !node.members.some(other => other.name === member.name))) return [];
-    const optional = nodes.map(node => node.kind === "object" && node.members.find(other => other.name === member.name)?.optional);
+  const names = new Set(objects.flatMap(node => node.members.map(member => member.name)));
+  return [...names].flatMap((name, index) => {
+    if (already.has(name)) return [];
+    const optional = objects.map(node => schema_object_member(node, name)?.optional);
+    if (optional.includes(undefined)) return [];
     const detail = optional.every(Boolean) ? "optional data member" : optional.some(Boolean) ? "data member (required in some union alternatives)" : "required data member";
-    return [item(member.name, "member", template_safe(serialize_hson_tag_name(member.name)), detail, index)];
+    return [item(name, "member", template_safe(serialize_hson_tag_name(name)), detail, index)];
   });
 }
 

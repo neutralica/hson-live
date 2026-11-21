@@ -1,5 +1,5 @@
 import { hsonLiveMap, type HsonSchema } from "../src/index.js";
-import type { JsonValue } from "../src/core/types.js";
+import type { DataObjectRead, DataValueRead } from "../src/core/data-value.types.js";
 import type { LocusActionContext, LocusDefinitions } from "../src/types/locus.core.types.js";
 import type { ReadDataLocation } from "../src/types/governor.types.js";
 import type { LiveMapKnownNames, LiveMapDefinitions, LiveMapLibraryDefinition } from "../src/types/livemap.types.js";
@@ -19,14 +19,14 @@ loc.data.deck.at(["rows", 0, "title"]).snap() satisfies string;
 const strong = loc.data.deck.at(["rows"]).asArray()!;
 strong.snap() satisfies readonly { title: string }[];
 const unknownArray = loc.data.deck.at(["unknown"]).asArray()!;
-unknownArray.array.map(value => value satisfies JsonValue);
+unknownArray.array.map(value => value satisfies DataValueRead);
 unknownArray.array.push({ fresh: true });
-unknownArray.snap() satisfies readonly JsonValue[] | undefined;
+unknownArray.snap() satisfies readonly DataValueRead[] | undefined;
 // @ts-expect-error Runtime checks may expire.
-unknownArray.snap() satisfies readonly JsonValue[];
+unknownArray.snap() satisfies readonly DataValueRead[];
 const unknownObject = loc.data.deck.at(["unknown"]).asObject()!;
 unknownObject.object.setKey("fresh", [1]);
-unknownObject.snap() satisfies Readonly<Record<string, JsonValue>> | undefined;
+unknownObject.snap() satisfies DataObjectRead | undefined;
 // @ts-expect-error Runtime refinement has no precise fields.
 unknownObject.at(["name"]).snap() satisfies string;
 const choice = loc.data.deck.at(["choice"]).asObject()!;
@@ -84,10 +84,10 @@ void name;
 
 const roots = hsonLiveMap.fromLibraries({ array: { json: [1, "initial"] }, object: { json: { initial: 1 } } } as const);
 roots.data.array.at([]).array.push({ changed: true });
-roots.data.array.at([]).array.toArray() satisfies readonly JsonValue[];
+roots.data.array.at([]).array.toArray() satisfies readonly DataValueRead[];
 // @ts-expect-error Initial values do not establish an immutable tuple.
 roots.data.array.at([]).array.toArray() satisfies readonly [1, "initial"];
-roots.data.array.at([]).asArray()!.snap() satisfies readonly JsonValue[];
+roots.data.array.at([]).asArray()!.snap() satisfies readonly DataValueRead[];
 roots.data.object.at([]).object.setKey("new", false);
 roots.data.object.at([]).object.deleteKey("initial");
 // @ts-expect-error Initial keys are not permanent members.
@@ -109,7 +109,7 @@ context.data.array.at([]).array.push(1);
 declare const read: ReadDataLocation<unknown>;
 const readArray = read.asArray()!;
 readArray.array.map(value => value);
-readArray.snap() satisfies readonly JsonValue[] | undefined;
+readArray.snap() satisfies readonly DataValueRead[] | undefined;
 // @ts-expect-error Read-only refinements cannot mutate.
 readArray.array.push(1);
 // @ts-expect-error Nested read-only refinements cannot mutate either.
@@ -150,8 +150,8 @@ maybeChild.asArray()!.array.push(1);
 hsonLiveMap.locus.create(roots);
 
 // Dictionary collection reads cannot turn requested names into required members.
-roots.data.object.at([]).object.getKey("initial") satisfies JsonValue | undefined;
+roots.data.object.at([]).object.getKey("initial") satisfies DataValueRead | undefined;
 // @ts-expect-error The key may have been deleted.
-roots.data.object.at([]).object.getKey("initial") satisfies JsonValue;
+roots.data.object.at([]).object.getKey("initial") satisfies DataValueRead;
 // @ts-expect-error Picking a broad object's key does not prove that it exists.
-roots.data.object.at([]).object.pick(["initial"]).initial satisfies JsonValue;
+roots.data.object.at([]).object.pick(["initial"]).initial satisfies DataValueRead;

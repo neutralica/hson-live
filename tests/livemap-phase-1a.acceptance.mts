@@ -32,7 +32,7 @@ check("family tops use ordinary canonical Schema and generated evidence", () => 
     assert.equal(compiled.ok, true, source);
     if (!compiled.ok) continue;
     const generated = generate_hson_schema_types("TopSchema", compiled.value.semantic, compiled.value.definitions);
-    assert.match(generated.declarations, source.includes('"data"') ? /JsonValue/ : /HsonNode/);
+    assert.match(generated.declarations, source.includes('"data"') ? /\$SchemaDataRead/ : /HsonNode/);
     if (source.includes('"document"')) assert.ok(generated.proofNodeCount > 0);
   }
   assert.match(Hson.schema`<type "data" root "any">`.toHson(), /root "any"/);

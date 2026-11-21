@@ -1,5 +1,6 @@
 import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
+import { is_valid_hson_data_name } from "../../core/hson-name.js";
 import type { CompiledHsonSchema, HsonSchemaDataSemanticNode } from "./compiler.js";
 
 /** Unknown object member, distinct from every authored string key. */
@@ -14,6 +15,18 @@ export type SchemaDataAlternative = Readonly<{ presence: "required" | "optional"
 )>;
 export type SchemaDataProjection = Readonly<{ alternatives: readonly SchemaDataAlternative[] }>;
 
+/** A wildcard constrains an existing own entry. A concrete wildcard key may be missing. */
+export function schema_object_member(node: Extract<HsonSchemaDataSemanticNode, { kind: "object" }>, key: string) {
+  return node.members.find(member => member.name === key)
+    ?? (node.additional === undefined || !is_valid_hson_data_name(key) ? undefined : { schema: node.additional, optional: true });
+}
+
+function object_values(node: Extract<HsonSchemaDataSemanticNode, { kind: "object" }>) {
+  const values = node.members.map(member => member.schema);
+  if (node.additional !== undefined) values.push(node.additional);
+  return values;
+}
+
 /** Context-free semantic projection. Failures remain alternatives, never evidence
  * that every union branch fails. Optional ancestors retain absence propagation.
  * The caller owns Schema provenance and whether conformity has been validated. */
@@ -27,6 +40,9 @@ export function inspect_schema_data(schema: CompiledHsonSchema, selectors: Schem
   };
   const expand = (node: HsonSchemaDataSemanticNode, presence: SchemaDataAlternative["presence"], at: number,
     seen = new Set<string>()): SchemaDataAlternative[] => {
+    // Revisit during projection convergence. This walker withholds the terminal
+    // node at 64 refs while project_schema_data still projects it.
+    // The boundary affects static detail. Admission evaluates the canonical graph.
     if (--budget < 0 || seen.size >= 64) return [{ kind: "budget-exhausted", presence, at }];
     if (node.kind === "ref") {
       if (seen.has(node.name)) return [{ kind: "budget-exhausted", presence, at }];
@@ -49,9 +65,13 @@ export function inspect_schema_data(schema: CompiledHsonSchema, selectors: Schem
       if (node.kind === "any") return [{ kind: "unavailable", presence, at }];
       if (typeof selector === "string" || selector === OBJECT_VALUE) {
         if (node.kind !== "object") return [{ kind: "invalid-traversal", presence, at }];
-        const members = selector === OBJECT_VALUE ? node.members : node.members.filter(member => member.name === selector);
-        if (members.length === 0) return [{ kind: "absent", presence, at }];
-        return branches(members, member => expand(member.schema, presence === "optional" || selector !== OBJECT_VALUE && member.optional ? "optional" : "required", at + 1));
+        if (selector === OBJECT_VALUE) {
+          const values = object_values(node);
+          return values.length === 0 ? [{ kind: "absent", presence, at }] : branches(values, value => expand(value, presence, at + 1));
+        }
+        const member = schema_object_member(node, selector);
+        return member === undefined ? [{ kind: "absent", presence, at }]
+          : expand(member.schema, member.optional ? "optional" : presence, at + 1);
       }
       if (node.kind !== "array" && node.kind !== "tuple") return [{ kind: "invalid-traversal", presence, at }];
       if (selector !== null && node.refinements.some(({ rule }) => rule.kind === "collection-length" && rule.maximum !== undefined && selector >= rule.maximum)) return [{ kind: "absent", presence, at }];
@@ -74,7 +94,12 @@ export function schema_data_type(node: HsonSchemaDataSemanticNode, depth = 0): s
     case "union": return node.choices.slice(0, 12).map(choice => schema_data_type(choice, depth + 1)).join(" | ") + (node.choices.length > 12 ? " | …" : "");
     case "array": return `Array<${schema_data_type(node.item, depth + 1)}>`;
     case "tuple": return `[${node.items.slice(0, 12).map(item => schema_data_type(item, depth + 1)).join(", ")}${node.items.length > 12 ? ", …" : ""}]`;
-    case "object": return `{ ${node.members.slice(0, 12).map(member => `${member.name}${member.optional ? "?" : ""}: ${schema_data_type(member.schema, depth + 1)}`).join("; ")}${node.members.length > 12 ? "; …" : ""} }`;
+    case "object": {
+      const fields = node.members.slice(0, 12).map(member => `${member.name}${member.optional ? "?" : ""}: ${schema_data_type(member.schema, depth + 1)}`);
+      if (node.members.length > 12) fields.push("…");
+      if (node.additional !== undefined) fields.push(`[additional keys]: ${schema_data_type(node.additional, depth + 1)}`);
+      return `{ ${fields.join("; ")} }`;
+    }
     default: return node.kind;
   }
 }
@@ -111,9 +136,9 @@ export function project_schema_data(schema: CompiledHsonSchema, selectors: Schem
     nodes = narrow(nodes, path);
     if (nodes.length === 0) return [];
     const next = nodes.map(node => {
-      if (selector === OBJECT_VALUE) return node.kind === "object" ? node.members.map(member => member.schema) : undefined;
+      if (selector === OBJECT_VALUE) return node.kind === "object" ? object_values(node) : undefined;
       if (typeof selector === "string") {
-        const member = node.kind === "object" ? node.members.find(member => member.name === selector) : undefined;
+        const member = node.kind === "object" ? schema_object_member(node, selector) : undefined;
         return member === undefined ? undefined : [member.schema];
       }
       if (node.kind !== "array" && node.kind !== "tuple") return undefined;

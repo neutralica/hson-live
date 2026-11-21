@@ -1103,6 +1103,17 @@ check('known Event fields retain exact Schema evidence beside unresolved operand
   }
   assert.deepEqual(inspect(source('count:num="-0" label:str=%{label} extra:num=%{extra?}')).codes, []);
   assert.deepEqual(inspect(source('count:num="-0" label:data=%{label}')).codes, []);
+  const open = '<type "data" root <object <label "string"> any "number">>';
+  assert.deepEqual(inspect(source('label:str="ready" extra:num=%{extra}', open)).codes, []);
+  for (const [fields, offending] of [
+    ['label:str="ready" extra:str=%{extra}', 'extra:str=%{extra}'],
+    ['label:num=%{label} extra:num="2"', 'label:num=%{label}'],
+  ] as const) {
+    const result = inspect(source(fields, open));
+    assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
+    assert.deepEqual(result.slices, [offending]);
+    assert.match(result.diagnostics[0]!.message, /supplies a value of type/);
+  }
   const union = '<type "data" defs <Left <object <kind <exact "left"> count <exact 0> label "string">> Right <object <kind <exact "right"> count <exact -0> label "string">> Choice <union [<ref "Left">, <ref "Right">]>> root <ref "Choice">>';
   assert.deepEqual(inspect(source('kind:str=%{kind} count:num="-0" label:str=%{label}', union)).codes, []);
   assert.deepEqual(inspect(source('kind:str=%{kind} count:num="1" label:str=%{label}', union)).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
