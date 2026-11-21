@@ -56,7 +56,9 @@ import {
   type DocumentContinuation,
   type HostedDocumentContinuation,
   type AsyncLiveTree as RootAsyncLiveTree,
+  type HsonEventSource,
   type HsonSchema,
+  type LiveMapDocumentPart,
   type HsonNumber,
   type InteractionActionDispatcher,
   type InteractionActivationOptions,
@@ -226,7 +228,9 @@ import {
 import {
   TransformError as HsonSubpathTransformError,
   Hson as HsonSubpath,
+  type HsonAuthored,
   type HsonCanonical as AuthoringCanonical,
+  type HsonEventSource as AuthoringEventSource,
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, Primitive } from "hson-live/hson";
 // @ts-expect-error The historical broad /types barrel was hard-removed.
@@ -707,6 +711,21 @@ type Equal<Left, Right> =
     ? true
     : false;
 type Expect<Value extends true> = Value;
+
+const authoredEvent = Hson.event`<hson:event on:click local:RUN <> >`;
+const narrowEvent = HsonSubpath.event`<hson:event on:click local:RUN <> >`;
+type EventSourceIdentity = [Expect<Equal<HsonEventSource, AuthoringEventSource>>,
+  Expect<Equal<typeof authoredEvent, HsonEventSource>>, Expect<Equal<typeof narrowEvent, HsonEventSource>>];
+const eventText: string = authoredEvent;
+const eventPart = { kind: "document", document: Hson.document`<button hson:part event:click/>`,
+  events: { click: narrowEvent, plain: eventText } } satisfies LiveMapDocumentPart;
+// @ts-expect-error Raw strings do not carry the validated Event source type.
+const unvalidatedEvent: HsonEventSource = eventText;
+// @ts-expect-error Event sources and Document sources have separate brands.
+const eventDocument: HsonAuthored = authoredEvent;
+// @ts-expect-error Event templates are substitution-free.
+Hson.event`<hson:event on:click local:${"RUN"} <> >`;
+void [eventPart, unvalidatedEvent, eventDocument];
 
 type ProjectedPathTruth = Readonly<{
   required: Readonly<{ leaf: string }>;

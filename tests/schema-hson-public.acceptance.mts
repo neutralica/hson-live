@@ -98,7 +98,8 @@ check("Data uses authentic carriers while source remains text and Hson is noncal
 check("root and narrow authoring expose the identical frozen namespace", () => {
   assert.equal(root.Hson, narrow.Hson);
   assert.equal(Object.isFrozen(narrow.Hson), true);
-  assert.deepEqual(Object.keys(narrow.Hson), ["canonical", "data", "document", "schema"]);
+  assert.deepEqual(Object.keys(narrow.Hson), ["canonical", "event", "data", "document", "schema"]);
+  assert.equal(narrow.Hson.event`<hson:event on:click local:GO <> >`, "<hson:event on:click local:GO <> >");
   assert.equal(Object.hasOwn(narrow.Hson, "validate"), false);
 });
 

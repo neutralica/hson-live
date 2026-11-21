@@ -1,4 +1,4 @@
-import { admit_hson, reconstruct_hson_interpolated_template } from "./api/transform/hson-admission.js";
+import { admit_hson, HSON_TAGGED_TEMPLATE_REQUIRED, reconstruct_hson_interpolated_template } from "./api/transform/hson-admission.js";
 import { HsonDataValue, hson_data_from_value, hson_data_text_from_value } from "./api/data/hson-data.js";
 import { admit_canonical_hson_data_value } from "./api/data/hson-data-hson.js";
 import { ExactDocumentCarrier } from "./api/document/hson-document.js";
@@ -19,8 +19,10 @@ import { _throw_transform_err } from "./core/errors.js";
 import { is_transform_error } from "./core/errors.js";
 import { is_Node } from "./core/node-guards.js";
 import { HsonSchema } from "./api/schema/hson-schema.js";
+import { parse_authored_event } from "./internal/authored-events.js";
+import { dispatch_hson_declaration, recognize_hson_declaration } from "./internal/hson-declarative.js";
 export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
-import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
+import type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonEventSource, HsonSchemaData } from "./api/transform/transform.types.js";
 import type { Tokens } from "./api/transform/token.types.js";
 
 type Substitution = string | number | boolean | null;
@@ -165,13 +167,30 @@ function document_tag(strings: TemplateStringsArray, ...substitutions: readonly 
   }
 }
 
+/** Validate one authored Event declaration, preserving the raw source. */
+function event_tag(strings: TemplateStringsArray): HsonEventSource {
+  if (arguments.length > 1) {
+    _throw_transform_err("Hson.event requires a substitution-free tagged template.", "Hson.event", undefined, undefined,
+      { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" });
+  }
+  const { source } = reconstruct_hson_interpolated_template(strings, []);
+  dispatch_hson_declaration(recognize_hson_declaration(source), {
+    "hson:event": text => parse_authored_event(text, "Hson.event"),
+  }, "hson:event");
+  return source as HsonEventSource;
+}
+
 function schema_tag(strings: TemplateStringsArray): HsonSchema {
-  if (strings.length !== 1) throw new TypeError("Hson.schema requires a substitution-free tagged template.");
+  if (arguments.length > 1) {
+    _throw_transform_err("Hson.schema requires a substitution-free tagged template.", "Hson.schema", undefined, undefined,
+      { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" });
+  }
   return HsonSchema.fromHson(admit_hson(strings));
 }
 
 export const Hson = Object.freeze({
   canonical,
+  event: event_tag,
   data: Object.freeze(Object.assign(data_tag, {
     parse: data_parse,
     from: HsonDataValue.from,
@@ -198,7 +217,7 @@ export const Hson = Object.freeze({
   })),
 });
 
-export type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonSchemaData, HsonSchema, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
+export type { HsonAuthored, HsonCanonical, HsonData, HsonDocument, HsonEventSource, HsonSchemaData, HsonSchema, HsonFromSchema, JsonFromSchema } from "./api/transform/transform.types.js";
 export type {
   BasicValue, HsonAttrs, HsonMeta, HsonNode, ReadonlyHsonNode, HsonSemanticPrimitive, JsonValue, NodeContent, Primitive,
 } from "./core/types.js";

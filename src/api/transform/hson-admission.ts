@@ -14,15 +14,24 @@ export function admit_hson_source(source: string): HsonCanonical {
   return serialize_hson(detach_hson_root_value(parse_hson(source)));
 }
 
-function isTemplateStringsArray(value: unknown): value is TemplateStringsArray {
-  if (!Array.isArray(value)) return false;
-  const raw = (value as unknown as { raw?: unknown }).raw;
-  return Array.isArray(raw)
-    && Object.isFrozen(value)
-    && Object.isFrozen(raw)
-    && value.length === raw.length
-    && value.every((segment) => typeof segment === "string")
-    && raw.every((segment) => typeof segment === "string");
+function readTemplateRawSegments(value: unknown, count: number): string[] | undefined {
+  try {
+    if (!Array.isArray(value) || !Object.isFrozen(value) || value.length !== count) return undefined;
+    const raw: unknown = Object.getOwnPropertyDescriptor(value, "raw")?.value;
+    if (!Array.isArray(raw) || !Object.isFrozen(raw) || raw.length !== count) return undefined;
+
+    const segments: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const cooked: unknown = Object.getOwnPropertyDescriptor(value, i)?.value;
+      const segment: unknown = Object.getOwnPropertyDescriptor(raw, i)?.value;
+      if (typeof cooked !== "string" || typeof segment !== "string") return undefined;
+      segments.push(segment);
+    }
+    return segments;
+  } catch {
+    // Reflection on a caller-supplied Proxy can throw during admission.
+    return undefined;
+  }
 }
 
 /** Validate raw template input and preserve every semantic slot boundary. */
@@ -30,11 +39,12 @@ export function reconstruct_hson_interpolated_template(
   strings: TemplateStringsArray,
   substitutions: readonly (HsonTemplatePrimitive | undefined)[],
 ): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
-  if (!isTemplateStringsArray(strings) || strings.raw.length !== substitutions.length + 1) {
+  const raw = readTemplateRawSegments(strings, substitutions.length + 1);
+  if (raw === undefined) {
     _throw_transform_err("invalid Hson tagged template", "Hson", undefined, undefined,
       { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" });
   }
-  return scan_hson_template_segments(strings.raw, substitutions);
+  return scan_hson_template_segments(raw, substitutions);
 }
 
 /** Substitution-free admission retained for Schema and literal editor diagnostics. */

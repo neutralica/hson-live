@@ -273,7 +273,7 @@ export function tokenize_authored_event(source: string) {
   return new HsonScanner(source, 0).scanEventDeclaration();
 }
 
-/** @internal Lexical access for a private source consumer with its own declaration grammar. */
+/** @internal Lexical access for declaration readers. */
 export function hson_lexical_cursor(source: string) {
   return new HsonScanner(source, 0).lexicalCursor();
 }
@@ -356,8 +356,10 @@ class HsonScanner {
   public lexicalCursor() {
     return {
       offset: () => this.index,
+      position: () => this.position(),
       peek: () => this.peek(),
       consume: (delimiter: string) => this.consumeExpected(delimiter),
+      triviaAhead: () => isHsonTrivia(this.peek()) || this.startsWith("//"),
       skipTrivia: () => this.skipTrivia(),
       bareName: () => this.scanBareName("name"),
       quotedName: () => this.scanQuotedName(),

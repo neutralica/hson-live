@@ -75,6 +75,36 @@ function descriptors(map: LiveMap, library = "page") {
   });
 }
 
+function authored_source_tag_cases(): void {
+  const tagged = Hson.event`<hson:event on:input local:OPEN_PANEL once title:str=^{args.title} value:data=^{input.target.value} <> >`;
+  const ordinary = '<hson:event on:input local:OPEN_PANEL once title:str=^{args.title} value:data=^{input.target.value} <> >';
+  const part = { kind: "document", document: Hson.document`<button hson:part data:args=%{args} event:advance/>`,
+    events: { advance: tagged } } satisfies LiveMapDocumentPart;
+  const admit = (member: LiveMapDocumentPart) => hsonLiveMap.fromLibraries({
+    parts: { parts: { example: member } },
+    page: { document: `<hson-part at=parts/example args:data=${JSON.stringify('<title "resolved">')}/>` },
+  });
+  const normalized = (map: LiveMap) => {
+    const engine = authority(map);
+    const state = engine.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+    assert.ok(state);
+    const [descriptor] = interaction_descriptors_from_root(projected_value_from_hson_node(engine.systemRoot(state)));
+    assert.ok(is_ordered_projected_object(descriptor));
+    const value = hson_data_from_value(ordered_projected_object(descriptor.entries.filter(([key]) => key !== "id")));
+    const fields = new Map(value.entries());
+    assert.equal(fields.get("key")?.scalar(), "OPEN_PANEL");
+    assert.ok(fields.get("eventArgs")?.equals(Hson.data.from([
+      ["title", "str", "resolved"], ["value", "data", "input", "target", "value"],
+    ])));
+    return value;
+  };
+  assert.equal(tagged, ordinary);
+  const ordinaryPart = { ...part, events: { advance: ordinary } };
+  assert.ok(normalized(admit(part)).equals(normalized(admit(ordinaryPart))));
+  const invalid = ordinary.replace("input.target.value", "input.target.unknown");
+  assert.throws(() => admit({ ...part, events: { advance: invalid } }), /Invalid Part event "advance"[\s\S]*Unsupported input Event lookup/);
+}
+
 function grammar_cases() {
   const admit = (source: string, document: string = literal.document) =>
     hsonLiveMap.fromLibraries({ parts: { parts: { literal: { ...literal, document, events: { advance: source } } } },
@@ -1720,6 +1750,7 @@ export async function authored_event_cases(): Promise<void> {
   await covered_atomic_document_event_cases();
   await covered_interaction_root_field_cases();
   await document_event_cases();
+  authored_source_tag_cases();
   grammar_cases();
   event_reference_ranges();
   event_reference_comments();

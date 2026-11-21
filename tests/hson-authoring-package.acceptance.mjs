@@ -126,7 +126,7 @@ check(cases.schemaValidators, () => {
 // The original 115,000-byte CSS-inclusive cap was an intentional authoring
 // regression guard. Audited baseline: 116,415 gzip bytes; reviewed candidate:
 // 116,520 (+105), with unchanged module count and dependency composition.
-// Owner-approved 125,000-byte cap keeps a meaningful size-regression guard.
+// The owner-approved 130,000-byte cap includes Round 1 Event authoring.
 // Part control-token classification shares the existing scanner; the iteration
 // composer and editor analysis must remain outside this graph.
 // Inspect and execute the real bundle above; externalize only css-tree for the
@@ -139,7 +139,7 @@ const aggregateCore = await build({ ...coreSizeOptions, stdin: { ...coreSizeOpti
 const aggregateCoreGzip = gzipSync(aggregateCore.outputFiles[0].contents, { level: 9 }).length;
 const authoringCoreGzip = gzipSync(authoringCore.outputFiles[0].contents, { level: 9 }).length;
 check(cases.bundleSize, () => {
-  assert.ok(narrow.gzip < 125_000, `CSS-inclusive gzip=${narrow.gzip}`);
+  assert.ok(narrow.gzip < 130_000, `CSS-inclusive gzip=${narrow.gzip}`);
   assert.ok(authoringCoreGzip < aggregateCoreGzip / 4, `core gzip=${authoringCoreGzip}, aggregate core gzip=${aggregateCoreGzip}`);
 });
 check(cases.certifyGraph, () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));

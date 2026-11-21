@@ -15,6 +15,7 @@ import { is_Node } from "../src/core/node-guards.ts";
 import type { JsonValue } from "../src/core/types.ts";
 import type { Tokens } from "../src/api/transform/token.types.ts";
 import { TransformError } from "../src/core/errors.ts";
+import { dispatch_hson_declaration, recognize_hson_declaration, type HsonDeclarativeRecognition } from "../src/internal/hson-declarative.ts";
 import { run_attribute_quoting_cases } from "./fixtures/hson-attribute-quoting-cases.mts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
@@ -45,6 +46,87 @@ function check(name: string, fn: () => void): void {
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
+
+check("declaration dispatch selects separate adapters with original names and ranges", () => {
+  const adapters = {
+    "hson:event": (source: string) => source,
+    "hson:schema": (source: string, { nameRange }: HsonDeclarativeRecognition) => ({ schema: source, nameRange }),
+  };
+  for (const newline of ["\n", "\r\n", "\r"]) {
+    const prefix = `\t// 😀 <hson:query>${newline}  `;
+    const head = `< // ignored <hson:custom>${newline}\t`;
+    const read = (domain: "hson:event" | "hson:schema") => {
+      const source = prefix + head + domain + " \"unfinished body";
+      const start = prefix.length + head.length;
+      const recognition = recognize_hson_declaration(source);
+      assert.deepEqual(recognition, { kind: "recognized", source, domain, name: domain, openingOffset: prefix.length,
+        nameRange: { start, end: start + domain.length }, position: { index: start, line: 3, column: 2 } });
+      return recognition;
+    };
+    const event = read("hson:event"), schema = read("hson:schema");
+    assert.equal(dispatch_hson_declaration(event, adapters), event.source);
+    assert.equal(dispatch_hson_declaration(event, { "hson:event": adapters["hson:event"] }, "hson:event"), event.source);
+    const schemaResult: { schema: string } = dispatch_hson_declaration(schema, { "hson:schema": adapters["hson:schema"] }, "hson:schema");
+    assert.deepEqual(schemaResult, { schema: schema.source, nameRange: schema.nameRange });
+    assert.deepEqual(dispatch_hson_declaration(schema, adapters), schemaResult);
+    assert.throws(() => dispatch_hson_declaration(schema, adapters, "hson:event"), {
+      code: "HSON_DECLARATIVE_DOMAIN_MISMATCH", source: schema.position, message: /Expected a <hson:event declaration, found <hson:schema/,
+    });
+    assert.throws(() => Reflect.apply(dispatch_hson_declaration, undefined, [schema, { "hson:event": adapters["hson:event"] }]), {
+      operation: "HsonDeclarative", code: "HSON_DECLARATIVE_ADAPTER_UNAVAILABLE", stage: "source-admission", source: schema.position,
+    });
+  }
+});
+
+check("declaration recognition reserves unsupported hson: names and classifies ordinary HSON separately", () => {
+  const unexpected = () => assert.fail("A non-domain source reached a semantic adapter.");
+  const adapters = { "hson:event": unexpected, "hson:schema": unexpected };
+  for (const name of ["hson:query", "hson:declarative", "hson:custom", "hson:Event", "hson:eventual", "hson:schema-extra", "hson:e"]) {
+    const source = `<${name} "unfinished`;
+    const recognition = recognize_hson_declaration(source);
+    assert.equal(recognition.kind, "unsupported");
+    assert.deepEqual(recognition.nameRange, { start: 1, end: 1 + name.length });
+    assert.throws(() => dispatch_hson_declaration(recognition, adapters, "hson:event"), (error: TransformError) =>
+      error.operation === "HsonDeclarative"
+      && error.code === "HSON_DECLARATIVE_DOMAIN_UNSUPPORTED"
+      && error.message.includes(`Declarative domain "${name}" is unsupported.`)
+      && error.source?.index === 1);
+  }
+  for (const source of ['<person "Ada">', "<person/>", "<person <hson:query/>>", "<'hson:event' 1>",
+    '<HSON:event/>', '<hson-part/>', '<>', '"<hson:event>"', ' // <hson:event>']) {
+    const recognition = recognize_hson_declaration(source);
+    assert.equal(recognition.kind, "ordinary", source);
+    assert.throws(() => dispatch_hson_declaration(recognition, adapters), { code: "HSON_DECLARATIVE_ROOT_REQUIRED" });
+  }
+});
+
+check("declaration heads distinguish incomplete prefixes from malformed syntax", () => {
+  const unexpected = () => assert.fail("A malformed head reached a semantic adapter.");
+  const adapters = { "hson:event": unexpected, "hson:schema": unexpected };
+  for (const source of ["<", "<\t", "<hson", "<hson:", "<hson:even", "<hson:schem"]) {
+    const recognition = recognize_hson_declaration(source);
+    assert.equal(recognition.kind, "incomplete", source);
+    assert.equal(recognition.nameRange?.end, source.length);
+    assert.throws(() => dispatch_hson_declaration(recognition, adapters), { code: "HSON_DECLARATIVE_NAME_INCOMPLETE" });
+  }
+  for (const [source, code, index] of [
+    ["  <hson:>", "HSON_DECLARATIVE_HEAD_MALFORMED", 3],
+    ["  <hson:event!>", "HSON_DECLARATIVE_HEAD_MALFORMED", 13],
+    ["<hson:event/*", "HSON_BLOCK_COMMENT_UNSUPPORTED", 11],
+    ["<hson:event\u00A0", "HSON_UNSUPPORTED_WHITESPACE", 11],
+    ["< /bad>", "HSON_NAME_INVALID_START", 2],
+    ["< /* block */ hson:event>", "HSON_BLOCK_COMMENT_UNSUPPORTED", 2],
+    ["\u00A0<hson:event>", "HSON_UNSUPPORTED_WHITESPACE", 0],
+  ] as const) {
+    const recognition = recognize_hson_declaration(source);
+    assert.equal(recognition.kind, "malformed", source);
+    assert.throws(() => dispatch_hson_declaration(recognition, adapters), (error: TransformError) =>
+      error.code === code && error.source?.index === index);
+  }
+  for (const source of ["<hson:event", "<hson:event<>>", "<hson:event// body", "<hson:event /* body"]) {
+    assert.equal(recognize_hson_declaration(source).kind, "recognized", source);
+  }
+});
 
 check("editor framing retains closed roots through malformed quotes without admitting them", () => {
   const first = '<main hson:part data:x=%{x} <p title=^{x}/>/>', last = '<main hson:part "😀"/>';

@@ -327,7 +327,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/hson-schema-any.worker.mts","worker-launch"]], sources: [...workerSources] },
   "tests/html-source-producer.acceptance.mts": { sha256: "1d47248165874a9f6aa490f83a3c1477751371b2377b01e1dac4b5b6109fdf0f", route: "Top-level awaited check invokes the actual source-loaded Worker callback and awaits its result.",
     targets: [["tests/fixtures/html-source-producer.worker.mts","worker-launch"]], sources: [...workerSources] },
-  "tests/hson-tokenizer.acceptance.mts": { sha256: "1a820dec0838d1644f6b47f8525c1ddd26d5c1cfd5ca0e07e5415104c0fbf4ca", route: workerRoute,
+  "tests/hson-tokenizer.acceptance.mts": { sha256: "bcc74ba21bdf320fb67a8a72353fba872f39b41b6675960f447a79a59fe3d814", route: workerRoute,
     targets: [["tests/fixtures/hson-attribute-quoting.worker.mts","worker-launch"]], sources: [...workerSources] },
   "tests/inline-style.acceptance.mts": { sha256: "173af7468d9da2fd1301f1299d59e047b0642576393944c7d995088d30278103", route: workerRoute,
     targets: [["tests/fixtures/inline-style.worker.mts","worker-launch"]], sources: [...workerSources] },
