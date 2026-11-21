@@ -16,6 +16,7 @@ export const HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS = Object.freeze([
   "an unrelated recoverable parser error does not suppress a valid later template",
   "parser damage overlapping imports or tagged templates is omitted",
   "substituted discoveries remain segregated from authoritative Hson parsing",
+  "official Event tags preserve raw ranges for complete, substituted, and unfinished templates",
 ] as const);
 
 export type HsonTaggedTemplateDiscoveryProposition =

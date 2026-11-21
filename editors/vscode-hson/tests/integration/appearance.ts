@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { checkAppearanceTransitions } from "../appearance-transitions.test.js";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { HsonAppearanceEditor } from "../../src/appearance-editor.js";
@@ -344,6 +344,45 @@ async function checkRenderedTransitions(workspace: string): Promise<void> {
   console.log('ok - rendered cycle/hex validation, close/reopen, picker mode ownership, cancellation and keyboard entry');
 }
 
+/** Exercise the saved production decoration owner while only the imported module changes. */
+export async function checkEventAppearance(workspace: string): Promise<void> {
+  const project = join(workspace, "event-appearance");
+  await mkdir(join(project, "dist"), { recursive: true });
+  await writeFile(join(project, "package.json"), JSON.stringify({ name: "hson-live", type: "module" }));
+  await writeFile(join(project, "dist/index.d.ts"), "export declare const Hson: { event: typeof String.raw; document: typeof String.raw };");
+  await writeFile(join(project, "tsconfig.json"), JSON.stringify({ compilerOptions: {
+    module: "NodeNext", types: [], paths: { "hson-live": ["./dist/index.d.ts"], "hson-live/hson": ["./bridge.cts"] },
+  }, files: ["consumer.ts"] }));
+  const bridge = join(project, "bridge.cts"), valid = 'export { Hson } from "hson-live";';
+  await writeFile(bridge, 'export * as Hson from "hson-live";');
+  const file = join(project, "consumer.ts");
+  await writeFile(file, ['import { Hson } from "hson-live";', 'import { Hson as E } from "hson-live/hson";',
+    'Hson.document`<p title="adjacentword"/>`;', 'E.event`<div title="eventword"/>`;'].join("\n"));
+  const settings = vscode.workspace.getConfiguration("hson.appearance");
+  const previous = settings.inspect("state")?.workspaceValue, state = initialAppearance();
+  const foreground = "#12cb96";
+  state.overrides.all = { "value.attributeString": { dark: { foreground }, light: { foreground } } };
+  try {
+    await settings.update("state", state, vscode.ConfigurationTarget.Workspace);
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(file));
+    await vscode.window.showTextDocument(document);
+    const version = document.version;
+    const adjacent = { needle: "adjacentword", expected: rgb(foreground) };
+    const [native] = await rendered(workspace, document, "Event appearance before proof", [{ needle: "eventword" }, adjacent]);
+    assert.notEqual(native, adjacent.expected);
+    for (const [step, route, expected] of [
+      ["proven", valid, adjacent.expected],
+      ["withdrawn", valid + "\nexport = {};", native],
+      ["restored", valid, adjacent.expected],
+    ] as const) {
+      await writeFile(bridge, route);
+      await rendered(workspace, document, "Event appearance " + step, [{ needle: "eventword", expected }, adjacent]);
+      assert.equal(document.version, version);
+    }
+  } finally { await settings.update("state", previous, vscode.ConfigurationTarget.Workspace); }
+  console.log("ok - visible Event decorations withdraw and restore on unchanged source");
+}
+
 export async function run(scratchpadStorage?: vscode.Memento): Promise<void> {
   const workspace = process.env.HSON_APPEARANCE_WORKSPACE!;
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language")!;
@@ -360,6 +399,7 @@ export async function run(scratchpadStorage?: vscode.Memento): Promise<void> {
     const report=JSON.parse(await readFile(join(workspace,'appearance-report.json'),'utf8'));report.tests.push('fresh extension host restores persisted palettes');
     await writeFile(join(workspace,'appearance-report.json'),JSON.stringify(report,null,2));console.log('ok - fresh extension host persistence');return;
   }
+  await checkEventAppearance(workspace);
   await checkAppearanceTransitions();
   await checkRenderedTransitions(workspace);
   await checkControllerTransitions();

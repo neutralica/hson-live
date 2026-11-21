@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonEventImportEvidence, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
 import { query_hson_editor_context, query_hson_event_completion, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
 import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
@@ -22,24 +22,26 @@ export class HsonEditorCompletionCache {
   private readonly documents = new Map<string, CachedDocument>();
   private readonly schemas = new Map<string, CompiledHsonSchema | null>();
   private sourceProgram: ts.Program | undefined;
+  private eventImports: HsonEventImportEvidence | undefined;
   private partFacts: Readonly<{ program: ts.Program; facts: PartSourceFacts }> | undefined;
-  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; this.partFacts = undefined; }
+  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; this.eventImports = undefined; this.partFacts = undefined; }
   forget(fileName: string): void { this.documents.delete(fileName); this.partFacts = undefined; }
-  complete(fileName: string, text: string, version: number, offset: number, sourceProgram?: ts.Program): readonly HostCompletion[] {
+  complete(fileName: string, text: string, version: number, offset: number, sourceProgram?: ts.Program, eventImports?: HsonEventImportEvidence): readonly HostCompletion[] {
     if (!/\.(?:[cm]?ts|tsx)$/.test(fileName) || offset < 0 || offset > text.length) return [];
     // A producer edit can change every consumer without changing its text.
     // Retain discovery/checkers only for the current authored program.
-    if (this.sourceProgram !== sourceProgram) {
+    if (this.sourceProgram !== sourceProgram || this.eventImports !== eventImports) {
       this.documents.clear();
       this.partFacts = undefined;
       this.sourceProgram = sourceProgram;
+      this.eventImports = eventImports;
     }
     let cached = this.documents.get(fileName);
     if (cached === undefined || cached.version !== version || cached.text !== text || sourceProgram !== undefined && cached.program !== sourceProgram) {
       const program = sourceProgram ?? create_hson_source_program(fileName, text, {}, this.typescript);
       const file = program.getSourceFile(fileName);
       if (file === undefined || file.text !== text) return [];
-      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript),
+      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript, eventImports?.(fileName, text)),
         schemaDeclarations: new Map(), eligible: hson_source_syntactic_eligibility(this.typescript, program) };
       this.documents.set(fileName, cached);
       if (this.documents.size > 8) {
@@ -51,7 +53,7 @@ export class HsonEditorCompletionCache {
       .filter(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end)
       .sort((a, b) => a.bodyRange.end - a.bodyRange.start - (b.bodyRange.end - b.bodyRange.start))[0];
     if (site === undefined) {
-      if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program) };
+      if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program, eventImports) };
       const event = query_hson_event_completion(this.partFacts.facts, fileName, offset);
       if (event.length > 0) return event;
       const context = part_write_context(this.typescript, cached.program, this.partFacts.facts, fileName, offset);
@@ -69,6 +71,7 @@ export class HsonEditorCompletionCache {
             certainty: "possible", sortText: String(index).padStart(4, "0") } };
       });
     }
+    if (site.authoringKind === "event") return [];
     const interpolated = cached.discovery.interpolated.find(source => source === site);
     if (site.authoringKind === "schema" && interpolated === undefined) {
       const reference = schema_reference_completion(text.slice(site.bodyRange.start, site.bodyRange.end), offset - site.bodyRange.start);
@@ -110,7 +113,7 @@ export class HsonEditorCompletionCache {
     const schema = site.authoringKind === "data" ? this.resolveSchema(cached, site.tagRange.start) : undefined;
     if (schema === null) return [];
     if (site.authoringKind === "document" && this.partFacts?.program !== cached.program) {
-      this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program) };
+      this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program, eventImports) };
     }
     const result = query_hson_editor_context({ mode: site.authoringKind, source, cursor, slots, schema,
       ...(site.authoringKind !== "document" || this.partFacts === undefined ? {} : { parts: { facts: this.partFacts.facts, file: fileName, offset } }) });

@@ -7,9 +7,11 @@ import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 import { diagnose_hson_prefix } from "./tag-admission.js";
 
 /** Static proof only; undecidable expression types remain runtime-owned. */
-export function static_interpolation_diagnostics(fileName: string, text: string): readonly DocumentDiagnosticSpec[] {
-  const discovery = discover_hson_tagged_templates(fileName, text);
-  if (discovery.interpolated.length === 0) return [];
+export function static_interpolation_diagnostics(fileName: string, text: string,
+  discovery = discover_hson_tagged_templates(fileName, text),
+): readonly DocumentDiagnosticSpec[] {
+  const templates = discovery.interpolated.filter(({ authoringKind }) => authoringKind !== "schema" && authoringKind !== "event");
+  if (templates.length === 0) return [];
   // Preserve nullable union constituents and checker inference for reassigned
   // bindings without loading libraries or resolving project imports.
   const program = create_hson_source_program(fileName, text, { strictNullChecks: true, noImplicitAny: true });
@@ -23,8 +25,9 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
   };
   visit(file);
   const diagnostics: DocumentDiagnosticSpec[] = [];
-  for (const template of discovery.interpolated) {
-    if (template.authoringKind === "schema") continue;
+  for (const template of templates) {
+    const { authoringKind } = template;
+    if (authoringKind === "schema" || authoringKind === "event") continue;
     const invalidPositions = diagnose_hson_prefix(template).filter(diagnostic => diagnostic.code === "HSON_INTERPOLATION_POSITION_INVALID");
     const site = interpolation_site(template, fileName);
     let source = "";
@@ -33,7 +36,7 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
       source += literal.raw;
       if (index < site.expressions.length) slots.push({ offset: source.length, substitution: index });
     });
-    const roles = query_hson_editor_context({ mode: template.authoringKind, source, slots }).interpolationRoles;
+    const roles = query_hson_editor_context({ mode: authoringKind, source, slots }).interpolationRoles;
     roles.forEach((role, index) => {
       const range = template.expressionRanges[index];
       if (range === undefined) return;
@@ -43,7 +46,7 @@ export function static_interpolation_diagnostics(fileName: string, text: string)
         diagnostic.range.start < substitution.end && diagnostic.range.end > substitution.start)) return;
       const expression = expressions.get(range.start);
       if (expression === undefined) return;
-      const mismatch = interpolation_semantic_mismatch(role, expression_family(expression, checker, new Set()), template.authoringKind);
+      const mismatch = interpolation_semantic_mismatch(role, expression_family(expression, checker, new Set()), authoringKind);
       if (mismatch === undefined) return;
       diagnostics.push({ message: mismatch.message, code: mismatch.code, source: "Hson", range, precision: "exact", related: [] });
     });

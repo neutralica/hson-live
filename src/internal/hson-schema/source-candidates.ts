@@ -4,17 +4,22 @@ import { admit_data_source } from "../../core/data-source-admission.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { assert_canonical_hson_data_value } from "../../core/projected-value-graph.js";
 import type ts from "typescript";
-import { hson_source_syntactic_eligibility, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { selected_hson_value_declaration, hson_authoring_tag, hson_source_syntactic_eligibility, is_hson_typescript_source_file, is_official_hson_event_binding, is_official_hson_package_binding, type HsonEventImportEvidence } from "../embedded-hson/discover-hson-tagged-templates.js";
 import type { StaticSchemaCandidate } from "./candidate-evaluation.js";
 import { is_object_literal_prototype_setter, library_source_fields } from "./library-source.js";
 import { immutable_source_declaration } from "./schema-identity.js";
-import { admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
+import { admit_hson_tagged_template, hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 
 export type StaticSourceCandidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
 /** Bounded source alternatives shared by Schema preflight and Part source evidence. */
-export function static_source_candidates(typescript: typeof ts, checker: ts.TypeChecker, program?: ts.Program) {
+export function static_source_candidates(typescript: typeof ts, checker: ts.TypeChecker, program?: ts.Program,
+  eventImports?: HsonEventImportEvidence,
+) {
   const eligible = hson_source_syntactic_eligibility(typescript, program);
-  const declaration = (node: ts.Identifier) => immutable_source_declaration(typescript, checker, node, eligible)?.declaration;
+  const declaration = (node: ts.Identifier) => {
+    const binding = immutable_source_declaration(typescript, checker, node, eligible);
+    return binding?.eligible ? binding.declaration : undefined;
+  };
   const unwrap = (node: ts.Expression): ts.Expression => typescript.isParenthesizedExpression(node) || typescript.isAsExpression(node) || typescript.isSatisfiesExpression(node)
     ? unwrap(node.expression) : node;
   const officialData = (node: ts.Expression): boolean => typescript.isPropertyAccessExpression(node)
@@ -142,7 +147,25 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
     const found = result.nodes.map(node => candidate(node, family));
     return found.some(node => node === undefined) ? undefined : found.filter(node => node !== undefined);
   };
-  return { declaration, unwrap, eligible, alternatives, candidates,
+  const officialEvent = (receiver: ts.Identifier): boolean => {
+    const file = receiver.getSourceFile();
+    if (program === undefined || !is_hson_typescript_source_file(file.fileName) || program.isSourceFileFromExternalLibrary(file)) return false;
+    if (!is_official_hson_event_binding(typescript, receiver, program, eligible)) return false;
+    if (eventImports === undefined) return true;
+    const declaration = selected_hson_value_declaration(typescript, checker, checker.getSymbolAtLocation(receiver));
+    return declaration !== undefined && typescript.isImportSpecifier(declaration)
+      && eventImports(file.fileName, file.text).has(declaration.name.getStart(file));
+  };
+  const eventSource = (node: ts.Expression) => {
+    // Only the actual tagged producer must have an immediate syntax owner.
+    // A proven import or immutable alias can still lead to a TypeScript producer.
+    if (!typescript.isTaggedTemplateExpression(node) || !eligible(node)) return undefined;
+    const tag = hson_authoring_tag(typescript, node);
+    if (tag?.kind !== "event" || !officialEvent(tag.receiver)) return undefined;
+    const source = hson_tagged_source(typescript, node, "event");
+    return source === undefined || "substitutionRanges" in source ? undefined : source;
+  };
+  return { declaration, unwrap, eligible, alternatives, candidates, eventSource, officialEvent,
     jsonLiteral: (node: ts.Expression, authored?: (node: ts.Expression) => string | undefined) => json_literal(node, typescript, eligible, authored) };
 }
 

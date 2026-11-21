@@ -195,8 +195,9 @@ async function runTypingConveniences(workspace: string): Promise<void> {
   for (const sigil of ['%', '^']) {
     for (const name of ['style', 'hson:part']) {
       const before = await setup(prefix + 'document`<span ' + name + '=' + sigil + '|/>`;');
+      selectionAt(before.offset);
       await vscode.commands.executeCommand('type', { text: '{' });
-      assert.equal(document.getText(), before.text.slice(0, before.offset) + '{' + before.text.slice(before.offset), name + sigil + ' literal fallback preserves all surrounding source');
+      assert.equal(document.getText(), before.text.slice(0, before.offset) + '{' + before.text.slice(before.offset), `${name}=${sigil}: native typing inserts one literal brace and preserves surrounding source`);
       selectionAt(before.offset + 1);
       assert.ok(!document.getText().includes('hson_editor_probe'));
       process.stdout.write(`ok - ${name}=${sigil}: native literal fallback source and cursor\n`);

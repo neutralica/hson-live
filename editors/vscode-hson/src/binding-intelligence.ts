@@ -1,4 +1,4 @@
-import { create_hson_source_program, discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates, type HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
 import { completed_hson_element_ranges, hson_interpolation_roles, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
@@ -49,6 +49,7 @@ function standalone(source: string, map: (range: { start: number; end: number })
 /** One bounded document-version snapshot shared by highlighting and navigation.
  * Compiler facts are also memoized by immutable Program for diagnostics/completion. */
 export class HsonBindingCache {
+  constructor(private readonly eventImports?: HsonEventImportEvidence) {}
   private readonly documents = new Map<string, BindingSnapshot>();
   clear(): void { this.documents.clear(); }
   forget(uri: string): void { this.documents.delete(uri); }
@@ -65,7 +66,7 @@ export class HsonBindingCache {
         ({ file: fileName, start: range.start + bodyRange.start, end: range.end + bodyRange.start, precision: "exact" })));
     } else if (languageId === "typescript" || languageId === "typescriptreact") {
       const program = create_hson_source_program(fileName, text);
-      const tags = discover_hson_tagged_templates(fileName, text, program);
+      const tags = discover_hson_tagged_templates(fileName, text, program, undefined, undefined, this.eventImports?.(fileName, text));
       const calls = discover_static_from_hson_sources(fileName, text, program);
       for (const tag of [...tags.sources.map(source => ({ ...source, substitutionRanges: [], expressionRanges: [] })), ...tags.interpolated]) {
         if (tag.authoringKind !== "document" && tag.authoringKind !== "canonical") continue;

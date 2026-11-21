@@ -1,6 +1,7 @@
 import type ts from "typescript";
 import { hson_source_syntactic_eligibility, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
+import { immutable_source_declaration } from "./schema-identity.js";
 
 export type DiscoveredHsonSchemaDeclaration = Readonly<{
   sourceFile: ts.SourceFile;
@@ -26,15 +27,6 @@ export function discover_hson_schema_declarations(
   checker: ts.TypeChecker,
   eligible = hson_source_syntactic_eligibility(typescript),
 ): readonly DiscoveredHsonSchemaDeclaration[] {
-  const counts = new Map<string, number>();
-  for (const statement of sourceFile.statements) {
-    if (!typescript.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (typescript.isIdentifier(declaration.name)) {
-        counts.set(declaration.name.text, (counts.get(declaration.name.text) ?? 0) + 1);
-      }
-    }
-  }
   const output: DiscoveredHsonSchemaDeclaration[] = [];
   for (const statement of sourceFile.statements) {
     if (!typescript.isVariableStatement(statement)
@@ -46,7 +38,8 @@ export function discover_hson_schema_declarations(
     if (tagged === undefined || !typescript.isPropertyAccessExpression(tagged.tag) || tagged.tag.name.text !== "schema"
       || !typescript.isIdentifier(tagged.tag.expression)
       || !is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true, typescript)) continue;
-    const ambiguous = (counts.get(declaration.name.text) ?? 0) > 1;
+    const binding = immutable_source_declaration(typescript, checker, declaration.name, eligible);
+    const ambiguous = binding?.declaration !== declaration;
     const complete = typescript.isNoSubstitutionTemplateLiteral(tagged.template) && !tagged.template.isUnterminated;
     let source: string | undefined;
     let admissionError: string | undefined;
@@ -56,7 +49,7 @@ export function discover_hson_schema_declarations(
     }
     output.push(Object.freeze({
       sourceFile, statement, declaration, tagged, name: declaration.name.text,
-      ambiguous, complete, eligible: !ambiguous && source !== undefined && eligible(declaration)
+      ambiguous, complete, eligible: !ambiguous && source !== undefined && binding.eligible
         && is_official_hson_package_binding(tagged.tag.expression, "Hson", checker, true, typescript, eligible),
       ...(source === undefined ? {} : { source }),
       ...(admissionError === undefined ? {} : { admissionError }),

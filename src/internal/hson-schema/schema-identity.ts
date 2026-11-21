@@ -1,19 +1,18 @@
 import type ts from "typescript";
-import { hson_source_alias_eligible, hson_source_syntactic_eligibility } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_source_alias_target, hson_source_syntactic_eligibility } from "../embedded-hson/discover-hson-tagged-templates.js";
 
 /** Shared immutable value lookup; recovered aliases retain a separate eligibility result. */
 export function immutable_source_declaration(typescript: typeof ts, checker: ts.TypeChecker, input: ts.Identifier,
   eligible: (node: ts.Node) => boolean, use: "value" | "type-query" = "value") {
-  let symbol = typescript.isShorthandPropertyAssignment(input.parent)
+  const symbol = typescript.isShorthandPropertyAssignment(input.parent)
     ? checker.getShorthandAssignmentValueSymbol(input.parent) : checker.getSymbolAtLocation(input);
   if (symbol === undefined) return undefined;
-  const imported = symbol;
-  if ((symbol.flags & typescript.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-  if (symbol.declarations?.length !== 1) return undefined;
-  const declaration = symbol.declarations[0];
+  const route = hson_source_alias_target(symbol, checker, eligible, typescript, { valueOnly: use === "value", selection: "resolved" });
+  if (!route) return undefined;
+  const declaration = route.target.valueDeclaration;
   if (declaration === undefined || !typescript.isVariableDeclaration(declaration) || !typescript.isIdentifier(declaration.name)
     || !typescript.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & typescript.NodeFlags.Const) === 0) return undefined;
-  return { declaration, eligible: hson_source_alias_eligible(imported, checker, eligible, typescript, use === "value") };
+  return { declaration, eligible: route.eligible };
 }
 
 /** Follow only immutable lexical aliases; imports preserve their declaration identity. */

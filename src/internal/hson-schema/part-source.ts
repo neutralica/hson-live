@@ -10,8 +10,8 @@ import { analyze_part_definition, transform_part_parameter_strings, type PartEve
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
-import { hson_package_declaration_path, hson_source_alias_eligible, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { hson_tagged_source, admit_hson_tagged_source, admit_hson_tagged_template } from "../embedded-hson/hson-tagged-source-admission.js";
+import { selected_hson_value_declaration, hson_package_declaration_path, hson_source_alias_eligible, is_official_hson_package_binding, read_supported_hson_import_symbols, type HsonEventImportEvidence } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_tagged_source, admit_hson_tagged_source, admit_hson_tagged_template, hson_tagged_literal, parse_hson_event_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
 import type { HsonSourceLexicalCollector, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
@@ -226,7 +226,13 @@ function part_value(typescript: typeof ts, sources: Candidates, input: ts.Expres
   return sources.jsonLiteral(sources.unwrap(input), node => {
     const possible = sources.candidates(node, "document");
     const only = possible?.length === 1 ? possible[0] : undefined;
-    if (only === undefined || !("source" in only) || only.family !== "document") return undefined;
+    if (only === undefined) {
+      const events = sources.alternatives(node, "document");
+      const event = events.complete && events.nodes.length === 1 ? sources.eventSource(events.nodes[0]!) : undefined;
+      if (event === undefined) return undefined;
+      try { return admit_hson_tagged_source(event); } catch { return undefined; }
+    }
+    if (!("source" in only) || only.family !== "document") return undefined;
     if (!typescript.isTaggedTemplateExpression(only.node)) return only.source;
     const source = hson_tagged_source(typescript, only.node, "document");
     if (source === undefined || "substitutionRanges" in source) return undefined;
@@ -258,11 +264,11 @@ export function static_part_inventory(typescript: typeof ts, checker: ts.TypeChe
 }
 
 /** Bounded, demand-driven facts over existing official sources and receiving candidates. */
-const sourceFacts = new WeakMap<ts.Program, PartSourceFacts>();
-export function collect_part_source_facts(typescript: typeof ts, program: ts.Program): PartSourceFacts {
+const sourceFacts = new WeakMap<ts.Program, { evidence: HsonEventImportEvidence | undefined; facts: PartSourceFacts }>();
+export function collect_part_source_facts(typescript: typeof ts, program: ts.Program, eventImports?: HsonEventImportEvidence): PartSourceFacts {
   const cached = sourceFacts.get(program);
-  if (cached !== undefined) return cached;
-  const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program);
+  if (cached !== undefined && cached.evidence === eventImports) return cached.facts;
+  const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program, eventImports);
   const schemas = new Map<string, CompiledHsonSchema | undefined>();
   const schemaDeclarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>();
   const evidence = new Map<ts.Declaration, PartDataSchemaEvidence | undefined>();
@@ -429,25 +435,34 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const issues = new Map<ts.Expression, PartReferenceIssueSource>();
     const issuesByName = new Map<string, PartReferenceIssueSource>();
     const parsed = new Map<ts.Expression, PartEventAlternative>();
-    const declaration = (literal: ts.Expression): PartEventAlternative => {
-      if (!sources.eligible(literal) || !typescript.isStringLiteral(literal) && !typescript.isNoSubstitutionTemplateLiteral(literal)) return "opaque";
-      const previous = parsed.get(literal);
+    const declaration = (node: ts.Expression): PartEventAlternative => {
+      if (!sources.eligible(node)) return "opaque";
+      const previous = parsed.get(node);
       if (previous !== undefined) return previous;
-      eventLiterals.add(literal);
-      const map = event_range_map(literal);
+      const literal = typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node) ? node : undefined;
+      const tagged = literal === undefined ? sources.eventSource(node) : undefined;
+      const template = tagged === undefined ? undefined : hson_tagged_literal(tagged);
+      if (literal === undefined && template === undefined) return "opaque";
+      if (literal !== undefined) eventLiterals.add(literal);
+      const map: SourceRangeMap = literal !== undefined ? event_range_map(literal) : range => {
+        const start = template?.boundaries[range.start], end = template?.boundaries[range.end];
+        return start === undefined || end === undefined ? undefined : { file: node.getSourceFile().fileName, start, end, precision: "exact" };
+      };
       try {
-        const event = parse_part_event(literal.text);
-        parsed.set(literal, event);
+        const event = tagged !== undefined && template !== undefined
+          ? parse_hson_event_tagged_source(tagged, template.raw) : parse_part_event(literal!.text);
+        parsed.set(node, event);
         for (const argument of event.args) for (const site of event_argument_references(argument)) {
           if (argument.operand.kind === "native") unavailable(site, map);
           else ranges.set(site.reference, { map, site });
         }
-        declarations.set(event, { event, location: location(literal), map });
+        declarations.set(event, { event, location: location(node), map });
         return event;
       } catch (cause) {
         // Preserve the key while the malformed declaration supplies no use evidence.
-        parsed.set(literal, "opaque");
-        issues.set(literal, event_declaration_issue(literal, map, cause));
+        parsed.set(node, "opaque");
+        // Editor Event evidence is issued only for snapshots covered by syntax diagnostics.
+        if (literal !== undefined) issues.set(node, event_declaration_issue(literal, map, cause));
         return "opaque";
       }
     };
@@ -1143,7 +1158,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     }));
   const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, eventContracts, eventIssues,
     eventLiterals: [...eventLiterals], unavailableEventReferences };
-  sourceFacts.set(program, facts);
+  sourceFacts.set(program, { evidence: eventImports, facts });
   return facts;
 }
 
@@ -1157,15 +1172,45 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
   const checker = program.getTypeChecker();
   const output: EventContractSource[] = [];
   const receivingFiles = new Set([...localEvents.keys(), ...locusEventSources.keys()].map(call => call.getSourceFile()));
+  const nativeModule = (file: ts.SourceFile): boolean => {
+    if (!("getEmitModuleFormatOfFile" in program) || typeof program.getEmitModuleFormatOfFile !== "function") return false;
+    const format: unknown = program.getEmitModuleFormatOfFile(file);
+    return format === typescript.ModuleKind.Preserve || typeof format === "number"
+      && format >= typescript.ModuleKind.ES2015 && format <= typescript.ModuleKind.ESNext;
+  };
+  // TypeScript can emit an exported binding as a read or write of exports.name.
+  const mayAccessModuleExports = (declaration: ts.VariableDeclaration): boolean =>
+    (typescript.getCombinedModifierFlags(declaration) & typescript.ModifierFlags.Export) !== 0 && !nativeModule(declaration.getSourceFile());
+  const lexicalRead = (value: ts.Identifier): boolean => {
+    const symbol = typescript.isShorthandPropertyAssignment(value.parent)
+      ? checker.getShorthandAssignmentValueSymbol(value.parent) : checker.getSymbolAtLocation(value);
+    const declaration = selected_hson_value_declaration(typescript, checker, symbol);
+    if (declaration === undefined) return false;
+    if (typescript.isImportSpecifier(declaration)) {
+      // A lowered require can read an application getter on the exports object.
+      return nativeModule(value.getSourceFile())
+        && immutable_source_declaration(typescript, checker, value, sources.eligible)?.eligible === true;
+    }
+    if (declaration.getSourceFile() !== value.getSourceFile() || declaration.getSourceFile().isDeclarationFile) return false;
+    if (typescript.isParameter(declaration)) return true;
+    if (!typescript.isVariableDeclaration(declaration) || !typescript.isVariableDeclarationList(declaration.parent)
+      || (declaration.parent.flags & (typescript.NodeFlags.Const | typescript.NodeFlags.Let)) === 0
+      || (declaration.parent.flags & typescript.NodeFlags.Const) !== 0 && declaration.initializer === undefined
+      || (typescript.getCombinedModifierFlags(declaration) & typescript.ModifierFlags.Ambient) !== 0
+      || mayAccessModuleExports(declaration) || declaration.end > value.pos || !sources.eligible(declaration.parent.parent)) return false;
+    const scope = declaration.parent.parent.parent;
+    return typescript.isSourceFile(scope) || typescript.isBlock(scope);
+  };
   // A small syntax whitelist allows ordinary arguments and deferred function
   // bodies. Calls, property reads, computed keys and spreads can execute code.
   const inertValue = (expression: ts.Expression, depth = 0, admission = false): boolean => {
     if (depth > 16) return false;
     const value = sources.unwrap(expression);
     if (typescript.isIdentifier(value)) {
+      if (!lexicalRead(value)) return false;
       if (!admission) return true;
-      // Admission reads the supplied records. Follow leaf aliases only, since
-      // an aliased object could have acquired accessors before this call.
+      // Admission also reads the supplied record. An aliased object may
+      // have acquired accessors since its initialization.
       const found = immutable_source_declaration(typescript, checker, value, sources.eligible);
       const initializer = found?.declaration.initializer;
       return found?.eligible === true && initializer !== undefined && !typescript.isObjectLiteralExpression(sources.unwrap(initializer))
@@ -1182,9 +1227,22 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
         && (!admission || !is_object_literal_prototype_setter(property, typescript)) && inertValue(property.initializer, depth + 1, admission)
       || typescript.isShorthandPropertyAssignment(property) && property.objectAssignmentInitializer === undefined && inertValue(property.name, depth + 1, admission)
       || !admission && typescript.isMethodDeclaration(property) && !typescript.isComputedPropertyName(property.name));
-    return typescript.isTaggedTemplateExpression(value) && typescript.isNoSubstitutionTemplateLiteral(value.template)
-      && typescript.isPropertyAccessExpression(value.tag) && typescript.isIdentifier(value.tag.expression)
-      && (value.tag.name.text === "document" || value.tag.name.text === "schema")
+    // Hson is frozen and event is an own data property. The official tag
+    // with a literal body parses raw text without invoking application code.
+    if (!admission && typescript.isPropertyAccessExpression(value) && (value.flags & typescript.NodeFlags.OptionalChain) === 0
+      && value.name.text === "event" && typescript.isIdentifier(value.expression)) {
+      return lexicalRead(value.expression) && sources.officialEvent(value.expression);
+    }
+    if (!typescript.isTaggedTemplateExpression(value) || !typescript.isNoSubstitutionTemplateLiteral(value.template)
+      || !typescript.isPropertyAccessExpression(value.tag) || !typescript.isIdentifier(value.tag.expression)
+      || !lexicalRead(value.tag.expression)) return false;
+    if (value.tag.name.text === "event") {
+      const event = sources.eventSource(value);
+      if (!event) return false;
+      try { admit_hson_tagged_source(event); return true; }
+      catch { return false; }
+    }
+    return (value.tag.name.text === "document" || value.tag.name.text === "schema")
       && is_official_hson_package_binding(value.tag.expression, "Hson", checker, true, typescript, sources.eligible);
   };
   for (const file of program.getSourceFiles()) {
@@ -1192,6 +1250,20 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
     const trees = read_supported_hson_import_symbols(file, checker, [], "hsonLiveTree", typescript);
     const roots = read_supported_hson_import_symbols(file, checker, [], "hson", typescript);
     if (trees.size === 0 && roots.size === 0 && !receivingFiles.has(file)) continue;
+    // In lowered modules, "export { local as publicName }" can write
+    // exports.publicName at the local initializer, even for a later clause.
+    const namedExportWrites = new Set<ts.Declaration>();
+    if (!nativeModule(file)) {
+      for (const statement of file.statements) {
+        if (!typescript.isExportDeclaration(statement) || statement.isTypeOnly || statement.moduleSpecifier
+          || !statement.exportClause || !typescript.isNamedExports(statement.exportClause)) continue;
+        for (const specifier of statement.exportClause.elements) {
+          if (specifier.isTypeOnly) continue;
+          const local = checker.getExportSpecifierLocalTargetSymbol(specifier)?.valueDeclaration;
+          if (local) namedExportWrites.add(local);
+        }
+      }
+    }
     const officialFacade = (expression: ts.Expression, root: boolean): boolean => {
       if (!typescript.isIdentifier(expression)) return false;
       const symbol = checker.getSymbolAtLocation(expression);
@@ -1271,6 +1343,11 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
         };
         for (const statement of node.statements) {
           if (!sources.eligible(statement)) { withdraw(); continue; }
+          if (typescript.isVariableStatement(statement) && ((statement.declarationList.flags & typescript.NodeFlags.Using) !== 0
+            || statement.declarationList.declarations.some(declaration => mayAccessModuleExports(declaration) || namedExportWrites.has(declaration)))) {
+            // Resource acquisition reads the disposer now. Downlevel exported writes can invoke setters.
+            withdraw(); continue;
+          }
           const declaration = typescript.isVariableStatement(statement) && statement.declarationList.declarations.length === 1
             ? statement.declarationList.declarations[0] : undefined;
           const binding = declaration !== undefined
@@ -1304,9 +1381,12 @@ function direct_event_contracts(typescript: typeof ts, program: ts.Program, sour
           const expression = typescript.isExpressionStatement(statement) ? sources.unwrap(statement.expression) : initializer;
           const call = directCall(expression !== undefined && typescript.isAwaitExpression(expression) ? expression.expression : expression);
           if (call === undefined) {
+            if (typescript.isExpressionStatement(statement) && inertValue(statement.expression)) continue;
             const inertDeclaration = typescript.isVariableStatement(statement) && statement.declarationList.declarations.every(declaration =>
               typescript.isIdentifier(declaration.name) && (declaration.initializer === undefined || inertValue(declaration.initializer)));
-            if (!inertDeclaration && !typescript.isImportDeclaration(statement) && !typescript.isFunctionDeclaration(statement)
+            // Static ESM imports are linked before the body. A lowered import can run require() here.
+            const inertImport = typescript.isImportDeclaration(statement) && (statement.importClause?.isTypeOnly || nativeModule(file));
+            if (!inertDeclaration && !inertImport && !typescript.isFunctionDeclaration(statement)
               && !typescript.isTypeAliasDeclaration(statement) && !typescript.isInterfaceDeclaration(statement)) withdraw();
             continue;
           }

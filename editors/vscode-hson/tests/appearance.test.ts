@@ -5,10 +5,32 @@ import { resolve } from "node:path";
 import { load_hson_grammar } from "../src/highlighting.js";
 import { initialAppearance, readAppearance, housePalette, duplicatePalette, deletePalette, resolveStyle, blend, roleCatalog } from "../src/appearance-model.js";
 import { AppearanceSpanCache, appearanceColor, type AppearanceRole } from "../src/appearance-spans.js";
+import { HsonBindingCache } from "../src/binding-intelligence.js";
 
 async function run() {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
   const cache = new AppearanceSpanCache();
+  const eventText = 'import { Hson } from "hson-live"; Hson.event`<div/>`; Hson.document`<aside/>`;';
+  const eventDocument = { uri: "/event.ts", fileName: "/event.ts", languageId: "typescript", version: 1, text: eventText };
+  const official = new Set([eventText.indexOf("Hson")]);
+  let imports = official;
+  const bindings = new HsonBindingCache(() => imports);
+  const appearance = new AppearanceSpanCache(bindings);
+  const initial = appearance.get(grammar, eventDocument);
+  const bodySpans = (spans: typeof initial, start: number, length: number) =>
+    spans.filter(span => start <= span.range.start && span.range.end <= start + length);
+  const eventStart = eventText.indexOf("<div/>"), adjacent = eventText.indexOf("<aside/>");
+  assert.equal(bodySpans(initial, eventStart, 6).length, 4);
+  imports = new Set();
+  bindings.forget(eventDocument.uri);
+  const withdrawn = appearance.get(grammar, eventDocument);
+  assert.deepEqual(bodySpans(withdrawn, eventStart, 6), []);
+  assert.deepEqual(bodySpans(withdrawn, adjacent, 8), bodySpans(initial, adjacent, 8));
+  assert.equal(appearance.get(grammar, eventDocument), withdrawn, "reuse with unchanged evidence");
+  imports = official;
+  bindings.forget(eventDocument.uri);
+  assert.deepEqual(appearance.get(grammar, eventDocument), initial, "restoration at the same version");
+  console.log("ok - a shared appearance cache follows Event evidence withdrawal and restoration");
   const body = '<p data:input="%{input}" title="attribute 😀"\r\n "content text ^{input}" <hson-part at="library/member"/>/>';
   for (const [languageId, fileName, text] of [
     ["hson", "/appearance.hson", body],

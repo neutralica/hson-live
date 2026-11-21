@@ -16,7 +16,9 @@ const restrictedUserDataDir = join(testRoot, "restricted-user");
 const restrictedExtensionsDir = join(testRoot, "restricted-extensions");
 const workspaceDir = join(testRoot, "workspace");
 const vscodeCacheDir = join(testRoot, "vscode");
-await mkdir(userDataDir);
+// Keep the startup Chat editor from receiving native typing commands.
+await mkdir(join(userDataDir, "User"), { recursive: true });
+await writeFile(join(userDataDir, "User", "settings.json"), JSON.stringify({ "chat.disableAIFeatures": true }));
 await mkdir(extensionsDir);
 await mkdir(restrictedUserDataDir);
 await mkdir(restrictedExtensionsDir);

@@ -1,3 +1,4 @@
+import type ts from "typescript";
 import * as messages from "./diagnostic-messages.js";
 import { is_workspace_typescript_source } from "./typescript-project-discovery.js";
 import { hson } from "../../../src/hson.js";
@@ -34,6 +35,8 @@ export type DocumentDiagnosticInput = Readonly<{
   fileName: string;
   text: string;
   authoringMode?: StandaloneAuthoringMode;
+  sourceProgram?: ts.Program;
+  eventImports?: ReadonlySet<number>;
 }>;
 
 export type RelatedDiagnosticSpec = Readonly<{
@@ -167,15 +170,20 @@ function validateStandalone(text: string, mode: StandaloneAuthoringMode = 'canon
 function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boolean): readonly DocumentDiagnosticSpec[] {
   // Share the discovery program's parsed host with the expectation processor.
   // No extra expectation parse is needed, and marker-free production is unchanged.
-  const program = input.text.includes(HSON_EXPECT_ERROR_MARKER)
-    ? create_hson_source_program(input.fileName, input.text) : undefined;
+  const program = input.sourceProgram ?? (input.text.includes(HSON_EXPECT_ERROR_MARKER)
+    ? create_hson_source_program(input.fileName, input.text) : undefined);
   const diagnostics: DocumentDiagnosticSpec[] = [];
   const discovery = discover_hson_tagged_templates(input.fileName, input.text, program,
-    ignoreDiagnostics ? undefined : source => { diagnostics.push(...diagnose_hson_prefix(source, true)); });
+    ignoreDiagnostics ? undefined : source => { diagnostics.push(...diagnose_hson_prefix(source, true)); },
+    undefined, input.eventImports);
   if (!ignoreDiagnostics) {
     for (const source of discovery.sources) diagnostics.push(...diagnose_hson_tag(source));
     for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
-    diagnostics.push(...static_interpolation_diagnostics(input.fileName, input.text));
+    for (const source of discovery.incompleteEvents) {
+      // An unfinished body can change meaning. A JavaScript hole already violates the tag contract.
+      if ("substitutionRanges" in source && source.substitutionRanges.length > 0) diagnostics.push(...diagnose_hson_prefix(source));
+    }
+    diagnostics.push(...static_interpolation_diagnostics(input.fileName, input.text, discovery));
   }
   const staticSources = discover_static_from_hson_sources(input.fileName, input.text, program).sources;
   for (const source of ignoreDiagnostics ? [] : staticSources) {

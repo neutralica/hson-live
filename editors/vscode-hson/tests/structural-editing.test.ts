@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { join, resolve } from "node:path";
+import { hson_event_host_fixture } from "../../../tests/fixtures/hson-event-host.mjs";
 
 import { tokenize_authored_document_library } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
@@ -472,6 +474,18 @@ check("all four semantic member tags share structural regions and formatting", (
   const stillFormatted = format(contextInvalid);
   assert.ok(stillFormatted.includes('Hson.data`<main <p "x"/>/>`'));
   assert.ok(stillFormatted.includes('Hson.document`<foo 1>`'));
+});
+check("Event templates stay outside canonical structural editing and formatting", () => {
+  const file = join(hson_event_host_fixture(resolve("../..")), "events.ts");
+  const plain = authored('<hson:event  on:click local:go    <>  >', "event");
+  const forbiddenHole = authored('<hson:event  on:click local:go ${expr} <>  >', "event");
+  for (const text of [plain, forbiddenHole, plain.slice(0, -2)]) {
+    assert.deepEqual(structural_regions(file, "typescript", text), []);
+    assert.deepEqual(structural_formatting_edits(file, "typescript", text, { insertSpaces: true, tabSize: 2 }), []);
+  }
+  assert.equal(typingSnippet(authored('<hson:event on:click local:go n:num| <> >', "event"), "="), undefined);
+  assert.equal(arrayPair(authored('<hson:event on:click local:go n:arr={|} <> >', "event")), false);
+  assert.equal(format(plain + '\nconst data = Hson.data`<a  1>`;'), plain + '\nconst data = Hson.data`<a 1>`;');
 });
 check("an awaited host formatter cannot redirect the Hson phase to a newly focused editor", () => {
   const originalDocument = { isClosed: false };

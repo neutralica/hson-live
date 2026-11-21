@@ -236,11 +236,25 @@ const workerRoute = "Module-level test body launches the target through reposito
 const browserRoute = "Module-level setup bundles/serves the target, launches Chrome, navigates to the test page and awaits browser results.";
 const editorRoute = "Module-level VS Code launch selects the built extensionTestsPath and awaits completion; build-tests maps it to the declared source.";
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
-const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","d7b0145cd1760bbd8c60153c06c8318a24b4d0ec5063c7fbe1cbd70ea1704906"]];
+const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","19f54d27280827f58ddafd6c70d276d54e9af54aa6fdb309f61746ee37f3fd27"]];
+const appearanceLauncher = ["editors/vscode-hson/tests/integration/run-appearance.mjs", "8d9b41fb67dfbd4b33968b9e0a19fb53e7419dc78de34e69804246f1b51f9882"];
+const appearanceTransitions = "editors/vscode-hson/tests/appearance-transitions.test.ts";
 
 export const declaredExecution = Object.freeze({
-  "editors/vscode-hson/tests/integration/run-appearance.mjs": { sha256: "8d9b41fb67dfbd4b33968b9e0a19fb53e7419dc78de34e69804246f1b51f9882", route: "Two awaited isolated VS Code launches execute the build-tests appearance.ts bundle. Default uses extensionTestsPath; --scratchpads selects the startup driver, passes real workspace Memento, awaits run() across native restarts and requires both result files to report success. The second process reuses the temporary profile without hot-exit backups.",
+  [appearanceLauncher[0]]: { sha256: appearanceLauncher[1], route: "Two awaited isolated VS Code launches execute the build-tests appearance.ts bundle. Default uses extensionTestsPath; --scratchpads selects the startup driver, passes real workspace Memento, awaits run() across native restarts and requires both result files to report success. The second process reuses the temporary profile without hot-exit backups.",
     targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","ade3f55bf715e86b56b3c4c6153e55663d7df13f00cb32ff66885beb7a8aec6d"]] },
+  "editors/vscode-hson/tests/integration/appearance.ts": {
+    sha256: "c065a6b437c914d62cbbea00743aab062548f8fcb0c42268006aab9243fecf73",
+    route: "The initial default VS Code launch awaits checkAppearanceTransitions. Scratchpad and reload phases return through their own branches before that call.",
+    targets: [[appearanceTransitions, "suite-call"]], sources: [appearanceLauncher, ...editorSources],
+    withLaunch: [appearanceLauncher[0], ""],
+  },
+  "editors/vscode-hson/tests/appearance.test.ts": {
+    sha256: "0d422d4cb2a53f2bd41b26ed073053386c8e07bdffc6100ecbfd0c96e5126b77",
+    route: "The Node appearance bundle installs a vscode module stub, then imports and awaits checkAppearanceTransitions before restoring the module loader.",
+    targets: [[appearanceTransitions, "dynamic-import"]], sources: [...editorSources],
+    providedRequirement: "vscode",
+  },
   "tests/livemap-graph-mutations.acceptance.mts": { sha256: "3855eb212c72aa03390c54b7b64900ae54d491314f1f46f4420646a104d31341", route: workerRoute,
     targets: [["tests/fixtures/livemap-graph-mutations.worker.mts", "worker-launch"]], sources: [...workerSources] },
   "tests/livemap-graph-reads.acceptance.mts": { sha256: "e458b4ecea665f09b1ef32a9ba459dfc7be7421871f9e77445bab826485ed2c3", route: workerRoute,
@@ -257,15 +271,15 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/css-selector-browser-cases.mts", "browser-runner"], ["tests/fixtures/universal-css-map-browser-cases.mts", "browser-runner"], ["tests/fixtures/document-css-reconciliation-browser-cases.mts", "browser-runner"]], sources: [] },
   "tests/hosted-css-authority-repairs.acceptance.mts": { sha256: "06b6e6ad42ab25f47dd2a3a67610056143e39032af6a4e69f3811d2b7709187e", route: workerRoute,
     targets: [["tests/fixtures/hosted-css-authority-repairs.worker.mts", "worker-launch"]], sources: [...workerSources] },
-  "editors/vscode-hson/tests/integration/run-baseline.mjs": { sha256: "5b6b750e3ded13cbca6d5b2bee630206feb1a37946f370c9e64e7e226bcb04af", route: editorRoute,
+  "editors/vscode-hson/tests/integration/run-baseline.mjs": { sha256: "46896d1a0c6a5a3ed31be0e264aebb484aa3a5238edfc9156a43087311003cf9", route: "Both awaited VS Code profiles launch the build-tests baseline.ts bundle through the default extensionTestsPath. The installed variant first installs the VSIX and uses a separate development driver. Explicit test-path overrides select an alternate run.",
     targets: [["editors/vscode-hson/tests/integration/baseline.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run-consumer.mjs": { sha256: "3f56c4a8bf99f6a9ac2521086a8005e3e060cdec530923822ea70fcfad215be3", route: editorRoute,
+  "editors/vscode-hson/tests/integration/run-consumer.mjs": { sha256: "3eada0ee871639be6f3d35b624a627eccac8426ec7a5f0dbceca584ccd70c403", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-house.mjs": { sha256: "56b1face90d0a313cddb79cf63ad589d783e52c64e543ba5f574df534a865aba", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/house.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-legibility.mjs": { sha256: "8b1e8b8492d0c996e932e31955ec7afd3606b4c186c69bb486607a0318b8c568", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/legibility.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "ba6ffbc19ab8b1934a49cadf6f89cd5b08e6c2513c7054d1ae1eb3688ad65d42", route: editorRoute,
+  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "091b1f2e14f5aaf728baf06a70b86c8af1c67805cff38d7cac5337a405317372", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },
   "scripts/run-browser-realization-parser-closure.mjs": { sha256: "12ffbeca67bde08203a878a926165099761c75b48a139e2d50b2a4b674e3c041", route: browserRoute,
     targets: [["tests/browser/browser-realization-parser-closure.acceptance.html","browser-runner"],["tests/browser/browser-realization-parser-closure.entry.mjs","browser-runner"]], sources: [["tests/browser/browser-realization-parser-closure.acceptance.html","7b132a9dcba2ad80e3e5daad48a44b01d20afcc1e9f456df1bf2cc19c8a56472"]] },

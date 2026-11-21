@@ -10,6 +10,7 @@ const editor = "editors/vscode-hson";
 const sourceExtension = /\.(?:m?[jt]s|tsx|html)$/;
 const executable = /(?:\.acceptance\.(?:mts|mjs|html)|\.test\.(?:ts|mjs))$/;
 const ignored = new Set(["historical", "node_modules", "dist", ".test-dist", ".hson", "out"]);
+const launchKey = (entrypoint, args) => JSON.stringify([entrypoint, args]);
 
 // Static metadata parsing is shared with the existing metadata acceptance suite.
 // A missing object is allowed for legacy suites, and reported. Declared objects
@@ -49,7 +50,7 @@ export function createInventory(root = repositoryRoot, config = configuration) {
   const errors = [];
   const files = new Map();
   for (const folder of ["tests", "scripts", `${editor}/tests`, `${editor}/scripts`]) {
-    for (const path of walk(root, folder)) files.set(path, { path, source: read(path), edges: new Set(), requirements: new Set(["node"]), prerequisites: new Set() });
+    for (const path of walk(root, folder)) files.set(path, { path, source: read(path), edges: [], requirements: new Set(["node"]), prerequisites: new Set() });
   }
   const known = path => files.has(path) ? path
     : files.has(path.replace(/\.js$/, ".ts")) ? path.replace(/\.js$/, ".ts") : undefined;
@@ -103,8 +104,12 @@ export function createInventory(root = repositoryRoot, config = configuration) {
         relationships.push({ from: file.path, to: value, kind, execution, external: true });
       }
       for (const target of targets(value)) {
-        relationships.push({ from: file.path, to: target, kind, execution });
-        if (execution) file.edges.add(target);
+        // Importing a callable suite loads its module. Where a separate call is
+        // reviewed, only that call can establish execution of the suite.
+        const reviewedCall = declaredExecution[file.path]?.targets.some(([to, kind]) => to === target && kind === "suite-call");
+        const executes = execution && !reviewedCall;
+        relationships.push({ from: file.path, to: target, kind, execution: executes });
+        if (executes) file.edges.push({ target });
       }
     };
     const capability = name => {
@@ -161,22 +166,28 @@ export function createInventory(root = repositoryRoot, config = configuration) {
   // A declaration is a reviewed route, not a claim that this analyzer interpreted
   // callbacks. Pin the complete launch sources, including helper/HTML plumbing.
   // Any edit requires renewed review; existence or a matching string is insufficient.
+  const providedRequirements = new Set();
   for (const [from, evidence] of Object.entries(declaredExecution)) {
     const fresh = evidence.sha256 && Array.isArray(evidence.sources)
       && [[from, evidence.sha256], ...evidence.sources].every(([path, sha256]) => files.has(path)
       && createHash("sha256").update(files.get(path).source).digest("hex") === sha256);
+    const { withLaunch, providedRequirement } = evidence;
+    const launchIsPinned = !withLaunch || Array.isArray(withLaunch) && withLaunch.length === 2 && typeof withLaunch[1] === "string"
+      && Array.isArray(evidence.sources) && evidence.sources.some(([path]) => path === withLaunch[0]);
     for (const [to, kind] of evidence.targets) {
-      const supported = ["worker-launch", "subprocess-launch", "dynamic-import", "browser-runner", "editor-runner"].includes(kind);
-      const verified = Boolean(fresh && evidence.route && supported && files.has(from) && files.has(to));
+      const supported = ["worker-launch", "subprocess-launch", "dynamic-import", "browser-runner", "editor-runner", "suite-call"].includes(kind);
+      const verified = Boolean(fresh && evidence.route && launchIsPinned && supported && files.has(from) && files.has(to));
       relationships.push({ from, to, kind, execution: verified, declared: true,
         verification: verified ? "reviewed-source-pinned" : "declared-unverified",
         independentlyVerified: false, evidence });
       if (!verified) { errors.push(`Stale or unsupported ${kind} declaration evidence: ${from} -> ${to}`); continue; }
-      files.get(from).edges.add(to);
+      files.get(from).edges.push({ target: to, launch: withLaunch && launchKey(...withLaunch), providedRequirement });
+      if (providedRequirement) providedRequirements.add(providedRequirement);
     }
   }
 
   const commandCache = new Map();
+  const commandLaunches = new Map();
   const commandProjects = new Map();
   const nestedCommands = new Map();
   const publicGates = {
@@ -195,6 +206,8 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     const text = packages[prefix]?.[name];
     if (typeof text !== "string") { errors.push(`Unknown registered command: ${id}`); return new Set(); }
     const targets = new Set();
+    const launches = new Set();
+    commandLaunches.set(id, launches);
     const projects = new Set();
     commandProjects.set(id, projects);
     const nested = [];
@@ -227,13 +240,16 @@ export function createInventory(root = repositoryRoot, config = configuration) {
         const nestedId = nestedPrefix ? `${nestedPrefix}:${selectedName}` : selectedName;
         nested.push(nestedId);
         for (const target of command(selectedName, nestedPrefix, [...trail, id])) targets.add(target);
+        for (const launch of commandLaunches.get(nestedId) ?? []) launches.add(launch);
         for (const project of commandProjects.get(nestedId) ?? []) projects.add(project);
       }
       if (part.node) {
         const path = relative(root, resolve(root, prefix, part.node[1]));
         const target = generated.get(path) ?? known(path);
-        if (target) targets.add(target);
-        else if (!existsSync(resolve(root, path)) && !path.includes("dist/")) errors.push(`Command ${id} has missing entrypoint: ${path}`);
+        if (target) {
+          targets.add(target);
+          launches.add(launchKey(target, part.node[2].trim()));
+        } else if (!existsSync(resolve(root, path)) && !path.includes("dist/")) errors.push(`Command ${id} has missing entrypoint: ${path}`);
       }
       // Only recognized compiler commands own type projects, never arbitrary args.
       const schemaProject = !prefix && part.node?.[1] === "scripts/hson-schema.mts"
@@ -247,11 +263,31 @@ export function createInventory(root = repositoryRoot, config = configuration) {
     commandCache.set(id, targets);
     return targets;
   }
-  function closure(initial) {
+  function closure(initial, launches, requirement) {
     const result = new Set();
-    function add(path) { if (result.has(path)) return; result.add(path); for (const edge of files.get(path)?.edges ?? []) add(edge); }
+    function add(path) {
+      if (result.has(path)) return;
+      result.add(path);
+      for (const { target, launch, providedRequirement } of files.get(path)?.edges ?? []) {
+        if (launch && launches && !launches.has(launch)) continue;
+        if (requirement && requirement === providedRequirement) continue;
+        add(target);
+      }
+    }
     for (const path of initial) add(path);
     return result;
+  }
+  function requirementEvidence(initial, reach, launches) {
+    const requirements = [...new Set([...reach].flatMap(path => [...files.get(path).requirements]))].sort();
+    const evidence = {};
+    for (const requirement of requirements) {
+      // A pinned shim supplies this API during the call. Another unshimmed path
+      // to the same suite still contributes the real requirement.
+      const requiring = providedRequirements.has(requirement) ? closure(initial, launches, requirement) : reach;
+      const paths = [...requiring].filter(path => files.get(path).requirements.has(requirement));
+      if (paths.length) evidence[requirement] = paths;
+    }
+    return evidence;
   }
   const gates = Object.fromEntries(["check", "full", "extended", "commit"].map(mode => [mode, gateCommands(scripts, mode)]));
   for (const [name, body] of Object.entries(config.rootBuildPrerequisites ?? {})) {
@@ -273,8 +309,9 @@ export function createInventory(root = repositoryRoot, config = configuration) {
   const destinations = new Map();
   function assign(name, prefix, destination) {
     const direct = command(name, prefix);
-    for (const path of closure(direct)) {
-      const row = { destination, registration: prefix ? `${prefix}:${name}` : name, command: prefix ? `npm --prefix ${prefix} run ${name}` : `npm run ${name}`, invocation: direct.has(path) ? "direct" : "indirect" };
+    const registration = prefix ? `${prefix}:${name}` : name;
+    for (const path of closure(direct, commandLaunches.get(registration))) {
+      const row = { destination, registration, command: prefix ? `npm --prefix ${prefix} run ${name}` : `npm run ${name}`, invocation: direct.has(path) ? "direct" : "indirect" };
       if (!destinations.has(path)) destinations.set(path, []);
       destinations.get(path).push(row);
     }
@@ -325,9 +362,8 @@ export function createInventory(root = repositoryRoot, config = configuration) {
         registration, project, command: registration.startsWith(`${editor}:`) ? `npm --prefix ${editor} run ${registration.slice(editor.length + 1)}` : `npm run ${registration}`, invocation: "type-only" }))) : destinations.get(file.path) ?? [];
     if (routes.length === 0) errors.push(`Maintained suite has no execution destination: ${file.path}`);
     const reachable = closure([file.path]);
-    const requirements = new Set(); const prerequisites = new Set();
+    const requirements = new Set(Object.keys(requirementEvidence([file.path], reachable))); const prerequisites = new Set();
     for (const path of reachable) {
-      for (const item of files.get(path).requirements) requirements.add(item);
       for (const item of files.get(path).prerequisites) prerequisites.add(item);
     }
     const context = typeOnly ? "typescript-project" : /[.-]worker\.(?:mts|mjs)$/.test(file.path) ? "worker"
@@ -342,17 +378,20 @@ export function createInventory(root = repositoryRoot, config = configuration) {
   const registrations = [...new Set(Object.values(gates).flat())].map(name => [name, ""]);
   for (const name of Object.keys(packages[editor])) if (/^(?:test(?::|$)|validate:|benchmark$)/.test(name)) registrations.push([name, editor]);
   for (const [name, prefix] of registrations) {
-    const reach = closure(command(name, prefix));
-    const projectSet = commandProjects.get(prefix ? `${prefix}:${name}` : name) ?? new Set();
+    const registration = prefix ? `${prefix}:${name}` : name;
+    const direct = command(name, prefix);
+    const launches = commandLaunches.get(registration);
+    const reach = closure(direct, launches);
+    const requirements = requirementEvidence(direct, reach, launches);
+    const projectSet = commandProjects.get(registration) ?? new Set();
     if (name.startsWith("test:") && reach.size === 0) errors.push(`No executable entrypoint resolved for ${name}`);
-    commands[prefix ? `${prefix}:${name}` : name] = { command: packages[prefix][name], suites: suites.filter(suite => reach.has(suite.entrypoint) || suite.destinations.some(route => projectSet.has(route.project))).map(suite => suite.identity),
+    commands[registration] = { command: packages[prefix][name], suites: suites.filter(suite => reach.has(suite.entrypoint) || suite.destinations.some(route => projectSet.has(route.project))).map(suite => suite.identity),
       caseReporting: reach.has("tests/test-events.mjs"),
-      nestedCommands: nestedCommands.get(prefix ? `${prefix}:${name}` : name) ?? [],
-      projects: [...commandProjects.get(prefix ? `${prefix}:${name}` : name) ?? []],
-      requirements: [...new Set([...reach].flatMap(path => [...files.get(path).requirements]))].sort(),
+      nestedCommands: nestedCommands.get(registration) ?? [],
+      projects: [...projectSet],
+      requirements: Object.keys(requirements),
       prerequisites: [...new Set([...reach].flatMap(path => [...files.get(path).prerequisites]))].sort(),
-      requirementEvidence: Object.fromEntries([...new Set([...reach].flatMap(path => [...files.get(path).requirements]))].sort()
-        .map(requirement => [requirement, [...reach].filter(path => files.get(path).requirements.has(requirement))])) };
+      requirementEvidence: requirements };
   }
   for (const suite of suites) {
     for (const route of suite.destinations) {

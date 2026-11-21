@@ -1,6 +1,6 @@
 import ts from "typescript";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -31,6 +31,7 @@ import {
 } from "../src/hson-schema-symbols.js";
 import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments, schema_watch_output_state } from "../src/schema-tooling.js";
 import { HsonEditorCompletionCache } from "../src/editor-completion.js";
+import { hson_event_host_fixture } from "../../../tests/fixtures/hson-event-host.mjs";
 import "./diagnostic-expectations.test.js";
 
 let checks = 0;
@@ -73,6 +74,131 @@ function diagnose(
 ): readonly DocumentDiagnosticSpec[] {
   return produce_document_diagnostics({ languageId, fileName, text });
 }
+
+const eventPrefix = 'import { Hson as E } from "hson-live/hson";\r\nconst source = E.event`';
+const eventHost = hson_event_host_fixture(resolve(existsSync("src/hson-authoring.ts") ? "." : "../.."));
+const eventFile = join(eventHost, "events.ts");
+const diagnoseEvent = (text: string) => diagnose(text, "typescript", eventFile);
+
+check("a workspace path remap to a local Event lookalike supplies no immediate diagnostics", () => {
+  const directory = mkdtempSync(join(tmpdir(), "hson-event-remap-"));
+  try {
+    writeFileSync(join(directory, "tsconfig.json"), JSON.stringify({ compilerOptions: {
+      module: "ESNext", moduleResolution: "Bundler", paths: { "hson-live/hson": ["./shim.ts"] },
+    } }));
+    writeFileSync(join(directory, "shim.ts"), 'export const Hson = { event: String.raw };');
+    const text = eventPrefix + '<div/>`;';
+    const fileName = join(directory, "consumer.ts");
+    assert.deepEqual(diagnose(text, "typescript", fileName), []);
+    assert.deepEqual(diagnose(text.replace("hson-live/hson", "hson-live"), "typescript", fileName), [], "unresolved package");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+check("all supported TypeScript host extensions own tagged Event syntax diagnostics", () => {
+  const text = eventPrefix + '<div/>`;';
+  for (const suffix of ["ts", "tsx", "mts", "cts"]) {
+    const diagnostics = diagnose(text, suffix === "tsx" ? "typescriptreact" : "typescript", join(eventHost, "events." + suffix));
+    assert.deepEqual(diagnostics.map(issue => issue.code), ["HSON_DECLARATIVE_ROOT_REQUIRED"], suffix);
+  }
+  assert.deepEqual(diagnose(text, "javascript", join(eventHost, "events.js")), []);
+});
+
+check("Event template admission reports each malformed host escape at TypeScript's location", () => {
+  const prefix = eventPrefix + '<hson:event on:click local:save\r\n note:str="🧪\\u0061';
+  const text = prefix + '\\xZZ \\u0QQQ \\u{110000} \\9" <> >`;';
+  const expected = ["ZZ", "QQQ", "110000", "\\9"].map((part, index) => {
+    const start = text.indexOf(part);
+    return { start, end: start + [1, 1, 6, 2][index]! };
+  });
+  const diagnostics = diagnoseEvent(text);
+  assert.deepEqual(diagnostics.map(issue => [issue.code, issue.range]), expected.map(range => ["HSON_TAGGED_TEMPLATE_REQUIRED", range]));
+  assert.deepEqual(diagnoseEvent(prefix + '" <> >`;'), []);
+  const [hole] = diagnoseEvent(text.replace(' <> >', ' ${value} <> >'));
+  assert.equal(hole?.code, "HSON_TAGGED_TEMPLATE_REQUIRED");
+  const withHole = text.replace(' <> >', ' ${value} <> >');
+  assert.equal(withHole.slice(hole?.range.start, hole?.range.end), "${value}");
+});
+
+check("short Event escapes select the authored sequence at quotes, line endings and the template boundary", () => {
+  const prefix = eventPrefix + '<hson:event on:click local:save a:str="🧪';
+  for (const escape of ['\\x', '\\x1', '\\u', '\\u123', '\\u{', '\\u{123']) {
+    for (const ending of ['" <> >', '\n" <> >', '\r\n" <> >', '\r" <> >', '']) {
+      const text = prefix + escape + ending + '`;';
+      assert.deepEqual(diagnoseEvent(text).map(issue => [issue.code, issue.range]), [
+        ["HSON_TAGGED_TEMPLATE_REQUIRED", { start: prefix.length, end: prefix.length + escape.length }],
+      ], JSON.stringify([escape, ending]));
+    }
+  }
+  const adjacent = prefix + '\\x\\u12" <> >`;';
+  assert.deepEqual(diagnoseEvent(adjacent).map(issue => adjacent.slice(issue.range.start, issue.range.end)), ['\\x', '\\u12']);
+});
+
+check("unattached Event tags use the authoritative Event contract", () => {
+  for (const body of [
+    '<hson:event on:key:down host:save key:str=^{key.code} <> >',
+    '<hson:event on:formdata local:save once capture a:str=^{formdata:get("email")} b:arr=^{formdata:getAll("tag")} c:bool=^{formdata:has("file")} <> >',
+    '<hson:event on:click local:save a:str=^{partLocal} b:data=%{incoming} <> >',
+    '<hson:event on:click local:save note:str="\\u0061" <> >',
+  ]) assert.deepEqual(diagnoseEvent(eventPrefix + body + '`;'), [], body);
+
+  for (const [body, code, message] of [
+    ['<main/>', 'HSON_DECLARATIVE_ROOT_REQUIRED', /Expected a literal <hson:event/],
+    ['<hson:schema>', 'HSON_DECLARATIVE_DOMAIN_MISMATCH', /found <hson:schema/],
+    ['<hson:ev', 'HSON_DECLARATIVE_NAME_INCOMPLETE', /Finish the hson:event/],
+    ['<hson:event on:unknown local:save <> >', 'HSON_EVENT_DECLARATION_INVALID', /Unsupported Event selector/],
+    ['<hson:event on:click local:<> >', 'HSON_EVENT_DECLARATION_INVALID', /Expected an action name/],
+    ['<hson:event on:click local:save host:save <> >', 'HSON_EVENT_DECLARATION_INVALID', /exactly one host: or local:/],
+    ['<hson:event on:click document window local:save <> >', 'HSON_EVENT_DECLARATION_INVALID', /mutually exclusive/],
+    ['<hson:event on:click local:save x:doc="oops" <> >', 'HSON_EVENT_DECLARATION_INVALID', /Invalid Event argument/],
+    ['<hson:event on:click local:save x:num="no" <> >', 'HSON_EVENT_DECLARATION_INVALID', /finite JSON number/],
+    ['<hson:event on:formdata local:save x:str=^{formdata:get(key)} <> >', 'HSON_EVENT_DECLARATION_INVALID', /Invalid FormData Event operation/],
+    ['<hson:event on:click local:save <value 1> >', 'HSON_EVENT_DECLARATION_INVALID', /Nonempty authored event outcomes/],
+    ['<hson:event on:click local:save <> >z', 'HSON_EVENT_DECLARATION_INVALID', /exactly one authored event declaration/],
+    ['<hson:event on:click local:save note:str="\\uQ" <> >', 'HSON_TAGGED_TEMPLATE_REQUIRED', /invalid Hson tagged template/],
+  ] as const) {
+    const diagnostics = diagnoseEvent(eventPrefix + body + '`;');
+    assert.deepEqual(diagnostics.map(issue => issue.code), [code], body);
+    assert.match(diagnostics[0]!.message, message);
+  }
+});
+
+check("Event offsets preserve raw escapes, CRLF, UTF-16, related positions, and EOF", () => {
+  const prefix = eventPrefix + '<hson:event on:key:down local:save\r\n note:str="🧪\\u0061" ';
+  const operand = '^{key.nope}';
+  const lookup = prefix + 'key:str=' + operand + ' <> >`;';
+  const [invalid] = diagnoseEvent(lookup);
+  const start = lookup.indexOf(operand), end = start + operand.length;
+  assert.equal(invalid?.code, 'HSON_EVENT_REFERENCE_INVALID');
+  assert.equal(invalid?.precision, 'exact');
+  assert.deepEqual(invalid?.range, { start, end });
+  assert.deepEqual(invalid?.related.map(issue => issue.range), [{ start: end, end: end + 1 }]);
+
+  const duplicate = prefix + 'once\r\n once <> >`;';
+  const [repeated] = diagnoseEvent(duplicate);
+  const first = duplicate.indexOf("once"), second = duplicate.lastIndexOf("once");
+  assert.match(repeated!.message, /Duplicate authored event header/);
+  assert.deepEqual(repeated?.range, { start: second, end: second + 1 });
+  assert.deepEqual(repeated?.related.map(issue => issue.range), [{ start: first, end: first + 1 }]);
+
+  const partial = eventPrefix + '<hson:event on:click local:save\r\n';
+  assert.deepEqual(diagnoseEvent(partial), []);
+  const [eof] = diagnoseEvent(partial + '`;');
+  assert.equal(eof?.precision, 'eof');
+  assert.deepEqual(eof?.range, { start: partial.length, end: partial.length });
+});
+
+check("Event JavaScript substitutions own a single diagnostic, including unfinished holes", () => {
+  const prefix = eventPrefix + '<hson:event on:click local:save x:str="';
+  for (const [hole, rest] of [
+    ['${Hson.data`1`}', '" <> >`;'],
+    ['${call({ value: 1 })', ''],
+  ]) {
+    const issues = diagnoseEvent(prefix + hole + rest);
+    assert.deepEqual(issues.map(issue => issue.code), ['HSON_TAGGED_TEMPLATE_REQUIRED']);
+    assert.deepEqual(issues[0]?.range, { start: prefix.length, end: prefix.length + hole.length });
+  }
+  assert.deepEqual(diagnoseEvent(prefix + '\\${literal}" <> >`;').map(issue => issue.code), ['invalid-json-escape']);
+});
 
 check("standalone valid Hson has no diagnostics", () => {
   assert.deepEqual(diagnose('<main\n  <h1 "Hello">\n>'), []);
@@ -1082,7 +1208,7 @@ check("unfinished interpolation retains only scanner-observed literal duplicate 
   ]) {
     const text = prefix + body;
     // Recovery does not broaden authoritative discovery, even for parseable literals.
-    assert.deepEqual(discover_hson_tagged_templates("/workspace/quad.ts", text), { sources: [], interpolated: [] });
+    assert.deepEqual(discover_hson_tagged_templates("/workspace/quad.ts", text), { sources: [], interpolated: [], incompleteEvents: [] });
     const issues = diagnose(text, "typescript", "/workspace/quad.ts");
     assert.equal(issues.length, 1, body);
     assert.equal(issues[0]?.code, "HSON_LIBRARY_QUAD_DUPLICATE", body);

@@ -7,12 +7,16 @@ import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-ma
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { static_part_reference_diagnostics, static_schema_candidate_diagnostics, type StaticSchemaDiagnostic } from "../../../src/internal/hson-schema/candidate-diagnostics.js";
 import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
+import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
 
 /** The authored service resolves bindings and source edits; the existing service consumes the overlay. */
-export function install_live_schema_view(typescript: typeof ts, host: ts.LanguageServiceHost, projectPath: string, registerEvidence?: (file: string, text: string | undefined) => void) {
+export function install_live_schema_view(typescript: typeof ts, host: ts.LanguageServiceHost, projectPath: string,
+  registerEvidence?: (file: string, text: string | undefined) => void,
+  getEventImports?: () => HsonEventImportEvidence | undefined,
+) {
   const original: ts.LanguageServiceHost = {
     ...host,
     getCompilationSettings: host.getCompilationSettings.bind(host),
@@ -35,6 +39,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   }
   const authoredService = typescript.createLanguageService(original);
   let previous: ts.Program | undefined;
+  let previousEventImports: HsonEventImportEvidence | undefined;
   let revision = 0;
   let sources = new Map<string, SourceView>();
   let evidence = new Map<string, Snapshot>();
@@ -56,9 +61,12 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   const refresh = (): void => {
     const program = authoredService.getProgram();
     if (program === undefined) return;
-    if (program === previous) return;
+    const eventImports = getEventImports?.();
+    if (program === previous && eventImports === previousEventImports) return;
+    previousEventImports = eventImports;
     candidateDiagnostics = [...static_schema_candidate_diagnostics(typescript, program),
-      ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program), typescript, program.getTypeChecker())];
+      ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program, eventImports), typescript, program.getTypeChecker())];
+    if (program === previous) return;
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();

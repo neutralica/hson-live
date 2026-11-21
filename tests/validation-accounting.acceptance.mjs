@@ -67,6 +67,21 @@ for (const [registration, entry, requirement] of [
 }
 for (const name of ["test:validation-accounting", "test:transform-snapshot", "editors/vscode-hson:test:unit",
   "editors/vscode-hson:test:local-host-process"]) assert(!inventory.commands[name].requirements.includes("vscode"), name);
+const transitions = inventory.suites.find(suite => suite.identity === "editors/vscode-hson/tests/appearance-transitions.test.ts");
+const editorRegistration = name => `editors/vscode-hson:${name}`;
+for (const name of ["test", "test:unit", "test:appearance", "test:appearance:integration"]) {
+  const registration = editorRegistration(name);
+  const context = name === "test:appearance:integration" ? "vscode" : "node";
+  const destination = transitions.destinations.find(route => route.registration === registration);
+  assert.equal(destination?.invocation, "indirect", registration);
+  assert.equal(destination.context, context, registration);
+  assert(inventory.commands[registration].suites.includes(transitions.identity));
+  assert.equal(inventory.commands[registration].requirements.includes("vscode"), context === "vscode", registration);
+}
+const scratchpads = editorRegistration("test:scratchpads:integration");
+assert(inventory.commands[scratchpads].suites.includes("editors/vscode-hson/tests/integration/appearance.ts"));
+assert(!inventory.commands[scratchpads].suites.includes(transitions.identity));
+assert(!transitions.destinations.some(route => route.registration === scratchpads));
 for (const name of ["test:locus-checkpoint-z3b", "test:locus-scoped-checkpoint"]) {
   assert(inventory.commands[name].requirements.includes("subprocess"));
   assert(inventory.commands[name].requirementEvidence.subprocess.includes("tests/locus-scoped-checkpoint.acceptance.mts"));

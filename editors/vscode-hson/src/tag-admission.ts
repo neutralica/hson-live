@@ -1,5 +1,6 @@
 import * as messages from "./diagnostic-messages.js";
-import { admit_hson_tagged_source } from "../../../src/internal/embedded-hson/hson-tagged-source-admission.js";
+import { admit_hson_tagged_source, hson_tagged_escape_ranges, hson_tagged_literal, parse_hson_event_tagged_source } from "../../../src/internal/embedded-hson/hson-tagged-source-admission.js";
+import { HSON_TAGGED_TEMPLATE_REQUIRED } from "../../../src/api/transform/hson-admission.js";
 import { tokenize_hson, tokenize_authored_document_library, scan_hson_template_segments } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { reject_portable_quid_tokens } from "../../../src/api/transform/parsers/parse-hson-source.js";
 import { parse_authored_document_library, register_document_quad_declaration } from "../../../src/api/livemap/livemap.document.quad.js";
@@ -26,10 +27,13 @@ function diagnostic(error: unknown, literal: Literal, fallback: HostSourceRange,
     return start === undefined || end === undefined ? undefined : { start, end };
   });
   const primary = details?.source && map(details.source.index);
+  const valueEnd = kind === "event" ? details?.related?.find(item => item.role === "value-end")?.source.index : undefined;
+  const end = valueEnd === undefined ? undefined : literal.boundaries[valueEnd];
+  const span = primary && end !== undefined && end >= primary.end ? { start: primary.start, end } : undefined;
   return {
     message: error instanceof Error ? error.message : kind === undefined ? messages.hsonAdmissionFailed : `Hson.${kind} requires ${kind === "schema" ? "Schema-definition data" : `${kind}-mode Hson`}.`,
-    range: primary ?? fallback, source: "Hson", code: details?.code,
-    precision: !primary ? "fallback" : mapSource === undefined && details?.source?.index === literal.raw.length ? "eof" : "point",
+    range: span ?? primary ?? fallback, source: "Hson", code: details?.code,
+    precision: span !== undefined ? "exact" : !primary ? "fallback" : mapSource === undefined && details?.source?.index === literal.raw.length ? "eof" : "point",
     related: (details?.related ?? []).flatMap(item => {
       const range = map(item.source.index);
       return range ? [{ message: messages.hsonSourceRelated(item.role), range }] : [];
@@ -39,15 +43,24 @@ function diagnostic(error: unknown, literal: Literal, fallback: HostSourceRange,
 
 export function diagnose_hson_tag(source: HsonTaggedTemplateSource): readonly DocumentDiagnosticSpec[] {
   // Reuse D5's raw-template newline/UTF-16 correspondence, with zero holes.
-  const literal = interpolation_site({ ...source, substitutionRanges: [], expressionRanges: [] }, source.fileName).literals[0]!;
+  const literal = hson_tagged_literal(source);
+  const escapeRanges = source.authoringKind === "event" ? hson_tagged_escape_ranges(source) : [];
   try {
+    if (source.authoringKind === "event") {
+      parse_hson_event_tagged_source(source, literal.raw, escapeRanges);
+      return [];
+    }
     const raw = admit_hson_tagged_source(source);
     // Known duplicate names will fail governed admission; diagnose them while
     // retaining the distinction from canonical producer proof.
     if (source.authoringKind === "document") parse_authored_document_library(raw);
     return [];
   } catch (error) {
-    return [diagnostic(error, literal, source.bodyRange, source.authoringKind)];
+    const failure = diagnostic(error, literal, source.bodyRange, source.authoringKind);
+    if (failure.code === HSON_TAGGED_TEMPLATE_REQUIRED && escapeRanges.length > 0) {
+      return escapeRanges.map(range => ({ ...failure, range, precision: "exact" }));
+    }
+    return [failure];
   }
 }
 
@@ -63,6 +76,11 @@ const declarationFailures = new Set(["HSON_LIBRARY_QUAD_INVALID", "HSON_LIBRARY_
   "PORTABLE_RUNTIME_QUID_FORBIDDEN", "HSON_PART_DECLARATION_INVALID"]);
 
 export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate, literalQuadsOnly = false): readonly DocumentDiagnosticSpec[] {
+  if (source.authoringKind === "event") return [{
+    message: "Hson.event requires a substitution-free tagged template.",
+    range: source.substitutionRanges[0]!, source: "Hson", code: HSON_TAGGED_TEMPLATE_REQUIRED,
+    precision: "exact", related: [],
+  }];
   const site = interpolation_site(source, source.fileName);
   const literal = site.literals[0]!;
   const preview = scan_hson_template_segments(

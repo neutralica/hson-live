@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,9 @@ const userDataDir = join(testRoot, "user");
 const extensionsDir = join(testRoot, "extensions");
 const workspace = resolve(here, "../../../../../hson-demo2");
 const exec = promisify(execFile);
-await mkdir(userDataDir);
+// Keep the startup Chat editor from receiving native typing commands.
+await mkdir(join(userDataDir, "User"), { recursive: true });
+await writeFile(join(userDataDir, "User", "settings.json"), JSON.stringify({ "chat.disableAIFeatures": true }));
 await mkdir(extensionsDir);
 try {
   await runTests({

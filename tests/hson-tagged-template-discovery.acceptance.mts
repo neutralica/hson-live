@@ -1,6 +1,8 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { join, resolve } from "node:path";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { hson_event_host_fixture } from "./fixtures/hson-event-host.mjs";
 
 import {
   discover_hson_tagged_templates,
@@ -108,7 +110,7 @@ check("unrelated and relative imports never establish official provenance", () =
     'import { Hson as internal } from "../src/hson.js";',
     "wrong`a`; internal`b`;",
   ].join("\n");
-  assert.deepEqual(discover(hostText), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(hostText), { sources: [], interpolated: [], incompleteEvents: [] });
 });
 
 check("namespace, default, type-only, re-export, CommonJS, alias, and wrapper forms are excluded", () => {
@@ -122,7 +124,7 @@ check("namespace, default, type-only, re-export, CommonJS, alias, and wrapper fo
     "const wrapper = (value: unknown) => value;",
     "api`a`; namespace.Hson.canonical`b`; typed`c`; required.Hson.canonical`d`; assigned`e`; wrapper`f`;",
   ].join("\n");
-  assert.deepEqual(discover(hostText), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(hostText), { sources: [], interpolated: [], incompleteEvents: [] });
 });
 
 check("facade, element, parenthesized, non-null, optional, and generic tag forms are excluded", () => {
@@ -135,7 +137,7 @@ check("facade, element, parenthesized, non-null, optional, and generic tag forms
     "Hson?.`optional`;",
     "Hson<string>`generic`;",
   ].join("\n");
-  assert.deepEqual(discover(hostText), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(hostText), { sources: [], interpolated: [], incompleteEvents: [] });
 });
 
 check("empty, one-line, multiline, indented, escaped, and terminal templates preserve exact bodies", () => {
@@ -161,8 +163,8 @@ check("TSX with adjacent JSX is supported while non-TS extensions fail closed", 
     "const view = <main>{Hson.canonical`inside`}</main>;",
   ].join("\n");
   assert.deepEqual(bodySlices(discover(hostText, "/workspace/view.tsx")), ["inside"]);
-  assert.deepEqual(discover(hostText, "/workspace/view.js"), { sources: [], interpolated: [] });
-  assert.deepEqual(discover(hostText, "/workspace/view.mts"), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(hostText, "/workspace/view.js"), { sources: [], interpolated: [], incompleteEvents: [] });
+  assert.deepEqual(discover(hostText, "/workspace/view.mts"), { sources: [], interpolated: [], incompleteEvents: [] });
 });
 
 check("compiler-host filename identity supports editor-shaped TS and TSX paths", () => {
@@ -228,8 +230,8 @@ check("an unrelated recoverable parser error does not suppress a valid later tem
 check("parser damage overlapping imports or tagged templates is omitted", () => {
   const damagedImport = 'import { Hson as } from "hson-live";\nHson.canonical`x`;';
   const damagedTemplate = 'import { Hson } from "hson-live";\nHson.canonical`unterminated';
-  assert.deepEqual(discover(damagedImport), { sources: [], interpolated: [] });
-  assert.deepEqual(discover(damagedTemplate), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(damagedImport), { sources: [], interpolated: [], incompleteEvents: [] });
+  assert.deepEqual(discover(damagedTemplate), { sources: [], interpolated: [], incompleteEvents: [] });
 });
 
 check("substituted discoveries remain segregated from authoritative Hson parsing", () => {
@@ -241,6 +243,36 @@ check("substituted discoveries remain segregated from authoritative Hson parsing
     result.interpolated[0]?.substitutionRanges.map((range) => hostText.slice(range.start, range.end)),
     ["${value}"],
   );
+});
+
+check("official Event tags preserve raw ranges for complete, substituted, and unfinished templates", () => {
+  const body = '\r\n<hson:event on:click local:save text:str="🧪\\u0061" <> >\r\n';
+  const text = [
+    'import { Hson } from "hson-live";',
+    'import { Hson as authored } from "hson-live/hson";',
+    'import { Hson as other } from "other-package";',
+    'function shadow(authored: unknown) { authored.event`ignored`; }',
+    'const object = { event: String.raw }; object.event`ignored`; other.event`ignored`;',
+    'Hson.event`' + body + '`;',
+    'authored.event`<hson:event on:click host:save <> >`;',
+    'authored.event`<hson:event on:click local:save ${value} <> >`;',
+    'authored.event`<hson:event on:',
+  ].join("\r\n");
+  const file = join(hson_event_host_fixture(resolve(import.meta.dirname, "..")), "event-discovery.mts");
+  const result = discover(text, file);
+  assert.deepEqual(result.sources.map(source => source.authoringKind), ["event", "event"]);
+  assert.deepEqual(bodySlices(result), [body, '<hson:event on:click host:save <> >']);
+  const first = result.sources[0]!;
+  assert.equal(text.slice(first.tagRange.start, first.tagRange.end), "Hson.event");
+  assert.equal(text.slice(first.templateRange.start, first.templateRange.end), "`" + body + "`");
+  assert.equal(result.interpolated[0]?.authoringKind, "event");
+  assert.deepEqual(result.interpolated[0]?.substitutionRanges.map(({ start, end }) => text.slice(start, end)), ["${value}"]);
+  assert.equal(result.incompleteEvents[0]?.authoringKind, "event");
+  assert.deepEqual(result.incompleteEvents.map(read_embedded_hson_body), ["<hson:event on:"]);
+
+  const escapedEnd = text + "\\`";
+  const unfinished = discover(escapedEnd, file).incompleteEvents[0]!;
+  assert.equal(escapedEnd.slice(unfinished.bodyRange.start, unfinished.bodyRange.end), "<hson:event on:\\`");
 });
 
 assert.equal(

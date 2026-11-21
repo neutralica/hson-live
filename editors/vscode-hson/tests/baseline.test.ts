@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { readFileSync } from "node:fs";
 import { hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/highlighting.js";
 import { produce_document_diagnostics } from "../src/document-diagnostics.js";
@@ -15,6 +15,7 @@ import {
 } from "../src/authoring-marker.js";
 import { markdown_hson_fence_marker_parts } from "../src/markdown-fence-marker.js";
 import { HSON_APPEARANCE } from "../src/appearance.js";
+import { hson_event_host_fixture } from "../../../tests/fixtures/hson-event-host.mjs";
 
 async function run(): Promise<void> {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
@@ -22,6 +23,19 @@ async function run(): Promise<void> {
   const check = (name: string, body: () => void) => { body(); console.log(`ok ${++checks} - ${name}`); };
   const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}.canonical\`${body}\`;`;
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
+  check("official Event bodies use embedded Hson scopes, including unfinished edits", () => {
+    const file = join(hson_event_host_fixture(resolve("../..")), "events.ts");
+    const prefix = 'import { Hson as E } from "hson-live/hson";\r\nconst source=E.event`';
+    const body = '<hson:event on:click local:save\r\n note:str="🧪" <> >';
+    for (const suffix of ['`;', '', ' ${opaque({ answer: 1 })', ' ${opaque({ answer: 1 })}`;']) {
+      const text = prefix + body + suffix;
+      const highlights = tokens(text, file);
+      assert.ok(highlights.some(token => token.range.start === prefix.length && token.type === "hsonDelimiter"));
+      assert.ok(highlights.some(token => text.slice(token.range.start, token.range.end) === "🧪" && token.type === "hsonString"));
+      assert.ok(highlights.every(token => token.range.start >= prefix.length && token.range.end <= prefix.length + body.length));
+      assert.deepEqual(tokens(text.replace('hson-live/hson', 'unrelated'), file), []);
+    }
+  });
   check("reported example keeps reference paths, braces, quotes and host substitutions distinct", () => {
     const body = readFileSync(resolve(__dirname, '../tests/fixtures/visible-highlighting.hson'), 'utf8');
     const text = 'import { Hson } from "hson-live/hson";\nconst data2 = Hson.data`<key "value">`;\nconst testPart = Hson.document`\n' + body + '`;';

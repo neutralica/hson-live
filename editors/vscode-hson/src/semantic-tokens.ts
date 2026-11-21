@@ -49,7 +49,7 @@ export async function document_semantic_tokens(
     const native = await read_native_tokens(document, text.length, textHash, requestId, request =>
       vscode.commands.executeCommand<unknown>("typescript.tsserverRequest", NATIVE_SEMANTIC_COMMAND,
         { ...request, file: document.uri }, { lowPriority: true }, cancellation), stale);
-    if (native === undefined) return undefined;
+    if (native === undefined || stale() || bindings.get(snapshot.document) !== snapshot) return undefined;
     const builder = new vscode.SemanticTokensBuilder(hsonSemanticLegend);
     let hsonIndex = 0;
     for (const token of native) {

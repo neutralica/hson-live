@@ -84,24 +84,30 @@ function discoverStructuralRegions(
 
   const discovery = discover_hson_tagged_templates(fileName, text);
   const regions: StructuralRegion[] = [];
-  for (const source of discovery.sources) regions.push(Object.freeze({
-    kind: "template",
-    authoredDocument: source.authoringKind === "document",
-    authoringKind: source.authoringKind,
-    bodyRange: source.bodyRange,
-    protectedRanges: Object.freeze([]),
-    baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
-    bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
-  }));
-  for (const source of discovery.interpolated) regions.push(Object.freeze({
-    kind: "template",
-    authoredDocument: source.authoringKind === "document",
-    authoringKind: source.authoringKind,
-    bodyRange: source.bodyRange,
-    protectedRanges: Object.freeze(source.substitutionRanges),
-    baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
-    bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
-  }));
+  for (const source of discovery.sources) {
+    if (source.authoringKind === "event") continue;
+    regions.push(Object.freeze({
+      kind: "template",
+      authoredDocument: source.authoringKind === "document",
+      authoringKind: source.authoringKind,
+      bodyRange: source.bodyRange,
+      protectedRanges: Object.freeze([]),
+      baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
+      bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
+    }));
+  }
+  for (const source of discovery.interpolated) {
+    if (source.authoringKind === "event") continue;
+    regions.push(Object.freeze({
+      kind: "template",
+      authoredDocument: source.authoringKind === "document",
+      authoringKind: source.authoringKind,
+      bodyRange: source.bodyRange,
+      protectedRanges: Object.freeze(source.substitutionRanges),
+      baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
+      bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
+    }));
+  }
   return Object.freeze(regions.sort((left, right) => left.bodyRange.start - right.bodyRange.start));
 }
 

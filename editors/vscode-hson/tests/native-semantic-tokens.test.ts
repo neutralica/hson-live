@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { event_source_text_hash } from "../src/event-source-evidence.js";
+import { PROJECT_DISCOVERY_COMMAND } from "../src/typescript-project-discovery.js";
 import { decode_native_tokens, decode_native_response, read_native_tokens, isRecord, nativeTokenTypes, nativeTokenModifiers,
   NATIVE_SEMANTIC_COMMAND, NATIVE_SEMANTIC_PROTOCOL, NATIVE_REQUEST_LIMIT, type SemanticDocument } from "../src/native-semantic-tokens.js";
 
@@ -130,6 +132,55 @@ async function serverProbe() {
     assert.equal(decode_native_response(document(text), args, await send(NATIVE_SEMANTIC_COMMAND, { ...args, textHash: 'stale' })), undefined);
     assert.equal(decode_native_response(document(text), args, await send(NATIVE_SEMANTIC_COMMAND, { ...args, length: NATIVE_REQUEST_LIMIT + 1 })), undefined);
     console.log('ok - real tsserver plugin returns one content-bound token/legend snapshot with native classes, methods, modifiers and interpolation');
+    const project = join(directory, "events"), eventFile = join(project, "app.ts");
+    // The Schema overlay shifts this import in the real service program.
+    const source = 'export const Label = Hson.schema`<type "data" root "string">`;\n'
+      + 'import { Hson, hsonLiveMap as maps } from "hson-live";\n'
+      + 'const keep: number = "bad";\n'
+      + 'maps.fromLibraries({bits:{parts:{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,'
+      + 'events:{go:Hson.event`<hson:event on:click local:go v:str=^{missing} <> >`}}}}});';
+    await mkdir(project);
+    await writeFile(eventFile, source);
+    await writeFile(join(project, "package.json"), '{"type":"module"}');
+    const record = { fileName: eventFile, textHash: event_source_text_hash(source), importOffsets: [source.indexOf("Hson, hsonLiveMap")] };
+    await writeFile(join(project, "tsconfig.json"), JSON.stringify({ compilerOptions: { module: "NodeNext", strict: true,
+      types: [], paths: { "hson-live": [resolve("../../src/index.ts")] },
+      plugins: [{ name: "hson-schema-typescript-plugin", eventSources: [record] }] }, files: ["app.ts"] }));
+    await send("updateOpen", { openFiles: [{ file: eventFile, fileContent: source }] });
+    const verify = async (expected: number[]) => {
+      const result = await send("semanticDiagnosticsSync", { file: eventFile });
+      assert.ok(isRecord(result) && result.success && Array.isArray(result.body));
+      assert.deepEqual(result.body.map(d => d.code).filter(code => code === 2322 || code === 95002), expected);
+    };
+    await writeFile(join(project, "shim.ts"), 'export const Hson = {event: String.raw};');
+    const alternate = join(project, "tsconfig.disputed.json");
+    await writeFile(alternate, JSON.stringify({ compilerOptions: { module: "NodeNext", types: [],
+      paths: { "hson-live": ["./shim.ts"] } }, files: ["app.ts"] }));
+    const discover = async () => {
+      const reply = await send(PROJECT_DISCOVERY_COMMAND, { roots: [project], openFiles: [[eventFile, source]] });
+      assert.ok(isRecord(reply) && isRecord(reply.body) && typeof reply.body.sessionId === "string");
+      assert.ok(isRecord(reply.body.projects) && Array.isArray(reply.body.projects.sources));
+      const observed = reply.body.projects.sources.find(item => item.fileName === eventFile);
+      assert.ok(observed);
+      return { sessionId: reply.body.sessionId, observed };
+    };
+    const disputed = await discover();
+    assert.equal(disputed.observed.owners.length, 2);
+    assert.equal(disputed.observed.eventEvidence, undefined);
+    await verify([2322]);
+    await rm(alternate);
+    const { sessionId, observed } = await discover();
+    assert.deepEqual(observed.eventEvidence, record);
+    const configure = (eventSources: unknown[], id = sessionId) => child.stdin.write(JSON.stringify({ seq: ++sequence, type: "request",
+      command: "configurePlugin", arguments: { pluginName: "hson-schema-typescript-plugin", configuration: { sessionId: id, eventSources } } }) + "\n");
+    await verify([2322]);
+    configure([]); await verify([2322]);
+    configure([record], "old-session"); await verify([2322]);
+    configure([observed.eventEvidence]);
+    await verify([2322, 95002]);
+    configure([]); await verify([2322]);
+    await send("reloadProjects", {}); await verify([2322]);
+    console.log("ok - real tsserver requires workspace evidence at startup and follows supply and withdrawal");
   } finally {
     child.kill();
     await rm(directory, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 import type { IGrammar } from "vscode-textmate";
 import { hson_highlights, hson_literal_highlights, type HsonHighlight } from "./highlighting.js";
-import { HsonBindingCache, binding_highlights, overlay_binding_highlights, type BindingDocument } from "./binding-intelligence.js";
+import { HsonBindingCache, binding_highlights, overlay_binding_highlights, type BindingDocument, type BindingSnapshot } from "./binding-intelligence.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 
 import { roleCatalog, type Family } from "./appearance-model.js";
@@ -17,17 +17,16 @@ function roleFor(token: HsonHighlight): string | undefined {
   return segmentBindings.find(s=>s.selector===selector)?.id ?? syntaxExamplePath(token.scopes) ?? tokenAppearancePaths[token.type];
 }
 
-/** Reusable, versioned classification. Appearance changes never enter this cache key. */
+/** The shared binding snapshot includes text changes and Event evidence invalidation. */
 export class AppearanceSpanCache {
-  private readonly entries = new Map<string, { document: BindingDocument; family: Family; spans: readonly AppearanceSpan[] }>();
+  private readonly entries = new Map<string, { snapshot: BindingSnapshot; family: Family; spans: readonly AppearanceSpan[] }>();
   constructor(private readonly bindings = new HsonBindingCache()) {}
   clear(): void { this.entries.clear(); }
   forget(uri: string): void { this.entries.delete(uri); }
   get(grammar: IGrammar, document: BindingDocument, family: Family = 'all'): readonly AppearanceSpan[] {
-    const previous = this.entries.get(document.uri);
-    if (previous && previous.family === family && previous.document.version === document.version && previous.document.text === document.text
-      && previous.document.languageId === document.languageId && previous.document.fileName === document.fileName) return previous.spans;
     const snapshot = this.bindings.get(document);
+    const previous = this.entries.get(document.uri);
+    if (previous?.snapshot === snapshot && previous.family === family) return previous.spans;
     const { text, languageId } = document;
     let lexical: readonly HsonHighlight[] = [];
     if (languageId === "hson") lexical = hson_literal_highlights(grammar, text);
@@ -43,7 +42,7 @@ export class AppearanceSpanCache {
       const selected: Family = region?.authoringKind === 'document' ? 'document' : region?.authoringKind === 'data' || region?.authoringKind === 'schema' ? 'data' : family;
       return role ? [{ role, range: token.range, family: selected }] : [];
     });
-    this.entries.set(document.uri, { document, family, spans });
+    this.entries.set(document.uri, { snapshot, family, spans });
     if (this.entries.size > 8) this.entries.delete(this.entries.keys().next().value!);
     return spans;
   }

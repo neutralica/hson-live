@@ -48,7 +48,7 @@ function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined
 }
 
 /** The same lexical classification for standalone documents and mapped islands. */
-export function hson_literal_highlights(grammar: IGrammar, text: string): readonly HsonHighlight[] {
+export function hson_literal_highlights(grammar: IGrammar, text: string, refineCanonicalNames = true): readonly HsonHighlight[] {
   const result: HsonHighlight[] = [];
   let offset = 0, stack = INITIAL;
   for (const { line, width } of physical_lines(text)) {
@@ -61,6 +61,7 @@ export function hson_literal_highlights(grammar: IGrammar, text: string): readon
     stack = tokens.ruleStack;
     offset += width;
   }
+  if (!refineCanonicalNames) return result;
   const names = new Map<number,number>();
   try { tokenize_hson(text, 0, {recordAttribute() {}, recordToken(_token, evidence) {
     if (evidence.roles.name) names.set(evidence.roles.name.start,evidence.roles.name.end);
@@ -78,6 +79,7 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
   const interpolated = tags.interpolated.map(source => ({ source, holes: source.substitutionRanges }));
   const islands = [...tags.sources.map(source => ({ source, holes: noHoles })),
     ...interpolated,
+    ...tags.incompleteEvents.map(source => ({ source, holes: "substitutionRanges" in source ? source.substitutionRanges : noHoles })),
     ...calls.interpolated.map(source => ({ source, holes: source.substitutionRanges }))];
   for (const { source, holes } of islands) {
     // Omit expressions from grammar input and output, retaining UTF-16 offsets.
@@ -92,11 +94,13 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
       // Retain only an inert interpolation boundary so a selector containing a
       // native TS hole cannot look like a static Library/member coordinate.
       // The entire hole, including these sentinels, is omitted from output.
-      body += text.slice(offset, hole.start) + "${" + masked.slice(2, -1) + "}";
+      const closed = text[hole.end - 1] === "}";
+      body += text.slice(offset, hole.start) + "${" + (closed ? masked.slice(2, -1) + "}" : masked.slice(2));
       offset = hole.end;
     }
     body += text.slice(offset, source.bodyRange.end);
-    for (const token of hson_literal_highlights(grammar, body)) {
+    const event = "authoringKind" in source && source.authoringKind === "event";
+    for (const token of hson_literal_highlights(grammar, body, !event)) {
       let start = source.bodyRange.start + token.range.start;
       const end = source.bodyRange.start + token.range.end;
       // A grammar token may span a masked hole; publish only literal pieces.

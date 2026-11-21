@@ -138,12 +138,168 @@ export async function run(): Promise<void> {
   await edit("+1");
   const republishedCount = await waitFor(1);
   if (!probe) assert.equal(republishedCount, 1);
+  const replace = async (text: string) => {
+    const change = new vscode.WorkspaceEdit();
+    change.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
+    assert.equal(await vscode.workspace.applyEdit(change), true);
+  };
+  const event = 'import { Hson as author } from "hson-live/hson";\n'
+    + 'const event = author.event`\n<hson:event on:key:down local:save note:str="🧪\\u0061"\n key:str=^{key.nope} <> >`;';
+  if (!probe && !compositionAvailable) {
+    await replace(event + '\nimport {Hson} from "hson-live"; Hson.canonical`+1`;');
+    for (let n = 0; n < 50 && !diagnostics().some(issue => issue.code === "HSON_NUMBER_LEADING_PLUS"); n++) await pause();
+    assert.deepEqual(diagnostics().map(issue => issue.code), ["HSON_NUMBER_LEADING_PLUS"]);
+    console.log("ok - without a semantic service Event evidence stays empty and canonical diagnostics remain available");
+  }
   if (!probe && compositionAvailable) {
-    const replace = async (text: string) => {
-      const change = new vscode.WorkspaceEdit();
-      change.replace(doc.uri, new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length)), text);
-      assert.equal(await vscode.workspace.applyEdit(change), true);
+    for (const [name, eol] of [["lf", "\n"], ["crlf", "\r\n"], ["cr", "\r"], ["astral", "\r"]] as const) {
+      const uri = vscode.Uri.file(join(workspace, `event-${name}.ts`));
+      assert.ok(!vscode.workspace.textDocuments.some(document => document.uri.toString() === uri.toString()));
+      const bytes = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString();
+      assert.ok(bytes.includes(eol));
+      if (eol === "\r") assert.ok(!bytes.includes("\n"));
+      const duplicate = () => vscode.languages.getDiagnostics(uri).filter(issue =>
+        issue.source === "Hson" && /Duplicate authored event header/.test(issue.message));
+      for (let n = 0; n < 50 && duplicate().length === 0; n++) await pause();
+      const [issue] = duplicate();
+      assert.equal(duplicate().length, 1, name);
+      const coords = ({ start, end }: vscode.Range) => [start.line + 1, start.character + 1, end.line + 1, end.character + 1];
+      assert.deepEqual({
+        primary: coords(issue!.range),
+        related: issue!.relatedInformation?.map(item => [item.location.uri.toString(), coords(item.location.range)]),
+      }, {
+        primary: name === "astral" ? [2, 74, 2, 75] : [3, 2, 3, 3],
+        related: [[uri.toString(), name === "astral" ? [2, 69, 2, 70] : [2, 54, 2, 55]]],
+      }, name);
+    }
+    console.log("ok - closed Event files publish primary and related UTF-16 ranges under LF, CRLF, and lone CR");
+    const config = vscode.Uri.file(join(workspace, "events/tsconfig.events.json"));
+    const consumer = vscode.Uri.file(join(workspace, "events/consumer.ts"));
+    const mirror = vscode.Uri.file(join(workspace, "mirror/consumer.ts"));
+    const producer = vscode.Uri.file(join(workspace, "events/producer.ts"));
+    const shim = vscode.Uri.file(join(workspace, "events/late-shim.ts"));
+    const openConsumer = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "events/open-consumer.ts")));
+    await vscode.window.showTextDocument(openConsumer);
+    const consumerVersion = openConsumer.version;
+    const hsonCodes = (uri: vscode.Uri) => vscode.languages.getDiagnostics(uri).filter(issue => issue.source === "Hson").map(issue => issue.code);
+    const waitUntil = async (valid: () => boolean | Promise<boolean>, label: string) => {
+      for (let n = 0; n < 80; n++) {
+        if (await valid()) return;
+        await pause();
+      }
+      assert.fail(label);
     };
+    const sdkFile = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "sdk/consumer.ts")));
+    await vscode.window.showTextDocument(sdkFile);
+    const sdkCodes = () => vscode.languages.getDiagnostics(sdkFile.uri).map(issue => issue.code);
+    await waitUntil(() => sdkCodes().includes(2322), "active compiler diagnostics");
+    const sdkEventCount = () => sdkCodes().filter(code => code === "HSON_DECLARATIVE_ROOT_REQUIRED").length;
+    await waitUntil(() => sdkEventCount() === (sdkCodes().includes(2339) ? 1 : 2),
+      "conditional exports follow the active SDK");
+    const bridge = vscode.Uri.file(join(workspace, "sdk/bridge.ts"));
+    await vscode.workspace.fs.writeFile(bridge, Buffer.from('export {Hson} from "hson-live";'));
+    await waitUntil(() => sdkCodes().includes(2322) && !sdkCodes().includes(2339) && sdkEventCount() === 2,
+      "genuine named export restores evidence");
+    await vscode.window.showTextDocument(openConsumer);
+    const eventToken = async (): Promise<boolean> => {
+      const values = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", openConsumer.uri);
+      const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", openConsumer.uri);
+      const start = openConsumer.positionAt(openConsumer.getText().indexOf("<hson:event"));
+      let line = 0, column = 0;
+      for (let i = 0; values && i < values.data.length; i += 5) {
+        const delta = values.data[i]!;
+        line += delta; column = delta ? values.data[i + 1]! : column + values.data[i + 1]!;
+        if (line === start.line && column === start.character && legend?.tokenTypes[values.data[i + 3]!]?.startsWith("hson")) return true;
+      }
+      return false;
+    };
+    const expectProvenance = async (official: boolean, label: string) => {
+      await waitUntil(() => {
+        const open = vscode.languages.getDiagnostics(openConsumer.uri);
+        return hsonCodes(consumer).includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official
+          && hsonCodes(mirror).includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official
+          && hsonCodes(openConsumer.uri).includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official
+          && hsonCodes(openConsumer.uri).includes("HSON_NUMBER_LEADING_PLUS")
+          && (!vscode.workspace.isTrusted || open.some(issue => issue.code === 2322)
+            && open.some(issue => issue.code === 95002 && issue.message.includes('local declaration "missing"')) === official);
+      }, label + " diagnostics");
+      if (compositionAvailable) await waitUntil(async () => (await eventToken()) === official, label + " semantic tokens");
+      assert.equal(openConsumer.version, consumerVersion, label + " leaves the consumer source alone");
+    };
+    await expectProvenance(true, "two official projects");
+    assert.ok(!vscode.workspace.textDocuments.some(document => document.uri.toString() === producer.toString()));
+    await waitUntil(() => hsonCodes(producer).includes("HSON_EVENT_REFERENCE_INVALID"), "closed TypeScript producer through a JS re-export");
+    assert.deepEqual(hsonCodes(producer), ["HSON_EVENT_REFERENCE_INVALID"]);
+    const openedProducer = await vscode.workspace.openTextDocument(producer);
+    assert.deepEqual(hsonCodes(producer), ["HSON_EVENT_REFERENCE_INVALID"], "opening must keep one syntax owner");
+    const badReference = openedProducer.getText().indexOf("key.nope");
+    const correction = new vscode.WorkspaceEdit();
+    correction.replace(producer, new vscode.Range(openedProducer.positionAt(badReference), openedProducer.positionAt(badReference + 8)), "key.code");
+    assert(await vscode.workspace.applyEdit(correction));
+    await waitUntil(() => hsonCodes(producer).length === 0, "unsaved producer correction");
+    console.log("ok - a closed imported TypeScript Event has one syntax owner, and an unsaved producer edit clears it");
+
+    const original = await vscode.workspace.fs.readFile(config);
+    try {
+      await vscode.workspace.fs.writeFile(config, Buffer.from(JSON.stringify({
+        ...JSON.parse(Buffer.from(original).toString()),
+        compilerOptions: { allowJs: true, preserveSymlinks: true, paths: { "hson-live/hson": ["./late-shim.ts"] } },
+      })));
+      await expectProvenance(true, "missing remap falls back to package");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from("export const Hson = { event: String.raw };"));
+      await expectProvenance(false, "created shim disputes Event provenance");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from('export { Hson } from "hson-live";'));
+      await expectProvenance(true, "edited target re-exports the official value");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from('export { Hson } from "hson-live"; export = {};'));
+      await expectProvenance(false, "a conflicting export assignment invalidates the named route");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from('export { Hson } from "hson-live"; const unrelated: number = "bad";'));
+      await expectProvenance(true, "an unrelated type error permits the valid route");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from('export type { Hson } from "hson-live";'));
+      await expectProvenance(false, "a type-only alias withdraws Event evidence");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from('export { Hson } from "hson-live"; export { missing };'));
+      await expectProvenance(true, "the restored value supplies diagnostics and highlighting alongside a missing sibling export");
+      await vscode.workspace.fs.writeFile(shim, Buffer.from('export * as Hson from "hson-live";'));
+      await expectProvenance(false, "a package namespace disputes provenance across both URIs");
+      await vscode.workspace.fs.writeFile(config, original);
+      await expectProvenance(true, "config edit restores agreement");
+      const alternate = JSON.parse(Buffer.from(original).toString());
+      await vscode.workspace.fs.writeFile(config, Buffer.from(JSON.stringify({ ...alternate,
+        compilerOptions: { ...alternate.compilerOptions, types: ["overrides"], typeRoots: ["./type-packages"] },
+      })));
+      await expectProvenance(false, "the configured ambient package changes the binding for both URIs");
+      await vscode.workspace.fs.writeFile(config, original);
+      await expectProvenance(true, "removing the ambient package restores both URIs");
+      await vscode.workspace.fs.writeFile(config, Buffer.from(JSON.stringify({
+        ...JSON.parse(Buffer.from(original).toString()),
+        compilerOptions: { allowJs: true, preserveSymlinks: true, paths: { "hson-live/hson": ["./late-shim.ts"] } },
+      })));
+      await expectProvenance(false, "config edit restores dispute");
+      await vscode.workspace.fs.delete(shim);
+      await expectProvenance(true, "deleted shim restores the official fallback");
+    } finally { await vscode.workspace.fs.writeFile(config, original); }
+    console.log("ok - resolution changes update open and closed Event diagnostics, contextual facts, and composed tokens");
+
+    await vscode.window.showTextDocument(doc);
+    await replace(event);
+    for (let n = 0; n < 50 && diagnostics()[0]?.code !== "HSON_EVENT_REFERENCE_INVALID"; n++) await pause();
+    assert.deepEqual(diagnostics().map(issue => [issue.code, doc.getText(issue.range)]), [
+      ["HSON_EVENT_REFERENCE_INVALID", "^{key.nope}"],
+    ]);
+    await replace(event.replace('key.nope', 'key.code'));
+    assert.equal(await waitFor(0), 0, "unsaved Event correction clears the diagnostic");
+    console.log("ok - real VS Code diagnoses and clears an unattached Event template at the authored range");
+    await replace(event.replace('\\u0061', '\\xZZ \\u0QQQ').replace('key.nope', 'key.code'));
+    for (let n = 0; n < 50 && diagnostics().length !== 2; n++) await pause();
+    assert.deepEqual(diagnostics().map(issue => [issue.code, doc.getText(issue.range)]), [
+      ["HSON_TAGGED_TEMPLATE_REQUIRED", "Z"], ["HSON_TAGGED_TEMPLATE_REQUIRED", "Q"],
+    ]);
+    await replace(event.replace('\\u0061', '\\x').replace('key.nope', 'key.code'));
+    await waitUntil(() => diagnostics().length === 1 && doc.getText(diagnostics()[0]!.range) === '\\x', "short escape range");
+    await replace(event.replace('key.nope', 'key.code'));
+    assert.equal(await waitFor(0), 0, "unsaved escape correction clears both diagnostics");
+    console.log("ok - VS Code publishes malformed host escape ranges and clears them after an unsaved correction");
+  }
+  if (!probe && compositionAvailable) {
     const hsonTokens = async () => {
       const values = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);
       const types = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", doc.uri);
@@ -158,6 +314,10 @@ export async function run(): Promise<void> {
       }
       return result;
     };
+    const eventStart = doc.getText().indexOf("<hson:event");
+    for (let n = 0; n < 50 && !(await hsonTokens()).some(token => token.start === eventStart && token.text === "<"); n++) await pause();
+    assert.ok((await hsonTokens()).some(token => token.start === eventStart && token.text === "<"),
+      "official Event templates receive grammar-backed Hson tokens");
     for (const [imported, tag, pkg] of [["Hson", "Hson", "hson-live/hson"], ["Hson", "Hson", "hson-live"], ["Hson as author", "author", "hson-live/hson"]]) {
       for (const body of ['<thing 1>', '<thing !!!', '<thing ${dangerous()} other 1>']) {
         await replace(`import { ${imported} } from "${pkg}"; const value=${tag}.canonical\`${body}\`;`);

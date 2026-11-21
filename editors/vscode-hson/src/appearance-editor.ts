@@ -68,6 +68,7 @@ export class HsonAppearanceEditor implements vscode.Disposable {
       void this.present();
     }));
   }
+  refreshDecorations(): Promise<void> { return this.renderer.refresh(); }
   private configuration() {
     return vscode.workspace.getConfiguration('hson.appearance');
   }

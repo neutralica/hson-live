@@ -34,7 +34,7 @@ await build({
   outdir: ".test-dist",
   outExtension: { ".js": ".cjs" },
   bundle: true,
-  external: ["vscode"],
+  external: ["vscode", "typescript"],
   format: "cjs",
   platform: "node",
   target: "node20",

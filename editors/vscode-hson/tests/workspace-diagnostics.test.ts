@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { linkSync, mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import ts from "typescript";
+import { discover_hson_tagged_templates, hson_source_alias_target, hson_source_syntactic_eligibility } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 
 import { DIAGNOSTIC_SOURCE, produce_document_diagnostics, type DocumentDiagnosticSpec } from "../src/document-diagnostics.js";
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "../src/diagnostics.js";
-import { discover_typescript_projects } from "../src/typescript-project-discovery.js";
+import { discover_typescript_projects, TypeScriptProjectScanner } from "../src/typescript-project-discovery.js";
+import { event_source_imports } from "../src/event-source-evidence.js";
 import {
   start_workspace_diagnostics,
   type WorkspaceDiagnosticHost,
@@ -166,6 +169,267 @@ async function main(): Promise<void> {
     assert.deepEqual(discovery.errors, []);
     assert.deepEqual(discovery.sources.map(item => item.fileName).sort(), [main, esm, cjs, referenced, shared].sort());
     assert.equal(discovery.sources.find(item => item.fileName === shared)?.owners.length, 2);
+  });
+
+  await check("Event proof covers imported application files and follows resolution and exact snapshots", () => {
+    const root = mkdtempSync(join(tmpdir(), "hson-project-event-proof-"));
+    try {
+      fixture(root, "package.json", '{"type":"module"}');
+      fixture(root, "node_modules/hson-live/package.json",
+        '{"name":"hson-live","type":"module","exports":{"./hson":"./dist/hson-authoring.d.ts"}}');
+      fixture(root, "node_modules/hson-live/dist/hson-authoring.d.ts",
+        "export declare const Hson: { event: typeof String.raw };");
+      const config = { compilerOptions: { module: "NodeNext", allowJs: true }, files: ["app.ts"] };
+      const first = fixture(root, "tsconfig.json", JSON.stringify(config));
+      const remap = { ...config, compilerOptions: { ...config.compilerOptions, paths: { "hson-live/hson": ["./shim.ts"] } } };
+      const second = fixture(root, "tsconfig.alternate.json", JSON.stringify(remap));
+      fixture(root, "app.ts", 'import "./bridge.js";');
+      fixture(root, "bridge.js", 'export { go } from "./defs/event.js";');
+      const text = 'import { Hson as E } from "hson-live/hson"; export const go = E.event`<div/>`;';
+      const producer = fixture(root, "defs/event.ts", text);
+      const scanner = new TypeScriptProjectScanner();
+      const inspect = (snapshots = new Map<string, string>(), changedFiles?: readonly string[]) => {
+        const scan = scanner.scan([root], snapshots, changedFiles);
+        let step = scan.next();
+        while (!step.done) step = scan.next();
+        return step.value.sources.find(item => item.fileName === producer)!;
+      };
+      const initial = inspect();
+      assert.deepEqual(initial.owners, [second, first]);
+      const proof = initial.eventEvidence!;
+      assert.deepEqual(proof.importOffsets, [text.indexOf("E }")]);
+      const imports = event_source_imports([proof], true);
+      assert.equal(imports(producer, text).size, 1);
+      assert.equal(imports(producer, " " + text).size, 0);
+      const shim = fixture(root, "shim.ts", "export const Hson = {event: String.raw};");
+      assert.deepEqual(inspect().owners, initial.owners);
+      assert.equal(inspect().eventEvidence, undefined);
+      assert.equal(inspect(new Map([[shim, 'export { Hson } from "hson-live/hson";']]), [shim]).eventEvidence, undefined, "a remap cycle cannot prove an export");
+      rmSync(first);
+      assert.deepEqual(inspect().owners, [second]);
+      assert.equal(inspect().eventEvidence, undefined, "sole remapped project");
+      rmSync(shim);
+      assert.deepEqual(inspect().eventEvidence, proof, "the unchanged importer regains proof");
+      assert.deepEqual(inspect(new Map([[producer, " " + text]]), [producer]).eventEvidence?.importOffsets, [text.indexOf("E }") + 1]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  await check("Event admission follows the configured exported value, ambient roots and type packages", () => {
+    const root = mkdtempSync(join(tmpdir(), "hson-exported-event-"));
+    try {
+      fixture(root, "package.json", '{"type":"module"}');
+      fixture(root, "pkg/package.json", JSON.stringify({ name: "hson-live", type: "module",
+        exports: { ".": "./dist/index.d.ts", "./hson": "./dist/hson-authoring.d.ts" } }));
+      fixture(root, "pkg/dist/index.d.ts", 'export { Hson, other } from "./hson-authoring.js";');
+      fixture(root, "pkg/dist/hson-authoring.d.ts", 'declare const Hson: { event: typeof String.raw }, other: typeof Hson; export { Hson, other };');
+      mkdirSync(join(root, "node_modules"));
+      symlinkSync(join(root, "pkg"), join(root, "node_modules/hson-live"), "junction");
+      const text = 'import {Hson as A} from "hson-live/hson"; import {Hson} from "hson-live";\n'
+        + 'A.event`<div/>`; Hson.event`<div/>`; function shadow(A: typeof Hson) { A.event`<div/>`; }';
+      const file = fixture(root, "app.ts", text);
+      const ambient = 'declare module "hson-live/hson" { export const Hson: {event: typeof String.raw}; }';
+      fixture(root, "node_modules/@types/overrides/index.d.ts", ambient);
+      fixture(root, "ambient.d.ts", ambient);
+      const config = (options = {}, files = ["app.ts"]) => fixture(root, "tsconfig.json", JSON.stringify({
+        compilerOptions: { strict: true, module: "NodeNext", types: [], ...options }, files,
+      }));
+      const checkBinding = (expected: boolean, expectedNative: number[] = [], rootEvent = true, sourceText = text) => {
+        writeFileSync(file, sourceText);
+        const { fileNames, options } = ts.getParsedCommandLineOfConfigFile(join(root, "tsconfig.json"), {},
+          { ...ts.sys, onUnRecoverableConfigFileDiagnostic: d => assert.fail(ts.flattenDiagnosticMessageText(d.messageText, "\n")) })!;
+        const program = ts.createProgram(fileNames, options);
+        assert.deepEqual(program.getSemanticDiagnostics(program.getSourceFile(file)).map(d => d.code), expectedNative);
+        const sites = [...expected ? ["A.event"] : [], ...rootEvent ? ["Hson.event"] : []];
+        const scan = discover_typescript_projects([root]).sources.find(source => source.fileName === file)!;
+        const imports = new Set(scan.eventEvidence?.importOffsets);
+        const aliasOffset = sourceText.indexOf("A}"), rootOffset = sourceText.indexOf("Hson}");
+        assert.deepEqual([...imports], [...expected ? [aliasOffset] : [], ...rootEvent ? [rootOffset] : []]);
+        for (const tags of [discover_hson_tagged_templates(file, sourceText, program), discover_hson_tagged_templates(file, sourceText),
+          discover_hson_tagged_templates(file, sourceText, program, undefined, ts, new Set([aliasOffset, rootOffset])),
+          discover_hson_tagged_templates(file, sourceText, undefined, undefined, ts, imports)]) {
+          assert.deepEqual(tags.sources.map(site => sourceText.slice(site.tagRange.start, site.tagRange.end)), sites);
+        }
+        const diagnostics = produce_document_diagnostics({ fileName: file, text: sourceText, languageId: "typescript", eventImports: imports });
+        assert.deepEqual(diagnostics.map(issue => issue.code), sites.map(() => "HSON_DECLARATIVE_ROOT_REQUIRED"));
+        return program;
+      };
+      config({ preserveSymlinks: true }); checkBinding(true);
+      for (const erased of ["type A = number;", "interface A { marker: string }"]) {
+        checkBinding(true, [], true, erased + "\n" + text);
+        checkBinding(true, [], true, text + "\n" + erased);
+      }
+      checkBinding(false, [1361], true, text.replace("import {Hson as A}", "import type {Hson as A}"));
+      checkBinding(false, [2339], true, text.replace("{Hson as A}", "* as A"));
+      checkBinding(true, [1454], true, text.replace('"hson-live/hson";', '"hson-live/hson" with { "resolution-mode": "import" };'));
+      checkBinding(true, [2322], true, text + '\nconst unrelated: number = "bad";');
+      checkBinding(true, [], true, text + '\n// @ts-expect-error\nconst unrelated: number = "bad";');
+      config({ noCheck: true }); checkBinding(true);
+      config({ paths: { "hson-live/hson": ["./bridge.cts"] } });
+      fixture(root, "bridge.cts", 'export {Hson} from "hson-live"; export = {};'); checkBinding(false);
+      fixture(root, "bridge.cts", 'export {Hson} from "hson-live"; export = { Hson: { event: String.raw } };'); checkBinding(false);
+      fixture(root, "bridge.cts", 'export {Hson} from "hson-live";'); checkBinding(true);
+      config({ module: "Node16", paths: { "hson-live/hson": ["./bridge.cts"] } });
+      fixture(root, "bridge.cts", '// @ts-ignore\nexport {Hson} from "hson-live";'); checkBinding(true);
+      fixture(root, "bridge.cts", '// @ts-nocheck\nexport {Hson} from "hson-live";'); checkBinding(true);
+      const paths = { "hson-live/hson": ["./bridge.mts"] };
+      config({ paths, verbatimModuleSyntax: true });
+      fixture(root, "sibling.mts", 'export const present = 1;');
+      const missingImport = 'import { present, missing } from "./sibling.mjs"; export { present };';
+      for (const [sibling, native] of [
+        ['export { missing };', [2304]],
+        ['export { missing } from "./sibling.mjs";', [2305]],
+        ['import { missing } from "./sibling.mjs"; export { missing };', [2305]],
+        ['import { present } from "./sibling.mjs" with { "resolution-mode": "import" }; export { present };', [1454]],
+        [missingImport, [2305]],
+        ['export { present } from "./sibling.mjs" with { type: "json" };', []],
+        ['// @ts-ignore\nexport { missing };', []],
+        ['export const unrelated: number = "bad";', [2322]],
+        ['export type { missing };', [2304]],
+        ['export { present, type missing } from "./sibling.mjs";', [2305]],
+        ['export { type missing } from "./absent.mjs";', [2307]],
+        ['import { present } from "./sibling.mjs"; export { present };', []],
+        ['export { present } from "./sibling.mjs";', []],
+      ] as const) {
+        const bridge = fixture(root, "bridge.mts", 'export { Hson } from "hson-live";\n' + sibling);
+        const program = checkBinding(true);
+        const source = program.getSourceFile(bridge);
+        assert.ok(source, sibling);
+        assert.deepEqual(program.getSemanticDiagnostics(source).map(d => d.code), native, sibling);
+      }
+      config({ paths });
+      fixture(root, "bridge.mts", 'export { Hson } from "hson-live";\n' + missingImport); checkBinding(true);
+      fixture(root, "bridge.mts", 'export { Hson, missing } from "hson-live";'); checkBinding(true);
+      fixture(root, "bridge.mts", 'import { Hson, missing } from "hson-live"; export { Hson };'); checkBinding(true);
+      fixture(root, "bridge.mts", 'import { Hson as H, other as H } from "hson-live"; export { H as Hson };'); checkBinding(false);
+      fixture(root, "bridge.mts", 'export { Hson } from "hson-live"; export namespace Hson { export const x = 0; }');
+      checkBinding(false, [2339]);
+      fixture(root, "bridge.mts", 'export { missing as Hson } from "./sibling.mjs";'); checkBinding(false);
+      for (const erased of ["type Ink = number;", "interface Ink {}"]) {
+        fixture(root, "bridge.mts", erased + ' import { Hson as Ink } from "hson-live"; export { Ink as Hson };');
+        checkBinding(true);
+      }
+      const forbidden = 'import { Hson as Ink } from "hson-live"; declare global { export { Ink as GlobalInk }; }';
+      fixture(root, "bridge.mts", forbidden + ' export { GlobalInk as Hson };');
+      checkBinding(false);
+      fixture(root, "bridge.mts", 'export { GlobalInk as Hson };');
+      fixture(root, "official.mts", forbidden);
+      fixture(root, "lookalike.mts", 'export const Ink = { event: String.raw }; declare global { export { Ink as GlobalInk }; }');
+      for (const order of [["official.mts", "lookalike.mts"], ["lookalike.mts", "official.mts"]]) {
+        config({ paths }, [...order, "app.ts"]);
+        const program = checkBinding(false);
+        for (const name of order) assert.deepEqual(program.getSemanticDiagnostics(program.getSourceFile(join(root, name)))
+          .map(issue => issue.code).sort(), [2300, 2666]);
+      }
+      config({ paths });
+      fixture(root, "bridge.mts", '// @ts-ignore\nimport defer { Hson } from "hson-live"; export { Hson };'); checkBinding(false);
+      fixture(root, "bridge.mts", 'export type { Hson } from "hson-live";'); checkBinding(false, [1362]);
+      config({ baseUrl: ".", paths: { "hson-live/hson": ["shim.ts"] } });
+      fixture(root, "shim.ts", 'export {Hson} from "hson-live"; export default 1; export default 2;'); checkBinding(true);
+      fixture(root, "shim.ts", 'export {Hson} from "hson-live";'); checkBinding(true);
+      fixture(root, "bridge.ts", 'export {Hson as Other} from "hson-live";');
+      fixture(root, "shim.ts", 'export {Other as Hson} from "./bridge.js";'); checkBinding(true);
+      fixture(root, "shim.ts", 'import type * as NS from "hson-live"; export import Hson = NS.Hson;');
+      checkBinding(false, [1361]);
+      fixture(root, "local.ts", 'export const Hson = {event: String.raw};');
+      for (const modules of [["hson-live", "./local.js"], ["./local.js", "hson-live"]]) {
+        fixture(root, "shim.ts", modules.map(name => `export { Hson } from "${name}";`).join("\n"));
+        checkBinding(false);
+        fixture(root, "shim.ts", modules.map(name => `export * from "${name}";`).join("\n"));
+        checkBinding(false);
+      }
+      fixture(root, "shim.ts", 'export * as Hson from "hson-live";'); checkBinding(false, [2339]);
+      fixture(root, "shim.ts", 'export {other as Hson} from "hson-live";'); checkBinding(false);
+      fixture(root, "shim.ts", 'export const Hson = {event: String.raw};'); checkBinding(false);
+      const augmentation = 'import { other } from "hson-live"; declare module "./shim.js" { export { other as ';
+      fixture(root, "shim.ts", 'export {Hson} from "hson-live";');
+      config({ paths: { "hson-live/hson": ["./shim.ts"] }, skipLibCheck: true }, ["app.ts", "augment.d.ts"]);
+      fixture(root, "augment.d.ts", augmentation + 'Hson }; }'); checkBinding(false);
+      fixture(root, "augment.d.ts", augmentation + 'sibling }; }'); checkBinding(true);
+      for (const erased of ["interface Hson {}", "type Hson = number;"]) {
+        fixture(root, "augment.d.ts", 'export {}; declare module "./shim.js" { ' + erased + ' }');
+        for (const files of [["app.ts", "augment.d.ts"], ["augment.d.ts", "app.ts"]]) {
+          config({ paths: { "hson-live/hson": ["./shim.ts"] } }, files);
+          const program = checkBinding(true);
+          const source = program.getSourceFile(file)!;
+          const checker = program.getTypeChecker();
+          const selected = (name: string) => {
+            const symbol = checker.getSymbolsInScope(source, ts.SymbolFlags.Alias).find(symbol => symbol.name === name)!;
+            const route = hson_source_alias_target(symbol, checker, hson_source_syntactic_eligibility(ts, program), ts,
+              { valueOnly: true, selection: "named" });
+            assert.ok(route?.eligible);
+            return route.target.valueDeclaration;
+          };
+          assert.deepEqual(program.getSemanticDiagnostics(program.getSourceFile(join(root, "augment.d.ts"))), []);
+          assert.ok(selected("Hson"));
+          assert.equal(selected("A"), selected("Hson"));
+        }
+        // The merged checker symbol can also hide the invalid route to its value.
+        fixture(root, "shim.ts", forbidden + ' export { GlobalInk as Hson };');
+        checkBinding(false);
+        fixture(root, "shim.ts", 'export { Hson } from "hson-live";');
+      }
+      fixture(root, "augment.d.ts", 'export {}; declare module "./shim.js" { const Hson: { event: typeof String.raw }; }');
+      checkBinding(false);
+      fixture(root, "shim.ts", "export {};");
+      fixture(root, "augment.d.ts", 'import { Hson } from "hson-live"; declare module "./shim.js" { export { Hson }; }');
+      checkBinding(false);
+      config({ types: ["overrides"] }); checkBinding(false);
+      config({ types: ["missing-override"] }); checkBinding(false, [], false);
+      config({}, ["app.ts", "ambient.d.ts"]); checkBinding(false);
+      config(); checkBinding(true);
+      fixture(root, "pkg/dist/index.d.ts", "export declare const Hson: { document: typeof String.raw };");
+      checkBinding(true, [2339, 2339], false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  await check("physical aliases share every project vote and publish evidence for each URI", () => {
+    const root = mkdtempSync(join(tmpdir(), "hson-physical-event-"));
+    try {
+      const text = '/* 🧪 */ import { Hson } from "hson-live/hson"; Hson.event`<div/>`;';
+      const source = fixture(root, "alias-src/consumer.ts", text), copy = fixture(root, "copy.ts", text);
+      symlinkSync(join(root, "alias-src"), join(root, "mirror"), "junction");
+      const mirror = join(root, "mirror/consumer.ts");
+      fixture(root, "package.json", '{"type":"module"}');
+      fixture(root, "node_modules/hson-live/package.json",
+        '{"name":"hson-live","exports":{"./hson":"./dist/hson-authoring.d.ts"}}');
+      fixture(root, "node_modules/hson-live/dist/hson-authoring.d.ts", "export declare const Hson: { event: typeof String.raw };");
+      fixture(root, "shim.ts", "export const Hson = {event: String.raw};");
+      const options = { module: "NodeNext", strict: true, types: [] };
+      const first = fixture(root, "tsconfig.json", JSON.stringify({ compilerOptions: options,
+        files: ["alias-src/consumer.ts", "copy.ts"], references: [{path: "./config/mirror.json"}] }));
+      const configureMirror = (disputed: boolean, output = false) => fixture(root, "config/mirror.json", JSON.stringify({
+        compilerOptions: { ...options, composite: true, preserveSymlinks: true,
+          ...(output ? { noEmit: true, outDir: "../mirror" } : {}),
+          ...(disputed ? { paths: { "hson-live/hson": ["../shim.ts"] } } : {}) }, files: ["../mirror/consumer.ts"],
+      }));
+      const second = configureMirror(false);
+      const scanner = new TypeScriptProjectScanner();
+      const verify = (official: boolean, buffers = new Map<string, string>(), changed?: string[], publishMirror = true) => {
+        const scan = scanner.scan([root], buffers, changed);
+        let step = scan.next();
+        while (!step.done) step = scan.next();
+        const { sources } = step.value;
+        assert.deepEqual(sources.map(s => s.fileName).sort(), [source, copy, ...publishMirror ? [mirror] : []].sort());
+        const proof = event_source_imports(sources.flatMap(s => s.eventEvidence ? [s.eventEvidence] : []), ts.sys.useCaseSensitiveFileNames);
+        for (const entry of sources) {
+          const snapshot = buffers.get(entry.fileName) ?? text;
+          const admitted = entry.fileName === copy || official;
+          assert.deepEqual(entry.owners, entry.fileName === copy ? [first] : [first, second].sort());
+          assert.equal(entry.eventEvidence?.fileName, admitted ? entry.fileName : undefined);
+          assert.deepEqual(produce_document_diagnostics({ ...entry, text: snapshot, eventImports: proof(entry.fileName, snapshot) })
+            .map(d => d.code), admitted ? ["HSON_DECLARATIVE_ROOT_REQUIRED"] : []);
+        }
+      };
+      verify(true);
+      configureMirror(true); verify(false);
+      configureMirror(false); verify(true);
+      verify(false, new Map([[mirror, " " + text]]), [mirror]);
+      verify(true, new Map(), [source]);
+      configureMirror(true, true); verify(false, new Map(), undefined, false);
+      rmSync(join(root, "mirror")); mkdirSync(join(root, "mirror")); linkSync(source, mirror);
+      configureMirror(false); verify(true);
+      configureMirror(true); verify(false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   await check("startup diagnoses unopened TS and standalone Hson without Schema systems", async () => {

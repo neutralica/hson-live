@@ -13,8 +13,10 @@ import {
   type DiagnosticDocument,
   type DiagnosticPublisher,
 } from "./diagnostics.js";
-import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
-import { discover_typescript_projects } from "./typescript-project-discovery.js";
+import { create_host_source_locator, type HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import { PROJECT_DISCOVERY_COMMAND, TypeScriptProjectScanner, type ProjectDiscoveryRequest, type ProjectDiscoveryResponse, type TypeScriptProjectDiscovery } from "./typescript-project-discovery.js";
+import ts from "typescript";
+import { event_source_imports } from "./event-source-evidence.js";
 import {
   start_workspace_diagnostics,
   type WorkspaceDiagnosticHost,
@@ -67,25 +69,6 @@ function diagnosticDocument(document: vscode.TextDocument, authoringMode?: Stand
   });
 }
 
-function positionAt(text: string, offset: number): vscode.Position {
-  const target = Math.max(0, Math.min(offset, text.length));
-  let line = 0;
-  let lineStart = 0;
-  for (let index = 0; index < target; index += 1) {
-    if (text.charCodeAt(index) !== 10) continue;
-    line += 1;
-    lineStart = index + 1;
-  }
-  return new vscode.Position(line, target - lineStart);
-}
-
-function toRange(text: string, spec: DocumentDiagnosticSpec): vscode.Range {
-  return new vscode.Range(
-    positionAt(text, spec.range.start),
-    positionAt(text, spec.range.end),
-  );
-}
-
 export function activate(context: vscode.ExtensionContext): void {
   const scratchpads = appearanceScratchpads = new AppearanceScratchpads(context.workspaceState);
   context.subscriptions.push(scratchpads);
@@ -96,7 +79,8 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   const adaptDocument = (document: vscode.TextDocument) => diagnosticDocument(document,
     document.languageId === 'hson' ? authoringMode(document) : undefined);
-  const bindingCache = new HsonBindingCache();
+  let eventImports = event_source_imports([], ts.sys.useCaseSensitiveFileNames);
+  const bindingCache = new HsonBindingCache((file, text) => eventImports(file, text));
   context.subscriptions.push({ dispose: () => bindingCache.clear() },
     vscode.workspace.onDidCloseTextDocument(document => bindingCache.forget(document.uri.toString())),
     vscode.languages.registerDefinitionProvider(["hson", "markdown", "typescript", "typescriptreact"], {
@@ -430,68 +414,160 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  const sourceWatcher = vscode.workspace.createFileSystemWatcher("**/*.{ts,tsx,mts,cts,hson}");
+  const sourceWatcher = vscode.workspace.createFileSystemWatcher("**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,hson}");
   const projectWatcher = vscode.workspace.createFileSystemWatcher("**/*.json");
   context.subscriptions.push(sourceWatcher, projectWatcher);
   const sourceListeners = new Set<(changes: readonly WorkspaceSourceChange[]) => void>();
   const projectListeners = new Set<() => void>();
   let projectConfigurations = new Set<string>();
+  let projectErrors = new Set<string>();
+  const semanticChanges = new vscode.EventEmitter<void>();
+  const moduleSource = (uri: vscode.Uri): boolean => uri.scheme === "file" && /\.(?:[cm]?[jt]s|[jt]sx)$/i.test(uri.path);
   const fireSource = (uri: vscode.Uri, kind: WorkspaceSourceChange["kind"]): void => {
-    const change = Object.freeze({ uri: uri.toString(), kind });
+    const change = Object.freeze({ uri: uri.toString(), kind, affectsTypeScriptProjects: moduleSource(uri) });
     for (const listener of sourceListeners) listener([change]);
   };
+  const fireProject = () => { for (const listener of projectListeners) listener(); };
+  const projectJson = (uri: vscode.Uri): boolean => projectConfigurations.has(uri.toString()) || /\/package\.json$/i.test(uri.path);
   context.subscriptions.push(
+    semanticChanges,
     sourceWatcher.onDidCreate(uri => fireSource(uri, "create")),
     sourceWatcher.onDidChange(uri => fireSource(uri, "change")),
     sourceWatcher.onDidDelete(uri => fireSource(uri, "delete")),
-    projectWatcher.onDidCreate(uri => { if (/^(?:tsconfig.*|jsconfig)\.json$/i.test(uri.path.slice(uri.path.lastIndexOf("/") + 1))) for (const listener of projectListeners) listener(); }),
-    projectWatcher.onDidChange(uri => { if (projectConfigurations.has(uri.toString())) for (const listener of projectListeners) listener(); }),
-    projectWatcher.onDidDelete(uri => { if (projectConfigurations.has(uri.toString())) for (const listener of projectListeners) listener(); }),
+    projectWatcher.onDidCreate(uri => { if (projectJson(uri) || /\/(?:tsconfig.*|jsconfig)\.json$/i.test(uri.path)) fireProject(); }),
+    projectWatcher.onDidChange(uri => { if (projectJson(uri)) fireProject(); }),
+    projectWatcher.onDidDelete(uri => { if (projectJson(uri)) fireProject(); }),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      if (event.contentChanges.length > 0 && moduleSource(event.document.uri)) fireSource(event.document.uri, "change");
+    }),
     vscode.workspace.onDidSaveTextDocument(document => fireSource(document.uri, "change")),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => { for (const listener of projectListeners) listener(); }),
+    vscode.workspace.onDidChangeWorkspaceFolders(fireProject),
   );
   const register = <Listener>(listeners: Set<Listener>, listener: Listener): vscode.Disposable => {
     listeners.add(listener);
     return new vscode.Disposable(() => listeners.delete(listener));
   };
-  const discoverSources = async (): Promise<readonly WorkspaceDiagnosticSource[]> => {
+  // Inventory remains available when VS Code has no semantic TypeScript service.
+  const projectScanner = new TypeScriptProjectScanner(ts, false);
+  let discoverySession: string | undefined, projectRevision: string | undefined;
+  const requestProjects = async (request: ProjectDiscoveryRequest | { revisionOnly: true }) => {
+    try {
+      const reply = await vscode.commands.executeCommand<{ success?: boolean; body?: ProjectDiscoveryResponse }>(
+        "typescript.tsserverRequest", PROJECT_DISCOVERY_COMMAND, request);
+      if (reply?.success && typeof reply.body?.sessionId === "string") return reply.body;
+    } catch { /* A stopped or unavailable service cannot issue import evidence. */ }
+    return undefined;
+  };
+  // SDK selection/restart can change bindings without changing any workspace file.
+  // Native diagnostic updates let us check the service generation without rescanning the filesystem.
+  let checkingRevision = false;
+  context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(async event => {
+    if (!vscode.workspace.isTrusted || checkingRevision || !event.uris.some(moduleSource)) return;
+    checkingRevision = true;
+    try {
+      const current = await requestProjects({ revisionOnly: true });
+      if (current?.sessionId !== discoverySession) fireProject();
+      else if (current?.revision !== projectRevision) {
+        const uri = event.uris.find(moduleSource);
+        if (uri) fireSource(uri, "change");
+      }
+    } finally { checkingRevision = false; }
+  }));
+  const discoverSources: WorkspaceDiagnosticHost["discoverSources"] = async (changedUris, isCurrent) => {
     const folders = vscode.workspace.workspaceFolders ?? [];
     const fileFolders = folders.filter(folder => folder.uri.scheme === "file");
     await new Promise<void>(resolveYield => setTimeout(resolveYield, 0));
-    const projects = discover_typescript_projects(fileFolders.map(folder => folder.uri.fsPath));
-    projectConfigurations = new Set(projects.configurations.map(fileName => vscode.Uri.file(fileName).toString()));
-    for (const error of projects.errors) diagnosticsOutput.appendLine(error);
     const standalone = (await Promise.all(folders.map(folder => vscode.workspace.findFiles(
       new vscode.RelativePattern(folder, "**/*.hson"),
       "**/{node_modules,.git,dist,build,out,coverage}/**",
     )))).flat();
+    if (isCurrent?.() === false) return [];
     const standaloneSources: WorkspaceDiagnosticSource[] = standalone.map(uri => Object.freeze({
       uri: uri.toString(),
       fileName: uri.fsPath,
       languageId: "hson",
       authoringMode: standaloneAuthoringMode(vscode.workspace.getConfiguration('hson.authoring',uri).get('mode')),
     }));
+    const openModules = vscode.workspace.textDocuments.filter(document => moduleSource(document.uri));
+    const openFiles = new Map(openModules.map(document => [document.fileName, document.getText()]));
+    const withoutEventDiagnostics = new Set(openModules.filter(document => document.languageId !== "typescript"
+      && document.languageId !== "typescriptreact").map(document => document.uri.toString()));
+    const request: ProjectDiscoveryRequest = { roots: fileFolders.map(folder => folder.uri.fsPath),
+      openFiles: [...openFiles], changedFiles: changedUris?.map(uri => vscode.Uri.parse(uri).fsPath) };
+    let authoritative: ProjectDiscoveryResponse | undefined;
+    if (vscode.workspace.isTrusted) {
+      await vscode.extensions.getExtension("vscode.typescript-language-features")?.activate().then(undefined, () => undefined);
+      authoritative = await requestProjects(request);
+    }
+    if (isCurrent?.() === false) return [];
+    let projects: TypeScriptProjectDiscovery | undefined = authoritative?.projects;
+    if (!projects) {
+      const scan = projectScanner.scan(request.roots, openFiles);
+      let step = scan.next();
+      while (!step.done) {
+        await new Promise<void>(resolveYield => setTimeout(resolveYield, 0));
+        if (isCurrent?.() === false) return [];
+        step = scan.next();
+      }
+      projects = step.value;
+    }
+    discoverySession = authoritative?.sessionId;
+    projectRevision = authoritative?.revision;
+    projectConfigurations = new Set(projects.configurations.map(fileName => vscode.Uri.file(fileName).toString()));
+    for (const error of projects.errors) if (!projectErrors.has(error)) diagnosticsOutput.appendLine(error);
+    projectErrors = new Set(projects.errors);
     return Object.freeze([
-      ...projects.sources.map(source => Object.freeze({
-        uri: vscode.Uri.file(source.fileName).toString(),
-        fileName: source.fileName,
-        languageId: source.languageId,
-      })),
+      ...projects.sources.map(source => {
+        const uri = vscode.Uri.file(source.fileName).toString();
+        return Object.freeze({ uri, fileName: source.fileName, languageId: source.languageId,
+          eventEvidence: withoutEventDiagnostics.has(uri) ? undefined : source.eventEvidence });
+      }),
       ...standaloneSources,
     ]);
   };
+  let publishedEventSources: string | undefined;
   const host: WorkspaceDiagnosticHost = {
     openDocuments: () => vscode.workspace.textDocuments.map(adaptDocument),
     discoverSources,
+    eventImports: (file, text) => eventImports(file, text),
+    acceptSources: sources => {
+      const eventSources = sources.flatMap(source => source.eventEvidence === undefined ? [] : [source.eventEvidence]);
+      const sessionId = discoverySession;
+      const serialized = JSON.stringify([sessionId, eventSources]);
+      if (serialized === publishedEventSources) return;
+      publishedEventSources = serialized;
+      const previousImports = eventImports;
+      eventImports = event_source_imports(eventSources, ts.sys.useCaseSensitiveFileNames);
+      const affected = vscode.workspace.textDocuments.filter(document => {
+        if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return false;
+        const text = document.getText();
+        const before = previousImports(document.fileName, text), after = eventImports(document.fileName, text);
+        return before.size !== after.size || ![...before].every(offset => after.has(offset));
+      });
+      for (const document of affected) bindingCache.forget(document.uri.toString());
+      if (vscode.window.visibleTextEditors.some(editor => affected.includes(editor.document))) void appearanceEditor.refreshDecorations();
+      semanticChanges.fire();
+      type TypeScriptExports = { getAPI(version: 0): { configurePlugin(name: string, configuration: unknown): void } | undefined };
+      const languageFeatures = vscode.extensions.getExtension<TypeScriptExports>("vscode.typescript-language-features");
+      void languageFeatures?.activate().then(extension => {
+        if (publishedEventSources === serialized) extension?.getAPI(0)?.configurePlugin("hson-schema-typescript-plugin", { sessionId, eventSources });
+      }, () => { /* The syntax producer remains available without the TS service. */ });
+    },
     readSource: async source => new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(source.uri))),
-    onDidOpen: (listener) => vscode.workspace.onDidOpenTextDocument((document) => listener(adaptDocument(document))),
+    onDidOpen: (listener) => vscode.workspace.onDidOpenTextDocument(document => {
+      listener(adaptDocument(document));
+      if (moduleSource(document.uri)) fireSource(document.uri, "change");
+    }),
     onDidChange: (listener) => vscode.Disposable.from(
       vscode.workspace.onDidChangeTextDocument(event => listener(adaptDocument(event.document))),
       vscode.workspace.onDidChangeConfiguration(event => {
         if (!event.affectsConfiguration('hson.authoring.mode')) return;
         for (const document of vscode.workspace.textDocuments) if (document.languageId === 'hson') listener(adaptDocument(document));
       })),
-    onDidClose: (listener) => vscode.workspace.onDidCloseTextDocument((document) => listener(adaptDocument(document))),
+    onDidClose: (listener) => vscode.workspace.onDidCloseTextDocument(document => {
+      listener(adaptDocument(document));
+      if (moduleSource(document.uri)) fireSource(document.uri, "change");
+    }),
     onDidChangeSources: listener => register(sourceListeners, listener),
     onDidChangeProjects: listener => vscode.Disposable.from(register(projectListeners, listener),
       vscode.workspace.onDidChangeConfiguration(event => { if (event.affectsConfiguration('hson.authoring.mode')) listener(); })),
@@ -507,9 +583,19 @@ export function activate(context: vscode.ExtensionContext): void {
   const publisher: DiagnosticPublisher = {
     set(document, specs): void {
       const uri = vscode.Uri.parse(document.uri);
+      if (specs.length === 0) {
+        collection.set(uri, []);
+        return;
+      }
+      const locator = create_host_source_locator(document.text)!;
+      const positionAt = (offset: number): vscode.Position => {
+        const { line, column } = locator.positionAt(Math.max(0, Math.min(offset, document.text.length)))!;
+        return new vscode.Position(line - 1, column - 1);
+      };
+      const toRange = ({ start, end }: HostSourceRange) => new vscode.Range(positionAt(start), positionAt(end));
       const diagnostics = specs.map((spec) => {
         const diagnostic = new vscode.Diagnostic(
-          toRange(document.text, spec),
+          toRange(spec.range),
           spec.message,
           vscode.DiagnosticSeverity.Error,
         );
@@ -517,13 +603,7 @@ export function activate(context: vscode.ExtensionContext): void {
         diagnostic.code = spec.code;
         diagnostic.relatedInformation = spec.related.map((related) =>
           new vscode.DiagnosticRelatedInformation(
-            new vscode.Location(
-              uri,
-              new vscode.Range(
-                positionAt(document.text, related.range.start),
-                positionAt(document.text, related.range.end),
-              ),
-            ),
+            new vscode.Location(uri, toRange(related.range)),
             related.message,
           ));
         return diagnostic;
@@ -535,7 +615,6 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   };
 
-  context.subscriptions.push(start_workspace_diagnostics(host, publisher));
   // Independent of Schema associations and completion providers.
   const grammar = load_hson_grammar(context.extensionPath);
   const appearanceEditor = new HsonAppearanceEditor(context.extensionPath, grammar, bindingCache, scratchpads, document => {
@@ -544,8 +623,8 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(appearanceEditor, vscode.commands.registerCommand("hson.openAppearance", () =>
     appearanceEditor.open().catch(error => { void vscode.window.showErrorMessage(`Hson Appearance: ${String(error)}`); })));
-  const semanticChanges = new vscode.EventEmitter<void>();
-  context.subscriptions.push(semanticChanges,
+  context.subscriptions.push(start_workspace_diagnostics(host, publisher));
+  context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument(() => semanticChanges.fire()),
     vscode.workspace.onDidChangeConfiguration(() => semanticChanges.fire()),
     vscode.languages.registerDocumentSemanticTokensProvider(

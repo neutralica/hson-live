@@ -7,22 +7,28 @@ import {
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "./diagnostics.js";
 import { HSON_EXPECT_ERROR_MARKER } from "./diagnostic-expectations.js";
 import type { StandaloneAuthoringMode } from './authoring-mode.js';
+import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import type { EventSourceEvidence } from "./event-source-evidence.js";
 
 export type WorkspaceDiagnosticSource = Readonly<{
   uri: string;
   fileName: string;
   languageId: "hson" | "typescript" | "typescriptreact";
   authoringMode?: StandaloneAuthoringMode;
+  eventEvidence?: EventSourceEvidence;
 }>;
 
 export type WorkspaceSourceChange = Readonly<{
   uri: string;
   kind: "create" | "change" | "delete";
+  affectsTypeScriptProjects?: boolean;
 }>;
 
 export type WorkspaceDiagnosticHost = Readonly<{
   openDocuments(): readonly DiagnosticDocument[];
-  discoverSources(): Promise<readonly WorkspaceDiagnosticSource[]>;
+  discoverSources(changedUris?: readonly string[], isCurrent?: () => boolean): Promise<readonly WorkspaceDiagnosticSource[]>;
+  acceptSources?(sources: readonly WorkspaceDiagnosticSource[]): void;
+  eventImports?: HsonEventImportEvidence;
   readSource(source: WorkspaceDiagnosticSource): Promise<string>;
   onDidOpen(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidChange(listener: (document: DiagnosticDocument) => void): Disposable;
@@ -61,6 +67,7 @@ export function start_workspace_diagnostics(
   const timers = new Map<string, unknown>();
   let discoveryTimer: unknown | undefined;
   let discoveryGeneration = 0;
+  let changedUris: Set<string> | undefined; // undefined requests a full project discovery.
   let disposed = false;
 
   const open = (uri: string): DiagnosticDocument | undefined => host.openDocuments().find(document => document.uri === uri);
@@ -79,7 +86,10 @@ export function start_workspace_diagnostics(
     const current = open(document.uri);
     if (current !== undefined && current.version !== document.version) return;
     try {
-      const specs = document.languageId !== "hson" && !tsCandidate(document.text) ? [] : produce(document);
+      const eventImports = host.eventImports?.(document.fileName, document.text);
+      const specs = document.languageId !== "hson" && !eventImports?.size && !tsCandidate(document.text) ? [] : produce({
+        ...document, eventImports,
+      });
       if (disposed || generations.get(document.uri) !== generation) return;
       const after = open(document.uri);
       if (after !== undefined && after.version !== document.version) return;
@@ -139,30 +149,42 @@ export function start_workspace_diagnostics(
     if (disposed) return;
     const generation = ++discoveryGeneration;
     try {
-      const discovered = await host.discoverSources();
-      if (disposed || discoveryGeneration !== generation) return;
+      const isCurrent = () => !disposed && discoveryGeneration === generation;
+      const discovered = await host.discoverSources(changedUris === undefined ? undefined : [...changedUris], isCurrent);
+      if (!isCurrent()) return;
+      changedUris = new Set();
+      host.acceptSources?.(discovered);
       const next = new Map(discovered.map(source => [source.uri, source]));
-      for (const uri of sources.keys()) {
+      for (const [uri, source] of sources) {
         if (next.has(uri)) continue;
         sources.delete(uri); fingerprints.delete(uri);
-        if (open(uri) === undefined) { cancel(uri); advance(uri); publisher.delete(uri); }
+        const opened = open(uri);
+        if (opened === undefined) { cancel(uri); advance(uri); publisher.delete(uri); }
+        else if (source.eventEvidence !== undefined) analyzeOpen(opened);
       }
       const added: WorkspaceDiagnosticSource[] = [];
       for (const source of discovered) {
         const prior = sources.get(source.uri);
-        if (prior?.fileName === source.fileName && prior.languageId === source.languageId && prior.authoringMode === source.authoringMode) continue;
+        const evidenceChanged = prior?.eventEvidence?.textHash !== source.eventEvidence?.textHash
+          || prior?.eventEvidence?.importOffsets.join(",") !== source.eventEvidence?.importOffsets.join(",");
+        if (!evidenceChanged && prior?.fileName === source.fileName
+          && prior.languageId === source.languageId && prior.authoringMode === source.authoringMode) continue;
         sources.set(source.uri, source);
         fingerprints.delete(source.uri);
-        added.push(source);
+        const opened = source.languageId === "hson" ? undefined : open(source.uri);
+        if (opened === undefined) added.push(source);
+        else if (evidenceChanged) analyzeOpen(opened);
       }
       await analyzeBatch(added);
     } catch (error) {
       if (!disposed && discoveryGeneration === generation) host.reportUnexpected(error);
     }
   };
-  const scheduleRefresh = (): void => {
+  const scheduleRefresh = (changedUri?: string): void => {
     // Invalidate pending discovery immediately, including during the debounce window.
     discoveryGeneration += 1;
+    if (changedUri === undefined) changedUris = undefined;
+    else changedUris?.add(changedUri);
     if (discoveryTimer !== undefined) host.clearTimer(discoveryTimer);
     discoveryTimer = host.setTimer(() => { discoveryTimer = undefined; void refresh(); }, discoveryDebounce);
   };
@@ -181,15 +203,17 @@ export function start_workspace_diagnostics(
         if (change.kind === "delete") {
           sources.delete(change.uri); fingerprints.delete(change.uri);
           if (open(change.uri) === undefined) { cancel(change.uri); advance(change.uri); publisher.delete(change.uri); }
-          scheduleRefresh();
+          scheduleRefresh(change.affectsTypeScriptProjects ? undefined : change.uri);
           continue;
         }
         const source = sources.get(change.uri);
         if (source !== undefined && open(change.uri) === undefined) void analyzeDisk(source, true);
-        if (change.kind === "create" && source === undefined) scheduleRefresh();
+        if (change.affectsTypeScriptProjects || change.kind === "create" && source === undefined) {
+          scheduleRefresh(change.kind === "create" && change.affectsTypeScriptProjects ? undefined : change.uri);
+        }
       }
     }),
-    host.onDidChangeProjects(scheduleRefresh),
+    host.onDidChangeProjects(() => scheduleRefresh()),
   ];
   for (const document of host.openDocuments()) analyzeOpen(document);
   void refresh();
