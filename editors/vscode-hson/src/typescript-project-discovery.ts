@@ -14,6 +14,7 @@ export type DiscoveredTypeScriptSource = Readonly<{
 
 export type TypeScriptProjectDiscovery = Readonly<{
   sources: readonly DiscoveredTypeScriptSource[];
+  projectFiles: readonly (readonly [project: string, files: readonly (readonly [key: string, identity: string | null])[]])[];
   configurations: readonly string[];
   errors: readonly string[];
 }>;
@@ -21,13 +22,16 @@ export type TypeScriptProjectDiscovery = Readonly<{
 export const PROJECT_DISCOVERY_COMMAND = "_hson.discoverTypeScriptProjects";
 export type ProjectDiscoveryRequest = Readonly<{
   roots: readonly string[];
-  openFiles: readonly (readonly [string, string])[];
+  openFiles: readonly (readonly [fileName: string, text: string, dirty: boolean])[];
   changedFiles?: readonly string[];
 }>;
-export type ProjectDiscoveryResponse = Readonly<{ sessionId: string; revision: string; projects?: TypeScriptProjectDiscovery }>;
+export type ProjectRevisions = readonly (readonly [project: string, revision: string])[];
+export type ProjectDiscoveryResponse = Readonly<{ sessionId: string; revision: ProjectRevisions; discoveryId?: string; projects?: TypeScriptProjectDiscovery }>;
 export type ActiveTypeScriptProject = Readonly<{ program: ts.Program; mapping?: (fileName: string) => SchemaSourceMapping | undefined }>;
 
-const CONFIG_NAMES = /(?:^|[/\\])(?:tsconfig(?:\.[^/\\]+)?|jsconfig)\.json$/i;
+export function is_typescript_configuration_path(fileName: string): boolean {
+  return /(?:^|[/\\])(?:tsconfig(?:\.[^/\\]+)?|jsconfig)\.json$/i.test(fileName);
+}
 
 function canonical(fileName: string): string {
   const absolute = resolve(fileName);
@@ -40,6 +44,11 @@ function physical(fileName: string): string | undefined {
     if (stat?.isFile() && stat.ino !== 0n) return `file:${stat.dev}:${stat.ino}`;
   } catch { /* An unavailable physical identity cannot carry positive evidence. */ }
   return undefined;
+}
+
+export function project_file_keys(fileName: string): [path: string] | [path: string, identity: string] {
+  const identity = physical(fileName);
+  return identity === undefined ? [canonical(fileName)] : [canonical(fileName), identity];
 }
 
 function beneath(fileName: string, directory: string): boolean {
@@ -66,7 +75,7 @@ function read_configurations(ts: typeof import("typescript"), workspaceRoots: re
   const queue: string[] = [];
   for (const root of workspaceRoots) {
     for (const config of ts.sys.readDirectory(root, [".json"], ["**/node_modules/**"], ["**/tsconfig*.json", "**/jsconfig.json"])) {
-      if (CONFIG_NAMES.test(config)) queue.push(resolve(config));
+      if (is_typescript_configuration_path(config)) queue.push(resolve(config));
     }
   }
   const visited = new Set<string>();
@@ -109,7 +118,7 @@ function read_configurations(ts: typeof import("typescript"), workspaceRoots: re
 
 type ProjectSource = Readonly<{ fileName: string; identity?: string; publish: boolean; eventEvidence?: EventSourceEvidence }>;
 type ProjectSources = Readonly<{
-  files: ReadonlySet<string>;
+  files: ReadonlyMap<string, string | null>;
   activeProgram?: ts.Program;
   sources: readonly ProjectSource[];
 }>;
@@ -121,12 +130,12 @@ function read_project_sources(ts: typeof import("typescript"), program: ts.Progr
   const outputs = [options.outDir, options.declarationDir].filter((value): value is string => value !== undefined);
   const roots = new Set(program.getRootFileNames().map(canonical));
   const eligible = hson_source_syntactic_eligibility(ts, program);
-  const files = new Set<string>(), sources: ProjectSource[] = [];
+  const files = new Map<string, string | null>(), sources: ProjectSource[] = [];
   for (const file of program.getSourceFiles()) {
     const fileName = resolve(file.fileName), key = canonical(fileName);
     const identity = physical(fileName);
-    files.add(key);
-    if (identity) files.add(identity);
+    files.set(key, identity ?? null);
+    if (identity) files.set(identity, null);
     // Every included source can veto another spelling of the same file. Output
     // directories and external-library status only control URI publication.
     const root = roots.has(key);
@@ -172,7 +181,7 @@ export class TypeScriptProjectScanner {
     changedFiles?: readonly string[], activeProjects: ReadonlyMap<string, ActiveTypeScriptProject> = new Map(),
   ): Generator<void, TypeScriptProjectDiscovery> {
     const revision = ++this.revision;
-    const changes = changedFiles?.flatMap(file => [canonical(file), physical(file) ?? canonical(file)]);
+    const changes = changedFiles?.flatMap(project_file_keys);
     const previousConfiguration = this.configuration;
     const previousObservations = this.observations;
     const configuration = changes === undefined || previousConfiguration === undefined
@@ -235,7 +244,8 @@ export class TypeScriptProjectScanner {
         fileName, languageId: fileName.toLowerCase().endsWith(".tsx") ? "typescriptreact" : "typescript",
         owners: [...owner.projects].sort(), eventEvidence: owner.eventEvidence && { ...owner.eventEvidence, fileName },
       }))).sort((left, right) => left.fileName.localeCompare(right.fileName));
-    return { sources, configurations: configuration.configurations, errors: configuration.errors };
+    const projectFiles = [...observations].map(([project, observation]) => [project, [...observation.files]] as const);
+    return { sources, projectFiles, configurations: configuration.configurations, errors: configuration.errors };
   }
 }
 

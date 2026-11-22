@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import * as vscode from "vscode";
 import { nativeCompositionSupported } from "./native-composition.js";
 import { HSON_BRANDING } from "../../src/appearance-branding.generated.js";
+import type { ProjectDiscoveryRequest, ProjectDiscoveryResponse } from "../../src/typescript-project-discovery.js";
+import type { AppearanceSpanCache } from "../../src/appearance-spans.js";
 
 async function pause(): Promise<void> { await new Promise(resolve => setTimeout(resolve, 100)); }
 
@@ -201,10 +204,11 @@ export async function run(): Promise<void> {
     await waitUntil(() => sdkCodes().includes(2322) && !sdkCodes().includes(2339) && sdkEventCount() === 2,
       "genuine named export restores evidence");
     await vscode.window.showTextDocument(openConsumer);
-    const eventToken = async (): Promise<boolean> => {
-      const values = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", openConsumer.uri);
-      const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", openConsumer.uri);
-      const start = openConsumer.positionAt(openConsumer.getText().indexOf("<hson:event"));
+    const eventToken = async (document = openConsumer): Promise<boolean> => {
+      const values = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", document.uri);
+      const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", document.uri);
+      const body = document.getText();
+      const start = document.positionAt(body.includes("<hson:event") ? body.indexOf("<hson:event") : body.indexOf("<div/>"));
       let line = 0, column = 0;
       for (let i = 0; values && i < values.data.length; i += 5) {
         const delta = values.data[i]!;
@@ -214,15 +218,22 @@ export async function run(): Promise<void> {
       return false;
     };
     const expectProvenance = async (official: boolean, label: string) => {
-      await waitUntil(() => {
+      const state = () => {
         const open = vscode.languages.getDiagnostics(openConsumer.uri);
-        return hsonCodes(consumer).includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official
-          && hsonCodes(mirror).includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official
-          && hsonCodes(openConsumer.uri).includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official
-          && hsonCodes(openConsumer.uri).includes("HSON_NUMBER_LEADING_PLUS")
-          && (!vscode.workspace.isTrusted || open.some(issue => issue.code === 2322)
-            && open.some(issue => issue.code === 95002 && issue.message.includes('local declaration "missing"')) === official);
-      }, label + " diagnostics");
+        return { closed: hsonCodes(consumer), mirror: hsonCodes(mirror), open: hsonCodes(openConsumer.uri),
+          nativeError: open.some(issue => issue.code === 2322),
+          contextual: open.some(issue => issue.code === 95002 && issue.message.includes('local declaration "missing"')) };
+      };
+      try {
+        await waitUntil(() => {
+          const result = state();
+          return [result.closed, result.mirror, result.open].every(codes => codes.includes("HSON_DECLARATIVE_ROOT_REQUIRED") === official)
+            && result.open.includes("HSON_NUMBER_LEADING_PLUS")
+            && (!vscode.workspace.isTrusted || result.nativeError && result.contextual === official);
+        }, label + " diagnostics");
+      } catch (error) {
+        assert.fail(`${error}: ${JSON.stringify(state())}`);
+      }
       if (compositionAvailable) await waitUntil(async () => (await eventToken()) === official, label + " semantic tokens");
       assert.equal(openConsumer.version, consumerVersion, label + " leaves the consumer source alone");
     };
@@ -230,22 +241,153 @@ export async function run(): Promise<void> {
     assert.ok(!vscode.workspace.textDocuments.some(document => document.uri.toString() === producer.toString()));
     await waitUntil(() => hsonCodes(producer).includes("HSON_EVENT_REFERENCE_INVALID"), "closed TypeScript producer through a JS re-export");
     assert.deepEqual(hsonCodes(producer), ["HSON_EVENT_REFERENCE_INVALID"]);
-    const openedProducer = await vscode.workspace.openTextDocument(producer);
+    const eventIssue = () => vscode.languages.getDiagnostics(producer).find(issue => issue.code === "HSON_EVENT_REFERENCE_INVALID")!;
+    const closedRange = eventIssue().range;
+    const openProducer = async () => {
+      await vscode.commands.executeCommand("vscode.open", producer);
+      const document = vscode.window.activeTextEditor?.document;
+      assert.equal(document?.uri.toString(), producer.toString());
+      return document!;
+    };
+    const openedProducer = await openProducer();
+    const producerText = openedProducer.getText();
+    assert.ok(!openedProducer.isDirty);
+    assert.match(producerText, /\r\n.*é🧪/);
     assert.deepEqual(hsonCodes(producer), ["HSON_EVENT_REFERENCE_INVALID"], "opening must keep one syntax owner");
-    const badReference = openedProducer.getText().indexOf("key.nope");
+    const operand = "^{key.nope}";
+    const offset = producerText.indexOf(operand);
+    assert.ok(offset >= 0);
+    assert.deepEqual(closedRange, new vscode.Range(openedProducer.positionAt(offset), openedProducer.positionAt(offset + operand.length)));
+    assert.deepEqual(eventIssue().range, closedRange);
+    await waitUntil(() => eventToken(openedProducer), "UTF-16LE Event semantic tokens");
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    await waitUntil(() => openedProducer.isClosed, "UTF-16LE producer closed");
+    await waitUntil(() => eventIssue()?.range.isEqual(closedRange), "UTF-16LE diagnostic restored from disk");
+    const reopened = await openProducer();
+    assert.equal(reopened.getText(), producerText);
+    assert.deepEqual(eventIssue().range, closedRange);
+    await waitUntil(() => eventToken(reopened), "reopened UTF-16LE Event semantic tokens");
+    const bytes = await vscode.workspace.fs.readFile(producer);
+    await rm(producer.fsPath);
+    await waitUntil(() => hsonCodes(producer).length === 0, "deleted clean producer withdraws Event evidence");
+    assert.ok(!reopened.isClosed && !reopened.isDirty, "the clean editor buffer is still present");
+    await writeFile(producer.fsPath, bytes);
+    await waitUntil(() => eventIssue()?.range.isEqual(closedRange), "recreated clean producer restores Event evidence");
+    await waitUntil(() => eventToken(reopened), "recreated Event supplies semantic tokens");
+    const badReference = producerText.indexOf("key.nope");
     const correction = new vscode.WorkspaceEdit();
-    correction.replace(producer, new vscode.Range(openedProducer.positionAt(badReference), openedProducer.positionAt(badReference + 8)), "key.code");
+    correction.replace(producer, new vscode.Range(reopened.positionAt(badReference), reopened.positionAt(badReference + 8)), "key.code");
     assert(await vscode.workspace.applyEdit(correction));
     await waitUntil(() => hsonCodes(producer).length === 0, "unsaved producer correction");
-    console.log("ok - a closed imported TypeScript Event has one syntax owner, and an unsaved producer edit clears it");
+    assert.ok(await reopened.save());
+    assert.deepEqual(hsonCodes(producer), []);
+    console.log("ok - a UTF-16LE Event keeps its range through open/close and withdraws and restores across deletion/recreation");
 
+    // tsserver's background diagnostic notification is serviced for visible editors.
+    await vscode.window.showTextDocument(openConsumer);
     const original = await vscode.workspace.fs.readFile(config);
     try {
-      await vscode.workspace.fs.writeFile(config, Buffer.from(JSON.stringify({
+      const remapped = Buffer.from(JSON.stringify({
         ...JSON.parse(Buffer.from(original).toString()),
         compilerOptions: { allowJs: true, preserveSymlinks: true, paths: { "hson-live/hson": ["./late-shim.ts"] } },
-      })));
+      }));
+      await vscode.workspace.fs.writeFile(config, remapped);
       await expectProvenance(true, "missing remap falls back to package");
+      if (process.env.HSON_BASELINE_GATE_DISCOVERY === "1") {
+        const test = globalThis as typeof globalThis & {
+          hsonTestHoldProjectReply?: (reply: ProjectDiscoveryResponse | undefined) => Promise<void>;
+          hsonTestAppearanceSpans?: (document: Parameters<AppearanceSpanCache["get"]>[1]) =>
+            Promise<ReturnType<AppearanceSpanCache["get"]>>;
+        };
+        const replyGate = () => {
+          let release!: () => void;
+          const wait = new Promise<void>(resolve => { release = resolve; });
+          return { wait, release, reached: false };
+        };
+        const older = replyGate(), newer = replyGate();
+        const genuine = Buffer.from('export { Hson } from "hson-live";');
+        const lookalike = Buffer.from('export const Hson = { event: String.raw };');
+        await vscode.workspace.fs.writeFile(shim, lookalike);
+        await expectProvenance(false, "fixture establishes a disputed remap before arming the gate");
+        await vscode.workspace.fs.writeFile(shim, genuine);
+        await expectProvenance(true, "genuine remap before the gated race");
+        await waitUntil(() => sdkEventCount() === 2, "independent project establishes Event evidence");
+        const sourceText = openConsumer.getText();
+        assert.ok(test.hsonTestAppearanceSpans);
+        const appearanceSpans = test.hsonTestAppearanceSpans;
+        const start = sourceText.indexOf("<hson:event"), end = sourceText.indexOf("`", start);
+        const eventSpans = async () => {
+          const spans = await appearanceSpans({ uri: openConsumer.uri.toString(), fileName: openConsumer.fileName,
+            languageId: openConsumer.languageId, version: openConsumer.version, text: openConsumer.getText() });
+          return spans.filter(span => start <= span.range.start && span.range.end <= end);
+        };
+        const originalSpans = await eventSpans();
+        assert.ok(originalSpans.length);
+        const use = openConsumer.positionAt(sourceText.indexOf("^{row.label}") + 2);
+        const declaration = openConsumer.positionAt(sourceText.indexOf("data:row") + "data:".length);
+        const eventDefinition = async (): Promise<boolean> => {
+          const definitions = await vscode.commands.executeCommand<readonly (vscode.Location | vscode.LocationLink)[]>(
+            "vscode.executeDefinitionProvider", openConsumer.uri, use);
+          return definitions?.some(target => "targetUri" in target
+            ? target.targetUri.toString() === openConsumer.uri.toString() && (target.targetSelectionRange ?? target.targetRange).start.isEqual(declaration)
+            : target.uri.toString() === openConsumer.uri.toString() && target.range.start.isEqual(declaration)) ?? false;
+        };
+        await waitUntil(eventDefinition, "current Event has a contextual definition");
+        test.hsonTestHoldProjectReply = async response => {
+          const entry = response?.projects?.sources.find(source => source.fileName === consumer.fsPath);
+          if (entry?.owners.length !== 2) return;
+          if (entry.eventEvidence) {
+            if (older.reached) return;
+            older.reached = true;
+            await older.wait;
+          } else {
+            newer.reached = true;
+            await newer.wait;
+          }
+        };
+        try {
+          await vscode.workspace.fs.writeFile(shim, Buffer.concat([genuine, Buffer.from("\n// refresh proof")]));
+          await waitUntil(() => older.reached, "older agreeing reply held");
+          await vscode.workspace.fs.writeFile(shim, lookalike);
+          await waitUntil(() => newer.reached, "newer disputed reply held");
+          const opened = await vscode.workspace.openTextDocument(consumer);
+          const text = opened.getText(), version = opened.version;
+          assert.equal(text, 'import { Hson as A } from "hson-live/hson"; A.event`<div/>`;');
+          assert.deepEqual(hsonCodes(consumer), []);
+          assert.ok(!hsonCodes(openConsumer.uri).includes("HSON_DECLARATIVE_ROOT_REQUIRED"));
+          assert.equal(await eventToken(), false);
+          assert.equal(await eventToken(opened), false);
+          assert.deepEqual(await eventSpans(), []);
+          assert.equal(sdkEventCount(), 2, "independent event proof stays available");
+          await waitUntil(() => !vscode.languages.getDiagnostics(openConsumer.uri).some(issue => issue.code === 95002),
+            "pending proof withdraws the contextual plugin diagnostic");
+          await waitUntil(async () => !(await eventDefinition()), "pending proof withdraws contextual navigation");
+          assert.ok(vscode.languages.getDiagnostics(openConsumer.uri).some(issue => issue.code === 2322));
+          newer.release();
+          await expectProvenance(false, "newer disagreement accepted");
+          await vscode.commands.executeCommand("typescript.reloadProjects");
+          const barrier = await vscode.commands.executeCommand<{ success?: boolean }>(
+            "typescript.tsserverRequest", "_hson.discoverTypeScriptProjects", { revisionOnly: true });
+          assert.ok(barrier?.success, "the server processed the queued reload before the obsolete reply was released");
+          older.release();
+          await new Promise<void>(resolve => setImmediate(resolve));
+          assert.deepEqual(hsonCodes(consumer), []);
+          assert.equal(await eventToken(opened), false);
+          delete test.hsonTestHoldProjectReply;
+          await vscode.workspace.fs.writeFile(shim, genuine);
+          await expectProvenance(true, "current agreement restored after the old reply");
+          await waitUntil(() => eventToken(opened), "current proof restores tokens in the opened consumer");
+          await waitUntil(eventDefinition, "current proof restores contextual navigation");
+          assert.deepEqual(await eventSpans(), originalSpans);
+          assert.equal(opened.getText(), text);
+          assert.equal(opened.version, version);
+          console.log("ok - gated open and token publication with unchanged consumer, scoped invalidation, and contextual withdrawal");
+        } finally {
+          older.release();
+          newer.release();
+          delete test.hsonTestHoldProjectReply;
+        }
+      }
       await vscode.workspace.fs.writeFile(shim, Buffer.from("export const Hson = { event: String.raw };"));
       await expectProvenance(false, "created shim disputes Event provenance");
       await vscode.workspace.fs.writeFile(shim, Buffer.from('export { Hson } from "hson-live";'));
@@ -278,6 +420,242 @@ export async function run(): Promise<void> {
       await expectProvenance(true, "deleted shim restores the official fallback");
     } finally { await vscode.workspace.fs.writeFile(config, original); }
     console.log("ok - resolution changes update open and closed Event diagnostics, contextual facts, and composed tokens");
+
+    if (process.env.HSON_BASELINE_GATE_DISCOVERY === "1") {
+      const test = globalThis as typeof globalThis & {
+        hsonTestHoldProjectReply?: (reply: ProjectDiscoveryResponse | undefined, request: ProjectDiscoveryRequest, isCurrent: () => boolean) => Promise<void>;
+        hsonTestProjectChange?: (uri: string) => void;
+        hsonTestSourceChange?: (change: { uri: string; kind: string }) => void;
+        hsonTestReplayCreate?: (uri: vscode.Uri) => void;
+        hsonTestAppearanceSpans?: (document: Parameters<AppearanceSpanCache["get"]>[1]) =>
+          Promise<ReturnType<AppearanceSpanCache["get"]>>;
+      };
+      const location = (name: string) => vscode.Uri.file(join(workspace, "membership", name));
+      const firstConfig = location("first/tsconfig.json").fsPath;
+      const secondConfig = location("second/tsconfig.json").fsPath;
+      const thirdConfig = location("third/tsconfig.json").fsPath;
+      const second = await vscode.workspace.openTextDocument(location("second/root.ts"));
+      await vscode.window.showTextDocument(second);
+      const independent = await vscode.workspace.openTextDocument(location("third/independent.ts"));
+      await vscode.window.showTextDocument(independent, { preview: false, viewColumn: vscode.ViewColumn.Two });
+      const shared = await vscode.workspace.openTextDocument(location("first/consumer.ts"));
+      await vscode.window.showTextDocument(shared, { preview: false, viewColumn: vscode.ViewColumn.One });
+      const originals = [shared, independent].map(document => ({ document, version: document.version, text: document.getText() }));
+      const assertUnchanged = () => {
+        for (const { document, version, text } of originals) {
+          assert.equal(document.getText(), text);
+          assert.equal(document.version, version);
+        }
+      };
+      const readSignals = async (document: vscode.TextDocument) => {
+        const text = document.getText();
+        const start = text.indexOf("<hson:event"), end = text.indexOf("`", start);
+        const use = document.positionAt(text.indexOf("^{row.label}") + 2);
+        const declaration = document.positionAt(text.indexOf("data:row") + "data:".length);
+        assert.ok(test.hsonTestAppearanceSpans);
+        const spans = await test.hsonTestAppearanceSpans({ uri: document.uri.toString(), fileName: document.fileName,
+          languageId: document.languageId, version: document.version, text });
+        const definitions = await vscode.commands.executeCommand<readonly (vscode.Location | vscode.LocationLink)[]>(
+          "vscode.executeDefinitionProvider", document.uri, use);
+        const issues = vscode.languages.getDiagnostics(document.uri);
+        return {
+          syntax: hsonCodes(document.uri).includes("HSON_DECLARATIVE_ROOT_REQUIRED"),
+          contextual: issues.some(issue => issue.code === 95002 && issue.message.includes('local declaration "missing"')),
+          tokens: await eventToken(document),
+          appearance: spans.some(span => start <= span.range.start && span.range.end <= end),
+          definition: definitions?.some(target => "targetUri" in target
+            ? target.targetUri.toString() === document.uri.toString() && (target.targetSelectionRange ?? target.targetRange).start.isEqual(declaration)
+            : target.uri.toString() === document.uri.toString() && target.range.start.isEqual(declaration)) ?? false,
+          native: issues.filter(issue => issue.source === "ts").map(issue => issue.code).sort(),
+        };
+      };
+      const matches = ({ native, ...hson }: Awaited<ReturnType<typeof readSignals>>, expected: boolean) =>
+        native.includes(2322) && native.includes(6133) && Object.values(hson).every(signal => signal === expected);
+      const expectSignals = async (document: vscode.TextDocument, expected: boolean, label: string) => {
+        let state: Awaited<ReturnType<typeof readSignals>> | undefined;
+        try {
+          await waitUntil(async () => matches(state = await readSignals(document), expected), label);
+        } catch (error) {
+          throw new Error(`${label} ${JSON.stringify(state)}`, { cause: error });
+        }
+        assertUnchanged();
+        console.log("ok - Event signals", JSON.stringify({ label, state }));
+      };
+      let lastReply: ProjectDiscoveryResponse | undefined;
+      const scannerSource = (document: vscode.TextDocument, reply = lastReply) =>
+        reply?.projects?.sources.find(source => source.fileName === document.fileName);
+      const authorOffset = shared.getText().indexOf("author }");
+      const agrees = (applicable: boolean, proven: boolean, reply = lastReply) => {
+        const source = scannerSource(shared, reply);
+        return source?.owners.includes(firstConfig) === true && source.owners.includes(secondConfig) === applicable
+          && (source.eventEvidence?.importOffsets.includes(authorOffset) ?? false) === proven;
+      };
+      const gates = new Set<(reply: ProjectDiscoveryResponse, request: ProjectDiscoveryRequest, isCurrent: () => boolean) => Promise<void>>();
+      const holdMatchingReply = (matches: (reply: ProjectDiscoveryResponse) => boolean) => {
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const gate: { reply?: ProjectDiscoveryResponse; request?: ProjectDiscoveryRequest; isCurrent?: () => boolean } = {};
+        const block = async (reply: ProjectDiscoveryResponse, request: ProjectDiscoveryRequest, isCurrent: () => boolean) => {
+          if (!matches(reply)) return;
+          if (gate.reply === undefined) Object.assign(gate, { reply, request, isCurrent });
+          await held;
+        };
+        gates.add(block);
+        return { gate, release: () => { gates.delete(block); release(); } };
+      };
+      const holdReply = (applicable: boolean, proven: boolean) =>
+        holdMatchingReply(reply => agrees(applicable, proven, reply));
+      test.hsonTestHoldProjectReply = async (reply, request, isCurrent) => {
+        if (reply?.projects === undefined) return;
+        lastReply = reply;
+        await Promise.all([...gates].map(block => block(reply, request, isCurrent)));
+      };
+      const identity = location("second/identity.ts"), lateIdentity = location("second/late-identity.ts");
+      const bridge = location("second/bridge.ts");
+      const write = (uri: vscode.Uri, text: string) => vscode.workspace.fs.writeFile(uri, Buffer.from(text));
+      const genuine = 'export { Hson } from "hson-live";';
+      const lookalike = 'export const Hson = {event: String.raw};';
+      const importsShared = 'import "../first/consumer.js";';
+      const changes: string[] = [];
+      test.hsonTestSourceChange = change => {
+        if (change.uri === identity.toString()) changes.push(change.kind);
+      };
+      try {
+        await write(bridge, importsShared);
+        await waitUntil(() => agrees(true, true) && [firstConfig, secondConfig, thirdConfig]
+          .every(config => new Map(lastReply?.revision).get(config)?.split(":")[0]),
+        "three active configured projects and initial agreement");
+        await expectSignals(shared, true, "two projects agree");
+        await expectSignals(independent, true, "independent project before the rewrite");
+        const before = lastReply;
+        const older = holdReply(true, true);
+        const newer = holdReply(true, false);
+        try {
+          await write(identity, genuine + " // agreeing discovery held");
+          await waitUntil(() => changes.some(kind => kind === "create" || kind === "change"), "filesystem watcher observed the rewrite");
+          const watcherKinds = [...changes];
+          // Some hosts report this write as a change. Replay the observed
+          // create variant through the same listener so both hosts test it.
+          if (!watcherKinds.includes("create")) {
+            assert.ok(test.hsonTestReplayCreate);
+            test.hsonTestReplayCreate(identity);
+          }
+          await waitUntil(() => older.gate.reply !== undefined, "older agreeing reply held");
+          assert.ok(older.gate.request && older.gate.request.changedFiles === undefined, "create notification requests full rediscovery");
+          await write(identity, lookalike);
+          await waitUntil(() => newer.gate.reply !== undefined, "newer disputed reply held");
+          await expectSignals(shared, false, "existing dependency rewrite withdraws shared evidence during discovery");
+          const retained = await readSignals(independent);
+          console.log("ok - Event scope observation", JSON.stringify({ watcherKinds, changes, retained }));
+          assert.ok(matches(retained, true), "existing dependency rewrite retains all five independent signals while discovery is held");
+          assert.deepEqual(scannerSource(independent, newer.gate.reply), scannerSource(independent, before));
+          assert.deepEqual(scannerSource(independent, before)?.owners, [thirdConfig]);
+          assert.equal(new Map(newer.gate.reply?.revision).get(thirdConfig), new Map(before?.revision).get(thirdConfig));
+          assertUnchanged();
+          newer.release();
+          await expectSignals(shared, false, "current discovery withholds disputed evidence");
+          older.release();
+          await new Promise<void>(resolve => setImmediate(resolve));
+          await expectSignals(shared, false, "older agreeing reply cannot republish disputed evidence");
+          await expectSignals(independent, true, "out-of-order completion preserves independent evidence");
+        } finally { newer.release(); older.release(); }
+
+        await write(identity, genuine);
+        await waitUntil(() => agrees(true, true), "restoration has current scanner agreement");
+        await expectSignals(shared, true, "current agreement restores evidence after withdrawal");
+
+        const created = holdReply(true, false);
+        try {
+          await write(lateIdentity, lookalike);
+          await waitUntil(() => created.gate.reply !== undefined, "new higher priority source changes project resolution");
+          assert.ok(created.gate.request && created.gate.request.changedFiles === undefined, "genuine creation requests full rediscovery");
+          await expectSignals(shared, false, "genuine creation withdraws evidence during discovery");
+        } finally { created.release(); }
+        await expectSignals(shared, false, "new source vetoes Event agreement");
+
+        await vscode.workspace.fs.delete(lateIdentity);
+        await waitUntil(() => agrees(true, true), "deletion restores lower priority resolution");
+        await expectSignals(shared, true, "deletion restores Event diagnostics and navigation via fallback");
+        await write(lateIdentity, genuine + " // recreated with different contents");
+        await waitUntil(() => lastReply?.projects?.projectFiles.some(([project, files]) => project === secondConfig
+          && files.some(([path, identity]) => identity !== null && path.toLowerCase() === lateIdentity.fsPath.toLowerCase())) === true,
+        "recreated source enters current project resolution");
+        await expectSignals(shared, true, "recreated genuine source preserves Event diagnostics and navigation");
+        await vscode.workspace.fs.delete(lateIdentity);
+
+        await write(bridge, "export {};");
+        await waitUntil(() => agrees(false, true), "second project becomes inapplicable");
+        await write(identity, lookalike);
+        await expectSignals(shared, true, "first project alone proves Event identity");
+        await expectSignals(independent, true, "independent evidence restored before membership growth");
+        const growing = holdReply(true, false);
+        try {
+          await write(bridge, importsShared);
+          await waitUntil(() => growing.gate.reply !== undefined, "newly applicable project disagrees before acceptance");
+          await expectSignals(shared, false, "membership growth withdraws newly disputed evidence during discovery");
+          await expectSignals(independent, true, "membership growth retains independent evidence");
+        } finally { growing.release(); }
+        await write(bridge, "export {};");
+        await waitUntil(() => agrees(false, true), "second project exits again");
+        await expectSignals(shared, true, "project exit restores Event agreement");
+
+        const auxiliary = location("second/tsconfig.aux.json");
+        const auxiliaryAgreement = (proven: boolean, reply = lastReply) =>
+          agrees(false, proven, reply) && scannerSource(shared, reply)?.owners.includes(auxiliary.fsPath) === true;
+        const auxiliaryConfig = (disputed: boolean) => JSON.stringify({
+          compilerOptions: { module: "NodeNext", types: [],
+            paths: disputed ? { "hson-live/hson": ["./identity.ts"] } : undefined },
+          files: ["../first/consumer.ts"],
+        });
+        const agreeingConfig = holdMatchingReply(reply => auxiliaryAgreement(true, reply));
+        const disputedConfig = holdMatchingReply(reply => auxiliaryAgreement(false, reply));
+        let changed = false;
+        test.hsonTestProjectChange = uri => { if (uri === auxiliary.toString()) changed = true; };
+        try {
+          assert.ok(!lastReply?.projects?.configurations.includes(auxiliary.fsPath));
+          await write(auxiliary, auxiliaryConfig(false));
+          await waitUntil(() => agreeingConfig.gate.reply !== undefined, "first auxiliary config discovery is held");
+          assert.ok(agreeingConfig.gate.isCurrent?.());
+          assert.ok(!new Map(agreeingConfig.gate.reply?.revision).has(auxiliary.fsPath), "auxiliary config is scanner-only");
+          await expectSignals(shared, false, "auxiliary config creation withdraws pending proof");
+
+          changed = false;
+          await write(auxiliary, auxiliaryConfig(true));
+          await waitUntil(() => changed, "actual VS Code JSON watcher delivered the rewrite as change");
+          assert.equal(agreeingConfig.gate.isCurrent?.(), false, "config change fences the first discovery before acceptance");
+          await waitUntil(() => disputedConfig.gate.reply !== undefined, "current auxiliary veto discovery is held");
+          assert.deepEqual(disputedConfig.gate.reply?.revision, agreeingConfig.gate.reply?.revision);
+          assert.deepEqual(scannerSource(independent, disputedConfig.gate.reply), scannerSource(independent, agreeingConfig.gate.reply));
+          agreeingConfig.release();
+          await new Promise<void>(resolve => setImmediate(resolve));
+          await expectSignals(shared, false, "obsolete agreeing configuration cannot republish Event evidence");
+          await expectSignals(independent, false, "obsolete discovery cannot restore independent evidence before a broad scan accepts");
+
+          disputedConfig.release();
+          await expectSignals(independent, true, "current configuration restores independent evidence");
+          await expectSignals(shared, false, "current auxiliary configuration vetoes shared evidence");
+          await write(auxiliary, auxiliaryConfig(false));
+          await waitUntil(() => auxiliaryAgreement(true), "ordinary accepted configuration edit restores scanner agreement");
+          await expectSignals(shared, true, "ordinary configuration edit restores all shared signals");
+
+          await vscode.workspace.fs.delete(auxiliary);
+          await waitUntil(() => !lastReply?.projects?.configurations.includes(auxiliary.fsPath), "deleted auxiliary configuration exits discovery");
+          await expectSignals(shared, true, "deleting the auxiliary configuration leaves first-project evidence");
+          await write(auxiliary, auxiliaryConfig(true));
+          await waitUntil(() => auxiliaryAgreement(false), "recreated configuration vetoes scanner agreement");
+          await expectSignals(shared, false, "recreated auxiliary configuration vetoes shared evidence");
+          await expectSignals(independent, true, "independent evidence survives current auxiliary membership");
+        } finally {
+          agreeingConfig.release();
+          disputedConfig.release();
+          delete test.hsonTestProjectChange;
+        }
+      } finally {
+        delete test.hsonTestHoldProjectReply;
+        delete test.hsonTestSourceChange;
+        delete test.hsonTestReplayCreate;
+      }
+    }
 
     await vscode.window.showTextDocument(doc);
     await replace(event);

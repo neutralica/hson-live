@@ -1,11 +1,16 @@
 import { Hson } from "../../../src/hson-authoring.js";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import Module from "node:module";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import ts from "typescript";
 import { load_hson_grammar } from "../src/highlighting.js";
 import { initialAppearance, readAppearance, housePalette, duplicatePalette, deletePalette, resolveStyle, blend, roleCatalog } from "../src/appearance-model.js";
 import { AppearanceSpanCache, appearanceColor, type AppearanceRole } from "../src/appearance-spans.js";
 import { HsonBindingCache } from "../src/binding-intelligence.js";
+import { event_source_imports } from "../src/event-source-evidence.js";
+import { discover_typescript_projects } from "../src/typescript-project-discovery.js";
 
 async function run() {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
@@ -31,6 +36,34 @@ async function run() {
   bindings.forget(eventDocument.uri);
   assert.deepEqual(appearance.get(grammar, eventDocument), initial, "restoration at the same version");
   console.log("ok - a shared appearance cache follows Event evidence withdrawal and restoration");
+
+  const workspace = mkdtempSync(join(tmpdir(), "hson-utf16-appearance-"));
+  try {
+    const packagePath = join(workspace, "node_modules/hson-live");
+    mkdirSync(join(packagePath, "dist"), { recursive: true });
+    writeFileSync(join(packagePath, "package.json"), '{"name":"hson-live","exports":{".":"./dist/index.d.ts"}}');
+    writeFileSync(join(packagePath, "dist/index.d.ts"), "export declare const Hson: { event: typeof String.raw };");
+    writeFileSync(join(workspace, "package.json"), '{"type":"module"}');
+    writeFileSync(join(workspace, "tsconfig.json"), '{"compilerOptions":{"module":"NodeNext","types":[]},"files":["event.ts"]}');
+    const fileName = join(workspace, "event.ts");
+    const authored = 'import { Hson } from "hson-live";\r\nHson.event`<div title="é🧪" name="eventword"/>`;';
+    writeFileSync(fileName, Buffer.from("\uFEFF" + authored, "utf16le"));
+    const decorations = (text: string, snapshots: ReadonlyMap<string, string>) => {
+      const proof = discover_typescript_projects([workspace], snapshots).sources.find(source => source.fileName === fileName)?.eventEvidence;
+      assert.ok(proof);
+      const imports = event_source_imports([proof], ts.sys.useCaseSensitiveFileNames);
+      return new AppearanceSpanCache(new HsonBindingCache(imports)).get(grammar, { uri: fileName, fileName, languageId: "typescript", version: 1, text });
+    };
+    const decoded = ts.sys.readFile(fileName);
+    assert.equal(decoded, authored);
+    const closed = decorations(decoded, new Map());
+    const reopened = decorations(authored, new Map([[fileName, authored]]));
+    assert.deepEqual(reopened, closed);
+    const start = authored.indexOf("eventword");
+    assert.ok(closed.some(span => span.role === "value.attributeString" && span.range.start === start && span.range.end === start + "eventword".length));
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+  console.log("ok - Event appearance uses the same exact UTF-16 ranges from disk and open snapshots");
+
   const body = '<p data:input="%{input}" title="attribute 😀"\r\n "content text ^{input}" <hson-part at="library/member"/>/>';
   for (const [languageId, fileName, text] of [
     ["hson", "/appearance.hson", body],

@@ -12,8 +12,9 @@ import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hso
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string,
   registerEvidence?: (file: string, text: string | undefined) => void,
   getEventImports?: () => HsonEventImportEvidence | undefined,
+  canResolveSource?: (file: string) => boolean,
 ): ts.LanguageService {
-  const view = install_live_schema_view(typescript, host, projectPath, registerEvidence, getEventImports);
+  const view = install_live_schema_view(typescript, host, projectPath, registerEvidence, getEventImports, canResolveSource);
   const completion = new HsonEditorCompletionCache(typescript);
   const hsonDefinition = (file: string, offset: number): ts.DefinitionInfoAndBoundSpan | undefined => {
     const program = view.authoredService.getProgram();

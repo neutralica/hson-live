@@ -10,6 +10,7 @@ import { parse_authored_document_library } from "../../../src/api/livemap/livema
 import type { Tokens } from "../../../src/api/transform/token.types.js";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
+import { NO_EVENT_IMPORTS } from "./event-source-evidence.js";
 import type { StandaloneAuthoringMode } from './authoring-mode.js';
 
 export type StructuralHostLanguage = "typescript" | "typescriptreact" | "markdown";
@@ -82,7 +83,7 @@ function discoverStructuralRegions(
     bodyStartsAtLineStart: true,
   }));
 
-  const discovery = discover_hson_tagged_templates(fileName, text);
+  const discovery = discover_hson_tagged_templates(fileName, text, undefined, undefined, undefined, NO_EVENT_IMPORTS);
   const regions: StructuralRegion[] = [];
   for (const source of discovery.sources) {
     if (source.authoringKind === "event") continue;
@@ -393,7 +394,7 @@ export function structural_typing_snippet(
   // This covers arbitrary JavaScript (including nested braces), not just names.
   if (text.slice(cursor, region.bodyRange.end).includes("}")) {
     const prospective = text.slice(0, cursor) + "{" + text.slice(cursor);
-    const found = discover_hson_tagged_templates(evidence.fileName, prospective).interpolated.find(source =>
+    const found = discover_hson_tagged_templates(evidence.fileName, prospective, undefined, undefined, undefined, NO_EVENT_IMPORTS).interpolated.find(source =>
       source.substitutionRanges.some(range => range.start === cursor - 1));
     if (found !== undefined && templateInterpolationRole(prospective, {
       ...region, bodyRange: found.bodyRange, protectedRanges: found.substitutionRanges,

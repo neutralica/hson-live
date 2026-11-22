@@ -22,19 +22,33 @@ export type WorkspaceSourceChange = Readonly<{
   uri: string;
   kind: "create" | "change" | "delete";
   affectsTypeScriptProjects?: boolean;
+  observationOnly?: boolean;
+}>;
+
+export type WorkspaceDiscoveryScope = "projects" | "standalone" | "all";
+type WorkspaceDiscoveryRequest = Readonly<{
+  typescript: boolean;
+  changedUris?: readonly string[];
+  standalone: boolean;
+  isCurrent: () => boolean;
+  withdrawEventSources: (update: (revision: number) => readonly string[]) => void;
+}>;
+type WorkspaceDiscoveryResult = Readonly<{
+  sources: readonly WorkspaceDiagnosticSource[];
+  accept?(revision: number): readonly string[] | void;
 }>;
 
 export type WorkspaceDiagnosticHost = Readonly<{
   openDocuments(): readonly DiagnosticDocument[];
-  discoverSources(changedUris?: readonly string[], isCurrent?: () => boolean): Promise<readonly WorkspaceDiagnosticSource[]>;
-  acceptSources?(sources: readonly WorkspaceDiagnosticSource[]): void;
+  discoverSources(request: WorkspaceDiscoveryRequest): Promise<WorkspaceDiscoveryResult>;
+  invalidateProjects?(revision: number, change?: WorkspaceSourceChange, projects?: readonly string[]): readonly string[];
   eventImports?: HsonEventImportEvidence;
   readSource(source: WorkspaceDiagnosticSource): Promise<string>;
   onDidOpen(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidChange(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidClose(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidChangeSources(listener: (changes: readonly WorkspaceSourceChange[]) => void): Disposable;
-  onDidChangeProjects(listener: () => void): Disposable;
+  onDidChangeProjects(listener: (scope?: WorkspaceDiscoveryScope, projects?: readonly string[]) => void): Disposable;
   setTimer(callback: () => void, delayMilliseconds: number): unknown;
   clearTimer(timer: unknown): void;
   yield(): Promise<void>;
@@ -63,12 +77,16 @@ export function start_workspace_diagnostics(
   const concurrency = Math.max(1, options.readConcurrency ?? 4);
   const sources = new Map<string, WorkspaceDiagnosticSource>();
   const generations = new Map<string, number>();
-  const fingerprints = new Map<string, string>();
+  // null means disk diagnostics need a read after project discovery accepts
+  // the applicable dependency state.
+  const fingerprints = new Map<string, string | null>();
   const timers = new Map<string, unknown>();
   let discoveryTimer: unknown | undefined;
   let discoveryGeneration = 0;
   let changedUris: Set<string> | undefined; // undefined requests a full project discovery.
+  let scanStandalone = true;
   let disposed = false;
+  const projectPending = () => changedUris === undefined || changedUris.size > 0;
 
   const open = (uri: string): DiagnosticDocument | undefined => host.openDocuments().find(document => document.uri === uri);
   const advance = (uri: string): number => {
@@ -81,8 +99,9 @@ export function start_workspace_diagnostics(
     if (timer !== undefined) host.clearTimer(timer);
     timers.delete(uri);
   };
-  const publish = (document: DiagnosticDocument, generation: number): void => {
-    if (disposed || generations.get(document.uri) !== generation) return;
+  const publish = (document: DiagnosticDocument, generation: number, applicable = () => true): void => {
+    const currentGeneration = () => !disposed && generations.get(document.uri) === generation && applicable();
+    if (!currentGeneration()) return;
     const current = open(document.uri);
     if (current !== undefined && current.version !== document.version) return;
     try {
@@ -90,14 +109,14 @@ export function start_workspace_diagnostics(
       const specs = document.languageId !== "hson" && !eventImports?.size && !tsCandidate(document.text) ? [] : produce({
         ...document, eventImports,
       });
-      if (disposed || generations.get(document.uri) !== generation) return;
+      if (!currentGeneration()) return;
       const after = open(document.uri);
       if (after !== undefined && after.version !== document.version) return;
       fingerprints.set(document.uri, `${document.languageId}\0${document.authoringMode ?? ''}\0${document.text}`);
       publisher.set(document, specs);
     } catch (error) {
-      if (disposed) return;
-      if (generations.get(document.uri) === generation) publisher.delete(document.uri);
+      if (!currentGeneration()) return;
+      publisher.delete(document.uri);
       host.reportUnexpected(error, sources.get(document.uri));
     }
   };
@@ -120,14 +139,24 @@ export function start_workspace_diagnostics(
   const analyzeDisk = async (source: WorkspaceDiagnosticSource, force = false): Promise<void> => {
     if (disposed || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
     const generation = advance(source.uri);
+    const currentRead = () =>
+      !disposed && generations.get(source.uri) === generation && open(source.uri) === undefined && sources.get(source.uri) === source;
+    const projectReady = () => {
+      if (source.languageId === "hson" || !projectPending()) return true;
+      fingerprints.set(source.uri, null);
+      return false;
+    };
+    if (!projectReady()) return;
     try {
       const text = await host.readSource(source);
-      if (disposed || generations.get(source.uri) !== generation || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
+      // A read can serve an equivalent source after rediscovery. Its Event
+      // analysis can begin only with the currently accepted project evidence.
+      if (!currentRead() || !projectReady()) return;
       const fingerprint = `${source.languageId}\0${source.authoringMode ?? ''}\0${text}`;
       if (!force && fingerprints.get(source.uri) === fingerprint) return;
-      publish(Object.freeze({ ...source, version: -generation, text }), generation);
+      publish(Object.freeze({ ...source, version: -generation, text }), generation, projectReady);
     } catch (error) {
-      if (disposed || generations.get(source.uri) !== generation || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
+      if (!currentRead() || !projectReady()) return;
       publisher.delete(source.uri);
       host.reportUnexpected(error, source);
     }
@@ -145,18 +174,41 @@ export function start_workspace_diagnostics(
     });
     await Promise.all(workers);
   };
+  const invalidateSources = (affected: readonly string[]): void => {
+    for (const uri of affected) {
+      const opened = open(uri);
+      if (opened !== undefined) analyzeOpen(opened);
+      else {
+        fingerprints.set(uri, null);
+        publisher.delete(uri);
+      }
+    }
+  };
   const refresh = async (): Promise<void> => {
     if (disposed) return;
-    const generation = ++discoveryGeneration;
+    let generation = ++discoveryGeneration;
     try {
       const isCurrent = () => !disposed && discoveryGeneration === generation;
-      const discovered = await host.discoverSources(changedUris === undefined ? undefined : [...changedUris], isCurrent);
+      const withdrawEventSources = (update: (revision: number) => readonly string[]): void => {
+        if (!isCurrent()) return;
+        const affected = update(generation);
+        if (affected.length === 0) return;
+        // The receiver must also be able to accept this discovery's final
+        // configuration after the interim withdrawal.
+        generation = ++discoveryGeneration;
+        invalidateSources(affected);
+      };
+      const request = { typescript: projectPending(), standalone: scanStandalone,
+        changedUris: changedUris === undefined ? undefined : [...changedUris], isCurrent, withdrawEventSources };
+      const { sources: discovered, accept } = await host.discoverSources(request);
       if (!isCurrent()) return;
       changedUris = new Set();
-      host.acceptSources?.(discovered);
+      scanStandalone = false;
+      const proofChanged = new Set(request.typescript ? accept?.(generation) ?? [] : []);
       const next = new Map(discovered.map(source => [source.uri, source]));
       for (const [uri, source] of sources) {
-        if (next.has(uri)) continue;
+        const searched = source.languageId === "hson" ? request.standalone : request.typescript;
+        if (!searched || next.has(uri)) continue;
         sources.delete(uri); fingerprints.delete(uri);
         const opened = open(uri);
         if (opened === undefined) { cancel(uri); advance(uri); publisher.delete(uri); }
@@ -168,23 +220,36 @@ export function start_workspace_diagnostics(
         const evidenceChanged = prior?.eventEvidence?.textHash !== source.eventEvidence?.textHash
           || prior?.eventEvidence?.importOffsets.join(",") !== source.eventEvidence?.importOffsets.join(",");
         if (!evidenceChanged && prior?.fileName === source.fileName
-          && prior.languageId === source.languageId && prior.authoringMode === source.authoringMode) continue;
+          && prior.languageId === source.languageId && prior.authoringMode === source.authoringMode) {
+          const opened = open(source.uri);
+          if (opened !== undefined && proofChanged.has(source.uri)) analyzeOpen(opened);
+          else if (fingerprints.get(source.uri) === null && opened === undefined) added.push(prior);
+          continue;
+        }
         sources.set(source.uri, source);
         fingerprints.delete(source.uri);
         const opened = source.languageId === "hson" ? undefined : open(source.uri);
         if (opened === undefined) added.push(source);
-        else if (evidenceChanged) analyzeOpen(opened);
+        else if (evidenceChanged || proofChanged.has(source.uri)) analyzeOpen(opened);
       }
       await analyzeBatch(added);
     } catch (error) {
       if (!disposed && discoveryGeneration === generation) host.reportUnexpected(error);
     }
   };
-  const scheduleRefresh = (changedUri?: string): void => {
+  const scheduleRefresh = (scope: WorkspaceDiscoveryScope = "projects", change?: WorkspaceSourceChange,
+    projects?: readonly string[]): void => {
     // Invalidate pending discovery immediately, including during the debounce window.
     discoveryGeneration += 1;
-    if (changedUri === undefined) changedUris = undefined;
-    else changedUris?.add(changedUri);
+    if (scope !== "projects") scanStandalone = true;
+    if (scope !== "standalone") {
+      // Topology notifications require a full scan. The sender still needs the
+      // path and the notification kind to decide which proof to withdraw.
+      if (change === undefined || change.affectsTypeScriptProjects && change.kind !== "change") changedUris = undefined;
+      else changedUris?.add(change.uri);
+      const affected = change?.observationOnly ? [] : host.invalidateProjects?.(discoveryGeneration, change, projects) ?? [];
+      invalidateSources(affected);
+    }
     if (discoveryTimer !== undefined) host.clearTimer(discoveryTimer);
     discoveryTimer = host.setTimer(() => { discoveryTimer = undefined; void refresh(); }, discoveryDebounce);
   };
@@ -200,20 +265,25 @@ export function start_workspace_diagnostics(
     }),
     host.onDidChangeSources(changes => {
       for (const change of changes) {
+        const source = sources.get(change.uri);
+        if (change.affectsTypeScriptProjects) {
+          scheduleRefresh("projects", change);
+        } else if (change.kind !== "change" && (source?.languageId === "hson" || /\.hson(?:$|[?#])/i.test(change.uri))) {
+          scheduleRefresh("standalone");
+        } else if (change.kind === "delete" || change.kind === "create" && source === undefined) {
+          scheduleRefresh("projects", change);
+        }
         if (change.kind === "delete") {
-          sources.delete(change.uri); fingerprints.delete(change.uri);
-          if (open(change.uri) === undefined) { cancel(change.uri); advance(change.uri); publisher.delete(change.uri); }
-          scheduleRefresh(change.affectsTypeScriptProjects ? undefined : change.uri);
+          fingerprints.delete(change.uri);
+          if (open(change.uri) === undefined) {
+            sources.delete(change.uri); cancel(change.uri); advance(change.uri); publisher.delete(change.uri);
+          }
           continue;
         }
-        const source = sources.get(change.uri);
         if (source !== undefined && open(change.uri) === undefined) void analyzeDisk(source, true);
-        if (change.affectsTypeScriptProjects || change.kind === "create" && source === undefined) {
-          scheduleRefresh(change.kind === "create" && change.affectsTypeScriptProjects ? undefined : change.uri);
-        }
       }
     }),
-    host.onDidChangeProjects(() => scheduleRefresh()),
+    host.onDidChangeProjects((scope, projects) => scheduleRefresh(scope, undefined, projects)),
   ];
   for (const document of host.openDocuments()) analyzeOpen(document);
   void refresh();

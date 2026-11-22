@@ -250,7 +250,7 @@ export const declaredExecution = Object.freeze({
     withLaunch: [appearanceLauncher[0], ""],
   },
   "editors/vscode-hson/tests/appearance.test.ts": {
-    sha256: "0d422d4cb2a53f2bd41b26ed073053386c8e07bdffc6100ecbfd0c96e5126b77",
+    sha256: "564c4149574e2c00e4d88b508e28a06d7e1b5448a53493d01d2790715cd1c1ff",
     route: "The Node appearance bundle installs a vscode module stub, then imports and awaits checkAppearanceTransitions before restoring the module loader.",
     targets: [[appearanceTransitions, "dynamic-import"]], sources: [...editorSources],
     providedRequirement: "vscode",
@@ -271,7 +271,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/css-selector-browser-cases.mts", "browser-runner"], ["tests/fixtures/universal-css-map-browser-cases.mts", "browser-runner"], ["tests/fixtures/document-css-reconciliation-browser-cases.mts", "browser-runner"]], sources: [] },
   "tests/hosted-css-authority-repairs.acceptance.mts": { sha256: "06b6e6ad42ab25f47dd2a3a67610056143e39032af6a4e69f3811d2b7709187e", route: workerRoute,
     targets: [["tests/fixtures/hosted-css-authority-repairs.worker.mts", "worker-launch"]], sources: [...workerSources] },
-  "editors/vscode-hson/tests/integration/run-baseline.mjs": { sha256: "46896d1a0c6a5a3ed31be0e264aebb484aa3a5238edfc9156a43087311003cf9", route: "Both awaited VS Code profiles launch the build-tests baseline.ts bundle through the default extensionTestsPath. The installed variant first installs the VSIX and uses a separate development driver. Explicit test-path overrides select an alternate run.",
+  "editors/vscode-hson/tests/integration/run-baseline.mjs": { sha256: "ede99b24f5f42b7d1500202fe34c57ed4d0b54524be2c831d68333e3a5020c67", route: "Both awaited VS Code profiles launch the build-tests baseline.ts bundle through the default extensionTestsPath. The development run gates project replies in a disposable copy of the compiled extension. The installed variant first installs the VSIX and uses a separate development driver. Explicit test-path overrides select an alternate run.",
     targets: [["editors/vscode-hson/tests/integration/baseline.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-consumer.mjs": { sha256: "3eada0ee871639be6f3d35b624a627eccac8426ec7a5f0dbceca584ccd70c403", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },

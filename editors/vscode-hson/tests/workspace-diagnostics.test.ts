@@ -9,11 +9,14 @@ import { discover_hson_tagged_templates, hson_source_alias_target, hson_source_s
 import { DIAGNOSTIC_SOURCE, produce_document_diagnostics, type DocumentDiagnosticSpec } from "../src/document-diagnostics.js";
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "../src/diagnostics.js";
 import { discover_typescript_projects, TypeScriptProjectScanner } from "../src/typescript-project-discovery.js";
-import { event_source_imports } from "../src/event-source-evidence.js";
+import { event_source_imports, event_source_text_hash } from "../src/event-source-evidence.js";
+import { local_hson_schema_diagnostics } from "../src/hson-schema-local.js";
+import { structural_document_evidence } from "../src/structural-editing.js";
 import {
   start_workspace_diagnostics,
   type WorkspaceDiagnosticHost,
   type WorkspaceDiagnosticSource,
+  type WorkspaceDiscoveryScope,
   type WorkspaceSourceChange,
 } from "../src/workspace-diagnostics.js";
 
@@ -57,15 +60,25 @@ class Host implements WorkspaceDiagnosticHost {
   readonly changes = new Set<DocumentListener>();
   readonly closes = new Set<DocumentListener>();
   readonly sourceChanges = new Set<(changes: readonly WorkspaceSourceChange[]) => void>();
-  readonly projectChanges = new Set<() => void>();
+  readonly projectChanges = new Set<(scope?: WorkspaceDiscoveryScope) => void>();
   readonly timers = new Map<number, () => void>();
   readonly readGates = new Map<string, Promise<string>>();
   readonly reads: WorkspaceDiagnosticSource[] = [];
   readonly discoveryGates: Promise<readonly WorkspaceDiagnosticSource[]>[] = [];
   readonly unexpected: unknown[] = [];
+  readonly discoveryRequests: { typescript: boolean; standalone: boolean }[] = [];
+  eventImports = event_source_imports([], true);
   private timerId = 0;
   openDocuments(): readonly DiagnosticDocument[] { return this.documents; }
-  async discoverSources(): Promise<readonly WorkspaceDiagnosticSource[]> { return this.discoveryGates.shift() ?? this.discovered; }
+  async discoverSources({ typescript, standalone }: Parameters<WorkspaceDiagnosticHost["discoverSources"]>[0]):
+    ReturnType<WorkspaceDiagnosticHost["discoverSources"]> {
+    this.discoveryRequests.push({ typescript, standalone });
+    const found = await (this.discoveryGates.shift() ?? this.discovered);
+    const sources = found.filter(source => source.languageId === "hson" ? standalone : typescript);
+    return { sources, accept: () => {
+      this.eventImports = event_source_imports(sources.flatMap(source => source.eventEvidence ? [source.eventEvidence] : []), true);
+    } };
+  }
   async readSource(source: WorkspaceDiagnosticSource): Promise<string> {
     this.reads.push(source);
     return this.readGates.get(source.uri) ?? this.contents.get(source.uri) ?? "";
@@ -74,7 +87,7 @@ class Host implements WorkspaceDiagnosticHost {
   onDidChange(listener: DocumentListener): Disposable { return this.add(this.changes, listener); }
   onDidClose(listener: DocumentListener): Disposable { return this.add(this.closes, listener); }
   onDidChangeSources(listener: (changes: readonly WorkspaceSourceChange[]) => void): Disposable { return this.add(this.sourceChanges, listener); }
-  onDidChangeProjects(listener: () => void): Disposable { return this.add(this.projectChanges, listener); }
+  onDidChangeProjects(listener: (scope?: WorkspaceDiscoveryScope) => void): Disposable { return this.add(this.projectChanges, listener); }
   setTimer(callback: () => void): unknown { const id = ++this.timerId; this.timers.set(id, callback); return id; }
   clearTimer(timer: unknown): void { this.timers.delete(Number(timer)); }
   async yield(): Promise<void> {}
@@ -108,6 +121,73 @@ async function settle(): Promise<void> {
 async function main(): Promise<void> {
   const invalid = 'import { Hson } from "hson-live";\nHson.data`+1`;\nHson.document`<main @:x @:y/>`;';
   const valid = invalid.replace('+1', '1').replace(' @:y', '');
+  await check("Schema and structural providers skip Event resolution while actual Event discovery retains it", () => {
+    const root = mkdtempSync(join(tmpdir(), "hson-event-work-"));
+    const read = ts.sys.readFile, exists = ts.sys.fileExists, write = ts.sys.write;
+    try {
+      fixture(root, "package.json", '{"type":"module"}');
+      fixture(root, "node_modules/hson-live/package.json", '{"name":"hson-live","exports":{".":"./dist/index.d.ts"}}');
+      fixture(root, "node_modules/hson-live/dist/index.d.ts", "export declare const Hson: { event: typeof String.raw };");
+      fixture(root, "tsconfig.json", JSON.stringify({ compilerOptions: { module: "NodeNext", types: [], traceResolution: true }, files: ["app.ts"] }));
+      const text = 'import { Hson } from "hson-live"; Hson.event`<div/>`; Hson.schema`<type "data" root "unknown">`; Hson.document`<div/>`;';
+      const file = fixture(root, "app.ts", text);
+      const measure = <T>(action: () => T) => {
+        const counts = { packageReads: 0, exists: 0, resolutions: 0 };
+        ts.sys.readFile = (name, encoding) => { if (name.endsWith("/package.json")) counts.packageReads++; return read(name, encoding); };
+        ts.sys.fileExists = name => { counts.exists++; return exists(name); };
+        ts.sys.write = output => { if (output.startsWith("======== Resolving module")) counts.resolutions++; };
+        return { counts, result: action() };
+      };
+      const schema = measure(() => local_hson_schema_diagnostics(file, text));
+      const structural = measure(() => structural_document_evidence(file, "typescript", text));
+      const event = measure(() => discover_hson_tagged_templates(file, text));
+      console.log("# source work " + JSON.stringify({ schema: schema.counts, structural: structural.counts, event: event.counts }));
+      assert.ok(schema.result.length > 0);
+      assert.deepEqual(structural.result.regions.map(region => region.authoringKind), ["schema", "document"]);
+      assert.ok(event.result.sources.some(site => site.authoringKind === "event"));
+      assert.ok(event.counts.packageReads > 0 && event.counts.resolutions > 0 && event.counts.exists > 0);
+      assert.deepEqual(schema.counts, { packageReads: 0, exists: 0, resolutions: 0 });
+      assert.deepEqual(structural.counts, schema.counts);
+    } finally {
+      ts.sys.readFile = read; ts.sys.fileExists = exists; ts.sys.write = write;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await check("workspace scans follow standalone topology and TypeScript discovery independently", async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const event = source("/workspace/event.ts");
+    const standalone = source("/workspace/new.hson", "hson");
+    host.discovered = [event]; host.contents.set(event.uri, "Hson before");
+    const controller = start_workspace_diagnostics(host, publisher, { produce });
+    await settle();
+    const request = async (changes: WorkspaceSourceChange[]) => {
+      host.fire(host.sourceChanges, changes); host.runTimers(); await settle();
+    };
+    await request([{ uri: "file:///workspace/ordinary.ts", kind: "change", affectsTypeScriptProjects: true }]);
+    host.contents.set(event.uri, "Hson after");
+    await request([{ uri: event.uri, kind: "change", affectsTypeScriptProjects: true }]);
+    assert.equal(publisher.values.get(event.uri)?.[0]?.message, "Hson after");
+    host.discovered = [event, standalone]; host.contents.set(standalone.uri, "new");
+    await request([{ uri: standalone.uri, kind: "create" }]);
+    assert.equal(publisher.values.get(standalone.uri)?.[0]?.message, "new");
+    host.discovered = [event];
+    await request([{ uri: standalone.uri, kind: "delete" }]);
+    assert.equal(publisher.values.has(standalone.uri), false);
+    await request([{ uri: "file:///workspace/shim.ts", kind: "create", affectsTypeScriptProjects: true }]);
+    host.fire(host.projectChanges, undefined); host.runTimers(); await settle();
+    console.log("# workspace work " + JSON.stringify(host.discoveryRequests));
+    assert.deepEqual(host.discoveryRequests, [
+      { typescript: true, standalone: true },
+      { typescript: true, standalone: false },
+      { typescript: true, standalone: false },
+      { typescript: false, standalone: true },
+      { typescript: false, standalone: true },
+      { typescript: true, standalone: false },
+      { typescript: true, standalone: false },
+    ]);
+    controller.dispose();
+  });
   await check("ordinary diagnostics have exact source parity across TypeScript formats and exclude non-sources", () => {
     const expected = produce_document_diagnostics({ fileName: '/workspace/source.ts', languageId: 'typescript', text: invalid });
     assert.deepEqual(expected.map(value => value.code), ['HSON_NUMBER_LEADING_PLUS', 'HSON_LIBRARY_QUAD_DUPLICATE']);
@@ -445,6 +525,28 @@ async function main(): Promise<void> {
     controller.dispose();
   });
 
+  await check("a retained clean buffer loses and regains its Event parser diagnostic when its source is deleted and restored", async () => {
+    const host = new Host(); const publisher = new Publisher();
+    const entry = source("/workspace/producer.ts");
+    const text = 'import { Hson } from "hson-live"; Hson.event`<div/>`;';
+    const evidence = { ...entry, eventEvidence: { fileName: entry.fileName,
+      textHash: event_source_text_hash(text), importOffsets: [text.indexOf("Hson")] } };
+    host.documents = [document(entry, text, 1)];
+    host.discovered = [evidence];
+    const controller = start_workspace_diagnostics(host, publisher);
+    await settle();
+    assert.deepEqual(publisher.values.get(entry.uri)?.map(item => item.code), ["HSON_DECLARATIVE_ROOT_REQUIRED"]);
+    host.discovered = [];
+    host.fire(host.sourceChanges, [{ uri: entry.uri, kind: "delete", affectsTypeScriptProjects: true }]);
+    host.runTimers(); await settle();
+    assert.deepEqual(publisher.values.get(entry.uri), []);
+    host.discovered = [evidence];
+    host.fire(host.sourceChanges, [{ uri: entry.uri, kind: "create", affectsTypeScriptProjects: true }]);
+    host.runTimers(); await settle();
+    assert.deepEqual(publisher.values.get(entry.uri)?.map(item => item.code), ["HSON_DECLARATIVE_ROOT_REQUIRED"]);
+    controller.dispose();
+  });
+
   await check("marker-only files remain candidates on disk and after deleting an open target", async () => {
     const host = new Host(); const publisher = new Publisher();
     const value = source("/workspace/stale-expectation.ts");
@@ -560,6 +662,64 @@ async function main(): Promise<void> {
     resolveOld("Hson stale"); await settle();
     assert.equal(publisher.values.get(value.uri)?.[0]?.message, "Hson editor");
     controller.dispose();
+  });
+
+  await check("dependency invalidation fences old positive and negative disk reads before and after new discovery", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hson-event-disk-race-"));
+    try {
+      fixture(root, "package.json", '{"type":"module"}');
+      fixture(root, "node_modules/hson-live/package.json", '{"name":"hson-live","exports":{".":"./dist/index.d.ts"}}');
+      fixture(root, "node_modules/hson-live/dist/index.d.ts", "export declare const Hson: { event: typeof String.raw };");
+      fixture(root, "tsconfig.json", JSON.stringify({ compilerOptions: { module: "NodeNext", types: [],
+        paths: { "hson-live/hson": ["./bridge.ts"] } }, files: ["consumer.ts"] }));
+      const text = 'import { Hson } from "hson-live/hson"; Hson.event`<div/>`;';
+      const consumer = fixture(root, "consumer.ts", text);
+      const unrelated = source(join(root, "independent.hson"), "hson");
+      for (const oldPositive of [true, false]) for (const releaseEarly of [true, false]) {
+        const scanner = new TypeScriptProjectScanner();
+        const discover = (positive: boolean) => {
+          const dependency = fixture(root, "bridge.ts", positive ? 'export { Hson } from "hson-live";' : 'export const Hson = { event: String.raw };');
+          const scan = scanner.scan([root], new Map(), [dependency]);
+          let step = scan.next();
+          while (!step.done) step = scan.next();
+          const entry = step.value.sources.find(item => item.fileName === consumer)!;
+          assert.equal(entry.eventEvidence !== undefined, positive);
+          return { entry: { ...source(consumer), eventEvidence: entry.eventEvidence }, dependency };
+        };
+        const host = new Host(); const publisher = new Publisher();
+        const before = discover(oldPositive);
+        host.discovered = [before.entry, unrelated];
+        const oldRead = gate<string>(); const independentRead = gate<string>();
+        host.readGates.set(before.entry.uri, oldRead.promise);
+        host.readGates.set(unrelated.uri, independentRead.promise);
+        const controller = start_workspace_diagnostics(host, publisher);
+        await settle();
+        assert.deepEqual(host.reads, [before.entry, unrelated]);
+        const current = discover(!oldPositive);
+        host.discovered = [current.entry, unrelated];
+        host.readGates.delete(current.entry.uri);
+        host.contents.set(current.entry.uri, text);
+        const changed = { uri: pathToFileURL(current.dependency).href, kind: "change", affectsTypeScriptProjects: true } as const;
+        host.fire(host.sourceChanges, [changed]);
+        if (releaseEarly) oldRead.resolve(text);
+        independentRead.resolve("+1");
+        await settle();
+        assert.equal(publisher.writes.length, 1, "only the independent read may publish while resolution is pending");
+        assert.deepEqual(publisher.values.get(unrelated.uri)?.map(item => item.code), ["HSON_NUMBER_LEADING_PLUS"]);
+        host.runTimers(); await settle();
+        assert.deepEqual(publisher.values.get(current.entry.uri)?.map(item => item.code), oldPositive ? [] : ["HSON_DECLARATIVE_ROOT_REQUIRED"]);
+        const writes = [...publisher.writes];
+        const independent = publisher.values.get(unrelated.uri);
+        if (!releaseEarly) oldRead.resolve(text);
+        await settle();
+        assert.deepEqual(publisher.writes, writes, "superseded read never publishes");
+        host.discovered = [discover(oldPositive).entry, unrelated];
+        host.fire(host.sourceChanges, [changed]); host.runTimers(); await settle();
+        assert.deepEqual(publisher.values.get(current.entry.uri)?.map(item => item.code), oldPositive ? ["HSON_DECLARATIVE_ROOT_REQUIRED"] : []);
+        assert.equal(publisher.values.get(unrelated.uri), independent);
+        controller.dispose();
+      }
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   await check("unchanged rediscovery preserves a pending source read and corrected text clears its diagnostic", async () => {
@@ -706,6 +866,50 @@ async function main(): Promise<void> {
     controller.dispose();
   });
 
+  await check("interim Event withdrawal is generation-fenced and final proof gets a newer revision", async () => {
+    const publisher = new Publisher(), host = new Host();
+    const text = 'import { Hson } from "hson-live"; Hson.event`<div/>`;';
+    const file = source("/workspace/consumer.ts"), input = document(file, text, 1);
+    const proof = { fileName: file.fileName, textHash: event_source_text_hash(text), importOffsets: [9] };
+    const obsolete = gate<void>(), pending = gate<void>(), accept = gate<void>();
+    const updates: [string, number][] = [];
+    const setProof = (positive: boolean) => {
+      host.eventImports = event_source_imports(positive ? [proof] : [], true);
+      return [file.uri];
+    };
+    host.documents = [input];
+    const discoveries = [obsolete.promise, pending.promise];
+    host.discoverSources = async request => {
+      const wait = discoveries.shift();
+      assert.ok(wait);
+      await wait;
+      request.withdrawEventSources(revision => {
+        updates.push(["withdraw", revision]);
+        return setProof(false);
+      });
+      await accept.promise;
+      return { sources: [{ ...file, eventEvidence: proof }], accept: revision => {
+        updates.push(["accept", revision]);
+        return setProof(true);
+      } };
+    };
+    setProof(true);
+    const controller = start_workspace_diagnostics(host, publisher);
+    await settle();
+    assert.equal(publisher.values.get(file.uri)?.[0]?.code, "HSON_DECLARATIVE_ROOT_REQUIRED");
+    host.fire(host.projectChanges, "projects"); host.runTimers();
+    obsolete.resolve(); await settle();
+    assert.equal(updates.length, 0);
+    pending.resolve(); await settle();
+    assert.deepEqual(updates.map(([kind]) => kind), ["withdraw"]);
+    assert.deepEqual(publisher.values.get(file.uri), []);
+    accept.resolve(); await settle();
+    assert.deepEqual(updates.map(([kind]) => kind), ["withdraw", "accept"]);
+    assert.ok(updates[1]![1] > updates[0]![1]);
+    assert.equal(publisher.values.get(file.uri)?.[0]?.code, "HSON_DECLARATIVE_ROOT_REQUIRED");
+    controller.dispose();
+  });
+
   await check("unsaved buffers supersede pending disk work through rediscovery, removal, re-addition and close", async () => {
     const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/unsaved.ts");
     const old = gate<string>(); host.discovered = [value]; host.readGates.set(value.uri, old.promise);
@@ -781,7 +985,7 @@ async function main(): Promise<void> {
     host.discovered=[file];host.contents.set(file.uri,text);
     const controller=start_workspace_diagnostics(host,publisher);
     await settle();assert.equal(publisher.values.get(file.uri)?.[0]?.code,'HSON_ELEMENT_QUID_INVALID');
-    host.discovered=[{...file,authoringMode:'document'}];host.fire(host.projectChanges,undefined);host.runTimers();
+    host.discovered=[{...file,authoringMode:'document'}];host.fire(host.projectChanges,"standalone");host.runTimers();
     await settle();assert.deepEqual(publisher.values.get(file.uri),[]);
     host.documents=[document({...file,authoringMode:'document'},text,1)];host.fire(host.opens,host.documents[0]!);
     host.documents=[document({...file,authoringMode:'canonical'},text,1)];host.fire(host.changes,host.documents[0]!);host.runTimers();

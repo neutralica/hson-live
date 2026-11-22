@@ -16,7 +16,9 @@ type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts
 export function install_live_schema_view(typescript: typeof ts, host: ts.LanguageServiceHost, projectPath: string,
   registerEvidence?: (file: string, text: string | undefined) => void,
   getEventImports?: () => HsonEventImportEvidence | undefined,
+  canResolveSource: (file: string) => boolean = () => true,
 ) {
+  const fileExists = host.fileExists.bind(host);
   const original: ts.LanguageServiceHost = {
     ...host,
     getCompilationSettings: host.getCompilationSettings.bind(host),
@@ -25,7 +27,8 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     getScriptSnapshot: host.getScriptSnapshot.bind(host),
     getCurrentDirectory: host.getCurrentDirectory.bind(host),
     getDefaultLibFileName: host.getDefaultLibFileName.bind(host),
-    fileExists: host.fileExists.bind(host), readFile: host.readFile.bind(host),
+    fileExists: file => canResolveSource(file) && fileExists(file),
+    readFile: host.readFile.bind(host),
     ...(host.getProjectVersion === undefined ? {} : { getProjectVersion: host.getProjectVersion.bind(host) }),
     ...(host.resolveModuleNameLiterals === undefined ? {} : { resolveModuleNameLiterals: host.resolveModuleNameLiterals.bind(host) }),
     ...(host.resolveModuleNames === undefined ? {} : { resolveModuleNames: host.resolveModuleNames.bind(host) }),
@@ -127,7 +130,16 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   };
 
   host.getScriptFileNames = () => [...original.getScriptFileNames(), ...evidence.keys()];
-  host.getScriptSnapshot = file => sources.get(canonical(file))?.snapshot ?? evidence.get(canonical(file))?.snapshot ?? original.getScriptSnapshot(file);
+  host.getScriptSnapshot = file => {
+    const key = canonical(file);
+    const generated = evidence.get(key);
+    if (generated !== undefined) {
+      // A project reload can drop its ScriptInfo while retaining this view.
+      registerEvidence?.(key, generated.text);
+      return generated.snapshot;
+    }
+    return sources.get(key)?.snapshot ?? original.getScriptSnapshot(file);
+  };
   host.getScriptVersion = file => sources.get(canonical(file))?.version ?? evidence.get(canonical(file))?.version ?? original.getScriptVersion(file);
   host.getProjectVersion = () => `${original.getProjectVersion?.() ?? ""}:hson-view:${revision}`;
   host.readFile = (file, encoding) => sources.get(canonical(file))?.text ?? evidence.get(canonical(file))?.text ?? original.readFile(file, encoding);

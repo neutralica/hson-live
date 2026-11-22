@@ -5,6 +5,7 @@ import { admit_hson_source } from "../../../src/api/transform/hson-admission.js"
 import { admit_canonical_hson_data_value } from "../../../src/api/data/hson-data-hson.js";
 import { create_hson_source_program, discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { read_embedded_hson_body } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import { NO_EVENT_IMPORTS } from "./event-source-evidence.js";
 
 export type LocalHsonSchemaDiagnostic = Readonly<{ start: number; end: number; code: string; message: string }>;
 export type LocalHsonSchemaDeclaration = Readonly<{ name: string; start: number; end: number; template: string; templateStart: number; templateEnd: number }>;
@@ -18,7 +19,7 @@ type SchemaSyntax = Readonly<{
 /** Fast authoring feedback backed by the same pure compiler as the build analyzer. */
 export function local_hson_schema_diagnostics(fileName: string, text: string): readonly LocalHsonSchemaDiagnostic[] {
   const diagnostics: LocalHsonSchemaDiagnostic[] = [];
-  for (const source of discover_hson_tagged_templates(fileName, text).sources) {
+  for (const source of discover_hson_tagged_templates(fileName, text, undefined, undefined, ts, NO_EVENT_IMPORTS).sources) {
     if (source.authoringKind !== "schema") continue;
     const sourceText = read_embedded_hson_body(source);
     try { admit_canonical_hson_data_value(admit_hson_source(sourceText)); }

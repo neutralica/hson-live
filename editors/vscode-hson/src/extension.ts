@@ -14,13 +14,14 @@ import {
   type DiagnosticPublisher,
 } from "./diagnostics.js";
 import { create_host_source_locator, type HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
-import { PROJECT_DISCOVERY_COMMAND, TypeScriptProjectScanner, type ProjectDiscoveryRequest, type ProjectDiscoveryResponse, type TypeScriptProjectDiscovery } from "./typescript-project-discovery.js";
+import { is_typescript_configuration_path, PROJECT_DISCOVERY_COMMAND, project_file_keys, TypeScriptProjectScanner, type ProjectDiscoveryRequest, type ProjectDiscoveryResponse, type ProjectRevisions, type TypeScriptProjectDiscovery } from "./typescript-project-discovery.js";
 import ts from "typescript";
-import { event_source_imports } from "./event-source-evidence.js";
+import { event_source_imports, type EventSourceConfiguration, type EventSourceEvidence } from "./event-source-evidence.js";
 import {
   start_workspace_diagnostics,
   type WorkspaceDiagnosticHost,
   type WorkspaceDiagnosticSource,
+  type WorkspaceDiscoveryScope,
   type WorkspaceSourceChange,
 } from "./workspace-diagnostics.js";
 import { load_hson_grammar } from "./highlighting.js";
@@ -418,30 +419,35 @@ export function activate(context: vscode.ExtensionContext): void {
   const projectWatcher = vscode.workspace.createFileSystemWatcher("**/*.json");
   context.subscriptions.push(sourceWatcher, projectWatcher);
   const sourceListeners = new Set<(changes: readonly WorkspaceSourceChange[]) => void>();
-  const projectListeners = new Set<() => void>();
+  const projectListeners = new Set<(scope?: WorkspaceDiscoveryScope, projects?: readonly string[]) => void>();
   let projectConfigurations = new Set<string>();
   let projectErrors = new Set<string>();
   const semanticChanges = new vscode.EventEmitter<void>();
   const moduleSource = (uri: vscode.Uri): boolean => uri.scheme === "file" && /\.(?:[cm]?[jt]s|[jt]sx)$/i.test(uri.path);
-  const fireSource = (uri: vscode.Uri, kind: WorkspaceSourceChange["kind"]): void => {
-    const change = Object.freeze({ uri: uri.toString(), kind, affectsTypeScriptProjects: moduleSource(uri) });
+  const fireSource = (uri: vscode.Uri, kind: WorkspaceSourceChange["kind"], observationOnly = false): void => {
+    const change = Object.freeze({ uri: uri.toString(), kind, affectsTypeScriptProjects: moduleSource(uri), observationOnly });
     for (const listener of sourceListeners) listener([change]);
   };
-  const fireProject = () => { for (const listener of projectListeners) listener(); };
-  const projectJson = (uri: vscode.Uri): boolean => projectConfigurations.has(uri.toString()) || /\/package\.json$/i.test(uri.path);
+  const fireProject = (scope?: WorkspaceDiscoveryScope, projects?: readonly string[]) => {
+    for (const listener of projectListeners) listener(scope, projects);
+  };
+  const onProjectJson = (uri: vscode.Uri): void => {
+    // A configuration can change or disappear before its first discovery is accepted.
+    if (is_typescript_configuration_path(uri.path) || projectConfigurations.has(uri.toString()) || /\/package\.json$/i.test(uri.path)) fireProject();
+  };
   context.subscriptions.push(
     semanticChanges,
     sourceWatcher.onDidCreate(uri => fireSource(uri, "create")),
     sourceWatcher.onDidChange(uri => fireSource(uri, "change")),
     sourceWatcher.onDidDelete(uri => fireSource(uri, "delete")),
-    projectWatcher.onDidCreate(uri => { if (projectJson(uri) || /\/(?:tsconfig.*|jsconfig)\.json$/i.test(uri.path)) fireProject(); }),
-    projectWatcher.onDidChange(uri => { if (projectJson(uri)) fireProject(); }),
-    projectWatcher.onDidDelete(uri => { if (projectJson(uri)) fireProject(); }),
+    projectWatcher.onDidCreate(onProjectJson),
+    projectWatcher.onDidChange(onProjectJson),
+    projectWatcher.onDidDelete(onProjectJson),
     vscode.workspace.onDidChangeTextDocument(event => {
       if (event.contentChanges.length > 0 && moduleSource(event.document.uri)) fireSource(event.document.uri, "change");
     }),
     vscode.workspace.onDidSaveTextDocument(document => fireSource(document.uri, "change")),
-    vscode.workspace.onDidChangeWorkspaceFolders(fireProject),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => fireProject("all")),
   );
   const register = <Listener>(listeners: Set<Listener>, listener: Listener): vscode.Disposable => {
     listeners.add(listener);
@@ -449,12 +455,12 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   // Inventory remains available when VS Code has no semantic TypeScript service.
   const projectScanner = new TypeScriptProjectScanner(ts, false);
-  let discoverySession: string | undefined, projectRevision: string | undefined;
+  let discoverySession: string | undefined, projectRevision: ProjectRevisions | undefined;
   const requestProjects = async (request: ProjectDiscoveryRequest | { revisionOnly: true }) => {
     try {
       const reply = await vscode.commands.executeCommand<{ success?: boolean; body?: ProjectDiscoveryResponse }>(
         "typescript.tsserverRequest", PROJECT_DISCOVERY_COMMAND, request);
-      if (reply?.success && typeof reply.body?.sessionId === "string") return reply.body;
+      if (reply?.success && typeof reply.body?.sessionId === "string" && Array.isArray(reply.body.revision)) return reply.body;
     } catch { /* A stopped or unavailable service cannot issue import evidence. */ }
     return undefined;
   };
@@ -464,99 +470,190 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(vscode.languages.onDidChangeDiagnostics(async event => {
     if (!vscode.workspace.isTrusted || checkingRevision || !event.uris.some(moduleSource)) return;
     checkingRevision = true;
+    const session = discoverySession, revision = projectRevision;
     try {
       const current = await requestProjects({ revisionOnly: true });
-      if (current?.sessionId !== discoverySession) fireProject();
-      else if (current?.revision !== projectRevision) {
-        const uri = event.uris.find(moduleSource);
-        if (uri) fireSource(uri, "change");
+      if (session !== discoverySession || revision !== projectRevision) return;
+      if (current?.sessionId !== session) {
+        fireProject();
+        discoverySession = current?.sessionId;
+        projectRevision = current?.revision;
+      } else if (current) {
+        const before = new Map(revision);
+        const after = new Map(current.revision);
+        projectRevision = current.revision;
+        if (after.size !== before.size || [...after.keys()].some(project => !before.has(project))) fireProject();
+        else {
+          const changed = [...after].filter(([project, version]) => before.get(project) !== version).map(([project]) => project);
+          if (changed.length) fireProject("projects", changed);
+        }
       }
     } finally { checkingRevision = false; }
   }));
-  const discoverSources: WorkspaceDiagnosticHost["discoverSources"] = async (changedUris, isCurrent) => {
+  const discoverSources: WorkspaceDiagnosticHost["discoverSources"] = async ({ changedUris, isCurrent, standalone, typescript, withdrawEventSources }) => {
     const folders = vscode.workspace.workspaceFolders ?? [];
-    const fileFolders = folders.filter(folder => folder.uri.scheme === "file");
     await new Promise<void>(resolveYield => setTimeout(resolveYield, 0));
-    const standalone = (await Promise.all(folders.map(folder => vscode.workspace.findFiles(
+    const standaloneUris = standalone ? (await Promise.all(folders.map(folder => vscode.workspace.findFiles(
       new vscode.RelativePattern(folder, "**/*.hson"),
       "**/{node_modules,.git,dist,build,out,coverage}/**",
-    )))).flat();
-    if (isCurrent?.() === false) return [];
-    const standaloneSources: WorkspaceDiagnosticSource[] = standalone.map(uri => Object.freeze({
+    )))).flat() : [];
+    if (!isCurrent()) return { sources: [] };
+    const standaloneSources: WorkspaceDiagnosticSource[] = standaloneUris.map(uri => Object.freeze({
       uri: uri.toString(),
       fileName: uri.fsPath,
       languageId: "hson",
       authoringMode: standaloneAuthoringMode(vscode.workspace.getConfiguration('hson.authoring',uri).get('mode')),
     }));
+    if (!typescript) return { sources: standaloneSources };
+    const fileFolders = folders.filter(folder => folder.uri.scheme === "file");
     const openModules = vscode.workspace.textDocuments.filter(document => moduleSource(document.uri));
-    const openFiles = new Map(openModules.map(document => [document.fileName, document.getText()]));
     const withoutEventDiagnostics = new Set(openModules.filter(document => document.languageId !== "typescript"
       && document.languageId !== "typescriptreact").map(document => document.uri.toString()));
     const request: ProjectDiscoveryRequest = { roots: fileFolders.map(folder => folder.uri.fsPath),
-      openFiles: [...openFiles], changedFiles: changedUris?.map(uri => vscode.Uri.parse(uri).fsPath) };
+      openFiles: openModules.map(document => [document.fileName, document.getText(), document.isDirty]),
+      changedFiles: changedUris?.map(uri => vscode.Uri.parse(uri).fsPath) };
     let authoritative: ProjectDiscoveryResponse | undefined;
     if (vscode.workspace.isTrusted) {
       await vscode.extensions.getExtension("vscode.typescript-language-features")?.activate().then(undefined, () => undefined);
       authoritative = await requestProjects(request);
+      if (authoritative?.projects) {
+        const currentSources = authoritative.projects.sources;
+        // An edited dependency can bring a consumer into a project that did
+        // not own it in the last publication. The scanner now has both
+        // memberships and can withdraw the disputed proof before accepting
+        // any new positive evidence.
+        withdrawEventSources(revision => {
+          let retained: typeof publishedEventSources | undefined;
+          for (const source of currentSources) {
+            const uri = vscode.Uri.file(source.fileName).toString();
+            const before = publishedEventSources.get(uri);
+            if (!before || !source.owners.some(owner => !before.owners.includes(owner))) continue;
+            const current = source.eventEvidence;
+            if (current?.textHash === before.proof.textHash && before.proof.importOffsets.every(offset => current.importOffsets.includes(offset))) continue;
+            (retained ??= new Map(publishedEventSources)).delete(uri);
+          }
+          return retained === undefined ? [] : publishEventSources(retained, revision);
+        });
+      }
     }
-    if (isCurrent?.() === false) return [];
-    let projects: TypeScriptProjectDiscovery | undefined = authoritative?.projects;
+    if (!isCurrent()) return { sources: [] };
+    let projects = authoritative?.projects;
+    if (authoritative?.discoveryId === undefined) projects = undefined;
     if (!projects) {
+      const openFiles = new Map<string, string>();
+      for (const [file, content, dirty] of request.openFiles) if (dirty || ts.sys.fileExists(file)) openFiles.set(file, content);
       const scan = projectScanner.scan(request.roots, openFiles);
       let step = scan.next();
       while (!step.done) {
         await new Promise<void>(resolveYield => setTimeout(resolveYield, 0));
-        if (isCurrent?.() === false) return [];
+        if (!isCurrent()) return { sources: [] };
         step = scan.next();
       }
       projects = step.value;
     }
-    discoverySession = authoritative?.sessionId;
-    projectRevision = authoritative?.revision;
-    projectConfigurations = new Set(projects.configurations.map(fileName => vscode.Uri.file(fileName).toString()));
-    for (const error of projects.errors) if (!projectErrors.has(error)) diagnosticsOutput.appendLine(error);
-    projectErrors = new Set(projects.errors);
-    return Object.freeze([
-      ...projects.sources.map(source => {
-        const uri = vscode.Uri.file(source.fileName).toString();
-        return Object.freeze({ uri, fileName: source.fileName, languageId: source.languageId,
-          eventEvidence: withoutEventDiagnostics.has(uri) ? undefined : source.eventEvidence });
-      }),
-      ...standaloneSources,
-    ]);
+    const discovered = projects;
+    const proofs = new Map<string, { proof: EventSourceEvidence; owners: readonly string[] }>();
+    const sources = discovered.sources.map(source => {
+      const uri = vscode.Uri.file(source.fileName).toString();
+      const eventEvidence = withoutEventDiagnostics.has(uri) ? undefined : source.eventEvidence;
+      if (eventEvidence) proofs.set(uri, { proof: eventEvidence, owners: source.owners });
+      return Object.freeze({ uri, fileName: source.fileName, languageId: source.languageId, eventEvidence });
+    });
+    return { sources: [...sources, ...standaloneSources], accept: revision => {
+      if (authoritative) discoverySession = authoritative.sessionId;
+      projectRevision = authoritative?.revision;
+      projectFiles = new Map(discovered.projectFiles.map(([project, files]) => [project, new Map(files)]));
+      projectConfigurations = new Set(discovered.configurations.map(fileName => vscode.Uri.file(fileName).toString()));
+      for (const error of discovered.errors) if (!projectErrors.has(error)) diagnosticsOutput.appendLine(error);
+      projectErrors = new Set(discovered.errors);
+      return publishEventSources(proofs, revision, authoritative?.discoveryId);
+    } };
   };
-  let publishedEventSources: string | undefined;
+  let projectFiles = new Map<string, ReadonlyMap<string, string | null>>();
+  let publishedEventSources = new Map<string, { proof: EventSourceEvidence; owners: readonly string[] }>();
+  let pendingConfiguration: EventSourceConfiguration | undefined;
+  type TypeScriptExports = { getAPI(version: 0): { configurePlugin(name: string, configuration: EventSourceConfiguration): void } | undefined };
+  const publishEventSources = (next: typeof publishedEventSources, revision: number, discoveryId?: string): readonly string[] => {
+    const previous = publishedEventSources;
+    const affected = [...new Set([...previous.keys(), ...next.keys()])].filter(uri => {
+      const before = previous.get(uri)?.proof, after = next.get(uri)?.proof;
+      return before?.textHash !== after?.textHash || before?.importOffsets.join(",") !== after?.importOffsets.join(",");
+    });
+    publishedEventSources = next;
+    const eventSources = [...next.values()].map(({ proof, owners }) => ({ ...proof, owners }));
+    if (affected.length) {
+      eventImports = event_source_imports(eventSources, ts.sys.useCaseSensitiveFileNames);
+      for (const uri of affected) bindingCache.forget(uri);
+    }
+    const sessionId = discoverySession;
+    const configuration: EventSourceConfiguration | undefined = sessionId === undefined ? undefined : discoveryId === undefined
+      ? { sessionId, revision, retainedEventSources: eventSources }
+      : { sessionId, revision, discoveryId, eventSources };
+    pendingConfiguration = configuration;
+    if (configuration) {
+      const languageFeatures = vscode.extensions.getExtension<TypeScriptExports>("vscode.typescript-language-features");
+      const send = (extension: TypeScriptExports | undefined) => {
+        if (pendingConfiguration === configuration) extension?.getAPI(0)?.configurePlugin("hson-schema-typescript-plugin", configuration);
+      };
+      if (languageFeatures?.isActive) send(languageFeatures.exports);
+      else void languageFeatures?.activate().then(send, () => { /* Syntax tooling stays available. */ });
+    }
+    if (affected.length) {
+      const affectedUris = new Set(affected);
+      if (vscode.window.visibleTextEditors.some(editor => affectedUris.has(editor.document.uri.toString()))) void appearanceEditor.refreshDecorations();
+      semanticChanges.fire();
+    }
+    return affected;
+  };
   const host: WorkspaceDiagnosticHost = {
     openDocuments: () => vscode.workspace.textDocuments.map(adaptDocument),
     discoverSources,
     eventImports: (file, text) => eventImports(file, text),
-    acceptSources: sources => {
-      const eventSources = sources.flatMap(source => source.eventEvidence === undefined ? [] : [source.eventEvidence]);
-      const sessionId = discoverySession;
-      const serialized = JSON.stringify([sessionId, eventSources]);
-      if (serialized === publishedEventSources) return;
-      publishedEventSources = serialized;
-      const previousImports = eventImports;
-      eventImports = event_source_imports(eventSources, ts.sys.useCaseSensitiveFileNames);
-      const affected = vscode.workspace.textDocuments.filter(document => {
-        if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return false;
-        const text = document.getText();
-        const before = previousImports(document.fileName, text), after = eventImports(document.fileName, text);
-        return before.size !== after.size || ![...before].every(offset => after.has(offset));
-      });
-      for (const document of affected) bindingCache.forget(document.uri.toString());
-      if (vscode.window.visibleTextEditors.some(editor => affected.includes(editor.document))) void appearanceEditor.refreshDecorations();
-      semanticChanges.fire();
-      type TypeScriptExports = { getAPI(version: 0): { configurePlugin(name: string, configuration: unknown): void } | undefined };
-      const languageFeatures = vscode.extensions.getExtension<TypeScriptExports>("vscode.typescript-language-features");
-      void languageFeatures?.activate().then(extension => {
-        if (publishedEventSources === serialized) extension?.getAPI(0)?.configurePlugin("hson-schema-typescript-plugin", { sessionId, eventSources });
-      }, () => { /* The syntax producer remains available without the TS service. */ });
+    invalidateProjects: (revision, change, projects) => {
+      if ((change === undefined && projects === undefined) || (change?.affectsTypeScriptProjects && change.kind === "delete")) {
+        return publishEventSources(new Map(), revision);
+      }
+      const changedUri = change?.uri;
+      const affected = new Set(projects);
+      if (change !== undefined) {
+        const keys = project_file_keys(vscode.Uri.parse(change.uri).fsPath);
+        const [path, identity] = keys;
+        const aliases = new Set<string>(keys);
+        let knownOnDisk = false;
+        for (const files of projectFiles.values()) {
+          const priorIdentity = files.get(path);
+          if (!priorIdentity) continue;
+          knownOnDisk = true;
+          aliases.add(priorIdentity);
+        }
+        // A watcher can report a rewrite as a create. Attribute it only when
+        // the exact path was already backed by a file in accepted discovery.
+        // Include its previous identity in case a replacement changed inodes.
+        if (change.affectsTypeScriptProjects && change.kind === "create" && (!knownOnDisk || identity === undefined)) {
+          return publishEventSources(new Map(), revision);
+        }
+        const changedKeys = [...aliases];
+        for (const [project, files] of projectFiles) {
+          if (changedKeys.some(key => files.has(key))) affected.add(project);
+        }
+      }
+      if (publishedEventSources.size === 0) return [];
+      const retained = new Map([...publishedEventSources].filter(([uri, entry]) => uri !== changedUri
+        && !entry.owners.some(project => affected.has(project))));
+      return retained.size === publishedEventSources.size ? [] : publishEventSources(retained, revision);
     },
-    readSource: async source => new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(source.uri))),
+    readSource: async source => {
+      if (source.languageId === "hson") return new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(source.uri)));
+      // Use the compiler's BOM handling. Event proof also requires the decoded
+      // text to match the active SDK's authored snapshot exactly.
+      const text = ts.sys.readFile(source.fileName);
+      if (text === undefined) throw new Error(`Cannot read TypeScript source: ${source.fileName}`);
+      return text;
+    },
     onDidOpen: (listener) => vscode.workspace.onDidOpenTextDocument(document => {
+      if (moduleSource(document.uri)) fireSource(document.uri, "change",
+        !document.isDirty && document.getText() === ts.sys.readFile(document.fileName));
       listener(adaptDocument(document));
-      if (moduleSource(document.uri)) fireSource(document.uri, "change");
     }),
     onDidChange: (listener) => vscode.Disposable.from(
       vscode.workspace.onDidChangeTextDocument(event => listener(adaptDocument(event.document))),
@@ -565,12 +662,13 @@ export function activate(context: vscode.ExtensionContext): void {
         for (const document of vscode.workspace.textDocuments) if (document.languageId === 'hson') listener(adaptDocument(document));
       })),
     onDidClose: (listener) => vscode.workspace.onDidCloseTextDocument(document => {
+      if (moduleSource(document.uri)) fireSource(document.uri, "change",
+        !document.isDirty && document.getText() === ts.sys.readFile(document.fileName));
       listener(adaptDocument(document));
-      if (moduleSource(document.uri)) fireSource(document.uri, "change");
     }),
     onDidChangeSources: listener => register(sourceListeners, listener),
     onDidChangeProjects: listener => vscode.Disposable.from(register(projectListeners, listener),
-      vscode.workspace.onDidChangeConfiguration(event => { if (event.affectsConfiguration('hson.authoring.mode')) listener(); })),
+      vscode.workspace.onDidChangeConfiguration(event => { if (event.affectsConfiguration('hson.authoring.mode')) listener("standalone"); })),
     setTimer: (callback, delayMilliseconds) => setTimeout(callback, delayMilliseconds),
     clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
     yield: () => new Promise(resolveYield => setTimeout(resolveYield, 0)),

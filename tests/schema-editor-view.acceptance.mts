@@ -1353,7 +1353,7 @@ check("production completion refreshes imported and local Schemas after unsaved 
   app.edit("app.ts", nested); assert.deepEqual(complete(nested), ["theme"]);
   const used = source.replace('<co`', '<cost 1 co`');
   app.edit("app.ts", used); assert.deepEqual(complete(used), ["color"]);
-  const local = producer.replace('export ', '') + source.replace('import { S } from "./schema.js";', '');
+  const local = source.replace('import { S } from "./schema.js";', producer.replace('import { Hson } from "hson-live"; export ', ''));
   app.edit("app.ts", local); assert.deepEqual(complete(local), ["count", "color"]);
   app.edit("app.ts", local.replace('color "string"', 'copper "string"'));
   assert.deepEqual(complete(local.replace('color "string"', 'copper "string"')), ["count", "copper"]);

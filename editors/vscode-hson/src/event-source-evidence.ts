@@ -8,11 +8,19 @@ export type EventSourceEvidence = Readonly<{
   importOffsets: readonly number[];
 }>;
 
+export type EventSourceConfiguration = Readonly<{
+  sessionId: string;
+  revision: number;
+}> & (Readonly<{ discoveryId: string; eventSources: readonly ConfiguredEventSource[] }>
+  | Readonly<{ retainedEventSources: readonly ConfiguredEventSource[] }>);
+
+export type ConfiguredEventSource = EventSourceEvidence & Readonly<{ owners: readonly string[] }>;
+
 export function event_source_text_hash(text: string): string {
   return createHash("sha256").update(text, "utf16le").digest("hex");
 }
 
-const noImports: ReadonlySet<number> = new Set();
+export const NO_EVENT_IMPORTS: ReadonlySet<number> = new Set();
 
 /** Rebind the workspace's proof to the exact text used by each consumer. */
 export function event_source_imports(sources: readonly EventSourceEvidence[], caseSensitive: boolean): HsonEventImportEvidence {
@@ -22,9 +30,9 @@ export function event_source_imports(sources: readonly EventSourceEvidence[], ca
   }]));
   return (fileName, text) => {
     const source = entries.get(key(fileName));
-    if (source === undefined) return noImports;
+    if (source === undefined) return NO_EVENT_IMPORTS;
     if (source.checked !== text) {
-      if (event_source_text_hash(text) !== source.textHash) return noImports;
+      if (event_source_text_hash(text) !== source.textHash) return NO_EVENT_IMPORTS;
       source.checked = text;
     }
     return source.imports;
