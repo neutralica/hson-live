@@ -6,6 +6,12 @@ import { runStages } from "./validation-execution.mjs";
 import { validateCommitted, validateSweep } from "./validate-staged.mjs";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
+const commandTimeouts = Object.freeze({ "test:hson-schema-analyzer": 240_000 });
+
+export function commandTimeout(mode, index, name, ordinaryCount) {
+  const timedGateStage = mode === "extended" || ["full", "sweep"].includes(mode) && index >= ordinaryCount;
+  return timedGateStage ? commandTimeouts[name] ?? 180_000 : 0;
+}
 
 export async function runAcceptance(mode, options = {}) {
   const root = options.root ?? repositoryRoot;
@@ -18,7 +24,7 @@ export async function runAcceptance(mode, options = {}) {
   const stages = names.map((name, index) => ({ name, command: scripts[name],
     dependsOn: rootBuildConsumers.includes(name) ? ["build"] : [],
     continueOnFailure: mode === "extended" || mode === "full" && index >= ordinary.length,
-    timeout: mode === "extended" || ["full", "sweep"].includes(mode) && index >= ordinary.length ? 180_000 : 0 }));
+    timeout: commandTimeout(mode, index, name, ordinary.length) }));
   return runStages({ root, mode, stages,
     preflight: async () => (await import(fromCheckout("validation-inventory.mjs"))).createInventory(), checkInventory: assertInventory,
     rootBuildPrerequisites,
