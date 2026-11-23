@@ -6,6 +6,7 @@ import { encode_scoped_effect_graph_operation } from "./livemap.hosted.js";
 import { read_livemap_document_logical_location } from "./livemap.document.location.js";
 import { lower_document_css_command } from "../../internal/document-css-commands.js";
 import { plan_collection_command } from "./livemap.collection-command.js";
+import { check_candidate_data_location } from "./livemap.data-refinement.js";
 import { governed_document_element_target, governed_document_slot, governed_document_remove_slot, governed_document_insert_slot, governed_document_move_target } from "../../internal/governed-document.js";
 import { own_semantic_checkpoint } from "./livemap.semantic-checkpoint.js";
 import { decode_document_scoped_quads, document_scoped_quads_semantically_equal, type DocumentScopedQuadRecord } from "./livemap.document.scoped-quad-codec.js";
@@ -958,10 +959,14 @@ function make_livemap_registry_engine(
   }
 
   function aggregate_write_ops(
-    write: Extract<LiveMapAggregateWrite, { kind: "set" | "set-key" | "replace" | "delete" | "splice" | "rename" | "move" | "collection" }>,
+    write: Extract<LiveMapAggregateWrite, { kind: "set" | "set-key" | "replace" | "delete" | "splice" | "rename" | "move" | "collection" | "assert-data-location" }>,
     root: HsonNode,
   ): readonly LiveMapCoreWriteOp[] {
     const path = clone_live_path(must_live_path(write.target.path));
+    if (write.kind === "assert-data-location") {
+      check_candidate_data_location({ path, expected: write.expected }, kind_live_path(root, path));
+      return [];
+    }
     if (write.kind === "collection") {
       return plan_collection_command(root, path, write.command).flatMap(op => aggregate_write_ops({
         ...op, target: { ...write.target, path: op.path },

@@ -92,6 +92,11 @@ export type LiveMapAggregateWrite =
     command: import("./livemap.collection-command.js").CollectionCommand;
   }>
   | Readonly<{
+    target: LiveMapStructuralTarget;
+    kind: "assert-data-location";
+    expected: import("./livemap.data-refinement.js").DataLocationRefinement["expected"];
+  }>
+  | Readonly<{
     target: LiveMapAuthorityTarget;
     kind: "splice";
     start: number;

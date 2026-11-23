@@ -11,6 +11,8 @@ import { make_family_selectors } from "../../internal/library-selectors.js";
 import { type OwnedLibraryDefinition, admit_public_livemap_definitions, require_livemap_library_internal, resolve_livemap_library_internal } from "../livemap/livemap.libraries.js";
 import { document_css_commands, document_css_reads, dispatch_document_css_command, capture_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands, normalize_part_collection_command } from "../livemap/livemap.collection-command.js";
+import { data_location_refinements } from "../livemap/livemap.data-refinement.js";
+import { stage_data_location_refinements } from "../livemap/livemap.staged.js";
 import { collection_observations, live_observation, live_subscription, read_document_location } from "../../internal/library-observation.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
@@ -19,7 +21,7 @@ import type {
   LiveMapStagedWriter, LivePath, LiveMapDataLibrary, LiveMapDocumentLibrary,
 } from "../../types/livemap.types.js";
 import type { LocusDefinitions, LocusStage } from "../../types/locus.core.types.js";
-import { must_live_path, must_ordered_projected_value } from "../livemap/livemap.guard.js";
+import { must_ordered_projected_value } from "../livemap/livemap.guard.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { mark_browser_html_producer } from "../../internal/browser-html-producer.js";
 import { register_governed_document, write_document_quad } from "../../internal/governed-document.js";
@@ -73,25 +75,27 @@ export function make_locus_stage<TMap extends LiveMap>(
     });
   const data_path = (name: string, path: LivePath, owner: LiveMapDataLibrary, retained?: import("../../internal/library-observation.js").DataLocationObservations): import("../../types/governor.types.js").LocusDataLocation => {
     assertReadable();
-    const stable = must_live_path(path);
     owner.schema.get();
-    const raw = retained ?? owner.at(stable);
+    const raw = retained ?? owner.at(path);
+    const stable = raw.path();
+    const refinements = data_location_refinements(raw);
     const observations = collection_observations(raw, assertReadable);
-    const commands = collection_commands(command => submit(writer => {
+    const staged_location = (writer: Writer, collection?: "array" | "object") => {
       if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle.");
-      if ((command.collection === "array" ? raw.asArray() : raw.asObject()) === undefined) {
-        throw new Error(`Data location is not an ${command.collection}.`);
-      }
       const location = selected_data(writer, name).at(stable);
+      stage_data_location_refinements(location,
+        collection === undefined ? refinements : [...refinements, { path: stable, expected: collection }]);
+      return location;
+    };
+    const commands = collection_commands(command => submit(writer => {
+      const location = staged_location(writer, command.collection);
       Reflect.apply(Reflect.get(Reflect.get(location, command.collection), command.method), undefined, command.args);
     }), cause => Promise.reject(cause), command => resolve_livemap_library_internal(map, name)?.family === "parts" ? normalize_part_collection_command(command, stable) : command);
     const isParts = resolve_livemap_library_internal(map, name)?.family === "parts";
     const write = (method: "set" | "replace", value: JsonValue): Promise<void> => capture_before_submission(() => {
       const owned = must_ordered_projected_value(isParts ? normalize_part_css_authoring(value, stable) : value, stable);
       return submit(writer => {
-        if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle.");
-        raw.snap();
-        const location = selected_data(writer, name).at(stable);
+        const location = staged_location(writer);
         Reflect.apply(location[method], location, [owned]);
       });
     });
@@ -109,10 +113,10 @@ export function make_locus_stage<TMap extends LiveMap>(
       asArray: observe(() => { const checked = raw.asArray(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); }),
       asObject: observe(() => { const checked = raw.asObject(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); }),
       asScalar: observe(() => { const checked = raw.asScalar(); return checked === undefined ? undefined : data_path(name, stable, owner, checked); }),
-      at: observe((child: LivePath) => data_path(name, [...stable, ...must_live_path(child)], owner, raw.at(child))),
+      at: observe((child: LivePath) => data_path(name, stable, owner, raw.at(child))),
       set: (value: JsonValue) => write("set", value),
       replace: (value: JsonValue) => write("replace", value),
-      delete: () => submit(writer => { if (require_livemap_library_internal(map, name) !== owner) throw new Error("Stale Library handle."); raw.snap(); selected_data(writer, name).at(stable).delete(); }),
+      delete: () => submit(writer => { staged_location(writer).delete(); }),
     };
     return Object.freeze(forward_part_write(facade, raw, assertReadable)) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };

@@ -6,6 +6,7 @@ import { PART_COLLECTION_VALIDATION } from "./livemap.parts.js";
 import { normalize_document_request_target } from "./livemap.document.target.js";
 import { document_css_commands, capture_document_css_command } from "../../internal/document-css-commands.js";
 import { collection_commands, normalize_part_collection_command } from "./livemap.collection-command.js";
+import { data_location_assertion, type DataLocationRefinement } from "./livemap.data-refinement.js";
 import type { LiveMap, LiveMapCssOp, LiveMapDocumentContent, LiveMapDocumentCommitTarget, LiveMapDocumentRequestTarget, LiveMapGraphOp, LivePath, LiveMapStagedWriter } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
@@ -72,6 +73,15 @@ type StagedDataLibrary = Readonly<{
   at: (path: LivePath) => StagedDataPath;
 }>;
 
+const stagedDataAssertions = new WeakMap<object, (refinements: readonly DataLocationRefinement[]) => void>();
+
+/** Bind a live Data location's predicates to this stage's Library candidate. @internal */
+export function stage_data_location_refinements(location: object, refinements: readonly DataLocationRefinement[]): void {
+  const append = stagedDataAssertions.get(location);
+  if (append === undefined) throw new Error("Staged Data location is unavailable.");
+  append(refinements);
+}
+
 /** One callback-local command list shared by LiveMap batch and Locus stage. */
 export function make_livemap_staged_writer<TMap extends LiveMap>(
   aggregate: InternalLiveMapAggregateAuthority,
@@ -106,13 +116,11 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
     const assert_current = () => { assert_open(); writes.push(...checks); };
     const require_shape = (collection: "array" | "object"): StagedDataPath => {
       assert_current();
-      const assertion: LiveMapAggregateWrite = Object.freeze({ target, kind: "collection", command: Object.freeze({
-        collection, method: "assert-shape", args: Object.freeze<[]>([]),
-      }) });
+      const assertion = data_location_assertion(target, collection);
       writes.push(assertion);
       return data_path(identity, stablePath, [...checks, assertion]);
     };
-    return Object.freeze({
+    const location = Object.freeze({
       asArray: () => require_shape("array"),
       asObject: () => require_shape("object"),
       ...collection_commands(command => {
@@ -124,18 +132,27 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         return data_path(identity, [...stablePath, ...must_live_path(child)], checks);
       },
       set(value: JsonValue) {
+        assert_open();
+        const owned = must_ordered_projected_value(normalize(value), stablePath);
         assert_current();
-        writes.push(Object.freeze({ target, kind: "set", value: must_ordered_projected_value(normalize(value), stablePath) }));
+        writes.push(Object.freeze({ target, kind: "set", value: owned }));
       },
       replace(value: JsonValue) {
+        assert_open();
+        const owned = must_ordered_projected_value(normalize(value), stablePath);
         assert_current();
-        writes.push(Object.freeze({ target, kind: "replace", value: must_ordered_projected_value(normalize(value), stablePath) }));
+        writes.push(Object.freeze({ target, kind: "replace", value: owned }));
       },
       delete() {
         assert_current();
         writes.push(Object.freeze({ target, kind: "delete" }));
       },
     });
+    stagedDataAssertions.set(location, refinements => {
+      assert_open();
+      for (const { path, expected } of refinements) writes.push(data_location_assertion(aggregate.target(identity, path), expected));
+    });
+    return location;
   };
   const document_library = (identity: LiveMapLibraryIdentity): StagedDocumentLibrary => {
     const graph = (operation: LiveMapGraphOp, logicalLocation?: readonly number[]): void => {
