@@ -23,16 +23,35 @@ async function run(): Promise<void> {
   const check = (name: string, body: () => void) => { body(); console.log(`ok ${++checks} - ${name}`); };
   const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}.canonical\`${body}\`;`;
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
-  check("official Event bodies use embedded Hson scopes, including unfinished edits", () => {
+  check("genuine embedded Events use scanner roles and leave host substitutions to TypeScript", () => {
     const file = join(hson_event_host_fixture(resolve("../..")), "events.ts");
     const prefix = 'import { Hson as E } from "hson-live/hson";\r\nconst source=E.event`';
     const body = '<hson:event on:click local:save\r\n note:str="🧪" <> >';
+    const expected = [
+      [0, 1, "<", "hsonEventStructural"],
+      [1, 11, "hson:event", "hsonEventHead"],
+      [12, 14, "on", "hsonEventSelectorDomain"],
+      [14, 15, ":", "hsonEventSeparator"],
+      [15, 20, "click", "hsonEventSelectorName"],
+      [21, 26, "local", "hsonEventDestinationDomain"],
+      [26, 27, ":", "hsonEventSeparator"],
+      [27, 31, "save", "hsonEventAction"],
+      [34, 38, "note", "hsonEventArgument"],
+      [38, 39, ":", "hsonEventSeparator"],
+      [39, 42, "str", "hsonEventQualifier"],
+      [42, 43, "=", "hsonEventAssignment"],
+      [43, 44, '"', "hsonEventQuote"],
+      [44, 46, "🧪", "hsonEventString"],
+      [46, 47, '"', "hsonEventQuote"],
+      [48, 49, "<", "hsonEventOutcomeOpen"],
+      [49, 50, ">", "hsonEventOutcomeClose"],
+      [51, 52, ">", "hsonEventDeclarationClose"],
+    ];
     for (const suffix of ['`;', '', ' ${opaque({ answer: 1 })', ' ${opaque({ answer: 1 })}`;']) {
       const text = prefix + body + suffix;
       const highlights = tokens(text, file);
-      assert.ok(highlights.some(token => token.range.start === prefix.length && token.type === "hsonDelimiter"));
-      assert.ok(highlights.some(token => text.slice(token.range.start, token.range.end) === "🧪" && token.type === "hsonString"));
-      assert.ok(highlights.every(token => token.range.start >= prefix.length && token.range.end <= prefix.length + body.length));
+      assert.deepEqual(highlights.map(({ range: { start, end }, type }) =>
+        [start - prefix.length, end - prefix.length, text.slice(start, end), type]), expected, JSON.stringify(suffix));
       assert.deepEqual(tokens(text.replace('hson-live/hson', 'unrelated'), file), []);
     }
   });

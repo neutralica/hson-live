@@ -14,7 +14,7 @@ for (const [id, role] of Object.entries(roleCatalog)) {
   let branch = hson; const parts = id.split('.'), leaf = parts.pop()!;
   for (const part of parts) { const child = branch[part] ?? (branch[part] = {}); if (!isBranch(child)) throw new Error("Overlapping syntax roles"); branch = child; }
   const style: RoleStyle | undefined = styles[id];
-  const {inherits, ...modes} = style ?? {};
+  const {inherits, ...modes} = style ?? {inherits: role.fallback};
   branch[leaf] = {label:role.label, examples:role.examples, ...(inherits ? {inherits}:{}), ...(Object.keys(modes).length ? {house:modes}:{})};
 }
 export const HSON_APPEARANCE = {syntax: {hson, general: house.fullTheme.general}, ui:house.fullTheme.ui, branding:house.fullTheme.branding};

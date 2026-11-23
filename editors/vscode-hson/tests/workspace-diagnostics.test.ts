@@ -68,6 +68,7 @@ class Host implements WorkspaceDiagnosticHost {
   readonly unexpected: unknown[] = [];
   readonly discoveryRequests: { typescript: boolean; standalone: boolean }[] = [];
   eventImports = event_source_imports([], true);
+  invalidateProjects?: WorkspaceDiagnosticHost["invalidateProjects"];
   private timerId = 0;
   openDocuments(): readonly DiagnosticDocument[] { return this.documents; }
   async discoverSources({ typescript, standalone }: Parameters<WorkspaceDiagnosticHost["discoverSources"]>[0]):
@@ -484,8 +485,8 @@ async function main(): Promise<void> {
       }));
       const second = configureMirror(false);
       const scanner = new TypeScriptProjectScanner();
-      const verify = (official: boolean, buffers = new Map<string, string>(), changed?: string[], publishMirror = true) => {
-        const scan = scanner.scan([root], buffers, changed);
+      const verify = (official: boolean, buffers = new Map<string, string>(), changed?: string[], publishMirror = true, pending = false) => {
+        const scan = scanner.scan([root], buffers, changed, pending ? new Map([[second, { program: null }]]) : undefined);
         let step = scan.next();
         while (!step.done) step = scan.next();
         const { sources } = step.value;
@@ -501,6 +502,10 @@ async function main(): Promise<void> {
         }
       };
       verify(true);
+      // A loaded, rootless project withholds its shared import vote. Its
+      // independent neighbor stays qualified throughout both cache transitions.
+      verify(false, new Map(), [], true, true);
+      verify(true, new Map(), []);
       configureMirror(true); verify(false);
       configureMirror(false); verify(true);
       verify(false, new Map([[mirror, " " + text]]), [mirror]);
@@ -907,6 +912,63 @@ async function main(): Promise<void> {
     assert.deepEqual(updates.map(([kind]) => kind), ["withdraw", "accept"]);
     assert.ok(updates[1]![1] > updates[0]![1]);
     assert.equal(publisher.values.get(file.uri)?.[0]?.code, "HSON_DECLARATIVE_ROOT_REQUIRED");
+    controller.dispose();
+  });
+
+  await check("pending Event import discovery rechecks authored expectations after edits and negative settlement", async () => {
+    const host = new Host(), publisher = new Publisher();
+    const file = source("/workspace/event-expectation.ts");
+    const directive = "// @hson-expect-error HSON_TAGGED_TEMPLATE_REQUIRED";
+    const text = 'import { Hson } from "hson-live";\n' + directive + '\nHson.event`<hson:event on:click local:${"go"} <> >`;';
+    const proof = (snapshot: string) => ({ fileName: file.fileName, textHash: event_source_text_hash(snapshot), importOffsets: [9] });
+    const codes = () => publisher.values.get(file.uri)?.map(spec => spec.code);
+    const startup = gate<readonly WorkspaceDiagnosticSource[]>();
+    host.documents = [document(file, text, 1)];
+    host.discoveryGates.push(startup.promise);
+    host.invalidateProjects = () => {
+      host.eventImports = event_source_imports([], true);
+      return [file.uri];
+    };
+    const controller = start_workspace_diagnostics(host, publisher);
+    assert.deepEqual(codes(), []);
+    startup.resolve([{ ...file, eventEvidencePending: true }]);
+    await settle();
+    assert.deepEqual(codes(), []);
+    const refresh = async (sources: readonly WorkspaceDiagnosticSource[]) => {
+      host.discovered = [...sources];
+      host.fire(host.projectChanges, "projects");
+      host.runTimers();
+      await settle();
+    };
+    await refresh([{ ...file, eventEvidence: proof(text) }]);
+    assert.deepEqual(codes(), []);
+
+    const edit = (next: string, version: number) => {
+      const input = document(file, next, version);
+      host.documents = [input];
+      host.fire(host.changes, input);
+    };
+    const raw = text.replace(directive, "// control");
+    edit(raw, 2);
+    await refresh([{ ...file, eventEvidence: proof(raw) }]);
+    assert.deepEqual(codes(), ["HSON_TAGGED_TEMPLATE_REQUIRED"]);
+    const spec = publisher.values.get(file.uri)?.[0];
+    assert.equal(raw.slice(spec?.range.start, spec?.range.end), '${"go"}');
+    edit(text, 3);
+    await refresh([{ ...file, eventEvidence: proof(text) }]);
+    assert.deepEqual(codes(), []);
+
+    const withdraw = gate<readonly WorkspaceDiagnosticSource[]>();
+    host.discoveryGates.push(withdraw.promise);
+    host.fire(host.projectChanges, "projects");
+    host.runTimers();
+    assert.deepEqual(codes(), []);
+    withdraw.resolve([file]);
+    await settle();
+    assert.deepEqual(codes(), ["HSON_EXPECT_ERROR_UNUSED"]);
+    await refresh([{ ...file, eventEvidence: proof(text) }]);
+    assert.deepEqual(codes(), []);
+    assert.deepEqual(host.unexpected, []);
     controller.dispose();
   });
 

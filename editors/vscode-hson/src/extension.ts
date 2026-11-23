@@ -552,12 +552,16 @@ export function activate(context: vscode.ExtensionContext): void {
       projects = step.value;
     }
     const discovered = projects;
+    // A syntax-only fallback during trusted startup cannot settle package identity.
+    const awaitingProjectService = authoritative?.discoveryId === undefined && vscode.workspace.isTrusted
+      && vscode.extensions.getExtension("vscode.typescript-language-features") !== undefined;
     const proofs = new Map<string, { proof: EventSourceEvidence; owners: readonly string[] }>();
     const sources = discovered.sources.map(source => {
       const uri = vscode.Uri.file(source.fileName).toString();
       const eventEvidence = withoutEventDiagnostics.has(uri) ? undefined : source.eventEvidence;
       if (eventEvidence) proofs.set(uri, { proof: eventEvidence, owners: source.owners });
-      return Object.freeze({ uri, fileName: source.fileName, languageId: source.languageId, eventEvidence });
+      return Object.freeze({ uri, fileName: source.fileName, languageId: source.languageId, eventEvidence,
+        ...(source.eventEvidencePending || awaitingProjectService ? { eventEvidencePending: true } : {}) });
     });
     return { sources: [...sources, ...standaloneSources], accept: revision => {
       if (authoritative) discoverySession = authoritative.sessionId;

@@ -138,7 +138,7 @@ function context_index(facts: PartSourceFacts): ContextIndex {
         expand(source, connector, { source, connector, batch }, { frames: 0 }, reached);
       }
     }
-    for (const write of facts.writes) if (write.batch === batch) {
+    for (const write of facts.writes) if (write.batch === batch && !write.partial) {
       expand(undefined, undefined, { write, batch }, { frames: 0 }, false, undefined, [], write);
     }
   }

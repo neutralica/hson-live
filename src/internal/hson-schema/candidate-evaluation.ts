@@ -21,7 +21,7 @@ export type StaticSchemaEvaluation = Readonly<{ kind: "valid" }> | Readonly<{ ki
 
 /** One context-aware canonical evaluation for annotation proof and relationships. */
 export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, candidate: StaticSchemaCandidate,
-  parts?: ReadonlyMap<string, unknown>): StaticSchemaEvaluation {
+  parts?: Pick<ReadonlyMap<string, unknown>, "get">): StaticSchemaEvaluation {
   try {
     const document = compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element";
     // A different carrier family cannot establish this proof.
@@ -30,7 +30,7 @@ export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, c
     const authored = document && "source" in candidate ? parse_authored_document_library(candidate.source) : undefined;
     let realized: HsonNode | undefined;
     if (authored !== undefined && has_part_connector(authored.root)) {
-      // Only an authoritative same-batch inventory can prove final structure.
+      // Every referenced collection needs an authoritative same-batch proof.
       // No receiving runtime, Part facade, identity overlay or publication is created.
       if (parts === undefined) return { kind: "unknown" };
       const collections = new Map<string, readonly ValidatedPart[]>();
@@ -39,8 +39,9 @@ export function evaluate_static_schema_candidate(compiled: CompiledHsonSchema, c
       }), document_composition_options(undefined), (collection, member) => {
         let validated = collections.get(collection);
         if (validated === undefined) {
-          if (!parts.has(collection)) throw new Error("Static Part inventory is unavailable.");
-          validated = validate_part_collection(admit_projected_value(parts.get(collection)));
+          const value = parts.get(collection);
+          if (value === undefined) throw new Error("Static Part inventory is unavailable.");
+          validated = validate_part_collection(admit_projected_value(value));
           collections.set(collection, validated);
         }
         const selected = validated.find(part => part.key === member);

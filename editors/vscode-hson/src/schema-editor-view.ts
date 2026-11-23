@@ -48,7 +48,10 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
   let evidence = new Map<string, Snapshot>();
   let evidenceByDeclaration = new Map<string, string>();
   let evidenceLabels = new Map<string, string>();
-  let candidateDiagnostics: readonly StaticSchemaDiagnostic[] = [];
+  let grouped = new Map<string, StaticSchemaDiagnostic[]>();
+  let signatures = new Map<string, string>();
+  const intermediateReads = new Set<string>();
+  let observed = new Map<string, string>();
   const canonical = (file: string): string => {
     const path = resolve(file);
     return host.useCaseSensitiveFileNames?.() === false ? path.toLowerCase() : path;
@@ -67,8 +70,16 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const eventImports = getEventImports?.();
     if (program === previous && eventImports === previousEventImports) return;
     previousEventImports = eventImports;
-    candidateDiagnostics = [...static_schema_candidate_diagnostics(typescript, program),
+    const candidateDiagnostics = [...static_schema_candidate_diagnostics(typescript, program),
       ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program, eventImports), typescript, program.getTypeChecker())];
+    grouped = new Map();
+    for (const diagnostic of candidateDiagnostics) {
+      const file = diagnostic.file;
+      const group = grouped.get(file) ?? [];
+      group.push(diagnostic);
+      grouped.set(file, group);
+    }
+    signatures = new Map([...grouped].map(([file, group]) => [file, JSON.stringify(group)]));
     if (program === previous) return;
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
@@ -158,14 +169,32 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
 
   return {
     refresh,
-    candidate_diagnostics: (file: string): ts.Diagnostic[] => candidateDiagnostics.filter(diagnostic => canonical(diagnostic.file) === canonical(file)).map(diagnostic => ({
-      file: authoredService.getProgram()?.getSourceFile(file), start: diagnostic.start, length: Math.max(1, diagnostic.end - diagnostic.start),
-      category: typescript.DiagnosticCategory.Error, code: 95002, source: "hson-schema", messageText: diagnostic.message,
-      ...(diagnostic.related === undefined ? {} : { relatedInformation: diagnostic.related.map(related => ({
-        file: authoredService.getProgram()?.getSourceFile(related.file), start: related.start, length: related.end - related.start,
-        category: typescript.DiagnosticCategory.Message, code: 95002, messageText: related.message,
-      })) }),
-    })),
+    // Compare the complete authored payload (including related attachment ranges)
+    // once per accepted discovery/configuration. Reads never send protocol events.
+    changed_diagnostic_files: (): ReadonlySet<string> => {
+      refresh();
+      const changed = new Set([...signatures.keys(), ...observed.keys()].filter(file => signatures.get(file) !== observed.get(file)));
+      // A geterr may have served a transient revision before a rapid undo.
+      for (const file of intermediateReads) changed.add(file);
+      intermediateReads.clear();
+      observed = signatures;
+      return changed;
+    },
+    candidate_diagnostics: (file: string): ts.Diagnostic[] => {
+      // Use the authored Program to select the recipient spelling on this host.
+      const program = authoredService.getProgram();
+      const source = program?.getSourceFile(file);
+      const key = source?.fileName ?? file;
+      if (signatures.get(key) !== observed.get(key)) intermediateReads.add(key);
+      return (grouped.get(key) ?? []).map(diagnostic => ({
+        file: source, start: diagnostic.start, length: Math.max(1, diagnostic.end - diagnostic.start),
+        category: typescript.DiagnosticCategory.Error, code: 95002, source: "hson-schema", messageText: diagnostic.message,
+        ...(diagnostic.related === undefined ? {} : { relatedInformation: diagnostic.related.map(related => ({
+          file: program?.getSourceFile(related.file), start: related.start, length: related.end - related.start,
+          category: typescript.DiagnosticCategory.Message, code: 95002, messageText: related.message,
+        })) }),
+      }));
+    },
     dispose: () => { for (const file of evidence.keys()) registerEvidence?.(file, undefined); authoredService.dispose(); },
     authoredService,
     mapping: (file: string) => sources.get(canonical(file))?.mapping,

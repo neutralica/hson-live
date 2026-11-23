@@ -1,4 +1,4 @@
-import { authored_event_completion_checkpoint, authored_event_operand_ends_at, hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonGrammarCheckpoint, type HsonInterpolationRole, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
+import { hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonGrammarCheckpoint, type HsonInterpolationRole, type HsonTemplateSlot } from "../../api/transform/parsers/tokenize-hson.js";
 import { serialize_hson_tag_name } from "../../api/transform/utils/hson-utils/hson-tag-helpers.js";
 import { serialize_primitive_hson } from "../../api/transform/utils/primitive-utils/serialize-primitive.utils.js";
 import { decode_hson_content_string } from "../../core/hson-content-string.js";
@@ -6,11 +6,6 @@ import { compile_hson_schema, HSON_SCHEMA_DATA_ROOT_ORDER, valid_data_root_field
 import type { PartSourceFacts, PartDocumentSource, PartConnectorSource } from "../hson-schema/part-source.js";
 import { part_candidates } from "./part-completion.js";
 import { project_schema_data, schema_object_member, type SchemaDataPath } from "../hson-schema/data-projection.js";
-import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
-import { AUTHORED_EVENT_NAMES, formdata_operation, native_event_class, native_event_family, native_event_paths, native_event_scalar_qualifier } from "../event-argument-plan.js";
-import { scan_formdata_operation } from "../event-operation-source.js";
-import { scan_part_reference } from "../part-placeholder.js";
-import { AUTHORED_EVENT_FLAGS } from "../../core/authored-event-names.js";
 
 /** Locate compiler source facts only; completion and reference diagnostics are separate consumers. */
 export function query_hson_part_source(facts: PartSourceFacts, file: string, offset: number, includeLiteralEnd = false): Readonly<{
@@ -40,93 +35,6 @@ export type HsonEditorContext = Readonly<{
   interpolationRoles: readonly (HsonInterpolationRole | undefined)[];
   expectedKinds: readonly string[];
 }>;
-
-/** Complete bare options, selectors and native lookups in recognized authored Event literals. */
-export function query_hson_event_completion(facts: PartSourceFacts, file: string, offset: number): readonly Readonly<{
-  candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>;
-}>[] {
-  const literal = facts.eventLiterals.find(literal => literal.getSourceFile().fileName === file
-    && literal.getStart() < offset && offset < literal.getEnd());
-  if (literal === undefined) return [];
-  const host = literal.getSourceFile();
-  const correspondence = static_hson_literal_correspondence(host.text, host, literal);
-  if (correspondence === undefined) return [];
-  const cursor = offset === correspondence.bodyRange.end ? literal.text.length
-    : correspondence.spans.find(span => span.hostRange.start === offset)?.runtimeRange.start;
-  if (cursor === undefined) return [];
-  const checkpoint = authored_event_completion_checkpoint(literal.text, cursor);
-  if (checkpoint === undefined) return [];
-  const selectors = [...checkpoint.flags].filter(([flag]) => flag.startsWith("on:"));
-  if (checkpoint.kind === "header") {
-    const range = map_static_hson_range(correspondence, { start: checkpoint.start, end: checkpoint.end });
-    if (range === undefined) return [];
-    const prefix = literal.text.slice(checkpoint.start, cursor);
-    const declaration = /^([A-Za-z_][A-Za-z0-9_-]*):([a-z]*)$/.exec(prefix);
-    if (declaration !== null && !["on", "host", "local"].includes(declaration[1]!)) {
-      return ["str", "num", "bool", "arr", "data"].filter(type => type.startsWith(declaration[2]!))
-        .map((type, index) => ({ candidate: item(`${declaration[1]}:${type}`, "syntax", `${declaration[1]}:${type}=`,
-          type === "arr" ? "Array of admissible HSON Data" : type === "bool" ? "Boolean value" : "Typed Event argument", index), range }));
-    }
-    const available = [
-      ...(selectors.length === 0 ? AUTHORED_EVENT_NAMES : []),
-      ...[...AUTHORED_EVENT_FLAGS].filter(([name]) => !checkpoint.flags.has(name)
-        && !(name === "document" && checkpoint.flags.has("window"))
-        && !(name === "window" && checkpoint.flags.has("document"))),
-    ];
-    return available.filter(([name]) => name.startsWith(prefix))
-      .map(([name, detail], index) => ({ candidate: item(name, "syntax", name, detail, index), range }));
-  }
-  const family = selectors.length === 1 ? native_event_family(AUTHORED_EVENT_NAMES.get(selectors[0]![0])) : undefined;
-  if (family === undefined) return [];
-  const quoted = literal.text[checkpoint.start] === '"';
-  const start = quoted ? checkpoint.start + 1 : checkpoint.start;
-  const prefix = literal.text.slice(start, cursor);
-  if (family === "formdata" && prefix.startsWith("^{formdata:")) {
-    // Complete only the declared operations and their quoted literal input scaffold.
-    const methodPrefix = prefix.slice("^{formdata:".length);
-    if (!/^[A-Za-z]*(?:\()?$/u.test(methodPrefix)) return [];
-    let complete: ReturnType<typeof scan_formdata_operation>;
-    try { complete = scan_formdata_operation(literal.text, start); } catch { /* A method name may still be under edit. */ }
-    let end = cursor;
-    while (/[A-Za-z]/.test(literal.text[end] ?? "")) end++;
-    if (literal.text[end] === "}") end++;
-    const replacementEnd = complete?.reference.end ?? end;
-    if (!authored_event_operand_ends_at(literal.text, replacementEnd, quoted)) return [];
-    const range = map_static_hson_range(correspondence, { start: start + 2, end: replacementEnd });
-    if (range === undefined) return [];
-    return ["get", "getAll", "has"].flatMap((method, index) => {
-      const operation = formdata_operation(method, complete?.lookup[3] ?? "");
-      if (operation === undefined || !`${method}(`.startsWith(methodPrefix)
-        || checkpoint.qualifier !== "data" && checkpoint.qualifier !== native_event_scalar_qualifier(operation.valueKind)) return [];
-      const name = `formdata:${method}(${JSON.stringify(operation.lookup[3])})`;
-      return [{ candidate: { ...item(`formdata:${method}`, "reference", (quoted ? JSON.stringify(name + "}").slice(1, -1) : name + "}"),
-        `Native FormData.${method}: ${operation.lookup[4]}; one quoted literal field name`, index), certainty: "certain" as const }, range }];
-    });
-  }
-  const root = `^{${family}.`;
-  if (!prefix.startsWith(root)) return [];
-  const pathPrefix = prefix.slice(root.length);
-  const paths = [...native_event_paths(family)].filter(([path, kind]) => path.startsWith(pathPrefix)
-    && (checkpoint.qualifier === "data" || checkpoint.qualifier === native_event_scalar_qualifier(kind)));
-  if (paths.length === 0) return [];
-  const reference = scan_part_reference(literal.text, start);
-  let end = cursor;
-  while (/[A-Za-z0-9_.-]/.test(literal.text[end] ?? "")) end++;
-  const optional = reference?.optional ?? literal.text[end] === "?";
-  if (reference === undefined) {
-    if (optional) end++;
-    if (literal.text[end] === "}") end++;
-  }
-  const replacementEnd = reference?.end ?? end;
-  if (!authored_event_operand_ends_at(literal.text, replacementEnd, quoted)) return [];
-  const range = map_static_hson_range(correspondence, { start: start + 2, end: replacementEnd });
-  if (range === undefined) return [];
-  return paths.map(([path, kind], index) => {
-    const name = `${family}.${path}`;
-    return { candidate: { ...item(name, "reference", name + (optional ? "?}" : "}"),
-      `${native_event_class(family)} ${kind === "number" ? "finite number" : kind}`, index), certainty: "certain" as const }, range };
-  });
-}
 
 /** One editor-neutral compiler query for cursor and interpolation-slot consumers. */
 export function query_hson_editor_context(input: Readonly<{

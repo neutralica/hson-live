@@ -13,7 +13,7 @@ export function create_schema_language_service(typescript: typeof ts, service: t
   registerEvidence?: (file: string, text: string | undefined) => void,
   getEventImports?: () => HsonEventImportEvidence | undefined,
   canResolveSource?: (file: string) => boolean,
-): ts.LanguageService {
+) {
   const view = install_live_schema_view(typescript, host, projectPath, registerEvidence, getEventImports, canResolveSource);
   const completion = new HsonEditorCompletionCache(typescript);
   const hsonDefinition = (file: string, offset: number): ts.DefinitionInfoAndBoundSpan | undefined => {
@@ -156,13 +156,21 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     const hson = hsonCompletions(file, offset);
     const result = service.getCompletionsAtPosition(file, position(file, offset), options, formatting);
     if (result === undefined && hson.length === 0) return undefined;
-    const entries = hson.map(({ candidate, range, isSnippet }): ts.CompletionEntry => ({
-      name: candidate.label, insertText: isSnippet && !options?.includeCompletionsWithSnippetText ? candidate.insertText.replace('$0', '') : candidate.insertText,
-      ...(isSnippet && options?.includeCompletionsWithSnippetText ? { isSnippet: true } : {}), sortText: candidate.sortText,
-      kind: candidate.kind === "member" ? typescript.ScriptElementKind.memberVariableElement
-        : candidate.kind === "reference" ? typescript.ScriptElementKind.alias : typescript.ScriptElementKind.string,
-      replacementSpan: { start: range.start, length: range.end - range.start },
-    }));
+    const entries = hson.map(({ candidate, range, isSnippet, cursorInInsert }): ts.CompletionEntry => {
+      const snippets = options?.includeCompletionsWithSnippetText === true;
+      const snippet = snippets && (isSnippet || cursorInInsert !== undefined);
+      let insertText = candidate.insertText;
+      if (cursorInInsert !== undefined && snippet) {
+        const escape = (text: string) => text.replace(/[\\$}]/g, "\\$&");
+        insertText = escape(insertText.slice(0, cursorInInsert)) + "$0" + escape(insertText.slice(cursorInInsert));
+      } else if (isSnippet && !snippets) insertText = insertText.replace("$0", "");
+      return {
+        name: candidate.label, insertText, ...(snippet ? { isSnippet: true } : {}), sortText: candidate.sortText,
+        kind: candidate.kind === "member" ? typescript.ScriptElementKind.memberVariableElement
+          : candidate.kind === "reference" ? typescript.ScriptElementKind.alias : typescript.ScriptElementKind.string,
+        replacementSpan: { start: range.start, length: range.end - range.start },
+      };
+    });
     return { ...result,
       isGlobalCompletion: result?.isGlobalCompletion ?? false, isMemberCompletion: result?.isMemberCompletion ?? false,
       isNewIdentifierLocation: result?.isNewIdentifierLocation ?? false,
@@ -212,5 +220,5 @@ export function create_schema_language_service(typescript: typeof ts, service: t
     return { ...result, spans };
   };
   proxy.dispose = () => { completion.clear(); view.dispose(); service.dispose(); };
-  return proxy;
+  return Object.assign(proxy, { changedDiagnosticFiles: view.changed_diagnostic_files });
 }

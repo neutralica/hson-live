@@ -3,8 +3,9 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import { tmpdir } from "node:os";
-import { collect_part_source_facts, static_part_inventory, type PartSourceLocation } from "../src/internal/hson-schema/part-source.ts";
-import { static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { collect_part_source_facts, part_write_context, static_part_inventory, type PartSourceLocation } from "../src/internal/hson-schema/part-source.ts";
+import { static_part_reference_diagnostics, static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { PartOwnershipWork, static_source_candidates } from "../src/internal/hson-schema/source-candidates.ts";
 import { discover_hson_schema_declarations } from "../src/internal/hson-schema/schema-discovery.ts";
 import { library_source_definitions } from "../src/internal/hson-schema/library-source.ts";
 import { read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
@@ -12,6 +13,7 @@ import { query_hson_part_source } from "../src/internal/editor-introspection/que
 import { part_data_contexts, part_data_projection } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { OBJECT_VALUE, schema_projection_description } from "../src/internal/hson-schema/data-projection.ts";
 import { forwarding_fixture, write_fixture } from "./fixtures/part-forwarding-cases.mts";
+import { imported_part_write_cases, part_write_target_cases } from "./fixtures/part-write-target-cases.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-source-facts", title: "Compiler-owned Part source facts", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "source-evidence", "typescript", "provenance"]) });
@@ -250,10 +252,10 @@ check("Schema candidates still expand complete Parts and preserve independent di
   assert.ok(!diagnostics.some(item => item.message.includes('received "hson-part"')));
 });
 // Independent source files keep malformed producers from invalidating unrelated candidates.
-function evidenceProject(name: string, files: Readonly<Record<string, string>>) {
+function evidenceProject(name: string, files: Readonly<Record<string, string>>, roots = Object.keys(files)) {
   const folder = join(directory, name); mkdirSync(folder);
   for (const [name, text] of Object.entries(files)) writeFileSync(join(folder, name), text);
-  const program = ts.createProgram(Object.keys(files).map(name => join(folder, name)), options);
+  const program = ts.createProgram(roots.map(name => join(folder, name)), options);
   const facts = collect_part_source_facts(ts, program);
   const batch = (name: string) => {
     const found = facts.batches.find(item => ts.isVariableDeclaration(item.call.parent) && item.call.parent.name.getText() === name);
@@ -268,6 +270,233 @@ function evidenceProject(name: string, files: Readonly<Record<string, string>>) 
   return { program, facts, batch, library, document, slice };
 }
 const imports = 'import { Hson as Text, hson as kit, hsonLiveMap as maps } from "hson-live";\n';
+
+check("write evidence follows the selected Library member and its receiving Document", () => {
+  const cases = part_write_target_cases.map((sample, i) => ({ ...sample, file: 'case' + i + '.ts' }));
+  const { facts, slice } = evidenceProject("write-targets", Object.fromEntries(cases.map(row => [row.file, row.source])));
+  for (const { name, kind, file, source, completeCollection, attachedEvent } of cases) {
+    const batch = facts.batches.find(batch => batch.location.file.endsWith('/' + file));
+    assert.ok(batch?.eligible, name);
+    const library = batch.libraries.find(lib => lib.name === 'g');
+    assert.equal(library?.family, 'parts', name);
+    assert.equal(library.memberCompleteness, completeCollection ? "complete" : "partial", name);
+    const member = library.members.find(item => item.name === 'p');
+    assert.ok(member, name);
+    if (completeCollection) assert.equal(member.admission, "qualified", name);
+    assert.equal(member.knownWriteTarget, kind !== undefined, name);
+    const owners = [...facts.eventOwners.values()].filter(owners => owners.has(batch.call));
+    assert.equal(owners.length, Number(attachedEvent), name);
+    const writes = facts.writes.filter(write => write.batch === batch);
+    if (!kind) { assert.equal(writes.length, 0, name); continue; }
+    const [document] = member.documents;
+    assert.ok(document && member.documents.length === 1, name);
+    assert.equal(document.admission, 'qualified', name);
+    assert.deepEqual([...(document.signature?.parameters ?? [])], [['needed', kind]], name);
+    assert.ok(slice(member.declaration).startsWith('p:'), name);
+    assert.ok(slice(document.location).includes(kind + ':label=%{needed}'), name);
+    assert.equal(writes.filter(write => write.arguments.some(arg => arg.name === 'needed')).length, 2, name);
+    assert.ok(writes.every(write => write.library === library && write.definition === document), name);
+    const binding = document.bindingSources?.declarations.find(binding => binding.incoming === 'needed');
+    assert.ok(binding, name);
+    assert.equal(source.indexOf(kind + ':label=%{needed}', document.location.start) + kind.length + 1, binding.location.start, name);
+  }
+});
+
+check("private record ownership requires the complete bounded lexical scope", () => {
+  const record = '{kind:"document",document:\'<p hson:part "%{title}"/>\'}';
+  const body = '{const R=' + record + '; const map=maps.fromLibraries({g:{parts:{p:R,q:' + record + '}}});';
+  const block = ts.createSourceFile("scope.ts", body + "}", ts.ScriptTarget.Latest).statements[0]!;
+  let nodes = 0;
+  const count = (node: ts.Node): void => { nodes++; ts.forEachChild(node, count); };
+  count(block);
+  for (const [limit, expected] of [[16000, true], [16384, false], [16385, false]] as const) {
+    const source = imports + body + ";".repeat(limit - nodes) + "}";
+    const test = evidenceProject("private-scope-" + limit, { "app.ts": source });
+    assert.deepEqual(test.library("map").members.map(member => member.knownWriteTarget), [expected, true]);
+  }
+});
+
+check("ownership charges wrappers, literal descendants, shared branches and cached censuses", () => {
+  let project = 0;
+  const alternatives = (text: string) => {
+    const test = evidenceProject("part-work-" + project++, { "work.ts": text });
+    const file = test.program.getSourceFiles().find(file => file.fileName.endsWith("/work.ts"))!;
+    const statement = file.statements.at(-1)!;
+    assert.ok(ts.isVariableStatement(statement));
+    const input = statement.declarationList.declarations[0]!.initializer!;
+    const sources = static_source_candidates(ts, test.program.getTypeChecker(), test.program);
+    return () => {
+      const work = new PartOwnershipWork();
+      const result = sources.alternatives(input, "part-record", { work, reachableOnly: true });
+      return [result.complete, work.used, work.maxDepth, work.exhausted] as const;
+    };
+  };
+  // Use a parsed expression directly for the extreme case so the test measures
+  // the resolver independently of the compiler binding an entire project.
+  const checker = ts.createProgram([], {}).getTypeChecker();
+  for (const count of [0, 128, 129, 256, 32768]) {
+    const file = ts.createSourceFile(join(directory, "wrappers.ts"), "const R={}" + "!".repeat(count), ts.ScriptTarget.Latest, true);
+    const statement = file.statements[0]!;
+    assert.ok(ts.isVariableStatement(statement));
+    const work = new PartOwnershipWork();
+    const result = static_source_candidates(ts, checker).alternatives(statement.declarationList.declarations[0]!.initializer!, "part-record", { work });
+    assert.equal(result.complete, count <= 128, String(count));
+    assert.equal(work.exhausted, count > 128, String(count));
+    assert.equal(work.maxDepth, Math.min(count, 128), String(count));
+    assert.equal(work.used, count <= 128 ? count + 2 : 129, String(count));
+  }
+  // A Document with adjacent Events probes the same source through the
+  // finite declaration link before looking up its authored Part contract.
+  for (const count of [8, 256]) {
+    const file = ts.createSourceFile(join(directory, "event-link.ts"), "const R=" + "(".repeat(count) + '"source"' + ")".repeat(count), ts.ScriptTarget.Latest, true);
+    const statement = file.statements[0]!;
+    assert.ok(ts.isVariableStatement(statement));
+    const work = new PartOwnershipWork();
+    const result = static_source_candidates(ts, checker).declarationSource(statement.declarationList.declarations[0]!.initializer!, undefined, work);
+    assert.equal(result?.getText(), count === 8 ? '"source"' : undefined);
+    assert.deepEqual([work.used, work.maxDepth, work.exhausted], count === 8 ? [18, 8, false] : [258, 128, true]);
+  }
+  for (const count of [16379, 16380]) {
+    const read = alternatives("export {}; const selected={values:[" + "0,".repeat(count) + "]};");
+    assert.deepEqual(read(), [count === 16379, 16384, 3, count > 16379]);
+  }
+  const privateChain = alternatives('export {}; const R={p:1}; const A=R; const selected=A;');
+  const cold = privateChain();
+  assert.equal(cold[0], true);
+  assert.deepEqual(privateChain(), cold);
+  const shared = 'declare const flag:boolean; const A0={p:1};'
+    + Array.from({ length: 8 }, (_, i) => `const A${i + 1}=(flag?A${i}:A${i})${"!".repeat(48)};`).join("");
+  const readShared = alternatives("export {};" + shared + "const selected=A8;");
+  const first = readShared();
+  assert.equal(first[0], false);
+  assert.ok(first[1] <= 16384 && first[2] <= 128);
+  assert.deepEqual(readShared(), first);
+});
+
+check("exhausted members preserve separate Document bindings and an independent sibling", () => {
+  const source = imports + 'const Doc=Text.document`<p hson:part str:local=%{title} "^{local}"/>`;'
+    + 'const map=maps.fromLibraries({g:{parts:{'
+    + 'p:{kind:"document",document:Doc,css:{width:[' + '0,'.repeat(16400) + ']}},'
+    + 'q:{kind:"document",document:\'<p hson:part num:other=%{peer} "^{other}"/>\'}}}});'
+    + 'map.parts.g.p.write({title:7}); map.parts.g.q.write({peer:"bad"});';
+  const test = evidenceProject("wide-member", { "app.ts": source });
+  const [member, sibling] = test.library("map").members;
+  assert.equal(member?.knownWriteTarget, false);
+  assert.equal(member?.documents[0]?.bindingSources?.declarations.some(binding => binding.incoming === "title"), true);
+  assert.equal(sibling?.knownWriteTarget, true);
+  assert.deepEqual(test.facts.writes.map(write => write.arguments.map(argument => argument.name)), [["peer"]]);
+});
+
+check("optional Event and general Part proofs spend their shared Library prefix independently", () => {
+  const cases = [
+    { name: "both complete", fillers: 8080, aliases: 6, wrappers: 0, errors: 0, part: true, event: true },
+    { name: "only Part exhausts", fillers: 8080, aliases: 6, wrappers: 0, errors: 1, part: false, event: true },
+    { name: "both exhaust", fillers: 8080, aliases: 6, wrappers: 0, errors: 3, part: false, event: false },
+    { name: "near-limit Event", fillers: 8030, aliases: 0, wrappers: 30, errors: 2, part: true, event: true },
+    { name: "only Event exhausts", fillers: 8030, aliases: 0, wrappers: 30, errors: 5, part: true, event: false },
+  ];
+  const declaration = '<hson:event on:click local:go selection:data={null} <> >';
+  for (const [index, sample] of cases.entries()) {
+    const { name, fillers, aliases, wrappers, errors, part, event } = sample;
+    const dependency = 'import { Hson } from "hson-live";\n'
+      + 'const d0=Hson.document`<p hson:part str:label=%{title} event:go "^{label}"/>`;\n'
+      + Array.from({ length: aliases }, (_, i) => 'const d' + (i + 1) + '=d' + i + ';\n').join("")
+      + 'export const doc=' + "(".repeat(wrappers) + "d" + aliases + ")".repeat(wrappers) + ';\n'
+      + 'const = 1;\n'.repeat(errors);
+    const entries = Array.from({ length: fillers }, (_, i) => 'x' + i + ':{json:null},').join("");
+    const app = 'import { Hson, hsonLiveMap } from "hson-live"; import { doc } from "./dep.js"; declare const opaque: any;\n'
+      + 'const map=hsonLiveMap.fromLibraries({' + entries + 'k:{parts:{ peer:opaque,'
+      + 'card:{kind:"document",document:doc,events:{go:' + JSON.stringify(declaration) + '}},'
+      + 'sibling:{kind:"document",document:Hson.document`<b hson:part str:label=%{side} "^{label}"/>`}}}});\n'
+      + 'map.parts.k.card.write({title:23}); map.parts.k.card.write({ tit });\n'
+      + 'map.parts.k.sibling.write({side:25}); map.parts.k.sibling.write({ sid });';
+    const test = evidenceProject("independent-proof-" + index, { "app.ts": app, "dep.ts": dependency }, ["app.ts"]);
+    const [, card, sibling] = test.library("map").members;
+    assert.equal(card?.knownWriteTarget, part, name);
+    assert.equal(sibling?.knownWriteTarget, true, name);
+    const doc = card?.documents[0];
+    assert.deepEqual(doc?.parameters.map(input => input.name), ["title"], name);
+    assert.equal(doc?.parameterCompleteness, event ? "complete" : "unknown", name);
+    assert.equal(doc?.receivingDeclarations[0]?.location.precision, "exact", name);
+    assert.equal(test.slice(doc!.receivingDeclarations[0]!.location), "%{title}", name);
+    assert.equal(test.facts.eventOwners.size, event ? 1 : 0, name);
+    assert.deepEqual([...test.facts.eventOwners.keys()].map(literal => literal.text), event ? [declaration] : [], name);
+    const writeDiagnostics = static_part_reference_diagnostics(test.facts, ts, test.program.getTypeChecker())
+      .filter(diagnostic => diagnostic.code === "HSON_PART_ARGUMENT_INVALID");
+    assert.deepEqual(writeDiagnostics.map(diagnostic => app.slice(diagnostic.start, diagnostic.end)), part ? ["23", "25"] : ["25"], name);
+    for (const [prefix, label, selected] of [["tit", "title", part], ["sid", "side", true]] as const) {
+      const start = app.lastIndexOf(prefix + " }");
+      const file = test.batch("map").call.getSourceFile().fileName;
+      const context = part_write_context(ts, test.program, test.facts, file, start + prefix.length);
+      assert.deepEqual(context, selected ? { names: [label], start, end: start + prefix.length, assignment: false } : undefined, name);
+    }
+  }
+});
+
+check("Schema composition spends the outer inventory budget and keeps independent collection proofs", () => {
+  const schema = 'const S=Text.schema`<type "document" tag "main" content <sequence «<tag "p">»>>`;';
+  const document = (library: string) => `Text.document\`<main <hson-part lib="${library}" at="heading"/>/>\``;
+  const page = (library: string) => `{document:${document(library)},schema:S}`;
+  const part = '{kind:"document",document:"<h1 hson:part/>"}';
+  const collection = `{parts:{heading:${part}}}`;
+  const filler = Array.from({ length: 8188 }, (_, index) => `d${index}:{json:0},`).join("");
+  const inspect = (name: string, batch: string) => {
+    const input = imports + schema + `const map=maps.fromLibraries(${batch});`;
+    const test = evidenceProject(name, { "app.ts": input });
+    const read = () => static_schema_candidate_diagnostics(ts, test.program).filter(issue => issue.code === "INVALID_LITERAL")
+      .map(issue => input.slice(issue.start, issue.end));
+    const diagnostics = read();
+    assert.deepEqual(read(), diagnostics, name);
+    return { batch: test.batch("map"), diagnostics };
+  };
+  const ordinary = inspect("schema-bounded-ordinary", `{page:${page("components")},["components"]:${collection}}`);
+  assert.deepEqual(ordinary.diagnostics, [document("components")]);
+  const wrapped = inspect("schema-bounded-collection-depth", `{page:${page("components")},components:{parts:({heading:${part}})${"!".repeat(70)}}}`);
+  assert.equal(wrapped.batch.libraries.find(library => library.name === "components")?.memberCompleteness, "complete");
+  assert.deepEqual(wrapped.diagnostics, [document("components")]);
+  for (const [key, completeness] of [["components", "complete"], ['["components"]', "partial"]] as const) {
+    const result = inspect(`schema-bounded-${completeness}`, `{__proto__:null,${filler}page:${page("components")},${key}:${collection}}`);
+    assert.equal(result.batch.inventoryCompleteness, completeness);
+    assert.deepEqual(result.diagnostics, []);
+  }
+  const deep = '['.repeat(130) + '0' + ']'.repeat(130);
+  const sibling = inspect("schema-bounded-sibling", `{page:${page("components")},components:{__proto__:{deep:${deep}},parts:{heading:${part}}},`
+    + `peer:${page("sibling")},sibling:${collection}}`);
+  assert.deepEqual(sibling.diagnostics, [document("sibling")]);
+  assert.equal(sibling.batch.libraries.find(library => library.name === "sibling")?.members[0]?.knownWriteTarget, true);
+});
+
+check("imported mutable Parts retain lexical evidence and inline sibling write authority", () => {
+  for (const [index, { name, source, dependencies }] of imported_part_write_cases.entries()) {
+    const test = evidenceProject("namespace-write-" + index, { ...dependencies, "index.ts": source });
+    const library = test.library("map");
+    assert.deepEqual(library.members.map(member => [member.name, member.knownWriteTarget]), [["p", false], ["q", true]], name);
+    const [selected, peer] = library.members;
+    const [document] = selected!.documents;
+    assert.ok(document?.location.file.endsWith("/namespace-record.ts"), name);
+    assert.deepEqual([...(document.signature?.parameters ?? [])], [["needed", "str"]], name);
+    assert.deepEqual([...(peer!.documents[0]?.signature?.parameters ?? [])], [["peer", "num"]], name);
+    assert.deepEqual(test.facts.writes.map(write => [write.definition.location.file.split("/").at(-1),
+      write.arguments.map(argument => argument.name)]), [["index.ts", ["peer"]], ["index.ts", []]], name);
+  }
+});
+
+check("public record write authority is independent of the mutating project's roots", () => {
+  const files = {
+    "origin.ts": 'export const item={kind:"document" as const,document:\'<p hson:part "%{title}"/>\'};',
+    "relay.ts": 'export * as group from "./origin.js";',
+    "mutator.ts": 'import {group} from "./relay.js"; group.item.document="<i hson:part/>";',
+    "app.ts": imports + 'import {item} from "./origin.js"; const map=maps.fromLibraries({g:{parts:{p:item,q:{kind:"document",document:"<q hson:part/>"}}}});',
+  };
+  for (const included of [false, true]) {
+    const test = evidenceProject("public-roots-" + included, files, included ? ["app.ts", "mutator.ts"] : ["app.ts"]);
+    assert.equal(test.program.getSourceFiles().some(file => file.fileName.endsWith("/mutator.ts")), included);
+    const [selected, sibling] = test.library("map").members;
+    assert.equal(selected?.knownWriteTarget, false);
+    assert.ok(selected.documents[0]?.location.file.endsWith("/origin.ts"));
+    assert.equal(sibling?.knownWriteTarget, true);
+  }
+});
 
 check("recovered TypeScript never qualifies a producer or establishes complete Parts evidence", () => {
   const malformed = imports + String.raw`

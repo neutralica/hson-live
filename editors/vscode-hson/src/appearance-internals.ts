@@ -1,3 +1,4 @@
+import type { EventSourceRole } from "../../../src/internal/event-authoring-source.js";
 import catalog from "./appearance-catalog.json";
 /** Grammar and semantic classification contracts; appearance values live in palettes/house.json. */
 export const hsonGrammarScopes = {
@@ -142,4 +143,13 @@ function isHsonTokenType(type: string): type is HsonTokenType {
 }
 export function hsonTypeForScope(scope: string): HsonTokenType | undefined {
   return scopeTypes.get(scope);
+}
+
+const eventTypes = new Map<string, HsonTokenType>();
+for (const { binding } of Object.values(catalog.roles)) {
+  if ("eventRole" in binding && isHsonTokenType(binding.selector)) eventTypes.set(binding.eventRole, binding.selector);
+}
+
+export function event_token_type(role: EventSourceRole): HsonTokenType | undefined {
+  return eventTypes.get(role);
 }

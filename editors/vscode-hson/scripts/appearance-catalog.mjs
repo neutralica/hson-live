@@ -198,7 +198,7 @@ function exampleGrammar() {
     return { registry, grammar: await registry.loadGrammar('source.hson') };
   })();
 }
-export async function validateExamples(catalog, syntaxBindings, syntaxExamplePath, generalRules) {
+export async function validateExamples(catalog, syntaxBindings, syntaxExamplePath, generalRules, eventRoleSpans) {
   resolveCatalog(catalog, syntaxBindings, generalRules);
   const { grammar } = await exampleGrammar();
   const entries = catalogEntries(catalog);
@@ -210,6 +210,14 @@ export async function validateExamples(catalog, syntaxBindings, syntaxExamplePat
     for (const [index, example] of entry.examples.entries()) {
       const context = `${path}.examples[${index}]`;
       const range = exampleRange(example, context);
+      if (binding.eventRole !== undefined) {
+        const spans = eventRoleSpans?.(example.code) ?? [];
+        const covered = spans.filter(span => span.role === binding.eventRole)
+          .reduce((length, span) => length + Math.max(0, Math.min(span.end, range.end) - Math.max(span.start, range.start)), 0);
+        if (covered !== range.end - range.start)
+          throw new Error(`${context}: ${JSON.stringify(example.highlight)} does not classify as ${entry.label} in an Event`);
+        continue;
+      }
       let offset = 0, state = textmate.INITIAL, covered = 0;
       for (const line of example.code.split('\n')) {
         const result = grammar.tokenizeLine(line, state);

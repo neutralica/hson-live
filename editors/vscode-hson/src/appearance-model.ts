@@ -7,7 +7,7 @@ export type Style = { foreground?: string; intensity?: number | 'native'; fontSt
 export type RoleStyle = { inherits?: string; light?: Style; dark?: Style };
 export type Palette = { id: string; name: string; blendBackground: Record<Mode, string>; roles: Record<string, RoleStyle> };
 export type AppearanceState = { palettes: Palette[]; assignments: { all: string; data?: string; document?: string }; overrides: Partial<Record<Family, Record<string, RoleStyle>>> };
-export type RoleDefinition = { label: string; examples: {code: string; highlight: string; occurrence?: number}[]; binding: {scopes: string[]; selector: string; context?: string}; tokens?: string[]; fallback?: string; nativeBrackets?: boolean; segments?: {order:number; grammarOrder:number; context: string; scope: string; selector: string}[] };
+export type RoleDefinition = { label: string; examples: {code: string; highlight: string; occurrence?: number}[]; binding: {scopes: string[]; selector: string; context?: string; eventRole?: string}; tokens?: string[]; fallback?: string; nativeBrackets?: boolean; segments?: {order:number; grammarOrder:number; context: string; scope: string; selector: string}[] };
 export const roleCatalog: Readonly<Record<string, RoleDefinition>> = catalogData.roles;
 // The bundled baseline never participates in mutable editor state.
 function freeze<T>(value: T): T {

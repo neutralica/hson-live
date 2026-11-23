@@ -36,7 +36,7 @@ export type DocumentDiagnosticInput = Readonly<{
   text: string;
   authoringMode?: StandaloneAuthoringMode;
   sourceProgram?: ts.Program;
-  eventImports?: ReadonlySet<number>;
+  eventImports?: ReadonlySet<number> | null;
 }>;
 
 export type RelatedDiagnosticSpec = Readonly<{
@@ -173,9 +173,10 @@ function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boo
   const program = input.sourceProgram ?? (input.text.includes(HSON_EXPECT_ERROR_MARKER)
     ? create_hson_source_program(input.fileName, input.text) : undefined);
   const diagnostics: DocumentDiagnosticSpec[] = [];
+  const pending: ExpectationRegion[] = [];
   const discovery = discover_hson_tagged_templates(input.fileName, input.text, program,
     ignoreDiagnostics ? undefined : source => { diagnostics.push(...diagnose_hson_prefix(source, true)); },
-    undefined, input.eventImports);
+    undefined, input.eventImports, program === undefined ? undefined : range => pending.push({ kind: "template", range, pending: true }));
   if (!ignoreDiagnostics) {
     for (const source of discovery.sources) diagnostics.push(...diagnose_hson_tag(source));
     for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
@@ -202,6 +203,7 @@ function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boo
   const file = program?.getSourceFile(input.fileName);
   if (file === undefined) return ordinary;
   const regions: ExpectationRegion[] = [
+    ...pending,
     ...[...discovery.sources, ...discovery.interpolated].map((source): ExpectationRegion => ({
       kind: "template", range: { start: source.tagRange.start, end: source.templateRange.end },
     })),

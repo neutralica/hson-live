@@ -95,6 +95,14 @@ export function validate_part_additions(baseline: OrderedProjectedValue, candida
 
 /** Admission-time contract only; lexical/receiving analysis remains at use time. @internal */
 export function validate_part_member(key: string, member: OrderedProjectedValue): ValidatedPart {
+  const part = read_part_member_source(key, member);
+  validate_part_definition_flags(part.root, part.events);
+  if (part.events !== undefined) analyze_part_definition(part.root, undefined, part.events);
+  return part;
+}
+
+/** Read the declared fields and Document shape before checking attachment and lexical contracts. @internal */
+export function read_part_member_source(key: string, member: OrderedProjectedValue): ValidatedPart {
   assert_hson_identifier_name(key, "Part");
   if (!is_ordered_projected_object(member)) throw new TypeError("Part requires a data record.");
   const fields = new Map(member.entries);
@@ -110,10 +118,7 @@ export function validate_part_member(key: string, member: OrderedProjectedValue)
   if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-part") {
     throw new TypeError("Part requires exactly one ordinary element root.");
   }
-  const part = interpret_part_source(key, fields, authored, root);
-  validate_part_definition_flags(root, part.events);
-  if (part.events !== undefined) analyze_part_definition(root, undefined, part.events);
-  return part;
+  return interpret_part_source(key, fields, authored, root);
 }
 
 

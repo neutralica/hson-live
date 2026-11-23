@@ -454,7 +454,8 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
     + 'const optional = hsonLiveMap.fromLibraries({ components: { parts: { card: { kind: "document", document: "<p hson:part str:local=%{label?} event:go/>",'
     + ' events: { go: "<hson:event on:click local:go selection:str=%{label} <> >" } } } },'
     + ' page: { document: Hson.document`<hson-part at=components/card/>` } });\n'
-    + 'optional.actions.define("go", () => {}, { args: { schema: Args } });\n';
+    + 'optional.actions.define("go", () => {}, { args: { schema: Args } });\n'
+    + 'hsonLiveMap.fromLibraries({ components: { parts: { broken: { kind: "document", document: Hson.document`<button hson:part "^{missing}"/>` } } } });\n';
   writeFileSync(consumer, source);
   const config = join(directory, "tsconfig.json");
   const parsed = ts.getParsedCommandLineOfConfigFile(config, {}, {
@@ -463,14 +464,19 @@ check("Part reference editor errors do not change compiler Project or CLI exit p
   assert.ok(parsed);
   assert.deepEqual(parsed.errors, []);
   const program = ts.createProgram(parsed.fileNames, parsed.options);
-  const diagnostics = static_part_reference_diagnostics(collect_part_source_facts(ts, program));
-  assert.deepEqual(diagnostics.filter(issue => issue.code === "HSON_EVENT_INPUT_REQUIRED")
-    .map(issue => [issue.file, issue.start, issue.end]), [localEvent, event].map(declaration => {
-    const start = source.indexOf(declaration);
-    return [consumer, start, start + declaration.length];
-  }));
-  assert.deepEqual(diagnostics.filter(issue => issue.code === "HSON_EVENT_ARGUMENT_MISSING")
-    .map(issue => source.slice(issue.start, issue.end)), ['selection:str=%{label}']);
+  const diagnostics = static_part_reference_diagnostics(collect_part_source_facts(ts, program))
+    .filter(issue => issue.file === consumer);
+  const missingLocal = '"^{missing}"';
+  const start = source.indexOf(missingLocal);
+  // The Event attachments and Action declarations above carry no inferred execution contract.
+  assert.deepEqual(diagnostics.map(issue => [issue.code, issue.start, issue.end]), [
+    ["HSON_PART_LIBRARY_UNKNOWN", 122, 130],
+    ["HSON_PART_MEMBER_UNKNOWN", 244, 252],
+    ["HSON_PART_ARGUMENT_MISSING", 409, 459],
+    ["HSON_PART_ARGUMENT_UNKNOWN", 450, 455],
+    ["HSON_PART_ARGUMENT_INVALID", 683, 690],
+    ["HSON_PART_REFERENCE_INVALID", start, start + missingLocal.length],
+  ]);
   const numeric = diagnostics.find(issue => issue.code === "HSON_PART_ARGUMENT_INVALID" && issue.message.includes("finite JSON number"));
   assert.ok(numeric);
   assert.equal(source.slice(numeric.start, numeric.end), '"1e309"');

@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import { tmpdir } from "node:os";
-import { compileFunction } from "node:vm";
 import { static_part_reference_diagnostics, static_schema_candidate_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
 import { collect_part_source_facts } from "../src/internal/hson-schema/part-source.ts";
 import { inspect_schema_data } from "../src/internal/hson-schema/data-projection.ts";
@@ -16,6 +15,8 @@ import type { LiveMapPartsLibraryInput } from "../src/types/livemap.types.ts";
 import { forwarding_fixture } from "./fixtures/part-forwarding-cases.mts";
 import { part_data_contexts } from "../src/internal/editor-introspection/part-data-evidence.ts";
 import { part_definition_targets } from "../src/internal/editor-introspection/part-definition-target.ts";
+import { hson_source_syntactic_eligibility, selected_hson_value_declaration } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
+import { imported_part_write_cases, part_write_target_cases } from "./fixtures/part-write-target-cases.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-reference-diagnostics", title: "Conservative static Part references", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "editor", "provenance"]) });
@@ -43,7 +44,7 @@ const remove = (name: string) => {
   files.delete(path);
   versions.set(path, String(++revision));
 };
-const options: ts.CompilerOptions = { strict: true, allowJs: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+let options: ts.CompilerOptions = { strict: true, allowJs: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
   moduleResolution: ts.ModuleResolutionKind.NodeNext, skipLibCheck: true, noEmit: true, types: [], baseUrl: root,
   paths: { "hson-live": ["src/index.ts"], "hson-live/hson": ["src/hson-authoring.ts"], "hson-live/livemap": ["src/api/livemap/index.ts"] } };
 const host: ts.LanguageServiceHost = {
@@ -959,181 +960,483 @@ check("on-prefixed structured forwarding retains typed source facts and represen
   }
 });
 const eventDeclaration = (reference: string) => JSON.stringify(`<hson:event on:click local:go selection:data=${reference} <> >`);
-check('event omissions only report proven required action arguments', () => {
-  const omitted = (destination: 'host' | 'local') => JSON.stringify(`<hson:event on:click ${destination}:go <> >`);
-  const hosted = (event = omitted('host'), args = '{required:true}', extras = '') => {
-    const source = application('<hson-part at="components/card"/>',
-      '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:' + event + '}}}', 'maps.locus.create');
-    return source.slice(0, -2) + ',{actions:{go:{handler:()=>{},args:' + args + '}' + extras + '}});';
-  };
-  const required = inspect(hosted());
-  assert.deepEqual(required.codes, ['HSON_EVENT_INPUT_REQUIRED']);
-  assert.deepEqual(required.slices, [omitted('host')]);
-  assert.deepEqual(required.diagnostics[0]!.related?.map(({ start, end }) => required.text.slice(start, end)), ['true', 'event:go']);
-  assert.deepEqual(inspect(hosted().replace('args:', 'input:')).codes, []);
-  assert.deepEqual(inspect(hosted().replace('handler:()=>{}', 'handler(){}')).codes, ['HSON_EVENT_INPUT_REQUIRED']);
-  assert.deepEqual(inspect(hosted().replace('actions:{go', 'actions:{...dynamic,go')).codes, ['HSON_EVENT_INPUT_REQUIRED']);
-  assert.deepEqual(inspect(hosted(omitted('local'))).codes, [], 'a hosted contract supplies no evidence for a local action');
-  assert.deepEqual(inspect(hosted(omitted('host'), '{schema:Hson.schema`<type "data" root <object <value "number">>>`}')).codes, []);
-  assert.deepEqual(inspect(hosted(omitted('host'), '{required:condition}')).codes, []);
-  assert.deepEqual(inspect(hosted(omitted('host'), '{required:true}', ',...dynamic')).codes, []);
-  assert.deepEqual(inspect(hosted(`condition ? ${omitted('host')} : dynamic`)).codes, []);
-  assert.deepEqual(inspect(hosted(JSON.stringify('<hson:event on:click host:go selection:data={null} <> >'))).codes, []);
-  const localSource = application('<hson-part at="components/card"/>',
-    '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:' + omitted('local') + '}}}');
-  const local = inspect(localSource);
-  assert.deepEqual(local.codes, []);
-  const part = local.facts.batches[0]!.libraries[1]!.members[0]!.contractSource;
-  assert.equal(part?.parameterCompleteness, 'complete');
-  assert.equal(part?.signature?.parameters.size, 0);
-  const localDefinition = '\nloc.actions.define("go",()=>{},{args:{required:true}});';
-  const localRequired = inspect(localSource + localDefinition);
-  assert.deepEqual(localRequired.codes, ['HSON_EVENT_INPUT_REQUIRED']);
-  assert.deepEqual(localRequired.slices, [omitted('local')]);
-  assert.deepEqual(inspect(localSource + localDefinition.replace('loc.actions', 'dynamic.actions')).codes, []);
-
-  const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n';
-  const define = 'tree.actions.define("go",()=>{},{args:{required:true}});\n';
-  const listen = 'const sub=tree.listen.event(' + omitted('local') + ');\n';
-  const standalone = inspect(tree + define + listen);
-  assert.deepEqual(standalone.codes, ['HSON_EVENT_INPUT_REQUIRED']);
-  assert.deepEqual(standalone.slices, [omitted('local')]);
-  assert.deepEqual(inspect(tree + listen + define).codes, []);
-  assert.deepEqual(inspect(tree + define.replace('args:', 'input:') + listen).codes, []);
-  assert.deepEqual(inspect(tree + 'if (Math.random()) ' + define + listen).codes, []);
-  assert.deepEqual(inspect(tree + define + 'other.append(tree);\n' + listen).codes, []);
-  assert.deepEqual(inspect(tree + define.replace('required:true', 'required:false') + listen).codes, []);
-  assert.deepEqual(inspect(tree + define + listen.replace('tree.listen', 'other.listen')).codes, []);
-  assert.deepEqual(inspect(tree + define + listen.replace('local:go <>', 'local:go selection:data={null} <>')).codes, []);
-  inspect(localSource + localDefinition);
-  const editorHost = { ...host };
-  const editor = create_schema_language_service(ts, ts.createLanguageService(editorHost), editorHost, file('tsconfig.json'));
+check("Event links follow eight immutable declarations and one direct relative named import", () => {
+  const exported = 'import {Hson as E} from "hson-live/hson";\nexport const ev=E.event`<hson:event on:click local:go item:data=^{row.field} <>>`;';
+  const producer = file("event-source.ts"), at = exported.indexOf("row.field");
+  const member = (value: string, body = '"<button hson:part data:row=%{rows} event:go/>"') =>
+    '{kind:"document",document:' + body + ',events:{go:' + value + '}}';
+  const call = (value: string) => 'maps.fromLibraries({bits:{parts:{card:' + member(value) + '}}});';
+  const imported = imports + 'import {ev as source} from "./event-source.js";\n';
+  const targets = (source: string) => part_definition_targets(inspect(source).facts, producer, at).map(item => item.name);
+  edit("event-source.ts", exported);
+  edit("event-relay.ts", 'export {ev} from "./event-source.js";');
   try {
-    assert.deepEqual(editor.getSemanticDiagnostics(file('app.ts')).filter(issue => issue.source === 'hson-schema')
-      .map(issue => issue.messageText), ['Action "go" requires arguments. Supply named typed arguments in this event declaration.']);
-  } finally { editor.dispose(); }
+    for (const [setup, value, expected] of [
+      ["", "(source)", 1], ["const alias=(source);", "alias", 1],
+      ["const alias:string=source;", "alias", 0], ["let alias=source;", "alias", 0], ["declare const alias=source;", "alias", 0],
+      ["", "source as string", 0], ["", "source satisfies string", 0], ["", "source!", 0],
+      ["", "true ? source : source", 0], ["", "(() => source)()", 0],
+      ["const a=b,b=a;", "a", 0], ["const {value}={value:source};", "value", 0],
+    ] as const) assert.deepEqual(targets(imported + setup + call(value)), expected ? ["row"] : [], value);
+    const aliases = Array.from({ length: 8 }, (_, i) => 'const a' + i + '=' + (i ? 'a' + (i-1) : 'source') + ';').join('');
+    assert.deepEqual(targets(imported + aliases + call("a6")), ["row"]);
+    assert.deepEqual(targets(imported + aliases + call("a7")), []);
+    assert.deepEqual(targets(imported.replace("./event-source.js", "./event-relay.js") + call("source")), []);
+    const direct = call("source");
+    for (const expression of [
+      direct.replace("events:{go:source}", "events:{...dynamic,go:source}"),
+      direct.replace("card:{", "...dynamic,card:{"), direct.replace("bits:{", "...dynamic,bits:{"),
+      direct.replace("{kind:", "{...dynamic,kind:"), direct.replace("parts:{", "...dynamic,parts:{"),
+      "const table={go:source};" + direct.replace("{go:source}", "table"),
+      direct.replace('document:"', 'document:condition ? dynamic : "'), direct.replace('document:"', 'document:("').replace('event:go/>"', 'event:go/>" as string)'),
+      direct.replace("event:go/>", "/>"), direct.replace("{kind:", "{unknownField:true,kind:"),
+      "function factory(){return " + direct + "}", direct.replace("source}", "later}") + "const later=source;",
+      "const wrapped={" + "build(){" + direct + "}};",
+    ]) assert.deepEqual(targets(imported + expression), [], expression);
+    const original = imported + direct;
+    assert.deepEqual(targets(original), ["row"]);
+    edit("event-source.ts", exported.replace("export const ev=", "export let ev="));
+    assert.deepEqual(targets(original), []);
+    edit("event-source.ts", exported);
+    assert.deepEqual(targets(original), ["row"]);
+  } finally { remove("event-source.ts"); remove("event-relay.ts"); }
 });
 
-check('named Event diagnostics retain the argument, schema registration, and attachment ranges', () => {
-  const schema = 'const Move = Hson.schema`<type "data" root <object <x "number" title "string" settings <optional "any">>>>`;\n';
-  const event = (args: string, key = 'go') => JSON.stringify(`<hson:event on:click local:${key} ${args} <> >`);
-  const local = (args: string, body = '<button hson:part event:go/>') => application('<main/>',
-    '{card:{kind:"document",document:Hson.document`' + body + '`,events:{go:' + event(args) + '}}}')
-    .replace('const page =', schema + 'const page =')
-    + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Move}});';
-  const source = local('title:num="2" settings:data={<speed 5>}');
-  const wrong = inspect(source);
-  assert.deepEqual(wrong.codes, ['HSON_EVENT_ARGUMENT_MISSING', 'HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(wrong.slices, [event('title:num="2" settings:data={<speed 5>}'), JSON.stringify('title:num="2"').slice(1, -1)]);
-  for (const issue of wrong.diagnostics) {
-    assert.deepEqual(issue.related?.map(({ start, end }) => source.slice(start, end)), ['Move', 'event:go']);
+check("Document and imperative uses preserve each exact Part target", () => {
+  for (const tagged of [true, false]) {
+    const body = '<hson:event on:click local:go a:data=^{row.title} <>>';
+    const declaration = imports + 'import {hsonLiveTree} from "hson-live"; const go='
+      + (tagged ? 'Hson.event`' + body + '`' : JSON.stringify(body)) + ';';
+    const part = '{kind:"document",document:"<button hson:part data:row=%{rows} event:go/>",events:{go}}';
+    const unsupported = 'const tree=hsonLiveTree.create.button(); if(condition) tree.listen.event(go); tree.actions.define("other",()=>{});';
+    const result = inspect(declaration + unsupported + 'maps.fromLibraries({page:{document:"<main/>",events:{go}},bits:{parts:{a:' + part + ',b:' + part + '}}});');
+    const targets = part_definition_targets(result.facts, file("app.ts"), result.text.indexOf("row.title"));
+    assert.deepEqual(targets.map(item => item.target.start), [...result.text.matchAll(/data:row/g)].map(m => m.index + 5));
+    assert.deepEqual(result.codes, ["HSON_EVENT_REFERENCE_INVALID"]);
+    assert.deepEqual(result.diagnostics[0]?.related?.map(r => result.text.slice(r.start,r.end)), ["{go}"]);
+    const native = inspect(result.text.replace("on:click", "on:pointer:down").replace("row.title", "pointer.clientX").replaceAll("data:row", "data:pointer"));
+    assert.deepEqual(part_definition_targets(native.facts, file("app.ts"), native.text.indexOf("pointer.clientX")), []);
   }
-  assert.deepEqual(static_schema_candidate_diagnostics(ts, wrong.program), []);
-  const hosted = application('<main/>',
-    '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
-    + event('title:str="ready"').replace('local:go', 'host:go') + '}}}', 'maps.locus.create')
-    .replace('const page =', schema + 'const page =').slice(0, -2)
-    + ',{actions:{go:{handler(){},args:{schema:Move}}}});';
-  assert.deepEqual(inspect(hosted).codes, ['HSON_EVENT_ARGUMENT_MISSING']);
-  const duplicate = inspect(local('x:num="2" x:str="again"'));
-  const duplicateIssue = duplicate.diagnostics.find(issue => issue.message.includes('Duplicate Event argument'))!;
-  assert.equal(duplicate.text.slice(duplicateIssue.start, duplicateIssue.end), 'x:str');
-  assert.deepEqual(duplicateIssue.related?.map(({ start, end }) => duplicate.text.slice(start, end)), ['x:num', 'event:go']);
-  const missingLocal = inspect(local('x:num="0" title:str="slide ^{missing.title}"'));
-  const reference = missingLocal.diagnostics.find(issue => issue.message.includes('Missing Part local declaration'))!;
-  assert.equal(missingLocal.text.slice(reference.start, reference.end), '^{missing.title}');
-  assert.deepEqual(reference.related?.map(({ start, end }) => missingLocal.text.slice(start, end)), ['event:go']);
-  const uncertain = local('x:num="0" title:str=^{label}', '<button hson:part str:label=%{caption?} event:go/>')
-    .replace('title "string"', 'title <optional "number">');
-  assert.deepEqual(inspect(uncertain).codes, []);
-  const typedReference = local('x:num="0" title:num=^{position}', '<button hson:part num:position=%{index} event:go/>');
-  assert.deepEqual(inspect(typedReference).slices, ['title:num=^{position}']);
-  const dynamic = source.replace('schema:Move', 'schema:opaque');
-  assert.deepEqual(inspect(dynamic).codes, []);
-
-  const tree = 'import {Hson, hsonLiveTree as trees} from "hson-live";\n' + schema
-    + 'const tree = trees.fromHson("<button/>");\n'
-    + 'tree.actions.define("go", () => {}, {args:{required:true, schema:Move}});\n';
-  const listen = (args: string, key?: string) => 'tree.listen.event(' + event(args, key) + ');';
-  assert.deepEqual(inspect(tree + listen('x:num="120" title:str="ready"')).codes, []);
-  assert.deepEqual(inspect(tree + listen('x:num="120" title:str="ready"', 'missing')).slices, ['missing']);
-  assert.deepEqual(inspect(tree + listen('x:num="120" title:str="row ^{missing}"')).slices, ['^{missing}']);
-  assert.deepEqual(inspect(tree + listen('x:num="1" x:str="bad"')).slices, ['x:str']);
-  assert.deepEqual(inspect(tree + listen('x:num="04"')).slices, [JSON.stringify('"04"').slice(1, -1)]);
-  assert.deepEqual(inspect(tree + 'tree.actions.define(dynamic, () => {});' + listen('x:num="120" title:str="ready"', 'missing')).codes, []);
 });
 
-check('Document Library declarations and imperative Events retain standalone diagnostics', () => {
-  const event = JSON.stringify('<hson:event on:click local:go value:str=^{missing} <> >');
-  const prefix = 'import {hsonLiveMap} from "hson-live";\n';
-  const construction = 'const map=hsonLiveMap.fromLibraries({page:{document:"<main/>"}});\n';
-  assert.deepEqual(inspect(prefix + 'const map=hsonLiveMap.fromLibraries({page:{document:"<main/>",events:{go:' + event + '}}});').slices, ['^{missing}']);
-  for (const receiver of ['map.doc.must("page")', 'map.doc.must("page").at([1,0]).asElement()!', 'page']) {
-    const alias = receiver === 'page' ? 'const page=map.doc.must("page");\n' : '';
-    assert.deepEqual(inspect(prefix + construction + alias + receiver + '.listen.event(' + event + ');').slices, ['^{missing}'], receiver);
+check("Deck-style literal admissions expose owner-specific Action declarations, required flags and Data Schemas", () => {
+  const schema = 'const Args=Hson.schema`<type "data" root <object <index "number">>>`;';
+  const fields = '{handler(){},args:{required:true,schema:Args}}';
+  const localCall = 'map.actions.define("deck.preview",()=>{},{args:{required:false,schema:Args}});';
+  const cache = new HsonEditorCompletionCache(ts);
+  for (const [owner, create, admit, domain, name] of [
+    ["loc", 'hson.liveMap.locus.create({},{actions:{"deck.advance":' + fields + '}})', "admit", "host", "deck.advance"],
+    ["map", "maps.create()", "addLibraries", "local", "deck.preview"],
+  ] as const) for (const part of [true,false]) {
+    const doc = 'const pageTest=Hson.document`<main/>`;';
+    const event = 'const go=Hson.event`<hson:event on:click ' + domain + ':deck. <>>`;';
+    const meta = part ? 'bits:{parts:{slide:{kind:"document",document:"<button hson:part event:go/>",events:{go}}}}'
+      : 'pageTest:{document:pageTest,events:{go}' + (domain === "host" ? ',access:"shared"' : '') + '}';
+    const prefix = imports + schema + doc + event + 'const ' + owner + '=' + create + ';';
+    const define = domain === "local" ? 'if(condition){' + localCall + '}' : 'loc.actions.define("deck.next",()=>{},{args:{required:true,schema:Args}});';
+    const other = 'const unrelated=maps.fromLibraries({}); unrelated.actions.define("deck.foreign",()=>{});';
+    const app = prefix + (part ? define : '') + 'await ' + owner + '.' + admit + '({' + meta + '});' + (part ? '' : define) + other;
+    const result = inspect(app);
+    assert.deepEqual(result.codes, []);
+    const action = result.facts.actionDeclarations.find(item => item.name === name);
+    assert.ok(action);
+    assert.equal(action.domain, domain);
+    assert.equal(action.required, domain === "host");
+    assert.ok(action.schema);
+    assert.ok(action.schema.value.graph.capabilities.projectedRoot !== undefined);
+    assert.equal(app.slice(action.schema.location.start, action.schema.location.end), 'Args');
+    assert.equal(app.slice(action.location.start, action.location.end), JSON.stringify(name));
+    const names = (text: string) => {
+      const { program } = inspect(text);
+      return cache.complete(file("app.ts"), text, revision, text.indexOf(':deck.') + ':deck.'.length, program)
+        .map(item => item.candidate.label).filter(label => label.includes("deck."));
+    };
+    assert.deepEqual(names(app).sort(), domain === "local" ? ["local:deck.preview"] : ["host:deck.advance","host:deck.next"]);
+    assert.deepEqual(names(app.replace('({' + meta + '})', '(Object.fromEntries(dynamic))')), []);
   }
-  const required = construction + 'map.actions.define("go",()=>{},{args:{required:true}});\n'
-    + 'map.doc.must("page").listen.event("<hson:event on:click local:go <> >");';
-  assert.deepEqual(inspect(prefix + required).codes, ['HSON_EVENT_INPUT_REQUIRED']);
-  const hosted = prefix + 'const loc=hsonLiveMap.locus.create({page:{document:"<main/>"}},{actions:{go(){}}});\n'
-    + 'loc.doc.must("page").listen.event("<hson:event on:click host:missing <> >");';
-  const unknown = inspect(hosted);
-  assert.deepEqual(unknown.slices, ['missing']);
-  assert.equal(unknown.diagnostics[0]?.message, 'Unknown hosted Action "missing".');
 });
 
-check('known Event fields retain exact Schema evidence beside unresolved operands', () => {
-  const schema = '<type "data" root <object <count <exact -0> label "string" settings <optional <object <speed "number">>>>>>';
-  const source = (fields: string, definition = schema) => application('<main/>',
-    '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
-    + JSON.stringify('<hson:event on:click local:go ' + fields + ' <> >') + '}}}')
-    .replace('const page =', 'const Args = Hson.schema`' + definition + '`;\nconst page =')
-    + '\nloc.actions.define("go", () => {}, {args:{schema:Args}});';
-  for (const [fields, offending, message] of [
-    ['count:num="0" label:str=%{label}', 'count:num="0"', /expected -0; received 0/],
-    ['count:num="-0" label:str=%{label} extra:num="8"', 'extra:num="8"', /unknown key at extra/],
-    ['count:num="-0" label:str=%{label} settings:data={<speed "fast">}', 'settings:data={<speed "fast">}', /type mismatch at settings.speed/],
-    ['count:num="-0" label:str=%{label} settings:data={<>}', 'settings:data={<>}', /missing required child\/value at settings.speed/],
+check("Action declarations retain their own contracts across duplicate keys and unrelated owners", () => {
+  const fixture = imports + 'const map=maps.create(), other=maps.fromLibraries({});'
+    + 'const S=Hson.schema`<type "data" root <object <count "number">>>`;'
+    + 'map.actions.define("same",()=>{},{args:{required:true,schema:S}});'
+    + 'if(condition) map.actions.define("same",()=>{},{args:{required:false}});'
+    + 'other.actions.define("same",()=>{},{args:{required:true}});'
+    + '(map as typeof map).actions.define("asserted",()=>{});'
+    + 'dynamic.actions.define("unowned",()=>{}); map.actions.define(key,()=>{});';
+  const { facts, codes } = inspect(fixture);
+  assert.deepEqual(codes, []);
+  const declarations = facts.actionDeclarations;
+  assert.deepEqual(declarations.map(action => [action.name, action.domain, action.required, !!action.schema]),
+    [["same", "local", true, true], ["same", "local", false, false], ["same", "local", true, false]]);
+  assert.equal(declarations[0]!.owner, declarations[1]!.owner);
+  assert.notEqual(declarations[0]!.owner, declarations[2]!.owner);
+});
+
+check("authored diagnostic recipients follow the Program's case rules", () => {
+  const name = "Prİme.ts", recipient = file(name);
+  const body = (local: string) => imports + 'maps.fromLibraries({group:{parts:{p:{kind:"document",document:\'<p hson:part "^{'
+    + local + '}"/>\'}}}});';
+  try {
+    for (const sensitive of [false, true]) {
+      edit(name, body("absent"));
+      const base = { ...host, useCaseSensitiveFileNames: () => sensitive, getScriptFileNames: () => [recipient] };
+      const native = ts.createLanguageService(base);
+      const view = create_schema_language_service(ts, native, base, file("tsconfig.json"));
+      try {
+        assert.deepEqual([...view.changedDiagnosticFiles()], [recipient]);
+        const lookup = sensitive ? recipient : file("prİme.ts");
+        assert.ok(view.getSemanticDiagnostics(lookup).some(issue => issue.code === 95002
+          && issue.file?.fileName === recipient && String(issue.messageText).includes("absent")));
+        assert.deepEqual([...view.changedDiagnosticFiles()], []);
+        edit(name, 'export {};');
+        assert.deepEqual([...view.changedDiagnosticFiles()], [recipient]);
+        assert.deepEqual([...view.changedDiagnosticFiles()], []);
+      } finally { view.dispose(); }
+    }
+  } finally { remove(name); }
+});
+
+check("general Part alternatives preserve lexical and write diagnostics independently of Event links", () => {
+  for (const expression of ["A", "A as string", "A satisfies string", "true ? A : A"]) {
+    for (const metadata of ["", ",events:{go}", ",events:dynamic"]) {
+      const source = (body: string, argument: string) => imports
+        + 'const go="<hson:event on:click local:go x:data=^{row.title} <>>"; const A=' + JSON.stringify(body) + ';'
+        + 'const m=maps.fromLibraries({group:{parts:{p:{kind:"document",document:' + expression + metadata + '}}}});'
+        + 'm.parts.group.p.write({needed:' + argument + '});';
+      const body = '<p hson:part str:key=%{needed} "^{key}"/>';
+      const invalid = inspect(source(body, '42'));
+      assert.ok(static_part_reference_diagnostics(invalid.facts, ts, invalid.program.getTypeChecker())
+        .some(issue => issue.message.includes('Part.write argument "needed" requires a string')));
+      assert.deepEqual(inspect(source(body, '"ok"')).codes, []);
+      assert.ok(inspect(source(body.replace('^{key}', '^{unknown}'), '"ok"')).diagnostics
+        .some(issue => issue.message.includes('Missing Part local declaration "unknown"')));
+      const attached = inspect(source('<p hson:part data:row=%{needed} event:go/>', '{}'));
+      const target = part_definition_targets(attached.facts, file("app.ts"), attached.text.indexOf("row.title"));
+      assert.equal(target.length, Number(expression === "A" && metadata === ",events:{go}"));
+    }
+  }
+});
+
+check("Event owners require the selected package route and a concrete declaration site", () => {
+  const meta = '{group:{parts:{p:{kind:"document",document:"<p hson:part data:row=%{rows} event:go/>",events:{go}}}}}';
+  const app = 'import {hsonLiveMap as M} from "hson-live"; const go=' + eventDeclaration('^{row.title}') + ';';
+  const construction = 'M.fromLibraries(' + meta + ')';
+  const remapped = ts.createLanguageService({ ...host, getCompilationSettings: () => ({
+    ...options, paths: { ...options.paths, "hson-live": [file("map-shim.ts")] },
+  }) });
+  try {
+    const text = app + 'const m=' + construction + '; m.actions.define("run",()=>{});';
+    edit("app.ts", text);
+    for (const shim of ['export {hsonLiveMap} from "hson-live/livemap";',
+      'export const hsonLiveMap={fromLibraries:(x:unknown)=>x};', 'export {hsonLiveMap} from "hson-live/livemap";']) {
+      edit("map-shim.ts", shim);
+      const facts = collect_part_source_facts(ts, remapped.getProgram()!);
+      assert.equal(facts.actionDeclarations.length, 0);
+      assert.equal(facts.eventLiterals.size, 0);
+      if (shim.startsWith("export {")) assert.ok(facts.batches.some(batch => batch.libraries.length > 0));
+    }
+    // General Library provenance still authorizes the reachable Part branch through this barrel.
+    edit("app.ts", app + 'const A=\'<p hson:part str:key=%{needed} "^{key}"/>\'; const m=M.fromLibraries('
+      + meta.replace('"<p hson:part data:row=%{rows} event:go/>"', 'true ? A : opaque') + ');m.parts.group.p.write({needed:42});');
+    const program = remapped.getProgram()!;
+    const forwarded = collect_part_source_facts(ts, program);
+    assert.ok(static_part_reference_diagnostics(forwarded, ts, program.getTypeChecker())
+      .some(issue => issue.message.includes('Part.write argument "needed" requires a string')));
+    assert.equal(forwarded.eventLiterals.size, 0);
+    for (const [prefix, count] of [["", 1], ["const m=", 1], ["declare const m=", 0], ["const m:any=", 0]] as const) {
+      const { facts } = inspect(app + prefix + construction + ';');
+      assert.equal(part_definition_targets(facts, file("app.ts"), app.indexOf("row.title")).length, count);
+    }
+    for (const [imported, receiver] of [
+      ['import * as api from "hson-live/livemap";', "api"],
+      ['import {hsonLiveMap as api} from "hson-live/livemap";', "api"],
+      ['import {hson as api} from "hson-live";', "api.liveMap"],
+    ]) {
+      const source = app + imported + 'const owner=' + receiver + '.fromLibraries(' + meta + '); owner.actions.define("run",()=>{});';
+      const { facts } = inspect(source);
+      assert.deepEqual(facts.actionDeclarations.map(item => item.name), ["run"]);
+      assert.equal(part_definition_targets(facts, file("app.ts"), app.indexOf("row.title")).length, 1);
+    }
+    const sibling = inspect(app + 'declare const bad=' + construction + '; const good=' + construction
+      + '; bad.actions.define("bad",()=>{});good.actions.define("good",()=>{});');
+    assert.deepEqual(sibling.facts.actionDeclarations.map(item => item.name), ["good"]);
+    assert.equal(part_definition_targets(sibling.facts, file("app.ts"), app.indexOf("row.title")).length, 1);
+    edit("owner.ts", 'import {hsonLiveMap as M} from "hson-live";export const m=M.create();');
+    for (const [module, awaited, count] of [["owner", false, 1], ["owner", true, 0],
+      ["relay", false, 0], ["relay", true, 0], ["owner", false, 1]] as const) {
+      edit("relay.ts", 'import {m as original} from "./owner.js";export const m=' + (awaited ? 'await ' : '') + 'original;');
+      const { facts } = inspect(app + 'import {m} from "./' + module + '.js";const selected='
+        + (module === "owner" && awaited ? 'await m' : '(m)') + ';selected.addLibraries(' + meta
+        + ');selected.actions.define("run",()=>{});');
+      assert.equal(facts.actionDeclarations.length, count);
+      assert.equal(part_definition_targets(facts, file("app.ts"), app.indexOf("row.title")).length, count);
+    }
+  } finally {
+    remapped.dispose();
+    for (const name of ["map-shim.ts", "owner.ts", "relay.ts"]) remove(name);
+  }
+});
+
+check("qualified Part writes retain known types across Document and Event eligibility boundaries", () => {
+  for (const marker of ["", " event:go"]) for (const expression of ["D", "D as string", "D satisfies string", "true ? D : dynamic"]) {
+    const text = imports + 'const D=\'<p hson:part str:k=%{needed}' + marker + ' "^{k}"/>\';'
+      + 'const o=maps.fromLibraries({g:{parts:{p:{kind:"document",document:' + expression
+      + ',events:{go:"<hson:event on:click local:go <>>"}},sibling:{kind:"document",document:"<i hson:part/>"}}}});'
+      + 'o.parts.g.p.write({needed:42});o.parts.g.p.write({needed:"ok"});';
+    const { facts, program } = inspect(text);
+    const diagnostics = static_part_reference_diagnostics(facts, ts, program.getTypeChecker());
+    assert.deepEqual(diagnostics.map(item => text.slice(item.start, item.end)), ["42"]);
+    assert.equal(facts.writes[0]?.definition.signature?.parameters.get("needed"), "str");
+    assert.deepEqual(facts.batches[0]?.libraries[0]?.members.map(member => member.name), ["p", "sibling"]);
+  }
+});
+
+check("Schema collection admission reads a genuine forwarded Event value independently of attachment evidence", () => {
+  edit("shim.ts", 'export {Hson} from "hson-live";');
+  edit("producer.ts", 'import {Hson} from "hson-live/hson";export const e=Hson.event`<hson:event on:click local:go <>>`;');
+  const remapped = ts.createLanguageService({ ...host, getCompilationSettings: () => ({
+    ...options, paths: { ...options.paths, "hson-live/hson": [file("shim.ts")] },
+  }) });
+  try {
+    for (const selected of ["e", "e as typeof e", "e satisfies typeof e"]) for (const tag of ["p", "h1"]) {
+      edit("app.ts", imports + 'import {e} from "./producer.js";const go=' + selected + ';'
+        + 'const S=Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;'
+        + 'const m=maps.fromLibraries({page:{document:Hson.document`<main <hson-part lib="bits" at="title"/>/>`,schema:S},'
+        + 'bits:{parts:{title:{kind:"document",document:"<' + tag + ' hson:part/>",events:{go}}}},'
+        + 'peer:{parts:{title:{kind:"document",document:"<h1 hson:part/>"}}}});');
+      const program = remapped.getProgram()!, facts = collect_part_source_facts(ts, program, () => new Set());
+      assert.deepEqual(facts.batches[0]!.libraries.flatMap(library => library.members.map(member => member.admission)), ["qualified", "qualified"]);
+      assert.equal(facts.eventOwners.size, 0);
+      const diagnostics = static_schema_candidate_diagnostics(ts, program);
+      assert.equal(diagnostics.length, Number(tag === "p"));
+      if (tag === "p") assert.match(diagnostics[0]!.message, /expected "h1"; received "p"/);
+    }
+    edit("producer.ts", 'import {Hson} from "hson-live/hson";export const e=Hson.event`<hson:event on:click local:go x:data=^{row.id} <>>`;');
+    edit("app.ts", imports + 'import {e} from "./producer.js";maps.fromLibraries({g:{parts:{p:{kind:"document",'
+      + 'document:"<i hson:part data:row=%{rows} event:go/>",events:{go:e}}}}});');
+    const forwarded = collect_part_source_facts(ts, remapped.getProgram()!);
+    assert.equal(forwarded.batches[0]!.libraries[0]!.members[0]!.admission, "qualified");
+    assert.equal(forwarded.eventOwners.size, 0);
+    assert.equal(forwarded.eventLiterals.size, 0);
+  } finally { remapped.dispose(); remove("shim.ts"); remove("producer.ts"); }
+});
+
+check("scalar receiving kinds survive opaque, invalid and unused Event operands without inventing a read", () => {
+  for (const [event, alias, read, unused] of [
+    ['note:str=^{label}', 'E', true, false], ['note:str=%{needed}', 'E', true, false],
+    ['note:str=^{label}', 'E as typeof E', false, false], ['note:str=^{label}', 'E satisfies typeof E', false, false],
+    ['', 'E', false, true], ['note:str=^{absent}', 'E', false, true], ['note:str=^{label}', 'dynamic', false, false],
+    ['invalid=', 'E', false, false],
   ] as const) {
-    const result = inspect(source(fields));
-    assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(result.slices, [JSON.stringify(offending).slice(1, -1)]);
-    assert.match(result.diagnostics[0]!.message, message);
-    assert.deepEqual(result.diagnostics[0]?.related?.map(({ start, end }) => result.text.slice(start, end)), ['Args', 'event:go']);
-    assert.deepEqual(static_schema_candidate_diagnostics(ts, result.program), []);
+    for (const textRead of [false, true]) {
+      const text = imports + 'const E="<hson:event on:click local:go ' + event + ' <>>";const go=' + alias + ';'
+        + 'const m=maps.fromLibraries({g:{parts:{p:{kind:"document",document:\'<p hson:part str:label=%{needed} event:go'
+        + (textRead ? ' "^{label}"' : '') + '/>\',events:{go}}}}});'
+        + 'm.parts.g.p.write({needed:42});m.parts.g.p.write({needed:"ok"});';
+      const { facts, program, diagnostics } = inspect(text);
+      const doc = facts.batches[0]!.libraries[0]!.members[0]!.documents[0]!;
+      assert.equal(doc.parameters.find(parameter => parameter.name === "needed")?.uses.some(use => use.context === "event"), read, event + alias);
+      assert.equal(diagnostics.some(issue => issue.message.includes("Unused Part str")), unused && !textRead);
+      assert.deepEqual(static_part_reference_diagnostics(facts, ts, program.getTypeChecker()).filter(issue => issue.message.includes("Part.write"))
+        .map(issue => text.slice(issue.start, issue.end)), ["42"], event + alias);
+    }
   }
-  assert.deepEqual(inspect(source('count:num="-0" label:str=%{label} extra:num=%{extra?}')).codes, []);
-  assert.deepEqual(inspect(source('count:num="-0" label:data=%{label}')).codes, []);
-  const open = '<type "data" root <object <label "string"> any "number">>';
-  assert.deepEqual(inspect(source('label:str="ready" extra:num=%{extra}', open)).codes, []);
-  for (const [fields, offending] of [
-    ['label:str="ready" extra:str=%{extra}', 'extra:str=%{extra}'],
-    ['label:num=%{label} extra:num="2"', 'label:num=%{label}'],
-  ] as const) {
-    const result = inspect(source(fields, open));
-    assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(result.slices, [offending]);
-    assert.match(result.diagnostics[0]!.message, /supplies a value of type/);
-  }
-  const union = '<type "data" defs <Left <object <kind <exact "left"> count <exact 0> label "string">> Right <object <kind <exact "right"> count <exact -0> label "string">> Choice <union [<ref "Left">, <ref "Right">]>> root <ref "Choice">>';
-  assert.deepEqual(inspect(source('kind:str=%{kind} count:num="-0" label:str=%{label}', union)).codes, []);
-  assert.deepEqual(inspect(source('kind:str=%{kind} count:num="1" label:str=%{label}', union)).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
 });
 
-check('pointer Event diagnostics retain lexical, Action Schema, and source-range evidence', () => {
+check("write diagnostics use the selected receiving declaration and exact argument span", () => {
+  for (const { name, source, kind } of part_write_target_cases) {
+    const { facts, program } = inspect(source);
+    const writes = static_part_reference_diagnostics(facts, ts, program.getTypeChecker()).filter(item => item.message.startsWith("Part.write"));
+    const value = kind === "str" ? "81" : '"ok"';
+    const start = source.lastIndexOf(value);
+    const binding = source.indexOf(kind + ':label=%{needed}') + (kind?.length ?? 0) + 1;
+    assert.deepEqual(writes.map(issue => [issue.file, issue.code, issue.start, issue.end, issue.message,
+      issue.related?.map(range => [range.file, range.start, range.end])]), kind ? [[file("app.ts"), "HSON_PART_ARGUMENT_INVALID",
+      start, start + value.length, 'Part.write argument "needed" requires ' + (kind === 'str' ? 'a string.' : 'a finite number.'),
+      [[file("app.ts"), binding, binding + "label".length]]]] : [], name);
+  }
+});
+
+check("imported records preserve lexical navigation and the inline sibling's exact diagnostics", () => {
+  const names = new Set<string>();
+  try {
+    for (const { name, source, dependencies } of imported_part_write_cases) {
+      for (const [path, text] of Object.entries(dependencies)) { edit(path, text); names.add(path); }
+      const { facts, program } = inspect(source);
+      const writes = static_part_reference_diagnostics(facts, ts, program.getTypeChecker())
+        .filter(issue => issue.message.startsWith("Part.write"));
+      const record = dependencies["namespace-record.ts"];
+      const declaration = (source: string, fileName: string, field: string) => {
+        const start = source.indexOf(field + "=%{");
+        return [file(fileName), start, start + field.length];
+      };
+      const expected = [
+        ["peer", '"bad"', declaration(source, "app.ts", "peerLabel")] as const,
+      ];
+      assert.deepEqual(writes.map(issue => [
+        issue.file, issue.code, issue.start, issue.end, issue.related?.map(range => [range.file, range.start, range.end]),
+      ]), expected.map(([key, value, binding]) => {
+        const start = source.indexOf(key + ":" + value) + key.length + 1;
+        return [file("app.ts"), "HSON_PART_ARGUMENT_INVALID", start, start + value.length, [binding]];
+      }), name);
+      const offset = record.indexOf("^{label}") + 2;
+      const definitions = part_definition_targets(facts, file("namespace-record.ts"), offset);
+      assert.deepEqual(definitions.map(({ target }) => [target.file, target.start, target.end]),
+        [declaration(record, "namespace-record.ts", "label")], name);
+    }
+  } finally { for (const name of names) remove(name); }
+});
+
+check("Part writes check independently known keys through Library aliases and partial records", () => {
+  const part = '{kind:"document",document:\'<p hson:part str:s=%{needed} num:n=%{count} MARK "^{s}:^{n}"/>\',events:{go}}';
+  const table = '{g:{parts:{p:' + part + ',peer:{kind:"document",document:"<b hson:part/>"}}}}';
+  const calls = ['needed:41, extra:"ok"', 'extra:"ok", needed:42', 'needed:"ok", extra:1',
+    'needed:43, count:"wrong", extra:"x"', 'needed:44, extra:1, extra:2', 'needed:1, needed:2, count:"duplicate sibling"',
+    'needed:45, ...dynamic', '...dynamic, needed:46', 'needed:47, [key]:0', 'unknown:1'];
+  try {
+    for (const marker of ["", "event:go"]) for (const alias of ["E", "E as typeof E"]) for (const route of ["inline", "local", "import"]) {
+      const declarations = 'const E="<hson:event on:click local:go <>>";const go=' + alias + ';';
+      const libraries = table.replace("MARK", marker);
+      const named = 'const libraries=' + libraries + ' as const;';
+      edit("libraries.ts", declarations + 'export ' + named);
+      const text = imports + declarations + (route === "import" ? 'import {libraries} from "./libraries.js";' : route === "local" ? named : '')
+        + 'const m=maps.fromLibraries(' + (route === "inline" ? libraries : 'libraries') + ');'
+        + calls.map(fields => 'm.parts.g.p.write({' + fields + '});').join('');
+      const { facts, program } = inspect(text);
+      const diagnostic = static_part_reference_diagnostics(facts, ts, program.getTypeChecker()).filter(issue => issue.message.includes("Part.write"));
+      assert.deepEqual(diagnostic.map(issue => text.slice(issue.start, issue.end)), route === "import" ? [] : ["41","42","43",'"wrong"',"44",'"duplicate sibling"',"46"], route);
+      assert.equal(facts.writes.some(write => write.partial), route !== "import");
+      if (route !== "inline" || alias !== "E") assert.equal(facts.eventOwners.size, 0);
+    }
+    for (const parts of ['p:dynamic', 'p:' + part + ',...dynamic', 'p:' + part + ',p:dynamic']) {
+      const { facts } = inspect(imports + 'const go=dynamic;const m=maps.fromLibraries({g:{parts:{' + parts.replace("MARK","") + '}}});m.parts.g.p.write({needed:42});');
+      assert.equal(facts.writes.length, 0);
+    }
+  } finally { remove("libraries.ts"); }
+});
+
+
+
+check("a direct imported owner follows its selected value through legal type-space merges", () => {
+  const text = imports + 'import {o} from "./owner.js";'
+    + 'const go="<hson:event on:click local:go x:data=^{row.id} y:data=^{absent.id} <>>";'
+    + 'o.addLibraries({g:{parts:{p:{kind:"document",document:"<p hson:part data:row=%{rows} event:go/>",events:{go}}}}});'
+    + 'o.actions.define("owned",()=>{});const peer=maps.create();peer.actions.define("peer",()=>{});';
+  try {
+    for (const [decl, valid] of [
+      ["export const o=maps.create();", true],
+      ["export type o=string;export const o=maps.create();", true], ["export const o=maps.create();export type o=string;", true],
+      ["export interface o{};export const o=maps.create();", true], ["export type o=number;", false],
+      ["export const o=maps.create();export const o=0;", false], ["export const o=0;export const o=maps.create();", false],
+      ["export declare const o:ReturnType<typeof maps.create>;", false], ["export const other:number=false;export const o=maps.create();", true],
+    ] as const) {
+      edit("owner.ts", imports + decl);
+      const { facts, diagnostics, program } = inspect(text);
+      if (valid && !decl.includes("other")) assert.deepEqual(program.getSemanticDiagnostics(program.getSourceFile(file("owner.ts"))!), []);
+      assert.deepEqual(facts.actionDeclarations.map(action => action.name), valid ? ["owned", "peer"] : ["peer"]);
+      assert.equal(part_definition_targets(facts, file("app.ts"), text.indexOf("row.id")).length, Number(valid));
+      assert.equal(diagnostics.some(issue => issue.message.includes('Missing Part local declaration "absent"')), valid);
+    }
+  } finally { remove("owner.ts"); }
+});
+
+
+
+check("general Schema composition retains qualified Parts with unused wrapped Event aliases", () => {
+  for (const alias of ["event", "event as typeof event", "event satisfies typeof event"]) for (const tag of ["p", "h1"]) {
+    const text = imports + 'const S=Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;'
+      + 'const event=Hson.event`<hson:event on:click local:go <>>`;const selected=' + alias + ';'
+      + 'maps.fromLibraries({page:{document:Hson.document`<main <hson-part lib="bits" at="title"/>/>`,schema:S},'
+      + 'bits:{parts:{title:{kind:"document",document:"<' + tag + ' hson:part/>",events:{go:selected}}}}});';
+    const { facts, program } = inspect(text);
+    assert.equal(facts.eventOwners.size, 0);
+    const errors = static_schema_candidate_diagnostics(ts, program);
+    assert.equal(errors.length, Number(tag === "p"));
+    if (tag === "p") assert.match(errors[0]!.message, /expected "h1"; received "p"/);
+  }
+});
+
+check("Event owner sites require the selected ordinary const and preserve valid neighbors", () => {
+  const base = imports + 'const go="<hson:event on:click local:run x:data=^{row.id} <>>";';
+  const call = 'maps.fromLibraries({g:{parts:{p:{kind:"document",document:"<p hson:part data:row=%{rows} event:go/>",events:{go}}}}});';
+  for (const [before, after, valid] of [
+    ["const m=", "", true], ["type m=string; const m=", "", true], ["const unrelated:number=false;const m=", "", true],
+    ["const m=0;const m=", "", false], ["const m=", "const m=0;", false],
+    ["// @ts-ignore\nconst m=0;\n// @ts-ignore\nconst m=", "", false],
+    ["let m=", "", false], ["var m=", "", false], ["using m=", "", false], ["await using m=", "", false],
+    ["declare const m=", "", false],
+  ] as const) {
+    const { facts } = inspect(base + before + call + after + 'm.actions.define("run",()=>{}); const sibling=maps.create();sibling.actions.define("other",()=>{});');
+    assert.equal(part_definition_targets(facts, file("app.ts"), base.indexOf("row.id")).length, Number(valid), before);
+    assert.deepEqual(facts.actionDeclarations.map(action => action.name), valid ? ["run","other"] : ["other"], before);
+  }
+  for (const kind of ["const","await using"]) {
+    const { facts } = inspect(base + 'const owner=maps.create();' + kind + ' m=owner;m.addLibraries('
+      + call.slice('maps.fromLibraries('.length) + 'm.actions.define("run",()=>{});');
+    assert.equal(facts.eventOwners.size, Number(kind === "const"));
+    assert.equal(facts.actionDeclarations.length, Number(kind === "const"));
+  }
+});
+
+check("Action Schema references preserve the authored value binding and reference range", () => {
+  const head = imports + 'import {ANY_DATA as schema,ANY_DOCUMENT} from "hson-live/hson"; const m=maps.create();';
+  const call = (field: string) => 'm.actions.define("run",()=>{},{args:{required:true,' + field + '}});';
+  for (const [declarations, field, expected] of [
+    ["", "schema:schema", "schema"], ["", "schema", "schema"], ["", "schema:(schema)", "schema"],
+    ["const copy=schema;", "schema:copy", "copy"], ['const S=Hson.schema`<type "data" root "number">`;', "schema:S", "S"],
+    ["", "schema:ANY_DOCUMENT", undefined], ["const fake={};", "schema:fake", undefined],
+    ["let copy=schema;", "schema:copy", undefined], ["", "schema:schema as typeof schema", undefined],
+    ["", "schema:unresolved", undefined],
+  ] as const) {
+    const result = inspect(head + declarations + call(field));
+    const action = result.facts.actionDeclarations[0]!;
+    assert.equal(action.name, "run");
+    assert.equal(action.required, true);
+    const ref = action.schema?.location;
+    assert.equal(ref && result.text.slice(ref.start, ref.end), expected);
+    if (expected) assert.ok(action.schema?.value.graph.capabilities.projectedRoot !== undefined);
+  }
+  assert.equal(inspect(head + call('["schema"]:schema')).facts.actionDeclarations[0]?.schema, undefined);
+  try {
+    const text = head + 'import {contract} from "./contract.js";' + call('schema:contract');
+    for (const [exported, known] of [["ANY_DATA", true], ["ANY_DOCUMENT", false], ["ANY_DATA", true]] as const) {
+      edit("contract.ts", 'import {' + exported + ' as S} from "hson-live/hson"; export const contract=S;');
+      assert.equal(!!inspect(text).facts.actionDeclarations[0]?.schema, known);
+    }
+  } finally { remove("contract.ts"); }
+});
+
+
+check("Repeated procedural listener calls require no binder-list iteration or warm reconstruction", () => {
+  const source = 'import {Hson,hsonLiveTree} from "hson-live";\nconst tree=hsonLiveTree.create.button();'
+    + 'const go=Hson.event`<hson:event on:click local:go <>>`;\n'
+    + Array.from({length: 32}, (_, i) => 'let name' + i + ';let name' + i + ';').join('\n')
+    + 'tree.listen.event(go as string);\n'.repeat(40);
+  edit("app.ts", source);
+  const program = service.getProgram()!;
+  program.getTypeChecker();
+  const app: ts.SourceFile & { bindDiagnostics?: ts.Diagnostic[] } = program.getSourceFile(file("app.ts"))!;
+  const diagnostics = app.bindDiagnostics;
+  assert.ok(diagnostics && diagnostics.length === 64);
+  let scans = 0;
+  const iterate = diagnostics[Symbol.iterator];
+  Object.defineProperty(diagnostics, Symbol.iterator, { configurable: true, value() { scans++; return iterate.call(this); } });
+  try {
+    const facts = collect_part_source_facts(ts, program);
+    assert.equal(facts.eventLiterals.size, 0);
+    for (let i = 0; i < 100; i++) assert.equal(collect_part_source_facts(ts, program), facts);
+    assert.equal(scans, 0);
+  } finally { Reflect.deleteProperty(diagnostics, Symbol.iterator); }
+});
+
+check('pointer Event diagnostics retain lexical and source-range evidence', () => {
   const event = (arguments_: string, family = 'pointer:move') => JSON.stringify(`<hson:event on:${family} local:go ${arguments_} <> >`);
   const make = (args: string, body = '<button hson:part event:go/>', family?: string) => application('<main/>',
     '{card:{kind:"document",document:Hson.document`' + body + '`, events:{go:' + event(args, family) + '}}}')
     .replace('const page =', 'const Args = Hson.schema`<type "data" root <object <x "number" title "string">>>`;\nconst page =')
     + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
   assert.deepEqual(inspect(make('x:num=^{pointer.clientX} title:str="Ready"')).codes, []);
-  const missing = inspect(make('x:num=^{pointer.clientX}'));
-  assert.deepEqual(missing.codes, ['HSON_EVENT_ARGUMENT_MISSING']);
-  const wrong = inspect(make('x:num=^{pointer.clientX} title:data=^{pointer.clientY}'));
-  assert.deepEqual(wrong.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(wrong.slices, ['title:data=^{pointer.clientY}']);
-  assert.deepEqual(wrong.diagnostics[0]?.related?.map(({ start, end }) => wrong.text.slice(start, end)), ['Args', 'event:go']);
-  assert.deepEqual(static_schema_candidate_diagnostics(ts, wrong.program), []);
   for (const [args, span, issue, family] of [
     ['x:num=^{pointer.pressure}', '^{pointer.pressure}', /Unsupported pointer Event lookup/, undefined],
     ['x:num=^{pointer.clientX.}', '^{pointer.clientX.}', /one whole Part reference/, undefined],
@@ -1157,6 +1460,93 @@ check('pointer Event diagnostics retain lexical, Action Schema, and source-range
   assert.deepEqual(inspect(opaque).codes, []);
 });
 
+check("Procedural listeners leave native compiler identity and conflict diagnostics intact", () => {
+  const relay = "selected-tree-relay.mts";
+  const official = 'export {hsonLiveTree as selected} from "hson-live";';
+  const fake = 'const trees = { fromHson: (_: string) => ({ actions: { define: (_key: string, _fn: () => void) => {} },'
+    + ' listen: { event: (_: unknown) => {} } }) };';
+  const listen = (facade: string) => 'const tree = ' + facade + '.fromHson("<button/>");\n'
+    + 'tree.actions.define("other", () => {});\n'
+    + 'tree.listen.event("<hson:event on:click local:go item:data=^{row.field} <>>");';
+  const renamed = 'import {hsonLiveTree as trees} from "hson-live";';
+  const relayed = 'import {selected as trees} from "./selected-tree-relay.mjs";';
+  const verify = (program: ts.Program, codes: readonly number[]) => {
+    const app = program.getSourceFile(file("app.ts"))!;
+    assert.deepEqual(program.getSemanticDiagnostics(app).map(d => d.code), codes);
+    const facts = collect_part_source_facts(ts, program);
+    assert.equal(facts.eventLiterals.size, 0);
+    assert.deepEqual(static_part_reference_diagnostics(facts), []);
+    return app;
+  };
+  try {
+    edit(relay, official);
+    for (const [preamble, facade, codes] of [
+      ['import {hsonLiveTree} from "hson-live";', "hsonLiveTree", []],
+      [renamed, "trees", []],
+      [relayed, "trees", []],
+      [relayed + 'const alias = (trees);', "alias", []],
+      ['import {hson as root} from "hson-live";', "root.liveTree", []],
+      ['import {Hson} from "hson-live";' + fake, "trees", []],
+      [renamed + fake, "trees", [2440]],
+      [renamed + 'let alias = trees;', "alias", []],
+      [renamed.replace("import ", "import type "), "trees", [1361]],
+      [renamed + 'const unrelated: number = false;', "trees", [2322]],
+    ] as const) {
+      edit("app.ts", preamble + listen(facade));
+      const program = service.getProgram()!;
+      const app = verify(program, codes);
+      if (codes.some(code => code === 2440)) {
+        const declaration = app.statements.filter(ts.isVariableStatement)[0]!.declarationList.declarations[0]!;
+        const checker = program.getTypeChecker();
+        const symbol = checker.getSymbolAtLocation(declaration.name)!;
+        assert.equal(symbol.valueDeclaration, declaration);
+        assert.equal(checker.getAliasedSymbol(symbol).name, "hsonLiveTree");
+        assert.equal(selected_hson_value_declaration(ts, checker, symbol, hson_source_syntactic_eligibility(ts, program)), undefined);
+      }
+    }
+    edit("app.ts", renamed + "{" + fake + listen("trees") + "}");
+    verify(service.getProgram()!, []);
+    edit("app.ts", relayed + listen("trees"));
+    const original = verify(service.getProgram()!, []);
+    edit(relay, 'export type {hsonLiveTree as selected} from "hson-live";');
+    assert.equal(verify(service.getProgram()!, [1362]), original);
+    edit(relay, official);
+    assert.equal(verify(service.getProgram()!, []), original);
+  } finally {
+    remove(relay);
+  }
+});
+
+check("Wrapped constructor diagnostics preserve independent tagged and cooked Part targets", () => {
+  const ref = '<hson:event on:click local:go item:data=^{row.field} <>>';
+  const draft = '<hson:event on:click  <>>';
+  const source = 'import {Hson,hsonLiveMap,hsonLiveTree as trees} from "hson-live";\n';
+  const part = 'hsonLiveMap.fromLibraries({bits:{parts:{card:{kind:"document",'
+    + 'document:Hson.document`<button hson:part data:row=%{rows} event:go event:draft/>`,events:{go:ev,draft}}}}});\n';
+  for (const tagged of [true, false]) for (const [argument, directive, native] of [
+    ['(({ isolated: "bad" } as const))', '', [2322]],
+    ['((<{isolated:"bad"}>{ isolated: "bad" }) satisfies {isolated:"bad"})', '', [2345]],
+    ['(({ isolated: "bad" } as const))', '// @ts-expect-error\n', []],
+    ['(({ isolated: "bad" } as const))', '// @ts-ignore\n', []],
+    ['(({ isolated: true } as const) satisfies {isolated:boolean})', '', []],
+    ['((<{isolated:boolean}>{ isolated: true }) satisfies {isolated:boolean})', '', []],
+  ] as const) {
+    const producer = (body: string) => tagged ? 'Hson.event`' + body + '`' : JSON.stringify(body);
+    const text = source + 'const ev=' + producer(ref) + ', draft=' + producer(draft) + ';\n' + part
+      + directive + 'const tree=trees.fromHson(("<button/>" as const), ' + argument + ');\n'
+      + 'tree.listen.event(ev); tree.listen.event(draft);';
+    const { program, facts, codes } = inspect(text);
+    assert.deepEqual(program.getSemanticDiagnostics(program.getSourceFile(file("app.ts"))!).map(issue => issue.code), native, argument);
+    assert.equal(codes.includes("HSON_EVENT_REFERENCE_INVALID"), false, argument);
+    const definitions = part_definition_targets(facts, file("app.ts"), text.indexOf("row.field") + 1);
+    assert.deepEqual(definitions.map(({ target }) => text.slice(target.start, target.end)), ["row"], argument);
+    const at = text.indexOf(draft) + '<hson:event on:click '.length;
+    const destinations = new HsonEditorCompletionCache(ts).complete(file("app.ts"), text, revision, at, program)
+      .map(edit => edit.candidate.label).filter(label => label === "local:" || label === "host:");
+    assert.deepEqual(destinations, ["host:", "local:"], argument);
+  }
+});
+
 check('native Event completion uses the selector, qualifier, and authored replacement range', () => {
   const cache = new HsonEditorCompletionCache(ts);
   const complete = (text: string, includeDetail = false) => {
@@ -1166,8 +1556,9 @@ check('native Event completion uses the selector, qualifier, and authored replac
     return cache.complete(file('app.ts'), source, revision, offset, program).map(({ candidate, range }) =>
       [candidate.label, candidate.insertText, source.slice(range.start, range.end), ...(includeDetail ? [candidate.detail] : [])]);
   };
-  const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n';
-  const call = (operand: string, family = 'pointer:down') => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event on:${family} local:go ${operand} <> >`) + ');';
+  const documentEvent = (source: string) => imports + 'maps.fromLibraries({page:{document:"<main/>",events:{go:'
+    + JSON.stringify(source) + '}}});';
+  const call = (operand: string, family = 'pointer:down') => documentEvent(`<hson:event on:${family} local:go ${operand} <> >`);
   assert.deepEqual(complete(call('x:num=^{pointer.cli|entY}')),
     [['pointer.clientX', 'pointer.clientX}', 'pointer.clientY}'], ['pointer.clientY', 'pointer.clientY}', 'pointer.clientY}']]);
   assert.deepEqual(complete(call('x:data=^{pointer.move|')), [
@@ -1180,7 +1571,7 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('x:num=^{pointer.cli|', 'click')), []);
   assert.deepEqual(complete(call('x:str=^{pointer.cli|')), []);
   assert.deepEqual(complete(call('x:data={"^{pointer.cli|}"}')), []);
-  assert.deepEqual(complete(call('x:num=^{pointer.cli|').replace('tree.listen', 'opaque.listen')), []);
+  assert.deepEqual(complete(call('x:num=^{pointer.cli|').replace('maps.fromLibraries', 'opaque.fromLibraries')), []);
   const part = application('<main/>', '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
     + JSON.stringify('<hson:event on:pointer:move local:go x:num=^{pointer.|} <> >') + '}}}');
   assert.deepEqual(complete(part).map(item => item[0]), ['pointer.clientX', 'pointer.clientY', 'pointer.movementX', 'pointer.movementY',
@@ -1215,7 +1606,14 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('checked:bool=^{change.target.ch|}', 'change')),
     [['change.target.checked', 'change.target.checked}', 'change.target.ch}']]);
   assert.deepEqual(complete(call('x:str=^{formdata:g|}', 'formdata')).map(item => item.slice(0, 2)),
-    [['formdata:get', 'formdata:get("")}']]);
+    [['formdata:get', String.raw`formdata:get(\"\")}`]]);
+  const formdata = call('x:str=^{formdata:g|}', 'formdata');
+  const [operationEdit] = complete(formdata);
+  assert.ok(operationEdit);
+  const edited = formdata.replace('formdata:g|}', operationEdit[1]!);
+  assert.equal(JSON.parse(edited.slice(edited.lastIndexOf('events:{go:') + 'events:{go:'.length, -5)),
+    '<hson:event on:formdata local:go x:str=^{formdata:get("")} <> >');
+  assert.deepEqual(inspect(edited).codes, []);
   assert.deepEqual(complete(call('x:arr=^{formdata:g|}', 'formdata')).map(item => item[0]), ['formdata:getAll']);
   assert.deepEqual(complete(call('x:bool=^{formdata:h|}', 'formdata')).map(item => item[0]), ['formdata:has']);
   assert.deepEqual(complete(call('x:data=^{formdata:|}', 'formdata')).map(item => item[0]), ['formdata:get', 'formdata:getAll', 'formdata:has']);
@@ -1223,7 +1621,7 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('x:data=^{formdata:entries|}', 'formdata')), []);
   assert.deepEqual(complete(call('x:data=^{submit:g|}', 'submit')), []);
   assert.deepEqual(complete(call('x:str=^{formdata:ge|t("email")}', 'formdata')).map(item => item.slice(0, 2)),
-    [['formdata:get', 'formdata:get("email")}']]);
+    [['formdata:get', String.raw`formdata:get(\"email\")}`]]);
   const stringProperties = ['tagName', 'id', 'name', 'type', 'value'];
   assert.deepEqual(complete(call('x:str=^{input.ta|', 'input')).map(item => item[0]),
     stringProperties.map(property => `input.target.${property}`));
@@ -1246,14 +1644,16 @@ check('native Event completion uses the selector, qualifier, and authored replac
   assert.deepEqual(complete(call('', 'click on:key:|')), []);
   assert.deepEqual(complete(call('', 'key:down o|')), [['once', 'once', 'o']]);
   assert.deepEqual(complete(call('', 'key:down').replace('on:key:down', 'o| on:key:down')), [['once', 'once', 'o']]);
-  const header = (source: string) => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event ${source} <> >`) + ');';
+  const header = (source: string) => documentEvent(`<hson:event ${source} <> >`);
   assert.deepEqual(complete(header('on:k| count:num=bad on:key:down local:go')), []);
   assert.deepEqual(complete(header('count:num=bad on:k| on:key:down local:go')), []);
   assert.deepEqual(complete(header('on:key:down count:num=bad on:k| local:go')), []);
   assert.deepEqual(complete(header('on:k| count:num= on:key:down local:go')), []);
   assert.deepEqual(complete(header('count:data={} on:k| on:key:down local:go')), []);
   assert.deepEqual(complete(header(String.raw`on:k| count:num="\q" on:key:down local:go`)), []);
-  assert.deepEqual(complete(header('on:k| x:data=^{root["unterminated on:key:down')), []);
+  assert.deepEqual(complete(header('on:k| x:data=^{root["unterminated on:key:down')), [
+    ['on:key:down', 'on:key:down', 'on:k'], ['on:key:up', 'on:key:up', 'on:k'],
+  ]);
   assert.deepEqual(complete(header('on:k| x:data=^{root["closed"] on:key:down local:go')), []);
   assert.deepEqual(complete(header('count:num=bad on:key:|down other:num=bad local:go')), [
     ['on:key:down', 'on:key:down', 'on:key:down'], ['on:key:up', 'on:key:up', 'on:key:down'],
@@ -1280,68 +1680,31 @@ check('native Event completion uses the selector, qualifier, and authored replac
 });
 
 check('submission Event diagnostics retain native result categories and bounded operation grammar', () => {
-  const tree = 'import {hsonLiveTree as trees, Hson} from "hson-live";\nconst tree = trees.fromHson("<form/>");\n';
-  const call = (operand: string, schema = '<type "data" root <object <value "any">>>') => tree
-    + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`${schema}\`}});\n`
-    + 'tree.listen.event(' + JSON.stringify(`<hson:event on:formdata local:go ${operand} <> >`) + ');';
+  const call = (operand: string) => imports + 'maps.fromLibraries({page:{document:"<form/>",events:{go:'
+    + JSON.stringify(`<hson:event on:formdata local:go ${operand} <> >`) + '}}});';
   for (const operand of ['value:str=^{formdata:get("email")}', 'value:arr=^{formdata:getAll("tag")}',
     'value:bool=^{formdata:has("upload")}', 'value:arr={[false,null]}', 'value:bool="false"']) {
     assert.deepEqual(inspect(call(operand)).codes, []);
   }
-  assert.deepEqual(inspect(call('value:str=^{formdata:get("missing")}', '<type "data" root <object <value "null">>>')).codes, []);
+  assert.deepEqual(inspect(call('value:str=^{formdata:get("missing")}')).codes, []);
   for (const operand of ['value:str=^{formdata:get(name)}', 'value:str=^{formdata:get("a","b")}',
     'value:data=^{formdata:entries("a")}', 'value:data=^{formdata:get("a").name}']) {
     const result = inspect(call(operand));
     assert.deepEqual(result.codes, ['HSON_EVENT_DECLARATION_INVALID']);
     assert.match(result.diagnostics[0]!.message, /FormData Event operation/);
   }
-  assert.deepEqual(inspect(call('value:bool=^{formdata:has("a")}', '<type "data" root <object <value "string">>>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(inspect(call('value:arr=^{formdata:getAll("a")}', '<type "data" root <object <value "string">>>')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-});
-
-check('Event array categories admit tuple Schemas without weakening incompatible category diagnostics', () => {
-  const tree = 'import {hsonLiveTree as trees, Hson} from "hson-live";\nconst tree = trees.fromHson("<form/>");\n';
-  const call = (operand: string, schema: string, selector = 'formdata') => tree
-    + `tree.actions.define("go", () => {}, {args:{required:true,schema:Hson.schema\`<type "data" root <object <value ${schema}>>>\`}});\n`
-    + 'tree.listen.event(' + JSON.stringify(`<hson:event on:${selector} local:go ${operand} <> >`) + ');';
-  const incompatible = (operand: string, schema: string, selector = 'formdata') => {
-    const result = inspect(call(operand, schema, selector));
-    assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(result.slices, [JSON.stringify(operand).slice(1, -1)]);
-    assert.match(result.diagnostics[0]!.message, /do not match its Schema/);
-  };
-  for (const qualifier of ['arr', 'data']) {
-    const operand = `value:${qualifier}=^{formdata:getAll("tag")}`;
-    // A deferred result establishes neither a tuple length nor its actual contents.
-    for (const schema of ['<tuple ["string","string"]>', '<tuple []>', '<array "string">', '<array "any">']) {
-      assert.deepEqual(inspect(call(operand, schema)).codes, []);
-    }
-    incompatible(operand, '"string"');
-  }
-  for (const [operand, compatible, rejected, selector] of [
-    ['value:str=^{formdata:get("tag")}', '"string"', '"boolean"', 'formdata'],
-    ['value:num=^{pointer.clientX}', '"number"', '"string"', 'pointer:move'],
-    ['value:bool=^{formdata:has("tag")}', '"boolean"', '"string"', 'formdata'],
-    ['value:data=^{formdata:has("tag")}', '"boolean"', '"string"', 'formdata'],
-  ]) {
-    assert.deepEqual(inspect(call(operand!, compatible!, selector)).codes, []);
-    incompatible(operand!, rejected!, selector);
-  }
-  // Fully known arrays still undergo the established tuple value validation.
-  assert.deepEqual(inspect(call('value:arr={["a","b"]}', '<tuple ["string","string"]>')).codes, []);
-  incompatible('value:arr={["a"]}', '<tuple ["string","string"]>');
-  incompatible('value:arr={["a",false]}', '<tuple ["string","string"]>');
 });
 
 check('Event listener options complete as bare flags and diagnose structural errors at authored ranges', () => {
   const cache = new HsonEditorCompletionCache(ts);
-  const tree = 'import {hsonLiveTree as trees} from "hson-live";\nconst tree = trees.fromHson("<button/>");\n'
-    + 'tree.actions.define("go", () => {});\n';
-  const call = (header: string) => tree + 'tree.listen.event(' + JSON.stringify(`<hson:event on:click local:go ${header} <> >`) + ');';
+  const call = (header: string) => imports + 'maps.fromLibraries({page:{document:"<main/>",events:{go:'
+    + JSON.stringify(`<hson:event on:click local:go ${header} <> >`) + '}}});';
   const complete = (text: string) => {
     const offset = text.indexOf('|'), source = text.replace('|', '');
     const { program } = inspect(source);
-    return cache.complete(file('app.ts'), source, revision, offset, program).map(({ candidate, range }) => {
+    return cache.complete(file('app.ts'), source, revision, offset, program)
+      .filter(({ candidate }) => candidate.label !== "name:type=value")
+      .map(({ candidate, range }) => {
       assert.equal(candidate.kind, 'syntax');
       assert.equal(candidate.insertText, candidate.label);
       return [candidate.label, source.slice(range.start, range.end)];
@@ -1388,7 +1751,7 @@ check('Event listener options complete as bare flags and diagnose structural err
   }
 });
 
-check('keyboard Event diagnostics retain lexical and Action Schema evidence across qualifiers', () => {
+check('keyboard Event diagnostics retain lexical evidence across qualifiers', () => {
   const source = (args: string, body = '<button hson:part event:go/>', selector = 'on:key:up', schema = '<key "string" flag "boolean" location "number">') => application('<main/>',
     '{card:{kind:"document",document:Hson.document`' + body + '`, events:{go:'
     + JSON.stringify(`<hson:event ${selector} local:go ${args} <> >`) + '}}}')
@@ -1396,18 +1759,6 @@ check('keyboard Event diagnostics retain lexical and Action Schema evidence acro
     + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
   const valid = 'key:data=^{key.key} flag:data=^{key.isComposing?} location:data=^{key.location}';
   assert.deepEqual(inspect(source(valid)).codes, []);
-  for (const [schema, field, kind] of [
-    ['<key "number" flag "boolean" location "number">', 'key:data=^{key.key}', 'string'],
-    ['<key "string" flag "string" location "number">', 'flag:data=^{key.isComposing?}', 'boolean'],
-    ['<key "string" flag "boolean" location "string">', 'location:data=^{key.location}', 'number'],
-  ]) {
-    const bad = inspect(source(valid, undefined, undefined, schema));
-    assert.deepEqual(bad.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(bad.slices, [field]);
-    assert.match(bad.diagnostics[0]!.message, new RegExp(`supplies a value of type ${kind}`));
-    assert.deepEqual(bad.diagnostics[0]?.related?.map(({ start, end }) => bad.text.slice(start, end)), ['Args', 'event:go']);
-    assert.deepEqual(static_schema_candidate_diagnostics(ts, bad.program), []);
-  }
   for (const [args, range, message, selector] of [
     ['key:str=^{key.keyCode}', '^{key.keyCode}', /Unsupported key Event lookup/, undefined],
     ['pressed:str=^{key.pressed}', '^{key.pressed}', /Unsupported key Event lookup/, undefined],
@@ -1440,11 +1791,6 @@ check('input and change Event diagnostics preserve target paths and native argum
       + '\nloc.actions.define("go", () => {}, {args:{required:true, schema:Args}});';
   const args = 'value:data=^{change.target.value} checked:data=^{change.target.checked}';
   assert.deepEqual(inspect(source('change', args)).codes, []);
-  const incorrect = inspect(source('change', args, '<value "number" checked "string">'));
-  assert.deepEqual(incorrect.codes, ['HSON_EVENT_ARGUMENT_INVALID', 'HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(incorrect.slices, args.split(' '));
-  assert.match(incorrect.diagnostics[0]!.message, /supplies a value of type string/);
-  assert.match(incorrect.diagnostics[1]!.message, /supplies a value of type boolean/);
   for (const [selector, ref, message] of [
     ['input', 'change.target.value', /native change binding requires on:change/],
     ['change', 'change.value', /Unsupported change Event lookup/],
@@ -1458,134 +1804,6 @@ check('input and change Event diagnostics preserve target paths and native argum
   }
   const collision = inspect(source('change', args, undefined, 'data:change=%{stored}'));
   assert.match(collision.diagnostics[0]!.message, /Part local "change" conflicts/);
-});
-
-check('hosted Event Action contracts recognize Parts Libraries with known access metadata', () => {
-  const event = JSON.stringify('<hson:event on:click host:go tag:num="1" <> >');
-  const registration = 'const Args = Hson.schema`<type "data" root <object <tag "string">>>`;\n';
-  const config = '{actions:{go:{handler(){},args:{schema:Args}}}}';
-  const definitions = (metadata: string) => '{components:{' + metadata + 'parts:{card:{kind:"document",'
-    + 'document:Hson.document`<button hson:part event:go/>`,events:{go:' + event + '}}}},'
-    + 'page:{access:"shared",document:Hson.document`<hson-part at=components/card/>`}}';
-  const source = (metadata: string) => imports + registration
-    + 'const loc = maps.locus.create(' + definitions(metadata) + ',' + config + ');';
-  const baseline = inspect(source(''));
-  assert.deepEqual(baseline.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  for (const metadata of ['access:"private",', 'access:"shared",', 'access:condition ? "private" : "shared",']) {
-    const result = inspect(source(metadata));
-    assert.deepEqual(result.codes, baseline.codes);
-    assert.deepEqual(result.slices, baseline.slices);
-    assert.deepEqual(result.diagnostics[0]?.related?.map(({ start, end }) => result.text.slice(start, end)), ['Args', 'event:go']);
-  }
-  for (const metadata of ['', 'access:"private",', 'access:"shared",']) {
-    const admit = imports + registration + 'const loc = maps.locus.create({},' + config + ');\nloc.admit(' + definitions(metadata) + ');';
-    assert.deepEqual(inspect(admit).codes, baseline.codes);
-  }
-  for (const metadata of ['access:dynamic,', 'access:"unknown",', 'schema:Args,', '...dynamic,']) {
-    assert.deepEqual(inspect(source(metadata)).codes, [], metadata);
-  }
-});
-
-function assertRequiredEventInput(result: ReturnType<typeof inspect>, event: string, attachment?: string, flag = 'true'): void {
-  const at = (source: string, prefix = '') => {
-    const offset = result.text.indexOf(prefix + source);
-    assert.ok(offset >= 0, prefix + source);
-    const start = offset + prefix.length;
-    return { file: file('app.ts'), start, end: start + source.length };
-  };
-  assert.deepEqual(result.diagnostics, [{
-    ...at(event),
-    code: 'HSON_EVENT_INPUT_REQUIRED',
-    message: 'Action "run" requires arguments. Supply named typed arguments in this event declaration.',
-    related: [
-      { ...at(flag, 'required: '), message: 'This action declares required arguments.' },
-      ...(attachment === undefined ? [] : [{ ...at(attachment), message: 'Part event attachment.' }]),
-    ],
-  }]);
-}
-
-check('tree action ownership must survive registration argument evaluation', () => {
-  const setup = 'import { ANY_DATA, hsonLiveTree as trees } from "hson-live";\n'
-    + 'const parent = trees.fromHson("<main/>");\nconst tree = trees.fromHson("<button/>");\nconst handler = () => {};\n';
-  const define = 'tree.actions.define("run", handler, { args: { required: true, schema: ANY_DATA } });\n';
-  const event = JSON.stringify('<hson:event on:click local:run <> >');
-  const listen = 'tree.listen.event(' + event + ');';
-  const stable = inspect(setup + define + listen);
-  assertRequiredEventInput(stable, event);
-  assert.deepEqual(inspect(setup + define.replace('schema: ANY_DATA', 'schema: (parent.append(tree), ANY_DATA)') + listen).codes, []);
-  assert.deepEqual(inspect(setup + define.replace('handler,', '(parent.append(tree), handler),') + listen).codes, []);
-  assert.deepEqual(inspect(setup + define + define.replace('"run"', '"other"').replace('schema: ANY_DATA', 'schema: (parent.append(tree), ANY_DATA)') + listen).codes, []);
-  assert.deepEqual(inspect(setup + 'parent.append(tree);\n' + define + listen).codes, []);
-  assertRequiredEventInput(inspect(setup + define.replace('handler,', '() => { parent.append(tree); },') + listen), event);
-  assertRequiredEventInput(inspect(setup.replace('import { ANY_DATA,', 'import { Hson,')
-    + define.replace('schema: ANY_DATA', 'schema: Hson.schema`<type "data" root "any">`') + listen), event);
-  const stableBranches = setup.replace('const parent =', 'const branch = Math.random() < 0.5;\nconst parent =');
-  assertRequiredEventInput(inspect(stableBranches + define.replace('required: true', 'required: branch ? true : true') + listen), event,
-    undefined, 'branch ? true : true');
-  assert.deepEqual(inspect(stableBranches + define.replace('required: true', 'required: branch ? true : false') + listen).codes, []);
-  assert.deepEqual(inspect(setup + define.replace('required: true', 'required: false') + listen).codes, []);
-});
-
-const hostedRunEvent = JSON.stringify('<hson:event on:click host:run <> >');
-const hostedRunPart = '{card:{kind:"document",document:Hson.document`<button hson:part event:run/>`,events:{run:' + hostedRunEvent + '}}}';
-const hostedRun = application('<hson-part at="components/card"/>', hostedRunPart, 'maps.locus.create');
-const defineHostedRun = '\nloc.actions.define("run", () => {}, { args: { required: true } });';
-check('direct hosted registrations follow the owning Locus and lexical order', () => {
-  const direct = inspect(hostedRun + defineHostedRun);
-  assertRequiredEventInput(direct, hostedRunEvent, 'event:run');
-  assertRequiredEventInput(inspect(hostedRun + '\nconst alias = loc;' + defineHostedRun.replace('loc.actions', 'alias.actions')),
-    hostedRunEvent, 'event:run');
-  assert.deepEqual(inspect(hostedRun + '\nconst other = maps.locus.create({});' + defineHostedRun.replace('loc.actions', 'other.actions')).codes, []);
-  assert.deepEqual(inspect(hostedRun + defineHostedRun.replace('loc.actions', 'dynamic.actions')).codes, []);
-  assert.deepEqual(inspect(hostedRun + '\nif (condition) ' + defineHostedRun.trim()).codes, []);
-  assert.deepEqual(inspect(hostedRun + '\n{ const loc = maps.locus.create({});' + defineHostedRun + '\n}').codes, []);
-  assert.deepEqual(inspect(hostedRun.replace('const loc =', defineHostedRun + '\nconst loc =')).codes, []);
-  assert.deepEqual(inspect(hostedRun + defineHostedRun.replace('required: true', 'required: false')).codes, []);
-  assert.deepEqual(inspect(hostedRun + defineHostedRun.replace('required: true', 'required: condition')).codes, []);
-  assert.deepEqual(inspect(hostedRun + defineHostedRun.replace('"run"', 'key') + defineHostedRun).codes, []);
-  assert.deepEqual(inspect(hostedRun.replaceAll('host:run', 'host:document.css')
-    + defineHostedRun.replace('"run"', '"document.css"')).codes, []);
-
-  const admission = hostedRun.replace('const loc = maps.locus.create(', 'const loc = maps.locus.create({});\nloc.admit(');
-  assertRequiredEventInput(inspect(admission + defineHostedRun), hostedRunEvent, 'event:run');
-  assertRequiredEventInput(inspect(admission.replace('\nloc.admit(', defineHostedRun + '\nloc.admit(')), hostedRunEvent, 'event:run');
-  assert.deepEqual(inspect(admission.replace('\nloc.admit(', '\nconst other = maps.locus.create({});\nother.admit(') + defineHostedRun).codes, []);
-  assert.deepEqual(inspect(admission.replace('\nloc.admit(', '\nif (condition) loc.admit(') + defineHostedRun).codes, []);
-  assert.deepEqual(inspect(admission.replace('document: page', 'document: (loc.actions.define("run", () => {}), page)')
-    + defineHostedRun).codes, []);
-
-  inspect(hostedRun + defineHostedRun);
-  const editorHost = { ...host };
-  const editor = create_schema_language_service(ts, ts.createLanguageService(editorHost), editorHost, file('tsconfig.json'));
-  try {
-    assert.deepEqual(editor.getSemanticDiagnostics(file('app.ts')).filter(issue => issue.source === 'hson-schema')
-      .map(issue => [issue.code, issue.start, issue.length, issue.messageText]), [
-      [95002, direct.text.indexOf(hostedRunEvent), hostedRunEvent.length, direct.diagnostics[0]!.message],
-    ]);
-  } finally { editor.dispose(); }
-});
-
-check('static hosted methods preserve neighboring contract evidence', () => {
-  const configure = (configuration: string) => hostedRun.slice(0, -2) + ', ' + configuration + ');';
-  const run = 'run: { handler() {}, args: { required: true } }';
-  assertRequiredEventInput(inspect(configure('{ actions: { ' + run + ' }, authorizeAction() { return true; } }')),
-    hostedRunEvent, 'event:run');
-  assertRequiredEventInput(inspect(configure('{ actions: { ' + run + ', cancel() {} } }')), hostedRunEvent, 'event:run');
-  for (const actions of [
-    '{ ' + run + ', [key]() {} }',
-    '{ ' + run + ', ["cancel"]() {} }',
-    '{ ' + run + ', get cancel() { return () => {}; } }',
-    '{ ' + run + ', ...dynamic }',
-    'condition ? { ' + run + ' } : { run() {} }',
-  ]) assert.deepEqual(inspect(configure('{ actions: ' + actions + ' }')).codes, [], actions);
-  assert.deepEqual(inspect(configure('{ actions: { ' + run + ' }, get authorizeAction() { return () => true; } }')).codes, []);
-  for (const actions of ['{ run() {} }', '{ ...dynamic }', 'condition ? { run() {} } : {}']) {
-    assert.deepEqual(inspect(configure('{ actions: ' + actions + ' }') + defineHostedRun).codes, [], actions);
-  }
-  assert.deepEqual(inspect(configure('{ actions: { run() {} } }')).codes, []);
-  assert.deepEqual(inspect(configure('{ actions: { ' + run.replace('required: true', 'required: false') + ', cancel() {} } }')).codes, []);
-  assertRequiredEventInput(inspect(configure('{ actions: { cancel() {} }, authorizeAction() { return true; } }') + defineHostedRun),
-    hostedRunEvent, 'event:run');
 });
 
 check('known incoming requirements survive opaque event values and opaque sibling Parts', () => {
@@ -1627,30 +1845,6 @@ check('invalid bare attachment spelling is independent of the event collection v
     result.text.indexOf('event:bad.name') + 'event:bad.name'.length,
   ]]);
   assert.match(result.diagnostics[0]!.message, /requires an event:name flag on an ordinary Part element/);
-});
-
-check('known conditional event choices distinguish possible and definite demand', () => {
-  const caller = '<hson-part at="components/card" bogus="x"';
-  const a = eventDeclaration('%{label}'), b = eventDeclaration('%{other}'), literal = eventDeclaration('{null}');
-  const part = (events: string) => '{card:{kind:"document",document:Hson.document`<button hson:part event:go "%{title}"/>`,events:' + events + '}}';
-  for (const [events, requiredness, missing] of [
-    [`{go:condition ? ${a} : dynamic}`, 'conditional', ['title']],
-    [`{go:condition ? ${a} : ${b}}`, 'conditional', ['title']],
-    [`condition ? {go:${a}} : {go:${literal}}`, 'conditional', ['title']],
-    [`{go:condition ? ${a} : ${a}}`, 'required', ['label', 'title']],
-    [`{go:condition ? ${a} : ${eventDeclaration('%{label?}')}}`, 'conditional', ['title']],
-    [`{go:true ? ${a} : ${literal}}`, 'required', ['label', 'title']],
-  ] as const) {
-    const result = inspect(application(caller + '/>', part(events)));
-    const definition = result.facts.batches[0]!.libraries[1]!.members[0]!.contractSource;
-    assert.equal(definition?.signature?.requiredness.get('label'), requiredness, events);
-    assert.equal(definition?.signature?.requiredness.get('title'), 'required', events);
-    const missingErrors = result.diagnostics.filter(error => error.code === 'HSON_PART_ARGUMENT_MISSING');
-    assert.deepEqual(missingErrors.map(error => result.text.slice(error.related![0]!.start, error.related![0]!.end)), missing, events);
-    assert.ok(missingErrors.every(error => result.text.slice(error.start, error.end) === caller));
-    assert.deepEqual(result.diagnostics.filter(error => error.code === 'HSON_PART_ARGUMENT_UNKNOWN').map(error => result.text.slice(error.start, error.end)),
-      events.includes('dynamic') ? [] : ['bogus'], events);
-  }
 });
 
 check('adjacent event opacity only withdraws facts that need the unavailable value or scope', () => {
@@ -1721,7 +1915,7 @@ check('inline and immutable aliased Event tags retain Part scopes and navigation
   } finally { remove('tagged-events.ts'); }
 });
 
-check('tagged Events keep Action and missing attachment diagnostics without duplicating source errors', () => {
+check('tagged Events keep missing attachment diagnostics without duplicating source errors', () => {
   const makeSource = (event: string, attachment = 'event:go') => application('<main/>',
     '{card:{kind:"document",document:Hson.document`<button hson:part ' + attachment + '/>`,events:{go:Hson.event`'
       + event + '`}}}')
@@ -1733,13 +1927,7 @@ check('tagged Events keep Action and missing attachment diagnostics without dupl
   const valid = '<hson:event on:click local:go value:num="5" <> >';
   const action = inspect(makeSource(valid));
   assert.deepEqual(ordinary(action), []);
-  assert.deepEqual(action.codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(action.slices, ['value:num="5"']);
-  assert.deepEqual(action.diagnostics[0]?.related?.map(({ start, end }) => action.text.slice(start, end)), ['Args', 'event:go']);
-  for (const erased of ['type Args = number;', 'interface Args {}']) {
-    assert.deepEqual(inspect(action.text.replace('const Args=', erased + ' const Args=')).slices, ['value:num="5"']);
-  }
-
+  assert.deepEqual(action.codes, []);
   for (const [invalid, code, message] of [
     [valid.replace('on:click', 'on:unknown'), 'HSON_EVENT_DECLARATION_INVALID', /Unsupported Event selector/],
     [valid.replace('value:num="5"', 'value:num="5" value:num="6"'), 'HSON_EVENT_DECLARATION_INVALID', /Duplicate Event argument/],
@@ -1755,220 +1943,6 @@ check('tagged Events keep Action and missing attachment diagnostics without dupl
   assert.deepEqual(ordinary(missing), []);
   assert.deepEqual(missing.slices, ['event:absent']);
   assert.match(missing.diagnostics[0]!.message, /Missing Part event declaration "absent"/);
-});
-
-check('Part Event navigation and Action Schema diagnostics follow the selected value through relays', () => {
-  const author = 'import { Hson as Brush } from "hson-live/hson";';
-  const event = 'export const eventSpec = Brush.event`<hson:event on:click local:go value:str=^{label} missing:str=^{absent} <> >`;';
-  const schema = 'export const Args = Brush.schema`<type "data" root <object <value "string">>>`;';
-  const consumer = 'import { eventSpec as attached, Args as shape } from "./relay.mjs";\n'
-    + 'const go = attached; const Contract = shape;\n'
-    + application('<main/>', '{card:{kind:"document",document:Hson.document`<button hson:part str:label=%{label} event:go "^{label}"/>`,events:{go}}}')
-    + '\nconst registry = maps.fromLibraries({bits:{parts:{button:{kind:"document",document:Hson.document`<button hson:part event:go/>`,'
-    + 'events:{go:Hson.event`<hson:event on:click local:go value:num="5" <> >`}}}}});'
-    + '\nregistry.actions.define("go", () => {}, {args:{schema:Contract}});';
-  const named = 'export { eventSpec, Args } from "./selected.mjs";';
-  const original = 'import { eventSpec as E, Args as A } from "./selected.mjs";';
-  const globalAliases = 'declare global { export { E as GlobalEventSource, A as GlobalArgs }; }';
-  const relay = 'export { GlobalEventSource as eventSpec, GlobalArgs as Args };';
-  const real = original + globalAliases;
-  const competing = 'export {}; const otherEvent = "", otherArgs = {}; '
-    + 'declare global { export { otherEvent as GlobalEventSource, otherArgs as GlobalArgs }; }';
-  const source = (erased: string, before: boolean) => [author, before ? erased : '', event, schema, before ? '' : erased].join('\n');
-  const verify = (producer: string, expected: boolean) => {
-    edit('selected.mts', producer);
-    const result = inspect(consumer);
-    assert.deepEqual(result.slices.sort(), expected ? ['^{absent}', 'value:num="5"'].sort() : []);
-    assert.deepEqual(result.codes.sort(), expected ? ['HSON_EVENT_ARGUMENT_INVALID', 'HSON_PART_REFERENCE_INVALID'] : []);
-    assert.equal(result.facts.eventContracts.some(entry => entry.contract.schema !== undefined), expected);
-    const targets = part_definition_targets(result.facts, file('selected.mts'), producer.indexOf('^{label}') + 2);
-    assert.deepEqual(targets.map(target => [target.name, target.target.file, target.target.start]),
-      expected ? [['label', file('app.ts'), consumer.indexOf('str:label') + 4]] : []);
-    return result.program;
-  };
-  try {
-    edit('relay.mts', named);
-    verify(source('', false), true);
-    edit('hop.mts', 'export { eventSpec as E, Args as A } from "./selected.mjs";');
-    edit('relay.mts', 'export { E as eventSpec, A as Args } from "./hop.mjs";');
-    for (const erased of ['type Brush = number; export type eventSpec = number; export type Args = number;',
-      'interface Brush {} export interface eventSpec {} export interface Args {}',
-      'export namespace eventSpec { export type T = number; } export namespace Args { export type T = number; }']) {
-      for (const before of [true, false]) {
-        const program = verify(source(erased, before), true);
-        assert.deepEqual(program.getSemanticDiagnostics(program.getSourceFile(file('selected.mts'))), []);
-      }
-    }
-    edit('merge.mts', 'export {}; declare module "./hop.mjs" { interface E {} type A = number; }');
-    const augmented = verify(source('', false), true);
-    assert.deepEqual(augmented.getSemanticDiagnostics(augmented.getSourceFile(file('merge.mts'))), []);
-    remove('merge.mts');
-    const typeImport = 'import type { T as eventSpec, T as Args } from "./types.mjs";';
-    const importedTypes = [author, typeImport, event.replace('export ', ''), schema.replace('export ', ''), 'export { eventSpec, Args };'].join('\n');
-    edit('types.mts', 'export type T = number;');
-    const legal = verify(importedTypes, true);
-    assert.deepEqual(legal.getSemanticDiagnostics(legal.getSourceFile(file('selected.mts'))), []);
-    edit('types.mts', 'export class T {}');
-    const conflict = verify(importedTypes, false);
-    assert.ok(conflict.getSemanticDiagnostics(conflict.getSourceFile(file('selected.mts'))).some(d => d.code === 2440));
-    for (const before of [true, false]) {
-      verify(source('export const eventSpec = "", Args = {};', before), false);
-    }
-    edit('relay.mts', real + relay);
-    const invalid = verify(source('', false), false);
-    assert.ok(invalid.getSemanticDiagnostics(invalid.getSourceFile(file('relay.mts'))).some(d => d.code === 2666));
-    for (const order of [[real, competing], [competing, real]]) {
-      edit('relay.mts', order.join('\n') + relay);
-      verify(source('', false), false);
-      edit('relay.mts', relay);
-      edit('first.mts', order[0]!);
-      edit('second.mts', order[1]!);
-      const program = verify(source('', false), false);
-      for (const name of ['first.mts', 'second.mts']) {
-        assert.ok(program.getSemanticDiagnostics(program.getSourceFile(file(name))).some(d => d.code === 2300));
-        remove(name);
-      }
-    }
-  } finally {
-    for (const name of ['selected.mts', 'relay.mts', 'hop.mts', 'merge.mts', 'types.mts', 'first.mts', 'second.mts']) remove(name);
-  }
-});
-
-check('tagged and ordinary Events retain hosted Action contracts in either admission order', () => {
-  const args = 'const Args = Hson.schema`<type "data" root <object <a "string">>>`;\n';
-  const define = 'loc.actions.define("save", () => {}, {args:{schema:Args}});\n';
-  const setup = imports + args + 'const loc = maps.locus.create({});\n';
-  for (const tag of [false, true]) for (const defineFirst of [true, false]) {
-    const admit = (operand: string, event = '<hson:event on:click host:save ' + operand + ' <> >') =>
-      'loc.admit({components:{parts:{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
-      + (tag ? 'Hson.event`' + event + '`' : "'" + event + "'") + '}}}}});\n';
-    const source = (operand: string) => setup + (defineFirst ? define + admit(operand) : admit(operand) + define);
-    const invalid = inspect(source('a:num="12"'));
-    assert.deepEqual(invalid.codes, ['HSON_EVENT_ARGUMENT_INVALID'], JSON.stringify({ tag, defineFirst }));
-    assert.deepEqual(invalid.slices, ['a:num="12"']);
-    assert.deepEqual(invalid.diagnostics[0]?.related?.map(({ start, end }) => invalid.text.slice(start, end)), ['Args', 'event:go']);
-    assert.deepEqual(inspect(source('a:str="12"')).codes, []);
-    const inert = 'Hson.event`<hson:event on:click host:unused <> >`;\n';
-    assert.deepEqual(inspect(setup + (defineFirst ? define + inert + admit('a:num="12"') : admit('a:num="12"') + inert + define)).codes,
-      ['HSON_EVENT_ARGUMENT_INVALID']);
-  }
-});
-
-check('reading the official Event member leaves local Action registry evidence intact', () => {
-  const event = '<hson:event on:click local:go a:num="12" <> >';
-  for (const go of [JSON.stringify(event), 'Hson.event`' + event + '`']) {
-    const source = application('<main/>', '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
-      + go + '}}}') + '\nconst Args = Hson.schema`<type "data" root <object <a "string">>>`;\n';
-    const define = 'loc.actions.define("go", () => {}, {args:{schema:Args}});';
-    assert.deepEqual(inspect(source + define).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(inspect(source + 'const unused = Hson.event;\n' + define).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(inspect(source + 'const unused = Hson.event`<hson:event on:click host:unused <> >`;\n' + define).codes,
-      ['HSON_EVENT_ARGUMENT_INVALID']);
-    const alias = 'import { Hson as A } from "hson-live/hson";\n';
-    for (const inert of [
-      'const lexical = 1; lexical;',
-      'let lexical: number; lexical;',
-      'A.event;',
-      'A.event`<hson:event on:click host:unused <> >`;',
-      'const unused = A.event`<hson:event on:click host:unused <> >`;',
-    ]) assert.deepEqual(inspect(alias + source + inert + define).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    for (const erased of ["type A = number;", "interface A {}"]) {
-      assert.deepEqual(inspect(erased + alias + source + 'A.event;' + define).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    }
-    // Establish the lookalike before constructing the registry.
-    const withLookalike = 'const A = { event: String.raw };\n' + source;
-    assert.deepEqual(inspect(withLookalike + define).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-    assert.deepEqual(inspect(withLookalike + 'A.event`<hson:event on:click host:unused <> >`;' + define).codes, []);
-    for (const opaque of [
-      'dynamic;',
-      'unknownGlobal;',
-      'const unused = dynamic;',
-      'const unused = { dynamic };',
-      'declare global { const fromGlobal: unknown; } fromGlobal;',
-      'const unused = dynamic.event;',
-      'const unused = Hson.event`<hson:event ${dynamic()}>`;',
-      'A.event`<hson:event ${dynamic(loc)}>`;',
-      'dynamic.event;',
-      'A[dynamic()];',
-      'A.unknown;',
-      'dynamic(loc);',
-      'function register() { loc.actions.define("go", () => {}); } register();',
-    ]) {
-      assert.deepEqual(inspect(alias + source + opaque + define).codes, []);
-    }
-  }
-});
-
-check('reading an ambient getter withdraws the later Action contract', () => {
-  const source = imports + 'declare const touchRegistry: unknown;\n'
-    + 'Object.defineProperty(globalThis, "touchRegistry", { get() { loc.actions.define("save", () => {}); return 0; } });\n'
-    + 'const Args = Hson.schema`<type "data" root <object <a "string">>>`;\n'
-    + 'const loc = maps.fromLibraries({bits:{parts:{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,'
-    + 'events:{go:Hson.event`<hson:event on:click local:save a:num="12" <> >`}}}}});\n';
-  const define = 'loc.actions.define("save", () => {}, {args:{schema:Args}});';
-  assert.deepEqual(inspect(source + define).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  for (const read of ['touchRegistry;', 'globalThis["touchRegistry"];', 'const value = touchRegistry;']) {
-    assert.deepEqual(inspect(source + read + define).codes, []);
-  }
-});
-
-check('resource acquisitions and CommonJS exported reads withdraw local Action facts', () => {
-  const setup = imports + 'const Args = Hson.schema`<type "data" root <object <a "string">>>`;\n';
-  const owner = 'const loc=maps.fromLibraries({bits:{parts:{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,'
-    + 'events:{go:Hson.event`<hson:event on:click local:save a:num="12" <> >`}}}}});\n';
-  const define = 'loc.actions.define("save",()=>{}, {args:{schema:Args}});';
-  for (const declaration of ['using read = resource;', 'await using read = resource;']) {
-    const body = 'const resource = {get [Symbol.dispose](){loc.actions.define("save",()=>{});return ()=>{};}};\n';
-    assert.deepEqual(inspect(setup + body + owner + declaration + define).codes, []);
-  }
-  for (const ext of ['cts', 'mts']) {
-    const name = 'emit.' + ext, path = file(name);
-    try {
-      for (const [before, statement, expected] of [
-        ['const probe = 0;', 'probe;', true], ['export const probe = 0;', 'probe;', ext === 'mts'],
-        ['', 'import "hson-live";', ext === 'mts'], ['', 'import type { HsonSchema } from "hson-live/hson";', true],
-      ] as const) {
-        edit(name, setup + before + '\n' + owner + statement + '\n' + define);
-        const program = service.getProgram()!;
-        const codes = static_part_reference_diagnostics(collect_part_source_facts(ts, program)).filter(d => d.file === path).map(d => d.code);
-        assert.deepEqual(codes, expected ? ['HSON_EVENT_ARGUMENT_INVALID'] : [], name + ' ' + statement);
-      }
-    } finally { remove(name); }
-  }
-});
-
-check('CommonJS initialization writes separately named exports before a later Action registration', () => {
-  for (const [exportName, setter] of [['probe', true], ['other', true], ['probe', false]] as const) {
-    const property = setter ? 'set() { loc.actions.define("save", () => {}); }' : 'value: 0, writable: true';
-    const commonJsSetup = 'declare const exports: object;\n'
-      + `Object.defineProperty(exports, "${exportName}", { configurable: true, ${property} });\n`;
-    const body = 'const Args = Hson.schema`<type "data" root <object <a "string">>>`;\n'
-      + 'const loc = maps.fromLibraries({ bits: { parts: { card: { kind: "document", document: Hson.document`<button hson:part event:go/>`,'
-      + ' events: {go: Hson.event`<hson:event on:click local:save a:num="12" <> >`} } } } });\n'
-      + 'const probe = 0;\nloc.actions.define("save", () => {}, {args: {schema: Args}});\n';
-    const clause = exportName === 'probe' ? 'export { probe };' : 'export { probe as other };';
-    for (const [name, suffix, expected] of [
-      ['named.cts', clause, []], ['named.mts', clause, ['HSON_EVENT_ARGUMENT_INVALID']],
-      ['local.cts', '', ['HSON_EVENT_ARGUMENT_INVALID']],
-    ] as const) {
-      const source = imports + (name.endsWith('.cts') ? commonJsSetup : '') + body + suffix;
-      try {
-        edit(name, source);
-        const program = service.getProgram()!;
-        const diagnostics = static_part_reference_diagnostics(collect_part_source_facts(ts, program));
-        assert.deepEqual(diagnostics.filter(issue => issue.file === file(name)).map(issue => issue.code), expected);
-        const js = ts.transpileModule(source, { fileName: name, compilerOptions: options }).outputText;
-        const loweredWrite = `exports.${exportName} = probe;`;
-        assert.equal(js.includes(loweredWrite), name === 'named.cts', name);
-        if (name.endsWith('.cts')) {
-          const execute = compileFunction(js, ['require', 'exports']);
-          const run = () => execute((id: string) => { assert.equal(id, 'hson-live'); return { Hson, hsonLiveMap }; }, {});
-          if (suffix && setter) assert.throws(run, /Local action "save" is already defined/);
-          else assert.doesNotThrow(run);
-        }
-      } finally { remove(name); }
-    }
-  }
 });
 
 check('only supported Event producer files supply contextual tagged Event evidence', () => {
@@ -1996,7 +1970,7 @@ check('only supported Event producer files supply contextual tagged Event eviden
     }
     edit('bridge.js', 'export { go } from "./producer.js";');
     edit('producer.ts', producer(valid, true));
-    assert.deepEqual(inspect(consumer('bridge')).codes, ['HSON_PART_REFERENCE_INVALID']);
+    assert.deepEqual(inspect(consumer('bridge')).codes, []);
     edit('producer.ts', producer(invalid, true));
     const invalidAlias = inspect(consumer('bridge'));
     assert.deepEqual(invalidAlias.codes, []);
@@ -2021,20 +1995,15 @@ check('a remapped Event lookalike supplies neither immediate nor contextual evid
     assert.ok(program.getSourceFile(file('shim.ts')));
     assert.deepEqual(static_part_reference_diagnostics(collect_part_source_facts(ts, program)), []);
     assert.deepEqual(produce_document_diagnostics({ languageId: 'typescript', fileName: file('app.ts'), text, sourceProgram: program }), []);
-    const action = 'import { Hson as A } from "hson-live/hson";\n' + application('<main/>',
-      '{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:'
-      + JSON.stringify('<hson:event on:click local:go a:num="12" <> >') + '}}}')
-      + '\nconst Args = Hson.schema`<type "data" root <object <a "string">>>`;\n';
-    const define = 'loc.actions.define("go", () => {}, {args:{schema:Args}});';
-    edit('app.ts', action + define);
-    assert.deepEqual(static_part_reference_diagnostics(collect_part_source_facts(ts, remapped.getProgram()!)).map(issue => issue.code),
-      ['HSON_EVENT_ARGUMENT_INVALID']);
-    edit('app.ts', action + 'A.event`<hson:event on:click host:unused <> >`;' + define);
-    assert.deepEqual(static_part_reference_diagnostics(collect_part_source_facts(ts, remapped.getProgram()!)), []);
+    edit('shim.ts', 'export {Hson} from "hson-live";');
+    const forwarded = remapped.getProgram()!;
+    assert.deepEqual(static_part_reference_diagnostics(collect_part_source_facts(ts, forwarded)), []);
+    assert.ok(produce_document_diagnostics({ languageId: 'typescript', fileName: file('app.ts'), text, sourceProgram: forwarded }).length > 0,
+      "The forwarded genuine tag retains intrinsic grammar while the application barrel establishes no Part attachment");
   } finally { remapped.dispose(); remove('shim.ts'); }
 });
 
-check('shared event operands retain separate attachment ranges and navigation requires every scope', () => {
+check('shared event operands retain separate attachment ranges and navigation preserves each exact lexical target', () => {
   const shared = 'export const go = ' + eventDeclaration('^{row.field}') + ';';
   edit('shared-events.ts', shared);
   const part = (body: string, events = '{go}') => '{kind:"document",document:Hson.document`' + body + '`,events:' + events + '}';
@@ -2046,7 +2015,8 @@ check('shared event operands retain separate attachment ranges and navigation re
   const unique = inspect(source());
   assert.equal(targets(unique).length, 1);
   assert.equal(targets(unique)[0]!.target.start, unique.text.indexOf('data:row') + 5);
-  assert.deepEqual(targets(inspect(source(valid))), [], 'different receiving declarations remain ambiguous');
+  const two = inspect(source(valid));
+  assert.deepEqual(targets(two).map(item => item.target.start), [...two.text.matchAll(/data:row/g)].map(m => m.index + 5));
   const invalid = inspect(source('<section hson:part <button event:go/> <button event:go/>/>'));
   const failing = [...invalid.text.matchAll(/event:go/g)].slice(2).map(match => match.index);
   assert.deepEqual(invalid.slices, ['^{row.field}', '^{row.field}']);
@@ -2054,19 +2024,19 @@ check('shared event operands retain separate attachment ranges and navigation re
     && issue.end === offset - 2 + '^{row.field}'.length && issue.message === 'Missing Part local declaration "row".'));
   assert.deepEqual(invalid.diagnostics.map(issue => issue.related?.map(related => [related.file, related.start, related.end])),
     failing.map(start => [[file('app.ts'), start, start + 'event:go'.length]]));
-  assert.deepEqual(targets(invalid), []);
+  assert.deepEqual(targets(invalid), targets(unique));
   const conditional = inspect(source('<section hson:part <button event:go/> "^{alsoMissing}"/>',
     '{go:condition ? go : ' + eventDeclaration('{null}') + '}'));
   const uses = conditional.facts.documents.flatMap(document => document.bindingSources?.references.filter(use => use.context === 'event') ?? []);
   const attachmentStarts = [...conditional.text.matchAll(/event:go/g)].map(match => match.index);
   assert.deepEqual(uses.map(use => [use.resolution, use.conditional, use.root.file, use.root.start, use.root.end,
     use.attachment?.file, use.attachment?.start, use.attachment?.end]),
-  attachmentStarts.map((start, index) => [index < 2 ? 'resolved' : 'unresolved', index < 2 ? undefined : true,
+  attachmentStarts.slice(0, 2).map(start => ['resolved', undefined,
     file('shared-events.ts'), offset, offset + 'row'.length, file('app.ts'), start, start + 'event:go'.length]));
-  assert.deepEqual(targets(conditional), []);
+  assert.deepEqual(targets(conditional), targets(unique));
   assert.deepEqual(conditional.codes, ['HSON_PART_REFERENCE_INVALID']);
   assert.deepEqual(conditional.slices, ['"^{alsoMissing}"']);
-  assert.deepEqual(targets(inspect(source('<section hson:part ${dynamic} <button event:go/>/>'))), []);
+  assert.deepEqual(targets(inspect(source('<section hson:part ${dynamic} <button event:go/>/>'))), targets(unique));
   remove('shared-events.ts');
 });
 
@@ -2103,62 +2073,6 @@ check('event inputs reuse validated path proof and identify nested and repeated 
     .some(context => context.executionCertain && context.evidence?.strength === 'validated')));
   assert.deepEqual(memberErrors(opaque), []);
 });
-check('statically absent Event operands are checked against the Action Schema', () => {
-  const source = (operand: string, receiver: string, supplied: string, fields = 'selection "string"') =>
-    application('<hson-part at=components/card ' + supplied + '/>',
-      '{card:{kind:"document",document:Hson.document`<p hson:part ' + receiver + ' event:go/>`,events:{go:'
-      + JSON.stringify('<hson:event on:click local:go ' + operand + ' <> >') + '}}}')
-      + '\nconst Args = Hson.schema`<type "data" root <object <' + fields + '>>>`;'
-      + '\nloc.actions.define("go", () => {}, {args:{schema:Args}});';
-  const cases = [
-    ['selection:str=%{label?}', '', ''],
-    ['selection:str=^{local}', 'str:local=%{label?}', ''],
-    ['selection:str=^{record.label?}', 'data:record=%{input}', 'input:data="<>"'],
-    ['selection:str=%{label}', 'str:local=%{label?}', ''],
-    ['selection:str=%{label?}', 'str:local=%{label?}', ''],
-  ] as const;
-  const results = cases.map(([operand, receiver, supplied]) => inspect(source(operand, receiver, supplied)));
-  assert.deepEqual(results.map(result => result.codes), cases.map(() => ['HSON_EVENT_ARGUMENT_MISSING']));
-  for (const [index, result] of results.entries()) {
-    assert.deepEqual(result.slices, [cases[index]![0]]);
-    assert.deepEqual(result.diagnostics[0]?.related?.map(({ start, end }) => result.text.slice(start, end)), ['Args', 'event:go']);
-    assert.deepEqual(static_schema_candidate_diagnostics(ts, result.program), []);
-  }
-  assert.deepEqual(inspect(source(...cases[0], 'selection <optional "string">')).codes, []);
-  const [incoming, optionalReceiver] = cases[3];
-  assert.deepEqual(inspect(source(...cases[3], 'selection <optional "string">')).codes, []);
-  assert.deepEqual(inspect(source(incoming, optionalReceiver, 'label:str="present"')).codes, []);
-  assert.deepEqual(inspect(source(incoming, optionalReceiver, 'label:str="${dynamic}"')).codes, []);
-  const unknownInvocation = source(...cases[3]).replace('document: page', 'document: condition ? page : dynamic');
-  assert.ok(!inspect(unknownInvocation).codes.includes('HSON_EVENT_ARGUMENT_MISSING'));
-  assert.deepEqual(inspect(source(incoming, 'str:local=%{label}', '')).codes, ['HSON_PART_ARGUMENT_MISSING']);
-  assert.deepEqual(inspect(source(cases[0][0], '', 'label="${dynamic}"')).codes, []);
-  assert.deepEqual(inspect(source(cases[0][0], '', 'label="present"')).codes, []);
-  assert.deepEqual(inspect(source(cases[2][0], cases[2][1], 'input:data="${dynamic}"')).codes, []);
-  assert.deepEqual(inspect(source('selection:str=^{record.label.nested?}', cases[2][1], 'input:data="<label null>"')).codes, []);
-  assert.deepEqual(inspect(source(cases[0][0] + ' count:num=%{count}', '', 'count="unknown"', 'selection "string" count "number"')).codes,
-    ['HSON_EVENT_ARGUMENT_MISSING']);
-  const union = 'defs <Left <object <kind <exact "left"> selection "string" extra "string">> Right <object <kind <exact "right"> extra "string">> Choice <union [<ref "Left">, <ref "Right">]>> root <ref "Choice">';
-  const mixed = (kind: string) => source(cases[0][0] + ' kind:str="' + kind + '" extra:str=%{extra}', '', 'extra="${dynamic}"')
-    .replace('root <object <selection "string">>', union);
-  assert.deepEqual(inspect(mixed('left')).codes, ['HSON_EVENT_ARGUMENT_INVALID']);
-  assert.deepEqual(inspect(mixed('right')).codes, []);
-  assert.deepEqual(inspect(source(cases[0][0] + ' count:num="0"', '', '', 'selection "string" count <exact -0>')).codes,
-    ['HSON_EVENT_ARGUMENT_MISSING', 'HSON_EVENT_ARGUMENT_INVALID']);
-});
-check('optional Event lookup can omit a field required by a registered Action Schema', () => {
-  const operand = 'selection:data=^{record.missing?}';
-  const source = schemaApplication('', undefined, undefined, '%{incoming}', true,
-    '<p hson:part data:record=%{incoming} event:go/>', '{go:' + eventDeclaration('^{record.missing?}') + '}')
-    + '\nconst Args = Hson.schema`<type "data" root <object <selection "string">>>`;'
-    + '\nmap.actions.define("go", () => {}, { args: { schema: Args } });';
-  const result = inspect(source);
-  assert.deepEqual(result.codes, ['HSON_EVENT_ARGUMENT_MISSING']);
-  assert.deepEqual(result.slices, [operand]);
-  assert.deepEqual(result.diagnostics[0]?.related?.map(({ start, end }) => source.slice(start, end)), ['Args', 'event:go']);
-  assert.deepEqual(inspect(source.replace('selection "string"', 'selection <optional "string">')).codes, []);
-  assert.deepEqual(inspect(source.replace('HsonDataValue<typeof S>', 'HsonDataValue')).codes, []);
-});
 check('partial event opacity preserves each independently invalid caller Schema path', () => {
   const missing = '^{record.missing}', selector = '"components/card"';
   const source = schemaApplication('', undefined, undefined, '%{incoming}', true,
@@ -2179,7 +2093,7 @@ check('partial event opacity preserves each independently invalid caller Schema 
     [source, 2],
     [source.replace('{go:', '{spare:dynamic,go:'), 2],
     [source.replace('{go:', '{spare:dynamic,go:').replace('<aside ', '<aside event:spare '), 2],
-    [source.replace('{go:', '{...dynamic,go:'), 2],
+    [source.replace('{go:', '{...dynamic,go:'), 0],
     [source.replace(eventDeclaration(missing) + '}', eventDeclaration(missing) + ',...dynamic}'), 0],
     [source.replace('{go:', '{spare:dynamic,go:').replace('<type "data" root <object <title "string">>>', '<type "data" root "any">'), 0],
   ] as const;

@@ -1,15 +1,16 @@
 import ts from "typescript";
 import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonEventImportEvidence, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
-import { query_hson_editor_context, query_hson_event_completion, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
-import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
+import { query_hson_editor_context, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
+import { complete_authored_event, map_event_completions, query_hson_event_completion, tagged_event_completion_context } from "../../../src/internal/editor-introspection/event-completion.js";
+import { interpolation_site, raw_hson_template_literal } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 import { annotated_data_schema_source, resolve_hson_schema_annotation } from "../../../src/internal/hson-schema/schema-annotation.js";
 import type { DiscoveredHsonSchemaDeclaration } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { schema_reference_completion } from "./hson-schema-symbols.js";
 import type { HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { collect_part_source_facts, part_write_context, type PartSourceFacts } from "../../../src/internal/hson-schema/part-source.js";
 
-export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>; isSnippet?: true }>;
+export type HostCompletion = Readonly<{ candidate: HsonEditorCandidate; range: Readonly<{ start: number; end: number }>; isSnippet?: true; cursorInInsert?: number }>;
 type CachedDocument = Readonly<{
   version: number; text: string; program: ts.Program; file: ts.SourceFile; checker: ts.TypeChecker; discovery: HsonTaggedTemplateDiscoveryResult;
   schemaDeclarations: Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>;
@@ -49,14 +50,18 @@ export class HsonEditorCompletionCache {
         if (oldest !== undefined) this.documents.delete(oldest);
       }
     }
-    const site = [...cached.discovery.interpolated, ...cached.discovery.sources]
+    const site = [...cached.discovery.interpolated, ...cached.discovery.sources, ...cached.discovery.incompleteEvents]
       .filter(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end)
       .sort((a, b) => a.bodyRange.end - a.bodyRange.start - (b.bodyRange.end - b.bodyRange.start))[0];
-    if (site === undefined) {
+    if (site === undefined || site.authoringKind === "event" || site.authoringKind === "document") {
       if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program, eventImports) };
-      const event = query_hson_event_completion(this.partFacts.facts, fileName, offset);
+    }
+    if (site === undefined) {
+      const facts = this.partFacts?.facts;
+      if (facts === undefined) return [];
+      const event = query_hson_event_completion(facts, fileName, offset);
       if (event.length > 0) return event;
-      const context = part_write_context(this.typescript, cached.program, this.partFacts.facts, fileName, offset);
+      const context = part_write_context(this.typescript, cached.program, facts, fileName, offset);
       return context === undefined ? [] : context.names.map((name, index): HostCompletion => {
         const scanner = this.typescript.createScanner(this.typescript.ScriptTarget.Latest, false, cached.file.languageVariant, name);
         const identifier = scanner.scan() === this.typescript.SyntaxKind.Identifier && scanner.getTokenEnd() === name.length && scanner.getTokenValue() === name;
@@ -71,7 +76,17 @@ export class HsonEditorCompletionCache {
             certainty: "possible", sortText: String(index).padStart(4, "0") } };
       });
     }
-    if (site.authoringKind === "event") return [];
+    if (site.authoringKind === "event") {
+      if ("substitutionRanges" in site) return [];
+      const literal = raw_hson_template_literal(text, site.bodyRange);
+      const cursor = literal.boundaries.indexOf(offset);
+      if (cursor < 0) return [];
+      const context = this.partFacts === undefined ? undefined : tagged_event_completion_context(this.partFacts.facts, fileName, site.templateRange.start);
+      return map_event_completions(complete_authored_event(literal.raw, cursor, context), range => {
+        const start = literal.boundaries[range.start], end = literal.boundaries[range.end];
+        return start === undefined || end === undefined ? undefined : { start, end };
+      }, source => source.replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{"));
+    }
     const interpolated = cached.discovery.interpolated.find(source => source === site);
     if (site.authoringKind === "schema" && interpolated === undefined) {
       const reference = schema_reference_completion(text.slice(site.bodyRange.start, site.bodyRange.end), offset - site.bodyRange.start);
@@ -112,9 +127,6 @@ export class HsonEditorCompletionCache {
     }
     const schema = site.authoringKind === "data" ? this.resolveSchema(cached, site.tagRange.start) : undefined;
     if (schema === null) return [];
-    if (site.authoringKind === "document" && this.partFacts?.program !== cached.program) {
-      this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program, eventImports) };
-    }
     const result = query_hson_editor_context({ mode: site.authoringKind, source, cursor, slots, schema,
       ...(site.authoringKind !== "document" || this.partFacts === undefined ? {} : { parts: { facts: this.partFacts.facts, file: fileName, offset } }) });
     const range = result.checkpoint?.range === undefined ? undefined : map(result.checkpoint.range);

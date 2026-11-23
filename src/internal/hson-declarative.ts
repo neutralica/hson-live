@@ -1,4 +1,4 @@
-import { hson_lexical_cursor } from "../api/transform/parsers/tokenize-hson.js";
+import { hson_lexical_cursor, observe_authored_event } from "../api/transform/parsers/tokenize-hson.js";
 import { AUTHORED_EVENT_TAG } from "../core/authored-event-names.js";
 import { _throw_transform_err, is_transform_error, type TransformError, type TransformErrorSource } from "../core/errors.js";
 import type { HsonSourceRange } from "./hson-source-provenance/hson-source-provenance.js";
@@ -71,6 +71,20 @@ export function recognize_hson_declaration(source: string): HsonDeclarativeRecog
     if (!is_transform_error(error)) throw error;
     return { ...head, kind: "malformed", position: error.source ?? position(), message: error.message, error };
   }
+}
+
+/** Completion and highlighting share declaration recognition with strict admission. */
+export function authored_event_completion_checkpoint(source: string, cursor?: number) {
+  if (source.length > 128_000 || cursor !== undefined && (!Number.isInteger(cursor) || cursor < 0 || cursor > source.length)) return undefined;
+  const head = recognize_hson_declaration(source);
+  if (head.kind === "recognized" && head.domain === AUTHORED_EVENT_TAG
+    || head.kind === "ordinary" && head.openingOffset === undefined && head.position.index === source.length) {
+    return observe_authored_event(source, cursor);
+  }
+  if (head.kind === "incomplete" && AUTHORED_EVENT_TAG.startsWith(head.name)) {
+    return observe_authored_event(source, cursor, head);
+  }
+  return undefined;
 }
 
 type DeclarationAdapter<Result> = (source: string, recognition: RecognizedDeclaration) => Result;

@@ -920,6 +920,645 @@
         "selector": "hsonQuote.hsonAttribute"
       },
       "fallback": "punctuation.quoteOpen"
+    },
+    "event.head": {
+      "label": "Event declaration head",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "hson:event"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventHead",
+        "eventRole": "head"
+      },
+      "tokens": [
+        "hsonEventHead"
+      ],
+      "fallback": "part.declaration"
+    },
+    "event.structural": {
+      "label": "Event envelope punctuation",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "<",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventStructural",
+        "eventRole": "structural"
+      },
+      "tokens": [
+        "hsonEventStructural"
+      ],
+      "fallback": "punctuation.tagOpen"
+    },
+    "event.selectorDomain": {
+      "label": "Event selector domain",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "on",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventSelectorDomain",
+        "eventRole": "selectorDomain"
+      },
+      "tokens": [
+        "hsonEventSelectorDomain"
+      ],
+      "fallback": "part.directive"
+    },
+    "event.selectorName": {
+      "label": "Event selector name",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "down"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventSelectorName",
+        "eventRole": "selectorName"
+      },
+      "tokens": [
+        "hsonEventSelectorName"
+      ],
+      "fallback": "element.name"
+    },
+    "event.destinationDomain": {
+      "label": "Event destination domain",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "local"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventDestinationDomain",
+        "eventRole": "destinationDomain"
+      },
+      "tokens": [
+        "hsonEventDestinationDomain"
+      ],
+      "fallback": "attribute.qualifier"
+    },
+    "event.action": {
+      "label": "Event Action key",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "deck.move"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventAction",
+        "eventRole": "action"
+      },
+      "tokens": [
+        "hsonEventAction"
+      ],
+      "fallback": "part.selector.member"
+    },
+    "event.option": {
+      "label": "Event listener option",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "once"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventOption",
+        "eventRole": "option"
+      },
+      "tokens": [
+        "hsonEventOption"
+      ],
+      "fallback": "flag.name"
+    },
+    "event.argument": {
+      "label": "Event argument name",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "x"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventArgument",
+        "eventRole": "argument"
+      },
+      "tokens": [
+        "hsonEventArgument"
+      ],
+      "fallback": "attribute.name"
+    },
+    "event.qualifier": {
+      "label": "Event argument qualifier",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "num"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventQualifier",
+        "eventRole": "qualifier"
+      },
+      "tokens": [
+        "hsonEventQualifier"
+      ],
+      "fallback": "part.receivingKind"
+    },
+    "event.assignment": {
+      "label": "Event assignment",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "="
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventAssignment",
+        "eventRole": "assignment"
+      },
+      "tokens": [
+        "hsonEventAssignment"
+      ],
+      "fallback": "punctuation.assignment"
+    },
+    "event.separator": {
+      "label": "Event header separator",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": ":",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventSeparator",
+        "eventRole": "separator"
+      },
+      "tokens": [
+        "hsonEventSeparator"
+      ],
+      "fallback": "punctuation.colon"
+    },
+    "event.nativeRoot": {
+      "label": "Native Event lookup root",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "pointer",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventNativeRoot",
+        "eventRole": "nativeRoot"
+      },
+      "tokens": [
+        "hsonEventNativeRoot"
+      ],
+      "fallback": "reference.incoming.content"
+    },
+    "event.nativeProperty": {
+      "label": "Native Event lookup property",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "clientX"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventNativeProperty",
+        "eventRole": "nativeProperty"
+      },
+      "tokens": [
+        "hsonEventNativeProperty"
+      ],
+      "fallback": "value.number"
+    },
+    "event.operation": {
+      "label": "Native FormData operation",
+      "examples": [
+        {
+          "code": "<hson:event on:formdata host:save field:str=^{formdata:get(\"email\")} <>>",
+          "highlight": "get"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventOperation",
+        "eventRole": "operation"
+      },
+      "tokens": [
+        "hsonEventOperation"
+      ],
+      "fallback": "part.selector.member"
+    },
+    "event.field": {
+      "label": "Native FormData field literal",
+      "examples": [
+        {
+          "code": "<hson:event on:formdata host:save field:str=^{formdata:get(\"email\")} <>>",
+          "highlight": "email"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventField",
+        "eventRole": "field"
+      },
+      "tokens": [
+        "hsonEventField"
+      ],
+      "fallback": "value.string"
+    },
+    "event.localSigil": {
+      "label": "Event local reference sigil",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data=^{row.name} y:str=%{label} <>>",
+          "highlight": "^"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventLocalSigil",
+        "eventRole": "localSigil"
+      },
+      "tokens": [
+        "hsonEventLocalSigil"
+      ],
+      "fallback": "reference.local.marker"
+    },
+    "event.incomingSigil": {
+      "label": "Event incoming reference sigil",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data=^{row.name} y:str=%{label} <>>",
+          "highlight": "%"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventIncomingSigil",
+        "eventRole": "incomingSigil"
+      },
+      "tokens": [
+        "hsonEventIncomingSigil"
+      ],
+      "fallback": "reference.incoming.marker"
+    },
+    "event.referenceRoot": {
+      "label": "Event Part reference name",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data=^{row.name} y:str=%{label} <>>",
+          "highlight": "row"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventReferenceRoot",
+        "eventRole": "referenceRoot"
+      },
+      "tokens": [
+        "hsonEventReferenceRoot"
+      ],
+      "fallback": "reference.local.content"
+    },
+    "event.referencePath": {
+      "label": "Event Part reference path",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data=^{row.name} y:str=%{label} <>>",
+          "highlight": "name"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventReferencePath",
+        "eventRole": "referencePath"
+      },
+      "tokens": [
+        "hsonEventReferencePath"
+      ],
+      "fallback": "reference.member"
+    },
+    "event.referencePunctuation": {
+      "label": "Event reference punctuation",
+      "examples": [
+        {
+          "code": "<hson:event on:click host:go arg:str=^{row[\"thing\"]?} <>>",
+          "highlight": "{"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventReferencePunctuation",
+        "eventRole": "referencePunctuation"
+      },
+      "tokens": [
+        "hsonEventReferencePunctuation"
+      ],
+      "fallback": "punctuation.referenceOpen"
+    },
+    "event.dataPunctuation": {
+      "label": "Event Data operand punctuation",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={true} y:str=\"Hello\\n\" z:num=\"-0\" <>>",
+          "highlight": "{"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventDataPunctuation",
+        "eventRole": "dataPunctuation"
+      },
+      "tokens": [
+        "hsonEventDataPunctuation"
+      ],
+      "fallback": "punctuation.referenceOpen"
+    },
+    "event.string": {
+      "label": "Event string content",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={true} y:str=\"Hello\\n\" z:num=\"-0\" <>>",
+          "highlight": "Hello"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventString",
+        "eventRole": "string"
+      },
+      "tokens": [
+        "hsonEventString"
+      ],
+      "fallback": "value.string"
+    },
+    "event.quote": {
+      "label": "Event string quote",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={true} y:str=\"Hello\\n\" z:num=\"-0\" <>>",
+          "highlight": "\"",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventQuote",
+        "eventRole": "quote"
+      },
+      "tokens": [
+        "hsonEventQuote"
+      ],
+      "fallback": "punctuation.quoteOpen"
+    },
+    "event.escape": {
+      "label": "Event string escape",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={true} y:str=\"Hello\\n\" z:num=\"-0\" <>>",
+          "highlight": "\\n"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventEscape",
+        "eventRole": "escape"
+      },
+      "tokens": [
+        "hsonEventEscape"
+      ],
+      "fallback": "escape.character"
+    },
+    "event.number": {
+      "label": "Event numeric content",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={true} y:str=\"Hello\\n\" z:num=\"-0\" <>>",
+          "highlight": "-0"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventNumber",
+        "eventRole": "number"
+      },
+      "tokens": [
+        "hsonEventNumber"
+      ],
+      "fallback": "value.number"
+    },
+    "event.boolean": {
+      "label": "Event boolean content",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={true} y:str=\"Hello\\n\" z:num=\"-0\" <>>",
+          "highlight": "true"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventBoolean",
+        "eventRole": "boolean"
+      },
+      "tokens": [
+        "hsonEventBoolean"
+      ],
+      "fallback": "value.primitive"
+    },
+    "event.comment": {
+      "label": "Event comment",
+      "examples": [
+        {
+          "code": "<hson:event // note\n on:click host:go <>>",
+          "highlight": "// note"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventComment",
+        "eventRole": "comment"
+      },
+      "tokens": [
+        "hsonEventComment"
+      ],
+      "fallback": "comment.line"
+    },
+    "event.dataMember": {
+      "label": "Event Data member name",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={<label null>} <>>",
+          "highlight": "label"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventDataMember",
+        "eventRole": "dataMember"
+      },
+      "tokens": [
+        "hsonEventDataMember"
+      ],
+      "fallback": "element.name"
+    },
+    "event.dataValue": {
+      "label": "Event Data null",
+      "examples": [
+        {
+          "code": "<hson:event on:click local:go x:data={<label null>} <>>",
+          "highlight": "null"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventDataValue",
+        "eventRole": "dataValue"
+      },
+      "tokens": [
+        "hsonEventDataValue"
+      ],
+      "fallback": "value.primitive"
+    },
+    "event.outcomeOpen": {
+      "label": "Event outcome opener",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": "<",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventOutcomeOpen",
+        "eventRole": "outcomeOpen"
+      },
+      "tokens": [
+        "hsonEventOutcomeOpen"
+      ],
+      "fallback": "punctuation.tagOpen"
+    },
+    "event.outcomeClose": {
+      "label": "Event outcome closer",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": ">",
+          "occurrence": 1
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventOutcomeClose",
+        "eventRole": "outcomeClose"
+      },
+      "tokens": [
+        "hsonEventOutcomeClose"
+      ],
+      "fallback": "punctuation.tagClose"
+    },
+    "event.declarationClose": {
+      "label": "Event declaration closer",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": ">",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventDeclarationClose",
+        "eventRole": "declarationClose"
+      },
+      "tokens": [
+        "hsonEventDeclarationClose"
+      ],
+      "fallback": "punctuation.tagClose"
+    },
+    "event.referenceSeparator": {
+      "label": "Event reference separator",
+      "examples": [
+        {
+          "code": "<hson:event on:pointer:down local:deck.move once x:num=^{pointer.clientX} <>>",
+          "highlight": ".",
+          "occurrence": 2
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventReferenceSeparator",
+        "eventRole": "referenceSeparator"
+      },
+      "tokens": [
+        "hsonEventReferenceSeparator"
+      ],
+      "fallback": "reference.separator"
+    },
+    "event.referenceBracket": {
+      "label": "Event reference bracket",
+      "examples": [
+        {
+          "code": "<hson:event on:click host:go arg:str=^{row[\"thing\"]?} <>>",
+          "highlight": "["
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventReferenceBracket",
+        "eventRole": "referenceBracket"
+      },
+      "tokens": [
+        "hsonEventReferenceBracket"
+      ],
+      "fallback": "reference.selectorOpen"
+    },
+    "event.referenceOptional": {
+      "label": "Event optional reference marker",
+      "examples": [
+        {
+          "code": "<hson:event on:click host:go arg:str=^{row[\"thing\"]?} <>>",
+          "highlight": "?"
+        }
+      ],
+      "binding": {
+        "scopes": [],
+        "selector": "hsonEventReferenceOptional",
+        "eventRole": "referenceOptional"
+      },
+      "tokens": [
+        "hsonEventReferenceOptional"
+      ],
+      "fallback": "reference.separator"
     }
   },
   "tokens": {
@@ -1170,6 +1809,259 @@
         "string.quoted.double.hson"
       ],
       "fallbackContext": "string.quoted.double.hson"
+    },
+    "hsonEventHead": {
+      "description": "Event declaration head",
+      "scopes": [],
+      "fallbackScopes": [
+        "keyword.declaration.part.hson"
+      ]
+    },
+    "hsonEventStructural": {
+      "description": "Event envelope punctuation",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.tag.begin.hson"
+      ]
+    },
+    "hsonEventSelectorDomain": {
+      "description": "Event selector domain",
+      "scopes": [],
+      "fallbackScopes": [
+        "keyword.other.directive.hson"
+      ]
+    },
+    "hsonEventSelectorName": {
+      "description": "Event selector name",
+      "scopes": [],
+      "fallbackScopes": [
+        "entity.name.type.hson",
+        "entity.name.type.quoted.hson"
+      ]
+    },
+    "hsonEventDestinationDomain": {
+      "description": "Event destination domain",
+      "scopes": [],
+      "fallbackScopes": [
+        "meta.attribute.qualifier.hson"
+      ]
+    },
+    "hsonEventAction": {
+      "description": "Event Action key",
+      "scopes": [],
+      "fallbackScopes": [
+        "meta.part.selector.member.hson"
+      ]
+    },
+    "hsonEventOption": {
+      "description": "Event listener option",
+      "scopes": [],
+      "fallbackScopes": [
+        "constant.language.flag.hson"
+      ]
+    },
+    "hsonEventArgument": {
+      "description": "Event argument name",
+      "scopes": [],
+      "fallbackScopes": [
+        "entity.other.attribute-name.hson"
+      ]
+    },
+    "hsonEventQualifier": {
+      "description": "Event argument qualifier",
+      "scopes": [],
+      "fallbackScopes": [
+        "meta.attribute.qualifier.hson"
+      ]
+    },
+    "hsonEventAssignment": {
+      "description": "Event assignment",
+      "scopes": [],
+      "fallbackScopes": [
+        "keyword.operator.assignment.hson"
+      ]
+    },
+    "hsonEventSeparator": {
+      "description": "Event header separator",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.separator.attribute.hson"
+      ]
+    },
+    "hsonEventNativeRoot": {
+      "description": "Native Event lookup root",
+      "scopes": [],
+      "fallbackScopes": [
+        "variable.parameter.incoming.hson"
+      ]
+    },
+    "hsonEventNativeProperty": {
+      "description": "Native Event lookup property",
+      "scopes": [],
+      "fallbackScopes": [
+        "meta.reference.member.hson"
+      ]
+    },
+    "hsonEventOperation": {
+      "description": "Native FormData operation",
+      "scopes": [],
+      "fallbackScopes": [
+        "meta.part.selector.member.hson"
+      ]
+    },
+    "hsonEventField": {
+      "description": "Native FormData field literal",
+      "scopes": [],
+      "fallbackScopes": [
+        "string.quoted.double.hson",
+        "string.unquoted.attribute-value.hson"
+      ]
+    },
+    "hsonEventLocalSigil": {
+      "description": "Event local reference sigil",
+      "scopes": [],
+      "fallbackScopes": [
+        "keyword.operator.interpolation.caret.hson"
+      ]
+    },
+    "hsonEventIncomingSigil": {
+      "description": "Event incoming reference sigil",
+      "scopes": [],
+      "fallbackScopes": [
+        "keyword.operator.interpolation.percent.hson"
+      ]
+    },
+    "hsonEventReferenceRoot": {
+      "description": "Event Part reference name",
+      "scopes": [],
+      "fallbackScopes": [
+        "variable.other.property.hson"
+      ]
+    },
+    "hsonEventReferencePath": {
+      "description": "Event Part reference path",
+      "scopes": [],
+      "fallbackScopes": [
+        "meta.reference.member.hson"
+      ]
+    },
+    "hsonEventReferencePunctuation": {
+      "description": "Event reference punctuation",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.template-expression.begin.hson"
+      ]
+    },
+    "hsonEventDataPunctuation": {
+      "description": "Event Data operand punctuation",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.template-expression.begin.hson"
+      ]
+    },
+    "hsonEventString": {
+      "description": "Event string content",
+      "scopes": [],
+      "fallbackScopes": [
+        "string.quoted.double.hson",
+        "string.unquoted.attribute-value.hson"
+      ]
+    },
+    "hsonEventQuote": {
+      "description": "Event string quote",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.string.begin.hson"
+      ]
+    },
+    "hsonEventEscape": {
+      "description": "Event string escape",
+      "scopes": [],
+      "fallbackScopes": [
+        "constant.character.escape.hson"
+      ]
+    },
+    "hsonEventNumber": {
+      "description": "Event numeric content",
+      "scopes": [],
+      "fallbackScopes": [
+        "constant.numeric.hson"
+      ]
+    },
+    "hsonEventBoolean": {
+      "description": "Event boolean content",
+      "scopes": [],
+      "fallbackScopes": [
+        "constant.language.boolean.hson",
+        "constant.language.null.hson"
+      ]
+    },
+    "hsonEventComment": {
+      "description": "Event comment",
+      "scopes": [],
+      "fallbackScopes": [
+        "comment.line.double-slash.hson",
+        "punctuation.definition.comment.hson"
+      ]
+    },
+    "hsonEventDataMember": {
+      "description": "Event Data member name",
+      "scopes": [],
+      "fallbackScopes": [
+        "entity.name.type.hson",
+        "entity.name.type.quoted.hson"
+      ]
+    },
+    "hsonEventDataValue": {
+      "description": "Event Data null",
+      "scopes": [],
+      "fallbackScopes": [
+        "constant.language.boolean.hson",
+        "constant.language.null.hson"
+      ]
+    },
+    "hsonEventOutcomeOpen": {
+      "description": "Event outcome opener",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.tag.begin.hson"
+      ]
+    },
+    "hsonEventOutcomeClose": {
+      "description": "Event outcome closer",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.tag.end.hson"
+      ]
+    },
+    "hsonEventDeclarationClose": {
+      "description": "Event declaration closer",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.definition.tag.end.hson"
+      ]
+    },
+    "hsonEventReferenceSeparator": {
+      "description": "Event reference separator",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.accessor.hson"
+      ]
+    },
+    "hsonEventReferenceBracket": {
+      "description": "Event reference bracket",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.section.selector.begin.hson",
+        "punctuation.section.selector.end.hson"
+      ]
+    },
+    "hsonEventReferenceOptional": {
+      "description": "Event optional reference marker",
+      "scopes": [],
+      "fallbackScopes": [
+        "punctuation.accessor.hson"
+      ]
     }
   },
   "modifiers": {

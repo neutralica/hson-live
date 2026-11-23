@@ -1,4 +1,5 @@
 import { tokenize_hson } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { authored_event_completion_checkpoint } from "../../../src/internal/hson-declarative.js";
 import * as messages from "./diagnostic-messages.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,7 +9,10 @@ import { discover_hson_tagged_templates } from "../../../src/internal/embedded-h
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
-import { hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance-internals.js";
+import { raw_hson_template_literal } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
+import { event_token_type, hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance-internals.js";
+
+import { overlay_binding_highlights } from "./binding-intelligence.js";
 
 export { hsonTokenScopes } from "./appearance-internals.js";
 export type HsonHighlight = Readonly<{ range: HostSourceRange; type: HsonTokenType; scannerName?: true; scopes: readonly string[]; modifiers: readonly string[] }>;
@@ -100,7 +104,20 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     }
     body += text.slice(offset, source.bodyRange.end);
     const event = "authoringKind" in source && source.authoringKind === "event";
-    for (const token of hson_literal_highlights(grammar, body, !event)) {
+    const lexical = hson_literal_highlights(grammar, body, !event);
+    // An Event cannot bridge a JS substitution. The overlay observes only the
+    // genuine prefix and leaves recovery beyond the hole to lexical fallback.
+    const eventPrefix = event ? raw_hson_template_literal(text, {
+      start: source.bodyRange.start, end: holes[0]?.start ?? source.bodyRange.end,
+    }) : undefined;
+    const overlay: HsonHighlight[] = eventPrefix === undefined ? [] : (authored_event_completion_checkpoint(eventPrefix.raw)?.spans ?? []).flatMap(({ role, start, end }) => {
+      const type = event_token_type(role);
+      const a = eventPrefix.boundaries[start], b = eventPrefix.boundaries[end];
+      if (type === undefined || a === undefined || b === undefined) return [];
+      return [...physical_line_ranges(body, { start: a - source.bodyRange.start, end: b - source.bodyRange.start })]
+        .map(range => ({ range, type, scopes: [], modifiers: [] }));
+    });
+    for (const token of overlay_binding_highlights(lexical, overlay)) {
       let start = source.bodyRange.start + token.range.start;
       const end = source.bodyRange.start + token.range.end;
       // A grammar token may span a masked hole; publish only literal pieces.

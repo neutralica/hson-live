@@ -10,10 +10,10 @@ import textmate from "vscode-textmate";
 import oniguruma from "vscode-oniguruma";
 import { appearanceSource, houseTheme, blend, generateThemes, validateGrammarScopes, brandingRuntime } from "../scripts/generate-themes.mjs";
 import { resolveCatalog as resolveAppearanceCatalog, validateExamples as validateCatalogExamples, exampleRange, catalogEntries } from "../scripts/appearance-catalog.mjs";
-const { HSON_APPEARANCE: appearance, hsonTokenDefinitions: definitions, hsonTokenScopes: scopes,
+const { authored_event_completion_checkpoint, HSON_APPEARANCE: appearance, hsonTokenDefinitions: definitions, hsonTokenScopes: scopes,
   hsonTokenModifierDefinitions: modifiers, hsonGrammarScopes: grammarScopes, tokenAppearancePaths, segmentBindings, syntaxBindings, syntaxExamplePath, generalRules } = await appearanceSource();
 const resolveCatalog = catalog => resolveAppearanceCatalog(catalog, syntaxBindings, generalRules);
-const validateExamples = (catalog, bindings, examplePath) => validateCatalogExamples(catalog, bindings, examplePath, generalRules);
+const validateExamples = (catalog, bindings, examplePath) => validateCatalogExamples(catalog, bindings, examplePath, generalRules, source => authored_event_completion_checkpoint(source)?.spans ?? []);
 await generateThemes({ check: true });
 const resolved = resolveCatalog(appearance);
 const syntax = appearance.syntax.hson;
@@ -106,7 +106,12 @@ for (const mode of ['light', 'dark']) {
   for (const type of Object.keys(definitions)) {
     assert.ok(manifest.contributes.semanticTokenTypes.some(entry => entry.id === type));
     const rule = theme.tokenColors.findLast(rule => JSON.stringify(rule.scope) === JSON.stringify(definitions[type].scopes));
-    assert.equal(rule.settings.foreground, styleForeground(semantic[type]));
+    if (definitions[type].scopes.length) assert.equal(rule.settings.foreground, styleForeground(semantic[type]));
+    else {
+      assert.equal(rule, undefined, `${type} is contextual and has no standalone TextMate rule`);
+      assert.deepEqual(scopes[type], definitions[type].fallbackScopes);
+      assert.equal(styleForeground(semantic[type]), roleColor(tokenAppearancePaths[type], mode), type);
+    }
   }
   const changed = structuredClone(appearance);
   changed.syntax.hson.reference.local.marker.house[mode].foreground = '#808080';
@@ -149,6 +154,11 @@ assert.throws(() => exampleRange({ code: '<p/>', highlight: 'missing' }), /does 
 assert.throws(() => exampleRange({ code: '<p "x"/>', highlight: '"' }), /ambiguous/);
 assert.throws(() => exampleRange({ code: '<p/>', highlight: 'p', occurrence: 2 }), /invalid highlight occurrence/);
 assert.deepEqual(exampleRange({ code: '<p "x"/>', highlight: '"', occurrence: 2 }), { start: 5, end: 6 });
+const wrongEventExample = structuredClone(appearance);
+wrongEventExample.syntax.hson.event.selectorName.examples[0] = {
+  code: "<hson:event on:click host:go <>>", highlight: "go",
+};
+await assert.rejects(validateExamples(wrongEventExample, syntaxBindings, syntaxExamplePath), /does not classify as Event selector name/);
 const wrongExample = structuredClone(appearance);
 wrongExample.syntax.hson.attribute.name.examples[0] = { code: '<button class="primary"/>', highlight: 'button' };
 await assert.rejects(validateExamples(wrongExample, syntaxBindings, syntaxExamplePath), /does not classify as Attribute name/);
@@ -303,9 +313,12 @@ for (const mode of ['light', 'dark']) {
       assert.equal(token.foreground, token.path === role ? '#123456' : baselines[i][j].foreground,
         `${mode}/${role}: only intended targets change (${selectorSources[i]} ${token.text})`);
     }
-    for (const [selector, value] of Object.entries(theme.semanticTokenColors))
-      assert.deepEqual(changedTheme.semanticTokenColors[selector], selector === syntaxBindings[role].selector ? '#123456' : value,
+    for (const [selector, value] of Object.entries(theme.semanticTokenColors)) {
+      const owner = tokenAppearancePaths[selector];
+      const inherits = owner?.startsWith('event.') && appearance.syntax.hson.event[owner.slice('event.'.length)].inherits === role;
+      assert.deepEqual(changedTheme.semanticTokenColors[selector], selector === syntaxBindings[role].selector || inherits ? '#123456' : value,
         `${mode}/${role}: independent semantic customization of ${selector}`);
+    }
   }
 }
 // A theme outside House controls every fallback; explicit TextMate rules can
@@ -449,8 +462,11 @@ assert.throws(() => resolveCatalog(inheritanceTypo), error =>
 
 // Execute the real generator on a disposable owner catalog. esbuild deliberately
 // does no TS type checking: this proves a direct generator invocation is strict.
-const invalidOwner = await realpath(await mkdtemp(join(tmpdir(), 'hson-catalog-validation-')));
+const invalidOwnerRoot = await realpath(await mkdtemp(join(tmpdir(), 'hson-catalog-validation-')));
+const invalidOwner = join(invalidOwnerRoot, 'editors', 'vscode-hson');
 try {
+  await mkdir(invalidOwner, { recursive: true });
+  await symlink(fileURLToPath(new URL('../../../src', import.meta.url)), join(invalidOwnerRoot, 'src'), 'dir');
   for (const directory of ['scripts', 'src','palettes']) await mkdir(join(invalidOwner, directory));
   for (const relative of ['scripts/generate-themes.mjs', 'scripts/appearance-catalog.mjs',
     'src/appearance.ts', 'src/appearance-model.ts', 'src/appearance-catalog.json', 'palettes/house.json', 'src/appearance-internals.ts', 'src/appearance-bindings.ts', 'src/appearance-branding.generated.ts']) {
@@ -462,13 +478,16 @@ try {
   const generated = spawnSync(process.execPath, [join(invalidOwner, 'scripts/generate-themes.mjs'), '--check'], { encoding: 'utf8' });
   assert.notEqual(generated.status, 0, 'direct generation must reject invalid owner styling');
   assert.match(generated.stderr, /syntax\.hson\.reference\.selectorOpen\.house\.dark\.intensite: Unknown property "intensite"\. Did you mean "intensity"\?/);
-} finally { await rm(invalidOwner, { recursive: true, force: true }); }
+} finally { await rm(invalidOwnerRoot, { recursive: true, force: true }); }
 console.log('ok - native UI typo paths, inheritance suggestions and real generator-time rejection without TypeScript checking');
 
 // Generate only inside a disposable extension; changing the owner catalog must
 // update every derived default without changing the catalog or the validator.
-const ownerFixture = await realpath(await mkdtemp(join(tmpdir(), 'hson-appearance-defaults-')));
+const ownerFixtureRoot = await realpath(await mkdtemp(join(tmpdir(), 'hson-appearance-defaults-')));
+const ownerFixture = join(ownerFixtureRoot, 'editors', 'vscode-hson');
 try {
+  await mkdir(ownerFixture, { recursive: true });
+  await symlink(fileURLToPath(new URL('../../../src', import.meta.url)), join(ownerFixtureRoot, 'src'), 'dir');
   for (const directory of ['scripts', 'src', 'syntaxes','palettes']) await mkdir(join(ownerFixture, directory));
   for (const relative of ['package.json', 'scripts/build.mjs', 'scripts/generate-themes.mjs', 'scripts/appearance-catalog.mjs',
     'syntaxes/hson.tmLanguage.json', 'src/appearance.ts', 'src/appearance-model.ts', 'src/appearance-catalog.json', 'palettes/house.json', 'src/appearance-internals.ts', 'src/appearance-bindings.ts', 'src/appearance-branding.generated.ts'])
@@ -554,5 +573,5 @@ try {
     success(runGenerator('--check'));
     assert.equal(await readFile(join(ownerFixture, 'palettes/house.json'), 'utf8'), source);
   }
-} finally { await rm(ownerFixture, { recursive: true, force: true }); }
+} finally { await rm(ownerFixtureRoot, { recursive: true, force: true }); }
 console.log('ok - owner palette and setting edits propagate, repeated generation is stable, drift and invalid roles fail, all hues and hex forms are accepted');

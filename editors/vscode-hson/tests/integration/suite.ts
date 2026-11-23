@@ -3,6 +3,8 @@ import { join } from "node:path";
 import ts from "typescript";
 
 import * as vscode from "vscode";
+import { parse_authored_event } from "../../../../src/internal/authored-events.js";
+import { nativeCompositionSupported } from "./native-composition.js";
 
 async function localSchemaCompletions(document: vscode.TextDocument, offset: number): Promise<vscode.CompletionItem[]> {
   const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset), undefined, 100);
@@ -403,7 +405,11 @@ async function runTypingConveniences(workspace: string): Promise<void> {
 async function runPartCompletions(workspace: string): Promise<void> {
   const uri = vscode.Uri.file(join(workspace, "declarative-schema", "part-authoring.ts"));
   const producer = vscode.Uri.file(join(workspace, "declarative-schema", "parts.ts"));
-  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>` }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` }, structured: { kind: "document", document: Hson.document`<p hson:part data:local=%{payload} "^{local}"/>` }, structure: { kind: "document", document: Hson.document`<main hson:part doc:local=%{content} <hson-part ^{local}/>/>` } } as const;';
+  const heading = 'Hson.document`<h1 hson:part title="%{Title-Case}" "%{content}"/>`';
+  const typed = 'Hson.document`<p hson:part str:label=%{headline} "^{label}"/>`';
+  const parts = 'import { Hson } from "hson-live";\nexport const parts = { heading: { kind: "document", document: ' + heading
+    + ' }, nav: { kind: "document", document: Hson.document`<nav hson:part "%{current}"/>` }, structured: { kind: "document", document: Hson.document`<p hson:part data:local=%{payload} "^{local}"/>` }, structure: { kind: "document", document: Hson.document`<main hson:part doc:local=%{content} <hson-part ^{local}/>/>` },'
+    + ' typed: { kind: "document", document: ' + typed + ' } } as const;';
   await vscode.workspace.fs.writeFile(producer, Buffer.from(parts));
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\nconst loc = hsonLiveMap.locus.create({ components: { parts } });\r\nconst page = Hson.document`';
   const suffix = '`;\r\nconst untouched = "keep";';
@@ -469,7 +475,10 @@ async function runPartCompletions(workspace: string): Promise<void> {
     const edit = new vscode.WorkspaceEdit(); edit.replace(uri, range, String(spelling.textEdit?.newText ?? spelling.insertText));
     assert.equal(await vscode.workspace.applyEdit(edit), true); assert.equal(document.getText(), before + expected + after);
   }
-  const writePrefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\nconst loc=hsonLiveMap.fromLibraries({components:{parts}});const components=loc.parts.components;components.heading.write({ ';
+  const writeSetup = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { parts } from "./parts.js";\r\n'
+    + 'const loc = hsonLiveMap.fromLibraries({ components: { parts }, owned: { parts: {'
+    + ' heading: { kind: "document", document: ' + heading + ' }, typed: { kind: "document", document: ' + typed + ' } } } });\r\n';
+  const writePrefix = writeSetup + 'const owned = loc.parts.owned; owned.heading.write({ ';
   for (const [input, label, expected, finish] of [
     ['Tit|', 'Title-Case', '"Title-Case": "|"'],
     ['Tit|leOld: "kept"', 'Title-Case', '"Title-Case"|: "kept"'],
@@ -513,10 +522,38 @@ async function runPartCompletions(workspace: string): Promise<void> {
     assert.equal(document.offsetAt(editor.selection.active), marked.indexOf('|')); assert.ok(editor.selection.isEmpty);
   }
   process.stdout.write('ok - real VS Code write key completions exclude method and accessor contexts\n');
+
+  const writes = writeSetup + 'loc.parts.components.typed.write({ headline: 41 });\r\nloc.parts.owned.typed.write({ headline: 42 });\r\n'
+    + 'loc.parts.components.heading.write({ Tit });\r\nloc.parts.owned.heading.write({ Tit });';
+  await replace(document, writes);
+  await completions(writes.lastIndexOf("{ Tit") + "{ Tit".length, "Title-Case");
+  const importedKeys = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider",
+    uri, document.positionAt(writes.indexOf("{ Tit") + "{ Tit".length), undefined, 100);
+  assert.ok(importedKeys);
+  assert.ok(!importedKeys.items.some(item => /Part argument from the authored definition/.test(item.detail ?? "")));
+  const writeDiagnostics = () => vscode.languages.getDiagnostics(uri)
+    .filter(issue => issue.source === "hson-schema" && issue.message.startsWith("Part.write "));
+  await waitFor(() => writeDiagnostics().some(issue => document.getText(issue.range) === "42"), "Missing inline Part.write diagnostic");
+  const invalid = writes.indexOf("42");
+  assert.deepEqual(writeDiagnostics().map(issue => [
+    issue.code, issue.message, document.offsetAt(issue.range.start), document.offsetAt(issue.range.end),
+  ]), [[95002, 'Part.write argument "headline" requires a string.', invalid, invalid + 2]]);
+  process.stdout.write("ok - imported Part write authority is unavailable while the inline peer completes and diagnoses its exact value\n");
+
   const body = '<hson-part lib="components" at="he|"/>';
   await replace(document, prefix + body.replace("|", "") + suffix);
   await completions(prefix.length + body.indexOf("|"), "heading");
   const imported = await vscode.workspace.openTextDocument(producer);
+  const definitions = async () => vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
+    "vscode.executeDefinitionProvider", producer, imported.positionAt(parts.indexOf("^{local}") + 2));
+  await vscode.window.showTextDocument(imported);
+  await waitFor(async () => Boolean((await definitions())?.length), "Missing imported Part lexical definition");
+  const declaration = parts.indexOf("data:local") + "data:".length;
+  assert.deepEqual((await definitions())?.map(item => {
+    const range = "targetUri" in item ? item.targetSelectionRange ?? item.targetRange : item.range;
+    return [("targetUri" in item ? item.targetUri : item.uri).toString(), imported.offsetAt(range.start), imported.offsetAt(range.end)];
+  }), [[producer.toString(), declaration, declaration + "local".length]]);
+  await vscode.window.showTextDocument(document);
   await replace(imported, parts.replace('heading:', 'hero:'));
   await completions(prefix.length + body.indexOf("|"), "hero");
   const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', uri, document.positionAt(prefix.length + body.indexOf("|")));
@@ -528,6 +565,552 @@ async function runPartCompletions(workspace: string): Promise<void> {
     assert.ok(!result?.items.some(item => /Parts Library|Part member|Part argument|Part parameter/.test(item.detail ?? "")), body);
   }
   process.stdout.write("ok - real VS Code Part completion applies exact edits in four contexts and refreshes unsaved imported Parts\n");
+}
+
+async function runEventAuthoring(workspace: string, extensionPath: string, rendered: boolean): Promise<void> {
+  const root = vscode.Uri.file(join(workspace, "event-authoring"));
+  const uri = vscode.Uri.joinPath(root, "authoring.ts");
+  const entrypoint = vscode.Uri.joinPath(root, "package");
+  const bridge = vscode.Uri.joinPath(entrypoint, "src/index.ts");
+  const write = (file: vscode.Uri, text: string) => vscode.workspace.fs.writeFile(file, Buffer.from(text));
+  const genuine = 'export { Hson } from "hson-live";';
+  await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(entrypoint, "src"));
+  await write(vscode.Uri.joinPath(entrypoint, "package.json"), '{"name":"hson-live","type":"module"}');
+  await write(vscode.Uri.joinPath(root, "tsconfig.json"), JSON.stringify({
+    compilerOptions: { target: "ES2022", module: "NodeNext", types: [], strict: true, paths: { "hson-live/hson": ["./package/src/index.ts"] } }, include: ["*.ts"],
+  }));
+  await write(vscode.Uri.joinPath(root, "package.json"), '{"type":"module"}');
+  await write(bridge, genuine);
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { Hson as E } from "hson-live/hson";\r\n'
+    + 'export const go = E.event`<hson:event on:pointer:d local:deck.move\r\n  note:str="é🧪" x:num=^{pointer.clientXx} selection:data=^{row.label} <>>`;\r\n';
+  const attachment = 'hsonLiveMap.fromLibraries({ bits: { parts: { card: { kind: "document", document: '
+    + 'Hson.document`<button hson:part data:row=%{rows} event:go/>`, events: {go} } } } });';
+  await write(uri, prefix + attachment);
+  const document = await vscode.workspace.openTextDocument(uri);
+  const editor = await vscode.window.showTextDocument(document);
+  const labels = async (offset: number) => {
+    const result = await vscode.commands.executeCommand<vscode.CompletionList>("vscode.executeCompletionItemProvider",
+      uri, document.positionAt(offset));
+    return result?.items ?? [];
+  };
+  const name = (item: vscode.CompletionItem) => typeof item.label === "string" ? item.label : item.label.label;
+  const offsetAfter = (text: string) => document.getText().indexOf(text) + text.length;
+  const moveCursor = (offset: number) => {
+    const position = document.positionAt(offset);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position));
+  };
+  const accept = async (at: number, label: string, expected: string, cursor: number, selectNext = 0) => {
+    await waitFor(async () => (await labels(at)).some(item => name(item) === label), `Missing Event completion ${label}`);
+    await vscode.commands.executeCommand("hideSuggestWidget");
+    moveCursor(at);
+    await vscode.commands.executeCommand("editor.action.triggerSuggest");
+    await new Promise(resolve => setTimeout(resolve, 450));
+    if (selectNext > 0) {
+      await vscode.commands.executeCommand("selectFirstSuggestion");
+      for (let next = 0; next < selectNext; next++) await vscode.commands.executeCommand("selectNextSuggestion");
+    }
+    await vscode.commands.executeCommand("acceptSelectedSuggestion");
+    assert.equal(document.getText(), expected, `Suggestion widget inserted ${label}`);
+    assert.equal(document.offsetAt(editor.selection.active), cursor);
+    assert.equal(editor.selection.isEmpty, true);
+  };
+  const hsonIssues = () => vscode.languages.getDiagnostics(uri).filter(issue => issue.source === "Hson");
+  const replacement = async (at: number, label: string): Promise<readonly [number, number]> => {
+    await waitFor(async () => (await labels(at)).some(item => name(item) === label), `Missing Event completion ${label}`);
+    const item = (await labels(at)).find(item => name(item) === label);
+    assert.ok(item?.range);
+    const range = "replacing" in item.range ? item.range.replacing : item.range;
+    return [document.offsetAt(range.start), document.offsetAt(range.end)];
+  };
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_EVENT_DECLARATION_INVALID"), "Missing incomplete Event diagnostic");
+  let expected = document.getText().replace("on:pointer:d ", "on:pointer:down ");
+  await accept(offsetAfter("on:pointer:d"), "on:pointer:down", expected, expected.indexOf("on:pointer:down") + "on:pointer:down".length);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_EVENT_REFERENCE_INVALID"), "Missing invalid native path diagnostic");
+  expected = expected.replace("pointer.clientXx", "pointer.clientX");
+  await accept(offsetAfter("pointer.clientX"), "pointer.clientX", expected, expected.indexOf("pointer.clientX}") + "pointer.clientX}".length);
+  await waitFor(() => hsonIssues().length === 0, "Event syntax diagnostics did not clear");
+  const definitions = async () => vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
+    "vscode.executeDefinitionProvider", uri, document.positionAt(offsetAfter("selection:data=^{")));
+  await waitFor(async () => (await definitions())?.some(definition => {
+    const range = "targetUri" in definition ? definition.targetSelectionRange ?? definition.targetRange : definition.range;
+    return range !== undefined && document.offsetAt(range.start) === offsetAfter("data:row") - "row".length;
+  }) ?? false, "Missing proven Event Part-local definition");
+  console.log("ok - Event suggestion widget accepts a selector and mid-token native path with exact source/cursor and definition");
+
+  const roles = [
+    ["down", "hsonEventSelectorName"], ["deck.move", "hsonEventAction"],
+    ["num", "hsonEventQualifier"], ["clientX", "hsonEventNativeProperty"],
+  ] as const;
+  const semantic = async () => {
+    const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", uri);
+    const data = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", uri);
+    let line = 0, character = 0;
+    const tokens = new Map<number, { type: string | undefined; length: number }>();
+    if (!legend || !data) return tokens;
+    for (let index = 0; index < data.data.length; index += 5) {
+      const delta = data.data[index]!;
+      line += delta;
+      character = (delta ? 0 : character) + data.data[index + 1]!;
+      tokens.set(document.offsetAt(new vscode.Position(line, character)), {
+        type: legend.tokenTypes[data.data[index + 3]!], length: data.data[index + 2]!,
+      });
+    }
+    return tokens;
+  };
+  if (rendered) {
+    await waitFor(async () => {
+      const tokens = await semantic();
+      return roles.every(([spelling, type]) => {
+        const token = tokens.get(document.getText().indexOf(spelling));
+        return token?.type === type && token.length === spelling.length;
+      });
+    }, "Missing exact Event semantic roles");
+    const theme = JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(
+      join(extensionPath, "themes", "hson-house-dark-color-theme.json")))).toString()).semanticTokenColors;
+    const response = vscode.Uri.file(join(workspace, "binding-color-response.json"));
+    const report = async (id: string, foregrounds: readonly string[]) => {
+      const tokens = roles.map(([spelling], index) => {
+        const position = document.positionAt(document.getText().indexOf(spelling));
+        const hex = foregrounds[index]!;
+        return { lineText: document.lineAt(position.line).text, character: position.character, length: spelling.length,
+          expected: `rgb(${[1, 3, 5].map(at => parseInt(hex.slice(at, at + 2), 16)).join(", ")})` };
+      });
+      await write(vscode.Uri.file(join(workspace, "binding-color-request.json")), JSON.stringify({ id, pairs: [], tokens }));
+      let colors: { id: string; colors: string[]; error?: string } | undefined;
+      await waitFor(async () => {
+        try { colors = JSON.parse(Buffer.from(await vscode.workspace.fs.readFile(response)).toString()); return colors?.id === id; }
+        catch { return false; }
+      }, `Missing rendered Event color report: ${id}`);
+      assert.equal(colors?.error, undefined);
+      return colors!.colors;
+    };
+    const houseColors = roles.map(([, role]) => String(theme[role]));
+    assert.equal(new Set(await report("event-house", houseColors)).size, roles.length);
+    console.log("ok - rendered selector, Action key, qualifier and native property are distinct in the same Event");
+    const appearance = vscode.workspace.getConfiguration("hson.appearance", document);
+    const overrides = {
+      "event.selectorName": { dark: { foreground: "#272829" } },
+      "event.action": { dark: { foreground: "#272829" } },
+      "event.qualifier": { dark: { foreground: "#414243" } },
+      "event.nativeProperty": { dark: { foreground: "#121314" } },
+    };
+    await appearance.update("state", { palettes: [], assignments: { all: "native" }, overrides: { all: overrides } },
+      vscode.ConfigurationTarget.Workspace);
+    try {
+      const colors = await report("event-appearance", Object.values(overrides).map(style => style.dark.foreground));
+      assert.equal(colors[0], colors[1]);
+    } finally {
+      await appearance.update("state", undefined, vscode.ConfigurationTarget.Workspace);
+    }
+    console.log("ok - rendered Event Appearance honors identical and low-contrast overrides");
+  }
+
+  const rawOperation = '<hson:event on:formdata host:save field:str=^{formdata:ge} <>>';
+  const line = 'const form = Hson.event`' + rawOperation + '`;';
+  assert.equal(await editor.edit(edit => edit.insert(document.positionAt(document.getText().length), '\r\n' + line)), true);
+  const operationAt = offsetAfter("formdata:ge");
+  const withOperation = document.getText().replace("formdata:ge}", 'formdata:get("")}');
+  await accept(operationAt, "formdata:get", withOperation, withOperation.indexOf('formdata:get("') + 'formdata:get("'.length);
+  await vscode.commands.executeCommand("type", { text: "email" });
+  assert.ok(document.getText().includes('^{formdata:get("email")} <>>`;'));
+  await waitFor(() => hsonIssues().length === 0, "Inserted FormData operation was rejected");
+  console.log("ok - raw FormData operation snippet retains quotes, brace, field cursor and native typing");
+
+  const current = async (admitted: boolean) => {
+    const completion = (await labels(offsetAfter("on:pointer:d"))).some(item => name(item) === "on:pointer:down");
+    const definition = (await definitions() ?? []).length > 0;
+    const token = rendered && (await semantic()).get(document.getText().indexOf("deck.move"))?.type === "hsonEventAction";
+    return completion === admitted && definition === admitted && (!rendered || token === admitted);
+  };
+  const version = document.version;
+  await write(bridge, 'export const Hson = { event: String.raw };');
+  await waitFor(() => current(false), "Current editor retained withdrawn Event evidence");
+  await write(bridge, genuine);
+  await waitFor(() => current(true), "Re-export edit did not restore Event evidence");
+  await vscode.workspace.fs.delete(bridge);
+  await waitFor(() => current(false), "Current editor retained a deleted re-export's Event evidence");
+  await write(bridge, genuine);
+  await waitFor(() => current(true), "Recreated re-export did not restore Event evidence");
+  assert.equal(document.version, version);
+  await vscode.commands.executeCommand("typescript.restartTsServer");
+  await waitFor(async () => (await labels(offsetAfter("on:pointer:d"))).some(item => name(item) === "on:pointer:down"),
+    "Event completion did not recover after plugin reload");
+  console.log("ok - unchanged Event consumer withdraws and restores completion, navigation and highlighting across dependency edits and plugin reload");
+
+  const editPrefix = 'import { Hson, hsonLiveTree } from "hson-live";\r\nconst e = Hson.event`';
+  const editSuffix = '`;\r\nconst after = 42;\r\n';
+  const setSource = async (text: string) => {
+    assert.equal(await editor.edit(edit => edit.replace(new vscode.Range(document.positionAt(0),
+      document.positionAt(document.getText().length)), text)), true);
+  };
+  const quoted = '<hson:event on:click local:go x:bool="';
+  const withEscapes = '<hson:event on:click local:go\r\n note:str="🧪\\\"ok" x:bool="';
+  for (const [body, tail, hasQuote] of [
+    [quoted, ' once <>>', false], [quoted, ' n:num="7" <>>', false],
+    [withEscapes, ' window capture <>>', false], [withEscapes, '" once <>>', true],
+  ] as const) {
+    const before = editPrefix + body;
+    await setSource(before + "true" + tail + editSuffix);
+    if (!hasQuote) await waitFor(() => hsonIssues().length > 0, "Missing immediate diagnostic for incomplete Boolean");
+    const insert = hasQuote ? "true" : 'true"';
+    await accept(before.length + 2, "true", before + insert + tail + editSuffix, before.length + insert.length);
+    await waitFor(() => hsonIssues().length === 0, "Repaired Boolean did not pass tagged Event admission");
+  }
+  const beforeOption = editPrefix + "<hson:event on:click local:go ";
+  await setSource(beforeOption + "once <>>" + editSuffix);
+  const atOption = beforeOption.length;
+  const insertion = "stopImmediateProp ";
+  await waitFor(async () => {
+    const item = (await labels(atOption)).find(item => name(item) === "stopImmediateProp");
+    if (item?.range === undefined) return false;
+    const range = "replacing" in item.range ? item.range.replacing : item.range;
+    return range.isEmpty && document.offsetAt(range.start) === atOption;
+  }, "Expected an insertion gap before once");
+  assert.ok(!(await labels(atOption)).some(item => name(item) === "once"));
+  await accept(atOption, "stopImmediateProp", beforeOption + insertion + "once <>>" + editSuffix,
+    atOption + insertion.length, 4);
+  await waitFor(() => hsonIssues().length === 0, "Inserted listener option invalidated the Event");
+  console.log("ok - Event suggestion acceptance preserves Boolean neighbors, once, CRLF, escaped quotes and the caret");
+
+  const recovery = editPrefix + '// 🧪\r\n<hson:event on:key:up local:go broken:bool="tr';
+  const surviving = ' native:bool=^{key.repeat} once window <>>';
+  const partial = recovery + surviving + editSuffix;
+  await setSource(partial);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_UNTERMINATED"), "Recovery must preserve the strict quote error");
+  await waitFor(async () => (await labels(partial.indexOf("repeat") + 2)).some(item => name(item) === "key.repeat"), "Native lookup after a missing Boolean quote");
+  assert.ok((await labels(partial.indexOf("once"))).some(item => name(item) === "capture"));
+  const recoveredRoles = async () => {
+    const current = document.getText();
+    const tokens = await semantic();
+    return [["repeat", "hsonEventNativeProperty"], ["once", "hsonEventOption"], ["window", "hsonEventOption"]]
+      .every(([word, type]) => tokens.get(current.indexOf(word!))?.type === type);
+  };
+  if (rendered) await waitFor(recoveredRoles, "Event suffix roles before Boolean correction");
+  const repaired = recovery + 'ue"' + surviving + editSuffix;
+  assert.deepEqual(await replacement(recovery.length, "true"), [recovery.length - 2, recovery.length]);
+  await accept(recovery.length, "true", repaired, recovery.length + 3);
+  await waitFor(() => hsonIssues().length === 0, "Boolean quote correction must pass strict admission");
+  if (rendered) await waitFor(recoveredRoles, "Event suffix roles after Boolean correction");
+
+  const ambiguous = recovery + ' once\r\n native:bool=^{key.repeat} window <>>" <>>' + editSuffix;
+  await setSource(ambiguous);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_CONTROL_UNESCAPED"), "Ambiguous multiline Boolean must retain its strict quote error");
+  assert.ok(!(await labels(ambiguous.indexOf("repeat") + 2)).some(item => name(item) === "key.repeat"));
+  assert.ok(!(await labels(recovery.length)).some(item => name(item) === "true"));
+  if (rendered) {
+    const roles = await semantic();
+    assert.notEqual(roles.get(ambiguous.indexOf("repeat"))?.type, "hsonEventNativeProperty");
+    assert.notEqual(roles.get(ambiguous.indexOf("once"))?.type, "hsonEventOption");
+  }
+
+  const quotedSuffix = '\r\n // keep "quoted" 🧭\r\n native:bool=^{key["repeat"]} note:str=" a 🧪" once window <>>';
+  const quotedDraft = recovery + quotedSuffix + editSuffix;
+  await setSource(quotedDraft);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_CONTROL_UNESCAPED"), "Expected strict diagnostic before repair");
+  await waitFor(async () => (await labels(quotedDraft.indexOf("repeat") + 2)).some(item => name(item) === "key.repeat"),
+    "Expected bracket lookup after a damaged Boolean");
+  if (rendered) await waitFor(async () => {
+    const roles = await semantic();
+    return roles.get(quotedDraft.indexOf("repeat"))?.type === "hsonEventNativeProperty"
+      && roles.get(quotedDraft.indexOf(" a 🧪"))?.type === "hsonEventString"
+      && roles.get(quotedDraft.indexOf("window"))?.type === "hsonEventOption";
+  }, "Missing bounded quoted Event suffix roles");
+  assert.deepEqual(await replacement(recovery.length, "true"), [recovery.length - 2, recovery.length]);
+  await accept(recovery.length, "true", recovery + 'ue"' + quotedSuffix + editSuffix, recovery.length + 3);
+  await waitFor(() => hsonIssues().length === 0, "Quoted suffix must pass strict admission after repair");
+  const unclosed = recovery + ' once note:str=" a 🧪 window <>>' + editSuffix;
+  await setSource(unclosed);
+  await waitFor(() => hsonIssues().length > 0, "Expected strict diagnostic for the ambiguous suffix");
+  assert.ok(!(await labels(recovery.length)).some(item => name(item) === "true"));
+  if (rendered) assert.notEqual((await semantic()).get(unclosed.indexOf("once"))?.type, "hsonEventOption");
+  console.log("ok - real Event recovery preserves bracket, comment and string boundaries and withholds an unclosed suffix");
+
+  const closed = recovery + ' once //" window <>>' + editSuffix;
+  await setSource(closed);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_EVENT_DECLARATION_INVALID"), "Invalid closed Boolean must keep its strict diagnostic");
+  assert.ok(!(await labels(recovery.length)).some(item => name(item) === "true"));
+  assert.ok((await labels(closed.indexOf("window"))).some(item => name(item) === "capture"));
+  if (rendered) await waitFor(async () => {
+    const roles = await semantic();
+    return roles.get(recovery.length - 2)?.type === "hsonEventString"
+      && roles.get(closed.indexOf('" window'))?.type === "hsonEventQuote"
+      && roles.get(closed.indexOf("window"))?.type === "hsonEventOption"
+      && roles.get(closed.indexOf("once"))?.type !== "hsonEventOption";
+  }, "Closed invalid Boolean lost its lexical ownership");
+
+  const adjacentPrefix = recovery.replace('broken:bool="tr', 'broken:bool="fa');
+  const adjacent = adjacentPrefix + ' capture //"junk\r\n lookup:bool=^{key.repeat} <>>' + editSuffix;
+  await setSource(adjacent);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_EVENT_DECLARATION_INVALID"), "Missing separator error after the closed quote");
+  assert.ok(!(await labels(adjacentPrefix.length)).some(item => name(item) === "false"));
+  if (rendered) await waitFor(async () => {
+    const roles = await semantic();
+    return roles.get(adjacentPrefix.length - 2)?.type === "hsonEventString"
+      && roles.get(adjacent.indexOf('"junk'))?.type === "hsonEventQuote"
+      && roles.get(adjacent.indexOf("capture"))?.type !== "hsonEventOption"
+      && roles.get(adjacent.indexOf('//"junk'))?.type !== "hsonEventComment";
+  }, "Adjacent malformed syntax changed a closed operand's roles");
+
+  const boundedLookup = ' lookup:bool=^{key["repeat"]} bogus <>>';
+  const unknown = adjacentPrefix + boundedLookup + editSuffix;
+  await setSource(unknown);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_EVENT_DECLARATION_INVALID"), "Missing malformed Event diagnostic");
+  const lookupAt = unknown.indexOf("repeat");
+  await waitFor(async () => (await labels(lookupAt + 2)).some(item => name(item) === "key.repeat"), "Unknown item hid the preceding lookup");
+  if (rendered) await waitFor(async () => (await semantic()).get(lookupAt)?.type === "hsonEventNativeProperty", "Unknown item hid native property coloring");
+  assert.deepEqual(await replacement(adjacentPrefix.length, "false"), [adjacentPrefix.length - 2, adjacentPrefix.length]);
+  const fixedPrefix = adjacentPrefix + 'lse"';
+  await accept(adjacentPrefix.length, "false", fixedPrefix + boundedLookup + editSuffix, fixedPrefix.length);
+  await waitFor(() => hsonIssues().some(issue => issue.message.includes('Unsupported authored event header item "bogus"')),
+    "The neighboring unknown item must still fail strict admission");
+  if (rendered) await waitFor(async () => (await semantic()).get(lookupAt + 4)?.type === "hsonEventNativeProperty", "The exact edit lost native property coloring");
+  console.log("ok - closed Event quotes and recovered lookups retain ownership in the widget and Semantic Tokens");
+
+  const laterError = '\r\n lookup:bool=^{key["repeat"]} once\r\n note:str="unfinished window <>>';
+  const incremental = recovery + laterError + editSuffix;
+  await setSource(incremental);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_CONTROL_UNESCAPED"), "Missing first strict string diagnostic");
+  await waitFor(async () => (await labels(incremental.indexOf("repeat") + 2)).some(item => name(item) === "key.repeat"), "Later error hid a bounded lookup");
+  assert.ok((await labels(incremental.indexOf("once"))).some(item => name(item) === "capture"));
+  if (rendered) await waitFor(async () => {
+    const roles = await semantic();
+    return roles.get(incremental.indexOf("repeat"))?.type === "hsonEventNativeProperty"
+      && roles.get(incremental.indexOf("once"))?.type === "hsonEventOption"
+      && roles.get(incremental.indexOf("window"))?.type !== "hsonEventOption";
+  }, "Later error hid or invented Event roles");
+  assert.deepEqual(await replacement(recovery.length, "true"), [recovery.length - 2, recovery.length]);
+  await accept(recovery.length, "true", recovery + 'ue"' + laterError + editSuffix, recovery.length + 3);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_UNTERMINATED"), "Later string must still fail strict admission");
+  console.log("ok - Event quote ownership and incremental recovery agree with widget edits, Semantic Tokens and strict errors");
+
+  for (const [value, code] of [
+    ['"tr\r\n capture bogus "', "HSON_STRING_CONTROL_UNESCAPED"],
+    ['"tr\n capture bogus "', "HSON_STRING_CONTROL_UNESCAPED"],
+    [String.raw`"tr \z \"capture\" 🧪"`, "invalid-json-escape"],
+  ] as const) {
+    const prefix = editPrefix + '<hson:event on:key:up local:go bad:bool=' + value;
+    await setSource(prefix + ' lookup:bool=^{key.repeatx} window <>>' + editSuffix);
+    const source = document.getText();
+    await waitFor(() => hsonIssues().some(issue => issue.code === code), "Expected strict malformed quote diagnostic");
+    assert.ok(!(await labels(source.indexOf('"tr') + 3)).some(item => name(item) === "true"));
+    if (rendered) await waitFor(async () => {
+      const roles = await semantic();
+      return roles.get(source.indexOf(' lookup:bool') - 1)?.type === "hsonEventQuote"
+        && roles.get(source.indexOf("repeatx"))?.type === "hsonEventNativeProperty"
+        && roles.get(source.indexOf("capture"))?.type !== "hsonEventOption";
+    }, "Malformed closed quote lost its ownership or the later lookup");
+    const at = source.indexOf("repeatx");
+    const fixedLookup = source.replace("repeatx", "repeat");
+    assert.deepEqual(await replacement(at + 2, "key.repeat"), [at - "key.".length, at + "repeatx}".length]);
+    await accept(at + 2, "key.repeat", fixedLookup, fixedLookup.indexOf("repeat}") + "repeat}".length);
+    await waitFor(() => hsonIssues().some(issue => issue.code === code), "Later edit must preserve the strict quote diagnostic");
+  }
+  console.log("ok - closed malformed Event strings preserve strict diagnostics, highlighting and exact lookup edits");
+
+  for (const newline of ["\n", "\r\n"]) {
+    const body = '<hson:event on:key:up local:go a:bool="tr' + newline
+      + ' capture b:str=" // " 🧪' + newline + ' x:bool=^{key.repeatx} <>>';
+    await setSource(editPrefix + body + editSuffix);
+    const source = document.getText();
+    const word = source.indexOf('"tr') + 3;
+    const lookup = source.indexOf("repeatx");
+    await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_CONTROL_UNESCAPED"), "Expected the original control diagnostic");
+    assert.ok(!(await labels(word)).some(item => name(item) === "true"));
+    if (rendered) await waitFor(async () => {
+      const roles = await semantic();
+      return roles.get(source.indexOf('" //'))?.type === "hsonEventQuote"
+        && roles.get(source.indexOf('// " 🧪'))?.type === "hsonEventComment"
+        && roles.get(source.indexOf("capture"))?.type !== "hsonEventOption"
+        && roles.get(lookup)?.type === "hsonEventNativeProperty";
+    }, "A quoted lookalike argument must stay within the original string");
+    const applied = source.replace("repeatx", "repeat");
+    await accept(lookup + 2, "key.repeat", applied, lookup + "repeat}".length);
+    await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_CONTROL_UNESCAPED"), "Lookup edit changed the strict quote diagnostic");
+    // Make only the damaged string legal to inspect the Event's established meaning.
+    const repaired = applied.slice(editPrefix.length, -editSuffix.length)
+      .replace(/a:bool="tr\r?\n/, 'a:str="tr\\n');
+    const event = parse_authored_event(repaired);
+    assert.equal(event.listener.capture, false);
+    assert.deepEqual(event.args.map(argument => argument.name), ["a", "x"]);
+  }
+  console.log("ok - Event widget preserves closed string ownership with an apparent following quoted argument");
+
+  const earlier = editPrefix + '<hson:event on:cli local:go text:str="unclosed' + editSuffix;
+  const selector = earlier.indexOf("on:cli");
+  await setSource(earlier);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_UNTERMINATED"), "Expected strict incomplete string diagnostic");
+  if (rendered) await waitFor(async () => (await semantic()).get(selector + 3)?.type === "hsonEventSelectorName",
+    "Earlier selector must keep its Event role");
+  assert.deepEqual(await replacement(selector + "on:cli".length, "on:click"), [selector, selector + "on:cli".length]);
+  await accept(selector + "on:cli".length, "on:click", earlier.replace("on:cli", "on:click"), selector + "on:click".length);
+  await waitFor(() => hsonIssues().some(issue => issue.code === "HSON_STRING_UNTERMINATED"), "Selector edit changed the incomplete suffix");
+  console.log("ok - Event selector completion applies before an incomplete string without changing the suffix");
+
+  const missingOperand = editPrefix + '<hson:event on:key:up local:go broken:bool=';
+  for (const [tail, label, selectNext] of [
+    [' once window <>>', "{true}", 2],
+    [' // keep 🧪\r\n native:bool=^{key.repeat} once window <>>', '"true"', 0],
+  ] as const) {
+    const at = missingOperand.length;
+    await setSource(missingOperand + tail + editSuffix);
+    await waitFor(() => hsonIssues().length > 0, "Missing operand must fail strict admission");
+    assert.deepEqual(await replacement(at, label), [at, at]);
+    await accept(at, label, missingOperand + label + tail + editSuffix, at + label.length, selectNext);
+    await waitFor(() => hsonIssues().length === 0, "Missing-operand edit must pass strict admission");
+    console.log("Event missing operand insertion", JSON.stringify({ label, replacement: [at, at], caret: at + label.length, tail }));
+  }
+  console.log("ok - Event widget repairs Boolean quotes and empty operands while preserving suffix roles and source");
+
+  const listener = 'import { hsonLiveTree } from "hson-live";\r\nconst tree = hsonLiveTree.fromHson("<button/>");\r\n';
+  const setListener = async (marked: string) => {
+    const source = listener + "tree.listen.event(" + JSON.stringify(marked) + ");\r\n";
+    await setSource(source.replace("|", ""));
+    return source.indexOf("|");
+  };
+  const cursor = await setListener("<hson:event on:click lo| <>>");
+  assert.ok(!(await labels(cursor)).some(item => name(item) === "local:"));
+  const actionFixture = (domain: "host" | "local") => {
+    const definitions = '{bits:{parts:{card:{kind:"document",document:Hson.document`<button hson:part event:go/>`,events:{go:source}}}}}';
+    const application = domain === "host" ? 'const app=hsonLiveMap.locus.create(' + definitions
+      + ',{actions:{"deck.advance":{handler(){},args:{required:true}}}});'
+      : 'const app=hsonLiveMap.fromLibraries(' + definitions + '); app.actions.define("deck.advance",()=>{});';
+    return 'import {Hson,hsonLiveMap,hsonLiveTree} from "hson-live";\nconst source=Hson.event`<hson:event on:click '
+      + domain + ':deck.ad <>>`;\n' + application + '\nhsonLiveTree.create.button().listen.event(source);';
+  };
+  for (const domain of ["host", "local"] as const) {
+    const source = actionFixture(domain);
+    await setSource(source);
+    const at = offsetAfter(":deck.ad");
+    await waitFor(async () => (await labels(at)).some(item => name(item) === domain + ":deck.advance"), domain + " Action completion");
+    assert.deepEqual(await replacement(at, domain + ":deck.advance"), [at - (domain + ":deck.ad").length, at]);
+  }
+  console.log("ok - explicit host and local Action declarations complete in their owning Part");
+
+  for (const [body, code, eventHead] of [
+    ["<hson:ev", "HSON_DECLARATIVE_NAME_INCOMPLETE", true],
+    ["<hson:event on:click local:go <>>", undefined, true],
+    ['<h title="ok"/>', "HSON_DECLARATIVE_ROOT_REQUIRED", false],
+    ['<h title="ok" "nested"> // trailing', "HSON_DECLARATIVE_ROOT_REQUIRED", false],
+    ["<'hson:event'/>", "HSON_DECLARATIVE_ROOT_REQUIRED", false],
+    ["<hson:unknown>", "HSON_DECLARATIVE_DOMAIN_UNSUPPORTED", false],
+    ["<hson:event=oops>", "HSON_DECLARATIVE_HEAD_MALFORMED", false],
+  ] as const) {
+    await setSource(editPrefix + body + editSuffix);
+    await waitFor(() => hsonIssues().map(issue => issue.code).join() === (code ?? ""), body);
+    const at = editPrefix.length + (/^<hson:[a-z]+/.exec(body)?.[0].length ?? 2);
+    if (rendered) {
+      await waitFor(async () => {
+        const tokens = await semantic();
+        return [...tokens].some(([offset, token]) => offset >= editPrefix.length && offset < editPrefix.length + body.length)
+          && (tokens.get(editPrefix.length + 1)?.type === "hsonEventHead") === eventHead;
+      }, `Incorrect semantic Event head for ${body}`);
+    }
+    if (body === "<hson:ev") await waitFor(async () => (await labels(at)).some(item => name(item) === "hson:event"), body);
+    else assert.ok(!(await labels(at)).some(item => name(item) === "hson:event"), body);
+  }
+  console.log("ok - Event head completion, semantic roles and immediate diagnostics follow Declarative recognition");
+  for (const stem of ["producer", "Prİme"]) await runPartDiagnosticPublication(workspace, stem);
+  await runConfiguredSchemaProject(workspace);
+}
+
+async function runConfiguredSchemaProject(workspace: string): Promise<void> {
+  // The preceding publication project stays open while tsserver creates this one.
+  const root = vscode.Uri.file(join(workspace, "configured-schema-next"));
+  const uri = (name: string) => vscode.Uri.joinPath(root, name);
+  const write = (name: string, text: string) => vscode.workspace.fs.writeFile(uri(name), Buffer.from(text));
+  await vscode.workspace.fs.createDirectory(root);
+  await write("tsconfig.json", JSON.stringify({ compilerOptions: { module: "NodeNext", target: "ES2022", types: [], strict: true } }));
+  await write("package.json", '{"type":"module"}');
+  const part = (tag: string) => 'export const title="<' + tag + ' hson:part/>";';
+  await write("part.ts", part("p"));
+  const source = 'import {Hson,hsonLiveMap} from "hson-live";import {title} from "./part.js";\n'
+    + 'const S=Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
+    + 'hsonLiveMap.fromLibraries({page:{document:Hson.document`<main <hson-part lib="bits" at="title"/>/>`,schema:S},'
+    + 'bits:{parts:{title:{kind:"document",document:title}}}});\nexport function sum(){ return 11 + 22; }';
+  await write("app.ts", source);
+  const document = await vscode.workspace.openTextDocument(uri("app.ts"));
+  await vscode.window.showTextDocument(document, { preview: false });
+  const selection = new vscode.Range(document.positionAt(source.indexOf("11 + 22")), document.positionAt(source.indexOf("11 + 22") + 7));
+  const actions = await vscode.commands.executeCommand<(vscode.CodeAction | vscode.Command)[]>(
+    "vscode.executeCodeActionProvider", document.uri, selection, vscode.CodeActionKind.Refactor.value);
+  assert.ok(actions?.some(action => /extract/i.test(action.title)), "TypeScript offers a native extract refactor in the second project");
+  const mismatch = () => vscode.languages.getDiagnostics(document.uri).some(issue => issue.source === "hson-schema"
+    && issue.message.includes('expected "h1"; received "p"'));
+  await waitFor(mismatch, "Second configured project publishes its Schema mismatch");
+  const version = document.version;
+  await write("part.ts", part("h1"));
+  await waitFor(() => !mismatch(), "Dependency-only repair clears the second project's mismatch");
+  await write("part.ts", part("p"));
+  await waitFor(mismatch, "Dependency-only replacement restores the second project's mismatch");
+  assert.equal(document.version, version);
+  console.log("ok - a second configured project preserves native refactors and dependency-only Schema diagnostics");
+}
+
+
+
+async function runPartDiagnosticPublication(workspace: string, stem: string): Promise<void> {
+  const write = (file: vscode.Uri, text: string) => vscode.workspace.fs.writeFile(file, Buffer.from(text));
+  const project = vscode.Uri.file(join(workspace, "part-publication-" + stem));
+  const path = (name: string) => vscode.Uri.joinPath(project, name);
+  await vscode.workspace.fs.createDirectory(project);
+  await write(path("tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", strict: true, types: [], skipLibCheck: true } }));
+  await write(path("package.json"), '{"type":"module"}');
+  const scopeText = (names: string[]) => 'export const doc="<button hson:part '
+    + names.map(name => 'data:' + name + '=%{entries}').join(" ") + ' event:go/>";';
+  await write(path("scope.ts"), scopeText(["entry", "row"]));
+  await write(path(stem + ".ts"), 'export const ev="<hson:event on:click local:go a:data=^{entry.title} b:data=^{row.title} <>>";');
+  await write(path("app.ts"), 'import {hsonLiveMap as maps} from "hson-live"; import {ev} from "./' + stem + '.js"; import {doc} from "./scope.js";'
+    + 'maps.fromLibraries({assets:{parts:{panel:{kind:"document",document:doc,events:{go:ev}}}}});');
+  const scope = await vscode.workspace.openTextDocument(path("scope.ts"));
+  const consumer = await vscode.workspace.openTextDocument(path("app.ts"));
+  await vscode.window.showTextDocument(consumer);
+  const producer = await vscode.workspace.openTextDocument(path(stem + ".ts"));
+  await vscode.window.showTextDocument(producer);
+  const versions = [producer.version, consumer.version];
+  const displayed = () => vscode.languages.getDiagnostics(producer.uri).filter(d => d.source === "hson-schema" && d.code === 95002)
+    .map(d => [d.message, producer.getText(d.range)]);
+  const change = async (names: string[]) => {
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(scope.uri, new vscode.Range(scope.positionAt(0), scope.positionAt(scope.getText().length)), scopeText(names));
+    assert.ok(await vscode.workspace.applyEdit(edit));
+  };
+  for (const missing of ["entry", "row"] as const) {
+    await change([missing === "entry" ? "row" : "entry"]);
+    const expected = [[`Missing Part local declaration "${missing}".`, "^{" + missing + ".title}"]];
+    await waitFor(() => JSON.stringify(displayed()) === JSON.stringify(expected), "Passive displayed diagnostic for " + missing);
+  }
+  await change(["row"]);
+  await change(["entry", "row"]);
+  await waitFor(() => displayed().length === 0, "Passive removal after rapid dependency edits");
+  assert.deepEqual([producer.version, consumer.version], versions);
+  console.log("ok - dependency-only Part edits add, move and clear displayed diagnostics on stable recipients");
+  const locate = async () => {
+    const at = producer.positionAt(producer.getText().indexOf("entry.title"));
+    const result = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
+      "vscode.executeDefinitionProvider", producer.uri, at);
+    return (result ?? []).map(item => {
+      const uri = "targetUri" in item ? item.targetUri : item.uri;
+      const range = "targetUri" in item ? item.targetSelectionRange ?? item.targetRange : item.range;
+      return [uri.fsPath, range.start.line, range.start.character, range.end.character];
+    }).sort();
+  };
+  const target = (doc: vscode.TextDocument) => {
+    const position = doc.positionAt(doc.getText().indexOf("data:entry") + "data:".length);
+    return [doc.uri.fsPath, position.line, position.character, position.character + "entry".length];
+  };
+  assert.deepEqual(await locate(), [target(scope)]);
+  const extra = new vscode.WorkspaceEdit();
+  extra.insert(consumer.uri, consumer.positionAt(consumer.getText().length), '\n'
+    + 'maps.fromLibraries({page:{document:"<main/>",events:{go:ev}},bits:{parts:{card:{kind:"document",'
+    + 'document:"<button hson:part data:entry=%{rows} data:row=%{rows} event:go/>",events:{go:ev}}}}});\n'
+    + 'import {hsonLiveTree} from "hson-live"; hsonLiveTree.create.button().listen.event(ev);');
+  assert.ok(await vscode.workspace.applyEdit(extra));
+  await waitFor(() => vscode.languages.getDiagnostics(producer.uri).filter(d => d.source === "hson-schema" && d.code === 95002)
+    .filter(d => d.relatedInformation?.some(r => r.location.uri.fsPath === consumer.uri.fsPath
+      && r.message === "Document Event metadata.")).length === 2, "Contextual diagnostics identify the Document use");
+  assert.deepEqual(await locate(), [target(scope), target(consumer)].sort());
+  console.log("ok - both exact Part definitions survive a Document error and an imperative listener in VS Code");
 }
 
 async function runLocalHostLifecycle(workspace: string, folder: vscode.WorkspaceFolder): Promise<void> {
@@ -753,12 +1336,16 @@ export async function run(): Promise<void> {
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);
+  if (process.env.HSON_EVENT_TEST_ONLY === "1") { await runEventAuthoring(workspace, extension.extensionPath, true); return; }
   if (process.env.HSON_PART_COMPLETION_TEST_ONLY === "1") { await runPartCompletions(workspace); return; }
   if (process.env.HSON_RESTRICTED_TEST !== "1" && process.env.HSON_LOCAL_HOST_TEST_ONLY !== "1") {
     await runProtectedSourceFormatting(workspace);
     await runTypingConveniences(workspace);
+    if (process.env.HSON_TYPING_TEST_ONLY === "1") return;
+    if (nativeCompositionSupported && process.env.HSON_SCHEMA_CONSUMER_TEST !== "1") {
+      await runEventAuthoring(workspace, extension.extensionPath, false);
+    }
   }
-  if (process.env.HSON_TYPING_TEST_ONLY === "1") return;
   const commands = await vscode.commands.getCommands(true);
   for (const command of ["hson.actions", "hson.formatDocument", "hson.formatSelection", "hson.runAll", "hson.stopAll", "hson.startLocalHost", "hson.runAndOpenLocalApp", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.showLocalHostOutput"]) {
     assert.ok(commands.includes(command), `${command} is registered`);

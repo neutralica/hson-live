@@ -8,10 +8,10 @@ import ts from "typescript";
 
 const root = new URL("../", import.meta.url);
 export async function appearanceSource() {
-  const result = await build({ stdin: { contents: 'export * from "./src/appearance.ts"; export * from "./src/appearance-internals.ts"; export * from "./src/appearance-bindings.ts";', resolveDir: fileURLToPath(root), loader: "ts" }, bundle: true, write: false, platform: "node", format: "esm" });
+  const result = await build({ stdin: { contents: 'export * from "./src/appearance.ts"; export * from "./src/appearance-internals.ts"; export * from "./src/appearance-bindings.ts"; export { authored_event_completion_checkpoint } from "../../src/internal/hson-declarative.ts";', resolveDir: fileURLToPath(root), loader: "ts" }, bundle: true, write: false, platform: "node", format: "esm" });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString("base64")}`);
 }
-const { syntaxBindings, syntaxExamplePath, segmentBindings, tokenAppearancePaths, generalRules, generalSemanticPaths, uiColorOrder } = await appearanceSource();
+const { syntaxBindings, syntaxExamplePath, segmentBindings, tokenAppearancePaths, generalRules, generalSemanticPaths, uiColorOrder, authored_event_completion_checkpoint } = await appearanceSource();
 
 export function validateGrammarScopes(definitions, grammar) {
   const emitted = new Set();
@@ -24,8 +24,9 @@ export function validateGrammarScopes(definitions, grammar) {
     }
   };
   visit(grammar);
-  for (const [type, definition] of Object.entries(definitions)) for (const scope of definition.scopes) {
-    if (!emitted.has(scope)) throw new Error(`${type} scope is absent from the Hson grammar: ${scope}`);
+  for (const [type, definition] of Object.entries(definitions)) {
+    const grammarScopes = definition.scopes.length ? definition.scopes : definition.fallbackScopes ?? [];
+    for (const scope of grammarScopes) if (!emitted.has(scope)) throw new Error(`${type} scope is absent from the Hson grammar: ${scope}`);
   }
 }
 export function blend(foreground, background, intensity = 1) {
@@ -80,7 +81,8 @@ export function houseTheme(appearance, definitions, mode) {
   };
   const tokenColors = [
     ...generalRules.map(({ scopes, path }) => rule(scopes, semanticStyle(path))),
-    ...Object.entries(definitions).map(([type, definition]) => rule(definition.scopes, semanticTokenColors[type])),
+    ...Object.entries(definitions).filter(([, definition]) => definition.scopes.length > 0)
+      .map(([type, definition]) => rule(definition.scopes, semanticTokenColors[type])),
     rule(syntaxBindings['attribute.qualifier'].scopes, syntaxStyle('attribute.qualifier')),
     ...[...segmentBindings].sort((a,b)=>a.grammarOrder-b.grammarOrder).map(binding => rule([`${binding.context} ${binding.scope}`],syntaxStyle(binding.id))),
   ];
@@ -137,7 +139,7 @@ function replaceValue(text, path, value) {
 }
 export async function generateThemes({ check = false } = {}) {
   const { HSON_APPEARANCE: appearance, hsonTokenDefinitions: definitions, hsonTokenScopes: scopes, hsonTokenModifierDefinitions: modifiers } = await appearanceSource();
-  await validateExamples(appearance, syntaxBindings, syntaxExamplePath, generalRules);
+  await validateExamples(appearance, syntaxBindings, syntaxExamplePath, generalRules, source => authored_event_completion_checkpoint(source)?.spans ?? []);
   validateGrammarScopes({ ...definitions, ...modifiers }, JSON.parse(await readFile(new URL("syntaxes/hson.tmLanguage.json", root), "utf8")));
   const contributions = ["dark", "light"].map(mode => ({
     label: `Hson House ${mode === "dark" ? "Dark" : "Light"}`, uiTheme: mode === "dark" ? "vs-dark" : "vs",
@@ -148,7 +150,7 @@ export async function generateThemes({ check = false } = {}) {
   let manifest = await readFile(manifestPath, "utf8");
   for (const [key, value] of Object.entries({
     themes: contributions,
-    semanticTokenTypes: Object.entries(definitions).map(([id, definition]) => ({ id, ...("superType" in definition ? { superType: definition.superType } : {}), description: `Hson ${definition.role}` })),
+    semanticTokenTypes: Object.entries(definitions).map(([id, definition]) => ({ id, ...("superType" in definition ? { superType: definition.superType } : {}), description: "description" in definition ? definition.description : `Hson ${definition.role}` })),
     semanticTokenModifiers: Object.entries(modifiers).map(([id, { description }]) => ({ id, description })),
     semanticTokenScopes: [{ scopes }, ...["typescript", "typescriptreact"].map(language => ({ language, scopes }))],
   })) manifest = replaceValue(manifest, ["contributes", key], value);

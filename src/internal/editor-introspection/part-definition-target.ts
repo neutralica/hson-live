@@ -5,35 +5,36 @@ export type PartDefinitionTarget = Readonly<{ name: string; origin: PartSourceLo
 /** Preserve lexical-root/static precedence and deduplicate only the response,
  * leaving distinct caller associations in the shared selector result. */
 export function part_definition_targets(facts: PartSourceFacts, file: string, offset: number): readonly PartDefinitionTarget[] {
-  const existing = part_definition_target(facts, file, offset);
+  const targets = new Map<string, PartDefinitionTarget>();
+  for (const document of facts.documents) for (const use of document.bindingSources?.references ?? []) {
+    const target = use.declaration?.location;
+    if (use.context !== "event" || use.conditional || use.resolution !== "resolved" || target?.precision !== "exact"
+      || use.attachment?.precision !== "exact" || use.root.precision !== "exact" || use.root.file !== file
+      || offset < use.root.start || offset >= use.root.end) continue;
+    targets.set(JSON.stringify([target.file, target.start, target.end]), { name: use.reference.name, origin: use.root, target });
+  }
+  if (targets.size > 0) return [...targets.values()];
+  const existing = document_definition_target(facts, file, offset);
   if (existing !== undefined) return [existing];
   const result = part_selector_resolution(facts, file, offset);
   if (result === undefined) return [];
-  const targets = new Map<string, PartDefinitionTarget>();
   for (const context of result.contexts) for (const candidate of context.candidates) for (const member of candidate.definitions) {
     const target = member.declaration;
     targets.set(JSON.stringify([target.file, target.start, target.end]), { name: member.name, origin: result.location, target });
   }
   return [...targets.values()];
 }
-/** Source navigation only, using the same lexical identities and governed
- * receiving-inventory evidence used by completion and contract diagnostics. */
+/** Single-target callers require a unique authored destination. */
 export function part_definition_target(facts: PartSourceFacts, file: string, offset: number): PartDefinitionTarget | undefined {
-  const at = (range: PartSourceLocation) => range.file === file && range.start <= offset && offset < range.end;
-  if (facts.unavailableEventReferences.some(at)) return undefined;
-  const eventUses = facts.documents.flatMap(document => document.bindingSources?.references.filter(use =>
-    use.context === "event" && at(use.root)) ?? []);
-  const event = eventUses[0], target = event?.declaration?.location;
-  if (event !== undefined) {
-    return target !== undefined && eventUses.every(use => {
-      const candidate = use.declaration?.location;
-      return use.resolution === "resolved" && candidate?.file === target.file && candidate.start === target.start && candidate.end === target.end;
-    }) ? { name: event.reference.name, origin: event.root, target } : undefined;
-  }
+  const targets = part_definition_targets(facts, file, offset);
+  return targets.length === 1 ? targets[0] : undefined;
+}
+
+function document_definition_target(facts: PartSourceFacts, file: string, offset: number): PartDefinitionTarget | undefined {
   for (const document of facts.documents) {
     if (document.location.file !== file) continue;
     for (const use of document.bindingSources?.references ?? []) {
-      if (use.root.file === file && use.root.start <= offset && offset < use.root.end && use.resolution === "resolved" && use.declaration !== undefined) {
+      if (use.context !== "event" && use.root.file === file && use.root.start <= offset && offset < use.root.end && use.resolution === "resolved" && use.declaration !== undefined) {
         return { name: use.reference.name, origin: use.root, target: use.declaration.location };
       }
     }

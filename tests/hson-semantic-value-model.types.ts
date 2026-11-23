@@ -116,8 +116,10 @@ const omittedDocument: HsonAuthored = Hson.document`<main ${optionalDocument}/>`
 const omittedCanonical: HsonCanonical = omittedDocument;
 type DocumentTagOutput = Assert<Equal<ReturnType<typeof Hson.document>, HsonAuthored>>;
 // @ts-expect-error Data omission is not defined.
+// @hson-expect-error HSON_INTERPOLATION_DATA_STATIC_TYPE
 Hson.data`<value ${undefined}>`;
 // @ts-expect-error Generic canonical substitution still excludes undefined.
+// @hson-expect-error HSON_INTERPOLATION_CANONICAL_STATIC_TYPE
 Hson.canonical`${undefined}`;
 void omittedCanonical;
 

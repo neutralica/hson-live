@@ -22,27 +22,40 @@ export type ActionArgsContract = Readonly<{
   schema: VerifiedCanonicalSchemaGraph | undefined;
 }>;
 
+/** The own keys accepted at each level of the runtime options record. */
+export function action_args_keys_valid(keys: readonly PropertyKey[], record: "options" | "args"): boolean {
+  return record === "options" ? keys.every(key => key === "args") : keys.every(key => key === "required" || key === "schema");
+}
+
+export function action_args_required_valid(required: unknown): required is boolean | undefined {
+  return required === undefined || typeof required === "boolean";
+}
+
+export function action_args_schema_is_data(graph: VerifiedCanonicalSchemaGraph): boolean {
+  return graph.capabilities.projectedRoot !== undefined;
+}
+
 /** Capture the same immutable Data contract for hosted and local actions. */
 export function capture_action_args(
   options: ActionArgsOptions | undefined, label: string, schemaLabel: string,
 ): ActionArgsContract | undefined {
   if (options !== undefined && (typeof options !== "object" || options === null || Array.isArray(options)
-    || Reflect.ownKeys(options).some(key => key !== "args"))) {
+    || !action_args_keys_valid(Reflect.ownKeys(options), "options"))) {
     throw new TypeError(`${label} options may contain only args.`);
   }
   const args = options !== undefined && Object.hasOwn(options, "args") ? options.args : undefined;
   if (args === undefined) return undefined;
   if (typeof args !== "object" || args === null || Array.isArray(args)
-    || Reflect.ownKeys(args).some(key => key !== "required" && key !== "schema")) {
+    || !action_args_keys_valid(Reflect.ownKeys(args), "args")) {
     throw new TypeError(`${label} args options may contain only required and schema.`);
   }
   const required = Object.hasOwn(args, "required") ? args.required : undefined;
-  if (required !== undefined && typeof required !== "boolean") {
+  if (!action_args_required_valid(required)) {
     throw new TypeError(`${label} args.required must be a boolean.`);
   }
   const schema = Object.hasOwn(args, "schema") ? args.schema : undefined;
   const graph = schema === undefined ? undefined : compiled_hson_schema_of(schema).graph;
-  if (graph !== undefined && graph.capabilities.projectedRoot === undefined) {
+  if (graph !== undefined && !action_args_schema_is_data(graph)) {
     throw new TypeError(`Configured ${schemaLabel} Hson Schema must compile in data mode.`);
   }
   return Object.freeze({ required: required === true, schema: graph });

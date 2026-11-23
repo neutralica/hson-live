@@ -14,6 +14,7 @@ import { part_source_coordinates } from "../src/internal/hson-schema/part-source
 import { part_definition_targets } from "../src/internal/editor-introspection/part-definition-target.ts";
 import { PART_SELECTOR_CANDIDATE_CAP, part_selector_resolution, part_selector_hover } from "../src/internal/editor-introspection/part-selector-resolution.ts";
 import { static_part_reference_diagnostics } from "../src/internal/hson-schema/candidate-diagnostics.ts";
+import { imported_part_write_cases, part_write_target_cases } from "./fixtures/part-write-target-cases.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "part-completion", title: "Contextual authored Part completion", category: "Tooling", runtime: "node", tags: Object.freeze(["parts", "editor", "provenance"]) });
@@ -569,6 +570,37 @@ check("write key contexts reject recovered punctuation and modifiers", () => {
     assert.deepEqual(service.getSyntacticDiagnostics(file('app.ts')), [], input);
   }
 });
+check("write-key completion follows the selected Part across sibling and alternative edits", () => {
+  for (const { name, source, kind } of part_write_target_cases) {
+    const result = complete(source.replace('write({ });', 'write({ |});'));
+    assert.deepEqual(result.labels, kind ? ['needed'] : [], name);
+    for (const entry of result.entries) assert.deepEqual(entry.range, { start: result.offset, end: result.offset }, name);
+  }
+  const declarations = imports + 'const title={kind:"document",document:\'<p hson:part "%{title}"/>\'} as const;'
+    + 'const count={kind:"document",document:\'<p hson:part num:n=%{count} "^{n}"/>\'} as const;';
+  for (const [condition, labels] of [["true", ["title"]], ["false", ["count"]], ["condition", []]] as const) {
+    const source = declarations + 'const m=maps.fromLibraries({g:{parts:{p:' + condition + ' ? title : count}}});';
+    assert.deepEqual(complete(source + 'm.parts.g.p.write({ |});').labels, labels, condition);
+  }
+});
+
+check("imported records withhold write keys and preserve independent sibling completion", () => {
+  const names = new Set<string>();
+  try {
+    for (const { name, source, dependencies } of imported_part_write_cases) {
+      for (const [path, text] of Object.entries(dependencies)) { edit(path, text); names.add(path); }
+      for (const [member, labels] of [["p", []], ["q", ["peer"]]] as const) {
+        const result = complete(source.replace(member + '.write({ });', member + '.write({ |});'));
+        assert.deepEqual(result.labels, labels, name + "/" + member);
+        for (const entry of result.entries) assert.deepEqual(entry.range, { start: result.offset, end: result.offset }, name);
+      }
+    }
+  } finally {
+    for (const name of names) files.delete(file(name));
+    revision++;
+  }
+});
+
 check("TypeScript language service publishes prefix-free write key evidence", () => {
   const marked = imports + 'const loc=maps.fromLibraries({components:{parts:{x:{kind:"document",document:Hson.document`<p hson:part "%{label}"/>`}}}});loc.parts.components.x.write({ lab| });';
   const offset = marked.indexOf('|'); edit('app.ts', marked.replace('|',''));

@@ -4,6 +4,9 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { authored_event_completion_checkpoint, recognize_hson_declaration } from "../../../src/internal/hson-declarative.js";
+import { parse_authored_event } from "../../../src/internal/authored-events.js";
+import { complete_authored_event, type EventCompletion } from "../../../src/internal/editor-introspection/event-completion.js";
 import { TransformError } from "../../../src/core/errors.js";
 import { hson } from "../../../src/hson.js";
 import { Hson } from "../../../src/hson-authoring.js";
@@ -79,6 +82,463 @@ const eventPrefix = 'import { Hson as E } from "hson-live/hson";\r\nconst source
 const eventHost = hson_event_host_fixture(resolve(existsSync("src/hson-authoring.ts") ? "." : "../.."));
 const eventFile = join(eventHost, "events.ts");
 const diagnoseEvent = (text: string) => diagnose(text, "typescript", eventFile);
+
+function eventEdits(marked: string) {
+  const cursor = marked.indexOf("|");
+  assert.ok(cursor >= 0);
+  const source = marked.replace("|", "");
+  return { source, edits: complete_authored_event(source, cursor) };
+}
+
+function applyEventEdit(source: string, { range, candidate, cursorInInsert }: EventCompletion): string {
+  const caret = cursorInInsert ?? candidate.insertText.length;
+  return source.slice(0, range.start) + candidate.insertText.slice(0, caret) + "|" + candidate.insertText.slice(caret) + source.slice(range.end);
+}
+
+function expectEventEdit(marked: string, label: string, expected: string, admit = false): void {
+  const { source, edits } = eventEdits(marked);
+  const edit = edits.find(edit => edit.candidate.label === label);
+  assert.ok(edit, `${marked}: missing ${label} in ${edits.map(edit => edit.candidate.label)}`);
+  assert.equal(applyEventEdit(source, edit), expected);
+  if (admit) assert.ok(parse_authored_event(expected.replace("|", "")));
+}
+
+check("Event head, qualified selector and each closer have bounded edits", () => {
+  expectEventEdit("<hson:ev|", "hson:event", "<hson:event | <>>");
+  expectEventEdit("|", "hson:event", "<hson:event | <>>");
+  expectEventEdit("<hson:event on:pointer:d|x local:deck.move <>>", "on:pointer:down",
+    "<hson:event on:pointer:down| local:deck.move <>>", true);
+  expectEventEdit("<hson:event on:pointer:| local:deck.move <>>", "on:pointer:cancel",
+    "<hson:event on:pointer:cancel| local:deck.move <>>", true);
+  expectEventEdit("<hson:event on:click local:go|", "<>>", "<hson:event on:click local:go <>>|", true);
+  expectEventEdit("<hson:event on:click local:go |>", "<>", "<hson:event on:click local:go <>|>", true);
+  expectEventEdit("<hson:event on:click local:go <|", ">>", "<hson:event on:click local:go <>>|", true);
+  expectEventEdit("<hson:event on:click local:go <> |", ">", "<hson:event on:click local:go <> >|", true);
+  for (const text of ["<other:ev|", "<'hson:ev|'", "<hson:event on:click local:go <x|>>", "<hson:event on:click local:go <>> <|"]) {
+    assert.deepEqual(eventEdits(text).edits, [], text);
+  }
+});
+
+check("Event header observations exclude occupied tokens on both sides and distinguish valued domains", () => {
+  const labels = (text: string) => eventEdits(text).edits.map(edit => edit.candidate.label);
+  const options = labels('<hson:event once | capture document on:click local:go host:str="x" x:num="0" <>>');
+  for (const item of ["once", "capture", "document", "window", "on:click", "host:", "local:", "stopPropagation"]) assert.ok(!options.includes(item), item);
+  for (const item of ["passive", "preventDefault", "stopProp", "stopImmediateProp", "name:type=value"]) assert.ok(options.includes(item), item);
+  assert.deepEqual(labels('<hson:event on:| host:go <>>').sort(),
+    ['on:change', 'on:click', 'on:formdata', 'on:input', 'on:key:down', 'on:key:up', 'on:pointer:cancel',
+      'on:pointer:down', 'on:pointer:move', 'on:pointer:up', 'on:submit']);
+  assert.ok(labels('<hson:event on:click | host:str="x" <>>').includes("host:"));
+  assert.ok(!labels('<hson:event on:click age:| age:num="0" local:go <>>').includes("age:num"));
+  assert.ok(!labels('<hson:event on:click local:go once| once <>>').includes("once"));
+  assert.deepEqual(labels('<hson:event on:click local:go // cap|ture\r\n <>>'), []);
+  expectEventEdit('<hson:event on:click lo| <>>', 'local:', '<hson:event on:click local:| <>>');
+  expectEventEdit('<hson:event on:click host:n|um = "1" local:go <>>', 'host:num', '<hson:event on:click host:num| = "1" local:go <>>', true);
+  expectEventEdit('<hson:event on:click local:go arbitrary:b| <>>', 'arbitrary:bool', '<hson:event on:click local:go arbitrary:bool=| <>>');
+});
+
+check("Event typed operand edits use only supported literal and reference forms", () => {
+  for (const [qualifier, label, insertion] of [
+    ["str", '""', '"|"'], ["num", '"0"', '"0|"'], ["bool", "{false}", "{false}|"],
+    ["arr", "{[]}", "{[|]}"], ["data", "{<>}", "{<|>}"], ["data", "{null}", "{null}|"],
+  ]) expectEventEdit(`<hson:event on:click host:go x:${qualifier}=| <>>`, label!, `<hson:event on:click host:go x:${qualifier}=${insertion} <>>`, true);
+  expectEventEdit('<hson:event on:click local:go x:str=^| <>>', '^{name}', '<hson:event on:click local:go x:str=^{|} <>>');
+  expectEventEdit('<hson:event on:click local:go x:data=%{props["nested|', 'Close Part reference', '<hson:event on:click local:go x:data=%{props["nested"]}|', false);
+  expectEventEdit('<hson:event on:click local:go x:data=%{props["nested}|', 'Close Part reference',
+    '<hson:event on:click local:go x:data=%{props["nested}"]}|');
+  expectEventEdit('<hson:event on:click local:go x:bool={tr|} <>>', "true",
+    '<hson:event on:click local:go x:bool={true|} <>>', true);
+  expectEventEdit('<hson:event on:click local:go x:arr={|} <>>', "[]",
+    '<hson:event on:click local:go x:arr={[|]} <>>', true);
+  expectEventEdit('<hson:event on:click local:go x:bool="tr|ue" <>>', "true",
+    '<hson:event on:click local:go x:bool="true|" <>>', true);
+  expectEventEdit('<hson:event on:click local:go x:num="-0|', '"',
+    '<hson:event on:click local:go x:num="-0"|');
+  expectEventEdit('<hson:event on:click local:go x:str="literal } braces|', '"', '<hson:event on:click local:go x:str="literal } braces"|');
+  assert.deepEqual(eventEdits(String.raw`<hson:event on:pointer:down local:go x:num="\u005e{pointer.cli|`).edits, []);
+});
+
+check("Event Boolean completion edits only an observed word or quoted value", () => {
+  const prefix = '<hson:event on:click local:go\r\n note:str="🧪\\\"ok" x:bool="';
+  for (const tail of [' once <>>', ' n:num="7" <>>', ' window capture <>>', '<>>', '//keep\r\n <>>']) {
+    expectEventEdit(prefix + "tr|ue" + tail, "true", prefix + 'true"|' + tail, true);
+  }
+  expectEventEdit(prefix + 'tr|ue" once <>>', "true", prefix + 'true|" once <>>', true);
+  assert.deepEqual(eventEdits(prefix + 'tr|ue\\" once <>>').edits, [], "an escaped quote cannot end a Boolean word");
+  assert.deepEqual(eventEdits(prefix + 'tr|ue once <>>" <>>').edits, [], "an observed quote does not make a multiword Boolean editable");
+  assert.deepEqual(eventEdits(prefix + 'tr|ue n:num="7" <>>').edits.find(edit => edit.candidate.label === "true")?.range,
+    { start: prefix.length, end: prefix.length + 4 });
+});
+
+check("A bounded missing Boolean quote preserves following Event evidence", () => {
+  const prefix = '<hson:event on:key:up local:go\r\n note:str="🧪\\"ok" broken:bool="tr';
+  const suffix = ' native:bool=^{key.repeat} once window <>>';
+  const spans = (source: string) => authored_event_completion_checkpoint(source)?.spans ?? [];
+  for (const tail of [
+    suffix,
+    ' native:bool=^{key["repeat"]} once window <>>',
+    '\r\n // keep "quoted" 🧭\r\n native:bool=^{key.repeat} once <>>',
+    '\r\n' + String.raw` note2:str="a 🧪 \"once\"" window <>>`,
+    ' once\r\n text:str="text with space 🧭" window <>>',
+    ' once window <>>',
+    ' once comment:str="blue" <>>',
+    ' native:bool=^{key.repeat} comment:str="blue" once <>>',
+    ' once\r\n native:bool=^{key.repeat} comment:str="blue" <>>',
+    '// keep 🧪\r\n native:bool=^{key.repeat} once <>>',
+  ]) {
+    const before = prefix + tail;
+    assert.throws(() => parse_authored_event(before));
+    expectEventEdit(prefix + '|' + tail, "true", prefix + 'ue"|' + tail, true);
+    const relative = (source: string, start: number) => spans(source)
+      .filter(span => span.start >= start)
+      .map(span => [span.role, span.start - start, span.end - start, source.slice(span.start, span.end)]);
+    assert.deepEqual(relative(before, prefix.length), relative(prefix + 'ue"' + tail, prefix.length + 3), tail);
+  }
+  expectEventEdit(prefix + suffix.replace("repeat", "re|peat"), "key.repeat", prefix + suffix.replace("repeat}", "repeat}|"));
+  expectEventEdit(prefix + suffix.replace("once", "|once"), "capture", prefix + suffix.replace("once", "capture |once"));
+  for (const tail of [' once upon a time <>>', ' once "glued <>>', ' once <>>" <>>', '\\" once <>>']) {
+    assert.ok(!spans(prefix + tail).some(({ role }) => role === "option"), tail);
+  }
+  for (const tail of [
+    ' once\r\n native:bool=^{key.repeat} window <>>" <>>',
+    ' once\r\n native:bool=^{key.repeat} window \\" <>>" <>>',
+    ' once\r\n note2:str=" might close the operand <>>',
+  ]) {
+    const before = prefix + tail;
+    assert.throws(() => parse_authored_event(before), { code: "HSON_STRING_CONTROL_UNESCAPED" });
+    assert.ok(!spans(before).some(span => span.start >= prefix.length && (span.role === "option" || span.role === "nativeProperty")), tail);
+    assert.deepEqual(eventEdits(prefix + "|" + tail).edits, [], tail);
+    assert.deepEqual(eventEdits(prefix + tail.replace("once", "|once")).edits, [], tail);
+  }
+  for (const newline of ["\n", "\r\n"]) {
+    const source = prefix + newline + ' capture other:str=" // " 🧪' + newline
+      + ' native:bool=^{key["repeat"]} window <>>';
+    assert.throws(() => parse_authored_event(source), { code: "HSON_STRING_CONTROL_UNESCAPED" });
+    assert.deepEqual(eventEdits(prefix + "|" + source.slice(prefix.length)).edits, []);
+    const observed = spans(source);
+    assert.deepEqual(observed.filter(span => span.role === "option" || span.role === "argument")
+      .map(span => source.slice(span.start, span.end)), ["note", "broken", "native", "window"]);
+    assert.ok(observed.some(span => span.role === "comment" && source.slice(span.start, span.end) === '// " 🧪'));
+    assert.ok(observed.some(span => span.role === "nativeProperty" && source.slice(span.start, span.end) === "repeat"));
+  }
+  const bracket = ' native:bool=^{key["repeat"]} once <>>';
+  expectEventEdit(prefix + bracket.replace("repeat", "re|peat"), "key.repeat", prefix + bracket.replace('"]}', '"]}|'));
+  const formPrefix = '<hson:event on:formdata host:go broken:bool="tr';
+  const formTail = ' field:str=^{formdata:get("em 🧪")} once <>>';
+  expectEventEdit(formPrefix + '|' + formTail, "true", formPrefix + 'ue"|' + formTail, true);
+  expectEventEdit(formPrefix + formTail.replace(":get", ":ge|t"), "formdata:get",
+    formPrefix + formTail.replace('")}', '")}|'));
+  for (const tail of [' once note2:str="oops window <>>', ' once note2:str=" a 🧪 window <>>',
+    ' once note2:str=" a 🧪" note3:str="oops window <>>']) {
+    const before = prefix + tail;
+    assert.throws(() => parse_authored_event(before));
+    assert.ok(!spans(before).some(span => span.start >= prefix.length && span.role === "option"), tail);
+    assert.deepEqual(eventEdits(prefix + "|" + tail).edits, [], tail);
+  }
+  assert.ok(spans(prefix + 'ue"' + suffix).some(({ role, start }) => role === "boolean" && start === prefix.length - 2));
+  const beforeMissing = ' missing:arr=';
+  expectEventEdit(prefix + beforeMissing + '|' + suffix, "{[]}",
+    prefix + beforeMissing + '{[|]}' + suffix);
+  assert.throws(() => parse_authored_event(prefix + beforeMissing + '{[]}' + suffix), { code: "HSON_STRING_UNTERMINATED" });
+  expectEventEdit(prefix + '|' + beforeMissing + '{[]}' + suffix, "true",
+    prefix + 'ue"|' + beforeMissing + '{[]}' + suffix, true);
+});
+
+check("Closed invalid Boolean strings retain the reader's quote and content boundaries", () => {
+  const head = '<hson:event on:key:up local:go bad:bool=';
+  for (const value of ['tr once //', 'tr once', 'tr  window', String.raw`tr \"once\" 🧪`,
+    'tr ^{key.repeat}', 'tr item:data={true} <>>']) {
+    const quoted = '"' + value + '"';
+    const source = head + quoted + ' window <>>';
+    assert.throws(() => parse_authored_event(source), { code: "HSON_EVENT_DECLARATION_INVALID" });
+    const spans = authored_event_completion_checkpoint(source)?.spans ?? [];
+    assert.deepEqual(spans.filter(span => span.role === "quote").map(span => span.start), [head.length, head.length + quoted.length - 1], value);
+    assert.deepEqual(spans.filter(span => span.role === "option").map(span => span.start), [head.length + quoted.length + 1], value);
+    assert.ok(!spans.some(span => ["comment", "nativeProperty", "dataPunctuation"].includes(span.role)), value);
+    assert.deepEqual(eventEdits(head + quoted.replace("tr", "tr|") + ' window <>>').edits, [], value);
+    expectEventEdit(head + quoted + ' |window <>>', 'capture', head + quoted + ' capture |window <>>');
+  }
+  for (const content of ['fa capture //', String.raw`fa \"window\" 🧪 //`, 'fa window']) {
+    const quoted = '"' + content + '"';
+    const neighbor = 'junk\r\n lookup:bool=^{key.repeat} <>>';
+    const source = head + quoted + neighbor;
+    const spans = authored_event_completion_checkpoint(source)?.spans ?? [];
+    assert.throws(() => parse_authored_event(source), /Expected trivia between authored event header items/);
+    assert.deepEqual(spans.filter(span => span.role === "quote").map(span => span.start),
+      [head.length, head.length + quoted.length - 1], content);
+    assert.ok(!spans.some(span => ["option", "comment", "nativeProperty"].includes(span.role)), content);
+    assert.deepEqual(eventEdits(head + quoted.replace("fa", "fa|") + neighbor).edits, [], content);
+  }
+  const commentInData = head + '"fa x:data={ // "junk\r\n true} lookup:bool=^{key.repeat} <>>';
+  assert.ok(!authored_event_completion_checkpoint(commentInData)?.spans.some(span =>
+    ["option", "comment", "nativeProperty", "dataPunctuation"].includes(span.role)));
+});
+
+check("Boolean recovery keeps lexically established operands before later independent errors", () => {
+  const broken = '<hson:event on:key:up local:go bad:bool="tr';
+  const prefix = broken + '\r\n native:bool=^{key["repeat"]} once';
+  for (const tail of ['note:str="unfinished window <>>', 'note:data=^{row["unfinished',
+    'note:data={<node [true']) {
+    const source = prefix + '\r\n ' + tail;
+    const spans = authored_event_completion_checkpoint(source)?.spans ?? [];
+    assert.throws(() => parse_authored_event(source), { code: "HSON_STRING_CONTROL_UNESCAPED" });
+    for (const [role, word] of [["nativeProperty", "repeat"], ["option", "once"]]) {
+      assert.ok(spans.some(span => span.role === role && source.slice(span.start, span.end) === word), tail);
+    }
+    assert.ok(!spans.some(span => span.role === "option" && source.slice(span.start, span.end) === "window"), tail);
+    assert.ok(eventEdits(source.replace("repeat", "re|peat")).edits.some(edit => edit.candidate.label === "key.repeat"), tail);
+    assert.ok(eventEdits(source.replace("once", "|once")).edits.some(edit => edit.candidate.label === "capture"), tail);
+  }
+  const optionOnly = broken + '\r\n once\r\n note:str="unfinished';
+  assert.ok(eventEdits(optionOnly.replace("once", "|once")).edits.some(edit => edit.candidate.label === "capture"));
+  for (const tail of ['later:data={<item "unclosed', 'later:data=^{row["unclosed']) {
+    const source = broken + ' lookup:bool=^{key.repeat}\r\n ' + tail;
+    expectEventEdit(source.replace('"tr', '"tr|'), "true", source.replace('"tr', '"true"|'));
+    expectEventEdit(source.replace("repeat", "re|peat"), "key.repeat", source.replace("repeat}", "repeat}|"));
+  }
+  const sameLine = broken.replace('"tr', '"fa') + ' lookup:bool=^{key["repeat"]}';
+  for (const tail of [' bogus <>>', ' task:unknown="hello" <>>',
+    ' // 🧭\r\n bad:data=^{row["unfinished', ' watch:data={<item [true']) {
+    const before = sameLine + tail;
+    const repaired = before.replace('"fa ', '"false" ');
+    assert.throws(() => parse_authored_event(before), TransformError, tail);
+    assert.throws(() => parse_authored_event(repaired), TransformError, tail);
+    const roles = (source: string) => authored_event_completion_checkpoint(source)?.spans
+      .filter(span => span.role === "nativeProperty").map(span => source.slice(span.start, span.end));
+    assert.deepEqual(roles(before), ["repeat"], tail);
+    assert.deepEqual(roles(repaired), ["repeat"], tail);
+    expectEventEdit(before.replace('"fa ', '"fa| '), "false", repaired.replace('"false" ', '"false"| '));
+    expectEventEdit(before.replace("repeat", "re|peat"), "key.repeat", before.replace('"]}', '"]}|'));
+  }
+  const two = broken + '\r\n next:bool="fa  \r\n native:bool=^{key["repeat"]} once <>>';
+  const fixFirst = two.replace('"tr', '"true"');
+  expectEventEdit(two.replace('"tr', '"tr|'), 'true', fixFirst.replace('"true"', '"true"|'));
+  expectEventEdit(fixFirst.replace('"fa', '"fa|'), 'false', fixFirst.replace('"fa', '"false"|'), true);
+});
+
+check("Bounded malformed Event quotes own their contents and leave subsequent operands editable", () => {
+  const head = '<hson:event on:key:up local:go ';
+  const suffix = ' lookup:bool=^{key.repeat} window <>>';
+  for (const [argument, code] of [
+    ['bad:bool="tr\r\n capture bogus "', "HSON_STRING_CONTROL_UNESCAPED"],
+    ['bad:bool="tr\n capture bogus "', "HSON_STRING_CONTROL_UNESCAPED"],
+    ['bad:bool="tr\r\n capture words \\"once\\" 🧪 "', "HSON_STRING_CONTROL_UNESCAPED"],
+    [String.raw`bad:bool="tr \z capture"`, "invalid-json-escape"],
+    [String.raw`bad:str="a \z \"once\" 🧪 \u0041"`, "invalid-json-escape"],
+    [String.raw`bad:str="a \u12"`, "invalid-json-escape"],
+  ]) {
+    const source = head + argument + suffix;
+    assert.throws(() => parse_authored_event(source), { code });
+    const { spans = [] } = authored_event_completion_checkpoint(source) ?? {};
+    const expectedOptions = spans.filter(span => span.role === "option").map(span => source.slice(span.start, span.end));
+    assert.deepEqual(expectedOptions, ["window"], argument);
+    assert.ok(spans.some(span => span.role === "quote" && span.start === head.length + argument.length - 1), argument);
+    assert.ok(spans.some(span => span.role === "nativeProperty" && source.slice(span.start, span.end) === "repeat"), argument);
+    assert.deepEqual(eventEdits(source.slice(0, source.indexOf('"') + 3) + "|" + source.slice(source.indexOf('"') + 3)).edits, [], argument);
+    expectEventEdit(source.replace("repeat", "re|peat"), "key.repeat", source.replace("repeat}", "repeat}|"));
+    assert.ok(spans.every((span, index) => span.start < span.end && span.end <= source.length
+      && (!index || spans[index - 1]!.end <= span.start)));
+  }
+  for (const draft of [String.raw`bad:str="a \u12 once|`, String.raw`bad:str="a \z \"capture|`, 'bad:str="a \\|']) {
+    const { source, edits } = eventEdits(head + draft);
+    assert.throws(() => parse_authored_event(source), { code: "invalid-json-escape" });
+    assert.deepEqual(edits, [], draft);
+    assert.ok(!authored_event_completion_checkpoint(source)?.spans.some(span => span.role === "option"), draft);
+  }
+});
+
+check("Confirmed Event header and operand edits survive incomplete syntax to their right", () => {
+  for (const tail of [' text:str="unclosed', ' text:str=^{row["unclosed', ' items:arr={[1,', ' value:data={<item "unfinished']) {
+    expectEventEdit('<hson:event on:cli| local:go' + tail, "on:click", '<hson:event on:click| local:go' + tail);
+    expectEventEdit('<hson:event on:click lo|cal' + tail, "local:", '<hson:event on:click local:|' + tail);
+    expectEventEdit('<hson:event on:click local:go amount:nu|m="1"' + tail, "amount:num",
+      '<hson:event on:click local:go amount:num|="1"' + tail);
+    expectEventEdit('<hson:event on:pointer:down local:go x:num=^{pointer.cli|entX}' + tail, "pointer.clientX",
+      '<hson:event on:pointer:down local:go x:num=^{pointer.clientX}|' + tail);
+    const gap = '<hson:event on:click local:go window |once' + tail;
+    const { edits } = eventEdits(gap);
+    const at = gap.indexOf("|");
+    assert.deepEqual(edits.find(edit => edit.candidate.label === "capture")?.range, { start: at, end: at });
+    assert.ok(!edits.some(edit => ["once", "window", "document"].includes(edit.candidate.label)));
+    expectEventEdit(gap, "capture", '<hson:event on:click local:go window capture |once' + tail);
+  }
+});
+
+check("Bare Event references keep every path span up to the authoring limit", () => {
+  const prefix = '// 🧪\r\n<hson:event on:key:up local:go x:data=^{a';
+  for (const segments of [2, 4_000, 63_970]) {
+    const source = prefix + ".b".repeat(segments) + "} <>>";
+    assert.ok(source.length < 128_000);
+    assert.doesNotThrow(() => parse_authored_event(source));
+    const observation = authored_event_completion_checkpoint(source);
+    assert.ok(observation);
+    const { spans } = observation;
+    assert.equal(spans.filter(span => span.role === "referencePath").length, segments);
+    assert.equal(spans.filter(span => span.role === "referenceSeparator").length, segments);
+    assert.ok(spans.every((span, index) => span.start < span.end
+      && span.end <= source.length && (!index || spans[index - 1]!.end <= span.start)));
+    const last = prefix.length + 2 * segments;
+    assert.deepEqual(spans.find(span => span.start === last), { start: last, end: last + 1, role: "referencePunctuation" });
+  }
+  const malformed = prefix + ".b".repeat(63_970) + ".!} <>>";
+  assert.throws(() => parse_authored_event(malformed), { code: "HSON_EVENT_DECLARATION_INVALID" });
+  assert.equal(authored_event_completion_checkpoint(malformed)?.spans.filter(span => span.role === "referencePath").length, 63_970);
+});
+
+check("Long Boolean headers retain all closed or independently recoverable operands", () => {
+  for (const [literal, role] of [['"tr // "', 'string'], ['"tr', 'string'], ['{true}', 'boolean']]) {
+    const count = 6000;
+    const source = '<hson:event on:key:up local:go\n'
+      + Array.from({ length: count }, (_, i) => ` x${i}:bool=${literal}\n`).join('') + ' once <>>';
+    assert.ok(source.length < 128_000);
+    const observed = authored_event_completion_checkpoint(source);
+    assert.equal(observed?.arguments.length, count, literal);
+    assert.equal(observed?.spans.filter(span => span.role === role).length, count, literal);
+    assert.ok(observed?.spans.some(span => span.role === "option" && source.slice(span.start, span.end) === "once"), literal);
+    assert.ok(!observed?.spans.some(span => span.role === "comment"), literal);
+  }
+});
+
+check("Missing Event operands insert without consuming the next header item or comment", () => {
+  const prefix = "<hson:event on:key:up local:go";
+  for (const [qualifier, label, inserted] of [
+    ["str", '""', '"|"'], ["num", '"0"', '"0|"'], ["bool", "{true}", "{true}|"],
+    ["arr", "{[]}", "{[|]}"], ["data", "{null}", "{null}|"],
+  ] as const) {
+    for (const tail of [' once <>>', ' y:num="2" once <>>', ' // keep 🧪\r\n once <>>', '<>>']) {
+      const draft = `${prefix} x:${qualifier}=|${tail}`;
+      const point = draft.indexOf("|");
+      assert.deepEqual(eventEdits(draft).edits.find(edit => edit.candidate.label === label)?.range, { start: point, end: point });
+      expectEventEdit(draft, label,
+        `${prefix} x:${qualifier}=${inserted}${tail}`, true);
+    }
+  }
+  expectEventEdit('<hson:event x:bool=| on:key:up local:go <>>', "{true}",
+    '<hson:event x:bool={true}| on:key:up local:go <>>', true);
+  expectEventEdit('<hson:event on:key:up x:bool= |local:go <>>', "{true}",
+    '<hson:event on:key:up x:bool= {true} |local:go <>>', true);
+  expectEventEdit(prefix + ' x:bool= // keep 🧪\r\n |once <>>', "{true}",
+    prefix + ' x:bool= // keep 🧪\r\n {true} |once <>>', true);
+  expectEventEdit(prefix + ' x:bool=| >', "{true}", prefix + ' x:bool={true}| >');
+  for (const tail of [' once=wrong <>>', ' y:typo="2" <>>', ' once-more <>>', ' ^{key.repeat} <>>']) {
+    assert.ok(!eventEdits(prefix + ' x:bool=|' + tail).edits.some(edit => edit.candidate.label === "{true}"), tail);
+  }
+  assert.deepEqual(eventEdits(prefix + ' x:bool= // ke|ep\r\n once <>>').edits, []);
+});
+
+check("Event header gaps preserve the complete items on both sides", () => {
+  const prefix = "<hson:event on:click local:go";
+  for (const item of ["once", "document", "window", "capture", 'n:num="1"']) {
+    const after = eventEdits(prefix + " |" + item + " <>>");
+    const label = item === "capture" ? "passive" : "capture";
+    const edit = after.edits.find(candidate => candidate.candidate.label === label);
+    assert.ok(edit, item);
+    assert.deepEqual(edit.range, { start: prefix.length + 1, end: prefix.length + 1 });
+    assert.equal(applyEventEdit(after.source, edit), prefix + " " + label + " |" + item + " <>>");
+    assert.ok(parse_authored_event(applyEventEdit(after.source, edit).replace("|", "")));
+    for (const blocked of [item, ...(item === "window" ? ["document"] : item === "document" ? ["window"] : [])]) {
+      assert.ok(!after.edits.some(candidate => candidate.candidate.label === blocked), blocked);
+    }
+  }
+  expectEventEdit(prefix + "| once <>>", "capture", prefix + " capture| once <>>", true);
+  expectEventEdit(prefix + " once| window <>>", "capture", prefix + " once capture| window <>>", true);
+  expectEventEdit(prefix + " on|ce <>>", "once", prefix + " once| <>>", true);
+  expectEventEdit(prefix + ' n:n|um="7" <>>', "n:num", prefix + ' n:num|="7" <>>', true);
+  expectEventEdit(prefix + ' n:num="7"| once <>>', "capture", prefix + ' n:num="7" capture| once <>>', true);
+  expectEventEdit(prefix + ' // 🧪\r\n|once <>>', "capture", prefix + ' // 🧪\r\ncapture |once <>>', true);
+});
+
+check("Event head completion agrees with Declarative recognition and admission", () => {
+  const cache = new HsonEditorCompletionCache();
+  for (const [marked, kind, code, hasEventHead] of [
+    ["<hson:ev|", "incomplete", "HSON_DECLARATIVE_NAME_INCOMPLETE", true],
+    ["<hson:event| on:click local:go <>>", "recognized", undefined, true],
+    ['<h| title="ok"/>', "ordinary", "HSON_DECLARATIVE_ROOT_REQUIRED", false],
+    ['<h| title="ok" "nested"> // trailing\r\n', "ordinary", "HSON_DECLARATIVE_ROOT_REQUIRED", false],
+    ["<'hson:event|'/>", "ordinary", "HSON_DECLARATIVE_ROOT_REQUIRED", false],
+    ["<hson:schema|>", "recognized", "HSON_DECLARATIVE_DOMAIN_MISMATCH", false],
+    ["<hson:unknown|>", "unsupported", "HSON_DECLARATIVE_DOMAIN_UNSUPPORTED", false],
+    ["<hson:event|=oops>", "malformed", "HSON_DECLARATIVE_HEAD_MALFORMED", false],
+  ] as const) {
+    const body = marked.replace("|", "");
+    const text = eventPrefix + body + "`;";
+    const template = Object.freeze(Object.assign([body], { raw: Object.freeze([body]) }));
+    assert.equal(recognize_hson_declaration(body).kind, kind, body);
+    assert.equal(authored_event_completion_checkpoint(body)?.spans.some(span => span.role === "head") ?? false, hasEventHead, body);
+    if (code !== undefined) assert.throws(() => Hson.event(template), { code }, body);
+    else assert.equal(Hson.event(template), body);
+    assert.deepEqual(diagnoseEvent(text).map(issue => issue.code), code ? [code] : [], body);
+    const edits = cache.complete(eventFile, text, 1, eventPrefix.length + marked.indexOf("|"));
+    assert.equal(edits.some(edit => edit.candidate.label === "hson:event"), kind === "incomplete", body);
+  }
+});
+
+check("Event native lookup edits filter families, paths and carriers and preserve operation punctuation", () => {
+  expectEventEdit('<hson:event on:pointer:down local:go x:num=^{pointer.cl|x?} <>>', 'pointer.clientX',
+    '<hson:event on:pointer:down local:go x:num=^{pointer.clientX?}| <>>', true);
+  expectEventEdit('<hson:event on:submit local:go x:bool=^{submit.submitter.che| <>>', 'submit.submitter.checked',
+    '<hson:event on:submit local:go x:bool=^{submit.submitter.checked}| <>>', true);
+  expectEventEdit('<hson:event local:go x:data=^{input.target["va|"]} on:input <>>', 'input.target.value',
+    '<hson:event local:go x:data=^{input.target["value"]}| on:input <>>', true);
+  expectEventEdit('<hson:event on:formdata host:save x:str=^{formdata:ge|} <>>', 'formdata:get',
+    '<hson:event on:formdata host:save x:str=^{formdata:get("|")} <>>', true);
+  expectEventEdit('<hson:event on:formdata host:save x:arr=^{formdat|} <>>', 'formdata:getAll',
+    '<hson:event on:formdata host:save x:arr=^{formdata:getAll("|")} <>>', true);
+  expectEventEdit(String.raw`<hson:event on:formdata host:save x:bool="^{formdata:h|}" <>>`, 'formdata:has',
+    String.raw`<hson:event on:formdata host:save x:bool="^{formdata:has(\"|\")}" <>>`, true);
+  for (const marked of [
+    '<hson:event on:click local:go x:num=^{pointer.cli|} <>>',
+    '<hson:event on:pointer:down local:go x:str=^{pointer.cli|} <>>',
+    '<hson:event on:pointer:down local:go x:num=^{pointer.nope|} <>>',
+    '<hson:event on:pointer:down local:go x:num=^{pointer.cli|}junk <>>',
+    '<hson:event on:formdata local:go x:num=^{formdata:ge|} <>>',
+    '<hson:event on:formdata local:go x:str=^{formdata:ge|t("a")}.bad <>>',
+  ]) assert.deepEqual(eventEdits(marked).edits, [], marked);
+});
+
+check("Event scanner roles stay exact in partial and complete UTF-16 source", () => {
+  const source = String.raw`<hson:event on:pointer:down host:deck.next once host:str="é🧪 { \" }" x:num=^{pointer.clientX} d:data={<flag true empty null>} label:str="x%{from[\"key}\"]?}" <>>`;
+  const spans = authored_event_completion_checkpoint(source)?.spans ?? [];
+  assert.ok(spans.every((range, index) => range.start < range.end && (!index || spans[index - 1]!.end <= range.start)));
+  const text = (role: string) => spans.filter(span => span.role === role).map(span => source.slice(span.start, span.end));
+  assert.deepEqual(text("action"), ["deck.next"]);
+  assert.deepEqual(text("argument"), ["host", "x", "d", "label"]);
+  assert.deepEqual(text("selectorName"), ["pointer", "down"]);
+  assert.deepEqual(text("nativeProperty"), ["clientX"]);
+  assert.deepEqual(text("referenceRoot"), ["from"]);
+  assert.deepEqual(text("referencePath"), ["key}"]);
+  assert.deepEqual(text("boolean"), ["true"]);
+  assert.deepEqual(text("dataValue"), ["null"]);
+  assert.deepEqual(["structural", "outcomeOpen", "outcomeClose", "declarationClose"].flatMap(text), ["<", "<", ">", ">"]);
+  assert.ok(text("escape").includes('\\"'));
+  assert.ok(parse_authored_event(source));
+  const partial = '<hson:event on:pointer:down local:go\r\n //note\r\n x:num="🧪\\u12';
+  assert.throws(() => parse_authored_event(partial));
+  const partialSpans = authored_event_completion_checkpoint(partial)?.spans ?? [];
+  assert.ok(partialSpans.some(span => span.role === "comment" && partial.slice(span.start, span.end) === "//note"));
+  assert.ok(partialSpans.some(span => span.role === "escape" && partial.slice(span.start, span.end) === '\\u12'));
+});
+
+check("genuine Event tags preserve normalized raw coordinates and recover incomplete regions", () => {
+  const cache = new HsonEditorCompletionCache();
+  const body = '<hson:event on:formdata host:go\r\n a:str="é🧪" f:str=^{formdata:ge|} <>>';
+  const marked = eventPrefix + body + '`';
+  const source = marked.replace("|", "");
+  const version = 1;
+  const edit = cache.complete(eventFile, source, version, marked.indexOf("|")).find(edit => edit.candidate.label === "formdata:get");
+  assert.ok(edit);
+  assert.equal(applyEventEdit(source, edit), eventPrefix + body.replace('ge|}', 'get("|")}') + '`');
+  const unterminated = eventPrefix + '<hson:ev';
+  assert.ok(cache.complete(eventFile, unterminated, 2, unterminated.length).some(edit => edit.candidate.label === "hson:event"));
+  let probeVersion = 2;
+  for (const text of [
+    marked.replace('import { Hson as E } from "hson-live/hson";', 'const E = { event: String.raw };'),
+    marked.replace('import {', 'import type {'),
+    marked.replace('E.event`', '`'),
+    eventPrefix + '<hson:event on:click host:go ${on|} <>>`',
+  ]) {
+    assert.deepEqual(cache.complete(eventFile, text.replace("|", ""), ++probeVersion, text.indexOf("|")), [], text);
+  }
+});
 
 check("a workspace path remap to a local Event lookalike supplies no immediate diagnostics", () => {
   const directory = mkdtempSync(join(tmpdir(), "hson-event-remap-"));

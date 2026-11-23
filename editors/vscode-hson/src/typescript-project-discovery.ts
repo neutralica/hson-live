@@ -10,6 +10,7 @@ export type DiscoveredTypeScriptSource = Readonly<{
   languageId: "typescript" | "typescriptreact";
   owners: readonly string[];
   eventEvidence?: EventSourceEvidence;
+  eventEvidencePending?: true;
 }>;
 
 export type TypeScriptProjectDiscovery = Readonly<{
@@ -27,7 +28,7 @@ export type ProjectDiscoveryRequest = Readonly<{
 }>;
 export type ProjectRevisions = readonly (readonly [project: string, revision: string])[];
 export type ProjectDiscoveryResponse = Readonly<{ sessionId: string; revision: ProjectRevisions; discoveryId?: string; projects?: TypeScriptProjectDiscovery }>;
-export type ActiveTypeScriptProject = Readonly<{ program: ts.Program; mapping?: (fileName: string) => SchemaSourceMapping | undefined }>;
+export type ActiveTypeScriptProject = Readonly<{ program: ts.Program | null; mapping?: (fileName: string) => SchemaSourceMapping | undefined }>;
 
 export function is_typescript_configuration_path(fileName: string): boolean {
   return /(?:^|[/\\])(?:tsconfig(?:\.[^/\\]+)?|jsconfig)\.json$/i.test(fileName);
@@ -116,15 +117,17 @@ function read_configurations(ts: typeof import("typescript"), workspaceRoots: re
   return { parsed, configurations: [...configurations.values()].sort(), errors };
 }
 
-type ProjectSource = Readonly<{ fileName: string; identity?: string; publish: boolean; eventEvidence?: EventSourceEvidence }>;
+type ProjectSource = Readonly<{ fileName: string; identity?: string; publish: boolean; eventEvidence?: EventSourceEvidence; eventEvidencePending?: true }>;
 type ProjectSources = Readonly<{
   files: ReadonlyMap<string, string | null>;
-  activeProgram?: ts.Program;
+  /** null denotes a loaded project whose native Program is not ready. */
+  activeProgram?: ts.Program | null;
+  current: boolean;
   sources: readonly ProjectSource[];
 }>;
 
 function read_project_sources(ts: typeof import("typescript"), program: ts.Program, workspaceRoots: readonly string[],
-  snapshots: ReadonlyMap<string, string>, configured: boolean, proveEvents: boolean, active?: ActiveTypeScriptProject,
+  snapshots: ReadonlyMap<string, string>, configured: boolean, proveEvents: boolean, current: boolean, active?: ActiveTypeScriptProject,
 ): ProjectSources {
   const options = program.getCompilerOptions();
   const outputs = [options.outDir, options.declarationDir].filter((value): value is string => value !== undefined);
@@ -143,7 +146,8 @@ function read_project_sources(ts: typeof import("typescript"), program: ts.Progr
       && (workspaceRoots.some(folder => beneath(fileName, folder)) || root && configured || snapshots.has(key));
     const candidate = !file.isDeclarationFile && could_author_event(ts, file);
     let eventEvidence: EventSourceEvidence | undefined;
-    if (proveEvents && identity !== undefined && candidate && is_hson_typescript_source_file(fileName)) {
+    const eventCandidate = proveEvents && identity !== undefined && candidate && is_hson_typescript_source_file(fileName);
+    if (eventCandidate && current) {
       const mapping = active?.mapping?.(file.fileName);
       if (mapping === undefined || mapping.text === file.text) {
         const offsets = resolved_hson_event_imports(ts, program, file, eligible);
@@ -156,9 +160,10 @@ function read_project_sources(ts: typeof import("typescript"), program: ts.Progr
           importOffsets: importOffsets.sort((a, b) => a - b) };
       }
     }
-    sources.push({ fileName, identity, publish: publishable && (root || candidate || snapshots.has(key)), eventEvidence });
+    sources.push({ fileName, identity, publish: publishable && (root || candidate || snapshots.has(key)), eventEvidence,
+      ...(proveEvents && !current ? { eventEvidencePending: true } : {}) });
   }
-  return { files, sources, activeProgram: active?.program };
+  return { files, sources, activeProgram: active?.program, current };
 }
 
 function agreed_evidence(left: EventSourceEvidence | undefined, right: EventSourceEvidence | undefined): EventSourceEvidence | undefined {
@@ -190,7 +195,7 @@ export class TypeScriptProjectScanner {
     const snapshots = new Map([...openFiles].map(([fileName, text]) => [canonical(fileName), text]));
     // Each compiler resolves its own path spelling. Only agreement and change
     // invalidation use physical identity. Diagnostics are still published per editor URI.
-    type Ownership = { projects: Set<string>; publicationPaths: Set<string>; eventEvidence?: EventSourceEvidence };
+    type Ownership = { projects: Set<string>; publicationPaths: Set<string>; eventEvidence?: EventSourceEvidence; eventEvidencePending?: true };
     const owners = new Map<string, Ownership>();
     const documents = new Map<string, Ownership>();
     const observe = (source: ProjectSource, config?: string) => {
@@ -200,6 +205,7 @@ export class TypeScriptProjectScanner {
         owner = { projects: new Set(), publicationPaths: new Set(), eventEvidence: source.eventEvidence };
         owners.set(key, owner);
       } else owner.eventEvidence = agreed_evidence(owner.eventEvidence, source.eventEvidence);
+      if (source.eventEvidencePending) owner.eventEvidencePending = true;
       if (config !== undefined) owner.projects.add(config);
       if (source.publish) owner.publicationPaths.add(source.fileName);
       documents.set(canonical(source.fileName), owner);
@@ -209,17 +215,17 @@ export class TypeScriptProjectScanner {
       const active = activeProjects.get(config);
       const previous = configuration === previousConfiguration ? previousObservations.get(config) : undefined;
       let observed = previous;
-      if (!previous || previous.activeProgram !== active?.program || changes?.some(file => previous.files.has(file))) {
+      if (!previous?.current || previous.activeProgram !== active?.program || changes?.some(file => previous.files.has(file))) {
         const program = active?.program ?? (parsed && create_hson_project_program(this.sdk, parsed, dirname(config), name => snapshots.get(canonical(name))));
         if (!program) continue;
-        const current = !active || !program.getSourceFiles().some(file => {
+        const current = !active || active.program !== null && !program.getSourceFiles().some(file => {
           const snapshot = snapshots.get(canonical(file.fileName));
           if (snapshot === undefined) return false;
           const mapping = active.mapping?.(file.fileName);
           return mapping === undefined ? snapshot !== file.text : snapshot !== mapping.authored || file.text !== mapping.text;
         });
-        observed = read_project_sources(this.sdk, program, workspaceRoots, snapshots, parsed !== undefined, this.proveEvents && current
-          && !parsed?.errors.length && !program.getConfigFileParsingDiagnostics().length, active);
+        observed = read_project_sources(this.sdk, program, workspaceRoots, snapshots, parsed !== undefined, this.proveEvents
+          && !parsed?.errors.length && !program.getConfigFileParsingDiagnostics().length, current, active);
       }
       if (!observed) continue;
       observations.set(config, observed);
@@ -230,7 +236,10 @@ export class TypeScriptProjectScanner {
       const key = canonical(fileName);
       const owner = documents.get(key);
       if (owner !== undefined) {
-        if (owner.eventEvidence && event_source_text_hash(text) !== owner.eventEvidence.textHash) owner.eventEvidence = undefined;
+        if (owner.eventEvidence && event_source_text_hash(text) !== owner.eventEvidence.textHash) {
+          owner.eventEvidence = undefined;
+          owner.eventEvidencePending = true;
+        }
         continue;
       }
       if (is_workspace_typescript_source(fileName)) observe({ fileName, identity: physical(fileName), publish: true });
@@ -243,6 +252,7 @@ export class TypeScriptProjectScanner {
       [...owner.publicationPaths].map((fileName): DiscoveredTypeScriptSource => ({
         fileName, languageId: fileName.toLowerCase().endsWith(".tsx") ? "typescriptreact" : "typescript",
         owners: [...owner.projects].sort(), eventEvidence: owner.eventEvidence && { ...owner.eventEvidence, fileName },
+        ...(owner.eventEvidencePending ? { eventEvidencePending: true } : {}),
       }))).sort((left, right) => left.fileName.localeCompare(right.fileName));
     const projectFiles = [...observations].map(([project, observation]) => [project, [...observation.files]] as const);
     return { sources, projectFiles, configurations: configuration.configurations, errors: configuration.errors };

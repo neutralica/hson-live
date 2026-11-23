@@ -28,20 +28,25 @@ export function interpolation_site(source: InterpolatedEmbeddedHsonTemplate, mod
   let start = source.bodyRange.start;
   for (const hole of [...source.substitutionRanges, { start: source.bodyRange.end, end: source.bodyRange.end }]) {
     const range = { start, end: hole.start };
-    let raw = "";
-    const boundaries = [start];
-    for (let i = start; i < hole.start;) {
-      const char = source.hostText[i++];
-      if (char === "\r" && source.hostText[i] === "\n") i++;
-      raw += char === "\r" ? "\n" : char;
-      boundaries.push(i);
-    }
-    literals.push({ range, raw, boundaries });
+    literals.push(raw_hson_template_literal(source.hostText, range));
     start = hole.end;
   }
   return { moduleUrl, templateId: `${moduleUrl}#template:${source.templateRange.start}`,
     sourceRevision: createHash("sha256").update(source.hostText).digest("hex"),
     templateRange: source.templateRange, literals, expressions: source.expressionRanges };
+}
+
+/** Normalize the physical line endings used by tagged-template raw values. */
+export function raw_hson_template_literal(hostText: string, range: HostSourceRange): InterpolationSite["literals"][number] {
+  let raw = "";
+  const boundaries = [range.start];
+  for (let i = range.start; i < range.end;) {
+    const char = hostText[i++];
+    if (char === "\r" && i < range.end && hostText[i] === "\n") i++;
+    raw += char === "\r" ? "\n" : char;
+    boundaries.push(i);
+  }
+  return { range, raw, boundaries };
 }
 
 /** Raw template bytes are preserved except ECMAScript physical newline normalization.

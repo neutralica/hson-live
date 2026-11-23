@@ -86,11 +86,15 @@ export function part_argument_issue(raw: string): string {
 }
 
 export type PartReference = Readonly<{ namespace: "incoming" | "local"; name: string; path: readonly (string | number)[]; optional: boolean; reference: string; start: number; end: number }>;
+type ReferenceSegment = "sigil" | "punctuation" | "close" | "root" | "member" | "key" | "index";
 
 /** One bounded selector scanner, shared by runtime, source facts and editor checkpoints.
  * Quoted property keys use JSON escapes; braces inside a key never close a reference. */
-export function scan_part_reference(value: string, start: number, incomplete = false): PartReference | undefined {
+export function scan_part_reference(value: string, start: number, incomplete = false,
+  observe?: (segment: ReferenceSegment, start: number, end: number, closed?: boolean) => void): PartReference | undefined {
   if (!["%{", "^{"].includes(value.slice(start, start + 2))) return undefined;
+  observe?.("sigil", start, start + 1);
+  observe?.("punctuation", start + 1, start + 2);
   const namespace = value[start] === "%" ? "incoming" : "local";
   let at = start + 2;
   const nameAt = at;
@@ -102,27 +106,34 @@ export function scan_part_reference(value: string, start: number, incomplete = f
   };
   const atEnd = (): boolean => incomplete && (at === value.length || value[at] === "}");
   const root = name();
+  if (root !== undefined) observe?.("root", nameAt, at);
   const path: (string | number)[] = [];
   let optional = false;
-  const result = (): PartReference => ({ namespace, name: root ?? "", path, optional, reference: value.slice(nameAt, at), start, end: at + (value[at] === "}" ? 1 : 0) });
+  const result = (): PartReference => {
+    if (value[at] === "}") observe?.("close", at, at + 1);
+    return { namespace, name: root ?? "", path, optional, reference: value.slice(nameAt, at), start, end: at + (value[at] === "}" ? 1 : 0) };
+  };
   if (root === undefined) return atEnd() ? result() : undefined;
   while (at < value.length && value[at] !== "}") {
     if (value[at] === "?") {
-      optional = true; at++;
+      optional = true; observe?.("punctuation", at, at + 1); at++;
       return value[at] === "}" || atEnd() ? result() : undefined;
     } else if (value[at] === ".") {
-      at++;
+      observe?.("punctuation", at, at + 1);
+      const begin = ++at;
       const key = name();
       if (key === undefined) return atEnd() ? result() : undefined;
+      observe?.("member", begin, at);
       path.push(key);
     } else if (value[at] === "[") {
-      at++;
+      observe?.("punctuation", at, at + 1); at++;
       if (value[at] === '"') {
         const begin = at++;
         while (at < value.length && value[at] !== '"') {
           if (value[at] === "\\") at++;
           at++;
         }
+        observe?.("key", begin, Math.min(at + 1, value.length), at < value.length);
         if (at >= value.length) return incomplete ? { ...result(), end: value.length, reference: value.slice(nameAt) } : undefined;
         let key: unknown;
         try { key = JSON.parse(value.slice(begin, ++at)); } catch { return undefined; }
@@ -135,9 +146,11 @@ export function scan_part_reference(value: string, start: number, incomplete = f
         if (!/^(0|[1-9][0-9]*)$/.test(token) || !Number.isSafeInteger(index)) {
           return atEnd() && begin === at ? result() : undefined;
         }
+        observe?.("index", begin, at);
         path.push(index);
       }
       if (value[at] !== "]") return atEnd() ? result() : undefined;
+      observe?.("punctuation", at, at + 1);
       at++;
     } else return undefined;
   }
@@ -215,10 +228,13 @@ export function part_receiving_declaration(raw: string, value: unknown): PartRec
 export function part_reference_checkpoint(value: string, cursor: number): Readonly<{ start: number; end: number; prefix: string; complete: boolean; optional?: true; namespace: "incoming" | "local" }> | undefined {
   let at = 0;
   while ((at = next_part_reference(value, at)) !== -1 && at + 2 <= cursor) {
-    const match = scan_part_reference(value, at, true);
+    let closingBrace: number | undefined;
+    const match = scan_part_reference(value, at, true, (segment, start) => {
+      if (segment === "close") closingBrace = start;
+    });
     if (match === undefined) return undefined;
-    const complete = value[match.end - 1] === "}";
-    const close = match.end - (complete ? 1 : 0);
+    const complete = closingBrace !== undefined;
+    const close = closingBrace ?? match.end;
     const end = close - (match.optional ? 1 : 0);
     if (cursor <= close) {
       if (scan_part_reference(value.slice(0, cursor), at, true) === undefined) return undefined;

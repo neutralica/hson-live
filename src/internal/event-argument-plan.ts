@@ -4,13 +4,15 @@ import { hson_data_from_value, type HsonDataValue } from "../api/data/hson-data.
 import { is_part_parameter_name } from "./part-placeholder.js";
 import { is_part_scalar_value } from "./part-scalar.js";
 
-export type EventArgumentQualifier = "str" | "num" | "bool" | "arr" | "data";
+export const EVENT_ARGUMENT_QUALIFIERS = ["str", "num", "bool", "arr", "data"] as const;
+export type EventArgumentQualifier = typeof EVENT_ARGUMENT_QUALIFIERS[number];
 type OccurrenceEventFamily = "pointer" | "key";
 type TargetEventFamily = "input" | "change" | "submit" | "formdata";
 export type NativeEventFamily = OccurrenceEventFamily | TargetEventFamily;
 export type NativeEventValueKind = "number" | "string" | "boolean" | "array";
 
-export type FormDataOperation = "get" | "getAll" | "has";
+export const FORMDATA_OPERATIONS = ["get", "getAll", "has"] as const;
+export type FormDataOperation = typeof FORMDATA_OPERATIONS[number];
 /** Native entry results include Files; Data projection is a separate admission step. */
 type FormDataOperationLookup =
   | readonly [family: "formdata", receiver: "formData", method: "get", name: string, result: "entry-or-null"]

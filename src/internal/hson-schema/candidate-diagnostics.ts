@@ -4,24 +4,20 @@ import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
-import { evaluate_canonical_projected_fields, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
-import type { VerifiedCanonicalSchemaGraph } from "../canonical-schema/graph.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
-import { library_source_admission, library_source_definitions, library_source_fields } from "./library-source.js";
+import { library_source_admission } from "./library-source.js";
 import { library_json_has_hson_source } from "./library-json-source.js";
-import { static_source_candidates } from "./source-candidates.js";
-import { part_source_coordinates, part_iterator_source_origin, static_part_inventory, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
-import { OBJECT_VALUE, inspect_schema_data, project_ordered_data, project_schema_data, schema_object_member } from "./data-projection.js";
-import { is_ordered_projected_object, ordered_projected_object, type OrderedProjectedObject, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { PartOwnershipWork, static_source_candidates } from "./source-candidates.js";
+import { part_source_coordinates, part_iterator_source_origin, static_part_collection, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
+import { OBJECT_VALUE, inspect_schema_data, project_ordered_data } from "./data-projection.js";
+import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { is_part_argument_attribute, is_part_scalar_qualifier, part_argument_name, part_argument_issue, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_data_source } from "../../core/data-source-admission.js";
-import { certain_part_invocations, part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
-import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
-import { event_argument_references, type AuthoredEventArgument } from "../authored-events.js";
+import { part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
@@ -33,7 +29,7 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
   const reported = new Set<string>();
   const memberInvocations = new Set<object>();
   const report = (where: PartSourceLocation | undefined, code: string, message: string,
-    declaration?: PartSourceLocation, attachment?: PartSourceLocation, declarationMessage = "Relevant Part declaration."): void => {
+    declaration?: PartSourceLocation, attachment?: PartSourceLocation, declarationMessage = "Relevant Part declaration.", attachmentMessage = "Part event attachment."): void => {
     if (where?.precision !== "exact") return;
     const key = JSON.stringify([where.file, where.start, where.end, code, message, attachment]);
     if (reported.has(key)) return;
@@ -42,147 +38,10 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
     if (declaration?.precision === "exact") related.push({ file: declaration.file, start: declaration.start, end: declaration.end,
       message: declarationMessage });
     if (attachment?.precision === "exact") related.push({ file: attachment.file, start: attachment.start, end: attachment.end,
-      message: "Part event attachment." });
+      message: attachmentMessage });
     output.push({ file: where.file, start: where.start, end: where.end, code, message, ...(related.length === 0 ? {} : { related }) });
   };
-  for (const issue of facts.eventIssues) report(issue.location, issue.code, issue.message, issue.declaration, issue.attachment, "First declaration.");
-  for (const { event, location, map, attachment, maybeAbsent, definition, batch, contract } of facts.eventContracts) {
-    if (event.args.length === 0) {
-      report(contract.required === undefined ? undefined : location, "HSON_EVENT_INPUT_REQUIRED",
-        `Action ${JSON.stringify(event.key)} requires arguments. Supply named typed arguments in this event declaration.`,
-        contract.required, attachment, "This action declares required arguments.");
-      continue;
-    }
-    if (contract.schema === undefined) continue;
-    const schema = contract.schema.value;
-    const args = new Map(event.args.map(argument => [argument.name, argument]));
-    const argumentLocation = (name: string) => {
-      const argument = args.get(name);
-      return argument === undefined ? undefined : map({ start: argument.header.index, end: argument.end.index });
-    };
-    const missing = (name: string, where = location) => report(where, "HSON_EVENT_ARGUMENT_MISSING",
-      `Action ${JSON.stringify(event.key)} requires argument ${JSON.stringify(name)}.`,
-      contract.schema?.location, attachment, "Registered Action argument Schema.");
-    const incompatible = (name: string | undefined, detail: string) => report(
-      name === undefined ? location : argumentLocation(name), "HSON_EVENT_ARGUMENT_INVALID",
-      `Arguments for Action ${JSON.stringify(event.key)} do not match its Schema. ${detail}.`,
-      contract.schema?.location, attachment, "Registered Action argument Schema.");
-    const invocations = definition === undefined ? [] : certain_part_invocations(facts, definition)
-      .filter(invocation => invocation.batch.call === batch);
-    const omittedAtKnownInvocation = (argument: AuthoredEventArgument, invocation: typeof invocations[number]): boolean => {
-      if (definition === undefined || attachment === undefined || !maybeAbsent?.has(argument)) return false;
-      return event_argument_references(argument).some(({ reference }) => {
-        const use = definition.bindingSources?.references.find(use => use.reference === reference
-          && use.attachment?.file === attachment.file && use.attachment.start === attachment.start);
-        if (use === undefined || use.conditional || use.withinOptionalStructure || use.iterators.length !== 0) return false;
-        const binding = use.declaration;
-        const incoming = reference.namespace === "incoming" ? reference.name : binding?.incoming;
-        if (incoming === undefined) return false;
-        const supplied = invocation.connector?.attributes.find(attribute => part_argument_name(attribute.name)?.name === incoming);
-        if (supplied === undefined) {
-          return definition.signature?.requiredness.get(incoming) === "optional"
-            && (reference.namespace === "incoming" ? (reference.optional === true || binding?.optionalReceiving === true) && reference.path.length === 0
-              : binding?.optionalReceiving === true && (reference.path.length === 0 || binding.kind === "data"));
-        }
-        if (!reference.optional || binding?.kind !== "data" || reference.path.length === 0) return false;
-        if (!supplied.dynamicValue && supplied.value !== undefined) {
-          let value: OrderedProjectedValue | undefined;
-          try { value = admit_data_source(supplied.value); }
-          catch { return false; }
-          for (const selector of reference.path) {
-            if (value === undefined || (typeof selector === "number" ? !Array.isArray(value) : !is_ordered_projected_object(value))) return false;
-            value = ordered_projected_value_at(value, [selector]);
-            if (value === undefined) return true;
-          }
-          return false;
-        }
-        return part_data_contexts(facts, definition, incoming).some(context => {
-          if (context.invocation !== invocation || context.receiving !== binding || context.evidence?.strength !== "validated") return false;
-          const { alternatives } = part_data_projection(context.evidence, reference.path);
-          return alternatives.length > 0 && alternatives.every(alternative => alternative.kind === "absent");
-        });
-      });
-    };
-
-    const roots = project_schema_data(schema, []);
-    const objects = roots.filter(root => root.kind === "object");
-    // Each object branch requires these fields, including when other operands are unknown.
-    if (objects.length !== 0 && roots.every(root => root.kind !== "any")) {
-      for (const member of objects[0]!.members) {
-        if (!objects.every(root => root.members.some(field => field.name === member.name && !field.optional))) continue;
-        const argument = args.get(member.name);
-        if (argument === undefined) missing(member.name);
-
-      }
-    }
-
-    const literals = event.args.flatMap(({ name, operand }) => operand.kind === "literal" ? [[name, operand.value] as const] : []);
-    const fields = ordered_projected_object(literals);
-    for (const invocation of invocations) {
-      const omitted = event.args.filter(argument => omittedAtKnownInvocation(argument, invocation));
-      if (omitted.length === 0) continue;
-      const names = new Set(omitted.map(argument => argument.name));
-      const missingInEveryBranch = omitted.filter(({ name }) => objects.length > 0 && roots.every(root => root.kind !== "any")
-        && objects.every(root => root.members.some(field => field.name === name && !field.optional)));
-      for (const { name } of missingInEveryBranch) missing(name, argumentLocation(name));
-      if (missingInEveryBranch.length > 0) continue;
-
-      if (literals.length + omitted.length === event.args.length) {
-        const evaluation = evaluate_canonical_projected_schema(schema.graph, fields);
-        if (roots.length > 1 && evaluation.issues.some(issue => issue.evidence.kind !== "resource-limit" && issue.evidence.kind !== "invalid-graph")) {
-          incompatible(undefined, "No Schema alternative accepts this object");
-        }
-      } else if (roots.length > 1 && !event_schema_branch_viable(schema.graph, fields, names)) {
-        incompatible(undefined, "No Schema alternative accepts this object");
-      }
-    }
-    const fullyKnown = literals.length === event.args.length;
-    if (fullyKnown || literals.length > 0) {
-      const evaluation = fullyKnown ? evaluate_canonical_projected_schema(schema.graph, fields)
-        : evaluate_canonical_projected_fields(schema.graph, fields);
-      for (const issue of evaluation.issues) {
-        if (issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph") continue;
-        const name = issue.path[0];
-        if (issue.evidence.kind === "missing-required" && issue.path.length === 1 && typeof name === "string") {
-          if (roots.length <= 1) missing(name);
-          else incompatible(undefined, "No Schema alternative accepts this object");
-        } else {
-          // The evaluator can choose a closest union branch. Avoid attributing
-          // that branch's failure to a particular argument in an ambiguous union.
-          incompatible(roots.length > 1 || typeof name !== "string" ? undefined : name,
-            roots.length > 1 ? "No Schema alternative accepts this object" : issue_detail(issue));
-        }
-      }
-      if (fullyKnown) continue;
-    }
-
-    // A required reference supplies the kind promised by its scalar qualifier.
-    if (roots.length === 0) continue;
-    if (roots.every(root => root.kind !== "object" && root.kind !== "any")) {
-      if (literals.length === 0) incompatible(undefined, "The Schema requires a different root type");
-      continue;
-    }
-    for (const argument of event.args) {
-      const { name, qualifier, operand } = argument;
-      if (operand.kind === "literal" || maybeAbsent?.has(argument)) continue;
-      if (objects.length > 0 && roots.every(root => root.kind !== "any")
-        && objects.every(root => schema_object_member(root, name) === undefined)) {
-        incompatible(name, `unknown key at ${name}`);
-        continue;
-      }
-      const actual = operand.kind === "native" ? operand.valueKind : qualifier === "str" ? "string" : qualifier === "num" ? "number"
-        : qualifier === "bool" ? "boolean" : qualifier === "arr" ? "array" : undefined;
-      if (actual === undefined) continue;
-      const kinds: readonly string[] = operand.kind === "native" && operand.lookup.length === 5 && operand.lookup[4] === "entry-or-null"
-        ? [actual, "null"] : [actual];
-      const domains = project_schema_data(schema, [name]);
-      // Tuple length and members constrain actual arrays, not their possible source category.
-      if (domains.length > 0 && domains.every(domain => domain.kind !== "any" && !kinds.includes(domain.kind === "tuple" ? "array" : domain.kind)
-        && (domain.kind !== "exact" || !kinds.includes(domain.value === null ? "null" : typeof domain.value)))) {
-        incompatible(name, `Argument ${JSON.stringify(name)} supplies a value of type ${kinds.join(" or ")}`);
-      }
-    }
-  }
+  for (const issue of facts.eventIssues) report(issue.location, issue.code, issue.message, issue.declaration, issue.attachment, "First declaration.", "Document Event metadata.");
   if (typescript !== undefined && checker !== undefined) for (const write of facts.writes) {
     for (const argument of write.arguments) {
       if (!is_part_scalar_qualifier(argument.kind)) continue;
@@ -421,33 +280,6 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
   return output;
 }
 
-/** Keep absence and known values correlated within each root alternative. */
-function event_schema_branch_viable(graph: VerifiedCanonicalSchemaGraph, fields: OrderedProjectedObject,
-  omitted: ReadonlySet<string>): boolean {
-  let budget = 256;
-  const viable = (ref: number, depth: number): boolean => {
-    if (--budget < 0 || depth >= 64) return true;
-    const node = graph.nodes[ref];
-    switch (node?.kind) {
-      case "projected-union": return node.choices.some(choice => viable(choice, depth + 1));
-      case "projected-ref": return viable(node.target, depth + 1);
-      case "projected-refinement":
-      case "projected-nullable":
-      case "projected-optional": return viable(node.base, depth + 1);
-      case "projected-object":
-        if (node.properties.some(([name, child]) => omitted.has(name) && graph.nodes[child]?.kind !== "projected-optional")) return false;
-        break;
-      case "projected-literal":
-        if (!node.values.some(value => is_ordered_projected_object(value) && value.entries.every(([name]) => !omitted.has(name)))) return false;
-        break;
-    }
-    const evaluation = evaluate_canonical_projected_fields({ ...graph, capabilities: { projectedRoot: ref } }, fields);
-    return evaluation.ok || evaluation.issues.some(issue => issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph");
-  };
-  const root = graph.capabilities.projectedRoot;
-  return root === undefined || viable(root, 0);
-}
-
 /** Pure preflight over authored ASTs. Unknown expressions withdraw the entire proof. */
 export function static_schema_candidate_diagnostics(typescript: typeof ts, program: ts.Program): readonly StaticSchemaDiagnostic[] {
   const checker = program.getTypeChecker();
@@ -460,13 +292,14 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     const compiled = compile_hson_schema(found.source);
     if (compiled.ok) schemas.set(found.declaration, { declaration: found.declaration, name: found.name, compiled: compiled.value });
   }
-  const { declaration, candidates } = sourceCandidates;
-  const schema = (input: ts.Expression, use: "value" | "type-query" = "value"): Schema | undefined => resolve_immutable_schema(typescript, checker, input, found => schemas.get(found), new Set(), sourceCandidates.eligible, use);
+  const schema = (input: ts.Expression, work: PartOwnershipWork, depth: number, use: "value" | "type-query" = "value"): Schema | undefined =>
+    resolve_immutable_schema(typescript, checker, input, found => schemas.get(found), new Set(), sourceCandidates.eligibility(work), use,
+      relative => work.charge(1, depth + relative));
   const output: StaticSchemaDiagnostic[] = [];
   const reported = new Set<string>();
   const representationReported = new Set<ts.Expression>();
-  const reportJsonSource = (json: ts.Expression): boolean => {
-    if (!library_json_has_hson_source(typescript, checker, json, sourceCandidates.eligible)) return false;
+  const reportJsonSource = (json: ts.Expression, work: PartOwnershipWork): boolean => {
+    if (!library_json_has_hson_source(typescript, checker, json, sourceCandidates.eligibility(work)) || work.exhausted) return false;
     if (!representationReported.has(json)) {
       representationReported.add(json);
       output.push({ file: json.getSourceFile().fileName, start: json.getStart(), end: json.getEnd(),
@@ -474,13 +307,14 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     }
     return true;
   };
-  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data" | "json", parts?: ReadonlyMap<string, unknown>): void => {
+  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data" | "json",
+    work: PartOwnershipWork, depth: number, parts?: Pick<ReadonlyMap<string, unknown>, "get">): void => {
     if (contract === undefined) return;
-    const possible = candidates(input, family === "certify" ? contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "json" : family);
+    const possible = sourceCandidates.candidates(input, family === "certify" ? contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "json" : family, work, depth);
     if (possible === undefined || possible.length === 0) return;
     const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate, parts));
     // A valid branch, opaque branch or malformed Hson belongs to runtime/authoring diagnostics.
-    if (failures.some(failure => failure.kind !== "invalid")) return;
+    if (work.exhausted || failures.some(failure => failure.kind !== "invalid")) return;
     const first = failures[0];
     if (first?.kind !== "invalid") return;
     const candidate = possible[0]!;
@@ -504,33 +338,39 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
   };
   for (const source of sources) {
     const mapSymbols = read_supported_hson_import_symbols(source, checker, [], "hsonLiveMap", typescript);
-    const construction = (node: ts.Expression) => sourceCandidates.eligible(node)
-      ? library_source_definitions(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible) : undefined;
-    const inventory = (definitions: ts.ObjectLiteralExpression) => static_part_inventory(typescript, checker, definitions, sourceCandidates);
-    const knownObject = (input: ts.Expression): ts.ObjectLiteralExpression | undefined => {
-      const alternatives = sourceCandidates.alternatives(input, "json");
-      const only = alternatives.complete && alternatives.nodes.length === 1 ? alternatives.nodes[0] : undefined;
-      return only !== undefined && typescript.isObjectLiteralExpression(only) ? only : undefined;
-    };
-    const checkRepresentation = (input: ts.Expression): void => {
-      const definition = knownObject(input);
-      const fields = definition === undefined ? undefined : library_source_fields(definition, typescript);
+    const checkRepresentation = (input: ts.Expression, work: PartOwnershipWork, depth: number): void => {
+      const alternatives = sourceCandidates.alternatives(input, "json", { work, depth });
+      const definition = alternatives.complete && alternatives.nodes.length === 1 ? alternatives.nodes[0] : undefined;
+      const fields = definition !== undefined && typescript.isObjectLiteralExpression(definition)
+        ? sourceCandidates.libraryFields(definition, work, alternatives.depth ?? depth) : undefined;
       const json = fields?.get("json");
-      if (json !== undefined && !["hson", "document", "parts", "data"].some(key => fields?.has(key))) reportJsonSource(json);
+      if (json !== undefined && !["hson", "document", "parts", "data"].some(key => fields?.has(key))) reportJsonSource(json, work);
     };
-    const validateDefinition = (definition: ts.Expression, parts?: ReadonlyMap<string, unknown>): void => {
+    const validateDefinition = (definition: ts.Expression, work: PartOwnershipWork, depth: number,
+      batch?: Readonly<{ fields: ReadonlyMap<string, ts.Expression>; depth: number }>): void => {
       if (!typescript.isObjectLiteralExpression(definition)) return;
-      const fields = library_source_fields(definition, typescript);
+      const fields = sourceCandidates.libraryFields(definition, work, depth);
       if (fields === undefined) return;
       const document = fields.get("document"), json = fields.get("json"), hson = fields.get("hson");
-      const contract = fields.get("schema") === undefined ? undefined : schema(fields.get("schema")!);
       if (fields.has("data") || fields.has("parts")) return;
       if (Number(document !== undefined) + Number(json !== undefined) + Number(hson !== undefined) !== 1) return;
-      if (document !== undefined) report(contract, document, "document", parts);
-      if (json !== undefined) {
-        if (!reportJsonSource(json)) report(contract, json, "json");
-      }
-      if (hson !== undefined) report(contract, hson, "data");
+      if (json !== undefined && reportJsonSource(json, work)) return;
+      const annotation = fields.get("schema");
+      const contract = annotation === undefined ? undefined : schema(annotation, work, depth + 2);
+      // Resolve collections on demand. Within this proof, the receiver, its
+      // authored source and every referenced collection share the same budget.
+      const collections = new Map<string, unknown>();
+      const parts = batch === undefined ? undefined : { get(name: string): unknown {
+        const cached = collections.get(name);
+        if (cached !== undefined) return cached;
+        const selected = batch.fields.get(name);
+        const value = selected === undefined ? undefined : static_part_collection(typescript, sourceCandidates, selected, work, batch.depth + 2);
+        if (value !== undefined) collections.set(name, value);
+        return value;
+      } };
+      if (document !== undefined) report(contract, document, "document", work, depth + 2, parts);
+      if (json !== undefined) report(contract, json, "json", work, depth + 2);
+      if (hson !== undefined) report(contract, hson, "data", work, depth + 2);
     };
     // Annotation relationships retain the direct, official, substitution-free
     // initializer boundary used to establish compiler/editor assignment proof.
@@ -551,7 +391,9 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
         || exact && tag.name.text !== "data"
         || !is_official_hson_package_binding(tag.expression, "Hson", checker, true, typescript, sourceCandidates.eligible)
         || !typescript.isNoSubstitutionTemplateLiteral(initializer.template) || initializer.template.isUnterminated) continue;
-      const contract = annotation.schema === undefined ? undefined : schema(annotation.schema, "type-query");
+      const work = new PartOwnershipWork();
+      const contract = annotation.schema === undefined ? undefined : schema(annotation.schema, work, 0, "type-query");
+      if (work.exhausted) continue;
       const annotationDiagnostic = (code: string, message: string): void => {
         output.push({ file: source.fileName, start: annotationNode.getStart(), end: annotationNode.getEnd(), code, message });
       };
@@ -568,26 +410,33 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
         annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "value" ? "HsonDataValue" : annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
         continue;
       }
-      report(contract, initializer, exact ? "json" : tag.name.text === "data" ? "data" : "document");
+      report(contract, initializer, exact ? "json" : tag.name.text === "data" ? "data" : "document", work, 0);
     }
     const visit = (node: ts.Node): void => {
       if (typescript.isCallExpression(node)) {
-        if (typescript.isPropertyAccessExpression(node.expression) && node.expression.name.text === "certify" && node.arguments.length === 1) report(schema(node.expression.expression), node.arguments[0]!, "certify");
-        const definitions = construction(node);
-        if (definitions !== undefined) {
-          const parts = inventory(definitions);
-          for (const definition of library_source_fields(definitions, typescript)?.values() ?? []) validateDefinition(definition, parts);
+        if (typescript.isPropertyAccessExpression(node.expression) && node.expression.name.text === "certify" && node.arguments.length === 1) {
+          const work = new PartOwnershipWork();
+          report(schema(node.expression.expression, work, 0), node.arguments[0]!, "certify", work, 0);
         }
         const admission = library_source_admission(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible);
-        const representationDefinitions = admission?.eligible ? knownObject(admission.definitions) : undefined;
-        if (representationDefinitions !== undefined) for (const definition of library_source_fields(representationDefinitions, typescript)?.values() ?? []) checkRepresentation(definition);
+        if (admission?.eligible) {
+          const literal = typescript.isObjectLiteralExpression(admission.definitions);
+          const batch = sourceCandidates.libraryInventory(admission.definitions, literal ? "part-record" : "json");
+          if (batch.completeness === "complete") for (const definition of batch.fields.values()) {
+            if (literal && typescript.isObjectLiteralExpression(definition)) validateDefinition(definition, batch.work.fork(), batch.depth + 2, batch);
+            else checkRepresentation(definition, batch.work.fork(), batch.depth + 2);
+          }
+        }
         if (admission?.eligible && (admission.operation === "create" || admission.operation === "resume")) {
+          const work = new PartOwnershipWork();
           const configuration = node.arguments[1];
           const local = configuration !== undefined && typescript.isObjectLiteralExpression(configuration)
-            ? library_source_fields(configuration, typescript)?.get("local") : undefined;
+            ? sourceCandidates.libraryFields(configuration, work, 0)?.get("local") : undefined;
           if (local !== undefined && typescript.isArrayLiteralExpression(local)) for (const entry of local.elements) {
-            const initializer = typescript.isObjectLiteralExpression(entry) ? library_source_fields(entry, typescript)?.get("initializer") : undefined;
-            if (initializer !== undefined) validateDefinition(initializer);
+            if (!work.charge(1, 3)) break;
+            const branch = work.fork();
+            const initializer = typescript.isObjectLiteralExpression(entry) ? sourceCandidates.libraryFields(entry, branch, 3)?.get("initializer") : undefined;
+            if (initializer !== undefined) validateDefinition(initializer, branch, 5);
           }
         }
       }

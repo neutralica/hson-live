@@ -5,7 +5,7 @@ import Module from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import ts from "typescript";
-import { load_hson_grammar } from "../src/highlighting.js";
+import { hson_highlights, load_hson_grammar } from "../src/highlighting.js";
 import { initialAppearance, readAppearance, housePalette, duplicatePalette, deletePalette, resolveStyle, blend, roleCatalog } from "../src/appearance-model.js";
 import { AppearanceSpanCache, appearanceColor, type AppearanceRole } from "../src/appearance-spans.js";
 import { HsonBindingCache } from "../src/binding-intelligence.js";
@@ -36,6 +36,147 @@ async function run() {
   bindings.forget(eventDocument.uri);
   assert.deepEqual(appearance.get(grammar, eventDocument), initial, "restoration at the same version");
   console.log("ok - a shared appearance cache follows Event evidence withdrawal and restoration");
+
+  const preciseText = 'import { Hson } from "hson-live";\r\nconst outside = "native";\r\n'
+    + 'const event = Hson.event`<hson:event on:pointer:down local:deck.move x:num=^{pointer.clientX}\r\n'
+    + '  note:str="é🧪" nested:data={<enabled true note "first\r\n second">} // comment\r\n <>>`;';
+  const precise = { ...eventDocument, text: preciseText, version: 2 };
+  const roles = appearance.get(grammar, precise);
+  for (const [spelling, role] of [
+    ["down", "event.selectorName"], ["deck.move", "event.action"], ["num", "event.qualifier"],
+    ["clientX", "event.nativeProperty"], ["é🧪", "event.string"], ["true", "event.boolean"], ["// comment", "event.comment"],
+  ]) {
+    const start = preciseText.indexOf(spelling!);
+    assert.ok(roles.some(span => span.role === role && span.range.start === start && span.range.end === start + spelling!.length), role);
+  }
+  assert.ok(roles.every((span, index) => !/[\r\n]/.test(preciseText.slice(span.range.start, span.range.end))
+    && (!index || roles[index - 1]!.range.end <= span.range.start)));
+  const holeText = preciseText.replace('note:str="é🧪"', 'note:str="é🧪 ${outside.toUpperCase()}"');
+  const holeStart = holeText.indexOf("${"), holeEnd = holeText.indexOf("}", holeStart) + 1;
+  const aroundHole = appearance.get(grammar, { ...precise, text: holeText, version: 3 });
+  assert.ok(aroundHole.some(span => span.role === "event.selectorName"));
+  assert.ok(!aroundHole.some(span => span.range.start < holeEnd && span.range.end > holeStart));
+  const incomplete = preciseText.slice(0, preciseText.indexOf("on:pointer:down") + "on:pointer:d".length);
+  assert.ok(appearance.get(grammar, { ...precise, text: incomplete, version: 4 }).some(span =>
+    span.role === "event.selectorName" && incomplete.slice(span.range.start, span.range.end) === "d"));
+  console.log("ok - Event Appearance roles split CRLF, preserve astral extents and exclude host substitutions");
+
+  const partialBoolean = 'import { Hson } from "hson-live"; Hson.event`// 🧪\r\n'
+    + '<hson:event on:key:up local:go broken:bool="tr native:bool=^{key.repeat} once window <>>`;';
+  for (const text of [partialBoolean, partialBoolean.replace('"tr ', '"true" '), partialBoolean.replace('"tr ', ' ')]) {
+    const spans = appearance.get(grammar, { ...eventDocument, text, version: 5 });
+    for (const [word, role] of [["repeat", "event.nativeProperty"], ["once", "event.option"], ["window", "event.option"]]) {
+      const start = text.indexOf(word!);
+      assert.ok(spans.some(span => span.role === role && span.range.start === start && span.range.end === start + word!.length), word);
+    }
+  }
+  const suffix = 'native:bool=^{key.repeat} once window <>>';
+  for (const [tail, expected] of [
+    ['native:bool=^{key["repeat"]} once window <>>', [["repeat", "event.nativeProperty"], ["once", "event.option"]]],
+    ['\r\n // "quoted" 🧭\r\n native:bool=^{key.repeat} once <>>', [['// "quoted" 🧭', "event.comment"], ["repeat", "event.nativeProperty"]]],
+    ['\r\n note:str="a 🧪" window <>>', [["a 🧪", "event.string"], ["window", "event.option"]]],
+    ['\r\n native:bool=^{key["repeat"]} once\r\n other:str="unfinished window <>>',
+      [["repeat", "event.nativeProperty"], ["once", "event.option"], ["unfinished window <>>", "event.string"]]],
+  ] as const) {
+    const text = partialBoolean.replace(suffix, tail);
+    const spans = appearance.get(grammar, { ...eventDocument, text, version: 5 });
+    for (const [word, role] of expected) {
+      const start = text.indexOf(word);
+      assert.ok(spans.some(span => span.role === role && span.range.start === start && span.range.end === start + word.length), tail);
+    }
+    assert.ok(!spans.some(span => span.role === "event.argument" && text.slice(span.range.start, span.range.end) === "a"));
+  }
+  for (const tail of ['once upon a time <>>" <>>', 'once\r\n native:bool=^{key.repeat} window <>>" <>>', 'once note:str=" a 🧪 window <>>']) {
+    const ambiguousBoolean = partialBoolean.replace('native:bool=^{key.repeat} once window <>>', tail);
+    assert.ok(!appearance.get(grammar, { ...eventDocument, text: ambiguousBoolean, version: 5 })
+      .some(span => span.role === "event.option" || span.role === "event.nativeProperty"), tail);
+  }
+  const closedBoolean = partialBoolean.replace('"tr ' + suffix, '"tr once //" window <>>');
+  const closedSpans = appearance.get(grammar, { ...eventDocument, text: closedBoolean, version: 5 });
+  assert.ok(closedSpans.some(span => span.role === "event.string" && closedBoolean.slice(span.range.start, span.range.end) === "tr once //"));
+  assert.deepEqual(closedSpans.filter(span => span.role === "event.option")
+    .map(span => closedBoolean.slice(span.range.start, span.range.end)), ["window"]);
+  assert.ok(!closedSpans.some(span => span.role === "event.comment" && span.range.start > closedBoolean.indexOf('broken:')));
+  console.log("ok - Event Appearance retains confirmed suffix roles across Boolean and missing-operand recovery");
+
+  const badNeighbor = partialBoolean.replace('"tr ' + suffix, '"fa capture //"junk\r\n lookup:bool=^{key.repeat} <>>');
+  const adjacentSpans = appearance.get(grammar, { ...eventDocument, text: badNeighbor, version: 6 });
+  assert.ok(adjacentSpans.some(span => span.role === "event.string"
+    && badNeighbor.slice(span.range.start, span.range.end) === "fa capture //"));
+  assert.ok(!adjacentSpans.some(span => span.range.start > badNeighbor.indexOf("broken:")
+    && ["event.option", "event.comment", "event.nativeProperty"].includes(span.role)));
+  const laterUnknown = partialBoolean.replace(suffix, 'lookup:bool=^{key["repeat"]} bogus <>>');
+  for (const text of [laterUnknown, laterUnknown.replace('"tr ', '"true" ')]) {
+    const start = text.indexOf("repeat");
+    const spans = appearance.get(grammar, { ...eventDocument, text, version: 7 });
+    assert.ok(spans.some(span => span.role === "event.nativeProperty"
+      && span.range.start === start && span.range.end === start + "repeat".length));
+  }
+  console.log("ok - Event Appearance preserves closed quote ownership and established lookups before unknown syntax");
+
+  for (const value of ['"tr\r\n capture bogus "', '"tr\n capture bogus "', String.raw`"tr \z \"capture\" 🧪"`]) {
+    const start = 'import { Hson } from "hson-live"; Hson.event`<hson:event on:key:up local:go broken:bool=';
+    const suffix = ' lookup:bool=^{key.repeat} window <>>`;';
+    const text = start + value + suffix;
+    const document = { ...eventDocument, text, version: 8 };
+    const appearance = new AppearanceSpanCache(bindings).get(grammar, document);
+    const semantic = hson_highlights(grammar, document.fileName, text, bindings.get(document));
+    for (const [role, type, offset, length] of [
+      ["event.quote", "hsonEventQuote", start.length + value.length - 1, 1],
+      ["event.nativeProperty", "hsonEventNativeProperty", text.indexOf("repeat"), 6],
+      ["event.option", "hsonEventOption", text.indexOf("window"), 6],
+    ] as const) {
+      assert.ok(appearance.some(span => span.role === role && span.range.start === offset && span.range.end === offset + length), value);
+      assert.ok(semantic.some(token => token.type === type && token.range.start === offset && token.range.end === offset + length), value);
+    }
+    assert.ok(!appearance.some(span => span.role === "event.option" && span.range.start < start.length + value.length), value);
+    assert.ok(!semantic.some(token => token.type === "hsonEventOption" && token.range.start < start.length + value.length), value);
+  }
+  console.log("ok - malformed closed Event quotes agree across Semantic Tokens and Appearance");
+
+  const lookalike = partialBoolean.replace('"tr ' + suffix,
+    '"tr\r\n capture other:str=" // " 🧪\r\n native:bool=^{key.repeat} window <>>');
+  const lookalikeDocument = { ...eventDocument, text: lookalike, version: 9 };
+  const lookalikeAppearance = appearance.get(grammar, lookalikeDocument);
+  const lookalikeTokens = hson_highlights(grammar, lookalikeDocument.fileName, lookalike, bindings.get(lookalikeDocument));
+  for (const [role, token, word] of [
+    ["event.quote", "hsonEventQuote", '" //'],
+    ["event.comment", "hsonEventComment", '// " 🧪'],
+    ["event.nativeProperty", "hsonEventNativeProperty", "repeat"],
+  ]) {
+    const at = lookalike.indexOf(word!);
+    assert.ok(lookalikeAppearance.some(span => span.role === role && span.range.start === at));
+    assert.ok(lookalikeTokens.some(span => span.type === token && span.range.start === at));
+  }
+  const capture = lookalike.indexOf("capture");
+  assert.ok(!lookalikeAppearance.some(span => span.role === "event.option" && span.range.start === capture));
+  assert.ok(!lookalikeTokens.some(span => span.type === "hsonEventOption" && span.range.start === capture));
+
+  const referenceStart = partialBoolean.slice(0, partialBoolean.indexOf("broken:")) + 'entry:data=^{row';
+  const longReference = referenceStart + ".b".repeat(63_966) + '} <>>' + "\x60;";
+  const longDocument = { ...eventDocument, text: longReference, version: 8 };
+  const semantic = hson_highlights(grammar, longDocument.fileName, longReference, bindings.get(longDocument))
+    .filter(token => token.type === "hsonEventReferencePath");
+  const styled = appearance.get(grammar, longDocument).filter(span => span.role === "event.referencePath");
+  assert.equal(semantic.length, 63_966);
+  assert.equal(styled.length, semantic.length);
+  assert.ok(semantic.every(({ range }, index) => range.start === referenceStart.length + 1 + 2 * index
+    && range.end === range.start + 1 && styled[index]?.range.start === range.start && styled[index]?.range.end === range.end));
+  console.log("ok - Event Semantic Tokens and Appearance retain every near-limit reference segment");
+
+  for (const [body, head] of [
+    ["<hson:ev", "hson:ev"], ["<hson:event on:click local:go <>>", "hson:event"],
+    ['<h title="ok"/>', undefined], ['<h title="ok" "nested"> // trailing', undefined],
+    ["<'hson:event'/>", undefined], ["<hson:schema>", undefined], ["<hson:unknown>", undefined],
+    ["<hson:event=oops>", undefined],
+  ] as const) {
+    const text = 'import { Hson } from "hson-live"; Hson.event`' + body + '`;';
+    const spans = appearance.get(grammar, { ...eventDocument, text, version: 5 });
+    assert.deepEqual(spans.filter(span => span.role === "event.head").map(span => text.slice(span.range.start, span.range.end)),
+      head === undefined ? [] : [head], body);
+    if (head === undefined) assert.ok(spans.every(span => !span.role.startsWith("event.")), body);
+  }
+  console.log("ok - Event Appearance head roles follow shared Declarative recognition");
 
   const workspace = mkdtempSync(join(tmpdir(), "hson-utf16-appearance-"));
   try {

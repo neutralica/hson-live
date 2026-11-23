@@ -10,6 +10,7 @@ const multiline = Hson.canonical`
   />
 `;
 const escaped = Hson.canonical`<message "host \` tick"/>`;
+// @hson-expect-error HSON_PRIMITIVE_TOKEN_INVALID
 const escapedBoundary = Hson.canonical`before \` after`;
 const substituted = Hson.canonical`<value ${fn({ nested: true })}>`;
 const facade = api.Hson.canonical`<notHson>`;

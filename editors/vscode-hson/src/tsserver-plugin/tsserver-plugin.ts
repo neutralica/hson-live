@@ -25,7 +25,9 @@ const eventConfigurations = new WeakMap<ts.server.Session<unknown>, EventConfigu
 const deletedCleanBuffer = Symbol("deleted clean buffer");
 const schemaIntegration = Symbol("Hson Schema language service");
 
-function projectIntegration(project: ts.server.Project | undefined): { lifetime: string } | undefined {
+type ProjectIntegration = { lifetime: string; changedDiagnosticFiles?: () => ReadonlySet<string> };
+
+function projectIntegration(project: ts.server.Project | undefined): ProjectIntegration | undefined {
   return project === undefined ? undefined : Reflect.get(project, schemaIntegration);
 }
 
@@ -70,17 +72,17 @@ function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginMod
       const session = info.session;
       const projects = info.project.projectService;
       const projectName = info.project.getProjectName();
-      const loadedProjects = () => [...projects.configuredProjects.values(), ...projects.inferredProjects, ...projects.externalProjects];
+      const loadedProjects = () => [...projects.configuredProjects.values(), ...projects.inferredProjects, ...projects.externalProjects].filter(project => !project.isClosed());
       const projectRevisions = (loaded: readonly ts.server.Project[]) => loaded.map(project => {
         const lifetime = projectIntegration(project)?.lifetime ?? "";
-        return [project.getProjectName(), `${lifetime}:${project.getProjectVersion()}`] as const;
+        return [project.getProjectName(), `${lifetime}:${project.hasRoots() ? project.getProjectVersion() : "pending"}`] as const;
       });
       const projectLifetimes = (loaded: readonly ts.server.Project[]) => new Map(loaded.flatMap(project => {
         const identity = projectIntegration(project);
         return identity === undefined ? [] : [[project.getProjectName(), identity.lifetime] as const];
       }));
       const existing = projectIntegration(info.project);
-      const integration = existing ?? { lifetime: randomUUID() };
+      const integration: ProjectIntegration = existing ?? { lifetime: randomUUID() };
       let retireEventSources: (() => void) | undefined;
       if (session !== undefined) {
         if (!eventConfigurations.has(session)) {
@@ -117,10 +119,15 @@ function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginMod
             state.discovery = undefined;
             const active = new Map<string, ActiveTypeScriptProject>();
             for (const project of loaded) {
+              // Configured projects install plugins before populating their root file maps.
+              // Reading a service here would cache an empty Program at the current version.
+              if (!project.hasRoots()) {
+                active.set(project.getProjectName(), { program: null });
+                continue;
+              }
               const service: ts.LanguageService & { getHsonSourceMapping?: ActiveTypeScriptProject["mapping"] } = project.getLanguageService();
               const program = service.getProgram();
-              if (!program) return { response: {}, responseRequired: true };
-              active.set(project.getProjectName(), { program, mapping: service.getHsonSourceMapping });
+              active.set(project.getProjectName(), { program: program ?? null, mapping: service.getHsonSourceMapping });
             }
             const scan = scanner.scan(roots, snapshots, changedFiles, active);
             let step = scan.next();
@@ -134,12 +141,19 @@ function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginMod
           });
         }
         const state = eventConfigurations.get(session)!;
-        const notify = () => {
+        const notify = (allOpen: boolean) => {
+          const affected = new Set<string>();
+          // A full notification can occur inside plugin creation or disposal.
+          // tsserver will serve geterr after the project transition completes.
+          if (!allOpen) for (const project of loadedProjects()) {
+            if (!project.hasRoots()) continue;
+            for (const file of projectIntegration(project)?.changedDiagnosticFiles?.() ?? []) affected.add(projects.toPath(file));
+          }
           // VS Code already handles this tsserver notification by requesting
           // diagnostics for the open files. Their text may be unchanged.
           const openFiles = [...projects.openFiles.keys()].flatMap(file => {
             const script = projects.getScriptInfoForNormalizedPath(modules.typescript.server.toNormalizedPath(file));
-            return script === undefined ? [] : [script.fileName];
+            return script === undefined || !allOpen && !affected.has(file) ? [] : [script.fileName];
           });
           if (openFiles.length > 0) session.event({ openFiles }, "projectsUpdatedInBackground");
         };
@@ -153,7 +167,7 @@ function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginMod
           const retained = currentSources(state.sources, state.lifetimes);
           if (retained.length === state.sources.length) return;
           replaceSources(retained);
-          notify();
+          notify(true);
         };
         configure = input => {
           if (projectIntegration(info.project) !== integration || !isRecord(input) || input.sessionId !== state.sessionId
@@ -184,7 +198,7 @@ function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginMod
           state.revision = input.revision;
           state.lifetimes = lifetimes;
           if (changed) replaceSources(retained);
-          if (changed || rebound && retained.length > 0) notify();
+          notify(changed || rebound && retained.length > 0);
         };
       }
       // In both supported SDKs the Project creates and disposes the underlying
@@ -209,6 +223,7 @@ function init(modules: Readonly<{ typescript: typeof ts }>): ts.server.PluginMod
         const script = projects.getScriptInfo(file);
         return !script?.isScriptOpen() || Reflect.get(script, deletedCleanBuffer) !== true;
       });
+      integration.changedDiagnosticFiles = service.changedDiagnosticFiles;
       const dispose = service.dispose;
       Object.defineProperty(info.project, schemaIntegration, { value: integration, configurable: true });
       retireEventSources?.();

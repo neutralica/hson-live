@@ -717,6 +717,146 @@
       {
         "id": "hsonQuote",
         "description": "Hson quote"
+      },
+      {
+        "id": "hsonEventHead",
+        "description": "Event declaration head"
+      },
+      {
+        "id": "hsonEventStructural",
+        "description": "Event envelope punctuation"
+      },
+      {
+        "id": "hsonEventSelectorDomain",
+        "description": "Event selector domain"
+      },
+      {
+        "id": "hsonEventSelectorName",
+        "description": "Event selector name"
+      },
+      {
+        "id": "hsonEventDestinationDomain",
+        "description": "Event destination domain"
+      },
+      {
+        "id": "hsonEventAction",
+        "description": "Event Action key"
+      },
+      {
+        "id": "hsonEventOption",
+        "description": "Event listener option"
+      },
+      {
+        "id": "hsonEventArgument",
+        "description": "Event argument name"
+      },
+      {
+        "id": "hsonEventQualifier",
+        "description": "Event argument qualifier"
+      },
+      {
+        "id": "hsonEventAssignment",
+        "description": "Event assignment"
+      },
+      {
+        "id": "hsonEventSeparator",
+        "description": "Event header separator"
+      },
+      {
+        "id": "hsonEventNativeRoot",
+        "description": "Native Event lookup root"
+      },
+      {
+        "id": "hsonEventNativeProperty",
+        "description": "Native Event lookup property"
+      },
+      {
+        "id": "hsonEventOperation",
+        "description": "Native FormData operation"
+      },
+      {
+        "id": "hsonEventField",
+        "description": "Native FormData field literal"
+      },
+      {
+        "id": "hsonEventLocalSigil",
+        "description": "Event local reference sigil"
+      },
+      {
+        "id": "hsonEventIncomingSigil",
+        "description": "Event incoming reference sigil"
+      },
+      {
+        "id": "hsonEventReferenceRoot",
+        "description": "Event Part reference name"
+      },
+      {
+        "id": "hsonEventReferencePath",
+        "description": "Event Part reference path"
+      },
+      {
+        "id": "hsonEventReferencePunctuation",
+        "description": "Event reference punctuation"
+      },
+      {
+        "id": "hsonEventDataPunctuation",
+        "description": "Event Data operand punctuation"
+      },
+      {
+        "id": "hsonEventString",
+        "description": "Event string content"
+      },
+      {
+        "id": "hsonEventQuote",
+        "description": "Event string quote"
+      },
+      {
+        "id": "hsonEventEscape",
+        "description": "Event string escape"
+      },
+      {
+        "id": "hsonEventNumber",
+        "description": "Event numeric content"
+      },
+      {
+        "id": "hsonEventBoolean",
+        "description": "Event boolean content"
+      },
+      {
+        "id": "hsonEventComment",
+        "description": "Event comment"
+      },
+      {
+        "id": "hsonEventDataMember",
+        "description": "Event Data member name"
+      },
+      {
+        "id": "hsonEventDataValue",
+        "description": "Event Data null"
+      },
+      {
+        "id": "hsonEventOutcomeOpen",
+        "description": "Event outcome opener"
+      },
+      {
+        "id": "hsonEventOutcomeClose",
+        "description": "Event outcome closer"
+      },
+      {
+        "id": "hsonEventDeclarationClose",
+        "description": "Event declaration closer"
+      },
+      {
+        "id": "hsonEventReferenceSeparator",
+        "description": "Event reference separator"
+      },
+      {
+        "id": "hsonEventReferenceBracket",
+        "description": "Event reference bracket"
+      },
+      {
+        "id": "hsonEventReferenceOptional",
+        "description": "Event optional reference marker"
       }
     ],
     "semanticTokenScopes": [
@@ -859,6 +999,119 @@
             "punctuation.definition.string.begin.hson",
             "punctuation.definition.string.end.hson",
             "string.quoted.double.hson"
+          ],
+          "hsonEventHead": [
+            "keyword.declaration.part.hson"
+          ],
+          "hsonEventStructural": [
+            "punctuation.definition.tag.begin.hson"
+          ],
+          "hsonEventSelectorDomain": [
+            "keyword.other.directive.hson"
+          ],
+          "hsonEventSelectorName": [
+            "entity.name.type.hson",
+            "entity.name.type.quoted.hson"
+          ],
+          "hsonEventDestinationDomain": [
+            "meta.attribute.qualifier.hson"
+          ],
+          "hsonEventAction": [
+            "meta.part.selector.member.hson"
+          ],
+          "hsonEventOption": [
+            "constant.language.flag.hson"
+          ],
+          "hsonEventArgument": [
+            "entity.other.attribute-name.hson"
+          ],
+          "hsonEventQualifier": [
+            "meta.attribute.qualifier.hson"
+          ],
+          "hsonEventAssignment": [
+            "keyword.operator.assignment.hson"
+          ],
+          "hsonEventSeparator": [
+            "punctuation.separator.attribute.hson"
+          ],
+          "hsonEventNativeRoot": [
+            "variable.parameter.incoming.hson"
+          ],
+          "hsonEventNativeProperty": [
+            "meta.reference.member.hson"
+          ],
+          "hsonEventOperation": [
+            "meta.part.selector.member.hson"
+          ],
+          "hsonEventField": [
+            "string.quoted.double.hson",
+            "string.unquoted.attribute-value.hson"
+          ],
+          "hsonEventLocalSigil": [
+            "keyword.operator.interpolation.caret.hson"
+          ],
+          "hsonEventIncomingSigil": [
+            "keyword.operator.interpolation.percent.hson"
+          ],
+          "hsonEventReferenceRoot": [
+            "variable.other.property.hson"
+          ],
+          "hsonEventReferencePath": [
+            "meta.reference.member.hson"
+          ],
+          "hsonEventReferencePunctuation": [
+            "punctuation.definition.template-expression.begin.hson"
+          ],
+          "hsonEventDataPunctuation": [
+            "punctuation.definition.template-expression.begin.hson"
+          ],
+          "hsonEventString": [
+            "string.quoted.double.hson",
+            "string.unquoted.attribute-value.hson"
+          ],
+          "hsonEventQuote": [
+            "punctuation.definition.string.begin.hson"
+          ],
+          "hsonEventEscape": [
+            "constant.character.escape.hson"
+          ],
+          "hsonEventNumber": [
+            "constant.numeric.hson"
+          ],
+          "hsonEventBoolean": [
+            "constant.language.boolean.hson",
+            "constant.language.null.hson"
+          ],
+          "hsonEventComment": [
+            "comment.line.double-slash.hson",
+            "punctuation.definition.comment.hson"
+          ],
+          "hsonEventDataMember": [
+            "entity.name.type.hson",
+            "entity.name.type.quoted.hson"
+          ],
+          "hsonEventDataValue": [
+            "constant.language.boolean.hson",
+            "constant.language.null.hson"
+          ],
+          "hsonEventOutcomeOpen": [
+            "punctuation.definition.tag.begin.hson"
+          ],
+          "hsonEventOutcomeClose": [
+            "punctuation.definition.tag.end.hson"
+          ],
+          "hsonEventDeclarationClose": [
+            "punctuation.definition.tag.end.hson"
+          ],
+          "hsonEventReferenceSeparator": [
+            "punctuation.accessor.hson"
+          ],
+          "hsonEventReferenceBracket": [
+            "punctuation.section.selector.begin.hson",
+            "punctuation.section.selector.end.hson"
+          ],
+          "hsonEventReferenceOptional": [
+            "punctuation.accessor.hson"
           ],
           "hsonDelimiter.hsonTagOpen": [
             "punctuation.definition.tag.begin.hson"
@@ -1181,6 +1434,119 @@
             "punctuation.definition.string.end.hson",
             "string.quoted.double.hson"
           ],
+          "hsonEventHead": [
+            "keyword.declaration.part.hson"
+          ],
+          "hsonEventStructural": [
+            "punctuation.definition.tag.begin.hson"
+          ],
+          "hsonEventSelectorDomain": [
+            "keyword.other.directive.hson"
+          ],
+          "hsonEventSelectorName": [
+            "entity.name.type.hson",
+            "entity.name.type.quoted.hson"
+          ],
+          "hsonEventDestinationDomain": [
+            "meta.attribute.qualifier.hson"
+          ],
+          "hsonEventAction": [
+            "meta.part.selector.member.hson"
+          ],
+          "hsonEventOption": [
+            "constant.language.flag.hson"
+          ],
+          "hsonEventArgument": [
+            "entity.other.attribute-name.hson"
+          ],
+          "hsonEventQualifier": [
+            "meta.attribute.qualifier.hson"
+          ],
+          "hsonEventAssignment": [
+            "keyword.operator.assignment.hson"
+          ],
+          "hsonEventSeparator": [
+            "punctuation.separator.attribute.hson"
+          ],
+          "hsonEventNativeRoot": [
+            "variable.parameter.incoming.hson"
+          ],
+          "hsonEventNativeProperty": [
+            "meta.reference.member.hson"
+          ],
+          "hsonEventOperation": [
+            "meta.part.selector.member.hson"
+          ],
+          "hsonEventField": [
+            "string.quoted.double.hson",
+            "string.unquoted.attribute-value.hson"
+          ],
+          "hsonEventLocalSigil": [
+            "keyword.operator.interpolation.caret.hson"
+          ],
+          "hsonEventIncomingSigil": [
+            "keyword.operator.interpolation.percent.hson"
+          ],
+          "hsonEventReferenceRoot": [
+            "variable.other.property.hson"
+          ],
+          "hsonEventReferencePath": [
+            "meta.reference.member.hson"
+          ],
+          "hsonEventReferencePunctuation": [
+            "punctuation.definition.template-expression.begin.hson"
+          ],
+          "hsonEventDataPunctuation": [
+            "punctuation.definition.template-expression.begin.hson"
+          ],
+          "hsonEventString": [
+            "string.quoted.double.hson",
+            "string.unquoted.attribute-value.hson"
+          ],
+          "hsonEventQuote": [
+            "punctuation.definition.string.begin.hson"
+          ],
+          "hsonEventEscape": [
+            "constant.character.escape.hson"
+          ],
+          "hsonEventNumber": [
+            "constant.numeric.hson"
+          ],
+          "hsonEventBoolean": [
+            "constant.language.boolean.hson",
+            "constant.language.null.hson"
+          ],
+          "hsonEventComment": [
+            "comment.line.double-slash.hson",
+            "punctuation.definition.comment.hson"
+          ],
+          "hsonEventDataMember": [
+            "entity.name.type.hson",
+            "entity.name.type.quoted.hson"
+          ],
+          "hsonEventDataValue": [
+            "constant.language.boolean.hson",
+            "constant.language.null.hson"
+          ],
+          "hsonEventOutcomeOpen": [
+            "punctuation.definition.tag.begin.hson"
+          ],
+          "hsonEventOutcomeClose": [
+            "punctuation.definition.tag.end.hson"
+          ],
+          "hsonEventDeclarationClose": [
+            "punctuation.definition.tag.end.hson"
+          ],
+          "hsonEventReferenceSeparator": [
+            "punctuation.accessor.hson"
+          ],
+          "hsonEventReferenceBracket": [
+            "punctuation.section.selector.begin.hson",
+            "punctuation.section.selector.end.hson"
+          ],
+          "hsonEventReferenceOptional": [
+            "punctuation.accessor.hson"
+          ],
           "hsonDelimiter.hsonTagOpen": [
             "punctuation.definition.tag.begin.hson"
           ],
@@ -1501,6 +1867,119 @@
             "punctuation.definition.string.begin.hson",
             "punctuation.definition.string.end.hson",
             "string.quoted.double.hson"
+          ],
+          "hsonEventHead": [
+            "keyword.declaration.part.hson"
+          ],
+          "hsonEventStructural": [
+            "punctuation.definition.tag.begin.hson"
+          ],
+          "hsonEventSelectorDomain": [
+            "keyword.other.directive.hson"
+          ],
+          "hsonEventSelectorName": [
+            "entity.name.type.hson",
+            "entity.name.type.quoted.hson"
+          ],
+          "hsonEventDestinationDomain": [
+            "meta.attribute.qualifier.hson"
+          ],
+          "hsonEventAction": [
+            "meta.part.selector.member.hson"
+          ],
+          "hsonEventOption": [
+            "constant.language.flag.hson"
+          ],
+          "hsonEventArgument": [
+            "entity.other.attribute-name.hson"
+          ],
+          "hsonEventQualifier": [
+            "meta.attribute.qualifier.hson"
+          ],
+          "hsonEventAssignment": [
+            "keyword.operator.assignment.hson"
+          ],
+          "hsonEventSeparator": [
+            "punctuation.separator.attribute.hson"
+          ],
+          "hsonEventNativeRoot": [
+            "variable.parameter.incoming.hson"
+          ],
+          "hsonEventNativeProperty": [
+            "meta.reference.member.hson"
+          ],
+          "hsonEventOperation": [
+            "meta.part.selector.member.hson"
+          ],
+          "hsonEventField": [
+            "string.quoted.double.hson",
+            "string.unquoted.attribute-value.hson"
+          ],
+          "hsonEventLocalSigil": [
+            "keyword.operator.interpolation.caret.hson"
+          ],
+          "hsonEventIncomingSigil": [
+            "keyword.operator.interpolation.percent.hson"
+          ],
+          "hsonEventReferenceRoot": [
+            "variable.other.property.hson"
+          ],
+          "hsonEventReferencePath": [
+            "meta.reference.member.hson"
+          ],
+          "hsonEventReferencePunctuation": [
+            "punctuation.definition.template-expression.begin.hson"
+          ],
+          "hsonEventDataPunctuation": [
+            "punctuation.definition.template-expression.begin.hson"
+          ],
+          "hsonEventString": [
+            "string.quoted.double.hson",
+            "string.unquoted.attribute-value.hson"
+          ],
+          "hsonEventQuote": [
+            "punctuation.definition.string.begin.hson"
+          ],
+          "hsonEventEscape": [
+            "constant.character.escape.hson"
+          ],
+          "hsonEventNumber": [
+            "constant.numeric.hson"
+          ],
+          "hsonEventBoolean": [
+            "constant.language.boolean.hson",
+            "constant.language.null.hson"
+          ],
+          "hsonEventComment": [
+            "comment.line.double-slash.hson",
+            "punctuation.definition.comment.hson"
+          ],
+          "hsonEventDataMember": [
+            "entity.name.type.hson",
+            "entity.name.type.quoted.hson"
+          ],
+          "hsonEventDataValue": [
+            "constant.language.boolean.hson",
+            "constant.language.null.hson"
+          ],
+          "hsonEventOutcomeOpen": [
+            "punctuation.definition.tag.begin.hson"
+          ],
+          "hsonEventOutcomeClose": [
+            "punctuation.definition.tag.end.hson"
+          ],
+          "hsonEventDeclarationClose": [
+            "punctuation.definition.tag.end.hson"
+          ],
+          "hsonEventReferenceSeparator": [
+            "punctuation.accessor.hson"
+          ],
+          "hsonEventReferenceBracket": [
+            "punctuation.section.selector.begin.hson",
+            "punctuation.section.selector.end.hson"
+          ],
+          "hsonEventReferenceOptional": [
+            "punctuation.accessor.hson"
           ],
           "hsonDelimiter.hsonTagOpen": [
             "punctuation.definition.tag.begin.hson"

@@ -685,10 +685,10 @@ const loc = hsonLiveMap.locus.create({
       assert.deepEqual(errors[0].start, location(source, start));
       assert.deepEqual(errors[0].end, location(source, start + span.length));
     }
+    const table = '{ go: "<hson:event on:click local:deck.go selection:data=^{args.item} <> >" }';
     const scoped = [
       'import { Hson, hsonLiveMap } from "hson-live";',
-      'const events = { go: "<hson:event on:click local:deck.go selection:data=^{args.item} <> >" } as const;',
-      'hsonLiveMap.fromLibraries({ bits: { parts: { scoped: { kind: "document", events,',
+      'const scopedMap = hsonLiveMap.fromLibraries({ bits: { parts: { scoped: { kind: "document", events: ' + table + ',',
       '  document: Hson.document`<section hson:part data:args=%{args} data:items=%{items}',
       '    <button event:go/>',
       '    <div for:row:args=^{items} <div for:args=^{row.items} <button event:go/>/> <button event:go/>/>',
@@ -710,7 +710,25 @@ const loc = hsonLiveMap.locus.create({
     assert.deepEqual(attachment?.start, location(scoped, scoped.lastIndexOf("event:go")));
     assert.deepEqual(attachment?.end, location(scoped, scoped.lastIndexOf("event:go") + "event:go".length));
     const ambiguous = await request("definition", { file: file("consumer.ts"), ...location(scoped, at + 2) });
-    assert.equal(ambiguous?.length ?? 0, 0);
+    const declarations = [scoped.indexOf("data:args") + "data:".length, alias, scoped.indexOf("for:args") + "for:".length];
+    const spans = targets => (targets ?? []).map(target => [target.file, target.start, target.end]);
+    const lexicalSpans = (text, offsets, name) => offsets.map(start =>
+      [file("consumer.ts"), location(text, start), location(text, start + name.length)]);
+    const byStart = (left, right) => left[1].line - right[1].line || left[1].offset - right[1].offset;
+    assert.deepEqual(spans(ambiguous).sort(byStart), lexicalSpans(scoped, declarations, "args"));
+    const shorthand = scoped.replace("const scopedMap", "const events = " + table + " as const;\nconst scopedMap").replace("events: " + table, "events");
+    assert.deepEqual(await hsonErrors(shorthand), []);
+    const unsupported = await request("definition", { file: file("consumer.ts"), ...location(shorthand, shorthand.indexOf("^{args.item}") + 2) });
+    assert.deepEqual(unsupported ?? [], []);
+    const write = shorthand.replace("data:items=%{items}", 'data:items=%{items} str:heading=%{title} "^{heading}"')
+      + '\nscopedMap.parts.bits.scoped.write({ title: 23 });\nscopedMap.parts.bits.scoped.write({ tit });';
+    const writes = await hsonErrors(write);
+    assert.equal(writes.length, 1, JSON.stringify(writes));
+    assert.match(writes[0].text, /Part.write.*"title"/);
+    assert.deepEqual(writes[0].start, location(write, write.indexOf("23")));
+    assert.deepEqual(writes[0].end, location(write, write.indexOf("23") + 2));
+    const keys = await request("completionInfo", { file: file("consumer.ts"), ...location(write, write.lastIndexOf("tit") + 3) });
+    assert.ok(keys?.entries.some(entry => entry.name === "title"));
     const repaired = scoped.replace("for:row:args", "for:row:index").replace("for:args", "for:entry");
     assert.deepEqual(await hsonErrors(repaired), []);
     const sharedTarget = await request("definition", { file: file("consumer.ts"), ...location(repaired, at + 2) });
@@ -739,14 +757,14 @@ const loc = hsonLiveMap.locus.create({
       file: file("consumer.ts"), start: location(shared, index), end: location(shared, index + "event:go".length),
     }]));
     const targetAtOperand = () => request("definition", { file: file("consumer.ts"), ...location(shared, operand + 2) });
-    assert.equal((await targetAtOperand())?.length ?? 0, 0);
+    assert.deepEqual(spans(await targetAtOperand()), lexicalSpans(shared, [shared.indexOf("data:args") + 5], "args"));
     assert.deepEqual(await hsonErrors(shared.replace('<section hson:part ', '<section hson:part ${fragment} ')), []);
-    assert.equal((await targetAtOperand())?.length ?? 0, 0);
+    assert.deepEqual(spans(await targetAtOperand()), lexicalSpans(shared, [shared.indexOf("data:args") + 5], "args"));
     assert.deepEqual(await hsonErrors(shared.replace('  second:', '  // second:')), []);
     assert.deepEqual((await targetAtOperand())?.[0]?.start, location(shared, shared.indexOf("data:args") + 5));
     await editConsumer(consumer);
   });
-  await check("bundled event definitions account for every possible attachment scope", async () => {
+  await check("bundled Event definitions retain every exact target from independent supported attachments", async () => {
     const prefix = [
       'import { Hson, hsonLiveMap } from "hson-live";',
       'declare const branch: boolean, opaque: string, fragment: string, collection: Record<string, string>;',
@@ -759,40 +777,37 @@ const loc = hsonLiveMap.locus.create({
     const source = (first = part(resolved, '{ go: shared }'), second) => prefix
       + '\nhsonLiveMap.fromLibraries({ bits: { parts: { first: ' + first + (second === undefined ? '' : ', second: ' + second) + ' } } });';
     const cases = [
-      ["one use", source(), true],
-      ["two uses of one binding", source(part(resolved.replace('/>/>', '/> <button event:go/>/>'), '{ go: shared }')), true],
-      ["different bindings", source(undefined, part(resolved, '{ go: shared }')), false],
-      ["conditional value", source(undefined, part(unresolved, '{ go: branch ? shared : other }')), false],
-      ["resolved conditional value", source(part(resolved, '{ go: branch ? shared : other }')), true],
-      ["conditional collection", source(undefined, part(unresolved, 'branch ? { go: shared } : { go: other }')), false],
-      ["conditional Part", source(undefined, 'branch ? ' + part(unresolved, '{ go: shared }') + ' : ' + part(unresolved, '{ go: other }')), false],
-      ["inactive value", source(undefined, part(unresolved, '{ go: false ? shared : other }')), true],
-      ["inactive collection", source(undefined, part(unresolved, 'false ? { go: shared } : { go: other }')), true],
-      ["inactive Part", source(undefined, 'false ? ' + part(unresolved, '{ go: shared }') + ' : ' + part(unresolved, '{ go: other }')), true],
-      ["structural interpolation", source(undefined, part(unresolved.replace('hson:part', 'hson:part ${fragment}'), '{ go: branch ? shared : other }')), false],
-      ["opaque value alternative", source(part(resolved.replace('event:go', 'event:go event:maybe'), '{ go: shared, maybe: branch ? shared : opaque }')), false],
-      ["opaque collection alternative", source(part(resolved, 'branch ? { go: shared } : collection'), part(resolved, '{ go: shared }')), false],
-      ["unattached opaque alternative", source(part(resolved, '{ go: shared, spare: branch ? shared : opaque }')), true],
+      ["one use", source(), [0]],
+      ["two uses of one binding", source(part(resolved.replace('/>/>', '/> <button event:go/>/>'), '{ go: shared }')), [0]],
+      ["different bindings", source(undefined, part(resolved, '{ go: shared }')), [0, 1]],
+      ["conditional value beside a supported attachment", source(undefined, part(unresolved, '{ go: branch ? shared : other }')), [0]],
+      ["conditional value alone", source(part(resolved, '{ go: branch ? shared : other }')), []],
+      ["conditional collection beside a supported attachment", source(undefined, part(unresolved, 'branch ? { go: shared } : { go: other }')), [0]],
+      ["conditional Part beside a supported attachment", source(undefined, 'branch ? ' + part(unresolved, '{ go: shared }') + ' : ' + part(unresolved, '{ go: other }')), [0]],
+      ["inactive value", source(undefined, part(unresolved, '{ go: false ? shared : other }')), [0]],
+      ["inactive collection", source(undefined, part(unresolved, 'false ? { go: shared } : { go: other }')), [0]],
+      ["inactive Part", source(undefined, 'false ? ' + part(unresolved, '{ go: shared }') + ' : ' + part(unresolved, '{ go: other }')), [0]],
+      ["structural interpolation beside a supported attachment", source(undefined, part(unresolved.replace('hson:part', 'hson:part ${fragment}'), '{ go: branch ? shared : other }')), [0]],
+      ["opaque value beside an exact property", source(part(resolved.replace('event:go', 'event:go event:maybe'), '{ go: shared, maybe: branch ? shared : opaque }')), [0]],
+      ["only the second collection is inline", source(part(resolved, 'branch ? { go: shared } : collection'), part(resolved, '{ go: shared }')), [1]],
+      ["unattached opaque alternative", source(part(resolved, '{ go: shared, spare: branch ? shared : opaque }')), [0]],
     ];
-    const actual = [];
-    for (const [name, text] of cases) {
+    for (const [name, text, targets] of cases) {
       await editConsumer(text);
       const offset = text.indexOf("^{row.label}") + 2;
-      const targets = await request("definition", { file: file("consumer.ts"), ...location(text, offset) });
-      actual.push([name, (targets ?? []).map(target => [target.file, target.start, target.end])]);
+      const matches = await request("definition", { file: file("consumer.ts"), ...location(text, offset) });
+      const declarations = [...text.matchAll(/data:row=%\{rows\}/g)];
+      assert.deepEqual((matches ?? []).map(target => [target.file, target.start, target.end]), targets.map(index => {
+        const start = declarations[index].index + "data:".length;
+        return [file("consumer.ts"), location(text, start), location(text, start + "row".length)];
+      }), name);
     }
-    assert.deepEqual(actual, cases.map(([name, text, unique]) => {
-      const start = text.indexOf('data:row') + 'data:'.length;
-      return [name, unique ? [[file("consumer.ts"), location(text, start), location(text, start + 'row'.length)]] : []];
-    }));
     const distinct = source(part(resolved, '{ go: branch ? shared : copy }'))
       .replace('hsonLiveMap.fromLibraries', 'const copy = "<hson:event on:click local:go selection:data=^{row.label} <> >";\nhsonLiveMap.fromLibraries');
     await editConsumer(distinct);
     for (const operand of distinct.matchAll(/\^\{row\.label\}/g)) {
       const targets = await request("definition", { file: file("consumer.ts"), ...location(distinct, operand.index + 2) });
-      const start = distinct.indexOf("data:row") + 5;
-      assert.deepEqual((targets ?? []).map(target => [target.file, target.start, target.end]),
-        [[file("consumer.ts"), location(distinct, start), location(distinct, start + 3)]]);
+      assert.deepEqual(targets ?? [], [], "A conditional value cannot link either operand, even with identical source text");
     }
     await editConsumer(consumer);
   });
@@ -855,7 +870,7 @@ const loc = hsonLiveMap.locus.create({
     ]) assert.deepEqual(await hsonErrors(valid), []);
     await editConsumer(consumer);
   });
-  await check("bundled Event diagnostics retain ranges for proven optional omissions", async () => {
+  await check("optional Event captures retain Part diagnostics independently of static Action contracts", async () => {
     const operand = 'selection:str=%{label}';
     const source = [
       'import { Hson, hsonLiveMap } from "hson-live";',
@@ -866,18 +881,19 @@ const loc = hsonLiveMap.locus.create({
       '} } }, page: { document: Hson.document`<hson-part at=bits/card/>` } });',
       'map.actions.define("go", () => {}, { args: { schema: Args } });',
     ].join("\n");
-    await editConsumer(source);
+    for (const text of [source, source.replace('selection "string"', 'selection <optional "string">')]) {
+      await editConsumer(text);
+      assert.deepEqual((await diagnostics("consumer.ts")).filter(error => error.code === 95002), []);
+    }
+    const required = source.replace("%{label?}", "%{label}");
+    await editConsumer(required);
     const errors = (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
-    assert.equal(errors.length, 1);
-    const [error] = errors;
-    assert.match(error.text, /Action "go" requires argument "selection"/);
-    const range = (text, start = source.indexOf(text)) => ({
-      file: file("consumer.ts"), start: location(source, start), end: location(source, start + text.length),
-    });
-    assert.deepEqual({ file: file("consumer.ts"), start: error.start, end: error.end }, range(operand));
-    assert.deepEqual(error.relatedInformation.map(info => info.span),
-      [range("Args", source.lastIndexOf("Args")), range("event:go")]);
-    await editConsumer(source.replace('selection "string"', 'selection <optional "string">'));
+    assert.equal(errors.length, 1, JSON.stringify(errors));
+    assert.match(errors[0].text, /Missing Part parameter "label"/);
+    const at = required.indexOf("<hson-part at=bits/card");
+    assert.deepEqual(errors[0].start, location(required, at));
+    assert.deepEqual(errors[0].end, location(required, at + "<hson-part at=bits/card".length));
+    await editConsumer(source);
     assert.deepEqual((await diagnostics("consumer.ts")).filter(error => error.code === 95002), []);
     await editConsumer(consumer);
   });
