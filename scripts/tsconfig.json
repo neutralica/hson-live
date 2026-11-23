@@ -4,6 +4,7 @@
     "rootDir": ".."
   },
   "files": [
+    "./check-hson-diagnostics.mts",
     "./hson-schema.mts",
     "./typescript-observability.mts"
   ],

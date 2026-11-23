@@ -14,7 +14,7 @@ const libraries = hsonLiveMap.fromLibraries({
   page: { document: '<main "Ready"/>' },
   authored: { document: Hson.document`<main "Ready"/>` },
   state: { json: { count: 0 } },
-  components: { parts: { button: { kind: "document", document: "<button/>" } } },
+  components: { parts: { button: { kind: "document", document: "<button hson:part />" } } },
 });
 const page = libraries.doc.must("page");
 reflect_document(page) satisfies DocumentMirror;

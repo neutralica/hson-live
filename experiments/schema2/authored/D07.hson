@@ -1,3 +1,4 @@
+// @hson-diagnostics-ignore-file
 <data
   <defs <
     'Timestamp' <number int min="0">

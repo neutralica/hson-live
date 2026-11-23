@@ -1,3 +1,4 @@
+// @hson-diagnostics-ignore-file
 <data
   <defs <
     'Entry' <union [<ref "Link">, <ref "Section">]>

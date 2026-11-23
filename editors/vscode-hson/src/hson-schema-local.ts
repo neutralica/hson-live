@@ -17,9 +17,9 @@ type SchemaSyntax = Readonly<{
 }>;
 
 /** Fast authoring feedback backed by the same pure compiler as the build analyzer. */
-export function local_hson_schema_diagnostics(fileName: string, text: string): readonly LocalHsonSchemaDiagnostic[] {
+export function local_hson_schema_diagnostics(fileName: string, text: string, program?: ts.Program): readonly LocalHsonSchemaDiagnostic[] {
   const diagnostics: LocalHsonSchemaDiagnostic[] = [];
-  for (const source of discover_hson_tagged_templates(fileName, text, undefined, undefined, ts, NO_EVENT_IMPORTS).sources) {
+  for (const source of discover_hson_tagged_templates(fileName, text, program, undefined, ts, NO_EVENT_IMPORTS).sources) {
     if (source.authoringKind !== "schema") continue;
     const sourceText = read_embedded_hson_body(source);
     try { admit_canonical_hson_data_value(admit_hson_source(sourceText)); }

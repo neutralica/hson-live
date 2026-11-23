@@ -72,9 +72,11 @@ type ConfiguredProjects = Readonly<{
   errors: readonly string[];
 }>;
 
-function read_configurations(ts: typeof import("typescript"), workspaceRoots: readonly string[]): ConfiguredProjects {
-  const queue: string[] = [];
-  for (const root of workspaceRoots) {
+function read_configurations(ts: typeof import("typescript"), workspaceRoots: readonly string[],
+  entryConfigurations?: readonly string[],
+): ConfiguredProjects {
+  const queue = entryConfigurations?.map(config => resolve(config)) ?? [];
+  for (const root of entryConfigurations === undefined ? workspaceRoots : []) {
     for (const config of ts.sys.readDirectory(root, [".json"], ["**/node_modules/**"], ["**/tsconfig*.json", "**/jsconfig.json"])) {
       if (is_typescript_configuration_path(config)) queue.push(resolve(config));
     }
@@ -115,6 +117,20 @@ function read_configurations(ts: typeof import("typescript"), workspaceRoots: re
     for (const reference of project.projectReferences ?? []) queue.push(referencedConfiguration(reference.path));
   }
   return { parsed, configurations: [...configurations.values()].sort(), errors };
+}
+
+/** Read configured, on-disk programs for one-shot validation. The editor scan keeps
+ * its own active-program and incremental discovery lifecycle. */
+export function visit_configured_typescript_projects(workspaceRoot: string, configurations: readonly string[],
+  visit: (configuration: string, parsed: ts.ParsedCommandLine, program: ts.Program) => void,
+): readonly string[] {
+  const { parsed, errors } = read_configurations(ts, [workspaceRoot], configurations);
+  for (const [name, project] of parsed) {
+    if (project.errors.length === 0) {
+      visit(name, project, create_hson_project_program(ts, project, dirname(name), () => undefined));
+    }
+  }
+  return errors;
 }
 
 type ProjectSource = Readonly<{ fileName: string; identity?: string; publish: boolean; eventEvidence?: EventSourceEvidence; eventEvidencePending?: true }>;

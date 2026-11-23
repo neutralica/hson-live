@@ -1,3 +1,4 @@
+// @hson-diagnostics-ignore-file
 <data
   <object <
     'displayName' <string minlen="1" maxlen="80">

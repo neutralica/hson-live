@@ -18,6 +18,7 @@ export const ordinary = Object.freeze([
   "check:tooling",
   "check:editor",
   "check:entrypoints",
+  "check:hson-diagnostics",
   "test:view-state-snapshot-codec",
   "test:hson-array-index",
   "test:locus-graph-content-codec",
@@ -166,6 +167,8 @@ export const rootBuildPrerequisites = Object.freeze({
 export const rootBuildConsumers = Object.freeze([
   "check:tests",
   "check:entrypoints",
+  "check:hson-diagnostics",
+  "test:hson-diagnostics",
   "test:public-entrypoint-runtime",
 ]);
 

@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "paths": {
+      "hson-live": ["../../../dist/index.d.ts"],
+      "hson-live/hson": ["../../../dist/hson-authoring.d.ts"]
+    }
+  },
+  "files": ["fixtures/injection.tsx"],
+  "include": ["fixtures/*.ts", "fixtures/*.tsx", "integration/bindings.ts", "integration/scratchpads.ts"]
+}

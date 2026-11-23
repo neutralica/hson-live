@@ -1,3 +1,4 @@
+// @hson-diagnostics-ignore-file
 <data
   <defs <
     'Paragraph' <object <'kind' <exact "paragraph"> 'content' <string>>>

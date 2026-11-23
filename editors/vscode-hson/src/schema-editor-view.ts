@@ -12,6 +12,11 @@ import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hso
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
 
+export function produce_project_diagnostics(typescript: typeof ts, program: ts.Program, eventImports?: HsonEventImportEvidence): readonly StaticSchemaDiagnostic[] {
+  return [...static_schema_candidate_diagnostics(typescript, program),
+    ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program, eventImports), typescript, program.getTypeChecker())];
+}
+
 /** The authored service resolves bindings and source edits; the existing service consumes the overlay. */
 export function install_live_schema_view(typescript: typeof ts, host: ts.LanguageServiceHost, projectPath: string,
   registerEvidence?: (file: string, text: string | undefined) => void,
@@ -70,8 +75,7 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const eventImports = getEventImports?.();
     if (program === previous && eventImports === previousEventImports) return;
     previousEventImports = eventImports;
-    const candidateDiagnostics = [...static_schema_candidate_diagnostics(typescript, program),
-      ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program, eventImports), typescript, program.getTypeChecker())];
+    const candidateDiagnostics = produce_project_diagnostics(typescript, program, eventImports);
     grouped = new Map();
     for (const diagnostic of candidateDiagnostics) {
       const file = diagnostic.file;
