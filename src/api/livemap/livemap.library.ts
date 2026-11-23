@@ -128,7 +128,7 @@ export type LiveMapAggregateWrite =
     publicStaged?: true;
     /** Selected logical coordinates, lowered against the current candidate. */
     logicalLocation?: readonly number[];
-    assertDocumentShape?: "element" | "root" | "text";
+    assertDocumentShape?: "present" | "element" | "root" | "text";
     attrsCommand?: import("./livemap.document.mutation.js").DocumentAttrsCommand;
   }>
   | Readonly<{

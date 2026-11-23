@@ -1383,7 +1383,7 @@ function make_livemap_registry_engine(
           if (!is_aggregate_document_candidate(candidate) || write.logicalLocation === undefined) throw new Error("Document refinement requires logical coordinates.");
           const value = read_livemap_document_logical_location(candidate.root, "document", write.logicalLocation);
           const shape = value === undefined ? "missing" : is_ordinary_element_node(value) ? "element" : is_Node(value) ? "root" : "text";
-          if (shape !== write.assertDocumentShape) throw new Error(`Document location is not ${write.assertDocumentShape}.`);
+          if (write.assertDocumentShape === "present" ? shape === "missing" : shape !== write.assertDocumentShape) throw new Error(`Document location is not ${write.assertDocumentShape}.`);
           continue;
         }
         if (write.kind === "graph" && write.logicalLocation !== undefined) {

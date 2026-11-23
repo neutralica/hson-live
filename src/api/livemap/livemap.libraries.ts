@@ -1,3 +1,4 @@
+import { register_document_location_refinements, type DocumentLocationRefinement } from "./livemap.document-refinement.js";
 import { document_event_contributions } from "../../internal/document-events.js";
 import { canonical_flat_correspondence } from "./livemap.document.flat-effects.js";
 import { validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
@@ -1788,7 +1789,7 @@ function make_document_library(
     commit_interaction_edit_internal(aggregate, interaction_addition(captured.descriptor()));
     return captured.id;
   });
-  const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean, qualified?: boolean): WritableDocumentLocation => {
+  const wrap_location = (raw: ReturnType<typeof raw_at>, check?: () => boolean, qualified?: boolean, refinements: readonly DocumentLocationRefinement[] = []): WritableDocumentLocation => {
     const read = () => check?.() === false ? undefined : raw.snap();
     // Cache by coordinate and qualification so a fresh selection can reflect the
     // current endpoint without changing any retained handle's capabilities.
@@ -1798,17 +1799,26 @@ function make_document_library(
     if (existing !== undefined) return existing;
     const snap = () => check?.() === false ? undefined : document_markup(root(), raw.path());
     const hson = () => document_hson(read());
-    const refine = (predicate: (value: HsonNode | Primitive | undefined) => boolean, element: boolean) =>
-      wrap_location(raw, () => check?.() !== false && predicate(raw.snap()), element);
+    const refine = (predicate: (value: HsonNode | Primitive | undefined) => boolean, element: boolean, expected: DocumentLocationRefinement["expected"]) =>
+      wrap_location(raw, () => check?.() !== false && predicate(raw.snap()), element, [...refinements, { path: raw.path(), expected }]);
+    const edit = <T>(run: () => T): T => {
+      if (check === undefined) return run();
+      const assertSubject = () => {
+        if (!check()) throw new TypeError("Document location refinement no longer matches.");
+      };
+      assertSubject();
+      return quad_edit(run, assertSubject);
+    };
+    const writable = check === undefined ? raw : quad_at(raw.path());
     const wrapped = {
       get rev() { return raw.rev; },
       path: () => raw.path(),
       snap, hson, must: required_reads(snap, hson),
       watch: (listener: (next: string | undefined) => void) => raw.watch(() => listener(snap())),
-      at: (path: readonly number[]) => wrap_location(raw.at(path), check),
+      at: (path: readonly number[]) => wrap_location(raw.at(path), check, undefined, refinements),
       id: (value: string) => {
         const found = raw.id(value);
-        return found === undefined ? undefined : wrap_location(found, check);
+        return found === undefined ? undefined : wrap_location(found, check, undefined, refinements);
       },
       kind: () => {
         const value = read();
@@ -1818,37 +1828,37 @@ function make_document_library(
       },
       present: () => {
         const value = read();
-        return value === undefined ? undefined : refine(next => next !== undefined, is_ordinary_element_node(value));
+        return value === undefined ? undefined : refine(next => next !== undefined, is_ordinary_element_node(value), "present");
       },
-      asElement: () => is_ordinary_element_node(read()) ? refine(is_ordinary_element_node, true) : undefined,
+      asElement: () => is_ordinary_element_node(read()) ? refine(is_ordinary_element_node, true, "element") : undefined,
       asRoot: () => {
         const value = read();
-        return is_Node(value) && !is_ordinary_element_node(value) ? refine(value => is_Node(value) && !is_ordinary_element_node(value), false) : undefined;
+        return is_Node(value) && !is_ordinary_element_node(value) ? refine(value => is_Node(value) && !is_ordinary_element_node(value), false, "root") : undefined;
       },
       asText: () => {
         const value = read();
-        return value !== undefined && !is_Node(value) ? refine(value => value !== undefined && !is_Node(value), false) : undefined;
+        return value !== undefined && !is_Node(value) ? refine(value => value !== undefined && !is_Node(value), false, "text") : undefined;
       },
-      replace: (value: LiveMapDocumentContent) => multi_commit(raw.replace(value)),
-      delete: () => multi_commit(raw.delete()),
-      insert: (index: number, value: LiveMapDocumentContent) => multi_commit(raw.insert(index, value)),
-      move: (from: number, to: number) => multi_commit(raw.move(from, to)),
+      replace: (value: LiveMapDocumentContent) => edit(() => multi_commit(writable.replace(value))),
+      delete: () => edit(() => multi_commit(writable.delete())),
+      insert: (index: number, value: LiveMapDocumentContent) => edit(() => multi_commit(writable.insert(index, value))),
+      move: (from: number, to: number) => edit(() => multi_commit(writable.move(from, to))),
       attrs: Object.freeze({
         get: (name: string) => raw.attrs.get(name),
         has: (name: string) => raw.attrs.has(name),
         keys: () => raw.attrs.keys(),
         must: Object.freeze({ get: (name: string) => raw.attrs.must.get(name) }),
-        set: (name: string, value: LiveMapDocumentAttributeValue) => multi_commit(raw.attrs.set(name, value)),
-        drop: (name: string) => multi_commit(raw.attrs.drop(name)),
-        setMany: (values: LiveMapDocumentAttrs) => multi_commit(raw.attrs.setMany(values)),
-        dropMany: (names: readonly string[]) => multi_commit(raw.attrs.dropMany(names)),
-        clear: () => multi_commit(raw.attrs.clear()),
-        replace: (values: LiveMapDocumentAttrs) => multi_commit(raw.attrs.replace(values)),
+        set: (name: string, value: LiveMapDocumentAttributeValue) => edit(() => multi_commit(writable.attrs.set(name, value))),
+        drop: (name: string) => edit(() => multi_commit(writable.attrs.drop(name))),
+        setMany: (values: LiveMapDocumentAttrs) => edit(() => multi_commit(writable.attrs.setMany(values))),
+        dropMany: (names: readonly string[]) => edit(() => multi_commit(writable.attrs.dropMany(names))),
+        clear: () => edit(() => multi_commit(writable.attrs.clear())),
+        replace: (values: LiveMapDocumentAttrs) => edit(() => multi_commit(writable.attrs.replace(values))),
       }),
       flags: Object.freeze({
         has: (name: string) => raw.flags.has(name),
-        set: (...names: string[]) => multi_commit(raw.flags.set(...names)),
-        clear: (...names: string[]) => multi_commit(raw.flags.clear(...names)),
+        set: (...names: string[]) => edit(() => multi_commit(writable.flags.set(...names))),
+        clear: (...names: string[]) => edit(() => multi_commit(writable.flags.clear(...names))),
       }),
     };
     if (elementQualified) Object.defineProperty(wrapped, "listen", { enumerable: true, get: () => listenAt(() => {
@@ -1856,6 +1866,7 @@ function make_document_library(
       return raw.path();
     }) });
     const location = Object.freeze(wrapped) as WritableDocumentLocation;
+    register_document_location_refinements(location, refinements);
     if (check === undefined) cache.set(raw, location);
     return location;
   };

@@ -1,3 +1,4 @@
+import type { DocumentLocationRefinement } from "./livemap.document-refinement.js";
 import { assert_part_public_path } from "../../core/part-css-access.js";
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
 import { make_parts_facade } from "../../internal/parts-facade.js";
@@ -72,6 +73,13 @@ type StagedDataLibrary = Readonly<{
   mode: Exclude<import("../../types/livemap.types.js").LiveMapRootMode, "document">;
   at: (path: LivePath) => StagedDataPath;
 }>;
+
+const stagedDocumentAssertions = new WeakMap<object, (checks: readonly DocumentLocationRefinement[]) => void>();
+export function stage_document_location_refinements(location: object, checks: readonly DocumentLocationRefinement[]): void {
+  const append = stagedDocumentAssertions.get(location);
+  if (append === undefined) throw new Error("Expected a staged Document location.");
+  append(checks);
+}
 
 const stagedDataAssertions = new WeakMap<object, (refinements: readonly DataLocationRefinement[]) => void>();
 
@@ -174,7 +182,7 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
       writes.push(Object.freeze({ target: aggregate.target(identity, target.path), kind: "graph", operation: captured,
         publicStaged: true, attrsCommand, ...(logicalLocation === undefined ? {} : { logicalLocation }) }));
     };
-    const location = (input: readonly number[]): StagedDocumentLocation => {
+    const location = (input: readonly number[], checks: readonly DocumentLocationRefinement[] = []): StagedDocumentLocation => {
       assert_open();
       const path = validate_document_path(input);
       const target = Object.freeze({ kind: "path" as const, path });
@@ -185,25 +193,42 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         if (index === undefined) throw new Error("Document content index is unavailable.");
         return Object.freeze({ target: Object.freeze({ kind: "path" as const, path: validate_document_path(path.slice(0, -1)) }), index });
       };
-      const logicalGraph = (operation: LiveMapGraphOp): void => graph(operation, path);
-      const refine = (assertDocumentShape: "element" | "root" | "text"): StagedDocumentLocation => {
+      const assertChecks = (items: readonly DocumentLocationRefinement[] = checks): void => {
         assert_open();
-        writes.push(Object.freeze({ target: aggregate.target(identity, path), kind: "graph",
-          operation: Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: {} }),
-          logicalLocation: path, assertDocumentShape }));
-        return location(path);
+        for (const { path: checkedPath, expected } of items) {
+          const checkedTarget = Object.freeze({ kind: "path" as const, path: validate_document_path(checkedPath) });
+          writes.push(Object.freeze({ target: aggregate.target(identity, checkedPath), kind: "graph",
+            operation: Object.freeze({ domain: "graph", op: "replace-attrs", target: checkedTarget, attrs: {} }),
+            logicalLocation: checkedPath, assertDocumentShape: expected }));
+        }
+      };
+      const logicalGraph = (operation: LiveMapGraphOp): void => {
+        // Capture caller input before appending the assertion and operation.
+        const captured = admit_public_document_graph_operation(operation);
+        assertChecks();
+        graph(captured, path);
+      };
+      const logicalBulk = (command: DocumentAttrsCommand): void => {
+        const captured = capture_document_attrs_command(command);
+        assertChecks();
+        bulk(target, captured, path);
+      };
+      const refine = (expected: "element" | "root" | "text"): StagedDocumentLocation => {
+        const next = [...checks, { path, expected }];
+        assertChecks(next);
+        return location(path, next);
       };
       const attrs: StagedDocumentLocation["attrs"] = Object.freeze({
         set: (name, value) => logicalGraph(Object.freeze({ domain: "graph", op: "set-attr", target, name, value })),
         drop: (name) => logicalGraph(Object.freeze({ domain: "graph", op: "remove-attr", target, name })),
         replace: (values) => logicalGraph(Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs: values })),
-        setMany: (values) => bulk(target, { kind: "setMany", values }, path),
-        dropMany: (names) => bulk(target, { kind: "dropMany", names }, path),
+        setMany: (values) => logicalBulk({ kind: "setMany", values }),
+        dropMany: (names) => logicalBulk({ kind: "dropMany", names }),
         clear: () => logicalGraph({ domain: "graph", op: "replace-attrs", target, attrs: {} }),
       });
-      return Object.freeze({
+      const facade: StagedDocumentLocation = Object.freeze({
         asElement: () => refine("element"), asRoot: () => refine("root"), asText: () => refine("text"),
-        at: (child) => location([...path, ...validate_document_path(child)]),
+        at: (child) => location([...path, ...validate_document_path(child)], checks),
         replace: (replacement) => {
           const slot = content_slot();
           logicalGraph(Object.freeze({ domain: "graph", op: "replace-content", target: slot.target, index: slot.index, replacement }));
@@ -216,10 +241,12 @@ export function make_livemap_staged_writer<TMap extends LiveMap>(
         move: (from, to) => logicalGraph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
         attrs,
         flags: Object.freeze({
-          set: (...names: string[]) => bulk(target, { kind: "setFlags", names }, path),
-          clear: (...names: string[]) => bulk(target, { kind: "clearFlags", names }, path),
+          set: (...names: string[]) => logicalBulk({ kind: "setFlags", names }),
+          clear: (...names: string[]) => logicalBulk({ kind: "clearFlags", names }),
         }),
       });
+      stagedDocumentAssertions.set(facade, assertChecks);
+      return facade;
     };
     const css = Object.assign((operation: LiveMapCssOp) => {
       assert_open();

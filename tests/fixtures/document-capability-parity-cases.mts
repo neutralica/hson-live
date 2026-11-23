@@ -272,6 +272,7 @@ export async function document_echo_submission_cases() {
 }
 
 export async function document_shape_cases() {
+  await retained_document_refinement_cases();
   const definition = { document: '<main <p "one"/> <p "two"/>/>' };
   const local = hsonLiveMap.fromLibraries({ page: definition });
   const locus = hsonLiveMap.locus.create({ "page": { ...definition, access: "shared" } });
@@ -406,4 +407,109 @@ export async function document_scoped_guard_cases() {
       stop();
     }
   } finally { locus.dispose(); }
+}
+
+export async function retained_document_refinement_cases() {
+  const { hsonLiveMap } = await import("../../src/index.ts");
+  const { MemoryCheckpointAdapter } = await import("../helpers/memory-checkpoint-adapter.mts");
+  const definition = { document: '<main <p "one"/> <p "two"/>/>' };
+  const aside = node('<span/>');
+  const textPath = [1, 0, 0, 0];
+  const snapshot = (page: any, counts: { publications: number; watches: number }) =>
+    ({ graph: JSON.stringify(page.root()), rev: page.rev, ...counts });
+  for (const authority of ["local", "locus"] as const) {
+    const host = authority === "local" ? hsonLiveMap.fromLibraries({ page: definition })
+      : hsonLiveMap.locus.create({ page: { ...definition, access: "shared" } });
+    const page = host.doc.must("page");
+    const counts = { publications: 0, watches: 0 };
+    page.commits.observe(() => counts.publications++);
+    page.at(textPath).watch(() => counts.watches++);
+    const ordinary = page.at(textPath);
+    const retained = ordinary.present()!.asText()!;
+    await retained.replace("valid");
+    await ordinary.replace(aside);
+    let before = snapshot(page, counts);
+    await assert.rejects(async () => { await retained.replace("stale"); });
+    assert.deepEqual(snapshot(page, counts), before);
+    const element = ordinary.asElement()!;
+    await ordinary.replace("restored");
+    before = snapshot(page, counts);
+    await assert.rejects(async () => { await element.replace("stale element"); });
+    assert.deepEqual(snapshot(page, counts), before);
+    await retained.replace("usable again");
+    assert.equal(ordinary.snap(), "usable again");
+    const noOpRev = page.rev;
+    await retained.replace("usable again");
+    assert.equal(page.rev, noOpRev);
+    const present = ordinary.present()!;
+    await ordinary.delete();
+    before = snapshot(page, counts);
+    await assert.rejects(async () => { await present.replace("missing"); });
+    assert.deepEqual(snapshot(page, counts), before);
+    await page.at([1, 0, 0]).asElement()!.insert(0, "returned");
+    await present.replace("present again");
+    const inherited = page.at([1, 0, 0]).asElement()!.present()!.at([0]).asText()!;
+    await page.at([1, 0, 0]).replace("parent text");
+    before = snapshot(page, counts);
+    await assert.rejects(async () => { await inherited.replace("bad descendant"); });
+    assert.deepEqual(snapshot(page, counts), before);
+    if ("dispose" in host) host.dispose();
+  }
+  for (const authority of ["local", "locus"] as const) {
+    const host = authority === "local" ? hsonLiveMap.fromLibraries({ page: definition })
+      : hsonLiveMap.locus.create({ page: { ...definition, access: "shared" } });
+    const page = host.doc.must("page"); const counts = { publications: 0, watches: 0 };
+    page.commits.observe(() => counts.publications++); page.at(textPath).watch(() => counts.watches++);
+    const before = snapshot(page, counts);
+    const stage = (fn: any) => authority === "local" ? (host as any).batch(fn) : (host as any).stage(fn);
+    await assert.rejects(async () => { await stage((writer: any) => {
+      const location = writer.doc.must("page").at(textPath);
+      const refined = location.asText();
+      writer.doc.must("page").at([1, 0, 1, 0]).replace("neighbor");
+      location.replace(aside); refined.replace("bad"); location.replace("later");
+    }); });
+    assert.deepEqual(snapshot(page, counts), before);
+    await stage((writer: any) => {
+      const location = writer.doc.must("page").at(textPath);
+      const refined = location.asText(); location.replace(aside); location.replace("again"); refined.replace("allowed");
+    });
+    assert.equal(page.at(textPath).snap(), "allowed");
+    if ("dispose" in host) host.dispose();
+  }
+  // Attribute bags may run code before the ordinary attribute candidate is built.
+  const local = hsonLiveMap.fromLibraries({ page: definition });
+  const page = local.doc.must("page"); const parent = page.at([1, 0, 0]);
+  const refined = parent.asElement()!; let publications = 0; page.commits.observe(() => publications++);
+  const bag = new Proxy({ title: "outer" }, { ownKeys(target) { parent.replace("inner"); return Reflect.ownKeys(target); } });
+  assert.throws(() => refined.attrs.setMany(bag));
+  assert.equal(parent.snap(), "inner"); assert.equal(page.rev, 1); assert.equal(publications, 1);
+
+  const queued = hsonLiveMap.locus.create({ page: { ...definition, access: "shared" } });
+  const queuedLocation = queued.doc.must("page").at(textPath);
+  const queuedText = queuedLocation.asText()!;
+  const first = queuedLocation.replace(aside);
+  const stale = queuedText.replace("queued stale");
+  await first; await assert.rejects(stale);
+  assert.equal(queued.rev, 1); assert.equal(queuedLocation.kind(), "element");
+  queued.dispose();
+
+  const storage = new MemoryCheckpointAdapter();
+  const config = { logicalMapId: "retained-document-refinement", persistence: storage };
+  const definitions = { page: { ...definition, access: "shared" as const } };
+  const durable = await hsonLiveMap.locus.resume(definitions, config);
+  const location = durable.doc.must("page").at(textPath); const text = location.asText()!;
+  await location.replace(aside);
+  const count = storage.appendCalls.length, revision = durable.rev;
+  await assert.rejects(text.replace("rejected"));
+  await assert.rejects(durable.stage(writer => {
+    const slot = writer.doc.must("page").at(textPath);
+    const element = slot.asElement();
+    slot.replace("temporary");
+    element.replace("rejected batch");
+  }));
+  assert.equal(storage.appendCalls.length, count); assert.equal(durable.rev, revision);
+  const graph = durable.doc.must("page").root(); durable.dispose();
+  const restored = await hsonLiveMap.locus.resume(definitions, config);
+  assert.equal(restored.rev, revision); assert.deepEqual(restored.doc.must("page").root(), graph);
+  restored.dispose();
 }

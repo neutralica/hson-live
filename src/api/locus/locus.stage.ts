@@ -1,3 +1,5 @@
+import { document_location_refinements } from "../livemap/livemap.document-refinement.js";
+import { stage_document_location_refinements } from "../livemap/livemap.staged.js";
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
 import { capture_before_submission, capture_plain_instruction } from "../../internal/capture-instruction.js";
 import { document_location_commands } from "../../internal/document-location-commands.js";
@@ -128,7 +130,9 @@ export function make_locus_stage<TMap extends LiveMap>(
     const edit = (run: (location: import("../livemap/livemap.staged.js").StagedDocumentLocation) => void) => submit(writer => {
       if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
       document.root();
-      run(selected_document(writer, name).at(stable) as import("../livemap/livemap.staged.js").StagedDocumentLocation);
+      const location = selected_document(writer, name).at(stable) as import("../livemap/livemap.staged.js").StagedDocumentLocation;
+      stage_document_location_refinements(location, document_location_refinements(raw));
+      run(location);
     });
     const commands = document_location_commands(edit);
     const listener = raw.listen === undefined ? undefined : listenAt(name, document, () => {
