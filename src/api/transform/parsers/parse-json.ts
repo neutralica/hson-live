@@ -531,71 +531,53 @@ export function nodeFromJson(
  * Parse JSON into a rooted `HsonNode` tree.
  *
  * Input handling:
- * - If `input` is a string, it is parsed by the ordered JSON reader. Any parse
- *   error is wrapped and rethrown via `_throw_transform_err`.
- * - The parsed or supplied value is detached recursively before conversion.
- *   Caller records and arrays are never normalized in place or retained by
- *   the canonical graph.
- * - Cyclic and non-JSON object values reject deterministically.
- *
- * Explicit `_hson_root` handling:
- * - A top-level `{ "_hson_root": <payload>, "$_meta"?: ... }` is constructed
- *   as a root node rather than unwrapped.
- * - Empty `$_meta` is normalized away; populated or malformed root metadata
- *   reaches canonical validation and rejects.
- *
- * Conversion:
- * - Delegates to `nodeFromJson(parsed, getTag(parsed))`
- *   to build the main Hson subtree.
- * - Wraps the resulting node in a `_hson_root` wrapper:
- *   - `$_tag: ROOT_TAG`
- *   - `$_content: [node]`
- * - Runs `assert_invariants` on the final root to ensure structural
- *   correctness.
- *
- * @param input - JSON string or already-parsed `JsonValue`.
- * @returns A `_hson_root`-wrapped `HsonNode` representing the JSON payload.
- * @throws If JSON parsing fails or invariants are violated.
- * @see nodeFromJson
- * @see getTag
- * @see assert_invariants
+ * - String input goes through the ordered JSON reader and retains its
+ *   structured source diagnostics.
+ * - Other inputs follow native JSON value admission.
  */
 export function parse_json(input: string | JsonValue): HsonNode {
-    let parsed: JsonInputValue;
-    if (typeof input === "string") {
-        try {
-            parsed = parse_ordered_json_text(input);
-        } catch (e) {
-            if (is_transform_error(e)) throw e;
-            _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
-        }
-    } else {
-        // Runtime-value admission retains its established structured failures
-        // (notably hson.number-admission / HSON_NUMBER_NONFINITE). Only JSON
-        // text syntax failures belong to the parse-json wrapper above.
-        try {
-            parsed = admit_projected_value(input);
-        } catch (error) {
-            if (error instanceof ProjectedValueAdmissionError) {
-                if (error.code === "NONFINITE_NUMBER" && is_transform_error(error.cause)) {
-                    throw error.cause;
-                }
-                _throw_transform_err(
-                    error.message,
-                    "parse_json",
-                    undefined,
-                    error,
-                    {
-                        code: `PROJECTED_VALUE_${error.code}`,
-                        path: JSON.stringify(error.path),
-                    },
-                );
-            }
-            throw error;
-        }
+    if (typeof input !== "string") return parse_json_value(input);
+
+    let parsed: OrderedProjectedValue;
+    try {
+        parsed = parse_ordered_json_text(input);
+    } catch (e) {
+        if (is_transform_error(e)) throw e;
+        _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
     }
-    reject_portable_json_quids(parsed);
-    const { node } = nodeFromJson(parsed, getTag(parsed));
+    return buildJsonRoot(parsed);
+}
+
+/** Capture a native JSON value, including literal strings, before graph construction. */
+export function parse_json_value(value: JsonValue): HsonNode {
+    let admitted: OrderedProjectedValue;
+    try {
+        admitted = admit_projected_value(value);
+    } catch (error) {
+        if (error instanceof ProjectedValueAdmissionError) {
+            if (error.code === "NONFINITE_NUMBER" && is_transform_error(error.cause)) {
+                throw error.cause;
+            }
+            _throw_transform_err(
+                error.message,
+                "parse_json",
+                undefined,
+                error,
+                {
+                    code: `PROJECTED_VALUE_${error.code}`,
+                    path: JSON.stringify(error.path),
+                },
+            );
+        }
+        throw error;
+    }
+    return buildJsonRoot(admitted);
+}
+
+// Both inputs share structural envelope checks and canonical graph validation.
+function buildJsonRoot(value: OrderedProjectedValue): HsonNode {
+    reject_portable_json_quids(value);
+    const { node } = nodeFromJson(value, getTag(value));
     const root = node.$_tag === ROOT_TAG
         ? node
         : CREATE_NODE({

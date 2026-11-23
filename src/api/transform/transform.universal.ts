@@ -1,7 +1,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { parse_hson } from "./parsers/parse-hson.js";
 import { parse_html_string } from "./parsers/parse-html-string.js";
-import { parse_json } from "./parsers/parse-json.js";
+import { parse_json, parse_json_value } from "./parsers/parse-json.js";
 import { construct_output_2 } from "./constructors/construct-output-2.js";
 import type {
   BinaryDecodeOptions,
@@ -27,14 +27,20 @@ export function transform_from_json(
   input: string | JsonValue,
   unsafe = true,
 ): TransformOutput {
-  const node = parse_json(input);
   const raw = typeof input === "string" ? input : "[JSON value]";
-  const frame: TransformFrame = {
-    input: raw,
+  return createJsonOutput(parse_json(input), raw, unsafe);
+}
+
+export function transform_from_json_value(value: JsonValue): TransformOutput {
+  return createJsonOutput(parse_json_value(value), "[JSON value]", true);
+}
+
+function createJsonOutput(node: HsonNode, input: string, unsafe: boolean): TransformOutput {
+  return construct_output_2({
+    input,
     node,
     meta: frame_meta("json", unsafe),
-  };
-  return construct_output_2(frame);
+  });
 }
 
 export function transform_from_hson(

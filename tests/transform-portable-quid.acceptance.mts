@@ -37,6 +37,7 @@ assert.equal(read_hson_node_quid(graph.$_content[0] as typeof graph), Q1);
 rejects_portable_quid(() => hsonTransform.fromHson(`<main @${Q1}/>`).toNode());
 rejects_portable_quid(() => hsonTransform.fromJson({ main: "", $_meta: { quid: Q1 } }).toNode());
 rejects_portable_quid(() => hsonTransform.fromJson(JSON.stringify({ main: "", $_meta: { quid: Q1 } })).toNode());
+rejects_portable_quid(() => hsonTransform.fromJsonValue({ _hson_elem: [{ main: "", $_meta: { quid: Q1 } }] }));
 rejects_portable_quid(() => hsonTransform.fromTrustedHtml(`<main hson:quid="${Q1}"></main>`).toNode());
 rejects_portable_quid(() => hsonTransform.fromUntrustedHtml(`<main hson:quid="${Q1}"></main>`).toNode());
 

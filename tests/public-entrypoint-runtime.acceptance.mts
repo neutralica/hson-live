@@ -180,6 +180,18 @@ check("construction facades preserve root and subpath identity and immutability"
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
+run_in_fresh_process("native JSON value ingress is shared by root and Transform package facades", `
+  import assert from "node:assert/strict";
+  import { hson, hsonTransform as rootTransform } from "hson-live";
+  import { hsonTransform } from "hson-live/transform";
+  assert.equal(rootTransform, hsonTransform);
+  assert.equal(hson.transform, hsonTransform);
+  assert.equal(hson.fromJsonValue, hsonTransform.fromJsonValue);
+  assert.equal(hson.fromJsonValue("42").toJson().value(), "42");
+  assert.equal(hsonTransform.fromJsonValue("null").toJson().value(), "null");
+  assert.equal(hson.fromJson("42").toJson().value(), 42);
+`);
+
 check("SSR root and subpath exports share runtime identity", () => {
   const source = `
     import {

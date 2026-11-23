@@ -13,6 +13,7 @@ import { hsonTransform } from "hson-live/transform";
 hsonTransform.fromUntrustedHtml(htmlString);
 hsonTransform.fromTrustedHtml(htmlString);
 hsonTransform.fromJson(input);
+hsonTransform.fromJsonValue(value);
 hsonTransform.fromHson(source);
 hsonTransform.fromBinary(bytes, limits);
 hsonTransform.fromNode(node);
@@ -27,6 +28,7 @@ hson.fromUntrustedHtml(stringOrElement) // sanitized HTML
 hson.fromTrustedHtml(stringOrElement)   // unsanitized trusted HTML
 hson.fromBinary(bytes, limits)
 hson.fromJson(input)
+hson.fromJsonValue(value)
 hson.fromHson(input)
 hson.fromNode(node)
 ```
@@ -241,7 +243,7 @@ OBJ carriers reject instead of being unwrapped into complete data values.
 
 Parses JSON data into Hson nodes.
 
-- Accepts a JSON string or a parsed JSON value.
+- Reads top-level JavaScript strings as serialized JSON source. Other inputs go through native JSON value admission.
 - Source-owned ROOT contains a complete value: explicit scalar `_hson_root` payloads use STR/VAL directly, and complete singleton `_hson_elem` text scaffolds lower to STR. Named element text constructs its nested ELEM relationship directly; empty and adjacent text in larger ordered content remains distinct.
 - Does not sanitize.
 - Detaches caller-owned records and arrays before normalization. Parsing never   mutates the supplied value or retains mutable aliases into canonical graph   state.
@@ -249,6 +251,20 @@ Parses JSON data into Hson nodes.
 - JSON string ingress preserves textual property sequence, including   integer-index property names, before constructing canonical `_hson_obj`   content.
 - JSON string ingress rejects duplicate decoded property names with   `HSON_JSON_DUPLICATE_PROPERTY` before an earlier declaration can be   overwritten. Primary and first-declaration source evidence remain   structured.
 - Already-parsed JavaScript objects admit the enumeration order the supplied   runtime value exposes. They cannot recover textual order or overwritten   duplicate declarations discarded before this API received the value.
+
+### `hsonTransform.fromJsonValue(value: JsonValue)`
+
+Admits a native JavaScript JSON value. A string is always taken literally, including an empty string or one that looks like serialized JSON. The root shortcut is `hson.fromJsonValue(value)`. This method shares the native-value validation, detachment, and structural JSON handling used by `fromJson`.
+
+```ts
+const json = hsonTransform.fromJsonValue("42").toJson();
+
+hsonTransform.fromJsonValue(json.value()); // string "42"
+hsonTransform.fromJson(json.serialize()); // string "42"
+hsonTransform.fromJson("42"); // number 42
+```
+
+Use the serialized round trip when textual object-member order matters. Native objects follow JavaScript's enumeration order, which sorts integer-index keys.
 
 ### `hson.fromHson(input: string)`
 
@@ -548,7 +564,8 @@ but they are not exported by `hson-live`, `hson-live/transform`, or the public
 | --- | --- | --- |
 | `fromUntrustedHtml` | yes | external or user-authored HTML |
 | `fromTrustedHtml` | no | trusted developer-authored HTML |
-| `fromJson` | no | structured data |
+| `fromJson` | no | serialized JSON or native non-string values |
+| `fromJsonValue` | no | native JSON values, including literal strings |
 | `fromHson` | no | Hson text |
 | `fromNode` | no | QUID-free graph admission |
 

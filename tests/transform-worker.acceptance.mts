@@ -49,12 +49,13 @@ function walk(node: HsonNode, visit: (current: HsonNode) => void): void {
   }
 }
 
-check("the transform facade exposes calc and six synchronous constructors", () => {
+check("the transform facade exposes calc and seven synchronous constructors", () => {
   assert.deepEqual(Object.keys(hsonTransform), [
     "calc",
     "fromHson",
     "fromBinary",
     "fromJson",
+    "fromJsonValue",
     "fromNode",
     "fromTrustedHtml",
     "fromUntrustedHtml",
@@ -65,6 +66,7 @@ check("Transform outputs omit browser-dependent post-output sanitation", () => {
   for (const output of [
     hsonTransform.fromHson(`<worker/>`),
     hsonTransform.fromJson({ ready: true }),
+    hsonTransform.fromJsonValue("true"),
     hsonTransform.fromNode({ $_tag: "_hson_elem", $_content: [{ $_tag: "worker", $_content: [] }] }),
   ]) assert.equal("sanitizeBEWARE" in output, false);
 });

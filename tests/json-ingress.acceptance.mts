@@ -67,7 +67,74 @@ function assert_source_graph(input: JsonValue, expected: HsonNode): void {
   // Producer observations precede any serialization or forgiving re-admission.
   assert.deepEqual(parse_json(input), expected);
   assert.equal(canonical_hson_graph_equal(hson.fromJson(input).toNode(), expected), true);
+  if (typeof input !== "string") {
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJsonValue(input).toNode(), expected), true);
+  }
 }
+
+check("native JSON strings stay literal while legacy string input is decoded as source", () => {
+  const sourceCases: ReadonlyArray<readonly [string, JsonValue]> = [
+    ["42", 42],
+    ["-0", -0],
+    ["true", true],
+    ["false", false],
+    ["null", null],
+    ['["x",0]', ["x", 0]],
+    ['{"x":1}', { x: 1 }],
+    ['""', ""],
+    ['"42"', "42"],
+    ['"a\\n\\t\\u0022\\\\b"', "a\n\t\"\\b"],
+  ];
+  for (const [text, value] of sourceCases) {
+    assert.deepEqual(hsonTransform.fromJson(text).toJson().value(), value, text);
+    assert.equal(hsonTransform.fromJsonValue(text).toJson().value(), text);
+  }
+  assert.throws(() => hsonTransform.fromJson(""), TransformError);
+  assert.equal(hsonTransform.fromJsonValue("").toJson().value(), "");
+});
+
+check("native and serialized JSON outputs round-trip through their respective input paths", () => {
+  const values: JsonValue[] = [
+    "42", "true", "null", "[]", "{}", "", "a\n\t\"\\b",
+    42, 0, -0, true, false, null, [],
+    ["42", "", false, -0],
+    { z: "null", a: ["{}", { last: -0, first: "true" }] },
+    { _hson_root: { _hson_elem: [{ p: "42" }, "", "after"] } },
+  ];
+  for (const value of values) {
+    const output = hsonTransform.fromJsonValue(value);
+    const json = output.toJson();
+    const expected = output.toNode();
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJsonValue(json.value()).toNode(), expected), true);
+    assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(json.serialize()).toNode(), expected), true);
+    if (typeof value !== "string") {
+      assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(value).toNode(), expected), true);
+    }
+    if (Object.is(value, -0)) assert.equal(json.serialize(), "-0");
+  }
+});
+
+check("native JSON admission shares established invalid value diagnostics", () => {
+  const invalid: ReadonlyArray<readonly [unknown, string]> = [
+    [undefined, "PROJECTED_VALUE_UNDEFINED_VALUE"],
+    [1n, "PROJECTED_VALUE_UNSUPPORTED_TYPE"],
+    [NaN, "HSON_NUMBER_NONFINITE"],
+    [Infinity, "HSON_NUMBER_NONFINITE"],
+    [new String("42"), "PROJECTED_VALUE_UNSUPPORTED_PROTOTYPE"],
+    [new Date(0), "PROJECTED_VALUE_UNSUPPORTED_PROTOTYPE"],
+    [new (class extends Array {})(), "PROJECTED_VALUE_UNSUPPORTED_PROTOTYPE"],
+    [[, "sparse"], "PROJECTED_VALUE_SPARSE_ARRAY"],
+    [{ nested: { bad: undefined } }, "PROJECTED_VALUE_UNDEFINED_VALUE"],
+  ];
+  for (const [value, code] of invalid) {
+    for (const admit of [hsonTransform.fromJson, hsonTransform.fromJsonValue]) {
+      assert.throws(() => Reflect.apply(admit, undefined, [value]), (cause: unknown) => {
+        assert.equal(read_transform_error_details(cause)?.code, code);
+        return true;
+      });
+    }
+  }
+});
 
 check("explicit scalar ROOT constructs direct complete primitives before normalization", () => {
   for (const payload of ["x", "", 1, 0, -0, true, false, null]) {
@@ -158,15 +225,23 @@ check("invalid JSON element structures reject without fallback values", () => {
       assert.throws(() => parse_json(sourceInput));
       assert.throws(() => hson.fromJson(sourceInput));
     }
+    assert.throws(() => hson.fromJsonValue(input));
     assert.deepEqual(input, before);
   }
 });
 
 check("JSON producer outputs remain isolated across generic source entrypoints and terminals", () => {
-  for (const factory of [hson, hsonTransform, SAFE_TRANSFORM_SOURCE, UNSAFE_TRANSFORM_SOURCE]) {
+  const constructors = [
+    hson.fromJson,
+    hsonTransform.fromJson,
+    hsonTransform.fromJsonValue,
+    SAFE_TRANSFORM_SOURCE.fromJson,
+    UNSAFE_TRANSFORM_SOURCE.fromJson,
+  ];
+  for (const admit of constructors) {
     const child = { p: "x", $_attrs: { title: "original" } };
     const input = { _hson_root: { _hson_elem: ["before", child, "", "after"] } };
-    const source = factory.fromJson(input);
+    const source = admit(input);
     const expected = source.toNode();
     const hsonOutput = source.toHson(); const jsonOutput = source.toJson();
     const htmlOutput = source.toHtml(); const binaryOutput = source.toBinary();
@@ -624,6 +699,11 @@ check("JSON string ingress preserves text order while value ingress reflects run
   const fromValue = detach_hson_root_value(parse_json(runtimeValue));
   assert.deepEqual(object_property_orders(fromText), [["10", "2", "1"]]);
   assert.deepEqual(object_property_orders(fromValue), [["1", "2", "10"]]);
+  const output = hsonTransform.fromJson(directIntegerKeyFixture.expectedJson).toJson();
+  const readValue = detach_hson_root_value(hsonTransform.fromJsonValue(output.value()).toNode());
+  const readSource = detach_hson_root_value(hsonTransform.fromJson(output.serialize()).toNode());
+  assert.equal(canonical_hson_graph_equal(readValue, fromValue), true);
+  assert.equal(canonical_hson_graph_equal(readSource, fromText), true);
   assert.equal(canonical_hson_graph_equal(fromText, fromValue), false);
 });
 
@@ -731,6 +811,7 @@ check("all structural JSON string-ingress routes reject duplicates repeatably", 
     })(),
     first,
   );
+  assert.equal(hson.fromJsonValue(source).toJson().value(), source);
   assert.equal(source, before);
 });
 

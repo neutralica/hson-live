@@ -1,4 +1,5 @@
-import { Hson, hson, hsonLiveMap, continue_document, continue_hosted_document, encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry, type Locus, type LiveMap, type LiveMapDocumentLibrary } from "hson-live";
+import { Hson, hson, hsonLiveMap, hsonTransform as rootTransform, continue_document, continue_hosted_document, encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry, type Locus, type LiveMap, type LiveMapDocumentLibrary } from "hson-live";
+import { hsonTransform, type TransformOutput } from "hson-live/transform";
 import { bind_locus_websocket, type LocusWebSocketLike } from "hson-live/locus";
 import { bind_node_locus_websocket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
@@ -26,3 +27,12 @@ const rootParts: import("hson-live").LiveMapPartCollection = { header: { kind: "
 const rootPart: import("hson-live").LiveMapDocumentPart = rootParts.header!;
 declare const rootPartsInput: import("hson-live").LiveMapPartsLibraryInput;
 void [rootParts, rootPart, rootPartsInput];
+
+const nativeJson = hsonTransform.fromJsonValue("42").toJson();
+const nativeValueRoundTrip: TransformOutput = hson.fromJsonValue(nativeJson.value());
+const serializedRoundTrip: TransformOutput = rootTransform.fromJson(nativeJson.serialize());
+void [nativeValueRoundTrip, serializedRoundTrip, rootTransform.fromJsonValue({ text: "true" })];
+// @ts-expect-error Undefined is outside native JsonValue admission.
+hson.fromJsonValue(undefined);
+// @ts-expect-error A nested Date is outside native JsonValue admission.
+hsonTransform.fromJsonValue({ date: new Date() });

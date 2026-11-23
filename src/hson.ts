@@ -49,7 +49,10 @@ export interface HsonFacade {
   readonly transform: typeof hsonTransform;
   readonly fromHson: (input: string) => HsonTransformSource;
   readonly fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;
+  /** Reads top-level strings as serialized JSON and other inputs as native values. */
   readonly fromJson: (input: string | JsonValue) => TransformOutput;
+  /** Admits a native JSON value. Top-level strings are used literally. */
+  readonly fromJsonValue: (value: JsonValue) => TransformOutput;
   readonly fromNode: (node: HsonNode) => TransformOutput;
   readonly fromTrustedHtml: (input: string | Element) => TransformOutput;
   readonly fromUntrustedHtml: (input: string | Element) => TransformOutput;
@@ -64,6 +67,7 @@ export const hson: HsonFacade = Object.freeze({
   fromHson: hsonTransform.fromHson,
   fromBinary: hsonTransform.fromBinary,
   fromJson: hsonTransform.fromJson,
+  fromJsonValue: hsonTransform.fromJsonValue,
   fromNode: hsonTransform.fromNode,
   fromTrustedHtml: transform_from_trusted_html,
   fromUntrustedHtml: transform_from_untrusted_html,
