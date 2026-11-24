@@ -64,15 +64,15 @@ await check("all static Data routes withhold evidence for reserved names rejecte
   const schema = compiled_hson_schema_of(ANY_DATA);
   for (const source of [...sources, String.raw`<outer «<'\u0024_tag' 1>»>`]) {
     assert.throws(() => Hson.data.parse(source));
-    assert.equal(evaluate_static_schema_candidate(schema, { source, family: "data" }).kind, "unknown", source);
+    assert.equal(evaluate_static_schema_candidate(schema, { source, family: "data" }, "data").kind, "unknown", source);
   }
   for (const source of [...invalidValues.map(value => JSON.stringify(value)), String.raw`{"outer":[{"\u005fhson_future":1}]}`]) {
     const json = JSON.parse(source);
     const data = parse_ordered_json_text(source);
     assert.throws(() => Hson.data.from(json), /Reserved Hson prefix/);
     assert.throws(() => data_source(source));
-    assert.equal(evaluate_static_schema_candidate(schema, { json }).kind, "unknown", `JSON ${source}`);
-    assert.equal(evaluate_static_schema_candidate(schema, { data }).kind, "unknown", `Ordered Data ${source}`);
+    assert.equal(evaluate_static_schema_candidate(schema, { json }, "data").kind, "unknown", `JSON ${source}`);
+    assert.equal(evaluate_static_schema_candidate(schema, { data }, "data").kind, "unknown", `Ordered Data ${source}`);
   }
 });
 

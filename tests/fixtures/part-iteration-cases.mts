@@ -424,11 +424,12 @@ export function part_iteration_cases(verify: (name: string, run: () => void) => 
     });
     check("iteration: static Schema evaluation runs the shared composer", () => {
       const collection = new Map([['parts', { list: part(`<ul hson:part data:items="%{items}" <li ${kind === 'array' ? 'for:item' : 'per::item'}="^{items}"/>/>`) }]]);
-      const schema = compile_hson_schema('<type "document" defs <Item <tag "li" content "empty">> tag "ul" content <repeat <ref "Item"> count 2>>');
+      const schema = compile_hson_schema('<type "document" defs <Item <tag "li" content "empty">> tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "ul" content <repeat <ref "Item"> count 2>>]>>]>>');
       assert.ok(schema.ok);
-      assert.equal(evaluate_static_schema_candidate(schema.value, { family: 'document', source: invocation(['a', 'b']) }, collection).kind, 'valid');
-      assert.equal(evaluate_static_schema_candidate(schema.value, { family: 'document', source: invocation(['a']) }, collection).kind, 'invalid');
-      assert.equal(evaluate_static_schema_candidate(schema.value, { family: 'document', source: invocation([]) }, collection).kind, 'invalid');
+      const context = { kind: 'document-library', name: 'page', parts: collection } as const;
+      assert.equal(evaluate_static_schema_candidate(schema.value, { family: 'document', source: invocation(['a', 'b']) }, context).kind, 'valid');
+      assert.equal(evaluate_static_schema_candidate(schema.value, { family: 'document', source: invocation(['a']) }, context).kind, 'invalid');
+      assert.equal(evaluate_static_schema_candidate(schema.value, { family: 'document', source: invocation([]) }, context).kind, 'invalid');
     });
   }
 }

@@ -29,7 +29,7 @@ const directory = mkdtempSync(join(root, "tmp/schema-editor-tsserver-"));
 const extension = join(root, "editors/vscode-hson");
 const manifest = JSON.parse(readFileSync(join(extension, "package.json"), "utf8"));
 const plugin = manifest.contributes.typescriptServerPlugins[0].name;
-const schema = 'import { Hson, type JsonFromSchema } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" root <object <name "string">>>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "main" content "string">`;\nconst after: number = "after";\ndeclare const local: JsonFromSchema<typeof Thing>;\nlocal.na';
+const schema = 'import { Hson, type JsonFromSchema } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" root <object <name "string">>>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;\nconst after: number = "after";\ndeclare const local: JsonFromSchema<typeof Thing>;\nlocal.na';
 const consumer = 'import { hsonLiveMap, type JsonFromSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: JsonFromSchema<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.doc.must("home").schema.use(Page);\nconst exactPage: typeof Page = map.doc.must("home").schema.get();\nconst pageText: string = map.doc.must("home").at([0]).snap();\n';
 const file = name => join(directory, name);
 writeFileSync(file("package.json"), '{"type":"module"}');
@@ -420,7 +420,7 @@ const loc = hsonLiveMap.locus.create({
     await editConsumer(consumer);
   });
   await check("bundled diagnostics underline authored static candidates and clear on unsaved repair", async () => {
-    const text = 'import { Hson, hsonLiveMap, type HsonAuthored, type HsonFromSchema } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence «<tag "head">, <tag "body">»>>`;\ntype PageHson = HsonFromSchema<typeof S>; const bad: HsonAuthored = Hson.document`<html <body/>/>`;\nconst certified: PageHson = S.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<html <body/> <head/>/>`, schema: S } });\n';
+    const text = 'import { Hson, hsonLiveMap, type HsonAuthored, type HsonFromSchema } from "hson-live";\nconst S = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main">]>>]>>`;\ntype PageHson = HsonFromSchema<typeof S>; const bad: HsonAuthored = Hson.document`<html <body/>/>`;\nconst certified: PageHson = S.certify(bad); S.certify(bad);\nhsonLiveMap.fromLibraries({ page: { document: Hson.document`<aside/>`, schema: S } });\n';
     await editConsumer(text);
     const all = await diagnostics("consumer.ts");
     assert.ok(!all.some(error => error.code === 2322), JSON.stringify(all));
@@ -430,8 +430,66 @@ const loc = hsonLiveMap.locus.create({
     assert.ok(errors.some(error => /wrong tag/.test(error.text)), JSON.stringify(errors));
     assert.ok(errors.every(error => error.start.line === 3 || error.start.line === 5));
     assert.ok(errors.every(error => !error.text.includes(".hson/")));
-    await editConsumer(text.replace('<html <body/>/>', '<html <head/> <body/>/>').replace('<html <body/> <head/>/>', '<html <head/> <body/>/>'));
+    await editConsumer(text.replace('<html <body/>/>', '<html <head/> <body <main/>/>/>').replace('<aside/>', '<main/>'));
     assert.equal((await diagnostics("consumer.ts")).length, 0);
+    await editConsumer(consumer);
+  });
+  await check("bundled Document diagnostics preserve detached and Library attribution in either call order", async () => {
+    const template = 'Hson.document`\r\n  // 🌱\r\n  <html <head/> <body <hson-part lib="bits" at="x"/>/>/>\r\n`';
+    const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\n'
+      + 'const S = Hson.schema`<type "document" tag "main">`;\r\n'
+      + `const page = ${template};\r\n`;
+    const certify = "S.certify(page);";
+    const admit = 'hsonLiveMap.fromLibraries({ page: { document: page, schema: S }, mirror: { document: page, schema: S },'
+      + ' bits: { parts: { x: { kind: "document", document: "<article hson:part/>" } } } });';
+    for (const operations of [[certify, admit], [admit, certify]]) {
+      const text = prefix + operations.join("\r\n");
+      await editConsumer(text);
+      const span = (start, length) => ({ start: location(text, start), end: location(text, start + length) });
+      const related = (anchor, message) => ({
+        span: { file: file("consumer.ts"), ...span(text.indexOf(anchor), anchor.length) }, message,
+      });
+      const templateStart = text.indexOf(template);
+      const message = 'Static Hson does not satisfy S: wrong tag at 0; expected "main"; received "html".';
+      const expected = [
+        { ...span(templateStart + template.indexOf("html"), "html".length),
+          owner: related("S.certify", "Detached Document Schema certification.") },
+        ...["mirror", "page"].map(name => ({ ...span(templateStart, template.length),
+          owner: related("hsonLiveMap.fromLibraries", `Document Schema admission for Library "${name}".`) })),
+      ].map(error => ({ ...error, text: message, code: 95002 }));
+      for (let read = 0; read < 2; read++) {
+        const errors = (await diagnostics("consumer.ts")).filter(error => error.code === 95002);
+        assert.ok(errors.every(error => error.relatedInformation?.length === 1), JSON.stringify(errors));
+        const attributed = errors.map(({ start, end, relatedInformation: [{ span, message }], text, code }) =>
+          ({ start, end, owner: { span, message }, text, code }));
+        assert.deepEqual(attributed.sort((a, b) => a.owner.message.localeCompare(b.owner.message)), expected);
+      }
+    }
+    await editConsumer(consumer);
+  });
+  await check("bundled governed Document diagnostics follow source and dependency-only edits", async () => {
+    const valid = 'import { Hson, hsonLiveMap } from "hson-live";\nimport { Page } from "./schema.js";\n'
+      + 'hsonLiveMap.fromLibraries({ home: { document: Hson.document`<main "hello"/>`, schema: Page } });';
+    const changed = valid.replace('<main "hello"/>', '<aside "hello"/>');
+    const observe = async (source, expected) => {
+      const errors = await diagnostics("consumer.ts");
+      if (expected === undefined) { assert.deepEqual(errors, []); return; }
+      assert.deepEqual(errors.map(error => error.code), [95002], JSON.stringify(errors));
+      const start = source.lastIndexOf(expected);
+      assert.deepEqual(errors[0].start, location(source, start));
+      assert.deepEqual(errors[0].end, location(source, start + expected.length));
+      assert.match(errors[0].text, /wrong tag at 0\.1\.0/);
+    };
+    await editConsumer(valid);
+    await observe(valid);
+    await editConsumer(changed);
+    await observe(changed, "aside");
+    await edit(schema.replace('<tag "main"', '<tag "aside"'));
+    await observe(changed);
+    await edit(schema);
+    await observe(changed, "aside");
+    await editConsumer(valid);
+    await observe(valid);
     await editConsumer(consumer);
   });
   await check("bundled proof filtering follows malformed initializers through CRLF unsaved edits", async () => {

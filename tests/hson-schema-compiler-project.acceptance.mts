@@ -238,7 +238,7 @@ check("canonical LiveMap namespace retains initial admission proof without tight
   writeFileSync(basePath, JSON.stringify(base, null, 2));
   writeFileSync(join(other, "namespace-proof.ts"), `import { Hson } from "hson-live/hson";
 import * as maps from "hson-live/livemap";
-const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
+const Page = Hson.schema\`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>\`;
 const empty = maps.create();
 const map = maps.fromLibraries({ home: { document: '<main "hello"/>', schema: Page } });
 map.doc.must("home").schema.use(Page);

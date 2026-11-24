@@ -63,8 +63,8 @@ function check_static_data_qualification(): void {
     for (const { candidate, admit } of static_data_routes(hson, json)) {
       const value = admit();
       assert.ok(ANY_DATA.certify(value).equals(value));
-      assert.equal(evaluate_static_schema_candidate(broad, candidate).kind, "valid");
-      const result = evaluate_static_schema_candidate(compiled_hson_schema_of(named), candidate);
+      assert.equal(evaluate_static_schema_candidate(broad, candidate, "data").kind, "valid");
+      const result = evaluate_static_schema_candidate(compiled_hson_schema_of(named), candidate, "data");
       if (code === undefined) {
         assert.ok(named.certify(value).equals(value));
         assert.equal(result.kind, "valid");
@@ -91,10 +91,10 @@ function check_static_data_qualification(): void {
     const value = admit();
     const key = "json" in candidate ? "2" : "10";
     assert.deepEqual(value.entries()?.map(([name]) => name), "json" in candidate ? ["2", "10", "known"] : ["known", "10", "2"]);
-    assert.equal(evaluate_static_schema_candidate(broad, candidate).kind, "valid");
+    assert.equal(evaluate_static_schema_candidate(broad, candidate, "data").kind, "valid");
     assert.throws(() => closed.certify(value), error => error instanceof HsonSchemaError
       && error.issues[0]?.code === "UNKNOWN_KEY" && error.issues[0]?.path[0] === key);
-    const result = evaluate_static_schema_candidate(compiled_hson_schema_of(closed), candidate);
+    const result = evaluate_static_schema_candidate(compiled_hson_schema_of(closed), candidate, "data");
     assert.equal(result.kind, "invalid");
     assert.equal(result.issue.code, "UNKNOWN_KEY");
     assert.deepEqual(result.issue.path, [key]);
@@ -106,25 +106,25 @@ function check_static_data_qualification(): void {
 
   for (const source of [String.raw`<toString 1 '\u0074oString' 2>`, '<value title="attribute" 1>', "<value 1", "<p/>"]) {
     assert.throws(() => Hson.data.parse(source));
-    assert.equal(evaluate_static_schema_candidate(broad, { source, family: "data" }).kind, "unknown");
+    assert.equal(evaluate_static_schema_candidate(broad, { source, family: "data" }, "data").kind, "unknown");
   }
   let reads = 0;
   const accessor = Object.defineProperty([null], 0, { get() { reads++; return null; } });
   for (const json of [accessor, [undefined], Array(1), { nested: { invalid: Infinity } }, Object.create({ inherited: true })]) {
     assert.throws(() => Reflect.apply(Hson.data.from, Hson.data, [json]));
-    assert.equal(evaluate_static_schema_candidate(broad, { json }).kind, "unknown");
+    assert.equal(evaluate_static_schema_candidate(broad, { json }, "data").kind, "unknown");
   }
   assert.throws(() => hson_data_from_value(accessor), /must be owned/);
-  assert.equal(evaluate_static_schema_candidate(broad, { data: accessor }).kind, "unknown");
+  assert.equal(evaluate_static_schema_candidate(broad, { data: accessor }, "data").kind, "unknown");
   assert.equal(reads, 0);
 
   let deep: OrderedProjectedValue = -0;
   for (let depth = 0; depth < HSON_MAX_NESTING - 1; depth++) deep = ordered_projected_array([deep]);
   assert.ok(hson_data_from_value(deep));
-  assert.equal(evaluate_static_schema_candidate(broad, { data: deep }).kind, "valid");
+  assert.equal(evaluate_static_schema_candidate(broad, { data: deep }, "data").kind, "valid");
   const tooDeep = ordered_projected_array([deep]);
   assert.throws(() => hson_data_from_value(tooDeep), /nesting depth/);
-  assert.equal(evaluate_static_schema_candidate(broad, { data: tooDeep }).kind, "unknown");
+  assert.equal(evaluate_static_schema_candidate(broad, { data: tooDeep }, "data").kind, "unknown");
 }
 
 export function run_schema_diagnostic_cases(): void {
@@ -168,7 +168,7 @@ export function run_schema_diagnostic_cases(): void {
     return true;
   });
   for (const { candidate } of static_data_routes('"x"', '"x"')) {
-    assert.deepEqual(evaluate_static_schema_candidate(compiled_hson_schema_of(nestedUnion), candidate), { kind: "unknown" });
+    assert.deepEqual(evaluate_static_schema_candidate(compiled_hson_schema_of(nestedUnion), candidate, "data"), { kind: "unknown" });
   }
   const ordinary = Hson.schema`<type "data" root <union ["string", "number"]>>`;
   assert.throws(() => ordinary.certify(false), error => {
@@ -272,7 +272,7 @@ export function run_schema_diagnostic_cases(): void {
     assert.equal(error.issues[0]?.expected, "string"); assert.equal(error.issues[0]?.received, "missing");
     return true;
   });
-  const staticFailure = evaluate_static_schema_candidate(compiled, { source: candidate.toHson(), family: "data" });
+  const staticFailure = evaluate_static_schema_candidate(compiled, { source: candidate.toHson(), family: "data" }, "data");
   assert.equal(staticFailure.kind, "invalid");
   if (staticFailure.kind === "invalid") {
     assert.deepEqual(staticFailure.issue.path, ["items", 0, "language"]);
@@ -351,7 +351,7 @@ export function run_schema_diagnostic_cases(): void {
         canonical.issues.map(issue => ({ code: issue.code, path: issue.path, attributeName: issue.attributeName, expected: issue.expected, received: issue.received })));
       return true;
     });
-    const failure = evaluate_static_schema_candidate(docCompiled, { source, family: "document" });
+    const failure = evaluate_static_schema_candidate(docCompiled, { source, family: "document" }, "detached-document");
     assert.equal(failure.kind, "invalid");
     if (failure.kind === "invalid") {
       assert.equal(failure.issue.attributeName, canonical.issues[0]?.attributeName);
@@ -361,7 +361,7 @@ export function run_schema_diagnostic_cases(): void {
   }
   const unique: HsonSchema = Hson.schema`<type "data" root <object <items <array <content <object <kind "string">> unique <by "kind" cases [["a", ["K"]], ["b", ["K"]]]>>>>>>`;
   const collision = '<items [<kind "a">, <kind "b">]>';
-  const failure = evaluate_static_schema_candidate(compiled_hson_schema_of(unique), { source: collision, family: "data" });
+  const failure = evaluate_static_schema_candidate(compiled_hson_schema_of(unique), { source: collision, family: "data" }, "data");
   assert.equal(failure.kind, "invalid");
   if (failure.kind === "invalid") {
     assert.deepEqual(failure.issue.path, ["items", 1, "kind"]);
@@ -378,12 +378,13 @@ export function run_schema_diagnostic_cases(): void {
   const parts = { title: { kind: "document", document: '<h1 hson:part "%{text}"/>' } } satisfies LiveMapPartCollection;
   const inventory = new Map<string, unknown>([["bits", parts]]);
   const candidateDoc = { source: shell, family: "document" } as const;
-  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc).kind, "unknown");
-  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, new Map()).kind, "unknown");
-  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, inventory).kind, "valid");
-  assert.equal(evaluate_static_schema_candidate(pageCompiled, { source: shell, family: "canonical" }, inventory).kind, "valid");
+  const library = { kind: "document-library", name: "page" } as const;
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, library).kind, "unknown");
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, { ...library, parts: new Map() }).kind, "unknown");
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, { ...library, parts: inventory }).kind, "valid");
+  assert.equal(evaluate_static_schema_candidate(pageCompiled, { source: shell, family: "canonical" }, { ...library, parts: inventory }).kind, "valid");
   const invalid = evaluate_static_schema_candidate(pageCompiled, candidateDoc,
-    new Map([["bits", { title: { kind: "document", document: '<p hson:part "%{text}"/>' } }]]));
+    { ...library, parts: new Map([["bits", { title: { kind: "document", document: '<p hson:part "%{text}"/>' } }]]) });
   assert.equal(invalid.kind, "invalid");
   if (invalid.kind === "invalid") {
     assert.equal(invalid.issue.expected, '"h1"'); assert.equal(invalid.issue.received, '"p"');
@@ -392,15 +393,15 @@ export function run_schema_diagnostic_cases(): void {
   // The existing complete collection validator also checks unused members.
   for (const unavailable of [undefined, {}, { title: parts.title, broken: { kind: "document", document: "<h1" } },
     { title: { kind: "document", document: '<h1 hson:part <hson-part at="title"/>/>' } }]) {
-    assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, new Map([["bits", unavailable]])).kind, "unknown");
+    assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, { ...library, parts: new Map([["bits", unavailable]]) }).kind, "unknown");
   }
   const nested = new Map<string, unknown>([["bits", {
     title: { kind: "document", document: '<h1 hson:part <hson-part at="child"/>/>' },
     child: { kind: "document", document: '<span hson:part/>' },
   }]]);
   assert.equal(evaluate_static_schema_candidate(pageCompiled,
-    { source: '<html <head/> <body <main <hson-part lib="bits" at="title"/>/>/>/>', family: "document" }, nested).kind, "valid");
-  const plain = evaluate_static_schema_candidate(pageCompiled, { source: '<html <head/> <body <main <p/>/>/>/>', family: "document" });
+    { source: '<html <head/> <body <main <hson-part lib="bits" at="title"/>/>/>/>', family: "document" }, { ...library, parts: nested }).kind, "valid");
+  const plain = evaluate_static_schema_candidate(pageCompiled, { source: '<html <head/> <body <main <p/>/>/>/>', family: "document" }, library);
   assert.equal(plain.kind, "invalid");
   assert.ok(plain.kind === "invalid" && plain.range !== undefined);
   // Static realization never installs a runtime or touches existing authority.
@@ -414,9 +415,9 @@ export function run_schema_diagnostic_cases(): void {
   globalThis.crypto.getRandomValues = () => { throw new Error("Static candidate analysis must not issue QUIDs"); };
   try {
     // A swallowed issuance error would return unknown and fail this assertion.
-    assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, inventory).kind, "valid");
+    assert.equal(evaluate_static_schema_candidate(pageCompiled, candidateDoc, { ...library, parts: inventory }).kind, "valid");
     assert.equal(evaluate_static_schema_candidate(pageCompiled,
-      { source: '<html <head/> <body <main <hson-part @:title lib="bits" at="title" text="Hello"/>/>/>/>', family: "document" }, inventory).kind, "valid");
+      { source: '<html <head/> <body <main <hson-part @:title lib="bits" at="title" text="Hello"/>/>/>/>', family: "document" }, { ...library, parts: inventory }).kind, "valid");
   } finally { globalThis.crypto.getRandomValues = random; stop(); stopPosition(); }
   assert.equal(map.rev, before.revision); assert.deepEqual(aggregate.hostedPosition(), before.position);
   assert.equal(aggregate.identityEpoch().issued(), before.ledger); assert.deepEqual(map.doc.must("page").snap(), before.root);

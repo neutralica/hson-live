@@ -182,7 +182,7 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
         let source: string;
         try { source = admit_hson_tagged_template(ts, declaration.initializer, mode); }
         catch (error) { diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: error_message(error) }); continue; }
-        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: mode });
+        const evaluated = evaluate_static_schema_candidate(schema.compiled, { source, family: mode }, mode === "data" ? "data" : "detached-document");
         if (evaluated.kind !== "valid") {
           // Semantic failures are reported once by shared relationship analysis.
           if (evaluated.kind === "unknown" && evaluated.error !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: evaluated.error });

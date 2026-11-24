@@ -8,9 +8,10 @@ import { selected_hson_value_declaration, hson_authoring_tag, hson_source_syntac
 import type { StaticSchemaCandidate } from "./candidate-evaluation.js";
 import { is_object_literal_prototype_setter, library_source_fields } from "./library-source.js";
 import { immutable_source_declaration, is_source_undefined, source_expression_operand, source_value_symbol } from "./schema-identity.js";
-import { admit_hson_tagged_template, hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
+import { admit_hson_tagged_source, admit_hson_tagged_template, hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
+import { raw_hson_template_literal } from "../trusted-schema-diagnostics/interpolation-source.js";
 
-export type StaticSourceCandidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number }>;
+export type StaticSourceCandidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number; bodyOffsets?: readonly number[] }>;
 
 const part_work_limit = 16384;
 const part_depth_limit = 128;
@@ -339,7 +340,19 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
       && typescript.isIdentifier(node.tag.expression) && is_official_hson_package_binding(node.tag.expression, "Hson", checker, true, typescript, checked)
       && ["document", "data", "canonical"].includes(node.tag.name.text)
       && typescript.isNoSubstitutionTemplateLiteral(node.template) && !node.template.isUnterminated) {
-      if (family === "document" && node.tag.name.text === "data") return undefined;
+      if (family === "document") {
+        const kind = node.tag.name.text;
+        if (kind !== "document" && kind !== "canonical") return undefined;
+        const tagged = hson_tagged_source(typescript, node, kind);
+        if (tagged === undefined || "substitutionRanges" in tagged) return undefined;
+        try {
+          const source = admit_hson_tagged_source(tagged);
+          const { hostText, bodyRange } = tagged;
+          const bodyStart = bodyRange.start;
+          return bodyRange.end - bodyStart === source.length ? { node, source, family: kind, bodyStart }
+            : { node, source, family: kind, bodyStart, bodyOffsets: raw_hson_template_literal(hostText, bodyRange).boundaries };
+        } catch { return undefined; }
+      }
       if ((family === "json" || family === "certify")) {
         const raw = node.template.getText(node.getSourceFile()).slice(1, -1);
         const strings = Object.freeze(Object.assign([node.template.text], { raw: Object.freeze([raw]) }));

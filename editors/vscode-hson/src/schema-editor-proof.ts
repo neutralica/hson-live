@@ -46,7 +46,7 @@ export function verified_schema_assignment_ranges(
     const interpolated = "substitutionRanges" in source;
     const admissionFailed = (interpolated ? diagnose_hson_prefix(source) : diagnose_hson_tag(source)).length > 0;
     const evaluated: StaticSchemaEvaluation = admissionFailed || interpolated ? { kind: "unknown" }
-      : evaluate_static_schema_candidate(association.compiled, { source: template_raw(source), family: association.mode });
+      : evaluate_static_schema_candidate(association.compiled, { source: template_raw(source), family: association.mode }, "data");
     if (evaluated.kind === "unknown") {
       if (!includeFailures || !admissionFailed) continue;
     } else if (evaluated.kind === "invalid" && !includeFailures) continue;

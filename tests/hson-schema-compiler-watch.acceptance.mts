@@ -131,7 +131,7 @@ await check("Part source changes rejudge unchanged receiving consumers without e
   } }, files: ["part.ts", "consumer.ts"] }));
   const part = 'import { Hson } from "hson-live"; export const title = Hson.document`<h1 hson:part "Hello"/>`;';
   const consumer = 'import { Hson, hsonLiveMap } from "hson-live"; import { title } from "./part.js";\n'
-    + 'const Page = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
+    + 'const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "h1">]>>]>>]>>`;\n'
     + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main <hson-part lib="bits" at="title"/>/>`, schema: Page }, bits: { parts: { title: { kind: "document", document: title } } } });\n';
   writeFileSync(partPath, part); writeFileSync(consumerPath, consumer);
   let analyses = 0;

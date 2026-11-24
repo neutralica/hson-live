@@ -1,6 +1,7 @@
 import { STR_TAG, ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
+import { completed_document_subject_paths } from "../complete-document.js";
 import type { HsonSchemaIssue } from "../../api/livemap/livemap.error.js";
 import type { LiveMapDocumentMode, LivePath } from "../../types/livemap.types.js";
 import type {
@@ -33,6 +34,35 @@ export type DocumentSchemaSourceResolution =
   | Readonly<{ kind: "unresolved"; issuePath: LivePath }>;
 
 type DocumentSchemaSourceIssue = Pick<HsonSchemaIssue, "code" | "path" | "attributeName">;
+
+/** Reindex authored evidence onto retained subjects after Library completion. */
+export function completed_document_source_provenance(
+  source: HsonNode,
+  completed: HsonNode,
+  provenance: HsonSourceProvenance,
+): HsonSourceProvenance {
+  if (source === completed) return provenance;
+  const completedPaths = completed_document_subject_paths(source, completed);
+  const authoredPaths = new Map<string, readonly number[]>();
+  const pending: { node: HsonNode; path: HsonSourcePath }[] = [{ node: source, path: [] }];
+  while (pending.length) {
+    const { node, path } = pending.pop()!;
+    const final = completedPaths.get(node);
+    if (final !== undefined) authoredPaths.set(JSON.stringify(final), path);
+    node.$_content.forEach((child, index) => {
+      if (is_Node(child)) pending.push({ node: child, path: [...path, index] });
+      else if (final !== undefined) authoredPaths.set(JSON.stringify([...final, index]), [...path, index]);
+    });
+  }
+  return {
+    sourceRange: provenance.sourceRange,
+    range(location) {
+      const path = authoredPaths.get(JSON.stringify(location.kind === "node" ? location.path : location.owner));
+      if (path === undefined) return undefined;
+      return provenance.range(location.kind === "node" ? { ...location, path } : { ...location, owner: path });
+    },
+  };
+}
 
 /**
  * Lower canonical evaluator paths (including the document item index) onto

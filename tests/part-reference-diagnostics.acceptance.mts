@@ -359,7 +359,7 @@ check("Schema and composition diagnostics remain independently provable and undu
   assert.deepEqual(result.codes, ['HSON_PART_LIBRARY_UNKNOWN']);
   const independent = static_schema_candidate_diagnostics(ts, result.program);
   assert.equal(independent.length, 1); assert.match(independent[0]!.message, /received "aside"/);
-  const composed = application('<main ' + valid + '/>').replace('const page =', 'const S = Hson.schema`<type "document" tag "main" content <sequence «<tag "p">»>>`;\nconst page =').replace('document: page }', 'document: page, schema: S }');
+  const composed = application('<main ' + valid + '/>').replace('const page =', 'const S = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p">]>>]>>]>>`;\nconst page =').replace('document: page }', 'document: page, schema: S }');
   const composition = inspect(composed); assert.deepEqual(composition.codes, []);
   const errors = static_schema_candidate_diagnostics(ts, composition.program);
   assert.equal(errors.length, 1); assert.match(errors[0]!.message, /received "h1"/); assert.doesNotMatch(errors[0]!.message, /hson-part/);
@@ -1201,7 +1201,7 @@ check("Schema collection admission reads a genuine forwarded Event value indepen
   try {
     for (const selected of ["e", "e as typeof e", "e satisfies typeof e"]) for (const tag of ["p", "h1"]) {
       edit("app.ts", imports + 'import {e} from "./producer.js";const go=' + selected + ';'
-        + 'const S=Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;'
+        + 'const S=Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "h1">]>>]>>]>>`;'
         + 'const m=maps.fromLibraries({page:{document:Hson.document`<main <hson-part lib="bits" at="title"/>/>`,schema:S},'
         + 'bits:{parts:{title:{kind:"document",document:"<' + tag + ' hson:part/>",events:{go}}}},'
         + 'peer:{parts:{title:{kind:"document",document:"<h1 hson:part/>"}}}});');
@@ -1345,7 +1345,7 @@ check("a direct imported owner follows its selected value through legal type-spa
 
 check("general Schema composition retains qualified Parts with unused wrapped Event aliases", () => {
   for (const alias of ["event", "event as typeof event", "event satisfies typeof event"]) for (const tag of ["p", "h1"]) {
-    const text = imports + 'const S=Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;'
+    const text = imports + 'const S=Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "h1">]>>]>>]>>`;'
       + 'const event=Hson.event`<hson:event on:click local:go <>>`;const selected=' + alias + ';'
       + 'maps.fromLibraries({page:{document:Hson.document`<main <hson-part lib="bits" at="title"/>/>`,schema:S},'
       + 'bits:{parts:{title:{kind:"document",document:"<' + tag + ' hson:part/>",events:{go:selected}}}}});';

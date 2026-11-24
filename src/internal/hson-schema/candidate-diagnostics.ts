@@ -2,7 +2,7 @@ import type ts from "typescript";
 import { discover_hson_schema_declarations } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
+import { evaluate_static_schema_candidate, type StaticDocumentLibraryContext } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
@@ -296,7 +296,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     resolve_immutable_schema(typescript, checker, input, found => schemas.get(found), new Set(), sourceCandidates.eligibility(work), use,
       relative => work.charge(1, depth + relative));
   const output: StaticSchemaDiagnostic[] = [];
-  const reported = new Set<string>();
+  const reported = new Map<string, number>();
   const representationReported = new Set<ts.Expression>();
   const reportJsonSource = (json: ts.Expression, work: PartOwnershipWork): boolean => {
     if (!library_json_has_hson_source(typescript, checker, json, sourceCandidates.eligibility(work)) || work.exhausted) return false;
@@ -307,12 +307,17 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     }
     return true;
   };
-  const report = (contract: Schema | undefined, input: ts.Expression, family: "certify" | "document" | "data" | "json",
-    work: PartOwnershipWork, depth: number, parts?: Pick<ReadonlyMap<string, unknown>, "get">): void => {
+  const report = (contract: Schema | undefined, input: ts.Expression,
+    operation: "certify" | "detached-document" | "data" | "json" | StaticDocumentLibraryContext,
+    owner: ts.Node, work: PartOwnershipWork, depth: number): void => {
     if (contract === undefined) return;
-    const possible = sourceCandidates.candidates(input, family === "certify" ? contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element" ? "document" : "json" : family, work, depth);
+    const document = contract.compiled.semantic.kind === "document" || contract.compiled.semantic.kind === "document-element";
+    const family = typeof operation !== "string" || operation === "detached-document" ? "document"
+      : operation === "certify" ? document ? "document" : "json" : operation;
+    const context = typeof operation !== "string" ? operation : family === "document" ? "detached-document" : "data";
+    const possible = sourceCandidates.candidates(input, family, work, depth);
     if (possible === undefined || possible.length === 0) return;
-    const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate, parts));
+    const failures = possible.map(candidate => evaluate_static_schema_candidate(contract.compiled, candidate, context));
     // A valid branch, opaque branch or malformed Hson belongs to runtime/authoring diagnostics.
     if (work.exhausted || failures.some(failure => failure.kind !== "invalid")) return;
     const first = failures[0];
@@ -321,19 +326,41 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
     const local = possible.length === 1 && candidate.node.getSourceFile() === input.getSourceFile();
     const node = local ? candidate.node : input;
     const range = local && "source" in candidate && candidate.bodyStart !== undefined && candidate.bodyStart >= 0 && first.range !== undefined
-      ? { start: candidate.bodyStart + first.range.start, end: candidate.bodyStart + first.range.end }
+      ? { start: candidate.bodyOffsets?.[first.range.start] ?? candidate.bodyStart + first.range.start,
+        end: candidate.bodyOffsets?.[first.range.end] ?? candidate.bodyStart + first.range.end }
       : { start: node.getStart(), end: node.getEnd() };
-    // Key the underlying proof, not its wording or chosen display anchor.
-    const identity = (entry: ts.Node) => [entry.getSourceFile().fileName, entry.getStart(), entry.getEnd()];
-    const key = JSON.stringify([identity(contract.declaration), possible.map(entry => identity(entry.node)),
-      first.issue.code, first.issue.schemaNode, first.issue.path, first.issue.attributeName, first.issue.evidence]);
-    if (reported.has(key)) return;
-    reported.add(key);
-    output.push({ file: node.getSourceFile().fileName, ...range, code: first.issue.code,
-      ...(possible.length === 1 && candidate.bodyStart !== undefined && candidate.bodyStart >= 0 && first.relatedRange !== undefined ? { related: [{
+    const location = (entry: ts.Node) => ({ file: entry.getSourceFile().fileName, start: entry.getStart(), end: entry.getEnd() });
+    const attribution = { file: node.getSourceFile().fileName, ...range };
+    // Repeated detached checks can share the same authored proof and range.
+    // Library evaluation belongs to an admission site and a Library within it.
+    const documentOperation = family === "document"
+      ? [typeof operation === "string" ? operation : [operation.kind, operation.name, location(owner)], attribution]
+      : undefined;
+    const key = JSON.stringify([location(contract.declaration), possible.map(entry => location(entry.node)), documentOperation,
+      first.issue.code, first.issue.schemaNode, first.issue.path, first.issue.attributeName,
+      first.issue.expected, first.issue.received, first.issue.evidence]);
+    const operationLocation = documentOperation === undefined ? undefined : { ...location(owner), message:
+      typeof operation !== "string" ? `Document Schema admission for Library ${JSON.stringify(operation.name)}.`
+        : operation === "certify" ? "Detached Document Schema certification." : "Detached Document Schema annotation." };
+    const existing = reported.get(key);
+    if (existing !== undefined) {
+      const diagnostic = output[existing]!;
+      if (operationLocation !== undefined && diagnostic.related !== undefined
+        && !diagnostic.related.some(entry => entry.file === operationLocation.file
+          && entry.start === operationLocation.start && entry.end === operationLocation.end)) {
+        output[existing] = { ...diagnostic, related: [...diagnostic.related, operationLocation].sort((a, b) => a.start - b.start) };
+      }
+      return;
+    }
+    reported.set(key, output.length);
+    const related: StaticSchemaDiagnosticLocation[] = operationLocation === undefined ? [] : [operationLocation];
+    if (possible.length === 1 && candidate.bodyStart !== undefined && candidate.bodyStart >= 0 && first.relatedRange !== undefined) {
+      related.push({
         file: candidate.node.getSourceFile().fileName, start: candidate.bodyStart + first.relatedRange.start, end: candidate.bodyStart + first.relatedRange.end,
         message: `Conflicting value at ${first.issue.evidence.relatedPath?.join(".")}; derived key ${first.issue.received}.`,
-      }] } : {}),
+      });
+    }
+    output.push({ ...attribution, code: first.issue.code, ...(related.length === 0 ? {} : { related }),
       message: `Static Hson does not satisfy ${contract.name}: ${issue_detail(first.issue)}${possible.length > 1 ? " (all static alternatives fail)." : "."}` });
   };
   for (const source of sources) {
@@ -346,7 +373,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
       const json = fields?.get("json");
       if (json !== undefined && !["hson", "document", "parts", "data"].some(key => fields?.has(key))) reportJsonSource(json, work);
     };
-    const validateDefinition = (definition: ts.Expression, work: PartOwnershipWork, depth: number,
+    const validateDefinition = (definition: ts.Expression, name: string | ts.Expression | undefined, owner: ts.Node, work: PartOwnershipWork, depth: number,
       batch?: Readonly<{ fields: ReadonlyMap<string, ts.Expression>; depth: number }>): void => {
       if (!typescript.isObjectLiteralExpression(definition)) return;
       const fields = sourceCandidates.libraryFields(definition, work, depth);
@@ -368,9 +395,19 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
         if (value !== undefined) collections.set(name, value);
         return value;
       } };
-      if (document !== undefined) report(contract, document, "document", work, depth + 2, parts);
-      if (json !== undefined) report(contract, json, "json", work, depth + 2);
-      if (hson !== undefined) report(contract, hson, "data", work, depth + 2);
+      if (document !== undefined && contract !== undefined && name !== undefined) {
+        let libraryName: string | undefined;
+        if (typeof name === "string") libraryName = name;
+        else {
+          const names = sourceCandidates.alternatives(name, "json", { reachableOnly: true, work, depth });
+          const literal = names.complete && names.nodes.length === 1 ? names.nodes[0] : undefined;
+          if (literal !== undefined && typescript.isStringLiteralLike(literal)) libraryName = literal.text;
+        }
+        if (libraryName !== undefined) report(contract, document, { kind: "document-library", name: libraryName,
+          ...(parts === undefined ? {} : { parts }) }, owner, work, depth + 2);
+      }
+      if (json !== undefined) report(contract, json, "json", owner, work, depth + 2);
+      if (hson !== undefined) report(contract, hson, "data", owner, work, depth + 2);
     };
     // Annotation relationships retain the direct, official, substitution-free
     // initializer boundary used to establish compiler/editor assignment proof.
@@ -410,20 +447,20 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
         annotationDiagnostic("HSON_SCHEMA_PROOF_UNRESOLVED", `Unable to resolve the Schema proof for this ${annotation.kind === "hson" ? "HsonFromSchema" : annotation.kind === "value" ? "HsonDataValue" : annotation.kind === "data" ? "HsonData" : "HsonDocument"} annotation; use typeof a statically known Hson.schema binding.`);
         continue;
       }
-      report(contract, initializer, exact ? "json" : tag.name.text === "data" ? "data" : "document", work, 0);
+      report(contract, initializer, exact ? "json" : tag.name.text === "data" ? "data" : "detached-document", annotationNode, work, 0);
     }
     const visit = (node: ts.Node): void => {
       if (typescript.isCallExpression(node)) {
         if (typescript.isPropertyAccessExpression(node.expression) && node.expression.name.text === "certify" && node.arguments.length === 1) {
           const work = new PartOwnershipWork();
-          report(schema(node.expression.expression, work, 0), node.arguments[0]!, "certify", work, 0);
+          report(schema(node.expression.expression, work, 0), node.arguments[0]!, "certify", node.expression, work, 0);
         }
         const admission = library_source_admission(node, checker, mapSymbols, false, typescript, sourceCandidates.eligible);
         if (admission?.eligible) {
           const literal = typescript.isObjectLiteralExpression(admission.definitions);
           const batch = sourceCandidates.libraryInventory(admission.definitions, literal ? "part-record" : "json");
-          if (batch.completeness === "complete") for (const definition of batch.fields.values()) {
-            if (literal && typescript.isObjectLiteralExpression(definition)) validateDefinition(definition, batch.work.fork(), batch.depth + 2, batch);
+          if (batch.completeness === "complete") for (const [name, definition] of batch.fields) {
+            if (literal && typescript.isObjectLiteralExpression(definition)) validateDefinition(definition, name, node.expression, batch.work.fork(), batch.depth + 2, batch);
             else checkRepresentation(definition, batch.work.fork(), batch.depth + 2);
           }
         }
@@ -435,8 +472,9 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
           if (local !== undefined && typescript.isArrayLiteralExpression(local)) for (const entry of local.elements) {
             if (!work.charge(1, 3)) break;
             const branch = work.fork();
-            const initializer = typescript.isObjectLiteralExpression(entry) ? sourceCandidates.libraryFields(entry, branch, 3)?.get("initializer") : undefined;
-            if (initializer !== undefined) validateDefinition(initializer, branch, 5);
+            const fields = typescript.isObjectLiteralExpression(entry) ? sourceCandidates.libraryFields(entry, branch, 3) : undefined;
+            const initializer = fields?.get("initializer");
+            if (initializer !== undefined) validateDefinition(initializer, fields?.get("name"), entry, branch, 5);
           }
         }
       }

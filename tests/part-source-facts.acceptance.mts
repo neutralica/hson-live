@@ -33,7 +33,7 @@ import { hsonLiveMap as submap } from "hson-live/livemap";
 import * as namespace from "hson-live/livemap";
 import { parts as importedParts, definitions } from "./definitions.js";
 declare const dynamic: any, key: string, condition: boolean;
-const Page = Text.schema\`<type "document" tag "main" content <sequence «<tag "h1">»>>\`;
+const Page = Text.schema\`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "h1">]>>]>>]>>\`;
 const Shared = Text.document\`<main <hson-part lib="components" at="heading" content="hello" mixed-Case="x"/>/>\`;
 const deck = kit.liveMap.locus.create({ components: { parts: importedParts } });
 const fresh = maps.fromLibraries({ page: { document: Shared, schema: Page }, components: { parts: {
@@ -98,7 +98,7 @@ writeFileSync(join(directory, "definitions.ts"), 'import { Hson } from "hson-liv
   + 'export const parts = { heading: { kind: "document", document: heading } } as const;\n'
   + 'export const definitions = { components: { parts } };\n');
 writeFileSync(join(directory, "umbrella-only.ts"), 'import { Hson, hson, ANY_DOCUMENT } from "hson-live";\n'
-  + 'const S = Hson.schema`<type "document" tag "article">`;\n'
+  + 'const S = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "article">]>>]>>`;\n'
   + 'const loc = hson.liveMap.fromLibraries({ page: { document: "<aside/>", schema: S } });\n'
   + 'const advisory = hson.liveMap.fromLibraries({ page: { document: "<aside/>", schema: ANY_DOCUMENT } });\n'
   + 'advisory.doc.must("page").schema.use(S);\n');
@@ -434,7 +434,7 @@ check("optional Event and general Part proofs spend their shared Library prefix 
 });
 
 check("Schema composition spends the outer inventory budget and keeps independent collection proofs", () => {
-  const schema = 'const S=Text.schema`<type "document" tag "main" content <sequence «<tag "p">»>>`;';
+  const schema = 'const S=Text.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "p">]>>]>>]>>`;';
   const document = (library: string) => `Text.document\`<main <hson-part lib="${library}" at="heading"/>/>\``;
   const page = (library: string) => `{document:${document(library)},schema:S}`;
   const part = '{kind:"document",document:"<h1 hson:part/>"}';
@@ -561,7 +561,7 @@ check("complete member enumeration agrees with collection validation for every s
 check("receiving admission provenance rejects Pick impostors and preserves genuine aliases", () => {
   const text = imports + [
     'import { receiver as importedReceiver } from "./owners.js";',
-    'const S = Text.schema`<type "document" tag "main">`;',
+    'const S = Text.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main">]>>]>>`;',
     'const real = kit.liveMap.locus.create({}); const alias = real; const alias2 = alias;',
     'const fake: Pick<typeof real, "admit"> = { admit: (...args) => real.admit(...args) };',
     'const impostor = fake.admit({ page: { document: Text.document`<aside/>`, schema: S }, components: { parts: {} } });',
@@ -647,7 +647,7 @@ check("nested source queries choose the innermost authored segment and exclude e
 });
 check("malformed constructor and alias dependencies withdraw admission authority locally", () => {
   const text = imports + [
-    'const S = Text.schema`<type "document" tag "main">`;',
+    'const S = Text.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main">]>>]>>`;',
     'const observed = Text.document`<aside <hson-part lib="bits" at="heading"/>/>`;',
     'const brokenOwner = kit.liveMap.locus.create({ broken: });',
     'const brokenAlias = brokenOwner; const brokenAlias2 = brokenAlias;',
@@ -686,7 +686,7 @@ check("malformed constructor and alias dependencies withdraw admission authority
 check("malformed official imports retain observations but cannot authorize Part or Schema evidence", () => {
   const badHson = imports + [
     'import { Hson as BrokenText, type HsonDocument as BrokenDocument } from "hson-live',
-    'const S = Text.schema`<type "document" tag "main">`;',
+    'const S = Text.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main">]>>]>>`;',
     'const RecoveredSchema = BrokenText.schema`<type "document" tag "main">`;',
     'const observed = BrokenText.document`<aside <hson-part lib="bits" at="heading"/> "%{mixed-Case}"/>`;',
     'const docAlias = observed; const nextAlias = docAlias;',
@@ -697,7 +697,7 @@ check("malformed official imports retain observations but cannot authorize Part 
   ].join("\r\n");
   const badMaps = imports + [
     'import { hson as brokenKit, hsonLiveMap as brokenMaps } from "hson-live',
-    'const S = Text.schema`<type "document" tag "main">`;',
+    'const S = Text.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main">]>>]>>`;',
     'const observedMap = Text.document`<aside <hson-part lib="bits" at="heading"/>/>`;',
     'const badUmbrella = brokenKit.liveMap.locus.create({ page: { document: observedMap, schema: S }, bits: { parts: {} } });',
     'const badDirect = brokenMaps.fromLibraries({ page: { document: observedMap, schema: S }, bits: { parts: {} } });',

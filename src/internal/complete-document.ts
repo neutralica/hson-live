@@ -79,23 +79,27 @@ export function assert_complete_document(root: HsonNode, css: readonly string[] 
   plan_managed_document_css(plan_browser_realization(root), css);
 }
 
+/** Index retained subjects and the copied html ancestor from one completion. */
+export function completed_document_subject_paths(before: HsonNode, after: HsonNode): ReadonlyMap<HsonNode, readonly number[]> {
+  const paths = new Map<HsonNode, readonly number[]>();
+  const pending: { node: HsonNode; path: readonly number[] }[] = [{ node: after, path: [] }];
+  while (pending.length) {
+    const { node, path } = pending.pop()!;
+    paths.set(node, path);
+    node.$_content.forEach((child, index) => { if (is_Node(child)) pending.push({ node: child, path: [...path, index] }); });
+  }
+  const original = before.$_content[0];
+  if (is_Node(original) && original.$_tag.toLowerCase() === "html") paths.set(original, [0]);
+  return paths;
+}
+
 /** Construction associations follow subjects, including the copied html ancestor.
  * This is never a persisted-path migration: both graphs belong to one admission.
  */
 export function completed_document_paths(before: HsonNode, after: HsonNode) {
-  const paths = new Map<HsonNode, readonly number[]>();
-  if (before !== after) {
-    const pending: { node: HsonNode; path: readonly number[] }[] = [{ node: after, path: [] }];
-    while (pending.length) {
-      const { node, path } = pending.pop()!;
-      paths.set(node, path);
-      node.$_content.forEach((child, index) => { if (is_Node(child)) pending.push({ node: child, path: [...path, index] }); });
-    }
-    const original = before.$_content[0];
-    if (is_Node(original) && original.$_tag.toLowerCase() === "html") paths.set(original, [0]);
-  }
+  const paths = before === after ? undefined : completed_document_subject_paths(before, after);
   return (path: readonly number[]) => {
-    if (before === after) return validate_document_path(path);
+    if (paths === undefined) return validate_document_path(path);
     const subject = resolve_document_path(before, "document", validate_document_path(path));
     const final = is_Node(subject) ? paths.get(subject) : undefined;
     if (final === undefined) throw new Error("Document completion lost a construction subject.");

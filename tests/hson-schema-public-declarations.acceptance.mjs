@@ -303,7 +303,7 @@ import { hsonLiveMap, type LiveMap } from "hson-live/livemap";
 import type { LocusActionContext } from "hson-live/locus";
 import type { Echo } from "hson-live/echo";
 export const S = Hson.schema\`<type "data" root <object <name "string" format <union [<exact "hson">, <exact "html">]>>>>\`;
-export const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
+export const Page = Hson.schema\`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>\`;
 export const Any = Hson.schema\`<type "data" root "any">\`;
 export const AnyPage = Hson.schema\`<type "document">\`;
 export const Twin = Hson.schema\`<type "data" root <object <name "string" format <union [<exact "hson">, <exact "html">]>>>>\`;
@@ -311,7 +311,7 @@ export const Tree = Hson.schema\`<type "data" defs <Node <object <value "string"
 export const certificate = S.certify(Hson.data.parse\`<name "Ada" format "hson">\`);
 export const authoredPlain = Hson.document\`<main "body"/>\`;
 export const authoredNamed = Hson.document\`<main @:main "body"/>\`;
-export const documentCertificate = Page.certify(Hson.document\`<main "body"/>\`);
+export const documentCertificate = Page.certify(Hson.document\`<html <head/> <body <main "body"/>/>/>\`);
 export function getCertificate() { return certificate; }
 export const certificates = [certificate];
 export const certificateObject = { certificate };
@@ -337,8 +337,8 @@ attached.data["main"].schema.use(S);
 attached["doc"].page.schema.use(Page);
 export const library = attached.data["main"];
 export const page = attached.doc["page"];
-export const text = attached.doc.page.at([0]);
-export function getText() { attached.doc.page.schema.use(Page); return attached.doc.page.at([0]); }
+export const text = attached.doc.page.at([1, 0, 0]);
+export function getText() { attached.doc.page.schema.use(Page); return attached.doc.page.at([1, 0, 0]); }
 export const checked = map.data.must("main", S);
 export const optional = map.data("main", S);
 export const loc = hsonLiveMap.locus.create({
@@ -442,7 +442,7 @@ type LibraryBranch = Assert<Equal<typeof libraryBranch, JsonFromSchema<typeof Tr
 type BranchRead = Assert<Equal<typeof branchValue, JsonFromSchema<typeof Tree> | undefined>>;
 type Snapshot = Assert<Equal<typeof snapshot, Shape>>;
 type RecursiveLeaf = Assert<Equal<typeof treeValue, string | undefined>>;
-const certifiedPageText: string = map.doc.must("page").at([0]).snap();
+const certifiedPageText: string = map.doc.must("page").at([1, 0, 0]).snap();
 const storedSchema: typeof S = map.data.must("main").schema.get();
 // @ts-expect-error Identical structural projections do not merge certification identity.
 const otherCertificate: HsonDataValue<typeof Twin> = certificate;
@@ -457,7 +457,7 @@ map.data.must("main").at(["missing"]);
 // @ts-expect-error Recursive writes retain primitive types.
 map.data.must("tree").at(["children", 0, "value"]).set(3);
 // @ts-expect-error Document maps retain text-only replacements.
-map.doc.must("page").at([0]).replace(42);
+map.doc.must("page").at([1, 0, 0]).replace(42);
 const same: typeof S = alias;
 const samePage: typeof Page = pageAlias;
 export const value = library.snap();
@@ -518,7 +518,7 @@ value.missing;
 // @ts-expect-error Governed writes retain literal domains.
 library.at(["format"]).set("json");
 // @ts-expect-error Document paths retain bounds.
-page.at([1]);
+page.at([2]);
 // @ts-expect-error Text endpoints have no attribute API.
 text.attrs;
 `);

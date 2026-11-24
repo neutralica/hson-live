@@ -75,11 +75,14 @@ export function register_document_quad_declaration(names: Map<string, AuthoredQu
 }
 
 /** Private authored source admission, preserving scanner diagnostics and occurrence evidence. @internal */
-export function parse_authored_document_library(source: string): Readonly<{ root: HsonNode; declarations: readonly DocumentQuadAdmission[] }> {
+export function parse_authored_document_library(
+  source: string,
+  provenance = new HsonSourceProvenanceBuilder(),
+): Readonly<{ root: HsonNode; declarations: readonly DocumentQuadAdmission[] }> {
   const names = new Map<string, AuthoredQuadDeclaration>();
   const subjects = new WeakMap<HsonNode, string>();
   const root = normalize_document_root(parse_hson_source(source, split_attrs_meta,
-    { allowTopLevelDocumentText: true }, new HsonSourceProvenanceBuilder(), false, (node, declaration) => {
+    { allowTopLevelDocumentText: true }, provenance, false, (node, declaration) => {
       if (!is_ordinary_element_node(node)) fail_quad_declaration("QUAD subject must be an ordinary document element", declaration, "HSON_LIBRARY_QUAD_INELIGIBLE");
       register_document_quad_declaration(names, declaration);
       subjects.set(node, declaration.value);

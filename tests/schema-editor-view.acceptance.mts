@@ -10,12 +10,14 @@ import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.
 import { discover_hson_tagged_templates, read_supported_hson_import_symbols } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
+import { evaluate_static_schema_candidate } from "../src/internal/hson-schema/candidate-evaluation.ts";
 import { admit_hson_tagged_source } from "../src/internal/embedded-hson/hson-tagged-source-admission.ts";
 import { local_hson_schema_completion } from "../editors/vscode-hson/src/hson-schema-symbols.ts";
 import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
 import { Hson } from "../src/hson-authoring.ts";
 import { hson } from "../src/hson.ts";
-import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
+import { hsonLiveMap } from "../src/api/livemap/livemap.public.ts";
+import { HsonSchemaError } from "../src/api/livemap/livemap.error.ts";
 import { spawnSync } from "node:child_process";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.ts";
@@ -321,7 +323,7 @@ check("final Library authoring uses source and emitted entrypoints under both st
     const extension = output === "src" ? "ts" : "d.ts";
     const prefix = `import { Hson, hsonLiveMap, type HsonData, type HsonDataValue, type HsonDocument } from "hson-live";
 const S = Hson.schema\`<type "data" root <object <name "string" values <array "number">>>>\`;
-const P = Hson.schema\`<type "document" tag "main" content "string">\`;
+const P = Hson.schema\`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>\`;
 const loc = hsonLiveMap.locus.create({
   deck: { json: { name: "Ada", values: [1] }, schema: S },
   page: { document: Hson.document\`<main "body"/>\`, schema: P, access: "shared" },
@@ -650,7 +652,7 @@ check("canonical LiveMap namespace and aliases establish the same import binding
 });
 
 check("LiveMap namespace construction receives initial admission proof and candidate diagnostics", () => {
-  const schema = 'import { Hson } from "hson-live/hson";\nconst Page = Hson.schema`<type "document" tag "main" content "string">`;\n';
+  const schema = 'import { Hson } from "hson-live/hson";\nconst Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;\n';
   for (const [name, imported, binding] of [
     ["named", 'import { hsonLiveMap as mapApi } from "hson-live/livemap";', "mapApi"],
     ["namespace", 'import * as hsonLiveMap from "hson-live/livemap";', "hsonLiveMap"],
@@ -774,7 +776,7 @@ hsonLiveMap.fromLibraries({ state: { json: escapedData, schema: Data } });
   assert.equal(test.errors("index.ts").filter(error => error.code === 95002).length, 0);
   const prefix = `import { Hson, hsonLiveMap, ANY_DOCUMENT, type HsonDocument } from "hson-live";\nconst S = Hson.schema\`${schema}\`;\nconst bad = Hson.document\`${missing}\`;\nconst good = Hson.document\`${valid}\`;\ndeclare const condition: boolean;\ndeclare function getPage(): HsonDocument;\n`;
   const cases: readonly [string, number][] = [
-    ['hsonLiveMap.fromLibraries({ page: { document: bad, schema: S } });', 1],
+    ['hsonLiveMap.fromLibraries({ page: { document: bad, schema: S } });', 0],
     ['hsonLiveMap.fromLibraries({ page: { document: good, schema: S } });', 0],
     ['const map = hsonLiveMap.fromLibraries({ page: { document: bad, schema: ANY_DOCUMENT } }); map.doc.must("page").schema.use(S);', 0],
     ['const map = hsonLiveMap.fromLibraries({ page: { document: good } }); map.doc.must("page").schema.use(S);', 0],
@@ -784,7 +786,7 @@ hsonLiveMap.fromLibraries({ state: { json: escapedData, schema: Data } });
     ['S.certify(condition ? bad : getPage());', 0],
     ['S.certify(await Promise.resolve(bad));', 0],
     ['const D = Hson.schema`<type "data" root <object <name "string">>>`; D.certify(Hson.data`<name 42>`);', 1],
-    ['const A = S; hsonLiveMap.fromLibraries({ page: { document: bad, schema: A } });', 1],
+    ['const A = S; hsonLiveMap.fromLibraries({ page: { document: bad, schema: A } });', 0],
     ['const A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.doc.must("page").schema.use(A);', 0],
     ['let A = S; const map = hsonLiveMap.fromLibraries({ page: { document: bad } }); map.doc.must("page").schema.use(A);', 0],
     ['const D = Hson.schema`<type "data" root <object <name "string">>>`; const A = D; const map = hsonLiveMap.fromLibraries({ state: { json: { name: 42 } } }); map.data.must("state").schema.use(A);', 0],
@@ -809,9 +811,203 @@ hsonLiveMap.fromLibraries({ state: { json: escapedData, schema: Data } });
   assert.throws(() => Reflect.apply(map.doc.must("page").schema.use, undefined, [runtime]), /immutable after admission/);
 });
 
+check("Document Schema diagnostics compare detached and completed candidates at their authored ranges", () => {
+  const schemas = {
+    Html: Hson.schema`<type "document" tag "html">`,
+    Main: Hson.schema`<type "document" tag "main">`,
+    Ordered: Hson.schema`<type "document" tag "html" attrs <props <lang <exact "en">>> content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" attrs <props <id <exact "hero">>> content <sequence [<tag "h1">, <tag "p">]>>]>>]>>`,
+    Text: Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`,
+  };
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n'
+    + Object.entries(schemas).map(([name, schema]) => `const ${name} = Hson.schema\`${schema.toHson()}\`;\n`).join("");
+  const test = project("document-evaluation-contexts", { "index.ts": prefix });
+  const complete = '<html <head/> <body <main/>/>/>';
+  const ordered = '<html lang="en" <head/> <main id="hero" <h1/> <p/>/>/>';
+  const cases: readonly (readonly [context: "detached" | "library" | "locus", schema: keyof typeof schemas, source: string,
+    code?: string, span?: string])[] = [
+    ["detached", "Main", "<main/>"],
+    ["detached", "Html", "<main/>", "INVALID_LITERAL", "main"],
+    ["library", "Html", "<main/>"],
+    ["library", "Main", "<main/>", "INVALID_LITERAL", "Hson.document`<main/>`"],
+    ["detached", "Html", complete],
+    ["library", "Html", complete],
+    ["library", "Main", complete, "INVALID_LITERAL", "html"],
+    ["library", "Ordered", ordered],
+    ["library", "Ordered", ordered.replace('"en"', '"fr"'), "INVALID_LITERAL", '"fr"'],
+    ["library", "Ordered", ordered.replace('"hero"', '"wrong"').replace(" <main", "\r\n <main"), "INVALID_LITERAL", '"wrong"'],
+    ["library", "Ordered", ordered.replace("<h1/> <p/>", "<p/> <h1/>"), "INVALID_LITERAL", "p"],
+    ["library", "Text", '<main ""/>'],
+    ["library", "Text", "<main/>", "MISSING_REQUIRED", "/>"],
+    ["locus", "Html", "<main/>"],
+    ["locus", "Main", "<main/>", "INVALID_LITERAL", "Hson.document`<main/>`"],
+  ];
+  for (const [context, name, source, code, span] of cases) {
+    const candidate = `Hson.document\`${source}\``;
+    const body = context === "detached" ? `${name}.certify(${candidate});`
+      : `hsonLiveMap.${context === "locus" ? "locus.create" : "fromLibraries"}({ page: { document: ${candidate}, schema: ${name} } });`;
+    const text = prefix + body;
+    test.edit("index.ts", text);
+    const schema = schemas[name];
+    const run = () => context === "detached" ? Reflect.apply(schema.certify, schema, [source])
+      : context === "locus" ? hsonLiveMap.locus.create({ page: { document: source, schema } }).doc.must("page").hson()
+        : hsonLiveMap.fromLibraries({ page: { document: source, schema } }).doc.must("page").hson();
+    const compiled = compile_hson_schema(schema.toHson());
+    assert.ok(compiled.ok);
+    const evaluated = evaluate_static_schema_candidate(compiled.value, { source, family: "document" },
+      context === "detached" ? "detached-document" : { kind: "document-library", name: "page" });
+    const errors = test.errors("index.ts").filter(error => error.code === 95002);
+    if (code === undefined) {
+      const effective = run();
+      if (context !== "detached" && source === "<main/>") assert.equal(effective, '<html\n  <head/>\n  <body\n    <main/>\n  />\n/>');
+      assert.equal(evaluated.kind, "valid", body);
+      assert.deepEqual(errors, [], messages(errors));
+    } else {
+      assert.ok(evaluated.kind === "invalid", body);
+      assert.equal(evaluated.issue.code, code);
+      assert.throws(run, error => error instanceof HsonSchemaError
+        && error.issues[0]?.code === code && JSON.stringify(error.issues[0].path) === JSON.stringify(evaluated.issue.path), body);
+      assert.equal(errors.length, 1, messages(errors));
+      assert.ok(span !== undefined);
+      const start = text.lastIndexOf(candidate) + candidate.indexOf(span);
+      assert.deepEqual([errors[0]?.start, errors[0]?.length], [start, span.length], body);
+    }
+  }
+
+  const shared = prefix + 'const page = Hson.document`<main/>`;\n'
+    + 'Html.certify(page); Main.certify(page);\n'
+    + 'hsonLiveMap.fromLibraries({ first: { document: page, schema: Html }, second: { document: page, schema: Main } });';
+  test.edit("index.ts", shared);
+  const errors = test.errors("index.ts").filter(error => error.code === 95002);
+  assert.deepEqual(errors.map(error => shared.slice(error.start, error.start! + error.length!)).sort(), ["Hson.document`<main/>`", "main"]);
+  assert.match(messages(errors), /Html: wrong tag at 0/);
+  assert.match(messages(errors), /Main: wrong tag at 0/);
+
+  const badStructure = '<html <body/> <head/>/>';
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: badStructure, schema: schemas.Html } }), { code: "HSON_DOCUMENT_STRUCTURE" });
+  const badScript = '<main <script/>/>';
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: badScript, schema: schemas.Main } }), /requires src and no content/);
+  const incomplete = prefix + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main`, schema: Main } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`' + badStructure + '`, schema: Main } });\n'
+    + 'hsonLiveMap.fromLibraries({ page: { document: ' + JSON.stringify(badScript) + ', schema: Main } });\n'
+    + 'Main.certify(Hson.document`<aside/>`);';
+  test.edit("index.ts", incomplete);
+  const independent = test.errors("index.ts").filter(error => error.code === 95002);
+  assert.equal(independent.length, 1, messages(independent));
+  assert.match(messages(independent), /received "aside"/);
+  assert.ok(produce_document_diagnostics({ fileName: test.file("index.ts"), languageId: "typescript", text: incomplete })
+    .some(issue => issue.range.start >= incomplete.indexOf("`<main") && issue.range.end <= incomplete.indexOf("`, schema")));
+
+  const local = prefix + 'const known = "local-page"; declare const dynamic: string;\n'
+    + 'const Data = Hson.schema`<type "data" root <object <count "number">>>`;\n'
+    + 'hsonLiveMap.locus.create({}, { local: [\n'
+    + '  { name: known, initializer: { document: Hson.document`<main/>`, schema: Main } },\n'
+    + '  { name: dynamic, initializer: { document: Hson.document`<article/>`, schema: Main } },\n'
+    + '  { name: dynamic, initializer: { json: { count: "wrong" }, schema: Data } },\n'
+    + '] });';
+  test.edit("index.ts", local);
+  const localErrors = test.errors("index.ts").filter(error => error.code === 95002);
+  assert.deepEqual(localErrors.map(error => local.slice(error.start, error.start! + error.length!)),
+    ['Hson.document`<main/>`', '{ count: "wrong" }']);
+  test.service.dispose();
+});
+
+check("Document Schema failures retain operation ownership across discovery order and edits", () => {
+  const dependency = 'import { Hson } from "hson-live";\r\nexport const S = Hson.schema`<type "document" tag "main">`;';
+  const template = 'Hson.document`\r\n  // 🌱\r\n  <html <head/> <body <hson-part lib="bits" at="x"/>/>/>\r\n`';
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { S } from "./schema.js";\r\n'
+    + `const page = ${template};\r\n`;
+  const direct = 'S.certify(page);';
+  const library = 'hsonLiveMap.fromLibraries';
+  const bits = 'bits: { parts: { x: { kind: "document", document: "<article hson:part/>" } } }';
+  const page = 'page: { document: page, schema: S }';
+  const composed = `${library}({ ${page}, ${bits} });`;
+  const directOwner = "Detached Document Schema certification.";
+  const libraryOwner = (name: string) => `Document Schema admission for Library "${name}".`;
+  const hostPath = process.env["HSON_TEST_HOST_TYPESCRIPT"];
+  const hosts: readonly (typeof ts)[] = hostPath === undefined ? [ts] : [ts, createRequire(import.meta.url)(hostPath)];
+  for (const host of hosts) {
+    const test = project(`document-diagnostic-ownership-${host.version}`, { "index.ts": prefix, "schema.ts": dependency }, {}, host);
+    const file = test.file("index.ts");
+    const schemaFile = test.file("schema.ts");
+    const compilerHost = host.createCompilerHost(test.options, true);
+    const getSourceFile = compilerHost.getSourceFile;
+    compilerHost.getSourceFile = (path, languageVersion, ...rest) => path === file || path === schemaFile
+      ? host.createSourceFile(path, test.text(path === file ? "index.ts" : "schema.ts"), languageVersion, true)
+      : getSourceFile(path, languageVersion, ...rest);
+    let previousProgram: ts.Program | undefined;
+    const location = (text: string, anchor: string, from = 0) => {
+      const start = text.indexOf(anchor, from);
+      assert.ok(start >= 0, anchor);
+      return { file, start, end: start + anchor.length };
+    };
+    type Owner = readonly [anchor: string, message: string];
+    type Failure = readonly [candidate: string, span: string, ...owners: Owner[]];
+    const detached: Failure = [template, "html", ["S.certify", directOwner]];
+    const governed: Failure = [template, template, [library, libraryOwner("page")]];
+    const assertFailures = (...failures: readonly Failure[]) => {
+      const source = test.text("index.ts");
+      const message = 'Static Hson does not satisfy S: wrong tag at 0; expected "main"; received "html".';
+      const expected = failures.map(([candidate, span, ...owners]) => ({
+        ...location(source, span, location(source, candidate).start),
+        related: owners.map(([anchor, message]) => ({ ...location(source, anchor), message })),
+        message,
+      }));
+      const identity = (value: ts.Diagnostic) => ({ file: value.file?.fileName, start: value.start,
+        end: value.start! + value.length!, message: value.messageText });
+      const ordered = <T extends { start: number | undefined; related?: readonly { start: number | undefined; message: unknown }[] | undefined }>(values: readonly T[]) =>
+        [...values].sort((a, b) => (a.start ?? -1) - (b.start ?? -1)
+          || (a.related?.[0]?.start ?? -1) - (b.related?.[0]?.start ?? -1)
+          || String(a.related?.[0]?.message).localeCompare(String(b.related?.[0]?.message)));
+      const errors = test.errors("index.ts").filter(error => error.code === 95002)
+        .map(error => ({ ...identity(error), related: error.relatedInformation?.map(identity), code: error.code }));
+      assert.deepEqual(ordered(errors), ordered(expected.map(diagnostic => ({ ...diagnostic, code: 95002 }))), `${host.version}\n${source}`);
+      previousProgram = host.createProgram([file], test.options, compilerHost, previousProgram);
+      const staticErrors = static_schema_candidate_diagnostics(host, previousProgram);
+      assert.deepEqual(ordered(staticErrors), ordered(expected.map(diagnostic => ({ ...diagnostic, code: "INVALID_LITERAL" }))),
+        `${host.version}\n${source}`);
+    };
+    const edit = (...operations: string[]) => test.edit("index.ts", prefix + operations.join("\r\n"));
+
+    edit(direct); assertFailures(detached);
+    assertFailures(detached);
+    edit(direct); assertFailures(detached);
+    edit(composed); assertFailures(governed);
+    edit(direct, composed); assertFailures(detached, governed);
+    edit(composed, direct); assertFailures(detached, governed);
+
+    const secondTemplate = 'Hson.document`<html/>`';
+    edit(direct, `const Alias = S; const other = ${secondTemplate}; Alias.certify(other);`);
+    assertFailures(detached, [secondTemplate, "html", ["Alias.certify", directOwner]]);
+    edit(direct, 'const Alias = S; Alias.certify(page);');
+    assertFailures([ ...detached, ["Alias.certify", directOwner] ]);
+    const mirror = page.replace("page:", "mirror:");
+    for (const entries of [[page, mirror], [mirror, page]]) {
+      edit(`${library}({ ${entries.join(", ")}, ${bits} });`);
+      assertFailures(governed, [template, template, [library, libraryOwner("mirror")]]);
+    }
+    const locus = "hsonLiveMap.locus.create";
+    edit(composed, composed.replace(library, locus));
+    assertFailures(governed, [template, template, [locus, libraryOwner("page")]]);
+
+    edit(composed, direct); assertFailures(detached, governed);
+    test.edit("schema.ts", dependency.replace('"main"', '"html"')); assertFailures();
+    test.edit("schema.ts", dependency); assertFailures(detached, governed);
+    edit(composed, 'S.certify(Hson.document`<main/>`);'); assertFailures(governed);
+    edit(composed, direct); assertFailures(detached, governed);
+
+    const opaque = 'declare const opaque: Record<string, { kind: "document"; document: string }>;';
+    const unavailable = `${library}({ ${page}, bits: { parts: opaque } });`;
+    edit(opaque, unavailable, direct); assertFailures(detached);
+    edit(opaque, direct, unavailable); assertFailures(detached);
+    test.edit("schema.ts", dependency.replace('"main"', '"html"')); assertFailures();
+    test.service.dispose();
+  }
+});
+
 check("document candidates judge realized same-batch Parts and withdraw uncertain composition", () => {
   const prefix = 'import { Hson, hsonLiveMap, type HsonDocument } from "hson-live";\n'
-    + 'const Page = Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
+    + 'const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "h1">]>>]>>]>>`;\n'
+    + 'const Detached = Hson.schema`<type "document" tag "main" content <sequence [<tag "h1">]>>`;\n'
     + 'const shell = Hson.document`<main <hson-part lib="bits" at="title"/>/>`;\n';
   const good = 'bits: { parts: { title: { kind: "document", document: Hson.document`<h1 hson:part "Hello"/>` } } }';
   const bad = good.replace('<h1', '<p');
@@ -826,18 +1022,18 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
     'known.addLibraries({ page: { document: shell, schema: Page } });',
     'declare const dynamic: typeof known; dynamic.addLibraries({ page: { document: shell, schema: Page } });',
     'hsonLiveMap.fromLibraries({ page: { document: shell, schema: Page } });',
-    'Page.certify(shell);',
-    'const unproven: HsonDocument<typeof Page> = Hson.document`<main <hson-part lib="bits" at="title"/>/>`;',
+    'Detached.certify(shell);',
+    'const unproven: HsonDocument<typeof Detached> = Hson.document`<main <hson-part lib="bits" at="title"/>/>`;',
     // Independent non-Part failures still get their precise source ranges.
-    'Page.certify(Hson.document`<main <aside/>/>`);',
+    'Detached.certify(Hson.document`<main <aside/>/>`);',
   ].join('\n');
   const test = project("part-candidates", { "index.ts": source });
   const before = bytes(test.directory);
   const errors = test.errors("index.ts");
   const candidates = errors.filter(error => error.code === 95002);
-  assert.equal(candidates.length, 3, messages(errors));
+  assert.equal(candidates.length, 5, messages(errors));
   assert.equal(candidates.filter(error => String(error.messageText).includes('received "p"')).length, 2);
-  assert.ok(!messages(candidates).includes('received "hson-part"'));
+  assert.equal(candidates.filter(error => String(error.messageText).includes('Detached:') && String(error.messageText).includes('received "hson-part"')).length, 2);
   assert.ok(errors.some(error => error.code === 2322 && error.start === source.indexOf("unproven:")), messages(errors));
   assert.ok(candidates.some(error => source.slice(error.start, error.start! + error.length!) === 'aside'));
   assert.ok(candidates.filter(error => String(error.messageText).includes('received "p"'))
@@ -902,7 +1098,7 @@ check("document candidates judge realized same-batch Parts and withdraw uncertai
 
 check("rejected Part producers retain source errors without receiving Schema conclusions", () => {
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n'
-    + 'const Page = Hson.schema`<type "document" tag "h1">`;\n';
+    + 'const Page = Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "h1">]>>]>>`;\n';
   const receiving = (producer: string) => 'hsonLiveMap.fromLibraries({ page: { document: Hson.document`<hson-part lib="bits" at="title"/>`, schema: Page },'
     + ` bits: { parts: { title: { kind: "document", document: ${producer} } } } });\n`;
   const test = project("rejected-part-producers", { "index.ts": prefix });
@@ -956,18 +1152,19 @@ const authoredText: HsonAuthored = Hson.document\`"hello"\`;
 const text: HsonDocument<typeof Text> = Text.certify(authoredText);
 Text.certify(text);
 const Page = Hson.schema\`<type "document" tag "main" content "string">\`;
+const PageLibrary = Hson.schema\`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content "string">]>>]>>\`;
 const document: HsonDocument<typeof Page> = Page.certify(Hson.document\`<main "hello"/>\`);
 Page.certify(document);
 const S = Hson.schema\`<type "data" root <object <name "string">>>\`;
 const A = S;
 const bad: HsonData<typeof A> = Hson.data\`<name 42>\`;
 S.certify(Hson.data.parse(bad)); A.certify(Hson.data.parse(bad));
-const PageAlias = Page;
+const PageAlias = PageLibrary;
 const invalidMap = hsonLiveMap.fromLibraries({ page: { document: '<aside "hello"/>', schema: PageAlias } });
 invalidMap.doc.must("page").schema.use(PageAlias);
 const map = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: PageAlias } });
 map.doc.must("page").schema.use(PageAlias);
-const exact: typeof Page = map.doc.must("page").schema.get();
+const exact: typeof PageLibrary = map.doc.must("page").schema.get();
 const snap: string = map.doc.must("page").at([0]).snap();
 const unrelated: number = "wrong";
 `;

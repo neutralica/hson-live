@@ -359,7 +359,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     // A type annotation supplies context only. Validation uses the existing
     // bounded static Hson candidate admission and production Schema evaluator.
     const candidates = declaration.initializer === undefined ? undefined : sources.candidates(declaration.initializer, serialized && !serializedCarrier ? "data" : "json");
-    const validated = candidates !== undefined && candidates.length > 0 && candidates.every(candidate => evaluate_static_schema_candidate(schema, candidate).kind === "valid");
+    const validated = candidates !== undefined && candidates.length > 0 && candidates.every(candidate => evaluate_static_schema_candidate(schema, candidate, "data").kind === "valid");
     const result: PartDataSchemaEvidence = { schema, strength: validated ? "validated" : "advisory",
       schemaLocation: location(provenance.declaration), annotationLocation: location(declaration.type),
       valueLocation: location(declaration.initializer ?? declaration) };
