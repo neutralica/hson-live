@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { nodeFromJson, parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { hsonTransform } from "../src/api/transform/transform.facade.ts";
+import { hsonTransform as transformEntrypoint } from "../src/api/transform/index.ts";
+import { ANY_DATA, Hson, hsonLiveMap } from "../src/index.ts";
 import { SAFE_TRANSFORM_SOURCE, UNSAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -62,6 +64,74 @@ const val = (value: Exclude<Primitive, string>): HsonNode => ({ $_tag: "_hson_va
 const elem = (...content: HsonNode[]): HsonNode => ({ $_tag: "_hson_elem", $_content: content });
 const named = (tag: string, ...content: HsonNode[]): HsonNode => ({ $_tag: tag, $_content: content });
 const root = (content: HsonNode): HsonNode => ({ $_tag: "_hson_root", $_content: [content] });
+
+check("structural JSON rejects discarded siblings and malformed carriers on every facade", () => {
+  const invalid: readonly JsonValue[] = [
+    { _hson_elem: ["x"], ordinary: 1, $_meta: { note: "ignored" } },
+    { _hson_elem: ["x"], ordinary: 1 },
+    { _hson_elem: ["x"], $_meta: { note: "ignored" } },
+    { _hson_elem: ["x"], $_attrs: {} },
+    { _hson_elem: ["x"], _hson_unknown: 1 },
+    { _hson_elem: ["x"], _hson_obj: {} },
+    { _hson_elem: "x" },
+    { _hson_elem: [1] },
+    { _hson_elem: [{ p: "x", _hson_unknown: 1 }] },
+    { _hson_elem: [{ p: "x", $_unknown: 1 }] },
+    { _hson_elem: [{ p: "x", $_meta: { note: "ignored" } }] },
+    { _hson_elem: [{ p: "x", $_meta: { index: "0" } }] },
+    { _hson_elem: [{ p: { _hson_elem: ["x"], ordinary: 1 } }] },
+    { _hson_root: { _hson_elem: ["x"], ordinary: 1 } },
+    { nested: { _hson_elem: ["x"], ordinary: 1 } },
+    [{ _hson_elem: ["x"], ordinary: 1 }],
+  ];
+  for (const value of invalid) {
+    for (const facade of [hsonTransform, transformEntrypoint, hson]) {
+      assert.throws(() => facade.fromJson(JSON.stringify(value)), JSON.stringify(value));
+      assert.throws(() => facade.fromJsonValue(value), JSON.stringify(value));
+    }
+  }
+});
+
+check("serialized element forms retain context while complete primitive scaffolds unwrap", () => {
+  const producers = [
+    hsonTransform.fromTrustedHtml('<p title="ok">x</p>'),
+    hsonTransform.fromTrustedHtml('<main><p></p>before<b>text</b>after</main>'),
+    hsonTransform.fromHson("<'widget.card'/>"),
+  ];
+  for (const producer of producers) {
+    const output = producer.toJson();
+    const graph = producer.toNode();
+    const expected = graph.$_tag === "_hson_root" ? detach_hson_root_value(graph) : graph;
+    for (const result of [hsonTransform.fromJson(output.serialize()), hsonTransform.fromJsonValue(output.value())]) {
+      assert.equal(canonical_hson_graph_equal(detach_hson_root_value(result.toNode()), expected), true, output.serialize());
+    }
+  }
+  for (const text of ["", "x"]) {
+    const carriers: JsonValue[] = [{ _hson_elem: [text] }, { _hson_root: { _hson_elem: [text] } }];
+    for (const value of carriers) {
+      assert.equal(canonical_hson_graph_equal(hsonTransform.fromJsonValue(value).toNode(), root(str(text))), true);
+      assert.equal(canonical_hson_graph_equal(hsonTransform.fromJson(JSON.stringify(value)).toNode(), root(str(text))), true);
+    }
+  }
+  const namedText = hsonTransform.fromJsonValue({ _hson_elem: [{ p: { _hson_elem: ["x"] } }] });
+  assert.equal(canonical_hson_graph_equal(namedText.toNode(), root(elem(named("p", elem(str("x")))))), true);
+});
+
+check("structural carriers and reserved names remain outside Data and Library admission", () => {
+  const mixed = { _hson_elem: ["x"], ordinary: 1, $_meta: { note: "ignored" } };
+  const validCarrier = hsonTransform.fromTrustedHtml('<p>x</p>').toJson().value();
+  for (const value of [mixed, validCarrier]) {
+    assert.throws(() => Hson.data.from(value));
+    assert.throws(() => ANY_DATA.certify(value));
+    assert.throws(() => Hson.data.fromSource(JSON.stringify(value)));
+    assert.throws(() => hsonLiveMap.fromLibraries({ state: { json: value } }));
+  }
+  assert.throws(() => Hson.data`<_hson_elem "x">`);
+  assert.throws(() => Hson.data.parse('<_hson_elem "x">'));
+  const ordinary = { nested: [1, null, { empty: "", value: -0 }] };
+  assert.deepEqual(Hson.data.from(ordinary).materialize(), ordinary);
+  assert.deepEqual(hsonLiveMap.fromLibraries({ state: { json: ordinary } }).data.state.snap(), ordinary);
+});
 
 function assert_source_graph(input: JsonValue, expected: HsonNode): void {
   // Producer observations precede any serialization or forgiving re-admission.

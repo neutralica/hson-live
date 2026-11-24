@@ -410,7 +410,11 @@ export function nodeFromJson(
 
         // B) ELEMENT HANDLING { _hson_elem: [...] } 
         if (json_input_has(obj, ELEM_TAG)) {
-            assertNoForbiddenVSNKeysInJSON(obj, `at ${ELEM_TAG}`);
+            // A carrier has exactly one member. Check before constructing or
+            // unwrapping it, since neither step retains envelope siblings.
+            if (json_input_keys(obj).some((key) => key !== ELEM_TAG)) {
+                _throw_transform_err("'_hson_elem' object may not have siblings", "parse_json", describe_json_input(obj));
+            }
             const list = json_input_get(obj, ELEM_TAG);
             if (!Array.isArray(list)) {
                 _throw_transform_err("'_hson_elem' must contain an array", "parse_json", make_string(list));
@@ -442,6 +446,9 @@ export function nodeFromJson(
                     }
 
                     const tagName = tagKeys[0];
+                    if (json_input_keys(elObj).some((key) => key !== tagName && !JSON_ELEMENT_META_KEYS.has(key))) {
+                        _throw_transform_err("element-object contains an unexpected structural property", "parse_json", describe_json_input(elObj));
+                    }
 
                     // hoist attributes/meta if present
                     const hoistedAttrs = json_input_has(elObj, ATTRS_KEY)
