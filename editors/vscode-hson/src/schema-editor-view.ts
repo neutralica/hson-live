@@ -11,6 +11,7 @@ import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hso
 
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
+type ResolutionAwareHost = ts.LanguageServiceHost & Pick<ts.CompilerHost, "hasInvalidatedResolutions">;
 
 export function produce_project_diagnostics(typescript: typeof ts, program: ts.Program, eventImports?: HsonEventImportEvidence): readonly StaticSchemaDiagnostic[] {
   return [...static_schema_candidate_diagnostics(typescript, program),
@@ -18,13 +19,13 @@ export function produce_project_diagnostics(typescript: typeof ts, program: ts.P
 }
 
 /** The authored service resolves bindings and source edits; the existing service consumes the overlay. */
-export function install_live_schema_view(typescript: typeof ts, host: ts.LanguageServiceHost, projectPath: string,
+export function install_live_schema_view(typescript: typeof ts, host: ResolutionAwareHost, projectPath: string,
   registerEvidence?: (file: string, text: string | undefined) => void,
   getEventImports?: () => HsonEventImportEvidence | undefined,
   canResolveSource: (file: string) => boolean = () => true,
 ) {
   const fileExists = host.fileExists.bind(host);
-  const original: ts.LanguageServiceHost = {
+  const original: ResolutionAwareHost = {
     ...host,
     getCompilationSettings: host.getCompilationSettings.bind(host),
     getScriptFileNames: host.getScriptFileNames.bind(host),
@@ -34,6 +35,9 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     getDefaultLibFileName: host.getDefaultLibFileName.bind(host),
     fileExists: file => canResolveSource(file) && fileExists(file),
     readFile: host.readFile.bind(host),
+    // tsserver replaces this callback on each graph update. Follow the current
+    // resolution invalidation even when the authored consumer text is unchanged.
+    hasInvalidatedResolutions: file => host.hasInvalidatedResolutions?.(file) ?? false,
     ...(host.getProjectVersion === undefined ? {} : { getProjectVersion: host.getProjectVersion.bind(host) }),
     ...(host.resolveModuleNameLiterals === undefined ? {} : { resolveModuleNameLiterals: host.resolveModuleNameLiterals.bind(host) }),
     ...(host.resolveModuleNames === undefined ? {} : { resolveModuleNames: host.resolveModuleNames.bind(host) }),

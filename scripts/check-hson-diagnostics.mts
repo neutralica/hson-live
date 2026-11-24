@@ -40,6 +40,8 @@ const negativeFixtures: readonly Fixture[] = [
   { path: publicEntrypoints, code: "HSON_TAGGED_TEMPLATE_REQUIRED", line: 'Hson.event`<hson:event on:click local:${"RUN"} <> >`;' },
   { path: fixtureDirectory + "diagnostics-schema-proof.ts", code: "HSON_SCHEMA_PROOF_UNRESOLVED",
     line: 'const unproved: HsonDocument<typeof Page> = Hson.document`<main "Ready"/>`;' },
+  { path: fixtureDirectory + "declarative-schema/candidate.ts", code: "TYPE_MISMATCH",
+    line: 'export const user: HsonData<typeof UserSchema> = Hson.data`<user <age "37">>`;' },
 ];
 const removedTypeSubpaths = new Set(["hson-live/types", "hson-live/internal/trusted-schema-diagnostics/protocol"]);
 const authoringExports = new Set(["Hson", "HsonSchema", "HsonData", "HsonDocument", "HsonValue", "HsonProjectedValue", "HsonFromSchema"]);

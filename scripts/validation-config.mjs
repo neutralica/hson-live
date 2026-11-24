@@ -241,7 +241,7 @@ const editorRoute = "Module-level VS Code launch selects the built extensionTest
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
 const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","19f54d27280827f58ddafd6c70d276d54e9af54aa6fdb309f61746ee37f3fd27"]];
 const appearanceLauncher = ["editors/vscode-hson/tests/integration/run-appearance.mjs", "8d9b41fb67dfbd4b33968b9e0a19fb53e7419dc78de34e69804246f1b51f9882"];
-const appearanceDriver = ["editors/vscode-hson/tests/integration/appearance-driver.mjs", "6293c78d53b45225078648a7cbbaa404bbfbfdd7c0ce6653f662742bb858872f"];
+const appearanceDriver = ["editors/vscode-hson/tests/integration/appearance-driver.mjs", "3936354b20fb2199f9d4aaa262fc985d82f0f18ea91c93597745444749b51d34"];
 const appearanceTransitions = "editors/vscode-hson/tests/appearance-transitions.test.ts";
 
 export const declaredExecution = Object.freeze({
@@ -283,8 +283,8 @@ export const declaredExecution = Object.freeze({
     targets: [["editors/vscode-hson/tests/integration/house.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-legibility.mjs": { sha256: "8b1e8b8492d0c996e932e31955ec7afd3606b4c186c69bb486607a0318b8c568", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/legibility.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "88f325b950c66fdae98db4d0eeb3d620c8ae6d5ab075197fefad5afcd4bcdb56",
-    route: "The launcher awaits the built suite.ts bundle in an isolated VS Code profile. Event and structural keyboard modes use the same bundle and awaited loopback drivers. Both check the logged SDK when specified. The default branch also runs the restricted-mode control.",
+  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "d84c143eacab337bba73336b45fbf9bfdedd1ce6535fc1903fa0e277cec5ae42",
+    route: "The launcher awaits the built suite.ts bundle in an isolated VS Code profile. The broad, Event and structural keyboard runs await the editor driver, and assert the logged SDK when specified. The broad run also awaits the restricted-mode control.",
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], appearanceDriver] },
   "scripts/run-browser-realization-parser-closure.mjs": { sha256: "12ffbeca67bde08203a878a926165099761c75b48a139e2d50b2a4b674e3c041", route: browserRoute,
     targets: [["tests/browser/browser-realization-parser-closure.acceptance.html","browser-runner"],["tests/browser/browser-realization-parser-closure.entry.mjs","browser-runner"]], sources: [["tests/browser/browser-realization-parser-closure.acceptance.html","7b132a9dcba2ad80e3e5daad48a44b01d20afcc1e9f456df1bf2cc19c8a56472"]] },

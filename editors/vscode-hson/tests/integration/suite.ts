@@ -573,14 +573,19 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
   const uri = vscode.Uri.joinPath(root, "authoring.ts");
   const entrypoint = vscode.Uri.joinPath(root, "package");
   const bridge = vscode.Uri.joinPath(entrypoint, "src/index.ts");
+  const fallback = vscode.Uri.joinPath(entrypoint, "src/fallback.ts");
   const write = (file: vscode.Uri, text: string) => vscode.workspace.fs.writeFile(file, Buffer.from(text));
   const genuine = 'export { Hson } from "hson-live";';
+  const substitute = 'export const Hson = { event: String.raw };';
   await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(entrypoint, "src"));
   await write(vscode.Uri.joinPath(entrypoint, "package.json"), '{"name":"hson-live","type":"module"}');
   await write(vscode.Uri.joinPath(root, "tsconfig.json"), JSON.stringify({
-    compilerOptions: { target: "ES2022", module: "NodeNext", types: [], strict: true, paths: { "hson-live/hson": ["./package/src/index.ts"] } }, include: ["*.ts"],
+    compilerOptions: { target: "ES2022", module: "NodeNext", types: [], strict: true,
+      // A deleted path mapping would otherwise resolve to the genuine npm subpath.
+      paths: { "hson-live/hson": ["./package/src/index.ts", "./package/src/fallback.ts"] } }, include: ["*.ts"],
   }));
   await write(vscode.Uri.joinPath(root, "package.json"), '{"type":"module"}');
+  await write(fallback, substitute);
   await write(bridge, genuine);
   const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\r\nimport { Hson as E } from "hson-live/hson";\r\n'
     + 'export const go = E.event`<hson:event on:pointer:d local:deck.move\r\n  note:str="é🧪" x:num=^{pointer.clientXx} selection:data=^{row.label} <>>`;\r\n';
@@ -601,25 +606,51 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
     editor.selection = new vscode.Selection(position, position);
     editor.revealRange(new vscode.Range(position, position));
   };
-  const accept = async (at: number, label: string, expected: string, cursor: number, selectNext = 0) => {
-    await waitFor(async () => (await labels(at)).some(item => name(item) === label), `Missing Event completion ${label}`);
+  const requireCompletion = async (at: number, label: string) => {
+    let items: vscode.CompletionItem[] = [];
+    try {
+      await waitFor(async () => (items = await labels(at)).some(item => name(item) === label), `Missing Event completion ${label}`);
+    } catch (error) {
+      throw new Error(`Event completion at ${at} returned ${JSON.stringify(items.map(name))}`, { cause: error });
+    }
+    return items.find(item => name(item) === label);
+  };
+  type SelectedSuggestion = { id: string; label: string };
+  const selectedSuggestion = async (previous?: string) => {
+    const observed: { selected?: SelectedSuggestion } = {};
+    await waitFor(async () => {
+      const selected = await ui<SelectedSuggestion | null>(workspace, { action: "selected-suggestion" });
+      if (selected === null || selected.id === previous) return false;
+      observed.selected = selected;
+      return true;
+    }, "Completion widget did not focus a suggestion");
+    assert.ok(observed.selected);
+    return observed.selected;
+  };
+  const accept = async (at: number, label: string, expected: string, cursor: number) => {
+    await requireCompletion(at, label);
     await vscode.commands.executeCommand("hideSuggestWidget");
     moveCursor(at);
+    await ui(workspace, { action: "focus-editor" });
     await vscode.commands.executeCommand("editor.action.triggerSuggest");
-    await new Promise(resolve => setTimeout(resolve, 450));
-    if (selectNext > 0) {
-      await vscode.commands.executeCommand("selectFirstSuggestion");
-      for (let next = 0; next < selectNext; next++) await vscode.commands.executeCommand("selectNextSuggestion");
+    let selected = await selectedSuggestion();
+    const visited = new Map<string, string>();
+    while (selected.label !== label) {
+      assert.ok(!visited.has(selected.id), `Missing widget suggestion ${label}; visited ${JSON.stringify([...visited.values()])}`);
+      visited.set(selected.id, selected.label);
+      await ui(workspace, { action: "editor-key", key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40 });
+      selected = await selectedSuggestion(selected.id);
     }
-    await vscode.commands.executeCommand("acceptSelectedSuggestion");
+    await ui(workspace, { action: "editor-key", key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13 });
+    await waitFor(() => document.getText() === expected && document.offsetAt(editor.selection.active) === cursor,
+      `Widget did not apply ${selected.label} at ${at}; expected caret ${cursor}`);
     assert.equal(document.getText(), expected, `Suggestion widget inserted ${label}`);
     assert.equal(document.offsetAt(editor.selection.active), cursor);
     assert.equal(editor.selection.isEmpty, true);
   };
   const hsonIssues = () => vscode.languages.getDiagnostics(uri).filter(issue => issue.source === "Hson");
   const replacement = async (at: number, label: string): Promise<readonly [number, number]> => {
-    await waitFor(async () => (await labels(at)).some(item => name(item) === label), `Missing Event completion ${label}`);
-    const item = (await labels(at)).find(item => name(item) === label);
+    const item = await requireCompletion(at, label);
     assert.ok(item?.range);
     const range = "replacing" in item.range ? item.range.replacing : item.range;
     return [document.offsetAt(range.start), document.offsetAt(range.end)];
@@ -631,12 +662,14 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
   expected = expected.replace("pointer.clientXx", "pointer.clientX");
   await accept(offsetAfter("pointer.clientX"), "pointer.clientX", expected, expected.indexOf("pointer.clientX}") + "pointer.clientX}".length);
   await waitFor(() => hsonIssues().length === 0, "Event syntax diagnostics did not clear");
-  const definitions = async () => vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
-    "vscode.executeDefinitionProvider", uri, document.positionAt(offsetAfter("selection:data=^{")));
-  await waitFor(async () => (await definitions())?.some(definition => {
+  const definitions = (offset: number) => vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
+    "vscode.executeDefinitionProvider", uri, document.positionAt(offset));
+  const partDefinition = async () => (await definitions(offsetAfter("selection:data=^{")))?.some(definition => {
     const range = "targetUri" in definition ? definition.targetSelectionRange ?? definition.targetRange : definition.range;
-    return range !== undefined && document.offsetAt(range.start) === offsetAfter("data:row") - "row".length;
-  }) ?? false, "Missing proven Event Part-local definition");
+    const target = "targetUri" in definition ? definition.targetUri : definition.uri;
+    return target.toString() === uri.toString() && document.offsetAt(range.start) === offsetAfter("data:row") - "row".length;
+  }) ?? false;
+  await waitFor(partDefinition, "Missing proven Event Part-local definition");
   console.log("ok - Event suggestion widget accepts a selector and mid-token native path with exact source/cursor and definition");
 
   const roles = [
@@ -718,21 +751,36 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
   await waitFor(() => hsonIssues().length === 0, "Inserted FormData operation was rejected");
   console.log("ok - raw FormData operation snippet retains quotes, brace, field cursor and native typing");
 
-  const current = async (admitted: boolean) => {
-    const completion = (await labels(offsetAfter("on:pointer:d"))).some(item => name(item) === "on:pointer:down");
-    const definition = (await definitions() ?? []).length > 0;
-    const token = rendered && (await semantic()).get(document.getText().indexOf("deck.move"))?.type === "hsonEventAction";
-    return completion === admitted && definition === admitted && (!rendered || token === admitted);
+  const expectEvidence = async (admitted: boolean, label: string) => {
+    let observed;
+    try {
+      await waitFor(async () => {
+        const completion = (await labels(offsetAfter("on:pointer:d"))).some(item => name(item) === "on:pointer:down");
+        const definition = await partDefinition();
+        const actionToken = rendered ? (await semantic()).get(document.getText().indexOf("deck.move"))?.type === "hsonEventAction" : undefined;
+        observed = { completion, definition, actionToken };
+        return completion === admitted && definition === admitted && (!rendered || actionToken === admitted);
+      }, label);
+    } catch (error) {
+      throw new Error(`${label}; expected ${admitted}, observed ${JSON.stringify(observed)}`, { cause: error });
+    }
+    console.log("Event dependency evidence", label, JSON.stringify(observed));
   };
   const version = document.version;
-  await write(bridge, 'export const Hson = { event: String.raw };');
-  await waitFor(() => current(false), "Current editor retained withdrawn Event evidence");
+  const bindsTo = async (file: vscode.Uri) => (await definitions(offsetAfter("const go = E") - 1))?.some(definition =>
+    ("targetUri" in definition ? definition.targetUri : definition.uri).toString() === file.toString()) ?? false;
+  await write(bridge, substitute);
+  // Evidence is withdrawn as soon as the producer changes. Before the next
+  // write, require tsserver to have recognized the replacement binding.
+  await waitFor(() => bindsTo(bridge), "TypeScript did not see the substitute re-export");
+  await expectEvidence(false, "substitute re-export");
   await write(bridge, genuine);
-  await waitFor(() => current(true), "Re-export edit did not restore Event evidence");
+  await expectEvidence(true, "restore re-export");
   await vscode.workspace.fs.delete(bridge);
-  await waitFor(() => current(false), "Current editor retained a deleted re-export's Event evidence");
+  await waitFor(() => bindsTo(fallback), "TypeScript did not resolve the fallback after deleting the re-export");
+  await expectEvidence(false, "delete re-export");
   await write(bridge, genuine);
-  await waitFor(() => current(true), "Recreated re-export did not restore Event evidence");
+  await expectEvidence(true, "recreate re-export");
   assert.equal(document.version, version);
   await vscode.commands.executeCommand("typescript.restartTsServer");
   await waitFor(async () => (await labels(offsetAfter("on:pointer:d"))).some(item => name(item) === "on:pointer:down"),
@@ -769,8 +817,7 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
     return range.isEmpty && document.offsetAt(range.start) === atOption;
   }, "Expected an insertion gap before once");
   assert.ok(!(await labels(atOption)).some(item => name(item) === "once"));
-  await accept(atOption, "stopImmediateProp", beforeOption + insertion + "once <>>" + editSuffix,
-    atOption + insertion.length, 4);
+  await accept(atOption, "stopImmediateProp", beforeOption + insertion + "once <>>" + editSuffix, atOption + insertion.length);
   await waitFor(() => hsonIssues().length === 0, "Inserted listener option invalidated the Event");
   console.log("ok - Event suggestion acceptance preserves Boolean neighbors, once, CRLF, escaped quotes and the caret");
 
@@ -949,15 +996,18 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
   console.log("ok - Event selector completion applies before an incomplete string without changing the suffix");
 
   const missingOperand = editPrefix + '<hson:event on:key:up local:go broken:bool=';
-  for (const [tail, label, selectNext] of [
-    [' once window <>>', "{true}", 2],
-    [' // keep 🧪\r\n native:bool=^{key.repeat} once window <>>', '"true"', 0],
+  for (const [tail, label] of [
+    [' once window <>>', "{true}"],
+    [' // keep 🧪\r\n native:bool=^{key.repeat} once window <>>', '"true"'],
   ] as const) {
     const at = missingOperand.length;
     await setSource(missingOperand + tail + editSuffix);
     await waitFor(() => hsonIssues().length > 0, "Missing operand must fail strict admission");
+    assert.equal((await requireCompletion(at, label))?.insertText, label);
     assert.deepEqual(await replacement(at, label), [at, at]);
-    await accept(at, label, missingOperand + label + tail + editSuffix, at + label.length, selectNext);
+    await accept(at, label, missingOperand + label + tail + editSuffix, at + label.length);
+    const accepted = document.getText().slice(editPrefix.length, -editSuffix.length);
+    assert.deepEqual(parse_authored_event(accepted).args[0]?.operand, { kind: "literal", value: true });
     await waitFor(() => hsonIssues().length === 0, "Missing-operand edit must pass strict admission");
     console.log("Event missing operand insertion", JSON.stringify({ label, replacement: [at, at], caret: at + label.length, tail }));
   }
@@ -1025,8 +1075,9 @@ async function runConfiguredSchemaProject(workspace: string): Promise<void> {
   await write("package.json", '{"type":"module"}');
   const part = (tag: string) => 'export const title="<' + tag + ' hson:part/>";';
   await write("part.ts", part("p"));
+  // Library Documents are realized under html/head/body before Schema validation.
   const source = 'import {Hson,hsonLiveMap} from "hson-live";import {title} from "./part.js";\n'
-    + 'const S=Hson.schema`<type "document" tag "main" content <sequence «<tag "h1">»>>`;\n'
+    + 'const S=Hson.schema`<type "document" tag "html" content <sequence [<tag "head">, <tag "body" content <sequence [<tag "main" content <sequence [<tag "h1">]>>]>>]>>`;\n'
     + 'hsonLiveMap.fromLibraries({page:{document:Hson.document`<main <hson-part lib="bits" at="title"/>/>`,schema:S},'
     + 'bits:{parts:{title:{kind:"document",document:title}}}});\nexport function sum(){ return 11 + 22; }';
   await write("app.ts", source);
@@ -1340,6 +1391,7 @@ async function runStructuralKeyboard(workspace: string): Promise<void> {
     "[": { code: "BracketLeft", windowsVirtualKeyCode: 219 },
     "]": { code: "BracketRight", windowsVirtualKeyCode: 221 },
     "{": { code: "BracketLeft", modifiers: 8, windowsVirtualKeyCode: 219 },
+    "}": { code: "BracketRight", modifiers: 8, windowsVirtualKeyCode: 221 },
     "(": { code: "Digit9", modifiers: 8, windowsVirtualKeyCode: 57 },
   };
   const enter = { key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13 };
@@ -1374,11 +1426,21 @@ async function runStructuralKeyboard(workspace: string): Promise<void> {
       const range = new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length));
       assert.ok(await editor.edit(edit => edit.replace(range, before.text)));
     }
-    editor.options.insertSpaces = indentation.insertSpaces;
-    editor.options.tabSize = indentation.tabSize;
-    editor.options.indentSize = indentation.tabSize;
-    await waitFor(() => editor.options.insertSpaces === indentation.insertSpaces && editor.options.tabSize === indentation.tabSize,
-      "Editor indentation settings did not apply");
+    const matchesIndentation = (options: vscode.TextEditorOptions) => options.insertSpaces === indentation.insertSpaces
+      && options.tabSize === indentation.tabSize && options.indentSize === indentation.tabSize;
+    if (!matchesIndentation(editor.options)) {
+      // The extension host's option setters report their values before the
+      // workbench has applied them. Wait for the workbench's option event.
+      let applied = false;
+      const observer = vscode.window.onDidChangeTextEditorOptions(event => {
+        if (event.textEditor === editor && matchesIndentation(event.options)) applied = true;
+      });
+      try {
+        const { insertSpaces, tabSize } = indentation;
+        editor.options = { insertSpaces, tabSize, indentSize: tabSize };
+        await waitFor(() => applied && matchesIndentation(editor.options), "Editor indentation settings did not apply");
+      } finally { observer.dispose(); }
+    }
     const caretOrder = (offsets: number[]) => indentation.reverseCarets ? [...offsets].reverse() : offsets;
     const anchors = caretOrder(before.anchors);
     editor.selections = caretOrder(before.offsets).map((offset, index) =>
@@ -1582,12 +1644,37 @@ async function runStructuralKeyboard(workspace: string): Promise<void> {
   await check("Incomplete Event Data operand", "structural-keys.ts", event, [
     ["[", event.replace("|", "«|»")],
   ]);
+  const declaration = prefix + 'const event = Hson.event`<hson:event on:click local:go';
+  await check("Complete Event header", "structural-keys.ts", declaration + ' |once <>>`;', [
+    [enter, declaration + ' \n  |once <>>`;'],
+  ]);
+  await check("Complete Event nested Data operand", "structural-keys.ts", declaration + ' payload:data={<list |[1,2]>} <>>`;', [
+    [enter, declaration + ' payload:data={<list \n            |[1,2]>} <>>`;'],
+  ], { insertSpaces: true, tabSize: 4 });
+  await check("Incomplete Event with malformed Hson and TypeScript nearby", "structural-keys.ts",
+    'const broken = ;\n' + declaration + '\n  payload:data={<bad «1] items |>} <>>`;', [
+      [enter, 'const broken = ;\n' + declaration + '\n  payload:data={<bad «1] items \n      |\n    >} <>>`;'],
+    ]);
+  await check("Multiline Event outcome and declaration closers", "structural-keys.ts", declaration + '\n  <|', [
+    [enter, declaration + '\n  <\n    |'],
+    [">", declaration + '\n  <\n  >|'],
+    [enter, declaration + '\n  <\n  >\n  |'],
+    [">", declaration + '\n  <\n  >\n>|'],
+  ]);
+  await check("Complete Event Boolean operand", "structural-keys.ts", declaration + ' flag:bool={|true} <>>`;', [
+    [enter, declaration + ' flag:bool={\n    |true} <>>`;'],
+  ]);
+  await check("Incomplete Event array operand closer", "structural-keys.ts", declaration + '\n\tvalues:arr={|', [
+    [enter, declaration + '\n\tvalues:arr={\n\t\t|'],
+    ["}", declaration + '\n\tvalues:arr={\n\t}|'],
+  ], { insertSpaces: false, tabSize: 4 });
 }
 
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
   assert.ok(extension, "Hson extension was not discovered by the extension host");
   await extension.activate();
+  console.log("VS Code integration host:", vscode.version);
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);

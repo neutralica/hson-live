@@ -437,8 +437,8 @@ type EditingLayout = Readonly<{ frames: readonly EditingFrame[]; protectedRanges
 
 const editingLayouts = new WeakMap<StructuralRegion, EditingLayout>();
 
-function eventDataOpening(text: string, region: StructuralRegion, offset: number): boolean {
-  return region.event === true && /:data[ \t\r\n]*=[ \t\r\n]*$/.test(text.slice(region.bodyRange.start, offset));
+function eventDataOperandQualifier(text: string, region: StructuralRegion, offset: number): string | undefined {
+  if (region.event) return /:(data|arr|bool)[ \t\r\n]*=[ \t\r\n]*$/.exec(text.slice(region.bodyRange.start, offset))?.[1];
 }
 
 /** Only delimiters and opaque lexical spans matter to a typing gesture. */
@@ -497,7 +497,7 @@ function editingLayout(text: string, region: StructuralRegion): EditingLayout {
     }
     const parent = stack.at(-1);
     if (char === "=" && parent?.opener === "<") parent.attributeSyntax = true;
-    if (char === "<" || char === "[" || char === "«" || char === "{" && eventDataOpening(text, region, offset)) {
+    if (char === "<" || char === "[" || char === "«" || char === "{" && eventDataOperandQualifier(text, region, offset) !== undefined) {
       const frame: EditingFrame = { start: offset, opener: char };
       stack.push(frame);
       frames.push(frame);
@@ -576,7 +576,8 @@ function openingPlan(evidence: StructuralDocumentEvidence, region: StructuralReg
   const mode = angleMode(region, frames);
   const beforeDocumentSibling = typed === "<" && mode === "/>" && right.startsWith("<");
   if (right !== "" && !beforeDocumentSibling && !/^[ \t\r\n>»\],}]/.test(right) && !right.startsWith("/>")) return undefined;
-  if (typed !== "<" && (mode === "/>" || region.event && !frames.some(frame => frame.opener === "{"))) return undefined;
+  if (typed !== "<" && (mode === "/>" || region.event && !frames.some(frame =>
+    frame.opener === "{" && eventDataOperandQualifier(text, region, frame.start) === "data"))) return undefined;
   if (typed === "<" && region.event && frames.length === 0) return undefined;
   const following = suffix.replace(/^[ \t\r\n]*/, "");
   const existing = following.startsWith("/>") ? "/>" : following[0];
@@ -1027,7 +1028,7 @@ export function structural_input_plan(evidence: StructuralDocumentEvidence, offs
   const layout = editingLayout(text, region);
   if ((offset >= region.bodyRange.end && typed === "/") || !lexicalPosition(text, region, layout, offset)) return undefined;
   if (typed === "{") {
-    if (!eventDataOpening(text, region, offset) || offset < region.bodyRange.end
+    if (eventDataOperandQualifier(text, region, offset) !== "data" || offset < region.bodyRange.end
       && !/[ \t\r\n}>]/.test(text[offset])) return undefined;
     return openingInput(offset, "{", text[offset] === "}" ? "" : "}");
   }

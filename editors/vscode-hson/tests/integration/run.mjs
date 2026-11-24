@@ -21,22 +21,42 @@ const workspaceDir = join(testRoot, "workspace");
 const vscodeCacheDir = join(testRoot, "vscode");
 const eventOnly = process.env.HSON_EVENT_TEST_ONLY === "1";
 const editingOnly = process.env.HSON_EDITING_TEST_ONLY === "1";
-const driverPort = eventOnly || editingOnly ? await binding_color_port() : undefined;
+const typingOnly = process.env.HSON_TYPING_TEST_ONLY === "1";
+const partOnly = process.env.HSON_PART_COMPLETION_TEST_ONLY === "1";
+const localHostOnly = process.env.HSON_LOCAL_HOST_TEST_ONLY === "1";
+const full = !eventOnly && !editingOnly && !typingOnly && !partOnly;
+const driverPort = eventOnly || editingOnly || full && !localHostOnly ? await binding_color_port() : undefined;
+const sdk = process.env.HSON_EVENT_TYPESCRIPT_SDK;
+const expectedSdk = process.env.HSON_EVENT_EXPECT_TYPESCRIPT;
+const sdkSettings = sdk ? { "typescript.tsdk": sdk, "js/ts.tsdk.path": sdk } : {};
+const checkSdk = driverPort !== undefined || sdk !== undefined || expectedSdk !== undefined;
+const logSettings = checkSdk ? { "typescript.tsserver.log": "terse" } : {};
+async function reportSdk(profile, verify, label = "VS Code") {
+  const logs = join(profile, "logs");
+  const serverLogs = (await readdir(logs, { recursive: true }).catch(() => []))
+    .filter(file => /tsserver[^/]*\.log$/.test(file));
+  const versions = new Set((await Promise.all(serverLogs.map(file => readFile(join(logs, file), "utf8"))))
+    .flatMap(log => [...log.matchAll(/Version: (\d+\.\d+\.\d+)/g)].map(match => match[1])));
+  console.log(label + " tsserver versions:", [...versions].join(", ") || "(no log)");
+  if (verify && expectedSdk && (versions.size !== 1 || !versions.has(expectedSdk))) {
+    throw new Error(`Expected tsserver ${expectedSdk}, observed ${[...versions]}`);
+  }
+}
 // Keep the startup Chat editor from receiving native typing commands.
 await mkdir(join(userDataDir, "User"), { recursive: true });
 await writeFile(join(userDataDir, "User", "settings.json"), JSON.stringify({ "chat.disableAIFeatures": true,
+  ...sdkSettings,
+  ...logSettings,
   ...(eventOnly ? { "workbench.startupEditor": "none", "workbench.colorTheme": "Hson House Dark", "editor.semanticHighlighting.enabled": true, "editor.minimap.enabled": false,
-    "editor.wordWrap": "off", "editor.fontSize": 13, "editor.snippetSuggestions": "bottom", "typescript.tsserver.log": "terse", ...(process.env.HSON_EVENT_TYPESCRIPT_SDK ? {
-      "typescript.tsdk": process.env.HSON_EVENT_TYPESCRIPT_SDK, "js/ts.tsdk.path": process.env.HSON_EVENT_TYPESCRIPT_SDK,
-    } : {}) } : {}),
+    "editor.wordWrap": "off", "editor.fontSize": 13, "editor.snippetSuggestions": "bottom" } : {}),
   ...(editingOnly ? { "workbench.startupEditor": "none", "editor.quickSuggestions": false,
     "editor.suggestOnTriggerCharacters": false, "editor.detectIndentation": false, "editor.trimAutoWhitespace": false,
-    "editor.insertSpaces": true, "editor.tabSize": 2, "typescript.tsserver.log": "terse", ...(process.env.HSON_EVENT_TYPESCRIPT_SDK ? {
-      "typescript.tsdk": process.env.HSON_EVENT_TYPESCRIPT_SDK, "js/ts.tsdk.path": process.env.HSON_EVENT_TYPESCRIPT_SDK,
-    } : {}) } : {}),
+    "editor.insertSpaces": true, "editor.tabSize": 2 } : {}),
 }));
 await mkdir(extensionsDir);
 await mkdir(restrictedUserDataDir);
+await mkdir(join(restrictedUserDataDir, "User"));
+await writeFile(join(restrictedUserDataDir, "User", "settings.json"), JSON.stringify({ ...sdkSettings, ...logSettings }));
 await mkdir(restrictedExtensionsDir);
 await mkdir(workspaceDir);
 await mkdir(join(workspaceDir, "dist"));
@@ -108,7 +128,7 @@ await writeFile(join(declarativeWorkspace, "tsconfig.json"), JSON.stringify({
   include: ["./*.ts"],
 }));
 const eventColors = eventOnly && driverPort !== undefined ? monitor_binding_colors(workspaceDir, driverPort) : undefined;
-const editingUi = editingOnly && driverPort !== undefined ? monitor_appearance_ui(workspaceDir, driverPort) : undefined;
+const editorUi = driverPort === undefined ? undefined : monitor_appearance_ui(workspaceDir, driverPort);
 try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),
@@ -125,18 +145,13 @@ try {
       `--extensions-dir=${extensionsDir}`,
     ],
     extensionTestsEnv: { HSON_EDITING_TEST_ONLY: editingOnly ? "1" : "0", HSON_TEST_WORKSPACE: workspaceDir, HSON_EVENT_TEST_ONLY: eventOnly ? "1" : "0", HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_LOCAL_HOST_TEST_ONLY: process.env.HSON_LOCAL_HOST_TEST_ONLY ?? "0", HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0", HSON_PART_COMPLETION_TEST_ONLY: process.env.HSON_PART_COMPLETION_TEST_ONLY ?? "0" },
+  }).catch(async error => {
+    if (checkSdk) await reportSdk(userDataDir, false);
+    throw error;
   });
-  if (eventOnly || editingOnly) {
-    const logs = join(userDataDir, "logs");
-    const serverLogs = (await readdir(logs, { recursive: true })).filter(file => /tsserver[^/]*\.log$/.test(file));
-    const versions = new Set((await Promise.all(serverLogs.map(file => readFile(join(logs, file), "utf8"))))
-      .flatMap(log => [...log.matchAll(/Version: (\d+\.\d+\.\d+)/g)].map(match => match[1])));
-    const expected = process.env.HSON_EVENT_EXPECT_TYPESCRIPT;
-    if (expected && (versions.size !== 1 || !versions.has(expected))) throw new Error(`Expected tsserver ${expected}, observed ${[...versions]}`);
-    console.log("VS Code tsserver versions:", [...versions].join(", "));
-    if (eventOnly) console.log(await readFile(join(workspaceDir, "binding-color-report.json"), "utf8"));
-  }
-  if (!eventOnly && !editingOnly && process.env.HSON_TYPING_TEST_ONLY !== "1" && process.env.HSON_PART_COMPLETION_TEST_ONLY !== "1") {
+  if (checkSdk) await reportSdk(userDataDir, true);
+  if (eventOnly) console.log(await readFile(join(workspaceDir, "binding-color-report.json"), "utf8"));
+  if (full) {
     const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);
     if (lifecycleAfterDeactivation.at(-2) !== "start" || lifecycleAfterDeactivation.at(-1) !== "stop") {
       throw new Error(`VS Code extension deactivation did not dispose its live local host: ${JSON.stringify(lifecycleAfterDeactivation)}`);
@@ -156,12 +171,17 @@ try {
       child.stdout.on("data", data => process.stdout.write(data));
       child.stderr.on("data", data => process.stderr.write(data));
       child.once("error", rejectRun);
-      child.once("close", code => code === 0 ? resolveRun() : rejectRun(new Error(`Restricted VS Code integration exited with ${code}.`)));
+      child.once("close", (code, signal) => {
+        console.log("Restricted VS Code integration exit:", code ?? signal);
+        if (code === 0) resolveRun();
+        else rejectRun(new Error(`Restricted VS Code integration exited with ${code ?? signal}.`));
+      });
     });
+    if (checkSdk) await reportSdk(restrictedUserDataDir, false, "Restricted VS Code");
   }
 } finally {
   eventColors?.stop();
-  editingUi?.stop();
-  await Promise.all([eventColors?.done, editingUi?.done]);
+  editorUi?.stop();
+  await Promise.all([eventColors?.done, editorUi?.done]);
   await rm(testRoot, { recursive: true, force: true });
 }

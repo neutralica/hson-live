@@ -60,6 +60,14 @@ export function monitor_appearance_ui(workspace, port) {
     throw new Error("Appearance controls unavailable");
   }
   async function perform(request) {
+    if (request.action === "selected-suggestion") {
+      return evaluate(`(() => {
+        const id = document.activeElement?.getAttribute('aria-activedescendant');
+        const option = id && document.getElementById(id);
+        if (!option?.closest('[role="listbox"][aria-label="Suggest"]') || !option.getClientRects().length) return null;
+        return { id, label: option.getAttribute('aria-label')?.split(', ')[0] };
+      })()`, await workbench());
+    }
     if (request.action === "editor-key") {
       const sessionId = await workbench();
       await send("Page.bringToFront", {}, sessionId);
