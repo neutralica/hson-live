@@ -22,7 +22,7 @@ import { _throw_transform_err } from "./errors.js";
 import { is_valid_inline_style } from "./inline-style.js";
 import { is_Node } from "./node-guards.js";
 import { make_string } from "./stringify.js";
-import { is_valid_hson_attribute_name, is_valid_hson_data_name } from "./hson-name.js";
+import { is_reserved_hson_name, is_valid_hson_attribute_name, is_valid_hson_data_name } from "./hson-name.js";
 import {
   hson_metadata_candidate_key,
   hson_metadata_policy,
@@ -99,6 +99,10 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   if (n.$_tag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(n.$_tag)) {
     push(errs, cfg, `${here}: unknown VSN-like tag "${n.$_tag}"`); if (cfg.throwOnFirst) return;
+  }
+
+  if (!n.$_tag.startsWith(HSON_SYS_PREFIX) && is_reserved_hson_name(n.$_tag)) {
+    push(errs, cfg, `${here}: reserved Hson prefix in ordinary name ${JSON.stringify(n.$_tag)}`); if (cfg.throwOnFirst) return;
   }
 
   if (n.$_meta) {

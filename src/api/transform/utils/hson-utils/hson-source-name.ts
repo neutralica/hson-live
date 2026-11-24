@@ -1,4 +1,4 @@
-import { HSON_SYS_PREFIX } from "../../../../core/constants.js";
+import { is_reserved_hson_name } from "../../../../core/hson-name.js";
 import type { Position } from "../../token.types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
@@ -13,10 +13,10 @@ export function assert_authored_hson_source_name(
   name: string,
   pos: Position,
 ): void {
-  if (!name.startsWith(HSON_SYS_PREFIX)) return;
+  if (!is_reserved_hson_name(name)) return;
 
   _throw_transform_err(
-    `[authored-reserved-name] authored Hson name "${name}" is reserved for internal structural nodes at ${pos.line}:${pos.col} (index ${pos.index})`,
+    `[authored-reserved-name] authored Hson name "${name}" is reserved for internal structural nodes and Hson operators at ${pos.line}:${pos.col} (index ${pos.index})`,
     "tokenize-hson.authored-name",
     undefined,
     undefined,

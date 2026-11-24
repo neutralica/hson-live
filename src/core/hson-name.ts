@@ -17,9 +17,14 @@ export function is_valid_hson_attribute_name(value: string): boolean {
   return ATTRIBUTE_NAME.test(value);
 }
 
+/** Reserved structural and operator namespaces are unavailable to ordinary names. */
+export function is_reserved_hson_name(value: string): boolean {
+  return value.startsWith(HSON_SYS_PREFIX) || value.startsWith("$_");
+}
+
 /** Return whether one ordinary data name is outside Hson's reserved namespaces. */
 export function is_valid_hson_data_name(value: unknown): value is string {
-  return typeof value === "string" && !value.startsWith(HSON_SYS_PREFIX) && !value.startsWith("$_");
+  return typeof value === "string" && !is_reserved_hson_name(value);
 }
 
 /** Require one ordinary canonical Hson data-object member name. */

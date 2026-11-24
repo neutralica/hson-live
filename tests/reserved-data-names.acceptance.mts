@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, hsonTransform, type LiveMapDataLibrary } from "../src/index.js";
+import { ANY_DATA, ANY_DOCUMENT, Hson, hsonLiveMap, hsonTransform, read_transform_error_details, type LiveMapDataLibrary } from "../src/index.js";
 import type { JsonValue } from "../src/core/types.js";
 import { is_Node } from "../src/core/node-guards.js";
 import { HsonDataValue, decode_hson_data_internal } from "../src/api/data/hson-data.js";
@@ -11,6 +11,7 @@ import { add_interaction, enable_interactions, replace_interaction } from "../sr
 import type { InteractionDescriptor } from "../src/types/interaction.types.js";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.js";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.js";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "reserved-data-names",
@@ -254,21 +255,47 @@ await check("strings, exact ordering, ownership, structural Transform and Docume
   assert.throws(() => data_source('<_hson_obj @000000001>'));
 });
 
-await check("Document element names retain their context through certification, ownership and Transform envelopes", () => {
-  for (const name of [...names.filter(name => name.startsWith("$_")), "$_widget"]) {
-    const source = "<'" + name + "'/>";
+await check("reserved Document names reject across authored and structural admission", () => {
+  for (const name of [...names.filter(name => name.startsWith("$_")), "$_widget", "$_operator-extra"]) {
+    for (const source of ["<'" + name + "'/>", "<" + name + "/>", "<main <'" + name + "'/>/>"]) {
+      assert.throws(() => Reflect.apply(Hson.document.fromHson, Hson.document, [source]), source);
+      assert.throws(() => hsonTransform.fromHson(source).toNode(), source);
+      assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source } }), source);
+      assert.throws(() => hsonLiveMap.locus.create({ page: { document: source } }), source);
+    }
+    const partSource = "<main hson:part <'" + name + "'/>/>";
+    assert.throws(() => hsonLiveMap.fromLibraries({ components: { parts: {
+      bad: { kind: "document", document: partSource },
+    } } }), /authored-reserved-name/);
+    assert.throws(() => hsonLiveMap.locus.create({ components: { parts: {
+      bad: { kind: "document", document: partSource },
+    } } }), /authored-reserved-name/);
+    // Mutate a producer-created canonical graph only as a malformed rejection input.
+    const graph = hsonTransform.fromHson("<valid/>").toNode();
+    const element = graph.$_content[0];
+    assert.ok(is_Node(element));
+    element.$_tag = name;
+    assert.throws(() => hsonTransform.fromNode(graph));
+    assert.throws(() => Hson.document.fromNode(graph));
+    if (name !== "$_meta" && name !== "$_attrs") {
+      const input = { _hson_elem: [{ [name]: "" }] };
+      assert.throws(() => hsonTransform.fromJson(JSON.stringify(input)));
+      assert.throws(() => hsonTransform.fromJsonValue(input));
+    }
+  }
+  assert.throws(() => Hson.document`<'$_widget'/>`);
+  assert.throws(() => Hson.document`<main <'$_meta'/>/>`);
+  assert.throws(() => Hson.document`<'\u0024\u005fattrs'/>`);
+  for (const source of ["<'widget.card' title=\"$_attrs\" \"text\"/>", "<main <custom-element/>/>", "<'prefix$_meta'/>"]) {
     const document = Reflect.apply(Hson.document.fromHson, Hson.document, [source]);
     assert.equal(ANY_DOCUMENT.certify(document), document);
+    const transform = hsonTransform.fromHson(source);
+    const output = transform.toJson();
+    for (const restored of [hsonTransform.fromJson(output.serialize()), hsonTransform.fromJsonValue(output.value())]) {
+      assert.equal(restored.toHson().serialize(), document);
+    }
     const map = hsonLiveMap.fromLibraries({ page: { document } });
     assert.equal(map.doc.must("page").root().$_tag, "_hson_root");
-    // JSON element envelopes reserve these two slots for actual metadata/attrs.
-    const converted = name === "$_meta" || name === "$_attrs"
-      ? hsonTransform.fromHson(source)
-      : hsonTransform.fromJson({ _hson_elem: [{ [name]: "" }] });
-    assert.equal(converted.toHson().serialize(), document);
-    const graph = converted.toNode();
-    assert.equal(hsonTransform.fromNode(graph.$_tag === "_hson_root" ? detach_hson_root_value(graph) : graph).toHson().serialize(), document);
-    assert.throws(() => Hson.data.from({ [name]: 1 }), /Reserved Hson prefix/);
   }
   const array = hsonTransform.fromJson([1]).toNode();
   const value = detach_hson_root_value(array);
@@ -278,7 +305,46 @@ await check("Document element names retain their context through certification, 
   assert.equal(hsonTransform.fromNode(value).toHson().serialize(), "«\n  1\n»");
 });
 
-await check("generic Hson conversion qualifies unambiguous Data members without banning Document spellings", () => {
+await check("reserved name diagnostics identify the authored source point", () => {
+  for (const source of ["<main\n  <'$_widget'/>/>", String.raw`<main <'\u0024\u005fmeta'/>/>`]) {
+    const start = source.indexOf("'");
+    assert.throws(() => hsonTransform.fromHson(source).toNode(), error => {
+      const details = read_transform_error_details(error);
+      assert.equal(details?.code, "authored-reserved-name");
+      assert.equal(details?.source?.index, start);
+      assert.equal(details?.source?.line, source.includes("\n") ? 2 : 1);
+      return true;
+    });
+    const issues = produce_document_diagnostics({ fileName: "case.hson", languageId: "hson", text: source, authoringMode: "document" });
+    assert.equal(issues.length, 1);
+    assert.equal(issues[0]?.code, "authored-reserved-name");
+    assert.deepEqual(issues[0]?.range, { start, end: start + 1 });
+    assert.equal(issues[0]?.precision, "point");
+  }
+  const text = "import { Hson } from 'hson-live';\nconst page = Hson.document`<main <'$_widget'/>/>`;";
+  const start = text.indexOf("'$_widget'");
+  const issues = produce_document_diagnostics({ fileName: "case.ts", languageId: "typescript", text });
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0]?.code, "authored-reserved-name");
+  assert.deepEqual(issues[0]?.range, { start, end: start + 1 });
+});
+
+await check("Part Document inputs and Schema controls retain their existing contracts", () => {
+  const map = hsonLiveMap.fromLibraries({ components: { parts: {
+    host: { kind: "document", document: '<main hson:part doc:c="%{content}" <hson-part ^{c}/>/>' },
+  } } });
+  const good = map.parts.components.host.write({ content: '<custom-element title="$_meta" "42"/>' });
+  map.addLibraries({ page: { document: good } });
+  assert.match(map.doc.must("page").render(), /<custom-element title="\$_meta">42<\/custom-element>/);
+  const bad = map.parts.components.host.write({ content: "<'$_meta'/>" });
+  assert.throws(() => map.addLibraries({ rejected: { document: bad } }), /authored-reserved-name/);
+  const documentSchema = Hson.schema`<type "document" tag "main">`;
+  const dataSchema = Hson.schema`<type "data" root <object <value "string">>>`;
+  assert.equal(documentSchema.certify(Hson.document`<main title="$_attrs"/>`), Hson.document`<main title="$_attrs"/>`);
+  assert.deepEqual(dataSchema.certify(Hson.data.from({ value: "$_meta" })).materialize(), { value: "$_meta" });
+});
+
+await check("generic Hson conversion rejects reserved ordinary Data and Document names", () => {
   for (const source of [...sources,
     String.raw`<'\u0024\u005fmeta' 1>`,
     String.raw`<nested «<'\u0024_future' 1>»>`,
@@ -290,11 +356,12 @@ await check("generic Hson conversion qualifies unambiguous Data members without 
       () => hsonTransform.fromHson(source).toHson().serialize(),
     ]) assert.throws(terminal);
   }
-  const source = "<'$_meta'/>";
-  const converted = hsonTransform.fromHson(source);
-  assert.equal(converted.toNode().$_tag, "_hson_elem");
-  assert.equal(converted.toHson().serialize(), source);
-  assert.equal(typeof converted.toHtml().serialize(), "string");
+  for (const terminal of [
+    () => hsonTransform.fromHson("<'$_meta'/>").toNode(),
+    () => hsonTransform.fromHson("<'$_meta'/>").toHtml().serialize(),
+    () => hsonTransform.fromHson("<'$_meta'/>").toJson().value(),
+    () => hsonTransform.fromHson("<'$_meta'/>").toHson().serialize(),
+  ]) assert.throws(terminal);
 });
 
 events.terminal("pass");
