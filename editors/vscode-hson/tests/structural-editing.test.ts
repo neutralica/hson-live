@@ -12,6 +12,8 @@ import {
   structural_array_pair_for_bracket,
   structural_closer_for_less_than,
   structural_document_evidence,
+  structural_editing_evidence,
+  structural_input_plan,
   structural_formatting_edits,
   structural_newline_plan,
   structural_newline_plan_from_evidence,
@@ -365,16 +367,17 @@ check("authored QUADs preserve closer and Enter plans, including nested declarat
 
 check("authored gestures protect quotes, multiline content, comments, JavaScript, and canonical boundaries", () => {
   const hostPrefix = prefix.replace("Hson.canonical", "Hson.document");
-  for (const body of ['<main @:main "te|xt"/>', '<main @:main "first\nse|cond"/>', '<main @:main // co|mment\n/>', '<main @:main ${fn("te|xt")} />', '<main @:same @:again |/>', '<main @:same <p @:same/> |/>']) {
+  for (const body of ['<main @:main "te|xt"/>', '<main @:main "first\nse|cond"/>', '<main @:main // co|mment\n/>', '<main @:main ${fn("te|xt")} />']) {
     const offset = hostPrefix.length + body.indexOf('|');
     const text = hostPrefix + body.replace('|', '') + '`;';
     assert.equal(structural_newline_plan('/workspace/source.ts', 'typescript', text, offset, { insertSpaces: true, tabSize: 2 }, '\n'), undefined, body);
     assert.equal(structural_closer_for_less_than('/workspace/source.ts', 'typescript', text.slice(0, offset) + '<' + text.slice(offset), offset + 1), undefined, body);
     assert.equal(structural_array_pair_for_bracket('/workspace/source.ts', 'typescript', text, offset), false, body);
   }
-  assert.equal(closer('<main @:main |/>'), undefined);
+  assert.equal(closer('<main @:main |/>'), "/>");
   const markdown = '```hson\n<main @:main />\n```';
-  assert.equal(structural_newline_plan('/workspace/source.md', 'markdown', markdown, markdown.indexOf('/>'), { insertSpaces: true, tabSize: 2 }, '\n'), undefined);
+  assert.deepEqual(structural_newline_plan('/workspace/source.md', 'markdown', markdown, markdown.indexOf('/>'), { insertSpaces: true, tabSize: 2 }, '\n'),
+    { beforeCursor: '\n  ', afterCursor: '\n' });
 });
 
 check("authored document formatting preserves nested QUADs, connector admission, and exact text", () => {
@@ -439,7 +442,7 @@ check("formatting rejects malformed declarations and retains canonical context b
   assert.equal(format(template('<main   @:main/>')), template('<main   @:main/>'));
 });
 
-check("a bracket gesture creates a canonical pair only at parser-owned Hson array positions", () => {
+check("a bracket gesture creates a canonical pair at locally recognizable array positions", () => {
   assert.equal(arrayPair(template("|")), true);
   assert.equal(arrayPair(template("«|»")), true);
   assert.equal(arrayPair(template("<items | >")), true);
@@ -665,15 +668,16 @@ check("layout preserves the authored line-ending convention", () => {
   const input = template("\r\n<data 1\r\ndata2 2\r\n>\r\n");
   assert.equal(format(input), template("\r\n<\r\n  data 1\r\n  data2 2\r\n>\r\n"));
 });
-check("host widths and tab policy do not change Hson's two-space structural levels", () => {
+check("live Enter follows editor indentation while formatting keeps canonical levels", () => {
   const input = template('\n<main\n<section\n<p/>\n/>\n/>\n');
   for (const insertSpaces of [true, false]) for (const tabSize of [2, 4, 8]) {
     const output = format(input, insertSpaces, tabSize);
     assert.ok(output.includes("\n  <section\n    <p/>"));
     assert.equal(format(output, insertSpaces, tabSize), output);
     const close = input.indexOf('<p') + 2;
+    const indent = insertSpaces ? " ".repeat(tabSize) : "\t";
     assert.deepEqual(structural_newline_plan('/workspace/source.ts', 'typescript', input, close,
-      { insertSpaces, tabSize }, '\n'), { beforeCursor: '\n      ', afterCursor: '\n    ' });
+      { insertSpaces, tabSize }, '\n'), { beforeCursor: "\n" + indent.repeat(3), afterCursor: "\n" + indent.repeat(2) });
   }
 });
 check("host base tabs are preserved while selections and Markdown levels use spaces", () => {
@@ -767,16 +771,16 @@ check("newline between a pair creates an inner line and dedented closer", () => 
     beforeCursor: "\n    ", afterCursor: "\n  ",
   });
 });
-check("smart newline fails closed for invalid and non-structural cursor contexts", () => {
+check("smart newline uses recovered depth and protects non-structural cursor contexts", () => {
   const plan = (body: string, marker: string): ReturnType<typeof structural_newline_plan> => {
     const text = template(body);
     const offset = text.indexOf(marker) + marker.indexOf("|");
     return structural_newline_plan("/workspace/a.ts", "typescript", text.replace("|", ""), offset,
       { insertSpaces: true, tabSize: 2 }, "\n");
   };
-  assert.equal(plan("<data 1|", "|"), undefined);
-  assert.equal(plan("<data 1\n  <data2 2|>\n>", "2|"), undefined);
-  assert.equal(plan('<a "bad\\q"|>', "|"), undefined);
+  assert.deepEqual(plan("<data 1|", "|"), { beforeCursor: "\n  ", afterCursor: "" });
+  assert.deepEqual(plan("<data 1\n  <data2 2|>\n>", "2|"), { beforeCursor: "\n    ", afterCursor: "\n  " });
+  assert.deepEqual(plan('<a "bad\\q"|>', "|"), { beforeCursor: "\n  ", afterCursor: "\n" });
   assert.equal(plan('<a "te|xt">', "te|"), undefined);
   assert.equal(plan("<a 1 // no|te\nb 2>", "no|"), undefined);
   const interpolated = 'import { Hson } from "hson-live"; const value=1; const x=Hson.canonical`<a ${val|ue}>`;';
@@ -955,4 +959,71 @@ check("local Part references pair through the production checkpoint and preserve
   assert.deepEqual(parse_authored_document_library(formatted.slice(formatted.indexOf('<main'), formatted.lastIndexOf('`'))).root,
     parse_authored_document_library(body).root);
   assert.equal(format(formatted), formatted);
+});
+
+check("local structural gestures survive independent malformed regions", () => {
+  const options = { insertSpaces: false, tabSize: 4 };
+  const cases = [
+    [authored('<bad a "bad\\q"/>\n<parent |/>', 'document'), '<', '<|/>'],
+    [authored('<main |<aside/>/>', 'document'), '<', '<|/>'],
+    [authored('<main <broken attr=\n|<also-broken attr=???\n/>', 'document'), '<', '<|/>'],
+    [authored('<bad «1] items |>', 'data'), '[', '«|»'],
+    [authored('<a |] broken', 'data'), '[', '[|'],
+    [authored('<a ${fn({key: [1]})} items |>', 'data'), '<', '<|>'],
+    [authored('<a ${fn({key: [1|]})}>', 'data'), '<', undefined],
+    [authored('<a "broken <« [ |', 'data'), '[', '[|'],
+    [authored('<a 1 // comment|\nb 2>', 'data'), '[', '[|'],
+    [authored('<a \\|>', 'data'), '[', '[|'],
+    [authored('<hson:event on:click value:data={ <row |} <> >', 'event'), '<', '<|>'],
+    [authored('<hson:event on:click value:data={ <row items |} <> >', 'event'), '[', '«|»'],
+    [authored('<hson:event on:click |>', 'event'), '<', '<|>'],
+    [authored('<hson:event on:click value:data=\n| <> >', 'event'), '{', '{|}'],
+    [authored('|   >', 'data'), '<', '<|'],
+  ] as const;
+  for (const [marked, typed, expected] of cases) {
+    const offset = marked.indexOf("|");
+    const evidence = structural_editing_evidence("/workspace/source.ts", "typescript", marked.replace("|", ""));
+    const plan = structural_input_plan(evidence, offset, typed, options);
+    assert.equal(plan && plan.beforeCursor + "|" + plan.afterCursor, expected, marked);
+  }
+  const unfinishedHole = 'import { Hson } from "hson-live"; const data = Hson.data`${ {x:1}';
+  const inExpression = structural_editing_evidence("/workspace/source.ts", "typescript", unfinishedHole);
+  assert.equal(structural_input_plan(inExpression, unfinishedHole.length, "[", options), undefined);
+
+  const incomplete = 'import { Hson } from "hson-live";\n  const data = Hson.data`<items «\r\n  \t\t';
+  const evidence = structural_editing_evidence("/workspace/source.ts", "typescript", incomplete);
+  assert.deepEqual(structural_newline_plan_from_evidence(evidence, incomplete.length, options, "\r\n"),
+    { beforeCursor: "\r\n  \t\t", afterCursor: "" });
+});
+
+check("template scaffolding uses official bindings, including aliases and JavaScript", () => {
+  const host = 'import { Hson as Author } from "hson-live";\n';
+  for (const [tag, expected] of [["data", "`<|>`"], ["document", "`<|/>`"]] as const) {
+    for (const [file, language] of [["source.ts", "typescript"], ["source.js", "javascript"]] as const) {
+      for (const suffix of [";", "`;"]) {
+        const prefix = host + "const x = Author." + tag;
+        const text = prefix + suffix;
+        const evidence = structural_editing_evidence(file, language, text);
+        const plan = structural_input_plan(evidence, prefix.length, "`", { insertSpaces: true, tabSize: 2 });
+        assert.ok(plan, text);
+        assert.equal(plan.beforeCursor + "|" + plan.afterCursor + text.slice(plan.end), expected + ";");
+      }
+    }
+  }
+  for (const text of [
+    'const x = obj.data;',
+    host + 'function f(Author: unknown) { Author.document; }',
+    host + 'const x = Author.schema;',
+    host + 'const x = Author.event;',
+  ]) {
+    const offset = text.indexOf(";", text.lastIndexOf("."));
+    assert.equal(structural_input_plan(structural_editing_evidence("x.ts", "typescript", text), offset, "`",
+      { insertSpaces: true, tabSize: 2 }), undefined, text);
+  }
+  for (const suffix of ["`<main", "`<main/>`;", "`<main ${value"]) {
+    const prefix = host + "const x = Author.document";
+    const text = prefix + suffix;
+    assert.deepEqual(structural_input_plan(structural_editing_evidence("x.ts", "typescript", text), prefix.length, "`",
+      { insertSpaces: true, tabSize: 2 }), { start: prefix.length, end: prefix.length + 1, beforeCursor: "`", afterCursor: "" });
+  }
 });

@@ -213,6 +213,7 @@ export function create_hson_source_program(
   const options: ts.CompilerOptions = {
     jsx: ts.JsxEmit.Preserve,
     module: ts.ModuleKind.ESNext,
+    allowJs: /\.(?:[cm]?js|jsx)$/i.test(fileName),
     noLib: true,
     noResolve: true,
     skipLibCheck: true,
@@ -237,7 +238,9 @@ export function create_hson_source_program(
     },
     getSourceFile(candidate, languageVersion): ts.SourceFile | undefined {
       if (candidate !== fileName) return undefined;
-      const scriptKind = /\.tsx$/i.test(fileName) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+      const scriptKind = /\.tsx$/i.test(fileName) ? ts.ScriptKind.TSX
+        : /\.jsx$/i.test(fileName) ? ts.ScriptKind.JSX
+        : options.allowJs ? ts.ScriptKind.JS : ts.ScriptKind.TS;
       return ts.createSourceFile(fileName, hostText, languageVersion, true, scriptKind);
     },
     readFile(candidate): string | undefined {
@@ -863,7 +866,7 @@ export function read_template_substitution_ranges(
  * An unfinished hole masks its entire remaining expression. No suffix is guessed.
  */
 function recover_interpolated_template(fileName: string, hostText: string, sourceFile: ts.SourceFile,
-  tagged: ts.TaggedTemplateExpression, template: ts.TemplateExpression, authoringKind: "document" | "event",
+  tagged: ts.TaggedTemplateExpression, template: ts.TemplateExpression, authoringKind: HsonAuthoringKind,
 ): InterpolatedEmbeddedHsonTemplate | undefined {
   const templateRange = nodeRange(template, sourceFile);
   if (hostText[templateRange.start] !== "`") return undefined;
@@ -900,6 +903,9 @@ export function discover_hson_tagged_templates(
   ts: typeof defaultTs = defaultTs,
   eventImports?: ReadonlySet<number> | null,
   onPendingEvent?: (range: HostSourceRange) => void,
+  // Lexical editor regions may use incomplete literal bounds. They never enter admission.
+  onEditingTemplate?: (source: HsonTaggedTemplateSource | InterpolatedEmbeddedHsonTemplate,
+    closed: boolean, openSubstitution: boolean) => void,
 ): HsonTaggedTemplateDiscoveryResult {
   const empty = (): HsonTaggedTemplateDiscoveryResult => Object.freeze({
     sources: Object.freeze([]),
@@ -908,7 +914,8 @@ export function discover_hson_tagged_templates(
   });
   if (typeof fileName !== "string"
     || typeof hostText !== "string"
-    || !/\.(?:[cm]?ts|tsx)$/i.test(fileName)) {
+    || !(/\.(?:[cm]?ts|tsx)$/i.test(fileName)
+      || onEditingTemplate !== undefined && /\.(?:[cm]?js|jsx)$/i.test(fileName))) {
     return empty();
   }
 
@@ -947,6 +954,20 @@ export function discover_hson_tagged_templates(
       if (candidate && tag.kind === "event" && eventImports === null
         && is_hson_typescript_source_file(fileName) && !hasOverlappingDiagnostic(diagnostics, relevantRange)) {
         onPendingEvent?.(relevantRange);
+      }
+      if (candidate && onEditingTemplate !== undefined) {
+        const template = node.template;
+        const templateRange = nodeRange(template, sourceFile);
+        if (hostText[templateRange.start] === "`") {
+          const tail = ts.isTemplateExpression(template) ? template.templateSpans.at(-1)?.literal : template;
+          const closed = tail !== undefined && !tail.isUnterminated && hostText[templateRange.end - 1] === "`";
+          const editable = ts.isTemplateExpression(template)
+            ? recover_interpolated_template(fileName, hostText, sourceFile, node, template, tag.kind)
+            : { authoringKind: tag.kind, fileName, hostText, tagRange: nodeRange(node.tag, sourceFile), templateRange,
+                bodyRange: { start: templateRange.start + 1, end: templateRange.end - (closed ? 1 : 0) } };
+          if (editable !== undefined) onEditingTemplate(editable, closed,
+            ts.isTemplateExpression(template) && tail?.getWidth(sourceFile) === 0);
+        }
       }
       if (candidate && (tag.kind !== "event" || officialEvent(symbol))) {
         const tagRange = nodeRange(node.tag, sourceFile);

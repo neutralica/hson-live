@@ -7,6 +7,7 @@ import { spawn } from "node:child_process";
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
 
 import { binding_color_port, monitor_binding_colors } from "./binding-colors.mjs";
+import { monitor_appearance_ui } from "./appearance-driver.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // macOS Unix-domain sockets have a 103-character path limit. The Restricted
@@ -19,14 +20,21 @@ const restrictedExtensionsDir = join(testRoot, "restricted-extensions");
 const workspaceDir = join(testRoot, "workspace");
 const vscodeCacheDir = join(testRoot, "vscode");
 const eventOnly = process.env.HSON_EVENT_TEST_ONLY === "1";
-const colorPort = eventOnly ? await binding_color_port() : undefined;
+const editingOnly = process.env.HSON_EDITING_TEST_ONLY === "1";
+const driverPort = eventOnly || editingOnly ? await binding_color_port() : undefined;
 // Keep the startup Chat editor from receiving native typing commands.
 await mkdir(join(userDataDir, "User"), { recursive: true });
 await writeFile(join(userDataDir, "User", "settings.json"), JSON.stringify({ "chat.disableAIFeatures": true,
   ...(eventOnly ? { "workbench.startupEditor": "none", "workbench.colorTheme": "Hson House Dark", "editor.semanticHighlighting.enabled": true, "editor.minimap.enabled": false,
     "editor.wordWrap": "off", "editor.fontSize": 13, "editor.snippetSuggestions": "bottom", "typescript.tsserver.log": "terse", ...(process.env.HSON_EVENT_TYPESCRIPT_SDK ? {
       "typescript.tsdk": process.env.HSON_EVENT_TYPESCRIPT_SDK, "js/ts.tsdk.path": process.env.HSON_EVENT_TYPESCRIPT_SDK,
-    } : {}) } : {}) }));
+    } : {}) } : {}),
+  ...(editingOnly ? { "workbench.startupEditor": "none", "editor.quickSuggestions": false,
+    "editor.suggestOnTriggerCharacters": false, "editor.detectIndentation": false, "editor.trimAutoWhitespace": false,
+    "editor.insertSpaces": true, "editor.tabSize": 2, "typescript.tsserver.log": "terse", ...(process.env.HSON_EVENT_TYPESCRIPT_SDK ? {
+      "typescript.tsdk": process.env.HSON_EVENT_TYPESCRIPT_SDK, "js/ts.tsdk.path": process.env.HSON_EVENT_TYPESCRIPT_SDK,
+    } : {}) } : {}),
+}));
 await mkdir(extensionsDir);
 await mkdir(restrictedUserDataDir);
 await mkdir(restrictedExtensionsDir);
@@ -99,7 +107,8 @@ await writeFile(join(declarativeWorkspace, "tsconfig.json"), JSON.stringify({
   },
   include: ["./*.ts"],
 }));
-const eventColors = colorPort === undefined ? undefined : monitor_binding_colors(workspaceDir, colorPort);
+const eventColors = eventOnly && driverPort !== undefined ? monitor_binding_colors(workspaceDir, driverPort) : undefined;
+const editingUi = editingOnly && driverPort !== undefined ? monitor_appearance_ui(workspaceDir, driverPort) : undefined;
 try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),
@@ -110,24 +119,24 @@ try {
       : { vscodeExecutablePath: process.env.HSON_VSCODE_EXECUTABLE }),
     launchArgs: [
       workspaceDir,
-      ...(colorPort === undefined ? [] : [`--remote-debugging-port=${colorPort}`]),
+      ...(driverPort === undefined ? [] : [`--remote-debugging-port=${driverPort}`]),
       "--disable-workspace-trust",
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
-    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_EVENT_TEST_ONLY: eventOnly ? "1" : "0", HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_LOCAL_HOST_TEST_ONLY: process.env.HSON_LOCAL_HOST_TEST_ONLY ?? "0", HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0", HSON_PART_COMPLETION_TEST_ONLY: process.env.HSON_PART_COMPLETION_TEST_ONLY ?? "0" },
+    extensionTestsEnv: { HSON_EDITING_TEST_ONLY: editingOnly ? "1" : "0", HSON_TEST_WORKSPACE: workspaceDir, HSON_EVENT_TEST_ONLY: eventOnly ? "1" : "0", HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_LOCAL_HOST_TEST_ONLY: process.env.HSON_LOCAL_HOST_TEST_ONLY ?? "0", HSON_TYPING_TEST_ONLY: process.env.HSON_TYPING_TEST_ONLY ?? "0", HSON_PART_COMPLETION_TEST_ONLY: process.env.HSON_PART_COMPLETION_TEST_ONLY ?? "0" },
   });
-  if (eventOnly) {
+  if (eventOnly || editingOnly) {
     const logs = join(userDataDir, "logs");
     const serverLogs = (await readdir(logs, { recursive: true })).filter(file => /tsserver[^/]*\.log$/.test(file));
     const versions = new Set((await Promise.all(serverLogs.map(file => readFile(join(logs, file), "utf8"))))
       .flatMap(log => [...log.matchAll(/Version: (\d+\.\d+\.\d+)/g)].map(match => match[1])));
     const expected = process.env.HSON_EVENT_EXPECT_TYPESCRIPT;
     if (expected && (versions.size !== 1 || !versions.has(expected))) throw new Error(`Expected tsserver ${expected}, observed ${[...versions]}`);
-    console.log("Event tsserver versions:", [...versions].join(", "));
-    console.log(await readFile(join(workspaceDir, "binding-color-report.json"), "utf8"));
+    console.log("VS Code tsserver versions:", [...versions].join(", "));
+    if (eventOnly) console.log(await readFile(join(workspaceDir, "binding-color-report.json"), "utf8"));
   }
-  if (!eventOnly && process.env.HSON_TYPING_TEST_ONLY !== "1" && process.env.HSON_PART_COMPLETION_TEST_ONLY !== "1") {
+  if (!eventOnly && !editingOnly && process.env.HSON_TYPING_TEST_ONLY !== "1" && process.env.HSON_PART_COMPLETION_TEST_ONLY !== "1") {
     const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);
     if (lifecycleAfterDeactivation.at(-2) !== "start" || lifecycleAfterDeactivation.at(-1) !== "stop") {
       throw new Error(`VS Code extension deactivation did not dispose its live local host: ${JSON.stringify(lifecycleAfterDeactivation)}`);
@@ -152,6 +161,7 @@ try {
   }
 } finally {
   eventColors?.stop();
-  await eventColors?.done;
+  editingUi?.stop();
+  await Promise.all([eventColors?.done, editingUi?.done]);
   await rm(testRoot, { recursive: true, force: true });
 }

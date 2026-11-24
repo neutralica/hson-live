@@ -5,6 +5,7 @@ import ts from "typescript";
 import * as vscode from "vscode";
 import { parse_authored_event } from "../../../../src/internal/authored-events.js";
 import { nativeCompositionSupported } from "./native-composition.js";
+import { ui } from "./appearance.js";
 
 async function localSchemaCompletions(document: vscode.TextDocument, offset: number): Promise<vscode.CompletionItem[]> {
   const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset), undefined, 100);
@@ -1329,6 +1330,260 @@ export function application() {
 
 }
 
+async function runStructuralKeyboard(workspace: string): Promise<void> {
+  const prefix = 'import { Hson } from "hson-live";\n';
+  const keys = {
+    "`": { code: "Backquote", windowsVirtualKeyCode: 192 },
+    "<": { code: "Comma", modifiers: 8, windowsVirtualKeyCode: 188 },
+    ">": { code: "Period", modifiers: 8, windowsVirtualKeyCode: 190 },
+    "/": { code: "Slash", windowsVirtualKeyCode: 191 },
+    "[": { code: "BracketLeft", windowsVirtualKeyCode: 219 },
+    "]": { code: "BracketRight", windowsVirtualKeyCode: 221 },
+    "{": { code: "BracketLeft", modifiers: 8, windowsVirtualKeyCode: 219 },
+    "(": { code: "Digit9", modifiers: 8, windowsVirtualKeyCode: 57 },
+  };
+  const enter = { key: "Enter", code: "Enter", text: "\r", windowsVirtualKeyCode: 13 };
+  const backspace = { key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 };
+  const undo = { key: "z", code: "KeyZ", modifiers: process.platform === "darwin" ? 4 : 2, windowsVirtualKeyCode: 90 };
+  const redo = { ...undo, key: "Z", modifiers: undo.modifiers | 8 };
+  const unpack = (marked: string) => {
+    const markers = /\||⟦([^⟧]*)⟧/g;
+    const anchors: number[] = [];
+    const offsets: number[] = [];
+    let removed = 0;
+    for (const match of marked.matchAll(markers)) {
+      const anchor = match.index - removed;
+      const width = match[1]?.length ?? 0;
+      anchors.push(anchor);
+      offsets.push(anchor + width);
+      removed += match[0].length - width;
+    }
+    return { anchors, offsets, text: marked.replace(markers, "$1") };
+  };
+  const check = async (label: string, file: string, input: string, steps: readonly (readonly [
+    keyof typeof keys | Record<string, unknown>, string, number?
+  ])[], indentation: { insertSpaces: boolean; tabSize: number; reverseCarets?: boolean } =
+    { insertSpaces: true, tabSize: 2 }): Promise<void> => {
+    const before = unpack(input);
+    const uri = vscode.Uri.file(join(workspace, file));
+    const existing = vscode.workspace.textDocuments.find(document => document.uri.toString() === uri.toString());
+    if (existing === undefined) await vscode.workspace.fs.writeFile(uri, Buffer.from(before.text));
+    const document = existing ?? await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(document);
+    if (existing !== undefined) {
+      const range = new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length));
+      assert.ok(await editor.edit(edit => edit.replace(range, before.text)));
+    }
+    editor.options.insertSpaces = indentation.insertSpaces;
+    editor.options.tabSize = indentation.tabSize;
+    editor.options.indentSize = indentation.tabSize;
+    await waitFor(() => editor.options.insertSpaces === indentation.insertSpaces && editor.options.tabSize === indentation.tabSize,
+      "Editor indentation settings did not apply");
+    const caretOrder = (offsets: number[]) => indentation.reverseCarets ? [...offsets].reverse() : offsets;
+    const anchors = caretOrder(before.anchors);
+    editor.selections = caretOrder(before.offsets).map((offset, index) =>
+      new vscode.Selection(document.positionAt(anchors[index]), document.positionAt(offset)));
+
+    await ui(workspace, { action: "focus-editor" });
+    const snapshot = () => ({
+      text: document.getText(),
+      offsets: editor.selections.map(selection => document.offsetAt(selection.active)),
+      anchors: editor.selections.map(selection => document.offsetAt(selection.anchor)),
+    });
+    assert.deepEqual(snapshot().offsets, caretOrder(before.offsets), label + " initial selections");
+    for (const [inputKey, marked, expectedChanges] of steps) {
+      const key = typeof inputKey === "string" ? { ...keys[inputKey], key: inputKey, text: inputKey } : inputKey;
+      const initial = snapshot();
+      const changes: (vscode.TextDocumentChangeReason | undefined)[] = [];
+      const observer = vscode.workspace.onDidChangeTextDocument(event => {
+        if (event.document === document && event.contentChanges.length > 0) changes.push(event.reason);
+      });
+      const expected = unpack(marked);
+      try {
+        await ui(workspace, { action: "editor-key", ...key });
+        await waitFor(() => {
+          const observed = snapshot();
+          const offsets = indentation.reverseCarets ? [...observed.offsets].sort((a, b) => a - b) : observed.offsets;
+          const anchors = indentation.reverseCarets ? [...observed.anchors].sort((a, b) => a - b) : observed.anchors;
+          return observed.text === expected.text && JSON.stringify(anchors) === JSON.stringify(expected.anchors)
+            && JSON.stringify(offsets) === JSON.stringify(expected.offsets);
+        }, label + " " + JSON.stringify(key) + " expected " + JSON.stringify(marked), 2_000);
+        if (expectedChanges !== undefined) assert.equal(changes.length, expectedChanges, label + " content changes");
+      } catch (error) {
+        throw new Error(label + " observed " + JSON.stringify({ initial, result: snapshot(), key: key.key ?? key.text, expected }), { cause: error });
+      } finally {
+        observer.dispose();
+      }
+      process.stdout.write("ok - keyboard " + label + " " + JSON.stringify({ key: key.key ?? key.text, initial, ...snapshot(), changes }) + "\n");
+    }
+  };
+
+  const data = prefix + 'const page = Hson.data';
+  const doc = prefix + 'const page = Hson.document';
+  await check("Data opening backtick and undo/redo", "structural-keys.ts", data + '|;', [
+    ["`", data + '`<|>`;'], [undo, data + '|;'], [redo, data + '`<|>`;'],
+    [enter, data + '`<\n  |\n>`;'], [undo, data + '`<|>`;'],
+    [redo, data + '`<\n  |\n>`;'],
+  ]);
+  await check("Document closing backtick already present", "structural-keys.ts", doc + '|`;', [
+    ["`", doc + '`<|/>`;'],
+    [ { text: "main" }, doc + '`<main|/>`;'],
+    ["/", doc + '`<main/|>`;'], [">", doc + '`<main/>|`;'], ["`", doc + '`<main/>`|;'],
+  ]);
+  await check("Malformed sibling and host errors", "structural-keys.ts", data + '`<bad «1] items |>`;\nconst broken = ;', [
+    ["[", data + '`<bad «1] items «|»>`;\nconst broken = ;'],
+    [enter, data + '`<bad «1] items «\n    |\n  »>`;\nconst broken = ;'],
+  ]);
+  await check("Unfinished template with tabs and leading-closer dedent", "structural-keys.ts",
+    prefix + '  const page = Hson.data`<items «|', [
+      [enter, prefix + '  const page = Hson.data`<items «\n  \t\t|'],
+      [{ text: "»" }, prefix + '  const page = Hson.data`<items «\n  \t»|'],
+    ], { insertSpaces: false, tabSize: 4 });
+  await check("Multicursor pairing and single undo", "structural-keys.ts",
+    data + '`<one | two |> `;', [
+      ["[", data + '`<one «|» two «|»> `;'],
+      [undo, data + '`<one | two |> `;'],
+    ]);
+  await check("Mixed native and Hson multicursor", "structural-keys.ts",
+    data + '`<one |>`;\nconst native = |;', [
+      ["[", data + '`<one «|»>`;\nconst native = [|];'],
+      [undo, data + '`<one |>`;\nconst native = |;'],
+    ]);
+  await check("Mixed native and Hson Enter", "structural-keys.ts",
+    data + '`<one |>`;\nconst native = {|};', [
+      [enter, data + '`<one \n  |\n>`;\nconst native = {\n  |\n};'],
+    ]);
+  const mixedBrackets = "const native = |;\n" + data + '`<one |>`;';
+  const pairedBrackets = "const native = [|];\n" + data + '`<one «|»>`;';
+  await check("Mixed bracket ownership, undo, redo and Backspace", "structural-keys.ts", mixedBrackets, [
+    ["[", pairedBrackets, 1], [undo, mixedBrackets, 1], [redo, pairedBrackets, 1], [backspace, mixedBrackets, 1],
+    [undo, pairedBrackets, 1], [redo, mixedBrackets, 1],
+  ]);
+  await check("Mixed bracket overtype after content", "structural-keys.ts", mixedBrackets, [
+    ["[", pairedBrackets, 1],
+    [{ text: "1" }, "const native = [1|];\n" + data + '`<one «1|»>`;'],
+    ["]", "const native = [1]|;\n" + data + '`<one «1»|>`;', 0],
+  ]);
+  await check("Mixed bracket with its primary caret inside Hson", "structural-keys.ts", mixedBrackets, [
+    ["[", pairedBrackets, 1], [undo, mixedBrackets, 1], [redo, pairedBrackets, 1], [backspace, mixedBrackets, 1],
+  ], { insertSpaces: true, tabSize: 2, reverseCarets: true });
+  const editorSettings = vscode.workspace.getConfiguration("editor");
+  await editorSettings.update("autoClosingBrackets", "never", vscode.ConfigurationTarget.Workspace);
+  try {
+    const configuredBrackets = "const native = [|;\n" + data + '`<one «|»>`;';
+    await check("Mixed bracket respects native autoClosingBrackets", "structural-keys.ts", mixedBrackets, [
+      ["[", configuredBrackets, 1], [undo, mixedBrackets, 1], [redo, configuredBrackets, 1],
+      [backspace, mixedBrackets, 1],
+    ]);
+  } finally {
+    await editorSettings.update("autoClosingBrackets", undefined, vscode.ConfigurationTarget.Workspace);
+  }
+  const mixedComment = "const native = |;\n" + doc + '`<main // |\n/>`;';
+  const pairedComment = "const native = [|];\n" + doc + '`<main // [|\n/>`;';
+  await check("Mixed native pair and literal Hson comment", "structural-keys.ts", mixedComment, [
+    ["[", pairedComment, 1], [undo, mixedComment, 1], [redo, pairedComment, 1], [backspace, mixedComment, 1],
+  ]);
+  await check("Unknown mixed bracket position delegates natively", "structural-keys.ts",
+    "const native = |value;\n" + data + '`<one |>`;', [
+      ["[", "const native = [|value;\n" + data + '`<one [|>`;', 1],
+      [undo, "const native = |value;\n" + data + '`<one |>`;', 1],
+      [redo, "const native = [|value;\n" + data + '`<one [|>`;', 1],
+    ]);
+  const mixedEnter = "const native = {|};\n" + data + '`<one |>`;';
+  const splitEnter = "const native = {\n  |\n};\n" + data + '`<one \n  |\n>`;';
+  await check("Mixed Enter preserves both redo carets", "structural-keys.ts", mixedEnter, [
+    [enter, splitEnter, 1], [undo, mixedEnter, 1], [redo, splitEnter, 1],
+  ]);
+  const differentDepths = data + '`<one | two «|»>`;';
+  const splitDepths = data + '`<one \n  | two «\n    |\n  »>`;';
+  await check("Different Hson depths preserve both redo carets", "structural-keys.ts", differentDepths, [
+    [enter, splitDepths, 1], [undo, differentDepths, 1], [redo, splitDepths, 1],
+  ]);
+  const twoStarts = data + '|;\nconst other = Hson.document|;';
+  const twoScaffolds = data + '`<|>`;\nconst other = Hson.document`<|/>`;';
+  await check("Different scaffolds in one undo step", "structural-keys.ts", twoStarts, [
+    ["`", twoScaffolds, 1], [undo, twoStarts, 1], [redo, twoScaffolds, 1],
+    [backspace, data + '`|`;\nconst other = Hson.document`|`;', 1], [undo, twoScaffolds, 1],
+  ]);
+  const adjacent = doc + '`<main |<aside/>/>`;';
+  const adjacentPair = doc + '`<main <|/><aside/>/>`;';
+  await check("Pair before an adjacent Document sibling", "structural-keys.ts", adjacent, [
+    ["<", adjacentPair, 1], [undo, adjacent, 1], [redo, adjacentPair, 1], [backspace, adjacent, 1],
+  ]);
+  const malformedAdjacent = doc + '`<main\n <bad value=\n |<broken attr=???\n/>`;';
+  await check("Pair with malformed neighbors on both sides", "structural-keys.ts", malformedAdjacent, [
+    ["<", malformedAdjacent.replace("|", "<|/>"), 1], [undo, malformedAdjacent, 1],
+    [redo, malformedAdjacent.replace("|", "<|/>"), 1], [backspace, malformedAdjacent, 1],
+  ]);
+  const angleCarets = doc + '`<main | |/>`;';
+  const anglePairs = doc + '`<main <|/> <|/>/>`;';
+  await check("Paired Backspace after multicursor redo", "structural-keys.ts", angleCarets, [
+    ["<", anglePairs, 1], [undo, angleCarets, 1], [redo, anglePairs, 1],
+    [backspace, angleCarets, 1], [undo, anglePairs, 1], [redo, angleCarets, 1],
+  ]);
+  const authoredPair = doc + '`<main ⟦</>⟧/>`;';
+  const emptyChild = doc + '`<main |/>`;';
+  const generatedChild = doc + '`<main <|/>/>`;';
+  const left = { key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 };
+  const right = { key: "ArrowRight", code: "ArrowRight", windowsVirtualKeyCode: 39 };
+  const plainBackspace = doc + '`<main |/>/>`;';
+  await check("Undo preserves an authored closer with the same spelling as a generated pair", "ownership-keys.ts", authoredPair, [
+    [backspace, emptyChild, 1], ["<", generatedChild, 1], [undo, emptyChild, 1], [undo, authoredPair, 1],
+    [left, doc + '`<main |</>/>`;', 0], [right, generatedChild, 0], [backspace, plainBackspace, 1],
+  ]);
+  const typeX = { key: "x", code: "KeyX", text: "x", windowsVirtualKeyCode: 88 };
+  await check("An intervening native edit ends tracked undo history", "ownership-keys.ts", emptyChild, [
+    ["<", generatedChild, 1], [typeX, doc + '`<main <x|/>/>`;', 1], [undo, generatedChild, 1],
+    [undo, emptyChild, 1], [redo, generatedChild, 1], [backspace, plainBackspace, 1],
+  ]);
+  await check("An existing incomplete slash stays in place", "structural-keys.ts", doc + '`|/`;', [
+    ["<", doc + '`<|/`;', 1], [undo, doc + '`|/`;', 1], [redo, doc + '`<|/`;', 1],
+    [backspace, doc + '`|/`;', 1],
+  ]);
+  await check("Opening backtick preserves an unfinished nonempty template", "structural-keys.ts", doc + '|`<main', [
+    ["`", doc + '`|<main', 0],
+  ]);
+  await check("Opening backtick fills a genuinely empty template", "structural-keys.ts", doc + '|``;', [
+    ["`", doc + '`<|/>`;', 1], [undo, doc + '|``;', 1], [redo, doc + '`<|/>`;', 1],
+    [backspace, doc + '`|`;', 1],
+  ]);
+  await check("Native TypeScript comparison", "structural-keys.ts", "const compare = x | y;", [
+    ["<", "const compare = x <| y;"],
+  ]);
+  await check("Hson quoted delimiter protection", "structural-keys.ts", data + '`<x "a\\"|b">`;', [
+    ["[", data + '`<x "a\\"[|b">`;'],
+  ]);
+  await check("Native interpolation and expression pairing", "structural-keys.ts", data + '`<x $|>`;', [
+    ["{", data + '`<x ${|}>`;'], ["(", data + '`<x ${(|)}>`;'],
+  ]);
+  await check("Existing angle closer survives Backspace", "structural-keys.ts", data + '`|>`;', [
+    ["<", data + '`<|>`;'], [backspace, data + '`|>`;'],
+  ]);
+  await check("Standalone root angle and paired Backspace", "structural-keys.hson", "|", [
+    ["<", "<|>"], [backspace, "|"],
+  ]);
+  await check("Standalone nesting and indentation", "structural-keys.hson", "<items |>", [
+    ["[", "<items [|]>"], [enter, "<items [\n        |\n    ]>"],
+  ], { insertSpaces: true, tabSize: 4 });
+  await check("JavaScript alias and host pairing", "structural-keys.js", prefix + 'const page = Hson.document|;', [
+    ["`", doc + '`<|/>`;'],
+  ]);
+  await check("JavaScript native object and ordinary tagged template", "structural-keys.js", 'const x = |;', [
+    ["{", 'const x = {|};'], [enter, 'const x = {\n  |\n};'],
+  ]);
+  await check("Unrelated data tag keeps native backticks", "structural-keys.ts", 'const x = other.data|;', [
+    ["`", 'const x = other.data`|`;'],
+  ]);
+  const eventHead = prefix + 'const event = Hson.event`<hson:event on:click args:data=';
+  await check("Incomplete Event brace opener", "structural-keys.ts", eventHead + '| <> >', [
+    ["{", eventHead + '{|} <> >'],
+  ]);
+  const event = eventHead + '{ <items |}';
+  await check("Incomplete Event Data operand", "structural-keys.ts", event, [
+    ["[", event.replace("|", "«|»")],
+  ]);
+}
+
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
   assert.ok(extension, "Hson extension was not discovered by the extension host");
@@ -1336,6 +1591,7 @@ export async function run(): Promise<void> {
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);
+  if (process.env.HSON_EDITING_TEST_ONLY === "1") { await runStructuralKeyboard(workspace); return; }
   if (process.env.HSON_EVENT_TEST_ONLY === "1") { await runEventAuthoring(workspace, extension.extensionPath, true); return; }
   if (process.env.HSON_PART_COMPLETION_TEST_ONLY === "1") { await runPartCompletions(workspace); return; }
   if (process.env.HSON_RESTRICTED_TEST !== "1" && process.env.HSON_LOCAL_HOST_TEST_ONLY !== "1") {
@@ -1602,6 +1858,9 @@ const loc = hsonLiveMap.locus.create({
     await vscode.workspace.fs.writeFile(structuralUri, Buffer.from('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson.canonical`<solo/>`;\nconst page=Hson.canonical`\n <main\n<section\n/>\n />\n`;\n'));
     const structural = await vscode.workspace.openTextDocument(structuralUri);
     const structuralEditor = await vscode.window.showTextDocument(structural);
+    structuralEditor.options.insertSpaces = true;
+    structuralEditor.options.tabSize = 2;
+    structuralEditor.options.indentSize = 2;
     await vscode.commands.executeCommand("typescript.restartTsServer");
     const replaceMarked = async (marked: string): Promise<Readonly<{ clean: string; offset: number; indentation: string }>> => {
       const offset = marked.indexOf("|");
@@ -1671,10 +1930,15 @@ const loc = hsonLiveMap.locus.create({
     await typeArray("lookalike Hson stays literal", 'const Hson=String.raw; const x=Hson.canonical`|`;', false);
     await typeArray("non-array Hson position stays literal", hostPrefix + 'const x=Hson.canonical`<tag |/>`;', false);
     await typeArray("Part selector bracket stays ASCII", hostPrefix + 'const x=Hson.document`<p data:d="%{payload}" "^{d.items|}"/>`;', false);
-    await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson.canonical`<data 1|`;');
-    await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
-    await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson.canonical`<a "bad\\q"|>`;');
-    await ordinaryEnter("delimiter-deleted Hson", hostPrefix + 'const x=Hson.canonical`<main <child/>|`;');
+    for (const [body, insertion] of [
+      ['<data 1|', '\n  '], ['<data 1\n  <data2 2|>\n>', '\n    \n  '],
+      ['<a "bad\\q"|>', '\n  \n'], ['<main <child/>|', '\n  '],
+    ]) {
+      const marked = hostPrefix + 'const x=Hson.canonical`' + body + '`;';
+      await replaceMarked(marked);
+      await vscode.commands.executeCommand("hson.insertLineBreak");
+      assert.equal(structural.getText(), marked.replace("|", insertion), body);
+    }
     await ordinaryEnter("Hson string", hostPrefix + 'const x=Hson.canonical`<a "te|xt">`;');
     await ordinaryEnter("Hson comment", hostPrefix + 'const x=Hson.canonical`<a 1 // no|te\nb 2>`;');
     await ordinaryEnter("Hson interpolation", hostPrefix + 'const value=1; const x=Hson.canonical`<a ${val|ue}>`;');
@@ -1683,7 +1947,9 @@ const loc = hsonLiveMap.locus.create({
     await replaceMarked(hostPrefix + 'const x=Hson.canonical`<main|/>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
     assert.ok(structural.getText().includes("<main\n  \n/>"), "valid Hson receives smart Enter");
-    await ordinaryEnter("invalid phase of valid-invalid-valid recovery", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
+    await replaceMarked(hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    assert.ok(structural.getText().includes("<data2 2\n    \n  >"), "malformed Hson retains smart Enter");
     await replaceMarked(hostPrefix + 'const x=Hson.canonical`<main|/>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
     assert.ok(structural.getText().includes("<main\n  \n/>"), "smart Enter resumes after Hson repair");

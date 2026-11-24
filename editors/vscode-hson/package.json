@@ -30,6 +30,9 @@
     "onStartupFinished",
     "onLanguage:typescript",
     "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:hson",
     "onLanguage:markdown"
   ],
   "scripts": {

@@ -38,7 +38,7 @@ const negativeFixtures: readonly Fixture[] = [
   { path: fixtureDirectory + "diagnostics-smoke.ts", code: "HSON_CONTAINER_UNTERMINATED", line: "<<<<<<<<<<<<<<<<<<" },
   { path: fixtureDirectory + "injection.ts", code: "invalid-json-escape", line: 'const escaped = Hson.canonical`<message "host \\` tick"/>`;' },
   { path: publicEntrypoints, code: "HSON_TAGGED_TEMPLATE_REQUIRED", line: 'Hson.event`<hson:event on:click local:${"RUN"} <> >`;' },
-  { path: "tests/entrypoints/public/document-reflection.ts", code: "HSON_SCHEMA_PROOF_UNRESOLVED",
+  { path: fixtureDirectory + "diagnostics-schema-proof.ts", code: "HSON_SCHEMA_PROOF_UNRESOLVED",
     line: 'const unproved: HsonDocument<typeof Page> = Hson.document`<main "Ready"/>`;' },
 ];
 const removedTypeSubpaths = new Set(["hson-live/types", "hson-live/internal/trusted-schema-diagnostics/protocol"]);

@@ -38,7 +38,7 @@ export async function run(): Promise<void> {
       assert.equal(await document.save(), true);
       assert.equal(document.getText(), once);
     }
-    editor.options = { ...editor.options, tabSize: 4, insertSpaces: true };
+    editor.options = { ...editor.options, tabSize: 4, indentSize: 4, insertSpaces: true };
     await replace(document, input);
     await vscode.commands.executeCommand('hson.formatDocument');
     assert.ok(document.getText().includes('Hson.data`' + formatted + '`'), 'Format Document uses two-space structure');
@@ -54,7 +54,7 @@ export async function run(): Promise<void> {
     const cursor = document.positionAt(inline.indexOf('/>'));
     editor.selection = new vscode.Selection(cursor, cursor);
     await vscode.commands.executeCommand('hson.insertLineBreak');
-    assert.ok(document.getText().includes('<main\n  \n/>'), 'smart Enter ignores host width');
+    assert.ok(document.getText().includes('<main\n    \n/>'), 'smart Enter follows configured indentation width');
     const tabs = prefix + 'function f() {\n\tconst value=Hson.data`' + body + '\t`;\n}';
     editor.options = { ...editor.options, tabSize: 8, insertSpaces: false };
     await replace(document, tabs);

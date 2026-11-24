@@ -1,6 +1,6 @@
 import { OBJ_TAG } from "../../../src/core/constants.js";
 import { decode_hson_content_string } from "../../../src/core/hson-content-string.js";
-import { part_placeholder_matches, part_reference_checkpoint, part_placeholder_placement_issue } from "../../../src/internal/part-placeholder.js";
+import { part_placeholder_matches, part_reference_checkpoint, part_placeholder_placement_issue, scan_part_reference } from "../../../src/internal/part-placeholder.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../../../src/api/transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../../../src/api/transform/utils/node-utils/detach-hson-root-value.js";
@@ -8,13 +8,13 @@ import { split_attrs_meta } from "../../../src/api/transform/utils/hson-utils/sp
 import { tokenize_hson, tokenize_authored_document_library, hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
 import type { Tokens } from "../../../src/api/transform/token.types.js";
-import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { discover_hson_tagged_templates, type HsonAuthoringKind } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 import { NO_EVENT_IMPORTS } from "./event-source-evidence.js";
 import type { StandaloneAuthoringMode } from './authoring-mode.js';
 
 export type StructuralHostLanguage = "typescript" | "typescriptreact" | "markdown";
-export type StructuralLanguage = StructuralHostLanguage | "hson";
+export type StructuralLanguage = StructuralHostLanguage | "hson" | "javascript" | "javascriptreact";
 export type StructuralRange = Readonly<{ start: number; end: number }>;
 export type StructuralRegion = Readonly<{
   kind: "template" | "markdown-fence" | "standalone";
@@ -24,6 +24,9 @@ export type StructuralRegion = Readonly<{
   bodyStartsAtLineStart: boolean;
   authoredDocument?: boolean;
   authoringKind?: HsonEditorMode;
+  event?: boolean;
+  closedTemplate?: boolean;
+  openSubstitution?: boolean;
 }>;
 export type StructuralDocumentEvidence = Readonly<{
   fileName: string;
@@ -51,7 +54,7 @@ type StructuralStackEntry = {
 };
 
 function lineStart(text: string, offset: number): number {
-  return text.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
+  return offset === 0 ? 0 : text.lastIndexOf("\n", offset - 1) + 1;
 }
 
 function leadingWhitespaceAt(text: string, offset: number): string {
@@ -65,6 +68,7 @@ function discoverStructuralRegions(
   languageId: StructuralLanguage,
   text: string,
   authoringMode?: StandaloneAuthoringMode,
+  editing = false,
 ): readonly StructuralRegion[] {
   if (languageId === "hson") return Object.freeze([Object.freeze({
     kind: "standalone",
@@ -83,31 +87,36 @@ function discoverStructuralRegions(
     bodyStartsAtLineStart: true,
   }));
 
-  const discovery = discover_hson_tagged_templates(fileName, text, undefined, undefined, undefined, NO_EVENT_IMPORTS);
   const regions: StructuralRegion[] = [];
-  for (const source of discovery.sources) {
-    if (source.authoringKind === "event") continue;
+  const addTemplate = (source: Readonly<{
+    authoringKind: HsonAuthoringKind;
+    templateRange: StructuralRange;
+    bodyRange: StructuralRange;
+    substitutionRanges?: readonly StructuralRange[];
+  }>, closed?: boolean, openSubstitution?: boolean): void => {
+    const { authoringKind, bodyRange } = source;
+    const hostIndentation = /^[ \t]*/.exec(text.slice(lineStart(text, source.templateRange.start)))?.[0] ?? "";
+    const closingLine = lineStart(text, bodyRange.end);
+    const closingIndentation = text.slice(closingLine, bodyRange.end);
+    const baseIndentation = closed && closingLine >= bodyRange.start && /^[ \t]*$/.test(closingIndentation)
+      ? closingIndentation : hostIndentation;
     regions.push(Object.freeze({
       kind: "template",
-      authoredDocument: source.authoringKind === "document",
-      authoringKind: source.authoringKind,
-      bodyRange: source.bodyRange,
-      protectedRanges: Object.freeze([]),
-      baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
-      bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
+      authoredDocument: authoringKind === "document",
+      ...(authoringKind === "event" ? { event: true } : { authoringKind }),
+      ...(closed === undefined ? {} : { closedTemplate: closed, openSubstitution }),
+      bodyRange,
+      protectedRanges: Object.freeze(source.substitutionRanges ?? []),
+      baseIndentation: editing ? baseIndentation : leadingWhitespaceAt(text, bodyRange.end),
+      bodyStartsAtLineStart: bodyRange.start === lineStart(text, bodyRange.start),
     }));
-  }
-  for (const source of discovery.interpolated) {
-    if (source.authoringKind === "event") continue;
-    regions.push(Object.freeze({
-      kind: "template",
-      authoredDocument: source.authoringKind === "document",
-      authoringKind: source.authoringKind,
-      bodyRange: source.bodyRange,
-      protectedRanges: Object.freeze(source.substitutionRanges),
-      baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
-      bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
-    }));
+  };
+  const discovery = discover_hson_tagged_templates(fileName, text, undefined, undefined, undefined, NO_EVENT_IMPORTS,
+    undefined, editing ? addTemplate : undefined);
+  if (!editing) {
+    for (const source of [...discovery.sources, ...discovery.interpolated]) {
+      if (source.authoringKind !== "event") addTemplate(source);
+    }
   }
   return Object.freeze(regions.sort((left, right) => left.bodyRange.start - right.bodyRange.start));
 }
@@ -126,10 +135,21 @@ export function structural_document_evidence(
   });
 }
 
+/** Editing regions carry lexical recovery only. Formatting and admission use complete regions. */
+export function structural_editing_evidence(
+  fileName: string,
+  languageId: StructuralLanguage,
+  text: string,
+  authoringMode?: StandaloneAuthoringMode,
+): StructuralDocumentEvidence {
+  return { fileName, languageId, text, regions: discoverStructuralRegions(fileName, languageId, text, authoringMode, true) };
+}
+
 type StructuralEvidenceAnalyzer = (
   fileName: string,
   languageId: StructuralLanguage,
   text: string,
+  authoringMode?: StandaloneAuthoringMode,
 ) => StructuralDocumentEvidence;
 
 /** Small LRU for open-document binding evidence; versions are the invalidation authority. */
@@ -147,6 +167,7 @@ export class StructuralDocumentEvidenceCache {
     fileName: string,
     languageId: StructuralLanguage,
     text: string,
+    authoringMode?: StandaloneAuthoringMode,
   ): StructuralDocumentEvidence {
     const cached = this.entries.get(key);
     if (cached !== undefined && cached.version === version) {
@@ -154,7 +175,7 @@ export class StructuralDocumentEvidenceCache {
       this.entries.set(key, cached);
       return cached.evidence;
     }
-    const evidence = this.analyze(fileName, languageId, text);
+    const evidence = this.analyze(fileName, languageId, text, authoringMode);
     this.entries.delete(key);
     this.entries.set(key, Object.freeze({ version, evidence }));
     while (this.entries.size > Math.max(1, this.capacity)) {
@@ -198,7 +219,8 @@ export function structural_region_at_evidence(
     const region = evidence.regions[index];
     if (offset > region.bodyRange.end) continue;
     // Never fall back to an outer region through an inner protected expression.
-    return region.protectedRanges.some(range => offset > range.start && offset < range.end)
+    return region.protectedRanges.some(range => offset > range.start && (offset < range.end
+      || region.openSubstitution && offset === range.end && offset === region.bodyRange.end))
       ? undefined
       : region;
   }
@@ -282,7 +304,7 @@ export function structural_typing_snippet(
   typed: "=" | "{",
 ): string | undefined {
   const region = structural_region_at_evidence(evidence, cursor);
-  if (region?.kind !== "template" || region.authoringKind === undefined || region.authoringKind === "schema"
+  if (region?.kind !== "template" || region.closedTemplate === false || region.authoringKind === undefined || region.authoringKind === "schema"
     || region.protectedRanges.some(range => cursor > range.start && cursor < range.end)) return undefined;
   const text = evidence.text;
   if (typed === "=") {
@@ -409,46 +431,189 @@ export function structural_typing_snippet(
     ? existingClose ? "{$0" : "{$0}" : undefined;
 }
 
-/** Parser-probed closer selection. Exactly one valid structural mode must win. */
-export function structural_closer_for_less_than(
-  fileName: string,
-  languageId: StructuralHostLanguage,
-  textAfterLessThan: string,
-  cursorAfterLessThan: number,
-): ">" | "/>" | undefined {
-  const region = structural_region_at(fileName, languageId, textAfterLessThan, cursorAfterLessThan);
-  if (region === undefined || textAfterLessThan[cursorAfterLessThan - 1] !== "<") return undefined;
-  const body = maskProtectedSource(textAfterLessThan, region);
-  if (body === undefined) return undefined;
-  const local = cursorAfterLessThan - region.bodyRange.start;
-  if (body.startsWith("/>", local) && parses(body.slice(0, local) + "hson_probe" + body.slice(local), region.authoredDocument)) return undefined;
-  if (body[local] === ">" && parses(body, region.authoredDocument)) return undefined;
-  const objectCandidate = body.slice(0, local) + ">" + body.slice(local);
-  const documentCandidate = body.slice(0, local) + "hson_probe/>" + body.slice(local);
-  const object = parses(objectCandidate, region.authoredDocument);
-  const document = parses(documentCandidate, region.authoredDocument);
-  return object === document ? undefined : object ? ">" : "/>";
+type EditingCloser = ">" | "/>" | "]" | "»" | "}";
+type EditingFrame = { start: number; opener: "<" | "[" | "«" | "{"; end?: number; closer?: EditingCloser; attributeSyntax?: true };
+type EditingLayout = Readonly<{ frames: readonly EditingFrame[]; protectedRanges: readonly StructuralRange[] }>;
+
+const editingLayouts = new WeakMap<StructuralRegion, EditingLayout>();
+
+function eventDataOpening(text: string, region: StructuralRegion, offset: number): boolean {
+  return region.event === true && /:data[ \t\r\n]*=[ \t\r\n]*$/.test(text.slice(region.bodyRange.start, offset));
 }
 
-/** Admit a bracket gesture only when the Hson parser owns the proposed pair. */
-export function structural_array_pair_for_bracket(
-  fileName: string,
-  languageId: StructuralHostLanguage,
-  text: string,
-  cursor: number,
-): boolean {
-  const region = structural_region_at(fileName, languageId, text, cursor);
-  if (region === undefined || region.protectedRanges.some(range => cursor >= range.start && cursor < range.end)) return false;
-  const body = maskProtectedSource(text, region);
-  if (body === undefined) return false;
-  const local = cursor - region.bodyRange.start;
-  const candidate = body.slice(0, local) + "[]" + body.slice(local);
-  try {
-    if (!parses(candidate, region.authoredDocument)) return false;
-    const tokens = region.authoredDocument ? tokenize_authored_document_library(candidate) : tokenize_hson(candidate);
-    return tokens.some(token => token.kind === "ARR_OPEN" && token.pos.index === local)
-      && tokens.some(token => token.kind === "ARR_CLOSE" && token.pos.index === local + 1);
-  } catch { return false; }
+/** Only delimiters and opaque lexical spans matter to a typing gesture. */
+function editingLayout(text: string, region: StructuralRegion): EditingLayout {
+  const cached = editingLayouts.get(region);
+  if (cached !== undefined) return cached;
+  const frames: EditingFrame[] = [];
+  const stack: EditingFrame[] = [];
+  const protectedRanges: StructuralRange[] = [];
+  const end = region.bodyRange.end;
+  let holeIndex = 0;
+  for (let offset = region.bodyRange.start; offset < end;) {
+    const hole = region.protectedRanges[holeIndex];
+    if (hole?.start === offset) {
+      protectedRanges.push(hole);
+      holeIndex++;
+      offset = hole.end;
+      continue;
+    }
+    const char = text[offset];
+    const next = text[offset + 1];
+    const limit = Math.min(end, hole?.start ?? end);
+    if (char === "\\") {
+      offset = Math.min(offset + 2, limit);
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "/" && next === "/") {
+      const start = offset;
+      const comment = char === "/";
+      let closed = false;
+      offset += comment ? 2 : 1;
+      // A host interpolation is opaque even when it occurs inside a Hson string.
+      while (offset < end) {
+        const substitution = region.protectedRanges[holeIndex];
+        if (substitution?.start === offset) {
+          holeIndex++;
+          offset = substitution.end;
+          continue;
+        }
+        const current = text[offset];
+        if (comment && (current === "\r" || current === "\n")) break;
+        if (!comment && current === char) { offset++; closed = true; break; }
+        if (!comment && current === "\\" && offset + 1 < Math.min(end, substitution?.start ?? end)) offset++;
+        offset++;
+      }
+      protectedRanges.push({ start, end: closed ? offset : offset + 1 });
+      continue;
+    }
+    if ((char === "%" || char === "^") && next === "{") {
+      const reference = scan_part_reference(text.slice(0, limit), offset, true);
+      if (reference !== undefined) {
+        offset = reference.end;
+        protectedRanges.push({ start: reference.start, end: offset + (text[offset - 1] === "}" ? 0 : 1) });
+        continue;
+      }
+    }
+    const parent = stack.at(-1);
+    if (char === "=" && parent?.opener === "<") parent.attributeSyntax = true;
+    if (char === "<" || char === "[" || char === "«" || char === "{" && eventDataOpening(text, region, offset)) {
+      const frame: EditingFrame = { start: offset, opener: char };
+      stack.push(frame);
+      frames.push(frame);
+    }
+    const closer: EditingCloser | undefined = char === "/" && next === ">" ? "/>"
+      : char === ">" || char === "]" || char === "»" || char === "}" ? char : undefined;
+    if (closer !== undefined) {
+      const matches = (frame: EditingFrame) => closer === ">" || closer === "/>" ? frame.opener === "<"
+        : closer === "}" ? frame.opener === "{" : frame.opener === "[" || frame.opener === "«";
+      let owner = stack.length - 1;
+      while (owner >= 0 && !matches(stack[owner])) owner--;
+      if (owner >= 0) {
+        // Recover at a closer even if a malformed inner delimiter was left open.
+        const ended = stack.splice(owner);
+        ended[0].closer = closer;
+        for (const frame of ended) frame.end = offset;
+      }
+      offset += closer.length;
+    } else offset++;
+  }
+  const layout = { frames, protectedRanges };
+  editingLayouts.set(region, layout);
+  return layout;
+}
+
+function openFrames(layout: EditingLayout, offset: number): EditingFrame[] {
+  return layout.frames.filter(frame => frame.start < offset && (frame.end === undefined || frame.end >= offset));
+}
+
+function lexicalPosition(text: string, region: StructuralRegion, layout: EditingLayout, offset: number): boolean {
+  if (layout.protectedRanges.some(range => offset > range.start && offset < range.end)) return false;
+  let left = offset;
+  while (left > region.bodyRange.start && text[left - 1] === "\\") left--;
+  return (offset - left) % 2 === 0;
+}
+
+function angleMode(region: StructuralRegion, frames: readonly EditingFrame[]): ">" | "/>" | undefined {
+  if (region.authoredDocument) return "/>";
+  if (region.event || region.authoringKind === "data" || region.authoringKind === "schema") return ">";
+  for (let index = frames.length - 1; index >= 0; index--) {
+    const frame = frames[index];
+    if (frame.opener !== "<") continue;
+    if (frame.closer === "/>" || frame.closer === ">") return frame.closer;
+    if (frame.attributeSyntax) return "/>";
+  }
+  return undefined;
+}
+
+type StructuralOpening = "<" | "[" | "«";
+export type GeneratedDelimiters = Readonly<{ opener: string; closer: string; host?: true }>;
+export type StructuralInputPlan = Readonly<{
+  start: number;
+  end: number;
+  beforeCursor: string;
+  afterCursor: string;
+  generated?: GeneratedDelimiters;
+}>;
+
+function inputPlan(start: number, beforeCursor: string, afterCursor = "", end = start): StructuralInputPlan {
+  return { start, end, beforeCursor, afterCursor };
+}
+
+function openingInput(start: number, opener: string, closer = ""): StructuralInputPlan {
+  return { ...inputPlan(start, opener, closer), generated: { opener, closer } };
+}
+
+function openingPlan(evidence: StructuralDocumentEvidence, region: StructuralRegion, offset: number,
+  typed: StructuralOpening): StructuralInputPlan | undefined {
+  const { text } = evidence;
+  const layout = editingLayout(text, region);
+  const frames = openFrames(layout, offset);
+  const suffix = text.slice(offset, region.bodyRange.end);
+  const right = suffix.slice(0, 2);
+  // Leave typing inside an existing word and before the start of an opaque span alone.
+  if (!lexicalPosition(text, region, layout, offset)) return openingInput(offset, typed);
+  const mode = angleMode(region, frames);
+  const beforeDocumentSibling = typed === "<" && mode === "/>" && right.startsWith("<");
+  if (right !== "" && !beforeDocumentSibling && !/^[ \t\r\n>»\],}]/.test(right) && !right.startsWith("/>")) return undefined;
+  if (typed !== "<" && (mode === "/>" || region.event && !frames.some(frame => frame.opener === "{"))) return undefined;
+  if (typed === "<" && region.event && frames.length === 0) return undefined;
+  const following = suffix.replace(/^[ \t\r\n]*/, "");
+  const existing = following.startsWith("/>") ? "/>" : following[0];
+  const existingOffset = region.bodyRange.end - following.length;
+  const familyMatches = typed === "<" ? existing === ">" || existing === "/>"
+    : typed === "[" ? existing === "]" || existing === "»" : existing === "»";
+  // An unmatched closer after optional trivia can close this opener. A closer that already
+  // owns an enclosing frame remains that frame's closer.
+  if (familyMatches && !frames.some(frame => frame.end === existingOffset && frame.closer === existing)
+    && (typed !== "<" || mode === undefined || mode === existing)) {
+    return openingInput(offset, existing === "»" ? "«" : typed);
+  }
+  if (typed === "<") {
+    const close = mode ?? (region.kind === "standalone" ? ">" : undefined);
+    return close === undefined ? undefined : openingInput(offset, "<", close);
+  }
+  return typed === "[" && region.kind === "standalone"
+    ? openingInput(offset, "[", "]") : openingInput(offset, "«", "»");
+}
+
+/** Compatibility helpers retain their pair-only result for existing callers. */
+export function structural_closer_for_less_than(fileName: string, languageId: StructuralLanguage,
+  textAfterLessThan: string, cursorAfterLessThan: number): ">" | "/>" | undefined {
+  const offset = cursorAfterLessThan - 1;
+  if (textAfterLessThan[offset] !== "<") return undefined;
+  const text = textAfterLessThan.slice(0, offset) + textAfterLessThan.slice(cursorAfterLessThan);
+  const evidence = structural_editing_evidence(fileName, languageId, text);
+  const region = structural_region_at_evidence(evidence, offset);
+  const closer = region === undefined ? undefined : openingPlan(evidence, region, offset, "<")?.afterCursor;
+  return closer === ">" || closer === "/>" ? closer : undefined;
+}
+
+export function structural_array_pair_for_bracket(fileName: string, languageId: StructuralLanguage,
+  text: string, cursor: number): boolean {
+  const evidence = structural_editing_evidence(fileName, languageId, text);
+  const region = structural_region_at_evidence(evidence, cursor);
+  return region !== undefined && openingPlan(evidence, region, cursor, "[")?.afterCursor === "»";
 }
 
 function lineOf(source: string, offset: number): number {
@@ -565,12 +730,6 @@ function lexicalRanges(source: string, authoredDocument = false): Readonly<{
   });
 }
 
-function insideNonStructuralSyntax(source: string, offset: number, authoredDocument = false): boolean {
-  const ranges = lexicalRanges(source, authoredDocument);
-  return [...ranges.literals, ...ranges.comments].some(range => offset > range.start && offset < range.end);
-}
-
-// The host owns the region base; Hson owns two literal spaces per level.
 const STRUCTURAL_INDENTATION = "  ";
 
 function overlaps(left: StructuralRange, right: StructuralRange): boolean {
@@ -787,7 +946,7 @@ export function structural_newline_plan(
   newline: string,
 ): StructuralNewlinePlan | undefined {
   return structural_newline_plan_from_evidence(
-    structural_document_evidence(fileName, languageId, text),
+    structural_editing_evidence(fileName, languageId, text),
     offset,
     options,
     newline,
@@ -802,18 +961,94 @@ export function structural_newline_plan_from_evidence(
 ): StructuralNewlinePlan | undefined {
   const region = structural_region_at_evidence(evidence, offset);
   if (region === undefined) return undefined;
-  const body = maskProtectedSource(evidence.text, region);
-  if (body === undefined) return undefined;
-  const pairs = analyzedStructure(body, region.authoredDocument)?.pairs;
-  if (pairs === undefined) return undefined;
-  const local = offset - region.bodyRange.start;
-  if (insideNonStructuralSyntax(body, local, region.authoredDocument)) return undefined;
-  const currentLine = lineOf(body, local);
-  const unit = STRUCTURAL_INDENTATION;
-  const depth = pairs.filter(pair => pair.open < local && pair.close >= local).length;
-  const inner = region.baseIndentation + unit.repeat(depth);
-  const paired = pairs.find(pair => pair.close === local && pair.openLine === currentLine);
-  if (paired === undefined) return Object.freeze({ beforeCursor: newline + inner, afterCursor: "" });
-  const outer = region.baseIndentation + unit.repeat(Math.max(0, depth - 1));
-  return Object.freeze({ beforeCursor: newline + inner, afterCursor: newline + outer });
+  const { text } = evidence;
+  const layout = editingLayout(text, region);
+  if (!lexicalPosition(text, region, layout, offset)) return undefined;
+  const frames = openFrames(layout, offset);
+  const inner = editingIndentation(region, options, frames.length);
+  const paired = frames.at(-1);
+  const split = paired?.end === offset && paired.closer !== undefined
+    && lineStart(text, paired.start) === lineStart(text, offset);
+  return {
+    beforeCursor: newline + inner,
+    afterCursor: split ? newline + editingIndentation(region, options, frames.length - 1) : "",
+  };
+}
+
+export function structural_generated_pair_at(evidence: StructuralDocumentEvidence, offset: number,
+  { opener, closer }: GeneratedDelimiters): boolean {
+  const region = structural_region_at_evidence(evidence, offset);
+  return region !== undefined && editingLayout(evidence.text, region).frames.some(frame =>
+    frame.start === offset - opener.length && frame.end === offset && frame.closer === closer);
+}
+
+function editingIndentation(region: StructuralRegion, options: StructuralIndentation, depth: number): string {
+  const unit = options.insertSpaces ? " ".repeat(Math.max(1, options.tabSize)) : "\t";
+  return region.baseIndentation + unit.repeat(depth);
+}
+
+export function structural_input_plan(evidence: StructuralDocumentEvidence, offset: number, typed: string,
+  options: StructuralIndentation): StructuralInputPlan | undefined {
+  const { text } = evidence;
+  const region = structural_region_at_evidence(evidence, offset);
+  if (typed === "`" && evidence.languageId !== "hson" && evidence.languageId !== "markdown") {
+    if (region !== undefined) {
+      if (region.closedTemplate && offset === region.bodyRange.end) return inputPlan(offset, "`", "", offset + 1);
+      return undefined;
+    }
+    const existing = evidence.regions.find(candidate => candidate.bodyRange.start === offset + 1);
+    const scaffold = (candidate: StructuralRegion | undefined) => candidate?.authoringKind === "data" ? ">"
+      : candidate?.authoringKind === "document" ? "/>" : undefined;
+    if (existing !== undefined) {
+      const close = scaffold(existing);
+      if (close === undefined) return undefined;
+      const body = text.slice(existing.bodyRange.start, existing.bodyRange.end);
+      // An isolated backtick before the host statement terminator can be reused.
+      // Recovered text containing an authored body stays inside its template.
+      const trailingSemicolon = !existing.closedTemplate && /^;[ \t\r\n]*$/.test(body);
+      if (body !== "" && !trailingSemicolon) return inputPlan(offset, "`", "", offset + 1);
+      if (existing.closedTemplate) {
+        return { ...inputPlan(offset, "`<", close, offset + 1), generated: { opener: "<", closer: close } };
+      }
+    }
+    const reusedBacktick = text[offset] === "`";
+    const probe = text.slice(0, offset) + (reusedBacktick ? "`" : "``") + text.slice(offset);
+    const prospective = structural_editing_evidence(evidence.fileName, evidence.languageId, probe);
+    const close = scaffold(prospective.regions.find(candidate =>
+      candidate.closedTemplate && candidate.bodyRange.start === offset + 1 && candidate.bodyRange.end === offset + 1));
+    return close === undefined ? undefined : {
+      ...inputPlan(offset, "`<", close + (reusedBacktick ? "" : "`")),
+      generated: { opener: "<", closer: close },
+    };
+  }
+  if (region === undefined) return undefined;
+  if (typed === "<" || typed === "[" || typed === "«") return openingPlan(evidence, region, offset, typed);
+  if (typed !== "{" && typed !== "/" && typed !== ">" && typed !== "]" && typed !== "»" && typed !== "}") return undefined;
+  const layout = editingLayout(text, region);
+  if ((offset >= region.bodyRange.end && typed === "/") || !lexicalPosition(text, region, layout, offset)) return undefined;
+  if (typed === "{") {
+    if (!eventDataOpening(text, region, offset) || offset < region.bodyRange.end
+      && !/[ \t\r\n}>]/.test(text[offset])) return undefined;
+    return openingInput(offset, "{", text[offset] === "}" ? "" : "}");
+  }
+  if (text.startsWith("/>", offset) && typed === "/" && layout.frames.some(frame => frame.end === offset && frame.closer === "/>")) {
+    return inputPlan(offset, "/", "", offset + 1);
+  }
+  if (text[offset] === typed && offset < region.bodyRange.end
+    && (layout.frames.some(frame => frame.end === offset && frame.closer === typed)
+      || typed === ">" && text[offset - 1] === "/" && layout.frames.some(frame => frame.end === offset - 1 && frame.closer === "/>"))) {
+    return inputPlan(offset, typed, "", offset + 1);
+  }
+  if (typed === "/") return undefined;
+  const closerStart = typed === ">" && text[offset - 1] === "/" ? offset - 1 : offset;
+  const start = lineStart(text, closerStart);
+  if (start < region.bodyRange.start || !/^[ \t]*$/.test(text.slice(start, closerStart))) return undefined;
+  const frames = openFrames(layout, closerStart);
+  let depth = frames.length - 1;
+  while (depth >= 0) {
+    const opener = frames[depth].opener;
+    if (typed === ">" ? opener === "<" : typed === "]" ? opener === "[" : typed === "»" ? opener === "«" : opener === "{") break;
+    depth--;
+  }
+  return depth < 0 ? undefined : inputPlan(start, editingIndentation(region, options, depth) + text.slice(closerStart, offset) + typed, "", offset);
 }

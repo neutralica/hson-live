@@ -241,11 +241,12 @@ const editorRoute = "Module-level VS Code launch selects the built extensionTest
 const workerSources = [["tests/helpers/repository-typescript-worker.mts","fef383acc2f4b8a5cd123a79e62782d3b68f407f8a76589777aec6155878795d"],["tests/helpers/repository-typescript-worker-register.mjs","840268da795e23debeed315c1120364efeab15922d7862713cde38cb2ca0c82b"]];
 const editorSources = [["editors/vscode-hson/scripts/build-tests.mjs","19f54d27280827f58ddafd6c70d276d54e9af54aa6fdb309f61746ee37f3fd27"]];
 const appearanceLauncher = ["editors/vscode-hson/tests/integration/run-appearance.mjs", "8d9b41fb67dfbd4b33968b9e0a19fb53e7419dc78de34e69804246f1b51f9882"];
+const appearanceDriver = ["editors/vscode-hson/tests/integration/appearance-driver.mjs", "6293c78d53b45225078648a7cbbaa404bbfbfdd7c0ce6653f662742bb858872f"];
 const appearanceTransitions = "editors/vscode-hson/tests/appearance-transitions.test.ts";
 
 export const declaredExecution = Object.freeze({
   [appearanceLauncher[0]]: { sha256: appearanceLauncher[1], route: "Two awaited isolated VS Code launches execute the build-tests appearance.ts bundle. Default uses extensionTestsPath; --scratchpads selects the startup driver, passes real workspace Memento, awaits run() across native restarts and requires both result files to report success. The second process reuses the temporary profile without hot-exit backups.",
-    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], ["editors/vscode-hson/tests/integration/appearance-driver.mjs","ade3f55bf715e86b56b3c4c6153e55663d7df13f00cb32ff66885beb7a8aec6d"]] },
+    targets: [["editors/vscode-hson/tests/integration/appearance.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], appearanceDriver] },
   "editors/vscode-hson/tests/integration/appearance.ts": {
     sha256: "c065a6b437c914d62cbbea00743aab062548f8fcb0c42268006aab9243fecf73",
     route: "The initial default VS Code launch awaits checkAppearanceTransitions. Scratchpad and reload phases return through their own branches before that call.",
@@ -282,9 +283,9 @@ export const declaredExecution = Object.freeze({
     targets: [["editors/vscode-hson/tests/integration/house.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-legibility.mjs": { sha256: "8b1e8b8492d0c996e932e31955ec7afd3606b4c186c69bb486607a0318b8c568", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/legibility.ts","editor-runner"]], sources: [...editorSources] },
-  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "42bed4395b3b3d4ba240df1c23b6aff36bf358e1f7e9688e43c22c007e9daea2",
-    route: "The launcher awaits the built suite.ts bundle in an isolated VS Code profile. Event-only mode uses the same bundle, waits for binding colors when requested by the suite, and checks the logged SDK when specified. The default branch also runs the restricted-mode control.",
-    targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"]] },
+  "editors/vscode-hson/tests/integration/run.mjs": { sha256: "88f325b950c66fdae98db4d0eeb3d620c8ae6d5ab075197fefad5afcd4bcdb56",
+    route: "The launcher awaits the built suite.ts bundle in an isolated VS Code profile. Event and structural keyboard modes use the same bundle and awaited loopback drivers. Both check the logged SDK when specified. The default branch also runs the restricted-mode control.",
+    targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources, ["editors/vscode-hson/tests/integration/binding-colors.mjs","0636907a888add172a41d4f5b06ea0fedb3827fcc2c8a007f08f58729157a59d"], appearanceDriver] },
   "scripts/run-browser-realization-parser-closure.mjs": { sha256: "12ffbeca67bde08203a878a926165099761c75b48a139e2d50b2a4b674e3c041", route: browserRoute,
     targets: [["tests/browser/browser-realization-parser-closure.acceptance.html","browser-runner"],["tests/browser/browser-realization-parser-closure.entry.mjs","browser-runner"]], sources: [["tests/browser/browser-realization-parser-closure.acceptance.html","7b132a9dcba2ad80e3e5daad48a44b01d20afcc1e9f456df1bf2cc19c8a56472"]] },
   "scripts/run-canonical-interactions-browser.mjs": { sha256: "5e79806992c0480d14807f76b068f398e859f79854322d0d0950269f84acc12a", route: browserRoute,

@@ -47,14 +47,16 @@ import { HSON_TOOLTIP_COMMANDS, hson_quick_pick_actions, hson_status_presentatio
 import { run_development_services, type DevelopmentService } from "./development-actions.js";
 import {
   StructuralDocumentEvidenceCache,
-  structural_array_pair_for_bracket,
-  structural_closer_for_less_than,
+  structural_editing_evidence,
   structural_formatting_edits,
+  structural_generated_pair_at,
+  structural_input_plan,
   structural_newline_plan_from_evidence,
-  structural_region_at_evidence,
   structural_typing_snippet,
-  type StructuralHostLanguage,
+  type StructuralInputPlan,
+  type StructuralLanguage,
 } from "./structural-editing.js";
+import { mixedHostInput, structuralInputSnippet, StructuralInputOwnership } from "./structural-transactions.js";
 
 let localHostManager: LocalHostExtensionManager | undefined;
 let appearanceScratchpads: AppearanceScratchpads | undefined;
@@ -93,20 +95,23 @@ export function activate(context: vscode.ExtensionContext): void {
           targetSelectionRange: new vscode.Range(document.positionAt(target.target.start), document.positionAt(target.target.end)) }];
       },
     }));
-  const structuralEvidence = new StructuralDocumentEvidenceCache(8);
-  const evidenceFor = (document: vscode.TextDocument, language: StructuralHostLanguage) => structuralEvidence.get(
+  const structuralEvidence = new StructuralDocumentEvidenceCache(8, structural_editing_evidence);
+  const evidenceFor = (document: vscode.TextDocument, language: StructuralLanguage) => structuralEvidence.get(
     document.uri.toString(),
     document.version,
     document.fileName,
     language,
     document.getText(),
+    language === "hson" ? authoringMode(document) : undefined,
   );
   context.subscriptions.push({ dispose: () => structuralEvidence.clear() });
-  const structuralLanguage = (document: vscode.TextDocument): StructuralHostLanguage | undefined =>
-    document.languageId === "typescript" || document.languageId === "typescriptreact" || document.languageId === "markdown"
-      ? document.languageId : undefined;
+  const structuralLanguage = (document: vscode.TextDocument): StructuralLanguage | undefined => {
+    const language = document.languageId;
+    return language === "typescript" || language === "typescriptreact" || language === "markdown"
+      || language === "hson" || language === "javascript" || language === "javascriptreact" ? language : undefined;
+  };
   const formattingLanguage = (document: vscode.TextDocument) =>
-    document.languageId === "hson" ? "hson" : structuralLanguage(document);
+    document.languageId === "javascript" || document.languageId === "javascriptreact" ? undefined : structuralLanguage(document);
   const documentIndentation = (document: vscode.TextDocument) => {
     const visibleEditor = vscode.window.visibleTextEditors.find(editor => editor.document === document);
     if (visibleEditor !== undefined) return Object.freeze({
@@ -119,58 +124,79 @@ export function activate(context: vscode.ExtensionContext): void {
       tabSize: editor.get<number>("tabSize", 2),
     });
   };
-  const editorIndentation = (editor: vscode.TextEditor) => Object.freeze({
-    insertSpaces: editor.options.insertSpaces !== false,
-    tabSize: typeof editor.options.tabSize === "number" ? editor.options.tabSize : 2,
-  });
-  const insertOrdinaryLineBreak = async (editor: vscode.TextEditor): Promise<void> => {
-    const newline = editor.document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
-    await editor.edit(edit => {
-      for (const selection of editor.selections) {
-        const line = editor.document.lineAt(selection.active.line).text;
-        const indentation = /^[ \t]*/.exec(line)?.[0] ?? "";
-        edit.replace(selection, newline + indentation);
-      }
-    }, { undoStopBefore: false, undoStopAfter: false });
+  const editorIndentation = (editor: vscode.TextEditor) => {
+    const { insertSpaces, indentSize, tabSize } = editor.options;
+    return {
+      insertSpaces: insertSpaces !== false,
+      tabSize: typeof indentSize === "number" ? indentSize : typeof tabSize === "number" ? tabSize : 2,
+    };
   };
-  const deleteOrdinaryLeft = async (editor: vscode.TextEditor): Promise<void> => {
-    await editor.edit(edit => {
-      for (const selection of editor.selections) {
-        if (!selection.isEmpty) {
-          edit.delete(selection);
-          continue;
-        }
-        const position = selection.active;
-        if (position.character > 0) {
-          edit.delete(new vscode.Range(position.translate(0, -1), position));
-        } else if (position.line > 0) {
-          const previous = editor.document.lineAt(position.line - 1).range.end;
-          edit.delete(new vscode.Range(previous, position));
-        }
-      }
-    }, { undoStopBefore: false, undoStopAfter: false });
+  const newlinePlans = (editor: vscode.TextEditor, language: StructuralLanguage): (StructuralInputPlan | undefined)[] => {
+    const document = editor.document;
+    const evidence = evidenceFor(document, language);
+    const eol = document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
+    return editor.selections.map(selection => {
+      if (!selection.isEmpty) return undefined;
+      const start = document.offsetAt(selection.active);
+      const plan = structural_newline_plan_from_evidence(evidence, start, editorIndentation(editor), eol);
+      return plan === undefined ? undefined : { start, end: start, ...plan };
+    });
+  };
+  const generatedInputs = new WeakMap<vscode.TextDocument, StructuralInputOwnership>();
+  const applyStructuralInput = async (editor: vscode.TextEditor, plans: readonly (StructuralInputPlan | undefined)[]): Promise<boolean> => {
+    const edits = plans.filter(plan => plan !== undefined);
+    if (edits.length === 0 || edits.length !== plans.length) return false;
+    const ordered = [...edits].sort((left, right) => left.start - right.start);
+    if (ordered.some((edit, index) => index > 0 && ordered[index - 1].end > edit.start)) return false;
+
+    const { document } = editor;
+    const source = document.getText();
+    if (edits.every(edit => source.slice(edit.start, edit.end) === edit.beforeCursor + edit.afterCursor)) {
+      editor.selections = edits.map(edit => {
+        const position = document.positionAt(edit.start + edit.beforeCursor.length);
+        return new vscode.Selection(position, position);
+      });
+      return true;
+    }
+    let ownership = generatedInputs.get(document);
+    if (ownership === undefined && edits.some(edit => edit.generated?.closer)) {
+      ownership = new StructuralInputOwnership(document.version);
+      generatedInputs.set(document, ownership);
+    }
+    const input = ownership?.prepare(document.version, source, ordered);
+    const locations = edits.map(edit => new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)));
+    let applied = false;
+    try {
+      applied = await editor.insertSnippet(structuralInputSnippet(edits), locations, { undoStopBefore: true, undoStopAfter: true });
+    } finally {
+      if (input !== undefined) ownership?.finish(input, applied);
+    }
+    updateStructuralContext();
+    return applied || vscode.window.activeTextEditor !== editor;
+  };
+  const pairDeletionPlans = (editor: vscode.TextEditor): (StructuralInputPlan | undefined)[] => {
+    const { document } = editor;
+    const ownership = generatedInputs.get(document);
+    const language = structuralLanguage(document);
+    if (ownership === undefined || language === undefined) return [];
+    const autoClosingDelete = vscode.workspace.getConfiguration("editor", document).get<string>("autoClosingDelete", "auto");
+    return editor.selections.map(selection => {
+      if (!selection.isEmpty) return undefined;
+      const pair = ownership.at(document.offsetAt(selection.active));
+      if (pair === undefined) return undefined;
+      const deleteCloser = pair.closer !== "" && (pair.host ? autoClosingDelete !== "never"
+        : structural_generated_pair_at(evidenceFor(document, language), pair.close, pair));
+      return { start: pair.open, end: pair.close + (deleteCloser ? pair.closer.length : 0), beforeCursor: "", afterCursor: "" };
+    });
   };
   const updateStructuralContext = (): void => {
     const editor = vscode.window.activeTextEditor;
     const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-    const eligible = editor !== undefined && language !== undefined && editor.selections.length === 1 && editor.selection.isEmpty;
-    if (!eligible || editor === undefined || language === undefined) {
-      void vscode.commands.executeCommand("setContext", "hson.structuralEnter", false);
-      void vscode.commands.executeCommand("setContext", "hson.structuralPairDeletion", false);
-      return;
-    }
-    const text = editor.document.getText();
-    const offset = editor.document.offsetAt(editor.selection.active);
-    const evidence = evidenceFor(editor.document, language);
-    const smartEnter = structural_newline_plan_from_evidence(
-      evidence,
-      offset,
-      editorIndentation(editor),
-      editor.document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n",
-    ) !== undefined;
-    const pairDeletion = eligible && text[offset - 1] === "<"
-      && (text.startsWith("/>", offset) || text[offset] === ">")
-      && structural_region_at_evidence(evidence, offset) !== undefined;
+    const eligible = editor !== undefined && language !== undefined && editor.selections.every(selection => selection.isEmpty);
+    const smartEnter = eligible && newlinePlans(editor, language).some(plan => plan !== undefined);
+    const deletion = eligible ? pairDeletionPlans(editor) : [];
+    const pairDeletion = deletion.every(plan => plan !== undefined)
+      && deletion.some(plan => plan !== undefined && plan.end - plan.start > 1);
     void vscode.commands.executeCommand("setContext", "hson.structuralEnter", smartEnter);
     void vscode.commands.executeCommand("setContext", "hson.structuralPairDeletion", pairDeletion);
   };
@@ -179,99 +205,77 @@ export function activate(context: vscode.ExtensionContext): void {
       const editor = vscode.window.activeTextEditor;
       const typed = args?.text;
       const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-      if ((typed !== "<" && typed !== "[" && typed !== "=" && typed !== "{") || editor === undefined || language === undefined
-        || editor.selections.length !== 1 || !editor.selection.isEmpty) {
-        await vscode.commands.executeCommand("default:type", args);
+      const native = () => vscode.commands.executeCommand("default:type", args);
+      if (typed === undefined || typed.length !== 1 || !"`<[«/>]»}={".includes(typed)
+        || editor === undefined || language === undefined || editor.selections.some(selection => !selection.isEmpty)) {
+        await native();
         return;
       }
       const document = editor.document;
-      const offset = document.offsetAt(editor.selection.active);
-      const text = document.getText();
+      const evidence = evidenceFor(document, language);
       if (typed === "=" || typed === "{") {
-        const snippet = structural_typing_snippet(evidenceFor(document, language), offset, typed);
-        if (snippet === undefined) await vscode.commands.executeCommand("default:type", args);
-        else await editor.insertSnippet(new vscode.SnippetString(snippet), editor.selection, {
-          undoStopBefore: false,
-          undoStopAfter: false,
-        });
-        return;
-      }
-      if (typed === "[") {
-        if (structural_array_pair_for_bracket(document.fileName, language, text, offset)) {
-          await editor.insertSnippet(new vscode.SnippetString("«$0»"), editor.selection, {
-            undoStopBefore: false,
-            undoStopAfter: false,
-          });
-        } else {
-          await vscode.commands.executeCommand("default:type", args);
+        const snippet = editor.selections.length === 1
+          ? structural_typing_snippet(evidence, document.offsetAt(editor.selection.active), typed) : undefined;
+        if (snippet !== undefined) {
+          await editor.insertSnippet(new vscode.SnippetString(snippet), editor.selection, { undoStopBefore: true, undoStopAfter: true });
+          return;
         }
-        return;
+        if (typed === "=") { await native(); return; }
       }
-      const prospective = text.slice(0, offset) + "<" + text.slice(offset);
-      const closer = structural_closer_for_less_than(document.fileName, language, prospective, offset + 1);
-      if (closer === undefined) {
-        await vscode.commands.executeCommand("default:type", args);
-        return;
-      }
-      await editor.insertSnippet(new vscode.SnippetString("<$0" + closer), editor.selection, {
-        undoStopBefore: false,
-        undoStopAfter: false,
+      const indentation = editorIndentation(editor);
+      const offsets = editor.selections.map(selection => document.offsetAt(selection.active));
+      const ownership = generatedInputs.get(document);
+      const overtype = typed === "]" && vscode.workspace.getConfiguration("editor", document).get<string>("autoClosingOvertype", "auto") !== "never";
+      const plans = offsets.map(offset => {
+        const pair = typed === "]" ? ownership?.atCloser(offset) : undefined;
+        if (pair?.closer === "»") return structural_input_plan(evidence, offset, "»", indentation);
+        if (pair?.host && overtype && pair.closer === typed) {
+          return { start: offset, end: offset + 1, beforeCursor: pair.closer, afterCursor: "" };
+        }
+        return structural_input_plan(evidence, offset, typed, indentation);
       });
+      if (plans.some(plan => plan !== undefined) && await applyStructuralInput(editor, plans.map((plan, index) =>
+        plan ?? mixedHostInput(editor, offsets[index], typed, indentation)))) return;
+      await native();
     }),
     vscode.commands.registerCommand("hson.insertLineBreak", async () => {
       const editor = vscode.window.activeTextEditor;
       const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-      if (editor === undefined || language === undefined || editor.selections.length !== 1 || !editor.selection.isEmpty) {
-        if (editor !== undefined) await insertOrdinaryLineBreak(editor);
+      const native = () => vscode.commands.executeCommand("default:type", { text: "\n" });
+      if (editor === undefined || language === undefined || editor.selections.some(selection => !selection.isEmpty)) {
+        await native();
         return;
       }
-      const document = editor.document;
-      const plan = structural_newline_plan_from_evidence(
-        evidenceFor(document, language),
-        document.offsetAt(editor.selection.active),
-        editorIndentation(editor),
-        document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n",
-      );
-      if (plan === undefined) {
-        await insertOrdinaryLineBreak(editor);
-        return;
+      const plans = newlinePlans(editor, language);
+      if (plans.some(plan => plan !== undefined)) {
+        const { document } = editor;
+        const hostSource = plans.some(plan => plan === undefined)
+          ? ts.createSourceFile(document.fileName, document.getText(), ts.ScriptTarget.Latest, true)
+          : undefined;
+        const indentation = editorIndentation(editor);
+        const complete = plans.map((plan, index) => plan ?? mixedHostInput(editor,
+          document.offsetAt(editor.selections[index].active), "\n", indentation, hostSource));
+        if (await applyStructuralInput(editor, complete)) return;
       }
-      const insertionOffset = document.offsetAt(editor.selection.start);
-      const inserted = await editor.edit(edit => {
-        edit.replace(editor.selection, plan.beforeCursor + plan.afterCursor);
-      }, { undoStopBefore: false, undoStopAfter: false });
-      if (inserted) {
-        const cursor = document.positionAt(insertionOffset + plan.beforeCursor.length);
-        editor.selection = new vscode.Selection(cursor, cursor);
-      }
+      await native();
     }),
     vscode.commands.registerCommand("hson.deleteLeft", async () => {
       const editor = vscode.window.activeTextEditor;
-      const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-      if (editor === undefined || language === undefined || editor.selections.length !== 1 || !editor.selection.isEmpty) {
-        if (editor !== undefined) await deleteOrdinaryLeft(editor);
-        return;
+      if (editor === undefined || !await applyStructuralInput(editor, pairDeletionPlans(editor))) {
+        await vscode.commands.executeCommand("deleteLeft");
       }
-      const document = editor.document;
-      const offset = document.offsetAt(editor.selection.active);
-      const text = document.getText();
-      const closerLength = text.startsWith("/>", offset) ? 2 : text[offset] === ">" ? 1 : 0;
-      if (closerLength === 0 || text[offset - 1] !== "<"
-        || structural_region_at_evidence(evidenceFor(document, language), offset) === undefined) {
-        await deleteOrdinaryLeft(editor);
-        return;
-      }
-      const edit = new vscode.WorkspaceEdit();
-      edit.delete(document.uri, new vscode.Range(document.positionAt(offset - 1), document.positionAt(offset + closerLength)));
-      await vscode.workspace.applyEdit(edit);
     }),
     vscode.window.onDidChangeActiveTextEditor(updateStructuralContext),
     vscode.window.onDidChangeTextEditorSelection(updateStructuralContext),
     vscode.workspace.onDidChangeTextDocument(event => {
+      generatedInputs.get(event.document)?.update(event);
       structuralEvidence.invalidate(event.document.uri.toString());
       if (event.document === vscode.window.activeTextEditor?.document) updateStructuralContext();
     }),
-    vscode.workspace.onDidCloseTextDocument(document => structuralEvidence.invalidate(document.uri.toString())),
+    vscode.workspace.onDidCloseTextDocument(document => {
+      generatedInputs.delete(document);
+      structuralEvidence.invalidate(document.uri.toString());
+    }),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (!event.affectsConfiguration("hson")) return;
       structuralEvidence.clear();

@@ -102,8 +102,9 @@ precise.schema.use(ANY_DOCUMENT);
 precise.schema.use(Other);
 // @ts-expect-error A broad handle does not prove this exact Schema.
 const forged: typeof precise = page;
+const ordinaryAuthored = Hson.document`<main "Ready"/>`;
 // @ts-expect-error Ordinary authored text lacks certification by Page.
-const unproved: HsonDocument<typeof Page> = Hson.document`<main "Ready"/>`;
+const unproved: HsonDocument<typeof Page> = ordinaryAuthored;
 // @ts-expect-error Certification for another identity does not prove Page.
 const wrongProof: HsonDocument<typeof Page> = Other.certify(Hson.document`<main "Ready"/>`);
 // @ts-expect-error Continuation preserves text replacement constraints.

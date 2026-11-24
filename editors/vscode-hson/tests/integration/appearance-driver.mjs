@@ -60,6 +60,25 @@ export function monitor_appearance_ui(workspace, port) {
     throw new Error("Appearance controls unavailable");
   }
   async function perform(request) {
+    if (request.action === "editor-key") {
+      const sessionId = await workbench();
+      await send("Page.bringToFront", {}, sessionId);
+      const focused = await evaluate(`(() => {
+        const editor = [...document.querySelectorAll('.monaco-editor')].find(node =>
+          node.getBoundingClientRect().width > 100 && node.querySelector('.view-lines'));
+        const input = editor?.querySelector('textarea.inputarea, .native-edit-context');
+        input?.focus();
+        return !!input && (document.activeElement === input || input.contains(document.activeElement));
+      })()`, sessionId);
+      if (!focused) throw new Error("Editor input is unavailable");
+      const { key, code, text, modifiers, windowsVirtualKeyCode } = request;
+      if (code === undefined) await send("Input.insertText", { text }, sessionId);
+      else {
+        await send("Input.dispatchKeyEvent", { type: "keyDown", key, code, text, modifiers, windowsVirtualKeyCode }, sessionId);
+        await send("Input.dispatchKeyEvent", { type: "keyUp", key, code, modifiers, windowsVirtualKeyCode }, sessionId);
+      }
+      return {};
+    }
     if (["layout", "screenshot", "focus-editor", "text-style"].includes(request.action)) {
       const sessionId = await workbench();
       if(request.action === 'text-style') return evaluate(`(() => {
