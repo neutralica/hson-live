@@ -122,33 +122,39 @@ export function make_locus_stage<TMap extends LiveMap>(
     };
     return Object.freeze(forward_part_write(facade, raw, assertReadable)) as unknown as import("../../types/governor.types.js").LocusDataLocation;
   };
-  const document_location = (name: string, path: readonly number[], document: LiveMapDocumentLibrary, retained?: ReturnType<LiveMapDocumentLibrary["at"]>): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
+  const document_location = (
+    name: string, document: LiveMapDocumentLibrary, raw: WritableDocumentLocation,
+  ): NonNullable<ReturnType<import("../../types/governor.types.js").LocusDocumentLocation["asElement"]>> => {
     assertReadable();
-    const stable = validate_document_path(path);
-    const raw: WritableDocumentLocation = retained ?? document.at(stable);
+    // The selected LiveMap location supplies the coordinate for both reads and writes.
+    const stable = raw.path();
+    const refinements = document_location_refinements(raw);
     const read = read_document_location(raw, assertReadable);
     const edit = (run: (location: import("../livemap/livemap.staged.js").StagedDocumentLocation) => void) => submit(writer => {
       if (require_livemap_library_internal(map, name) !== document) throw new Error("Stale Library handle.");
       document.root();
       const location = selected_document(writer, name).at(stable) as import("../livemap/livemap.staged.js").StagedDocumentLocation;
-      stage_document_location_refinements(location, document_location_refinements(raw));
+      stage_document_location_refinements(location, refinements);
       run(location);
     });
     const commands = document_location_commands(edit);
     const listener = raw.listen === undefined ? undefined : listenAt(name, document, () => {
       if (raw.kind() !== "element") throw new TypeError("Document listener subject must be an ordinary element.");
-      return raw.path();
+      return stable;
     });
     const facade = Object.freeze({
       ...read, ...commands,
       ...(listener === undefined ? {} : { listen: listener }),
       get rev() { return read.rev; },
-      present: observe(() => { const checked = raw.present(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
-      asElement: observe(() => { const checked = raw.asElement(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
-      asRoot: observe(() => { const checked = raw.asRoot(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
-      asText: observe(() => { const checked = raw.asText(); return checked === undefined ? undefined : document_location(name, stable, document, checked); }),
-      id: observe((id: string) => { const found = raw.id(id); return found === undefined ? undefined : document_location(name, found.path(), document, found); }),
-      at: observe((child: readonly number[]) => { raw.snap(); return document_location(name, [...stable, ...validate_document_path(child)], document, raw.at(child)); }),
+      present: observe(() => { const checked = raw.present(); return checked === undefined ? undefined : document_location(name, document, checked); }),
+      asElement: observe(() => { const checked = raw.asElement(); return checked === undefined ? undefined : document_location(name, document, checked); }),
+      asRoot: observe(() => { const checked = raw.asRoot(); return checked === undefined ? undefined : document_location(name, document, checked); }),
+      asText: observe(() => { const checked = raw.asText(); return checked === undefined ? undefined : document_location(name, document, checked); }),
+      id: observe((id: string) => { const found = raw.id(id); return found === undefined ? undefined : document_location(name, document, found); }),
+      at: observe((child: readonly number[]) => {
+        raw.snap();
+        return document_location(name, document, raw.at(validate_document_path(child)));
+      }),
       attrs: Object.freeze({ ...read.attrs, ...commands.attrs }),
       flags: Object.freeze({ ...read.flags, ...commands.flags }),
     });
@@ -233,7 +239,7 @@ export function make_locus_stage<TMap extends LiveMap>(
           render: mark_browser_html_producer(observe(() => document.render())),
           commits: Object.freeze({ observe: live_subscription(document.commits.observe, () => { assertReadable(); void document.rev; }) }),
           schema: Object.freeze({ get: observe(() => document.schema.get()) }),
-          at: observe((path: readonly number[]) => document_location(name, path, document)),
+          at: observe((path: readonly number[]) => document_location(name, document, document.at(validate_document_path(path)))),
           q: observe((quadName: string) => {
             const subject = document.q(quadName);
             return subject === undefined ? undefined : write_document_quad(subject, (current, run) => edit(draft => {

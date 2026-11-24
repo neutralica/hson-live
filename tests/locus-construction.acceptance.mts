@@ -56,6 +56,145 @@ await pathAuthority.doc.must("page").at([1, 0, 0]).replace({ $_tag: "p", $_attrs
 assert.equal(pathAuthority.doc.must("page").at([1, 0, 0]).asElement()!.attrs.get("title"), "replaced");
 pathAuthority.dispose();
 
+function changing_child_index(first: number, later: number, onFirst = () => {}) {
+  const path = [first];
+  let reads = 0;
+  Object.defineProperty(path, "0", { get() {
+    if (reads++ !== 0) return later;
+    onFirst();
+    return first;
+  } });
+  return { path, reads: () => reads };
+}
+
+{
+  const document = '<main <p/> "second" <section id="one" <b id="one-child"/>/> <section id="two" <b id="two-child"/>/>/>';
+  const definitions = { page: { document, access: "shared" } } as const;
+  const persistence = new MemoryCheckpointAdapter();
+  const options = { logicalMapId: "relative-document-location", persistence };
+  const authority = await hsonLiveMap.locus.resume(definitions, options);
+  const page = authority.doc.must("page");
+  const main = page.at([1, 0]);
+  const standalone = hsonLiveMap.fromLibraries({ page: { document } }).doc.must("page");
+  const standaloneMain = standalone.at([1, 0]);
+  const publications: { revision: number; durableRevision: number | undefined; hson: string }[] = [];
+  const stopCommits = authority.commits.observe(commit => publications.push({
+    revision: commit.rev,
+    durableRevision: persistence.state(options.logicalMapId)?.commits.at(-1)?.commit.rev,
+    hson: page.hson(),
+  }));
+  let watches = 0;
+  const stopWatch = main.watch(() => { watches += 1; });
+  const state = () => ({
+    map: locus_map_internal(authority).capture(),
+    revision: authority.rev,
+    publications: publications.length,
+    watches,
+    appends: persistence.appendCalls.length,
+  });
+  let saved: ReturnType<typeof state>;
+  try {
+    const initial = state();
+    const originalPath = changing_child_index(0, 1);
+    const standalonePath = changing_child_index(0, 1);
+    const selected = main.at(originalPath.path);
+    const standaloneSelected = standaloneMain.at(standalonePath.path);
+    assert.deepEqual(selected.path(), [1, 0, 0]);
+    assert.deepEqual(selected.path(), standaloneSelected.path());
+    assert.equal(selected.snap(), "<p></p>");
+    assert.equal(selected.asText(), undefined);
+    assert.equal(standaloneSelected.asText(), undefined);
+    assert.equal(originalPath.reads(), 1);
+    assert.equal(standalonePath.reads(), 1);
+    assert.deepEqual(state(), initial);
+
+    const textPath = changing_child_index(1, 0);
+    const standaloneTextPath = changing_child_index(1, 0);
+    const text = main.at(textPath.path).asText()!;
+    const standaloneText = standaloneMain.at(standaloneTextPath.path).asText()!;
+    assert.equal(text.snap(), "second");
+    assert.deepEqual(text.path(), standaloneText.path());
+    await text.replace("updated");
+    standaloneText.replace("updated");
+    assert.equal(textPath.reads(), 1);
+    assert.equal(standaloneTextPath.reads(), 1);
+    assert.equal(main.at([0]).snap(), "<p></p>");
+    assert.equal(main.at([1]).snap(), "updated");
+    assert.equal(page.hson(), standalone.hson());
+
+    let reentrant: Promise<void> | undefined;
+    const parentPath = changing_child_index(2, 3, () => {
+      reentrant = main.at([0]).asElement()!.attrs.set("title", "first");
+    });
+    const child = main.asElement()!.at(parentPath.path).asElement()!.at([0]).present()!.asElement()!;
+    assert.deepEqual(child.path(), [1, 0, 2, 0]);
+    assert.equal(child.attrs.get("id"), "one-child");
+    assert.ok(reentrant);
+    await Promise.all([reentrant, child.attrs.set("title", "selected")]);
+    assert.equal(parentPath.reads(), 1);
+    assert.equal(main.at([2, 0]).asElement()!.attrs.get("title"), "selected");
+    assert.equal(main.at([3, 0]).asElement()!.attrs.get("title"), undefined);
+    assert.match(publications[1]!.hson, /title="first"/);
+    assert.doesNotMatch(publications[1]!.hson, /title="selected"/);
+    assert.match(publications[2]!.hson, /title="selected"/);
+
+    const deletePath = changing_child_index(3, 2);
+    const removed = main.at(deletePath.path).asElement()!;
+    assert.equal(removed.attrs.get("id"), "two");
+    await removed.delete();
+    assert.equal(deletePath.reads(), 1);
+    assert.equal(main.at([2]).asElement()!.attrs.get("id"), "one");
+    assert.equal(main.at([3]).present(), undefined);
+
+    const beforeInvalid = state();
+    const invalidPath = changing_child_index(-1, 0);
+    assert.throws(() => main.at(invalidPath.path), { code: "INVALID_DOCUMENT_PATH_INDEX" });
+    assert.equal(invalidPath.reads(), 1);
+    const missingPath = changing_child_index(99, 0);
+    const missing = main.at(missingPath.path);
+    assert.equal(missing.present(), undefined);
+    await assert.rejects(missing.delete(), { code: "CONTENT_INDEX_OUT_OF_RANGE" });
+    assert.equal(missingPath.reads(), 1);
+    await assert.rejects(authority.stage(draft => {
+      const candidate = draft.doc.must("page").at([1, 0]);
+      candidate.at([0]).asElement().attrs.set("title", "rollback");
+      candidate.at([99]).delete();
+    }), { code: "CONTENT_INDEX_OUT_OF_RANGE" });
+    assert.deepEqual(state(), beforeInvalid);
+
+    const retainedPath = changing_child_index(1, 0);
+    const retainedText = main.at(retainedPath.path).asText()!;
+    const preceding = main.at([1]).replace({ $_tag: "em", $_content: [] });
+    const rejected = assert.rejects(retainedText.delete(), /Document location is not text/);
+    assert.equal(retainedText.snap(), "updated");
+    await preceding;
+    const afterPreceding = state();
+    await rejected;
+    assert.equal(retainedPath.reads(), 1);
+    assert.equal(retainedText.snap(), undefined);
+    assert.equal(main.at([1]).snap(), "<em></em>");
+    assert.deepEqual(state(), afterPreceding);
+
+    assert.deepEqual(publications.map(({ revision, durableRevision }) => [revision, durableRevision]),
+      [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
+    assert.equal(watches, 5);
+    assert.equal(persistence.appendCalls.length, 5);
+    saved = state();
+  } finally {
+    stopWatch();
+    stopCommits();
+    authority.dispose();
+  }
+  const recovered = await hsonLiveMap.locus.resume(definitions, options);
+  try {
+    assert.equal(recovered.rev, saved.revision);
+    assert.equal(recovered.doc.must("page").hson(), publications.at(-1)!.hson);
+    assert.equal(persistence.appendCalls.length, saved.appends);
+  } finally {
+    recovered.dispose();
+  }
+}
+
 const styled = hsonLiveMap.locus.create({ "page": { document: "<main/>", stylesheet: css, access: "shared" } }, { logicalMapId: "styled-authority" });
 assert.equal(styled.doc.must("page").css.snapshot(), css);
 styled.dispose();
