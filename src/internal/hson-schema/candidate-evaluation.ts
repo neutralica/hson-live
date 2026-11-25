@@ -21,6 +21,7 @@ import { validate_part_collection, type ValidatedPart } from "../../api/livemap/
 
 export type StaticSchemaCandidate = Readonly<{ source: string; family: "data" | "document" | "canonical" }> | Readonly<{ json: unknown }> | Readonly<{ data: OrderedProjectedValue }>;
 export type StaticDocumentLibraryContext = Readonly<{
+  parseEvent?: typeof import("../part-events.js").parse_part_event;
   kind: "document-library";
   name: string;
   parts?: Pick<ReadonlyMap<string, unknown>, "get">;
@@ -98,7 +99,7 @@ function complete_static_document_library(source: string, context: StaticDocumen
       if (validated === undefined) {
         const value = parts.get(collection);
         if (value === undefined) throw new Error("Static Part inventory is unavailable.");
-        validated = validate_part_collection(admit_projected_value(value));
+        validated = validate_part_collection(admit_projected_value(value), context.parseEvent);
         collections.set(collection, validated);
       }
       const selected = validated.find(part => part.key === member);

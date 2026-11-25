@@ -1,0 +1,37 @@
+{
+  "scopeName": "hson.event.injection.tsx",
+  "injectionSelector": "L:source.tsx - comment - string - meta.property-access.hson - (meta.jsx.children.tsx - meta.embedded.expression.tsx)",
+  "patterns": [
+    {
+      "name": "meta.property-access.hson",
+      "begin": "(?:\\?\\.|(?<!\\.)\\.)(?=\\s*(?://|/\\*|$))",
+      "beginCaptures": { "0": { "name": "punctuation.accessor.tsx" } },
+      "end": "(?=\\S)",
+      "applyEndPatternLast": true,
+      "patterns": [
+        { "include": "source.tsx#comment" },
+        { "match": "Hson(?=\\s*\\.)", "name": "variable.other.property.tsx" }
+      ]
+    },
+    {
+      "begin": "(?<![.$[:alnum:]_])Hson\\s*\\.\\s*event(?=\\s*(?:`|$))",
+      "end": "(?<=`)|(?=\\S)",
+      "applyEndPatternLast": true,
+      "patterns": [
+        {
+          "name": "meta.tagged-template.event.hson",
+          "contentName": "meta.embedded.inline.hson",
+          "begin": "(?<!`)`",
+          "beginCaptures": { "0": { "name": "string.template.tsx punctuation.definition.string.template.begin.tsx" } },
+          "end": "`",
+          "endCaptures": { "0": { "name": "string.template.tsx punctuation.definition.string.template.end.tsx" } },
+          "patterns": [
+            { "include": "source.tsx#template-substitution-element" },
+            { "include": "source.tsx#string-character-escape" },
+            { "include": "hson.event.injection#header" }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,16 +1,17 @@
 import { OBJ_TAG } from "../../../src/core/constants.js";
+import { AUTHORED_EVENT_TAG } from "../../../src/core/authored-event-names.js";
 import { decode_hson_content_string } from "../../../src/core/hson-content-string.js";
+import { is_hson_bare_name_char } from "../../../src/core/hson-name.js";
 import { part_placeholder_matches, part_reference_checkpoint, part_placeholder_placement_issue, scan_part_reference } from "../../../src/internal/part-placeholder.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../../../src/api/transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../../../src/api/transform/utils/node-utils/detach-hson-root-value.js";
 import { split_attrs_meta } from "../../../src/api/transform/utils/hson-utils/split-attrs-meta.js";
-import { tokenize_hson, tokenize_authored_document_library, hson_grammar_checkpoint, hson_interpolation_roles, type HsonEditorMode, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
+import { tokenize_hson, tokenize_authored_document_library, hson_grammar_checkpoint, hson_interpolation_roles, hson_lexical_cursor, type HsonEditorMode, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { parse_authored_document_library } from "../../../src/api/livemap/livemap.document.quad.js";
 import type { Tokens } from "../../../src/api/transform/token.types.js";
 import { discover_hson_tagged_templates, type HsonAuthoringKind } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
-import { NO_EVENT_IMPORTS } from "./event-source-evidence.js";
 import type { StandaloneAuthoringMode } from './authoring-mode.js';
 
 export type StructuralHostLanguage = "typescript" | "typescriptreact" | "markdown";
@@ -24,7 +25,7 @@ export type StructuralRegion = Readonly<{
   bodyStartsAtLineStart: boolean;
   authoredDocument?: boolean;
   authoringKind?: HsonEditorMode;
-  event?: boolean;
+  event?: Readonly<{ rootStart: number | undefined; hostIndentation: string }>;
   closedTemplate?: boolean;
   openSubstitution?: boolean;
 }>;
@@ -63,12 +64,25 @@ function leadingWhitespaceAt(text: string, offset: number): string {
   return /^[ \t]*$/.test(prefix) ? prefix : "";
 }
 
+function eventRootStart(text: string, { start, end }: StructuralRange): number | undefined {
+  const body = text.slice(start, end);
+  const cursor = hson_lexical_cursor(body);
+  cursor.skipTrivia();
+  const root = cursor.offset();
+  if (cursor.peek() !== "<") return undefined;
+  cursor.consume("<");
+  cursor.skipTrivia();
+  const tag = cursor.offset();
+  return body.startsWith(AUTHORED_EVENT_TAG, tag)
+    && !is_hson_bare_name_char(body[tag + AUTHORED_EVENT_TAG.length] ?? "") ? start + root : undefined;
+}
+
 function discoverStructuralRegions(
   fileName: string,
   languageId: StructuralLanguage,
   text: string,
   authoringMode?: StandaloneAuthoringMode,
-  editing = false,
+  purpose: "complete" | "editing" | "formatting" = "complete",
 ): readonly StructuralRegion[] {
   if (languageId === "hson") return Object.freeze([Object.freeze({
     kind: "standalone",
@@ -88,31 +102,40 @@ function discoverStructuralRegions(
   }));
 
   const regions: StructuralRegion[] = [];
+  const editing = purpose === "editing";
   const addTemplate = (source: Readonly<{
     authoringKind: HsonAuthoringKind;
+    tagRange: StructuralRange;
     templateRange: StructuralRange;
     bodyRange: StructuralRange;
     substitutionRanges?: readonly StructuralRange[];
   }>, closed?: boolean, openSubstitution?: boolean): void => {
     const { authoringKind, bodyRange } = source;
-    const hostIndentation = /^[ \t]*/.exec(text.slice(lineStart(text, source.templateRange.start)))?.[0] ?? "";
+    const hostStart = authoringKind === "event" ? source.tagRange.start : source.templateRange.start;
+    const hostIndentation = /^[ \t]*/.exec(text.slice(lineStart(text, hostStart)))?.[0] ?? "";
     const closingLine = lineStart(text, bodyRange.end);
     const closingIndentation = text.slice(closingLine, bodyRange.end);
     const baseIndentation = closed && closingLine >= bodyRange.start && /^[ \t]*$/.test(closingIndentation)
       ? closingIndentation : hostIndentation;
+    const rootStart = authoringKind === "event" ? eventRootStart(text, bodyRange) : undefined;
+    const rootIndentation = rootStart !== undefined && lineStart(text, rootStart) >= bodyRange.start
+      ? leadingWhitespaceAt(text, rootStart) : hostIndentation;
     regions.push(Object.freeze({
       kind: "template",
       authoredDocument: authoringKind === "document",
-      ...(authoringKind === "event" ? { event: true } : { authoringKind }),
+      ...(authoringKind === "event" ? { event: Object.freeze({ rootStart, hostIndentation }) } : { authoringKind }),
       ...(closed === undefined ? {} : { closedTemplate: closed, openSubstitution }),
       bodyRange,
       protectedRanges: Object.freeze(source.substitutionRanges ?? []),
-      baseIndentation: editing ? baseIndentation : leadingWhitespaceAt(text, bodyRange.end),
+      baseIndentation: authoringKind === "event" ? rootIndentation
+        : editing ? baseIndentation : leadingWhitespaceAt(text, bodyRange.end),
       bodyStartsAtLineStart: bodyRange.start === lineStart(text, bodyRange.start),
     }));
   };
-  const discovery = discover_hson_tagged_templates(fileName, text, undefined, undefined, undefined, NO_EVENT_IMPORTS,
-    undefined, editing ? addTemplate : undefined);
+  const discovery = discover_hson_tagged_templates(fileName, text, undefined, undefined, undefined,
+    editing ? addTemplate : purpose === "formatting" && (languageId === "typescript" || languageId === "typescriptreact")
+      ? (source, closed) => { if (source.authoringKind === "event" && closed) addTemplate(source, closed); }
+      : undefined);
   if (!editing) {
     for (const source of [...discovery.sources, ...discovery.interpolated]) {
       if (source.authoringKind !== "event") addTemplate(source);
@@ -135,14 +158,14 @@ export function structural_document_evidence(
   });
 }
 
-/** Editing regions carry lexical recovery only. Formatting and admission use complete regions. */
+/** Editing regions carry lexical recovery only. */
 export function structural_editing_evidence(
   fileName: string,
   languageId: StructuralLanguage,
   text: string,
   authoringMode?: StandaloneAuthoringMode,
 ): StructuralDocumentEvidence {
-  return { fileName, languageId, text, regions: discoverStructuralRegions(fileName, languageId, text, authoringMode, true) };
+  return { fileName, languageId, text, regions: discoverStructuralRegions(fileName, languageId, text, authoringMode, "editing") };
 }
 
 type StructuralEvidenceAnalyzer = (
@@ -416,7 +439,7 @@ export function structural_typing_snippet(
   // This covers arbitrary JavaScript (including nested braces), not just names.
   if (text.slice(cursor, region.bodyRange.end).includes("}")) {
     const prospective = text.slice(0, cursor) + "{" + text.slice(cursor);
-    const found = discover_hson_tagged_templates(evidence.fileName, prospective, undefined, undefined, undefined, NO_EVENT_IMPORTS).interpolated.find(source =>
+    const found = discover_hson_tagged_templates(evidence.fileName, prospective).interpolated.find(source =>
       source.substitutionRanges.some(range => range.start === cursor - 1));
     if (found !== undefined && templateInterpolationRole(prospective, {
       ...region, bodyRange: found.bodyRange, protectedRanges: found.substitutionRanges,
@@ -786,6 +809,60 @@ function horizontalTriviaEdits(
   return Object.freeze(edits);
 }
 
+function eventIndentationEdits(
+  text: string,
+  region: StructuralRegion,
+  options: StructuralIndentation,
+  requested?: StructuralRange,
+): StructuralEdit[] {
+  const { start: bodyStart, end: bodyEnd } = region.bodyRange;
+  const event = region.event;
+  if (event?.rootStart === undefined) return [];
+  const { rootStart } = event;
+
+  const { frames, protectedRanges } = editingLayout(text, region);
+  const root = frames[0];
+  if (root?.start !== rootStart) return [];
+  const edits: StructuralEdit[] = [];
+  const indent = (start: number, content: number, replacement: string): void => {
+    if (requested !== undefined && (start < requested.start || content >= requested.end)) return;
+    if (text.slice(start, content) !== replacement) edits.push({ start, end: content, text: replacement });
+  };
+
+  const lastLine = lineStart(text, root.end ?? bodyEnd);
+  const active: EditingFrame[] = [];
+  let frameIndex = 0;
+  let protectedIndex = 0;
+  for (let start = lineStart(text, rootStart); start <= lastLine;) {
+    const newline = text.indexOf("\n", start);
+    const end = newline === -1 ? bodyEnd : Math.min(newline, bodyEnd);
+    const leading = /^[ \t]*/.exec(text.slice(start, end))?.[0].length ?? 0;
+    const content = start + leading;
+    while (active.length > 0 && (active.at(-1)?.end ?? Infinity) <= content) active.pop();
+    while (frameIndex < frames.length && frames[frameIndex].start < content) {
+      const frame = frames[frameIndex++];
+      if (frame.end === undefined || frame.end > content) active.push(frame);
+    }
+    while (protectedIndex < protectedRanges.length && protectedRanges[protectedIndex].end <= start) protectedIndex++;
+    const opaque = protectedRanges[protectedIndex];
+    if (start >= bodyStart && content >= rootStart && content < end && text[content] !== "\r"
+      && !text.startsWith("//", content) && !text.startsWith("${", content)
+      && (opaque === undefined || opaque.start >= content || opaque.end <= start)) {
+      indent(start, content, editingIndentation(region, options, active.length));
+    }
+    if (newline === -1) break;
+    start = newline + 1;
+  }
+
+  const closingLine = lineStart(text, bodyEnd);
+  if (closingLine > rootStart && /^[ \t]*$/.test(text.slice(closingLine, bodyEnd))
+    && !protectedRanges.some(span => span.start < bodyEnd && span.end > closingLine)
+    && (root.end === undefined || /^[ \t\r\n]*$/.test(text.slice(root.end + (root.closer?.length ?? 0), bodyEnd)))) {
+    indent(closingLine, bodyEnd, event.hostIndentation);
+  }
+  return edits;
+}
+
 export function structural_formatting_edits(
   fileName: string,
   languageId: StructuralLanguage,
@@ -795,9 +872,19 @@ export function structural_formatting_edits(
   authoringMode?: StandaloneAuthoringMode,
 ): readonly StructuralEdit[] {
   const edits: StructuralEdit[] = [];
+  if (requestedRange !== undefined && requestedRange.start >= requestedRange.end) return [];
   const unit = STRUCTURAL_INDENTATION;
-  for (const region of structural_regions(fileName, languageId, text, authoringMode)) {
-    if (requestedRange !== undefined && (region.bodyRange.end <= requestedRange.start || region.bodyRange.start >= requestedRange.end)) continue;
+  const regions = discoverStructuralRegions(fileName, languageId, text, authoringMode, "formatting");
+  const eventSubstitutions = regions.filter(region => region.event).flatMap(region => region.protectedRanges);
+  for (const region of regions) {
+    // The Event formatter can also indent the line containing its closing backtick.
+    const regionEnd = region.bodyRange.end + (region.event === undefined ? 0 : 1);
+    if (requestedRange !== undefined && (regionEnd <= requestedRange.start || region.bodyRange.start >= requestedRange.end)) continue;
+    if (eventSubstitutions.some(hole => region.bodyRange.start > hole.start && region.bodyRange.start < hole.end)) continue;
+    if (region.event) {
+      edits.push(...eventIndentationEdits(text, region, options, requestedRange));
+      continue;
+    }
     const body = maskProtectedSource(text, region);
     if (body === undefined) continue;
     const regionEditStart = edits.length;
@@ -966,7 +1053,8 @@ export function structural_newline_plan_from_evidence(
   const layout = editingLayout(text, region);
   if (!lexicalPosition(text, region, layout, offset)) return undefined;
   const frames = openFrames(layout, offset);
-  const inner = editingIndentation(region, options, frames.length);
+  const inner = frames.length === 0 && region.event !== undefined
+    ? region.event.hostIndentation : editingIndentation(region, options, frames.length);
   const paired = frames.at(-1);
   const split = paired?.end === offset && paired.closer !== undefined
     && lineStart(text, paired.start) === lineStart(text, offset);

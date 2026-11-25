@@ -19,6 +19,7 @@ function renderStyle(style: Style): vscode.DecorationRenderOptions {
 export class AppearanceRenderer implements vscode.Disposable {
   private readonly documents = new Map<vscode.TextDocument,Family>();
   private readonly decorations = new Map<string,vscode.TextEditorDecorationType>();
+  private readonly applied = new WeakMap<vscode.TextEditor, ReadonlySet<string>>();
   private readonly subscriptions: vscode.Disposable[];
   private preview?: AppearanceState;
   private previewMode?: Mode;
@@ -28,22 +29,19 @@ export class AppearanceRenderer implements vscode.Disposable {
     private readonly scratchpad:(document:vscode.TextDocument)=>ScratchpadContext|undefined=()=>undefined,
     private readonly family:(document:vscode.TextDocument)=>Family=()=> 'all') {
     this.subscriptions=[vscode.window.onDidChangeVisibleTextEditors(()=>{void this.refresh();}),
-      vscode.workspace.onDidChangeTextDocument(event=>{
-        this.cache.forget(event.document.uri.toString());
-        for(const editor of vscode.window.visibleTextEditors) if(editor.document===event.document) for(const type of this.decorations.values()) editor.setDecorations(type,[]);
-        void this.refresh();
-      }),vscode.workspace.onDidCloseTextDocument(document=>{this.documents.delete(document);this.cache.forget(document.uri.toString());}),
+      vscode.workspace.onDidChangeTextDocument(event=>{if(event.contentChanges.length)void this.refresh(event.document);}),
+      vscode.workspace.onDidCloseTextDocument(document=>{this.documents.delete(document);this.cache.forget(document.uri.toString());}),
       vscode.window.onDidChangeActiveColorTheme(()=>{void this.refresh();}),
       vscode.workspace.onDidChangeConfiguration(event=>{if(event.affectsConfiguration('hson.appearance.state')||event.affectsConfiguration('hson.authoring.mode')||event.affectsConfiguration('editor.bracketPairColorization'))void this.refresh();})];
   }
   async attach(document:vscode.TextDocument,family:Family='all'):Promise<void> {if(this.disposed)return;this.documents.set(document,family);await this.refresh();}
   async setAppearance(state:AppearanceState|undefined,mode?:Mode):Promise<void> {if(this.disposed)return;this.preview=state;this.previewMode=mode;await this.refresh();}
-  async refresh():Promise<void> {
+  async refresh(changed?:vscode.TextDocument):Promise<void> {
     const grammar=await this.grammar;if(this.disposed)return;
     const mode=[vscode.ColorThemeKind.Light,vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind)?'light':'dark';
     const used=new Set<string>();
     for(const editor of vscode.window.visibleTextEditors){
-      const document=editor.document;if(document.isClosed||!['hson','markdown','typescript','typescriptreact'].includes(document.languageId))continue;
+      const document=editor.document;if((changed!==undefined&&changed!==document)||document.isClosed||!['hson','markdown','typescript','typescriptreact'].includes(document.languageId))continue;
       const context=this.scratchpad(document);
       const preview=(context||this.documents.has(document))&&this.preview;
       const source=preview||this.saved(document),renderMode=context?.mode??(preview?this.previewMode??mode:mode);
@@ -62,9 +60,15 @@ export class AppearanceRenderer implements vscode.Disposable {
         group.push(new vscode.Range(document.positionAt(span.range.start),document.positionAt(span.range.end)));ranges.set(key,group);used.add(key);
       }
       for(const [key,style]of styles)if(!this.decorations.has(key))this.decorations.set(key,vscode.window.createTextEditorDecorationType(style));
-      for(const [key,type]of this.decorations)editor.setDecorations(type,ranges.get(key)??[]);
+      // VS Code tracks the existing ranges through edits until this replacement.
+      for(const [key,group] of ranges)editor.setDecorations(this.decorations.get(key)!,group);
+      for(const key of this.applied.get(editor)??[])if(!ranges.has(key)) {
+        const type=this.decorations.get(key);
+        if(type)editor.setDecorations(type,[]);
+      }
+      this.applied.set(editor,new Set(ranges.keys()));
     }
-    for(const [key,type]of this.decorations)if(!used.has(key)){type.dispose();this.decorations.delete(key);}
+    if(changed===undefined)for(const [key,type]of this.decorations)if(!used.has(key)){type.dispose();this.decorations.delete(key);}
   }
   dispose():void {if(this.disposed)return;this.disposed=true;for(const sub of this.subscriptions)sub.dispose();for(const type of this.decorations.values())type.dispose();this.decorations.clear();this.documents.clear();this.cache.clear();}
 }

@@ -478,7 +478,7 @@ check("all four semantic member tags share structural regions and formatting", (
   assert.ok(stillFormatted.includes('Hson.data`<main <p "x"/>/>`'));
   assert.ok(stillFormatted.includes('Hson.document`<foo 1>`'));
 });
-check("Event templates stay outside canonical structural editing and formatting", () => {
+check("Event templates stay outside canonical formatting and canonical typing helpers", () => {
   const file = join(hson_event_host_fixture(resolve("../..")), "events.ts");
   const plain = authored('<hson:event  on:click local:go    <>  >', "event");
   const forbiddenHole = authored('<hson:event  on:click local:go ${expr} <>  >', "event");
@@ -489,6 +489,111 @@ check("Event templates stay outside canonical structural editing and formatting"
   assert.equal(typingSnippet(authored('<hson:event on:click local:go n:num| <> >', "event"), "="), undefined);
   assert.equal(arrayPair(authored('<hson:event on:click local:go n:arr={|} <> >', "event")), false);
   assert.equal(format(plain + '\nconst data = Hson.data`<a  1>`;'), plain + '\nconst data = Hson.data`<a 1>`;');
+});
+check("Event Enter uses the tag line until the root is present and returns to it for the backtick", () => {
+  const file = "/workspace/source.ts";
+  const host = 'import { Hson, type HsonAuthored } from "hson-live";\r\n\tHson.event`';
+  const options = { insertSpaces: false, tabSize: 4 };
+  const header = host + '\r\n\t<hson:event\r\n\t\ton:pointer:down\r\n\t\thost:ANYTHING';
+  for (const tail of ['`;', '']) {
+    for (const [before, indent] of [[host, '\t'], [header, '\t\t'], [header + '\r\n\t\t<>', '\t\t'],
+      [header + '\r\n\t\t<>\r\n\t>', '\t']]) {
+      const evidence = structural_editing_evidence(file, "typescript", before + tail);
+      assert.deepEqual(structural_newline_plan_from_evidence(evidence, before.length, options, '\r\n'),
+        { beforeCursor: '\r\n' + indent, afterCursor: '' });
+    }
+    const before = header + '\r\n\t\t<>\r\n\t\t';
+    const evidence = structural_editing_evidence(file, "typescript", before + tail);
+    assert.deepEqual(structural_input_plan(evidence, before.length, '>', options),
+      { start: before.length - 2, end: before.length, beforeCursor: '\t>', afterCursor: '' });
+  }
+});
+check("an existing Event root sets formatting and typing depth independently of the tag", () => {
+  const file = "/workspace/source.ts";
+  const options = { insertSpaces: true, tabSize: 3 };
+  for (const rootColumn of [0, 2, 4]) {
+    for (const hostColumn of new Set([rootColumn, 4, 2])) {
+      const root = " ".repeat(rootColumn);
+      const tag = " ".repeat(hostColumn);
+      const host = 'import { Hson } from "hson-live";\n' + tag + 'Hson.event`\n';
+      const body = root + '<hson:event\non:pointer:down\n<>\n';
+      const tail = '`;';
+      const unfinished = host + body + '       ';
+      const withCloser = host + body + root + '>';
+      const evidence = (text: string) => structural_editing_evidence(file, "typescript", text + tail);
+      assert.deepEqual(structural_input_plan(evidence(unfinished), unfinished.length, '>', options),
+        { start: unfinished.length - 7, end: unfinished.length, beforeCursor: root + '>', afterCursor: '' });
+      const headerEnd = (host + body).indexOf('\n<>');
+      assert.deepEqual(structural_newline_plan_from_evidence(evidence(unfinished), headerEnd, options, '\n'),
+        { beforeCursor: '\n' + root + '   ', afterCursor: '' });
+      assert.deepEqual(structural_newline_plan_from_evidence(evidence(withCloser), withCloser.length, options, '\n'),
+        { beforeCursor: '\n' + tag, afterCursor: '' });
+      assert.equal(format(withCloser + '\n         ' + tail, true, 3),
+        host + [root + '<hson:event', root + '   on:pointer:down', root + '   <>', root + '>', tag + tail].join('\n'));
+    }
+  }
+});
+check("Event formatting only indents frame-owned lines and uses editor settings", () => {
+  const options = { insertSpaces: false, tabSize: 4 };
+  const host = 'import { Hson, type HsonAuthored } from "hson-live";\r\n\tHson.event`';
+  const lines = ['<hson:event ', 'on:pointer:down', 'host:ANYTHING', ' // keep < >',
+    'name:str="a  <', '   keep >"', 'value:data={', '<row', 'name "  value  "', '>', '}',
+    '${(() => {', '   return Hson.data`<a  1>`;', '})()}', '<>', '    >', '  `;'];
+  const indented = ['<hson:event ', '\ton:pointer:down', '\thost:ANYTHING', ' // keep < >',
+    '\tname:str="a  <', '   keep >"', '\tvalue:data={', '\t\t<row', '\t\t\tname "  value  "',
+    '\t\t>', '\t}', '${(() => {', '   return Hson.data`<a  1>`;', '})()}', '\t<>', '>', '\t`;'];
+  const input = [host, ...lines].join('\r\n');
+  const expected = [host, ...indented].join('\r\n');
+  assert.equal(format(input, options.insertSpaces, options.tabSize), expected);
+  assert.equal(format(expected, options.insertSpaces, options.tabSize), expected);
+  const start = input.indexOf('on:pointer'), end = input.indexOf(' // keep');
+  assert.equal(applyEdits(input, structural_formatting_edits('/workspace/source.ts', 'typescript', input, options, { start, end })),
+    input.replace('on:pointer:down\r\nhost:ANYTHING', '\ton:pointer:down\r\n\thost:ANYTHING'));
+});
+check("Event formatting distinguishes an empty range from mixed and document scope", () => {
+  const options = { insertSpaces: true, tabSize: 2 };
+  const prefix = '// opening\nimport { Hson } from "hson-live";\nconst value = 1;\n';
+  const block = 'Hson.event`\n<hson:event\non:pointer:down\nhost:ANYTHING\n<>\n>\n`;\n';
+  const source = prefix + block + block;
+  const edits = (start: number, end: number) =>
+    structural_formatting_edits("/workspace/source.ts", "typescript", source, options, { start, end });
+  assert.deepEqual(edits(3, 3), []);
+  const header = source.indexOf('on:pointer:down');
+  assert.deepEqual(edits(header, header), []);
+  const mixed = edits(prefix.indexOf('const value'), source.indexOf('host:ANYTHING'));
+  assert.equal(applyEdits(source, mixed), prefix + block.replace('on:pointer:down', '  on:pointer:down') + block);
+  assert.equal(format(source), prefix + block.replace(/^(on:|host:|<>)/gm, '  $1').repeat(2));
+});
+check("Event range formatting can include the closing backtick without including adjacent host text", () => {
+  for (const [eol, hostIndent] of [["\n", "  "], ["\r\n", "\t"]]) {
+    const text = ['import { Hson } from "hson-live";', 'function wrap() {', hostIndent + 'Hson.event`', '<hson:event',
+      'on:pointer:down', '<>', '>', '`;', '}', 'const adjacent = Hson.data`<a  1>`;', 'const untouched={b:2};'].join(eol);
+    const options = { insertSpaces: hostIndent !== "\t", tabSize: 2 };
+    const backtick = text.indexOf(eol + '`;') + eol.length;
+    const range = (start: number, end: number) =>
+      applyEdits(text, structural_formatting_edits("/workspace/source.ts", "typescript", text, options, { start, end }));
+    const withClosingIndent = text.slice(0, backtick) + hostIndent + text.slice(backtick);
+    assert.equal(range(backtick, backtick + 1), withClosingIndent);
+    assert.equal(range(backtick, backtick + 2), withClosingIndent);
+    const outcome = text.indexOf(eol + '<>') + eol.length;
+    assert.equal(range(outcome, backtick), text.slice(0, outcome) + hostIndent + text.slice(outcome));
+    assert.equal(range(backtick + 1, backtick + 2), text);
+    const document = applyEdits(text, structural_formatting_edits("/workspace/source.ts", "typescript", text, options));
+    assert.equal(document, withClosingIndent.replace(eol + 'on:pointer:down', eol + hostIndent + 'on:pointer:down')
+      .replace(eol + '<>', eol + hostIndent + '<>').replace('<a  1>', '<a 1>'));
+  }
+});
+check("Event formatting recovers a bounded partial or invalid declaration", () => {
+  const host = 'import { Hson } from "hson-live";\n  Hson.event`\n';
+  const partial = '<hson:event\nunknown:broken\n<>\n          `;';
+  assert.equal(format(host + partial, true, 4), host + '<hson:event\n    unknown:broken\n    <>\n  `;');
+  const unsafeQuote = '<hson:event\nunknown:str="a\n  keep  \n          `;';
+  assert.equal(format(host + unsafeQuote), host + '<hson:event\n  unknown:str="a\n  keep  \n          `;');
+  for (const unrelated of ['<hson:eventual\nplain\n>`;', '<hson:event\nunterminated']) {
+    assert.equal(format(host + unrelated), host + unrelated);
+  }
+  const invalidTail = '<hson:event\n<>\n>\nodd  trailing text\n          `;';
+  assert.equal(format(host + invalidTail), host + '<hson:event\n  <>\n>\nodd  trailing text\n          `;');
 });
 check("an awaited host formatter cannot redirect the Hson phase to a newly focused editor", () => {
   const originalDocument = { isClosed: false };

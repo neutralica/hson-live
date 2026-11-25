@@ -540,7 +540,7 @@ check("genuine Event tags preserve normalized raw coordinates and recover incomp
   }
 });
 
-check("a workspace path remap to a local Event lookalike supplies no immediate diagnostics", () => {
+check("Event grammar diagnostics follow the authored value import through unresolved packages and remaps", () => {
   const directory = mkdtempSync(join(tmpdir(), "hson-event-remap-"));
   try {
     writeFileSync(join(directory, "tsconfig.json"), JSON.stringify({ compilerOptions: {
@@ -549,8 +549,12 @@ check("a workspace path remap to a local Event lookalike supplies no immediate d
     writeFileSync(join(directory, "shim.ts"), 'export const Hson = { event: String.raw };');
     const text = eventPrefix + '<div/>`;';
     const fileName = join(directory, "consumer.ts");
-    assert.deepEqual(diagnose(text, "typescript", fileName), []);
-    assert.deepEqual(diagnose(text.replace("hson-live/hson", "hson-live"), "typescript", fileName), [], "unresolved package");
+    const codes = (input: string) => diagnose(input, "typescript", fileName).map(issue => issue.code);
+    assert.deepEqual(codes(text), ["HSON_DECLARATIVE_ROOT_REQUIRED"]);
+    assert.deepEqual(codes(text.replace("hson-live/hson", "hson-live")), ["HSON_DECLARATIVE_ROOT_REQUIRED"], "unresolved package");
+    assert.deepEqual(codes('Hson.event`<div/>`;'), [], "bare spelling is only a presentation and editing match");
+    assert.deepEqual(codes(text.replace("import {", "import type {")), []);
+    assert.deepEqual(codes(text.replace("E.event", 'E["event"]')), []);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

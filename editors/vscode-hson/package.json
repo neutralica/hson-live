@@ -486,6 +486,16 @@
         "path": "./syntaxes/hson.tmLanguage.json"
       },
       {
+        "scopeName": "hson.event.injection",
+        "path": "./syntaxes/typescript-hson-event.tmLanguage.json",
+        "injectTo": ["source.ts"]
+      },
+      {
+        "scopeName": "hson.event.injection.tsx",
+        "path": "./syntaxes/typescriptreact-hson-event.tmLanguage.json",
+        "injectTo": ["source.tsx"]
+      },
+      {
         "scopeName": "markdown.hson.codeblock",
         "path": "./syntaxes/markdown-hson-codeblock.tmLanguage.json",
         "injectTo": [

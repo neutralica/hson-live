@@ -35,6 +35,7 @@ type EvaluationState = {
   diagnosticWork: number;
   exhausted: boolean;
   partialObject?: OrderedProjectedObject;
+  unknownRootFields?: ReadonlyMap<string, boolean>;
 };
 
 export function evaluate_canonical_projected_schema(
@@ -48,14 +49,16 @@ export function evaluate_canonical_projected_schema(
   return projected(graph, root, candidate, [], state);
 }
 
-/** Check a subset of known root fields. Supplied values are complete, including nested objects. */
+/** Check known root values. With an inventory, its keys have unknown values and
+ * true means definitely supplied. All other unlisted root keys are absent. */
 export function evaluate_canonical_projected_fields(
   graph: VerifiedCanonicalSchemaGraph,
   fields: OrderedProjectedObject,
+  unknownRootFields?: ReadonlyMap<string, boolean>,
 ): CanonicalGraphEvaluation {
   const root = graph.capabilities.projectedRoot;
   if (root === undefined) return invalid([make_issue("INVALID_SCHEMA", [], 0, "invalid graph", "missing projected root", { kind: "invalid-graph" })]);
-  const state: EvaluationState = { steps: 0, limits: resolved_limits(), unionWork: 0, diagnosticWork: 0, exhausted: false, partialObject: fields };
+  const state: EvaluationState = { steps: 0, limits: resolved_limits(), unionWork: 0, diagnosticWork: 0, exhausted: false, partialObject: fields, unknownRootFields };
   return projected(graph, root, fields, [], state);
 }
 
@@ -154,10 +157,18 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   if (node.kind === "projected-object") {
     if (!is_ordered_projected_object(value)) return mismatch(graph, ref, path, projected_type(value));
     const values = new Map(value.entries);
-    const properties = value === state.partialObject ? node.properties.filter(([key]) => values.has(key)) : node.properties;
+    const partial = value === state.partialObject;
+    const unknown = partial ? state.unknownRootFields : undefined;
+    const properties = partial && unknown === undefined ? node.properties.filter(([key]) => values.has(key))
+      : unknown === undefined ? node.properties : node.properties.filter(([key]) => !unknown.has(key));
     const results = properties.map(([key, child]) => projected(graph, child, values.has(key) ? values.get(key) as OrderedProjectedValue : MISSING, [...path, key], state, depth + 1));
     if (node.exact || node.additional !== undefined) {
       const declared = new Set(node.properties.map(([key]) => key));
+      if (unknown !== undefined && node.additional === undefined) {
+        for (const [key, present] of unknown) if (present && !declared.has(key)) {
+          results.push(invalid([make_issue("UNKNOWN_KEY", [...path, key], ref, undefined, undefined, { kind: "unknown-key", detail: key })]));
+        }
+      }
       for (const [key, child] of value.entries) {
         if (declared.has(key)) continue;
         if (node.additional !== undefined) results.push(projected(graph, node.additional, child, [...path, key], state, depth + 1));

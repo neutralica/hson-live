@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonEventImportEvidence, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates, hson_source_syntactic_eligibility, type HsonTaggedTemplateDiscoveryResult } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "../../../src/internal/hson-schema/compiler.js";
 import { query_hson_editor_context, type HsonEditorCandidate } from "../../../src/internal/editor-introspection/query.js";
 import { complete_authored_event, map_event_completions, query_hson_event_completion, tagged_event_completion_context } from "../../../src/internal/editor-introspection/event-completion.js";
@@ -19,30 +19,29 @@ type CachedDocument = Readonly<{
 
 /** Version-scoped discovery and bounded Schema compilation, with no workspace execution. */
 export class HsonEditorCompletionCache {
-  constructor(private readonly typescript: typeof ts = ts) {}
+  constructor(private readonly typescript: typeof ts = ts,
+    private readonly collectPartFacts = (program: ts.Program) => collect_part_source_facts(typescript, program)) {}
   private readonly documents = new Map<string, CachedDocument>();
   private readonly schemas = new Map<string, CompiledHsonSchema | null>();
   private sourceProgram: ts.Program | undefined;
-  private eventImports: HsonEventImportEvidence | undefined;
   private partFacts: Readonly<{ program: ts.Program; facts: PartSourceFacts }> | undefined;
-  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; this.eventImports = undefined; this.partFacts = undefined; }
+  clear(): void { this.documents.clear(); this.schemas.clear(); this.sourceProgram = undefined; this.partFacts = undefined; }
   forget(fileName: string): void { this.documents.delete(fileName); this.partFacts = undefined; }
-  complete(fileName: string, text: string, version: number, offset: number, sourceProgram?: ts.Program, eventImports?: HsonEventImportEvidence): readonly HostCompletion[] {
+  complete(fileName: string, text: string, version: number, offset: number, sourceProgram?: ts.Program): readonly HostCompletion[] {
     if (!/\.(?:[cm]?ts|tsx)$/.test(fileName) || offset < 0 || offset > text.length) return [];
     // A producer edit can change every consumer without changing its text.
     // Retain discovery/checkers only for the current authored program.
-    if (this.sourceProgram !== sourceProgram || this.eventImports !== eventImports) {
+    if (this.sourceProgram !== sourceProgram) {
       this.documents.clear();
       this.partFacts = undefined;
       this.sourceProgram = sourceProgram;
-      this.eventImports = eventImports;
     }
     let cached = this.documents.get(fileName);
     if (cached === undefined || cached.version !== version || cached.text !== text || sourceProgram !== undefined && cached.program !== sourceProgram) {
       const program = sourceProgram ?? create_hson_source_program(fileName, text, {}, this.typescript);
       const file = program.getSourceFile(fileName);
       if (file === undefined || file.text !== text) return [];
-      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript, eventImports?.(fileName, text)),
+      cached = { version, text, program, file, checker: program.getTypeChecker(), discovery: discover_hson_tagged_templates(fileName, text, program, undefined, this.typescript),
         schemaDeclarations: new Map(), eligible: hson_source_syntactic_eligibility(this.typescript, program) };
       this.documents.set(fileName, cached);
       if (this.documents.size > 8) {
@@ -54,7 +53,7 @@ export class HsonEditorCompletionCache {
       .filter(source => offset >= source.bodyRange.start && offset <= source.bodyRange.end)
       .sort((a, b) => a.bodyRange.end - a.bodyRange.start - (b.bodyRange.end - b.bodyRange.start))[0];
     if (site === undefined || site.authoringKind === "event" || site.authoringKind === "document") {
-      if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: collect_part_source_facts(this.typescript, cached.program, eventImports) };
+      if (this.partFacts?.program !== cached.program) this.partFacts = { program: cached.program, facts: this.collectPartFacts(cached.program) };
     }
     if (site === undefined) {
       const facts = this.partFacts?.facts;

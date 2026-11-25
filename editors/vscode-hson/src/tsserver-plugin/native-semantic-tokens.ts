@@ -1,10 +1,17 @@
 import type ts from "typescript";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { isRecord, nativeTokenTypes, nativeTokenModifiers, NATIVE_SEMANTIC_COMMAND, NATIVE_SEMANTIC_PROTOCOL,
   NATIVE_REQUEST_LIMIT, SEMANTIC_DOCUMENT_LIMIT } from "../native-semantic-tokens.js";
 
-// Registration lifecycle only: no documents, tokens, or compiler state are cached.
+// Weak identities distinguish recreated projects and different server processes.
 const sessions = new WeakSet<ts.server.Session<unknown>>();
+const projects = new WeakMap<ts.server.Project, string>();
+
+function semantic_revision(project: ts.server.Project): string {
+  let identity = projects.get(project);
+  if (identity === undefined) projects.set(project, identity = randomUUID());
+  return identity + ":" + project.getProjectVersion();
+}
 
 export function register_native_semantic_tokens(typescript: typeof ts, info: ts.server.PluginCreateInfo): void {
   const session = info.session;
@@ -13,14 +20,21 @@ export function register_native_semantic_tokens(typescript: typeof ts, info: ts.
     const args: unknown = request.arguments;
     const absent = { response: {}, responseRequired: true };
     if (typescript.SemanticClassificationFormat.TwentyTwenty !== "2020") return absent;
-    if (!isRecord(args) || typeof args.file !== "string" || typeof args.start !== "number" || typeof args.length !== "number"
+    if (!isRecord(args) || typeof args.file !== "string") return absent;
+    const file = typescript.server.toNormalizedPath(args.file);
+    const service = info.project.projectService;
+    if (args.probe === true) {
+      const project = service.getDefaultProjectForFile(file, false);
+      return project?.languageServiceEnabled
+        ? { response: { protocol: NATIVE_SEMANTIC_PROTOCOL, revision: semantic_revision(project) }, responseRequired: true }
+        : absent;
+    }
+    if (typeof args.start !== "number" || typeof args.length !== "number"
       || !Number.isSafeInteger(args.start) || args.start < 0 || !Number.isSafeInteger(args.length) || args.length <= 0
       || args.length > NATIVE_REQUEST_LIMIT || typeof args.textHash !== "string" || typeof args.requestId !== "string") return absent;
-    const file = typescript.server.toNormalizedPath(args.file);
-    const projects = info.project.projectService;
-    const project = projects.getDefaultProjectForFile(file, true);
-    const script = projects.getScriptInfoForNormalizedPath(file);
-    if (project === undefined || script === undefined) return absent;
+    const project = service.getDefaultProjectForFile(file, true);
+    const script = service.getScriptInfoForNormalizedPath(file);
+    if (!project?.languageServiceEnabled || script === undefined) return absent;
     const version = script.getLatestVersion(), snapshot = script.getSnapshot();
     if (snapshot.getLength() > SEMANTIC_DOCUMENT_LIMIT || args.start + args.length > snapshot.getLength()) return absent;
     const text = snapshot.getText(0, snapshot.getLength());
@@ -55,7 +69,7 @@ export function register_native_semantic_tokens(typescript: typeof ts, info: ts.
       if (!emitted) return absent;
     }
     return { responseRequired: true, response: { protocol: NATIVE_SEMANTIC_PROTOCOL, requestId: args.requestId,
-      start: args.start, length: args.length, textHash, project: project.getProjectName(), projectVersion: project.getProjectVersion(),
+      start: args.start, length: args.length, textHash, revision: semantic_revision(project),
       legend: { tokenTypes: nativeTokenTypes, tokenModifiers: nativeTokenModifiers }, data } };
   });
   sessions.add(session);

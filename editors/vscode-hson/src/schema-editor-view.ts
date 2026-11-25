@@ -1,27 +1,27 @@
 import type ts from "typescript";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
+import { EventBodyCache } from "./event-body-cache.js";
+import { static_event_parser, type StaticEventParse } from "../../../src/internal/hson-schema/static-event-parser.js";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
 import { schema_source_plan } from "../../../src/internal/hson-schema/source-transformation.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { discover_hson_schema_declarations } from "../../../src/internal/hson-schema/schema-discovery.js";
 import { static_part_reference_diagnostics, static_schema_candidate_diagnostics, type StaticSchemaDiagnostic } from "../../../src/internal/hson-schema/candidate-diagnostics.js";
 import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
-import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 
 type Snapshot = Readonly<{ text: string; snapshot: ts.IScriptSnapshot; version: string }>;
 type SourceView = Snapshot & Readonly<{ mapping: SchemaSourceMapping; source: ts.SourceFile; generatedNames: readonly string[] }>;
 type ResolutionAwareHost = ts.LanguageServiceHost & Pick<ts.CompilerHost, "hasInvalidatedResolutions">;
 
-export function produce_project_diagnostics(typescript: typeof ts, program: ts.Program, eventImports?: HsonEventImportEvidence): readonly StaticSchemaDiagnostic[] {
+export function produce_project_diagnostics(typescript: typeof ts, program: ts.Program): readonly StaticSchemaDiagnostic[] {
   return [...static_schema_candidate_diagnostics(typescript, program),
-    ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program, eventImports), typescript, program.getTypeChecker())];
+    ...static_part_reference_diagnostics(collect_part_source_facts(typescript, program), typescript, program.getTypeChecker())];
 }
 
 /** The authored service resolves bindings and source edits; the existing service consumes the overlay. */
 export function install_live_schema_view(typescript: typeof ts, host: ResolutionAwareHost, projectPath: string,
   registerEvidence?: (file: string, text: string | undefined) => void,
-  getEventImports?: () => HsonEventImportEvidence | undefined,
   canResolveSource: (file: string) => boolean = () => true,
 ) {
   const fileExists = host.fileExists.bind(host);
@@ -50,8 +50,17 @@ export function install_live_schema_view(typescript: typeof ts, host: Resolution
     if (method !== undefined) Object.defineProperty(original, key, { value: method.bind(host), enumerable: true });
   }
   const authoredService = typescript.createLanguageService(original);
+  const partEventBodies = new EventBodyCache<StaticEventParse>();
+  const schemaEventBodies = new EventBodyCache<StaticEventParse>();
+  let partProgram: ts.Program | undefined;
+  let partFacts: ReturnType<typeof collect_part_source_facts> | undefined;
+  const part_facts = (program: ts.Program) => {
+    if (partProgram === program && partFacts !== undefined) return partFacts;
+    const facts = partEventBodies.scan(reuse => collect_part_source_facts(typescript, program, static_event_parser(reuse)));
+    partProgram = program;
+    return partFacts = facts;
+  };
   let previous: ts.Program | undefined;
-  let previousEventImports: HsonEventImportEvidence | undefined;
   let revision = 0;
   let sources = new Map<string, SourceView>();
   let evidence = new Map<string, Snapshot>();
@@ -75,11 +84,17 @@ export function install_live_schema_view(typescript: typeof ts, host: Resolution
 
   const refresh = (): void => {
     const program = authoredService.getProgram();
-    if (program === undefined) return;
-    const eventImports = getEventImports?.();
-    if (program === previous && eventImports === previousEventImports) return;
-    previousEventImports = eventImports;
-    const candidateDiagnostics = produce_project_diagnostics(typescript, program, eventImports);
+    if (program === previous) return;
+    if (program === undefined) {
+      previous = undefined;
+      grouped.clear();
+      signatures.clear();
+      return;
+    }
+    const candidateDiagnostics = [
+      ...schemaEventBodies.scan(reuse => static_schema_candidate_diagnostics(typescript, program, static_event_parser(reuse))),
+      ...static_part_reference_diagnostics(part_facts(program), typescript, program.getTypeChecker()),
+    ];
     grouped = new Map();
     for (const diagnostic of candidateDiagnostics) {
       const file = diagnostic.file;
@@ -88,7 +103,6 @@ export function install_live_schema_view(typescript: typeof ts, host: Resolution
       grouped.set(file, group);
     }
     signatures = new Map([...grouped].map(([file, group]) => [file, JSON.stringify(group)]));
-    if (program === previous) return;
     const nextSources = new Map<string, SourceView>();
     const nextEvidence = new Map<string, Snapshot>();
     const nextDeclarations = new Map<string, string>();
@@ -177,8 +191,7 @@ export function install_live_schema_view(typescript: typeof ts, host: Resolution
 
   return {
     refresh,
-    // Compare the complete authored payload (including related attachment ranges)
-    // once per accepted discovery/configuration. Reads never send protocol events.
+    // Scope background diagnostic publication to changed authored recipients.
     changed_diagnostic_files: (): ReadonlySet<string> => {
       refresh();
       const changed = new Set([...signatures.keys(), ...observed.keys()].filter(file => signatures.get(file) !== observed.get(file)));
@@ -190,9 +203,10 @@ export function install_live_schema_view(typescript: typeof ts, host: Resolution
     },
     candidate_diagnostics: (file: string): ts.Diagnostic[] => {
       // Use the authored Program to select the recipient spelling on this host.
-      const program = authoredService.getProgram();
+      const program = previous;
       const source = program?.getSourceFile(file);
-      const key = source?.fileName ?? file;
+      if (source === undefined) return [];
+      const key = source.fileName;
       if (signatures.get(key) !== observed.get(key)) intermediateReads.add(key);
       return (grouped.get(key) ?? []).map(diagnostic => ({
         file: source, start: diagnostic.start, length: Math.max(1, diagnostic.end - diagnostic.start),
@@ -205,6 +219,7 @@ export function install_live_schema_view(typescript: typeof ts, host: Resolution
     },
     dispose: () => { for (const file of evidence.keys()) registerEvidence?.(file, undefined); authoredService.dispose(); },
     authoredService,
+    part_facts,
     mapping: (file: string) => sources.get(canonical(file))?.mapping,
     authored_file: (file: string) => sources.get(canonical(file))?.source,
     is_evidence: (file: string) => evidence.has(canonical(file)),

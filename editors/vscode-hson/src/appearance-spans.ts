@@ -1,5 +1,5 @@
 import type { IGrammar } from "vscode-textmate";
-import { hson_highlights, hson_literal_highlights, type HsonHighlight } from "./highlighting.js";
+import { embedded_binding_highlights, hson_literal_highlights, type HsonHighlight } from "./highlighting.js";
 import { HsonBindingCache, binding_highlights, overlay_binding_highlights, type BindingDocument, type BindingSnapshot } from "./binding-intelligence.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 
@@ -17,7 +17,7 @@ function roleFor(token: HsonHighlight): string | undefined {
   return segmentBindings.find(s=>s.selector===selector)?.id ?? syntaxExamplePath(token.scopes) ?? tokenAppearancePaths[token.type];
 }
 
-/** The shared binding snapshot includes text changes and Event evidence invalidation. */
+/** The shared binding snapshot is scoped to the current document text. */
 export class AppearanceSpanCache {
   private readonly entries = new Map<string, { snapshot: BindingSnapshot; family: Family; spans: readonly AppearanceSpan[] }>();
   constructor(private readonly bindings = new HsonBindingCache()) {}
@@ -33,9 +33,11 @@ export class AppearanceSpanCache {
     else if (languageId === "markdown") lexical = markdown_hson_fence_regions(text).flatMap(({ bodyRange }) =>
       hson_literal_highlights(grammar, text.slice(bodyRange.start, bodyRange.end)).map(token => ({ ...token,
         range: { start: token.range.start + bodyRange.start, end: token.range.end + bodyRange.start } })));
-    else if (languageId === "typescript" || languageId === "typescriptreact") lexical = hson_highlights(grammar, document.fileName, text, snapshot);
+    const typescript = languageId === "typescript" || languageId === "typescriptreact";
+    const tokens = typescript ? embedded_binding_highlights(grammar, snapshot)
+      : overlay_binding_highlights(lexical, binding_highlights(snapshot));
     const regions = [...snapshot.tags?.sources ?? [], ...snapshot.tags?.interpolated ?? []];
-    const spans = overlay_binding_highlights(lexical, binding_highlights(snapshot)).flatMap(token => {
+    const spans = tokens.flatMap(token => {
       const role = roleFor(token);
       const region = regions.filter(source => source.bodyRange.start <= token.range.start && source.bodyRange.end >= token.range.end)
         .sort((a,b)=>(a.bodyRange.end-a.bodyRange.start)-(b.bodyRange.end-b.bodyRange.start))[0];

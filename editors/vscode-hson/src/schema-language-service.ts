@@ -2,23 +2,20 @@ import type ts from "typescript";
 import { install_live_schema_view } from "./schema-editor-view.js";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges } from "./schema-editor-proof.js";
 import { HsonEditorCompletionCache } from "./editor-completion.js";
-import { collect_part_source_facts } from "../../../src/internal/hson-schema/part-source.js";
 import { part_definition_targets } from "../../../src/internal/editor-introspection/part-definition-target.js";
 import { part_data_hover } from "../../../src/internal/editor-introspection/part-data-evidence.js";
 import { part_selector_resolution, part_selector_hover } from "../../../src/internal/editor-introspection/part-selector-resolution.js";
-import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 
 /** Only this boundary translates positions. Neither service ever writes authored source. */
 export function create_schema_language_service(typescript: typeof ts, service: ts.LanguageService, host: ts.LanguageServiceHost, projectPath: string,
   registerEvidence?: (file: string, text: string | undefined) => void,
-  getEventImports?: () => HsonEventImportEvidence | undefined,
   canResolveSource?: (file: string) => boolean,
 ) {
-  const view = install_live_schema_view(typescript, host, projectPath, registerEvidence, getEventImports, canResolveSource);
-  const completion = new HsonEditorCompletionCache(typescript);
+  const view = install_live_schema_view(typescript, host, projectPath, registerEvidence, canResolveSource);
+  const completion = new HsonEditorCompletionCache(typescript, view.part_facts);
   const hsonDefinition = (file: string, offset: number): ts.DefinitionInfoAndBoundSpan | undefined => {
     const program = view.authoredService.getProgram();
-    const targets = program === undefined ? [] : part_definition_targets(collect_part_source_facts(typescript, program, getEventImports?.()), file, offset);
+    const targets = program === undefined ? [] : part_definition_targets(view.part_facts(program), file, offset);
     const origin = targets[0]?.origin;
     return origin === undefined ? undefined : { textSpan: { start: origin.start, length: origin.end - origin.start }, definitions: targets.map(target => ({
       fileName: target.target.file, textSpan: { start: target.target.start, length: target.target.end - target.target.start },
@@ -28,13 +25,11 @@ export function create_schema_language_service(typescript: typeof ts, service: t
   const hsonCompletions = (file: string, offset: number) => {
     const program = view.authoredService.getProgram();
     const source = program?.getSourceFile(file);
-    return source === undefined ? [] : completion.complete(file, source.text, 0, offset, program, getEventImports?.());
+    return source === undefined ? [] : completion.complete(file, source.text, 0, offset, program);
   };
   // Syntax, formatting, refactor/code-fix edits and outline operate on authored snapshots.
   // They cannot accidentally propose writing generated imports/assertions into the editor.
   const proxy: ts.LanguageService = Object.create(service);
-  // The workspace scanner checks the active program, then maps its import offsets back to the editor.
-  Object.defineProperty(proxy, "getHsonSourceMapping", { value: view.mapping });
   // Preserve tsserver's private lifecycle methods (notably getCurrentProgram) on
   // the original service; only explicitly authored-coordinate APIs use the reader.
   for (const name of [
@@ -102,7 +97,7 @@ export function create_schema_language_service(typescript: typeof ts, service: t
   proxy.getCompilerOptionsDiagnostics = () => { view.refresh(); return diagnostics(service.getCompilerOptionsDiagnostics()); };
   proxy.getQuickInfoAtPosition = (file, offset, maximumLength) => {
     const program = view.authoredService.getProgram();
-    const facts = program === undefined ? undefined : collect_part_source_facts(typescript, program, getEventImports?.());
+    const facts = program === undefined ? undefined : view.part_facts(program);
     const selector = facts === undefined ? undefined : part_selector_resolution(facts, file, offset);
     const hover = selector === undefined ? facts === undefined ? undefined : part_data_hover(facts, file, offset)
       : { location: selector.location, text: part_selector_hover(selector) };

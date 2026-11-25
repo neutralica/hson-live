@@ -1,4 +1,4 @@
-import { create_hson_source_program, discover_hson_tagged_templates, type HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { create_hson_source_program, discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
 import { completed_hson_element_ranges, hson_interpolation_roles, type HsonTemplateSlot } from "../../../src/api/transform/parsers/tokenize-hson.js";
@@ -9,6 +9,8 @@ import { project_part_bindings, parse_part_binding_source, type PartBindingSourc
 import type { PartSourceLocation } from "../../../src/internal/hson-schema/part-source.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
+import type { IGrammar } from "vscode-textmate";
+import type { EventBodyCache } from "./event-body-cache.js";
 import type { HsonHighlight } from "./highlighting.js";
 
 export type BindingDocument = Readonly<{ uri: string; fileName: string; languageId: string; version: number; text: string }>;
@@ -17,6 +19,7 @@ export type BindingSnapshot = Readonly<{
   sources: readonly PartBindingSources[];
   tags?: ReturnType<typeof discover_hson_tagged_templates>;
   calls?: ReturnType<typeof discover_static_from_hson_sources>;
+  eventHighlights?: WeakMap<IGrammar, EventBodyCache<readonly HsonHighlight[]>>;
 }>;
 function standalone(source: string, map: (range: { start: number; end: number }) => PartSourceLocation | undefined,
   slots: readonly HsonTemplateSlot[] = []): PartBindingSources {
@@ -49,7 +52,6 @@ function standalone(source: string, map: (range: { start: number; end: number })
 /** One bounded document-version snapshot shared by highlighting and navigation.
  * Compiler facts are also memoized by immutable Program for diagnostics/completion. */
 export class HsonBindingCache {
-  constructor(private readonly eventImports?: HsonEventImportEvidence) {}
   private readonly documents = new Map<string, BindingSnapshot>();
   clear(): void { this.documents.clear(); }
   forget(uri: string): void { this.documents.delete(uri); }
@@ -66,7 +68,7 @@ export class HsonBindingCache {
         ({ file: fileName, start: range.start + bodyRange.start, end: range.end + bodyRange.start, precision: "exact" })));
     } else if (languageId === "typescript" || languageId === "typescriptreact") {
       const program = create_hson_source_program(fileName, text);
-      const tags = discover_hson_tagged_templates(fileName, text, program, undefined, undefined, this.eventImports?.(fileName, text));
+      const tags = discover_hson_tagged_templates(fileName, text, program);
       const calls = discover_static_from_hson_sources(fileName, text, program);
       for (const tag of [...tags.sources.map(source => ({ ...source, substitutionRanges: [], expressionRanges: [] })), ...tags.interpolated]) {
         if (tag.authoringKind !== "document" && tag.authoringKind !== "canonical") continue;
@@ -91,7 +93,8 @@ export class HsonBindingCache {
           return mapped === undefined ? undefined : { file: fileName, ...mapped, precision: "exact" };
         }));
       }
-      snapshot = { document, sources, tags, calls };
+      const sameDocument = previous?.document.languageId === languageId && previous.document.fileName === fileName;
+      snapshot = { document, sources, tags, calls, eventHighlights: (sameDocument ? previous.eventHighlights : undefined) ?? new WeakMap() };
     }
     this.documents.set(document.uri, snapshot);
     if (this.documents.size > 8) this.documents.delete(this.documents.keys().next().value!);

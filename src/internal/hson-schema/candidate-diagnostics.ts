@@ -4,24 +4,72 @@ import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
 import { is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { evaluate_static_schema_candidate, type StaticDocumentLibraryContext } from "./candidate-evaluation.js";
 import { resolve_immutable_schema } from "./schema-identity.js";
+import { evaluate_canonical_projected_fields, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
 import type { CanonicalGraphIssue } from "../canonical-schema/issues.js";
 import { resolve_hson_schema_annotation } from "./schema-annotation.js";
 import { library_source_admission } from "./library-source.js";
 import { library_json_has_hson_source } from "./library-json-source.js";
+import { static_event_parser } from "./static-event-parser.js";
 import { PartOwnershipWork, static_source_candidates } from "./source-candidates.js";
-import { part_source_coordinates, part_iterator_source_origin, static_part_collection, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
+import { part_source_coordinates, part_iterator_source_origin, static_part_collection, type PartConnectorSource, type PartDocumentSource, type PartSourceFacts, type PartSourceLocation } from "./part-source.js";
 import { OBJECT_VALUE, inspect_schema_data, project_ordered_data } from "./data-projection.js";
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { is_part_argument_attribute, is_part_scalar_qualifier, part_argument_name, part_argument_issue, part_direction_issue, whole_part_reference } from "../part-placeholder.js";
 import { qualify_hson_document_root } from "../../api/document/hson-document.js";
 import { parse_authored_document_library } from "../../api/livemap/livemap.document.quad.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { admit_data_source } from "../../core/data-source-admission.js";
-import { part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
+import { certain_part_invocations, part_data_contexts, part_data_projection } from "../editor-introspection/part-data-evidence.js";
+import type { PartBindingReference } from "../editor-introspection/part-bindings.js";
+import { event_argument_references, type AuthoredEventArgument } from "../authored-events.js";
+import { is_event_argument_value } from "../event-argument-plan.js";
 
 type StaticSchemaDiagnosticLocation = Readonly<{ file: string; start: number; end: number; message: string }>;
 export type StaticSchemaDiagnostic = StaticSchemaDiagnosticLocation & Readonly<{ code: string; related?: readonly StaticSchemaDiagnosticLocation[] }>;
 type Schema = Readonly<{ declaration: ts.VariableDeclaration; name: string; compiled: CompiledHsonSchema }>;
+type EventArgumentEvidence = "present" | "absent" | "conditional" | "opaque" | Readonly<{ value: OrderedProjectedValue }>;
+
+function same_part_range(left: PartSourceLocation | undefined, right: PartSourceLocation | undefined): boolean {
+  return left?.precision === "exact" && right?.precision === "exact"
+    && left.file === right.file && left.start === right.start && left.end === right.end;
+}
+
+/** Use the same receiving and lexical identities as Part composition. Only a
+ * certain direct connector can refine a conditional read to a concrete result. */
+function event_reference_evidence(definition: PartDocumentSource | undefined, use: PartBindingReference | undefined,
+  argument: AuthoredEventArgument, connector?: PartConnectorSource): EventArgumentEvidence {
+  if (definition === undefined || use === undefined || use.conditional
+    || definition.referenceIssues.some(issue => same_part_range(issue.location, use.location))) return "opaque";
+  const { reference, declaration } = use;
+  const incoming = reference.namespace === "incoming" ? reference.name : declaration?.incoming;
+  const requiredness = incoming === undefined ? undefined : definition.signature?.requiredness.get(incoming);
+  if (reference.namespace === "local" ? use.resolution !== "resolved" : requiredness === undefined || reference.path.length !== 0) return "opaque";
+  const optionalRoot = declaration?.optionalReceiving === true
+    || reference.namespace === "incoming" && requiredness === "optional" && (reference.optional || declaration !== undefined);
+  if (connector === undefined) return optionalRoot || reference.optional ? "conditional" : "present";
+  if (incoming === undefined || use.withinOptionalStructure || use.iterators.length > 0) return "opaque";
+  const supplied = connector.attributes.find(attribute => part_argument_name(attribute.name)?.name === incoming);
+  if (supplied === undefined) return optionalRoot && requiredness === "optional" ? "absent" : "opaque";
+  if (supplied.dynamicValue || supplied.value === undefined || supplied.scalarIssue !== undefined) return "opaque";
+  const kind = definition.signature?.parameters.get(incoming);
+  if (kind === "scalar" || kind === "str" || kind === "num") {
+    const qualifier = kind === "num" ? "num" : "str";
+    return reference.path.length === 0 && (argument.operand.kind === "interpolation" || argument.qualifier === "data"
+      || argument.qualifier === qualifier) ? "present" : "opaque";
+  }
+  if (kind !== "data") return "opaque";
+  let value: OrderedProjectedValue | undefined;
+  try { value = admit_data_source(supplied.value); }
+  catch { return "opaque"; }
+  for (const selector of reference.path) {
+    if (typeof selector === "number" ? !Array.isArray(value) : !is_ordered_projected_object(value)) return "opaque";
+    value = ordered_projected_value_at(value, [selector]);
+    if (value === undefined) return reference.optional ? "absent" : "opaque";
+  }
+  if (argument.operand.kind === "interpolation") return value === null || typeof value !== "object" ? "present" : "opaque";
+  return is_event_argument_value(argument.qualifier, value) ? { value } : "opaque";
+}
 
 /** Editor-only projection of compiler-owned facts. Never included in Schema build/Watch policy. */
 export function static_part_reference_diagnostics(facts: PartSourceFacts, typescript?: typeof ts, checker?: ts.TypeChecker): readonly StaticSchemaDiagnostic[] {
@@ -42,6 +90,115 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
     output.push({ file: where.file, start: where.start, end: where.end, code, message, ...(related.length === 0 ? {} : { related }) });
   };
   for (const issue of facts.eventIssues) report(issue.location, issue.code, issue.message, issue.declaration, issue.attachment, "First declaration.", "Document Event metadata.");
+  for (const [literal, owners] of facts.eventOwners) {
+    const source = facts.parsedEvents.get(literal);
+    if (source === undefined || owners.size !== 1) continue;
+    const { event, location, map } = source;
+    const domain = event.kind === "locus" ? "host" : "local";
+    const matches = facts.actionDeclarations.filter(action => owners.has(action.owner) && action.domain === domain && action.name === event.key);
+    if (matches.length !== 1) continue;
+    const action = matches[0]!;
+    const attachments = facts.eventAttachments.get(literal) ?? [];
+    const label = JSON.stringify(event.key);
+    if (event.args.length === 0) {
+      if (action.required) for (const { location: attachment } of attachments) report(location, "HSON_EVENT_INPUT_REQUIRED",
+        `Action ${label} requires arguments. Supply named typed arguments in this event declaration.`,
+        action.requiredLocation, attachment, "This Action declares required arguments.", "Event attachment.");
+      continue;
+    }
+    if (action.schema === undefined) continue;
+    const schema = action.schema;
+    const argumentsByName = new Map(event.args.map(argument => [argument.name, argument]));
+    const argumentLocation = (name: string | undefined) => {
+      const argument = name === undefined ? undefined : argumentsByName.get(name);
+      return argument === undefined ? location : map({ start: argument.header.index, end: argument.end.index });
+    };
+    const roots = inspect_schema_data(schema.value, []).alternatives;
+    const ambiguous = roots.length !== 1 || roots[0]?.kind !== "supported";
+    const evaluate = (states: ReadonlyMap<string, EventArgumentEvidence>, attachment: PartSourceLocation): void => {
+      const invalid = (name: string | undefined, detail: string) => report(argumentLocation(name), "HSON_EVENT_ARGUMENT_INVALID",
+        `Arguments for Action ${label} do not match its Schema. ${detail}.`, schema.location, attachment, "Action argument Schema.", "Event attachment.");
+      const missing = (name: string) => report(location, "HSON_EVENT_ARGUMENT_MISSING",
+        `Action ${label} requires argument ${JSON.stringify(name)}.`, schema.location, attachment, "Action argument Schema.", "Event attachment.");
+      const known: [string, OrderedProjectedValue][] = [];
+      const unknown = new Map<string, boolean>();
+      for (const [name, state] of states) {
+        if (typeof state === "object") known.push([name, state.value]);
+        else if (state !== "absent") unknown.set(name, state === "present");
+      }
+      const fields = ordered_projected_object(known);
+      const evaluation = unknown.size === 0 ? evaluate_canonical_projected_schema(schema.value.graph, fields)
+        : evaluate_canonical_projected_fields(schema.value.graph, fields, unknown);
+      const commonMissing = new Set<string>();
+      const firstRoot = roots[0];
+      if (ambiguous && firstRoot?.kind === "supported" && firstRoot.node.kind === "object") {
+        for (const { name, optional } of firstRoot.node.members) {
+          if (!optional && (!argumentsByName.has(name) || states.get(name) === "absent") && roots.every(root => root.kind === "supported"
+            && root.node.kind === "object" && root.node.members.some(member => member.name === name && !member.optional))) {
+            commonMissing.add(name);
+            missing(name);
+          }
+        }
+      }
+      for (const issue of evaluation.issues) {
+        if (issue.evidence.kind === "resource-limit" || issue.evidence.kind === "invalid-graph") continue;
+        const first = issue.path[0];
+        const name = typeof first === "string" ? first : undefined;
+        const missingName = issue.evidence.kind === "missing-required" && issue.path.length === 1 ? name : undefined;
+        if (!ambiguous) {
+          if (missingName !== undefined) missing(missingName);
+          else invalid(name, issue_detail(issue));
+        } else if (missingName === undefined || !commonMissing.has(missingName)) invalid(undefined, "No Schema alternative accepts these arguments");
+      }
+      // Native lookup types are part of the Event grammar. Their actual values
+      // remain unknown, so refinements and exact values cannot be checked here.
+      for (const { name, operand } of event.args) {
+        if (states.get(name) !== "present" || operand.kind !== "native" && operand.kind !== "interpolation") continue;
+        const kinds: readonly string[] = operand.kind === "interpolation" ? ["string"]
+          : operand.lookup.length === 5 && operand.lookup[4] === "entry-or-null" ? [operand.valueKind, "null"] : [operand.valueKind];
+        const choices = inspect_schema_data(schema.value, [name]).alternatives;
+        if (choices.some(choice => choice.kind === "supported") && choices.every(choice => {
+          if (choice.kind !== "supported") return choice.kind === "absent" || choice.kind === "invalid-traversal";
+          const node = choice.node;
+          const expected = node.kind === "exact" ? node.value === null ? "null" : typeof node.value : node.kind === "tuple" ? "array" : node.kind;
+          return expected !== "any" && !kinds.includes(expected);
+        })) invalid(name, `Argument ${JSON.stringify(name)} supplies a value of type ${kinds.join(" or ")}`);
+      }
+    };
+    for (const { location: attachment, part } of attachments) {
+      const bindings = new Map<string, readonly (PartBindingReference | undefined)[]>();
+      for (const argument of event.args) {
+        if (argument.operand.kind === "literal" || argument.operand.kind === "native") continue;
+        bindings.set(argument.name, event_argument_references(argument).map(site => {
+          const where = map({ start: site.start.index, end: site.end.index });
+          return part?.bindingSources?.references.find(use => use.context === "event" && same_part_range(use.attachment, attachment)
+            && same_part_range(use.location, where));
+        }));
+      }
+      const evidence = (argument: AuthoredEventArgument, connector?: PartConnectorSource): EventArgumentEvidence => {
+        if (argument.operand.kind === "literal") return { value: argument.operand.value };
+        if (argument.operand.kind === "native") return "present";
+        const states = bindings.get(argument.name)?.map(use => event_reference_evidence(part, use, argument, connector)) ?? [];
+        if (argument.operand.kind === "reference") return states[0] ?? "opaque";
+        if (states.includes("opaque")) return "opaque";
+        if (states.includes("absent")) return "absent";
+        return states.includes("conditional") ? "conditional" : "present";
+      };
+      const states = new Map(event.args.map(argument => [argument.name, evidence(argument)]));
+      evaluate(states, attachment);
+      if (part === undefined || !event.args.some(argument => states.get(argument.name) === "conditional")) continue;
+      for (const invocation of certain_part_invocations(facts, part)) {
+        if (!owners.has(invocation.batch.call) || invocation.connector === undefined) continue;
+        const occurrence = new Map(states);
+        for (const argument of event.args) {
+          if (states.get(argument.name) !== "conditional") continue;
+          const refined = evidence(argument, invocation.connector);
+          if (refined !== "opaque" && refined !== "conditional") occurrence.set(argument.name, refined);
+        }
+        if (event.args.some(({ name }) => occurrence.get(name) !== states.get(name))) evaluate(occurrence, attachment);
+      }
+    }
+  }
   if (typescript !== undefined && checker !== undefined) for (const write of facts.writes) {
     for (const argument of write.arguments) {
       if (!is_part_scalar_qualifier(argument.kind)) continue;
@@ -281,12 +438,12 @@ export function static_part_reference_diagnostics(facts: PartSourceFacts, typesc
 }
 
 /** Pure preflight over authored ASTs. Unknown expressions withdraw the entire proof. */
-export function static_schema_candidate_diagnostics(typescript: typeof ts, program: ts.Program): readonly StaticSchemaDiagnostic[] {
+export function static_schema_candidate_diagnostics(typescript: typeof ts, program: ts.Program, parseEvent = static_event_parser()): readonly StaticSchemaDiagnostic[] {
   const checker = program.getTypeChecker();
   const schemas = new Map<ts.Declaration, Schema>();
   const sources = program.getSourceFiles().filter(source => !source.isDeclarationFile && !program.isSourceFileFromExternalLibrary(source)
     && !source.fileName.replaceAll("\\", "/").split("/").includes(".hson"));
-  const sourceCandidates = static_source_candidates(typescript, checker, program);
+  const sourceCandidates = static_source_candidates(typescript, checker, program, parseEvent);
   for (const source of sources) for (const found of discover_hson_schema_declarations(typescript, source, checker, sourceCandidates.eligible)) {
     if (!found.eligible || found.source === undefined) continue;
     const compiled = compile_hson_schema(found.source);
@@ -404,7 +561,7 @@ export function static_schema_candidate_diagnostics(typescript: typeof ts, progr
           if (literal !== undefined && typescript.isStringLiteralLike(literal)) libraryName = literal.text;
         }
         if (libraryName !== undefined) report(contract, document, { kind: "document-library", name: libraryName,
-          ...(parts === undefined ? {} : { parts }) }, owner, work, depth + 2);
+          ...(parts === undefined ? {} : { parts, parseEvent: parseEvent.part }) }, owner, work, depth + 2);
       }
       if (json !== undefined) report(contract, json, "json", owner, work, depth + 2);
       if (hson !== undefined) report(contract, hson, "data", owner, work, depth + 2);

@@ -68,7 +68,7 @@ function tagged_template_strings(raw: string, invalidEscape: boolean) {
   return Object.freeze(Object.assign([invalidEscape ? undefined : raw], { raw: Object.freeze([raw]) }));
 }
 
-/** Use the same template guard and HsonDeclarative beta dispatch as the public Event tag. */
+/** Parsed positions and errors are body-relative; consumers map their own site. */
 export function parse_hson_event_tagged_source(source: HsonTaggedTemplateSource, raw: string,
   escapeRanges = hson_tagged_escape_ranges(source),
 ) {

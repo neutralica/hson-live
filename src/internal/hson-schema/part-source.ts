@@ -3,7 +3,7 @@ import { ANY_DATA, compiled_hson_schema_of } from "../../api/schema/hson-schema.
 import { part_scalar_operand } from "../part-scalar.js";
 import { decode_part_string_sigils, part_literal_sigils } from "../part-scalar-source.js";
 import { event_argument_references, standalone_event_reference_issue, type AuthoredEventReference } from "../authored-events.js";
-import { parse_part_event, type PartEvent } from "../part-events.js";
+import type { PartEvent } from "../part-events.js";
 import { is_event_attachment_attribute } from "../../core/authored-event-names.js";
 import { read_transform_error_details } from "../../core/errors.js";
 import { is_hson_bare_name_char } from "../../core/hson-name.js";
@@ -12,8 +12,8 @@ import { analyze_part_definition, transform_part_parameter_strings, type PartEve
 import type ts from "typescript";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
-import { selected_hson_value_declaration, hson_package_declaration_path, package_value_import, is_official_hson_package_binding, read_supported_hson_import_symbols, type HsonEventImportEvidence } from "../embedded-hson/discover-hson-tagged-templates.js";
-import { hson_tagged_source, admit_hson_tagged_source, admit_hson_tagged_template, hson_tagged_literal, parse_hson_event_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
+import { selected_hson_value_declaration, hson_package_declaration_path, package_value_import, is_official_hson_package_binding, read_supported_hson_import_symbols } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { hson_tagged_source, admit_hson_tagged_source, admit_hson_tagged_template, hson_tagged_literal } from "../embedded-hson/hson-tagged-source-admission.js";
 import { interpolation_site, map_interpolation_range, type GeneratedSegment } from "../trusted-schema-diagnostics/interpolation-source.js";
 import { static_hson_literal_correspondence, map_static_hson_range } from "../embedded-hson/static-hson-source.js";
 import type { HsonSourceLexicalCollector, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
@@ -33,26 +33,30 @@ import { evaluate_static_schema_candidate } from "./candidate-evaluation.js";
 import { immutable_source_declaration } from "./schema-identity.js";
 import type { DiscoveredHsonSchemaDeclaration } from "./schema-discovery.js";
 import { compile_hson_schema, type CompiledHsonSchema } from "./compiler.js";
+import { static_event_parser } from "./static-event-parser.js";
 import { OBJECT_VALUE, type SchemaDataPath } from "./data-projection.js";
 import { project_part_bindings, parse_part_binding_source, type PartBindingSources } from "../editor-introspection/part-bindings.js";
 
 type Completeness = "complete" | "partial" | "unknown";
 export type PartSourceLocation = HsonSourceRange & Readonly<{ file: string; precision: "exact" | "anchor" }>;
 type PartReferenceIssueSource = { location: PartSourceLocation; message: string; declaration?: PartSourceLocation; attachment?: PartSourceLocation };
-type EventSource = Readonly<{
+export type EventSource = Readonly<{
   event: PartEvent;
+  location: PartSourceLocation;
   map: SourceRangeMap;
 }>;
 type SourceRangeMap = (range: HsonSourceRange) => PartSourceLocation | undefined;
 type EventIssueSource = PartReferenceIssueSource & Readonly<{ code: string }>;
 export type EventLiteral = ts.StringLiteral | ts.NoSubstitutionTemplateLiteral;
 export type EventLiteralUse = "part" | "document";
+type EventAttachmentSource = Readonly<{ location: PartSourceLocation; part?: PartDocumentSource }>;
 export type ActionDeclarationSource = Readonly<{
   owner: ts.CallExpression;
   domain: "host" | "local";
   name: string;
   location: PartSourceLocation;
   required?: boolean;
+  requiredLocation?: PartSourceLocation;
   schema?: Readonly<{ value: CompiledHsonSchema; location: PartSourceLocation }>;
 }>;
 export type PartParameterSource = Readonly<{ name: string; uses: readonly Readonly<{ location: PartSourceLocation; context: "text" | "attribute" | "structure" | "event"; namespace: "incoming" | "local"; reference: string; optional: boolean; structured: boolean; supply?: PartQualifier }>[] }>;
@@ -187,6 +191,8 @@ export type PartSourceFacts = Readonly<{
   actionDeclarations: readonly ActionDeclarationSource[];
   inlineEventLiterals: ReadonlySet<EventLiteral>;
   eventOwners: ReadonlyMap<EventLiteral, ReadonlySet<ts.CallExpression>>;
+  parsedEvents: ReadonlyMap<EventLiteral, EventSource>;
+  eventAttachments: ReadonlyMap<EventLiteral, readonly EventAttachmentSource[]>;
   eventIssues: readonly EventIssueSource[];
   eventLiterals: ReadonlyMap<EventLiteral, ReadonlySet<EventLiteralUse>>;
 }>;
@@ -203,7 +209,7 @@ function event_range_map(literal: ts.StringLiteral | ts.NoSubstitutionTemplateLi
 
 function event_producer(typescript: typeof ts, sources: Candidates, node: ts.Expression) {
   if (typescript.isStringLiteral(node) || typescript.isNoSubstitutionTemplateLiteral(node)) {
-    return { literal: node, tagged: false, map: event_range_map(node), parse: () => parse_part_event(node.text) };
+    return { literal: node, tagged: false, map: event_range_map(node), parse: () => sources.parseEvent.part(node.text) };
   }
   if (!typescript.isTaggedTemplateExpression(node) || !typescript.isNoSubstitutionTemplateLiteral(node.template)) return undefined;
   const tagged = sources.eventSource(node, "attachment");
@@ -213,7 +219,7 @@ function event_producer(typescript: typeof ts, sources: Candidates, node: ts.Exp
     const start = template.boundaries[range.start], end = template.boundaries[range.end];
     return start === undefined || end === undefined ? undefined : { file: tagged.fileName, start, end, precision: "exact" };
   };
-  return { literal: node.template, tagged: true, map, parse: () => parse_hson_event_tagged_source(tagged, template.raw) };
+  return { literal: node.template, tagged: true, map, parse: () => sources.parseEvent.tagged(tagged, template.raw) };
 }
 
 function event_declaration_issue(literal: ts.StringLiteral | ts.NoSubstitutionTemplateLiteral, map: SourceRangeMap, cause: unknown): PartReferenceIssueSource {
@@ -247,7 +253,8 @@ function part_value(typescript: typeof ts, sources: Candidates, input: ts.Expres
       const values = sources.alternatives(node, "document", { work, depth: childDepth });
       const event = values.complete && values.nodes.length === 1 ? sources.eventSource(values.nodes[0]!, "collection", work) : undefined;
       if (event === undefined) return undefined;
-      try { return admit_hson_tagged_source(event); } catch { return undefined; }
+      const { raw } = hson_tagged_literal(event);
+      try { sources.parseEvent.tagged(event, raw); return raw; } catch { return undefined; }
     }
     if (!("source" in only) || only.family !== "document") return undefined;
     if (!typescript.isTaggedTemplateExpression(only.node)) return only.source;
@@ -285,7 +292,7 @@ function part_write_source(typescript: typeof ts, sources: Candidates, name: str
 function part_collection_evidence(typescript: typeof ts, sources: Candidates, input: ts.Expression, work: PartOwnershipWork, depth: number) {
   const value = part_value(typescript, sources, input, work, depth);
   if (!value.known) return undefined;
-  try { return { value: value.value, members: validate_part_collection(admit_projected_value(value.value)) }; }
+  try { return { value: value.value, members: validate_part_collection(admit_projected_value(value.value), sources.parseEvent.part) }; }
   catch { return undefined; }
 }
 
@@ -312,11 +319,11 @@ export function static_part_inventory(typescript: typeof ts, checker: ts.TypeChe
 }
 
 /** Bounded, demand-driven facts over existing official sources and receiving candidates. */
-const sourceFacts = new WeakMap<ts.Program, { evidence: HsonEventImportEvidence | undefined; facts: PartSourceFacts }>();
-export function collect_part_source_facts(typescript: typeof ts, program: ts.Program, eventImports?: HsonEventImportEvidence): PartSourceFacts {
+const sourceFacts = new WeakMap<ts.Program, PartSourceFacts>();
+export function collect_part_source_facts(typescript: typeof ts, program: ts.Program, parseEvent = static_event_parser()): PartSourceFacts {
   const cached = sourceFacts.get(program);
-  if (cached !== undefined && cached.evidence === eventImports) return cached.facts;
-  const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program, eventImports);
+  if (cached !== undefined) return cached;
+  const checker = program.getTypeChecker(), sources = static_source_candidates(typescript, checker, program, parseEvent);
   const schemas = new Map<string, CompiledHsonSchema | undefined>();
   const schemaDeclarations = new Map<ts.SourceFile, readonly DiscoveredHsonSchemaDeclaration[]>();
   const evidence = new Map<ts.Declaration, PartDataSchemaEvidence | undefined>();
@@ -407,16 +414,21 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     issues: [], issuesByName: new Map(), literals: new Set(), literalsByName: new Map() };
   const adjacent = new Map<ts.Expression, EventSources>();
   const contextual = new Map<ts.Expression, Map<EventSources, PartDocumentSource>>();
-  const attachedLiterals = new Map<PartDocumentSource, Set<EventLiteral>>();
+  const attachedLiterals = new Map<PartDocumentSource, readonly [EventLiteral, PartSourceLocation][]>();
   const inlineEventLiterals = new Set<EventLiteral>();
   const eventOwners = new Map<EventLiteral, Set<ts.CallExpression>>();
   const actionDeclarations: ActionDeclarationSource[] = [];
   const actionCalls: ts.CallExpression[] = [];
   const owners = new Map<ts.CallExpression, ActionDeclarationSource["domain"]>();
-  const associate = (literal: EventLiteral, owner: ts.CallExpression) => {
+  const parsedEvents = new Map<EventLiteral, EventSource>();
+  const eventAttachments = new Map<EventLiteral, EventAttachmentSource[]>();
+  const associate = (literal: EventLiteral, owner: ts.CallExpression, attachment: EventAttachmentSource) => {
     const found = eventOwners.get(literal) ?? new Set<ts.CallExpression>();
     found.add(owner);
     eventOwners.set(literal, found);
+    const attachments = eventAttachments.get(literal) ?? [];
+    attachments.push(attachment);
+    eventAttachments.set(literal, attachments);
   };
   const eventIssues: EventIssueSource[] = [];
   const eventLiterals = new Map<EventLiteral, Set<EventLiteralUse>>();
@@ -471,7 +483,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     const required = flag && sources.declarationSource(flag);
     const schema = schemaInput && actionSchema(schemaInput);
     return {
-      ...(required?.kind === typescript.SyntaxKind.TrueKeyword ? { required: true }
+      ...(flag && required?.kind === typescript.SyntaxKind.TrueKeyword ? { required: true, requiredLocation: location(sources.unwrap(flag)) }
         : required?.kind === typescript.SyntaxKind.FalseKeyword ? { required: false } : {}),
       ...(schemaInput && schema && action_args_schema_is_data(schema.graph) ? { schema: { value: schema, location: location(sources.unwrap(schemaInput)) } } : {}),
     };
@@ -542,12 +554,22 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       producers.set(node, literal);
       noteEventLiteral(literal);
       try {
-        const event = producer.parse();
+        const body = producer.parse();
+        // Source facts index reference objects by occurrence within this table.
+        const event: PartEvent = { ...body, args: body.args.map(argument => {
+          const { operand } = argument;
+          const site = (source: AuthoredEventReference) => ({ ...source, reference: { ...source.reference } });
+          if (operand.kind === "reference") return { ...argument, operand: { ...operand, site: site(operand.site) } };
+          if (operand.kind === "interpolation") return { ...argument, operand: { ...operand, sites: operand.sites.map(site) } };
+          return argument;
+        }) };
         parsed.set(node, event);
         for (const argument of event.args) for (const site of event_argument_references(argument)) {
           if (argument.operand.kind !== "native") ranges.set(site.reference, { map, site });
         }
-        declarations.set(event, { event, map });
+        const source = { event, map, location: location(node) };
+        declarations.set(event, source);
+        parsedEvents.set(literal, source);
         return event;
       } catch (cause) {
         // Preserve the attachment identity for editing through parser failures.
@@ -798,7 +820,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     let signature: PartDocumentSource["signature"];
     let bindingSources: PartBindingSources | undefined;
     let declaredWriteKinds: PartDocumentSource["declaredWriteKinds"];
-    const literals = new Set<EventLiteral>();
+    const literals: [EventLiteral, PartSourceLocation][] = [];
     const completeAnalysis = qualified && scanned;
     // Quoted slots cannot add structural declarations. Their values remain
     // opaque, so local lexical facts survive without proving an input interface.
@@ -857,7 +879,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
           const attachment = nodeLocation(node, attribute);
           const name = attribute.slice("event:".length);
           const literal = adjacentEvents?.literalsByName.get(name);
-          if (literal !== undefined) { noteEventLiteral(literal, "part"); literals.add(literal); }
+          if (literal !== undefined) { noteEventLiteral(literal, "part"); literals.push([literal, attachment]); }
           const issue = adjacentEvents?.issuesByName.get(name);
           if (issue !== undefined) {
             attachedEventIssues.add(issue);
@@ -1029,7 +1051,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
       contextual.set(producer, contexts);
     }
     relationships.set(result, receivers);
-    if (literals.size > 0) attachedLiterals.set(result, literals);
+    if (literals.length > 0) attachedLiterals.set(result, literals);
     return result;
   };
   const linkPartEvents = (input: ts.Expression, events: EventSources, work: PartOwnershipWork, depth: number) => {
@@ -1101,7 +1123,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
             const directEvents = family === "document" && documentShape && directMetadata ? own.get("events") : undefined;
             if (directEvents !== undefined && owner !== undefined) {
               const direct = eventSources(directEvents);
-              for (const literal of direct.literals) { noteEventLiteral(literal, "document"); associate(literal, owner); }
+              for (const literal of direct.literals) { noteEventLiteral(literal, "document"); associate(literal, owner, { location: location(directEvents) }); }
               eventIssues.push(...direct.issues.map(issue => ({ ...issue, code: "HSON_EVENT_DECLARATION_INVALID" })));
               for (const source of direct.declarations.values()) {
                 for (const argument of source.event.args) {
@@ -1165,7 +1187,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               const value = selected?.value;
               let qualified = false;
               if (value?.known) {
-                try { validate_part_collection(admit_projected_value({ [member.name]: value.value })); qualified = true; }
+                try { validate_part_collection(admit_projected_value({ [member.name]: value.value }), parseEvent.part); qualified = true; }
                 catch { /* A lexical member can survive without qualifying as a Part. */ }
               }
               const document = memberEvidence.certain ? memberEvidence.documents[0] : undefined;
@@ -1177,7 +1199,7 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
               const contractSource = knownWriteTarget && members?.complete && (qualified || memberFields?.has("events")) && shapeCertain && collection?.fresh && fresh && document?.signature
                 ? document : undefined;
               if (owner) for (const document of memberEvidence.documents) {
-                for (const literal of attachedLiterals.get(document) ?? []) associate(literal, owner);
+                for (const [literal, attachment] of attachedLiterals.get(document) ?? []) associate(literal, owner, { location: attachment, part: document });
               }
               return [{ name: member.name, declaration: location(member.declaration), fresh,
                 qualified, knownWriteTarget, contractSource, evidence: memberEvidence }];
@@ -1284,8 +1306,8 @@ export function collect_part_source_facts(typescript: typeof ts, program: ts.Pro
     actionDeclarations.push({ owner, domain, name: name.text, location: location(call.arguments[0]!),
       ...actionContract(options && action_args_keys_valid([...options.keys()], "options") ? options.get("args") : undefined) });
   }
-  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, actionDeclarations, eventOwners, inlineEventLiterals, eventIssues, eventLiterals };
-  sourceFacts.set(program, { evidence: eventImports, facts });
+  const facts: PartSourceFacts = { batches, documents: observedDocuments, writes, actionDeclarations, eventOwners, inlineEventLiterals, eventIssues, eventLiterals, parsedEvents, eventAttachments };
+  sourceFacts.set(program, facts);
   return facts;
 }
 

@@ -9,7 +9,6 @@ import {
 } from "./embedded-hson-source.js";
 
 const defaultTs = ts;
-const syntaxOnlyPrograms = new WeakSet<ts.Program>();
 
 /** A cold checker can exhaust its stack resolving a binding before our walk begins. */
 export function hson_source_checker_lookup<T>(lookup: () => T): T | undefined {
@@ -161,6 +160,7 @@ function official_declaration_origin(fileName: string, expected: "Hson" | "HsonD
 
 export type InterpolatedEmbeddedHsonTemplate = Readonly<{
   authoringKind: HsonAuthoringKind;
+  eventValueImport?: true;
   fileName: string;
   hostText: string;
   tagRange: HostSourceRange;
@@ -171,7 +171,7 @@ export type InterpolatedEmbeddedHsonTemplate = Readonly<{
 }>;
 
 export type HsonAuthoringKind = "canonical" | "data" | "document" | "event" | "schema";
-export type HsonTaggedTemplateSource = EmbeddedHsonSource & Readonly<{ authoringKind: HsonAuthoringKind }>;
+export type HsonTaggedTemplateSource = EmbeddedHsonSource & Readonly<{ authoringKind: HsonAuthoringKind; eventValueImport?: true }>;
 
 /** Host files with an editor syntax-diagnostic surface for tagged Events. */
 export function is_hson_typescript_source_file(fileName: string): boolean {
@@ -251,9 +251,7 @@ export function create_hson_source_program(
     },
     writeFile(): void {},
   };
-  const program = ts.createProgram([fileName], options, compilerHost);
-  syntaxOnlyPrograms.add(program);
-  return program;
+  return ts.createProgram([fileName], options, compilerHost);
 }
 
 /** The workspace scanner and standalone snapshot reader use the same compiler host. */
@@ -273,9 +271,6 @@ export function create_hson_project_program(typescript: typeof ts,
   return typescript.createProgram({ rootNames, options, projectReferences, host });
 }
 
-/** Import declaration offsets proven official for a particular authored snapshot. */
-export type HsonEventImportEvidence = (fileName: string, text: string) => ReadonlySet<number>;
-
 /** Prove the selected authoring value in this program. Other module members can have their own errors. */
 export function is_official_hson_event_binding(typescript: typeof ts, receiver: ts.Identifier, program: ts.Program,
   eligible: SourceEligibility, routeKind: "named" | "package" = "named"): boolean {
@@ -285,45 +280,11 @@ export function is_official_hson_event_binding(typescript: typeof ts, receiver: 
   const checker = program.getTypeChecker();
   if (!is_official_hson_package_binding(receiver, "Hson", checker, true, typescript, eligible, routeKind)) return false;
   const member = checker.getPropertyOfType(checker.getTypeAtLocation(receiver), "event");
-  return member !== undefined && checker.getTypeOfSymbolAtLocation(member, receiver).getCallSignatures().length > 0;
-}
-
-export function resolved_hson_event_imports(typescript: typeof ts, program: ts.Program, file: ts.SourceFile,
-  eligible = hson_source_syntactic_eligibility(typescript, program),
-): ReadonlySet<number> {
-  const result = new Set<number>();
-  const checker = program.getTypeChecker();
-  for (const symbol of read_supported_hson_import_symbols(file, checker, program.getSyntacticDiagnostics(file), "Hson", typescript)) {
-    const declaration = selected_hson_value_declaration(typescript, checker, symbol);
-    if (declaration !== undefined && typescript.isImportSpecifier(declaration)
-      && is_official_hson_event_binding(typescript, declaration.name, program, eligible)) {
-      result.add(declaration.name.getStart(file));
-    }
-  }
-  return result;
-}
-
-function inferred_hson_event_imports(typescript: typeof ts, fileName: string, hostText: string): ReadonlySet<number> {
-  const directory = dirname(resolve(fileName));
-  const tsConfig = typescript.findConfigFile(directory, typescript.sys.fileExists);
-  const jsConfig = typescript.findConfigFile(directory, typescript.sys.fileExists, "jsconfig.json");
-  const config = (jsConfig?.length ?? 0) > (tsConfig?.length ?? 0) ? jsConfig : tsConfig;
-  const parsed = config === undefined ? undefined : typescript.getParsedCommandLineOfConfigFile(config, {}, {
-    ...typescript.sys, onUnRecoverableConfigFileDiagnostic() {},
+  return member !== undefined && checker.getTypeOfSymbolAtLocation(member, receiver).getCallSignatures().some(signature => {
+    const file = signature.declaration?.getSourceFile();
+    const path = file === undefined ? undefined : hson_package_declaration_path(file.fileName);
+    return path === "src/hson-authoring.ts" || path === "dist/hson-authoring.d.ts";
   });
-  if (config !== undefined && (parsed === undefined || parsed.errors.some(error => error.code !== 18003))) return new Set();
-  const options = parsed?.options ?? { jsx: typescript.JsxEmit.Preserve, module: typescript.ModuleKind.ESNext,
-    moduleResolution: typescript.ModuleResolutionKind.Bundler };
-  const absolute = resolve(fileName);
-  const virtualRoot = !typescript.sys.fileExists(absolute);
-  const fileNames = parsed === undefined ? [absolute] : virtualRoot ? [...parsed.fileNames, absolute] : parsed.fileNames;
-  const canonical = (name: string) => typescript.sys.useCaseSensitiveFileNames ? resolve(name) : resolve(name).toLowerCase();
-  // Standalone discovery also accepts a virtual root supplied by its caller.
-  const program = create_hson_project_program(typescript, {
-    fileNames, options, projectReferences: parsed?.projectReferences,
-  }, config === undefined ? directory : dirname(config), name => canonical(name) === canonical(absolute) ? hostText : undefined);
-  const file = program.getSourceFile(absolute);
-  return file?.text === hostText ? resolved_hson_event_imports(typescript, program, file) : new Set();
 }
 
 function diagnosticOverlapsRange(
@@ -893,7 +854,7 @@ function recover_interpolated_template(fileName: string, hostText: string, sourc
     templateRange, bodyRange: { start: templateRange.start + 1, end: bodyEnd }, substitutionRanges, expressionRanges };
 }
 
-/** Discover semantic member tags rooted in an official Hson import; a supplied program represents the same host text. */
+/** Discover local authoring syntax in the current host snapshot. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,
@@ -901,8 +862,6 @@ export function discover_hson_tagged_templates(
   // Opt-in diagnostics only. Recovered templates never enter either admitted result list.
   onDocumentQuadRecovery?: (source: InterpolatedEmbeddedHsonTemplate) => void,
   ts: typeof defaultTs = defaultTs,
-  eventImports?: ReadonlySet<number> | null,
-  onPendingEvent?: (range: HostSourceRange) => void,
   // Lexical editor regions may use incomplete literal bounds. They never enter admission.
   onEditingTemplate?: (source: HsonTaggedTemplateSource | InterpolatedEmbeddedHsonTemplate,
     closed: boolean, openSubstitution: boolean) => void,
@@ -926,35 +885,20 @@ export function discover_hson_tagged_templates(
   if (diagnostics.some((diagnostic) => diagnostic.start === undefined)) return empty();
   const checker = program.getTypeChecker();
   const importSymbols = read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "Hson", ts);
-  if (importSymbols.size === 0) return empty();
 
   const sources: HsonTaggedTemplateSource[] = [];
   const interpolated: InterpolatedEmbeddedHsonTemplate[] = [];
   const incompleteEvents: (HsonTaggedTemplateSource | InterpolatedEmbeddedHsonTemplate)[] = [];
-  let programImports: ReadonlySet<number> | undefined;
-  const officialEvent = (symbol: ts.Symbol): boolean => {
-    const declaration = selected_hson_value_declaration(ts, checker, symbol);
-    if (!is_hson_typescript_source_file(fileName) || declaration === undefined || !ts.isImportSpecifier(declaration)) return false;
-    const offset = declaration.name.getStart(sourceFile);
-    if (eventImports === null || eventImports !== undefined && !eventImports.has(offset)) return false;
-    if (syntaxOnlyPrograms.has(program)) {
-      eventImports ??= inferred_hson_event_imports(ts, fileName, hostText);
-      return eventImports.has(offset);
-    }
-    programImports ??= resolved_hson_event_imports(ts, program, sourceFile);
-    return programImports.has(offset);
-  };
   const visit = (node: ts.Node): void => {
     if (ts.isTaggedTemplateExpression(node)) {
       const tag = hson_authoring_tag(ts, node);
       const symbol = tag === undefined ? undefined : checker.getSymbolAtLocation(tag.receiver);
       const relevantRange = nodeRange(node, sourceFile);
-      const candidate = tag !== undefined && symbol !== undefined && importSymbols.has(symbol)
+      const imported = symbol !== undefined && importSymbols.has(symbol);
+      const directEvent = tag?.kind === "event" && tag.receiver.text === "Hson";
+      const candidate = tag !== undefined && (imported || directEvent)
         && !hasOverlappingDiagnostic(diagnostics, nodeRange(node.tag, sourceFile));
-      if (candidate && tag.kind === "event" && eventImports === null
-        && is_hson_typescript_source_file(fileName) && !hasOverlappingDiagnostic(diagnostics, relevantRange)) {
-        onPendingEvent?.(relevantRange);
-      }
+      const eventIntent = tag?.kind === "event" && imported ? { eventValueImport: true as const } : {};
       if (candidate && onEditingTemplate !== undefined) {
         const template = node.template;
         const templateRange = nodeRange(template, sourceFile);
@@ -969,7 +913,7 @@ export function discover_hson_tagged_templates(
             ts.isTemplateExpression(template) && tail?.getWidth(sourceFile) === 0);
         }
       }
-      if (candidate && (tag.kind !== "event" || officialEvent(symbol))) {
+      if (candidate) {
         const tagRange = nodeRange(node.tag, sourceFile);
         const templateRange = nodeRange(node.template, sourceFile);
         const bodyRange = Object.freeze({
@@ -987,7 +931,7 @@ export function discover_hson_tagged_templates(
         if (validated !== undefined) {
           const authoringKind = tag.kind;
           if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
-            sources.push(Object.freeze({ ...validated, authoringKind }));
+            sources.push(Object.freeze({ ...validated, authoringKind, ...eventIntent }));
             discovered = true;
           } else {
             const substitutionRanges = read_template_substitution_ranges(node.template, hostText, sourceFile);
@@ -995,6 +939,7 @@ export function discover_hson_tagged_templates(
               discovered = true;
               interpolated.push(Object.freeze({
                 authoringKind,
+                ...eventIntent,
                 fileName,
                 hostText,
                 tagRange: validated.tagRange,
@@ -1014,9 +959,9 @@ export function discover_hson_tagged_templates(
         if (!discovered && tag.kind === "event") {
           if (ts.isTemplateExpression(node.template)) {
             const recovered = recover_interpolated_template(fileName, hostText, sourceFile, node, node.template, "event");
-            if (recovered !== undefined) incompleteEvents.push(recovered);
+            if (recovered !== undefined) incompleteEvents.push({ ...recovered, ...eventIntent });
           } else if (node.template.isUnterminated && hostText[templateRange.start] === "`") {
-            incompleteEvents.push({ authoringKind: "event", fileName, hostText, tagRange, templateRange,
+            incompleteEvents.push({ authoringKind: "event", ...eventIntent, fileName, hostText, tagRange, templateRange,
               bodyRange: { start: bodyRange.start, end: templateRange.end } });
           }
         }

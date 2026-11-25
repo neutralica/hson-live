@@ -8,10 +8,11 @@ export const nativeTokenTypes = ["class", "enum", "interface", "namespace", "typ
   "parameter", "variable", "enumMember", "property", "function", "method"];
 export const nativeTokenModifiers = ["declaration", "static", "async", "readonly", "defaultLibrary", "local"];
 export const NATIVE_SEMANTIC_COMMAND = "_hson.nativeSemanticTokens";
-export const NATIVE_SEMANTIC_PROTOCOL = "typescript-2020-v1";
+export const NATIVE_SEMANTIC_PROTOCOL = "typescript-2020-v2";
 export const NATIVE_REQUEST_LIMIT = 50_000;
 export const SEMANTIC_DOCUMENT_LIMIT = 1_000_000;
 
+export type NativeSnapshot = Readonly<{ revision: string; tokens: readonly NativeToken[] }>;
 export type NativeToken = Readonly<{
   start: number; end: number; line: number; character: number; length: number; type: string; modifiers: string[];
 }>;
@@ -74,7 +75,7 @@ export function decode_native_response(document: SemanticDocument, request: Omit
   const body = value.body;
   if (body.protocol !== NATIVE_SEMANTIC_PROTOCOL || body.requestId !== request.requestId || body.textHash !== request.textHash
     || body.start !== request.start || body.length !== request.length || request.length > NATIVE_REQUEST_LIMIT
-    || typeof body.project !== "string" || typeof body.projectVersion !== "string"
+    || typeof body.revision !== "string" || body.revision.length === 0
     || !isRecord(body.legend) || !isStrings(body.legend.tokenTypes) || !isStrings(body.legend.tokenModifiers)
     || body.legend.tokenTypes.join("\0") !== nativeTokenTypes.join("\0")
     || body.legend.tokenModifiers.join("\0") !== nativeTokenModifiers.join("\0")) return undefined;
@@ -84,10 +85,10 @@ export function decode_native_response(document: SemanticDocument, request: Omit
 /** Bounded acquisition is shared by the extension and regression probes. A late
  * invalid packet or changed document invalidates the whole attempt. */
 export async function read_native_tokens(document: SemanticDocument, textLength: number, textHash: string, requestId: string,
-  read: (request: Omit<NativeRequest, "file">) => PromiseLike<unknown>, stale: () => boolean): Promise<NativeToken[] | undefined> {
-  if (stale() || textLength > SEMANTIC_DOCUMENT_LIMIT) return undefined;
+  read: (request: Omit<NativeRequest, "file">) => PromiseLike<unknown>, stale: () => boolean): Promise<NativeSnapshot | undefined> {
+  if (stale() || textLength <= 0 || textLength > SEMANTIC_DOCUMENT_LIMIT) return undefined;
   const native: NativeToken[] = [];
-  let project: unknown, projectVersion: unknown;
+  let revision: unknown;
   try {
     for (let start = 0; start < textLength; start += NATIVE_REQUEST_LIMIT) {
       const request = { start, length: Math.min(NATIVE_REQUEST_LIMIT, textLength - start), textHash, requestId };
@@ -96,14 +97,14 @@ export async function read_native_tokens(document: SemanticDocument, textLength:
       const tokens = decode_native_response(document, request, response);
       if (tokens === undefined) return undefined;
       if (!isRecord(response) || !isRecord(response.body)) return undefined;
-      if (project !== undefined && (project !== response.body.project || projectVersion !== response.body.projectVersion)) return undefined;
-      project = response.body.project; projectVersion = response.body.projectVersion;
+      if (revision !== undefined && revision !== response.body.revision) return undefined;
+      revision = response.body.revision;
       for (const token of tokens) {
         if (token.start < start || token.start >= start + request.length) continue;
         if (native.length && native[native.length - 1]!.end > token.start) return undefined;
         native.push(token);
       }
     }
-    return stale() ? undefined : native;
+    return stale() || typeof revision !== "string" ? undefined : { revision, tokens: native };
   } catch { return undefined; }
 }

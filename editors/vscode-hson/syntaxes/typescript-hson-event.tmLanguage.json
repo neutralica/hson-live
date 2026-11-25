@@ -1,0 +1,66 @@
+{
+  "scopeName": "hson.event.injection",
+  "injectionSelector": "L:source.ts - comment - string - meta.property-access.hson",
+  "patterns": [
+    {
+      "name": "meta.property-access.hson",
+      "begin": "(?:\\?\\.|(?<!\\.)\\.)(?=\\s*(?://|/\\*|$))",
+      "beginCaptures": { "0": { "name": "punctuation.accessor.ts" } },
+      "end": "(?=\\S)",
+      "applyEndPatternLast": true,
+      "patterns": [
+        { "include": "source.ts#comment" },
+        { "match": "Hson(?=\\s*\\.)", "name": "variable.other.property.ts" }
+      ]
+    },
+    {
+      "begin": "(?<![.$[:alnum:]_])Hson\\s*\\.\\s*event(?=\\s*(?:`|$))",
+      "end": "(?<=`)|(?=\\S)",
+      "applyEndPatternLast": true,
+      "patterns": [
+        {
+          "name": "meta.tagged-template.event.hson",
+          "contentName": "meta.embedded.inline.hson",
+          "begin": "(?<!`)`",
+          "beginCaptures": { "0": { "name": "string.template.ts punctuation.definition.string.template.begin.ts" } },
+          "end": "`",
+          "endCaptures": { "0": { "name": "string.template.ts punctuation.definition.string.template.end.ts" } },
+          "patterns": [
+            { "include": "source.ts#template-substitution-element" },
+            { "include": "source.ts#string-character-escape" },
+            { "include": "#header" }
+          ]
+        }
+      ]
+    }
+  ],
+  "repository": {
+    "header": {
+      "patterns": [
+        {
+          "match": "(<)(hson:(?:event|even|eve|ev|e)?)(?![A-Za-z0-9:._=-])",
+          "captures": {
+            "1": { "name": "punctuation.definition.tag.begin.hson" },
+            "2": { "name": "keyword.declaration.part.hson" }
+          }
+        },
+        {
+          "match": "(?<![A-Za-z0-9:._-])(on)(:)([A-Za-z][A-Za-z0-9:_-]*)",
+          "captures": {
+            "1": { "name": "keyword.other.directive.hson" },
+            "2": { "name": "punctuation.separator.attribute.hson" },
+            "3": { "name": "entity.name.type.hson" }
+          }
+        },
+        {
+          "match": "(?<![A-Za-z0-9:._-])(host|local)(:)([A-Za-z_][A-Za-z0-9._-]*)",
+          "captures": {
+            "1": { "name": "meta.attribute.qualifier.hson" },
+            "2": { "name": "punctuation.separator.attribute.hson" },
+            "3": { "name": "meta.part.selector.member.hson" }
+          }
+        }
+      ]
+    }
+  }
+}

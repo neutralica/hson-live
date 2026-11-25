@@ -496,9 +496,13 @@ async function run(): Promise<void> {
     assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes, hsonTokenScopes);
     assert.deepEqual(
       manifest.contributes.grammars.filter((grammar: { injectTo?: string[] }) => grammar.injectTo !== undefined)
-        .map((grammar: { injectTo: string[] }) => grammar.injectTo),
-      [["text.html.markdown"]],
-      'the only host injection is the explicitly declared Markdown fence',
+        .map((grammar: { scopeName: string; injectTo: string[] }) => [grammar.scopeName, grammar.injectTo]),
+      [
+        ["hson.event.injection", ["source.ts"]],
+        ["hson.event.injection.tsx", ["source.tsx"]],
+        ["markdown.hson.codeblock", ["text.html.markdown"]],
+      ],
+      "Event fallbacks and the Markdown fence are the declared host injections",
     );
     assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), [
       ...hsonIdentityMarkers.map(marker => marker.colorId), HSON_LIBRARY_SEPARATOR_COLOR_ID,

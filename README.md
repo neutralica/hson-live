@@ -350,6 +350,12 @@ Highlighting follows user-configured VS Code themes, with a small amount of Hson
 
 The Hson extension can validate Hson against HsonSchema as it is written, surfacing mistakes such as typos, invalid structure, or Schema violations before runtime. The extension can also generate TypeScript type declarations directly from HsonSchema.
 
+Author Events directly with `Hson.event` in TypeScript. The extension recognizes Event syntax locally for highlighting, diagnostics, completion, structural indentation, and the Hson Format Document and Format Selection commands. The default `hson.formatting.formatOnSave` setting formats recognized Hson regions on explicit Save or Save All. VS Code’s `editor.formatOnSave` separately controls the configured language formatter.
+
+Attach Events through Document Libraries or reusable Parts. Event destinations use `host:` for host Actions and `local:` for local Actions. When the editor can identify the applicable owner, Action, and argument contract, it checks required input, required fields, and definite Schema mismatches. An omitted optional Part value can omit the corresponding Event field. A supplied Data `null` remains present.
+
+The editor leaves Action checks neutral when the registry or contract is unavailable. Local Event recognition uses source syntax, with TypeScript binding information for supported imports and contextual checks. Runtime registration and validation remain authoritative. See the [VS Code authoring guide](editors/vscode-hson/README.md#event-authoring).
+
 ---
 
  

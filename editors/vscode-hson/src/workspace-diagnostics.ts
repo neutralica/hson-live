@@ -1,29 +1,24 @@
 import {
   is_supported_document,
   produce_document_diagnostics,
-  type DocumentDiagnosticInput,
   type DocumentDiagnosticSpec,
 } from "./document-diagnostics.js";
 import type { DiagnosticDocument, DiagnosticPublisher, Disposable } from "./diagnostics.js";
 import { HSON_EXPECT_ERROR_MARKER } from "./diagnostic-expectations.js";
+import { EventBodyCache } from "./event-body-cache.js";
 import type { StandaloneAuthoringMode } from './authoring-mode.js';
-import type { HsonEventImportEvidence } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
-import type { EventSourceEvidence } from "./event-source-evidence.js";
 
 export type WorkspaceDiagnosticSource = Readonly<{
   uri: string;
   fileName: string;
   languageId: "hson" | "typescript" | "typescriptreact";
   authoringMode?: StandaloneAuthoringMode;
-  eventEvidence?: EventSourceEvidence;
-  eventEvidencePending?: true;
 }>;
 
 export type WorkspaceSourceChange = Readonly<{
   uri: string;
   kind: "create" | "change" | "delete";
   affectsTypeScriptProjects?: boolean;
-  observationOnly?: boolean;
 }>;
 
 export type WorkspaceDiscoveryScope = "projects" | "standalone" | "all";
@@ -32,24 +27,21 @@ type WorkspaceDiscoveryRequest = Readonly<{
   changedUris?: readonly string[];
   standalone: boolean;
   isCurrent: () => boolean;
-  withdrawEventSources: (update: (revision: number) => readonly string[]) => void;
 }>;
 type WorkspaceDiscoveryResult = Readonly<{
   sources: readonly WorkspaceDiagnosticSource[];
-  accept?(revision: number): readonly string[] | void;
+  accept?(): void;
 }>;
 
 export type WorkspaceDiagnosticHost = Readonly<{
   openDocuments(): readonly DiagnosticDocument[];
   discoverSources(request: WorkspaceDiscoveryRequest): Promise<WorkspaceDiscoveryResult>;
-  invalidateProjects?(revision: number, change?: WorkspaceSourceChange, projects?: readonly string[]): readonly string[];
-  eventImports?: HsonEventImportEvidence;
   readSource(source: WorkspaceDiagnosticSource): Promise<string>;
   onDidOpen(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidChange(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidClose(listener: (document: DiagnosticDocument) => void): Disposable;
   onDidChangeSources(listener: (changes: readonly WorkspaceSourceChange[]) => void): Disposable;
-  onDidChangeProjects(listener: (scope?: WorkspaceDiscoveryScope, projects?: readonly string[]) => void): Disposable;
+  onDidChangeProjects(listener: (scope?: WorkspaceDiscoveryScope) => void): Disposable;
   setTimer(callback: () => void, delayMilliseconds: number): unknown;
   clearTimer(timer: unknown): void;
   yield(): Promise<void>;
@@ -60,8 +52,10 @@ export type WorkspaceDiagnosticOptions = Readonly<{
   debounceMilliseconds?: number;
   discoveryDebounceMilliseconds?: number;
   readConcurrency?: number;
-  produce?: (input: DocumentDiagnosticInput) => readonly DocumentDiagnosticSpec[];
+  produce?: typeof produce_document_diagnostics;
 }>;
+
+type EventDiagnostics = EventBodyCache<readonly DocumentDiagnosticSpec[]>;
 
 function tsCandidate(text: string): boolean {
   return text.includes("Hson") || text.includes("fromHson") || text.includes(HSON_EXPECT_ERROR_MARKER);
@@ -82,7 +76,7 @@ export function start_workspace_diagnostics(
   // the applicable dependency state.
   const fingerprints = new Map<string, string | null>();
   const timers = new Map<string, unknown>();
-  const pendingOpenExpectations = new Set<string>();
+  const eventBodies = new Map<string, EventDiagnostics>();
   let discoveryTimer: unknown | undefined;
   let discoveryGeneration = 0;
   let changedUris: Set<string> | undefined; // undefined requests a full project discovery.
@@ -101,25 +95,25 @@ export function start_workspace_diagnostics(
     if (timer !== undefined) host.clearTimer(timer);
     timers.delete(uri);
   };
-  const publish = (document: DiagnosticDocument, generation: number, applicable = () => true): void => {
+  const publish = (document: DiagnosticDocument, generation: number, applicable = () => true,
+    closingCache?: EventDiagnostics,
+  ): void => {
     const currentGeneration = () => !disposed && generations.get(document.uri) === generation && applicable();
     if (!currentGeneration()) return;
     const current = open(document.uri);
     if (current !== undefined && current.version !== document.version) return;
     try {
-      const imports = host.eventImports?.(document.fileName, document.text);
-      const waiting = imports !== undefined && !imports.size
-        && (projectPending() || sources.get(document.uri)?.eventEvidencePending === true);
-      const eventImports = waiting ? null : imports;
-      const specs = document.languageId !== "hson" && !eventImports?.size && !tsCandidate(document.text) ? [] : produce({
-        ...document, eventImports,
-      });
+      const candidate = document.languageId !== "hson" && tsCandidate(document.text);
+      if (!candidate) eventBodies.delete(document.uri);
+      let cache = eventBodies.get(document.uri) ?? closingCache;
+      if (candidate && current !== undefined && cache === undefined && is_supported_document(document)) {
+        eventBodies.set(document.uri, cache = new EventBodyCache());
+      }
+      const specs = candidate || document.languageId === "hson" ? produce(document, cache) : [];
       if (!currentGeneration()) return;
       const after = open(document.uri);
       if (after !== undefined && after.version !== document.version) return;
       fingerprints.set(document.uri, `${document.languageId}\0${document.authoringMode ?? ''}\0${document.text}`);
-      if (current !== undefined && waiting && document.text.includes(HSON_EXPECT_ERROR_MARKER)) pendingOpenExpectations.add(document.uri);
-      else pendingOpenExpectations.delete(document.uri);
       publisher.set(document, specs);
     } catch (error) {
       if (!currentGeneration()) return;
@@ -130,7 +124,7 @@ export function start_workspace_diagnostics(
   const analyzeOpen = (document: DiagnosticDocument): void => {
     cancel(document.uri);
     const generation = advance(document.uri);
-    if (!is_supported_document(document)) { publisher.delete(document.uri); return; }
+    if (!is_supported_document(document)) { eventBodies.delete(document.uri); publisher.delete(document.uri); return; }
     publish(Object.freeze({ ...document }), generation);
   };
   const scheduleOpen = (document: DiagnosticDocument): void => {
@@ -143,7 +137,7 @@ export function start_workspace_diagnostics(
     }, debounce);
     timers.set(document.uri, timer);
   };
-  const analyzeDisk = async (source: WorkspaceDiagnosticSource, force = false): Promise<void> => {
+  const analyzeDisk = async (source: WorkspaceDiagnosticSource, force = false, closingCache?: EventDiagnostics): Promise<void> => {
     if (disposed || open(source.uri) !== undefined || sources.get(source.uri) !== source) return;
     const generation = advance(source.uri);
     const currentRead = () =>
@@ -156,12 +150,11 @@ export function start_workspace_diagnostics(
     if (!projectReady()) return;
     try {
       const text = await host.readSource(source);
-      // A read can serve an equivalent source after rediscovery. Its Event
-      // analysis can begin only with the currently accepted project evidence.
+      // A read can finish after rediscovery changes the file's membership.
       if (!currentRead() || !projectReady()) return;
       const fingerprint = `${source.languageId}\0${source.authoringMode ?? ''}\0${text}`;
       if (!force && fingerprints.get(source.uri) === fingerprint) return;
-      publish(Object.freeze({ ...source, version: -generation, text }), generation, projectReady);
+      publish(Object.freeze({ ...source, version: -generation, text }), generation, projectReady, closingCache);
     } catch (error) {
       if (!currentRead() || !projectReady()) return;
       publisher.delete(source.uri);
@@ -181,37 +174,18 @@ export function start_workspace_diagnostics(
     });
     await Promise.all(workers);
   };
-  const invalidateSources = (affected: readonly string[]): void => {
-    for (const uri of affected) {
-      const opened = open(uri);
-      if (opened !== undefined) analyzeOpen(opened);
-      else {
-        fingerprints.set(uri, null);
-        publisher.delete(uri);
-      }
-    }
-  };
   const refresh = async (): Promise<void> => {
     if (disposed) return;
-    let generation = ++discoveryGeneration;
+    const generation = ++discoveryGeneration;
     try {
       const isCurrent = () => !disposed && discoveryGeneration === generation;
-      const withdrawEventSources = (update: (revision: number) => readonly string[]): void => {
-        if (!isCurrent()) return;
-        const affected = update(generation);
-        if (affected.length === 0) return;
-        // The receiver must also be able to accept this discovery's final
-        // configuration after the interim withdrawal.
-        generation = ++discoveryGeneration;
-        invalidateSources(affected);
-      };
       const request = { typescript: projectPending(), standalone: scanStandalone,
-        changedUris: changedUris === undefined ? undefined : [...changedUris], isCurrent, withdrawEventSources };
+        changedUris: changedUris === undefined ? undefined : [...changedUris], isCurrent };
       const { sources: discovered, accept } = await host.discoverSources(request);
       if (!isCurrent()) return;
       changedUris = new Set();
       scanStandalone = false;
-      const proofChanged = new Set(request.typescript ? accept?.(generation) ?? [] : []);
+      if (request.typescript) accept?.();
       const next = new Map(discovered.map(source => [source.uri, source]));
       for (const [uri, source] of sources) {
         const searched = source.languageId === "hson" ? request.standalone : request.typescript;
@@ -219,50 +193,32 @@ export function start_workspace_diagnostics(
         sources.delete(uri); fingerprints.delete(uri);
         const opened = open(uri);
         if (opened === undefined) { cancel(uri); advance(uri); publisher.delete(uri); }
-        else if (source.eventEvidence !== undefined) analyzeOpen(opened);
       }
       const added: WorkspaceDiagnosticSource[] = [];
       for (const source of discovered) {
         const prior = sources.get(source.uri);
-        const evidenceChanged = prior?.eventEvidencePending !== source.eventEvidencePending
-          || prior?.eventEvidence?.textHash !== source.eventEvidence?.textHash
-          || prior?.eventEvidence?.importOffsets.join(",") !== source.eventEvidence?.importOffsets.join(",");
-        if (!evidenceChanged && prior?.fileName === source.fileName
-          && prior.languageId === source.languageId && prior.authoringMode === source.authoringMode) {
-          const opened = open(source.uri);
-          if (opened !== undefined && proofChanged.has(source.uri)) analyzeOpen(opened);
-          else if (fingerprints.get(source.uri) === null && opened === undefined) added.push(prior);
+        if (prior?.fileName === source.fileName && prior.languageId === source.languageId
+          && prior.authoringMode === source.authoringMode) {
+          if (fingerprints.get(source.uri) === null && open(source.uri) === undefined) added.push(prior);
           continue;
         }
         sources.set(source.uri, source);
         fingerprints.delete(source.uri);
-        const opened = source.languageId === "hson" ? undefined : open(source.uri);
-        if (opened === undefined) added.push(source);
-        else if (evidenceChanged || proofChanged.has(source.uri)) analyzeOpen(opened);
-      }
-      // Settled negative discoveries can leave both the source metadata and
-      // the positive import set unchanged. Revisit their deferred expectations.
-      if (request.typescript) for (const uri of pendingOpenExpectations) {
-        const opened = open(uri);
-        if (opened !== undefined && !sources.get(uri)?.eventEvidencePending) analyzeOpen(opened);
+        if (open(source.uri) === undefined) added.push(source);
       }
       await analyzeBatch(added);
     } catch (error) {
       if (!disposed && discoveryGeneration === generation) host.reportUnexpected(error);
     }
   };
-  const scheduleRefresh = (scope: WorkspaceDiscoveryScope = "projects", change?: WorkspaceSourceChange,
-    projects?: readonly string[]): void => {
+  const scheduleRefresh = (scope: WorkspaceDiscoveryScope = "projects", change?: WorkspaceSourceChange): void => {
     // Invalidate pending discovery immediately, including during the debounce window.
     discoveryGeneration += 1;
     if (scope !== "projects") scanStandalone = true;
     if (scope !== "standalone") {
-      // Topology notifications require a full scan. The sender still needs the
-      // path and the notification kind to decide which proof to withdraw.
+      // A new or removed file can change project membership.
       if (change === undefined || change.affectsTypeScriptProjects && change.kind !== "change") changedUris = undefined;
       else changedUris?.add(change.uri);
-      const affected = change?.observationOnly ? [] : host.invalidateProjects?.(discoveryGeneration, change, projects) ?? [];
-      invalidateSources(affected);
     }
     if (discoveryTimer !== undefined) host.clearTimer(discoveryTimer);
     discoveryTimer = host.setTimer(() => { discoveryTimer = undefined; void refresh(); }, discoveryDebounce);
@@ -273,10 +229,11 @@ export function start_workspace_diagnostics(
     host.onDidChange(scheduleOpen),
     host.onDidClose(document => {
       cancel(document.uri); advance(document.uri); fingerprints.delete(document.uri);
-      pendingOpenExpectations.delete(document.uri);
+      const cache = eventBodies.get(document.uri);
+      eventBodies.delete(document.uri);
       const source = sources.get(document.uri);
       if (source === undefined) publisher.delete(document.uri);
-      else void analyzeDisk(source, true);
+      else void analyzeDisk(source, true, cache);
     }),
     host.onDidChangeSources(changes => {
       for (const change of changes) {
@@ -298,7 +255,7 @@ export function start_workspace_diagnostics(
         if (source !== undefined && open(change.uri) === undefined) void analyzeDisk(source, true);
       }
     }),
-    host.onDidChangeProjects((scope, projects) => scheduleRefresh(scope, undefined, projects)),
+    host.onDidChangeProjects(scope => scheduleRefresh(scope)),
   ];
   for (const document of host.openDocuments()) analyzeOpen(document);
   void refresh();
@@ -307,6 +264,7 @@ export function start_workspace_diagnostics(
     if (disposed) return;
     disposed = true;
     for (const subscription of subscriptions) subscription.dispose();
+    eventBodies.clear();
     for (const uri of timers.keys()) cancel(uri);
     if (discoveryTimer !== undefined) host.clearTimer(discoveryTimer);
     for (const uri of sources.keys()) advance(uri);

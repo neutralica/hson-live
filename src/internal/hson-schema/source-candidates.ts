@@ -4,11 +4,12 @@ import { admit_data_source } from "../../core/data-source-admission.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { assert_canonical_hson_data_value } from "../../core/projected-value-graph.js";
 import type ts from "typescript";
-import { selected_hson_value_declaration, hson_authoring_tag, hson_source_syntactic_eligibility, is_hson_typescript_source_file, is_official_hson_event_binding, is_official_hson_package_binding, type HsonEventImportEvidence } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { selected_hson_value_declaration, hson_authoring_tag, hson_source_syntactic_eligibility, is_hson_typescript_source_file, is_official_hson_event_binding, is_official_hson_package_binding } from "../embedded-hson/discover-hson-tagged-templates.js";
 import type { StaticSchemaCandidate } from "./candidate-evaluation.js";
 import { is_object_literal_prototype_setter, library_source_fields } from "./library-source.js";
 import { immutable_source_declaration, is_source_undefined, source_expression_operand, source_value_symbol } from "./schema-identity.js";
 import { admit_hson_tagged_source, admit_hson_tagged_template, hson_tagged_source } from "../embedded-hson/hson-tagged-source-admission.js";
+import { static_event_parser } from "./static-event-parser.js";
 import { raw_hson_template_literal } from "../trusted-schema-diagnostics/interpolation-source.js";
 
 export type StaticSourceCandidate = StaticSchemaCandidate & Readonly<{ node: ts.Expression; bodyStart?: number; bodyOffsets?: readonly number[] }>;
@@ -73,7 +74,7 @@ export function is_event_const_declaration(typescript: typeof ts, declaration: t
 
 /** Bounded source alternatives shared by Schema preflight and Part source evidence. */
 export function static_source_candidates(typescript: typeof ts, checker: ts.TypeChecker, program?: ts.Program,
-  eventImports?: HsonEventImportEvidence,
+  parseEvent = static_event_parser(),
 ) {
   const eligible = hson_source_syntactic_eligibility(typescript, program);
   const workEligibility = new WeakMap<PartOwnershipWork, typeof eligible>();
@@ -410,11 +411,7 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
   const officialEvent = (receiver: ts.Identifier, purpose: "collection" | "attachment", work?: PartOwnershipWork): boolean => {
     const file = receiver.getSourceFile();
     if (program === undefined || !is_hson_typescript_source_file(file.fileName) || program.isSourceFileFromExternalLibrary(file)) return false;
-    if (!is_official_hson_event_binding(typescript, receiver, program, eligibility(work), purpose === "collection" ? "named" : "package")) return false;
-    if (purpose === "collection" || eventImports === undefined) return true;
-    const declaration = selected_hson_value_declaration(typescript, checker, checker.getSymbolAtLocation(receiver));
-    return declaration !== undefined && typescript.isImportSpecifier(declaration)
-      && eventImports(file.fileName, file.text).has(declaration.name.getStart(file));
+    return is_official_hson_event_binding(typescript, receiver, program, eligibility(work), purpose === "collection" ? "named" : "package");
   };
   const eventSource = (node: ts.Expression, purpose: "collection" | "attachment", work?: PartOwnershipWork) => {
     // Only the actual tagged producer must have an immediate syntax owner.
@@ -452,7 +449,7 @@ export function static_source_candidates(typescript: typeof ts, checker: ts.Type
     const fields = ownFields(node, work, depth);
     return fields === undefined ? { completeness: "partial" } as const : { completeness: "complete", fields, work, depth } as const;
   };
-  return { declaration, declarationSource, unwrap, eligible, eligibility, inspectExpression, alternatives, candidates, eventSource, partStyleLiteral,
+  return { declaration, declarationSource, unwrap, eligible, eligibility, inspectExpression, alternatives, candidates, eventSource, parseEvent, partStyleLiteral,
     libraryFields, libraryInventory,
     projectablePrototype: (node: ts.ObjectLiteralExpression, work?: PartOwnershipWork, depth = 0) =>
       projectable_prototype(node, typescript, eligibility(work), work, depth),

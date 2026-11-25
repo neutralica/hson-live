@@ -451,6 +451,58 @@ for (const [text, scope] of [['tag', 'entity.name.type.hson'], ['hson:part', 'ke
 // or a theme's explicit semantic-token rules.
 if (process.env.HSON_VSCODE_THEMES) {
   const { resolve, dirname } = await import('node:path');
+  const hostGrammars = new Map([["source.ts", "TypeScript"], ["source.tsx", "TypeScriptReact"]]);
+  const eventInjections = new Map([
+    ["source.ts", ["hson.event.injection", "typescript-hson-event"]],
+    ["source.tsx", ["hson.event.injection.tsx", "typescriptreact-hson-event"]],
+  ]);
+  const hostRegistry = new Registry({
+    onigLib: Promise.resolve({ createOnigScanner: p => new OnigScanner(p), createOnigString: s => new OnigString(s) }),
+    getInjections: scope => eventInjections.has(scope) ? [eventInjections.get(scope)[0]] : [],
+    loadGrammar: async scope => {
+      const grammar = hostGrammars.get(scope);
+      const injection = [...eventInjections.values()].find(([name]) => name === scope);
+      const path = grammar
+        ? resolve(process.env.HSON_VSCODE_THEMES, "../../typescript-basics/syntaxes", grammar + ".tmLanguage.json")
+        : injection ? new URL("../syntaxes/" + injection[1] + ".tmLanguage.json", import.meta.url) : undefined;
+      return path && parseRawGrammar(await readFile(path, "utf8"), scope + ".json");
+    },
+  });
+  for (const scope of hostGrammars.keys()) {
+    const host = await hostRegistry.loadGrammar(scope);
+    const tokenize = source => {
+      let stack = INITIAL;
+      return source.split('\n').flatMap((line, index) => {
+        const result = host.tokenizeLine(line, stack);
+        stack = result.ruleStack;
+        return result.tokens.map(token => ({ line: index, text: line.slice(token.startIndex, token.endIndex), scopes: token.scopes }));
+      });
+    };
+    const body = 'Hson.event`<hson:event on:click local:move ${({ value: `js${x}` }).value} <> >`';
+    const split = body.replace('event`', 'event   \n\n  `');
+    for (const tag of [body, split]) {
+      const tokens = tokenize('const event = ' + tag + '; const after = 1;');
+      assert.ok(has(tokens, 'hson:event', 'keyword.declaration.part.hson'), scope);
+      assert.ok(has(tokens, 'click', 'entity.name.type.hson'), scope);
+      assert.ok(has(tokens, 'move', 'meta.part.selector.member.hson'), scope);
+      assert.ok(tokens.some(token => token.text === 'value' && token.scopes.some(name => name.startsWith('meta.template.expression.'))), scope);
+      assert.ok(!tokens.find(token => token.text === 'after').scopes.includes('meta.tagged-template.event.hson'), scope);
+    }
+    const noInjection = source => !hasScope(tokenize(source), 'meta.tagged-template.event.hson');
+    assert.ok(noInjection('// ' + body));
+    assert.ok(noInjection('const other = "Hson.event`<hson:event";'));
+    assert.ok(noInjection('const other = wrapper.' + body));
+    assert.ok(noInjection('const other = wrapper. // keep the comment\n' + split));
+    assert.ok(noInjection('const other = Hson.event\n  + String.raw`<hson:event>`;'));
+    const chained = tokenize(body + '`<hson:event>`;');
+    assert.equal(chained.filter(token => token.scopes.includes('keyword.declaration.part.hson')).length, 1, scope);
+    if (scope === 'source.tsx') {
+      assert.ok(noInjection('const jsx = <div>Hson.event`plain`</div>;'));
+      assert.ok(has(tokenize('const jsx = <div>{' + body + '}</div>;'), 'hson:event', 'keyword.declaration.part.hson'));
+    }
+  }
+  console.log("ok - direct Event fallback reuses real TS and TSX interpolation boundaries");
+
   const { parseConfigFileTextToJson } = require('typescript');
   async function readTheme(file) {
     const parsed = parseConfigFileTextToJson(file, await readFile(file, 'utf8'));

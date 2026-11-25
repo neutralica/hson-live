@@ -10,9 +10,10 @@ import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedd
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
 import { raw_hson_template_literal } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
+import { EventBodyCache, type ReuseEventBody } from "./event-body-cache.js";
 import { event_token_type, hsonTypeForScope, hsonModifiersForScopes, type HsonTokenType } from "./appearance-internals.js";
 
-import { overlay_binding_highlights } from "./binding-intelligence.js";
+import { binding_highlights, overlay_binding_highlights, type BindingSnapshot } from "./binding-intelligence.js";
 
 export { hsonTokenScopes } from "./appearance-internals.js";
 export type HsonHighlight = Readonly<{ range: HostSourceRange; type: HsonTokenType; scannerName?: true; scopes: readonly string[]; modifiers: readonly string[] }>;
@@ -74,8 +75,42 @@ export function hson_literal_highlights(grammar: IGrammar, text: string, refineC
     ? {...token, type:'hsonType', scannerName:true, scopes:['source.hson','entity.name.type.hson'], modifiers:[]} : token);
 }
 
+const embeddedHighlights = new WeakMap<BindingSnapshot, { grammar: IGrammar; tokens: readonly HsonHighlight[] }>();
+
+export function embedded_binding_highlights(grammar: IGrammar, snapshot: BindingSnapshot): readonly HsonHighlight[] {
+  const cached = embeddedHighlights.get(snapshot);
+  if (cached?.grammar === grammar) return cached.tokens;
+  const { fileName, text } = snapshot.document;
+  const tokens = overlay_binding_highlights(hson_highlights(grammar, fileName, text, snapshot), binding_highlights(snapshot));
+  embeddedHighlights.set(snapshot, { grammar, tokens });
+  return tokens;
+}
+
+function event_highlights(grammar: IGrammar, body: string, prefixLength: number): readonly HsonHighlight[] {
+  const prefix = raw_hson_template_literal(body, { start: 0, end: prefixLength });
+  const overlay: HsonHighlight[] = (authored_event_completion_checkpoint(prefix.raw)?.spans ?? []).flatMap(({ role, start, end }) => {
+    const type = event_token_type(role);
+    const a = prefix.boundaries[start], b = prefix.boundaries[end];
+    if (type === undefined || a === undefined || b === undefined) return [];
+    return [...physical_line_ranges(body, { start: a, end: b })].map(range => ({ range, type, scopes: [], modifiers: [] }));
+  });
+  return overlay_binding_highlights(hson_literal_highlights(grammar, body, false), overlay);
+}
+
+type HighlightDiscovery = Pick<BindingSnapshot, "tags" | "calls" | "eventHighlights">;
+
 export function hson_highlights(grammar: IGrammar, fileName: string, text: string,
-  discovery?: Readonly<{ tags?: ReturnType<typeof discover_hson_tagged_templates>; calls?: ReturnType<typeof discover_static_from_hson_sources> }>): readonly HsonHighlight[] {
+  discovery?: HighlightDiscovery): readonly HsonHighlight[] {
+  const caches = discovery?.eventHighlights;
+  if (caches === undefined) return scan_highlights(grammar, fileName, text, discovery);
+  let cache = caches.get(grammar);
+  if (cache === undefined) caches.set(grammar, cache = new EventBodyCache());
+  return cache.scan(reuse => scan_highlights(grammar, fileName, text, discovery, reuse));
+}
+
+function scan_highlights(grammar: IGrammar, fileName: string, text: string,
+  discovery?: HighlightDiscovery, reuseEvent?: ReuseEventBody<readonly HsonHighlight[]>,
+): readonly HsonHighlight[] {
   const tags = discovery?.tags ?? discover_hson_tagged_templates(fileName, text);
   const calls = discovery?.calls ?? discover_static_from_hson_sources(fileName, text);
   const result: HsonHighlight[] = [];
@@ -83,9 +118,10 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
   const interpolated = tags.interpolated.map(source => ({ source, holes: source.substitutionRanges }));
   const islands = [...tags.sources.map(source => ({ source, holes: noHoles })),
     ...interpolated,
-    ...tags.incompleteEvents.map(source => ({ source, holes: "substitutionRanges" in source ? source.substitutionRanges : noHoles })),
+    ...tags.incompleteEvents.map(source => ({ source, incomplete: true, holes: "substitutionRanges" in source ? source.substitutionRanges : noHoles })),
     ...calls.interpolated.map(source => ({ source, holes: source.substitutionRanges }))];
-  for (const { source, holes } of islands) {
+  for (const island of islands) {
+    const { source, holes } = island;
     // Omit expressions from grammar input and output, retaining UTF-16 offsets.
     // Hole newlines are JavaScript trivia, not Hson string boundaries. Mask them
     // too so TextMate sees the literal segments in their original Hson context.
@@ -104,20 +140,15 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     }
     body += text.slice(offset, source.bodyRange.end);
     const event = "authoringKind" in source && source.authoringKind === "event";
-    const lexical = hson_literal_highlights(grammar, body, !event);
-    // An Event cannot bridge a JS substitution. The overlay observes only the
-    // genuine prefix and leaves recovery beyond the hole to lexical fallback.
-    const eventPrefix = event ? raw_hson_template_literal(text, {
-      start: source.bodyRange.start, end: holes[0]?.start ?? source.bodyRange.end,
-    }) : undefined;
-    const overlay: HsonHighlight[] = eventPrefix === undefined ? [] : (authored_event_completion_checkpoint(eventPrefix.raw)?.spans ?? []).flatMap(({ role, start, end }) => {
-      const type = event_token_type(role);
-      const a = eventPrefix.boundaries[start], b = eventPrefix.boundaries[end];
-      if (type === undefined || a === undefined || b === undefined) return [];
-      return [...physical_line_ranges(body, { start: a - source.bodyRange.start, end: b - source.bodyRange.start })]
-        .map(range => ({ range, type, scopes: [], modifiers: [] }));
-    });
-    for (const token of overlay_binding_highlights(lexical, overlay)) {
+    // The observer stops at the first real JS hole. The lexical fallback can
+    // still color subsequent literal portions, with all holes omitted from output.
+    const prefixLength = (holes[0]?.start ?? source.bodyRange.end) - source.bodyRange.start;
+    const tokens = !event ? hson_literal_highlights(grammar, body) : reuseEvent === undefined
+      ? event_highlights(grammar, body, prefixLength)
+      : reuseEvent(JSON.stringify(["incomplete" in island, holes.map(hole => [
+        hole.start - source.bodyRange.start, hole.end - source.bodyRange.start,
+      ]), body]), () => event_highlights(grammar, body, prefixLength));
+    for (const token of tokens) {
       let start = source.bodyRange.start + token.range.start;
       const end = source.bodyRange.start + token.range.end;
       // A grammar token may span a masked hole; publish only literal pieces.

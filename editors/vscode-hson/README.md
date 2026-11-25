@@ -3,13 +3,14 @@
 Hson Language adds Hson authoring, Schema tooling, and local Hson application support to VS Code.
 
 - syntax highlighting, definitions, completion, and contextual diagnostics for `.hson` files and semantic `Hson.canonical`, `Hson.data`, `Hson.document`, and `Hson.schema` tags;
-- context-sensitive angle auto-close, newline indentation, and whitespace-only formatting for recognized semantic Hson templates and Markdown `hson` fences;
+- context-sensitive angle auto-close, newline indentation, and whitespace-only formatting for recognized Hson templates and Markdown `hson` fences;
+- local `Hson.event` syntax highlighting, diagnostics, completion, and contextual Action argument checks;
 - Schema-aware editing, including semantic references and path-backed completion;
 - generated TypeScript types from Hson Schema declarations;
 - Schema check/watch workflows for editor and CI use;
 - a local application runner using the workspace's own Node and `hson-live`.
 
-Highlighting and diagnostics use TypeScript binding identity for official `hson-live` imports, including renamed imports. Hson authored through semantic Hson tags and supported literal `fromHson(...)` inputs receives the same grammar-aware presentation.
+Non-Event semantic Hson tags and supported literal `fromHson(...)` inputs use TypeScript binding information, including for renamed imports. Direct `Hson.event` syntax also receives local highlighting, editing, and diagnostics.
 
 ## Structural editing
 
@@ -18,6 +19,31 @@ Inside binding-recognized semantic Hson templates, typing `<` inserts `>` or `/>
 Use **Hson: Format Document** to run the normal host formatter and then format recognized Hson regions, or **Hson: Format Selection** for selected regions. Markdown Format Document/Selection also formats canonical `hson` fences directly. Formatting adjusts indentation, normalizes horizontal trivia between Hson tokens, and places the first member of an already-multiline data object below its opening `<`. It preserves token contents and authored blank lines; it does not serialize, reorder, or generally reflow authored Hson.
 
 `fromHson(...)` literals remain highlighting and diagnostic surfaces only. Structural editing and formatting do not activate there.
+
+### Formatting on save
+
+`hson.formatting.formatOnSave` defaults to on and formats recognized Hson regions when you explicitly Save or Save All, including with Cmd+S on macOS. Auto-save can refresh diagnostics without applying Hson formatting. VS Code’s `editor.formatOnSave` independently controls the configured formatter for the host language. Use **Hson: Format Document** or **Hson: Format Selection** to invoke the host formatter and apply Hson formatting to the relevant regions.
+
+## Event authoring
+
+Use a direct `Hson.event` tagged template in TypeScript. The extension highlights Event syntax as you type, reports local syntax errors, and provides structural indentation and completion for Event selectors and arguments.
+
+```ts
+import { Hson } from "hson-live";
+
+const advance = Hson.event`
+  <hson:event on:click host:deck.advance
+    step:num="1"
+    <>
+  >
+`;
+```
+
+Attach an Event in a Document Library’s `events` metadata, or declare it in a Part’s `events` map and place the matching `event:name` marker on an element in the Part. Use `host:actionName` to refer to an Action in the host domain and `local:actionName` for the local domain.
+
+The editor uses the attachment’s owner and domain to find the applicable Action. A known contract can diagnose missing required input or fields, and arguments that definitely violate its Schema. When a Part invocation omits an optional input, a dependent Event field can be omitted during composition. A supplied Data `null` stays in the payload and is checked as a value. If the registry is open or the applicable contract is unavailable, the editor reports only what the available source can establish. Runtime Action validation remains authoritative.
+
+Direct Event syntax is recognized from the current file. TypeScript can identify supported named Hson imports, including renamed ones, and supply context for attachment and Action checks. Recognizing the tag carries no guarantee about package origin, module resolution, or runtime registration.
 
 ## Schema authoring
 

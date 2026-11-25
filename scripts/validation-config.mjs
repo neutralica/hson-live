@@ -207,7 +207,7 @@ export function gateCommands(scripts, mode) {
     && !ordinary.includes(name) && !extended.includes(name));
   if (mode === "check") return [...ordinary];
   if (mode === "commit") return [...commit];
-  if (mode === "full") return [...ordinary, "hson-schema:check", "measure:echo-browser-packaging", ...additional];
+  if (mode === "full") return [...ordinary, "hson-schema:check", "measure:echo-browser-packaging", "vscode:package", ...additional];
   if (mode === "extended") return [...extended];
   throw new Error(`Unknown validation gate: ${mode}`);
 }
@@ -254,7 +254,7 @@ export const declaredExecution = Object.freeze({
     withLaunch: [appearanceLauncher[0], ""],
   },
   "editors/vscode-hson/tests/appearance.test.ts": {
-    sha256: "8af0435cf26a590e292897caea340dcc6528f702cab37644d2581a03a1d07f2c",
+    sha256: "f48062b0611fd1500c575b5a57617e810dc1bdb949d13e108004355036bc09f9",
     route: "The Node appearance bundle installs a vscode module stub, then imports and awaits checkAppearanceTransitions before restoring the module loader.",
     targets: [[appearanceTransitions, "dynamic-import"]], sources: [...editorSources],
     providedRequirement: "vscode",
@@ -275,7 +275,7 @@ export const declaredExecution = Object.freeze({
     targets: [["tests/fixtures/css-selector-browser-cases.mts", "browser-runner"], ["tests/fixtures/universal-css-map-browser-cases.mts", "browser-runner"], ["tests/fixtures/document-css-reconciliation-browser-cases.mts", "browser-runner"]], sources: [] },
   "tests/hosted-css-authority-repairs.acceptance.mts": { sha256: "06b6e6ad42ab25f47dd2a3a67610056143e39032af6a4e69f3811d2b7709187e", route: workerRoute,
     targets: [["tests/fixtures/hosted-css-authority-repairs.worker.mts", "worker-launch"]], sources: [...workerSources] },
-  "editors/vscode-hson/tests/integration/run-baseline.mjs": { sha256: "ede99b24f5f42b7d1500202fe34c57ed4d0b54524be2c831d68333e3a5020c67", route: "Both awaited VS Code profiles launch the build-tests baseline.ts bundle through the default extensionTestsPath. The development run gates project replies in a disposable copy of the compiled extension. The installed variant first installs the VSIX and uses a separate development driver. Explicit test-path overrides select an alternate run.",
+  "editors/vscode-hson/tests/integration/run-baseline.mjs": { sha256: "acaeb7f3ebd1eb5a7f4cc94791e6ec8862d2fae45eef016b7f91e8d08305b6e5", route: "Both awaited VS Code profiles launch the build-tests baseline.ts bundle through the default extensionTestsPath. The development run loads the compiled extension in isolated profiles. The installed variant first installs the VSIX and uses a separate development driver. Explicit test-path overrides select an alternate run.",
     targets: [["editors/vscode-hson/tests/integration/baseline.ts","editor-runner"]], sources: [...editorSources] },
   "editors/vscode-hson/tests/integration/run-consumer.mjs": { sha256: "3eada0ee871639be6f3d35b624a627eccac8426ec7a5f0dbceca584ccd70c403", route: editorRoute,
     targets: [["editors/vscode-hson/tests/integration/suite.ts","editor-runner"]], sources: [...editorSources] },

@@ -568,6 +568,128 @@ async function runPartCompletions(workspace: string): Promise<void> {
   process.stdout.write("ok - real VS Code Part completion applies exact edits in four contexts and refreshes unsaved imported Parts\n");
 }
 
+async function runEventActionContracts(workspace: string): Promise<void> {
+  const root = vscode.Uri.file(join(workspace, "attached-actions"));
+  const uri = (name: string) => vscode.Uri.joinPath(root, name);
+  const write = (name: string, text: string) => vscode.workspace.fs.writeFile(uri(name), Buffer.from(text));
+  await vscode.workspace.fs.createDirectory(root);
+  await write("package.json", '{"type":"module"}');
+  await write("tsconfig.json", '{"compilerOptions":{"target":"ES2022","module":"NodeNext","strict":true,"types":[]},"include":["*.ts"]}');
+  const schema = (type: string, after = "") =>
+    'import { Hson } from "hson-live"; export const Args = Hson.schema`<type "data" root <object <a "' + type + '" note "string"' + after + '>>>`;';
+  await write("args.ts", schema("string"));
+  const schemaEditor = await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri("args.ts")));
+  const edit = async (editor: vscode.TextEditor, text: string) => {
+    const document = editor.document;
+    assert.ok(await editor.edit(change => change.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text)));
+  };
+  const attachment = (domain: "host" | "local", args: string, key = "run", input?: string) => [
+    'import { Hson, hsonLiveMap as maps } from "hson-live";',
+    'import { Args } from "./args.js";',
+    'const owner = ' + (domain === "host" ? 'maps.locus.create' : 'maps.fromLibraries') + '({ cards: { parts: { button: {',
+    '  kind: "document", document: Hson.document`<button hson:part'
+      + (input === undefined ? '' : ' str:label=%{label?}') + ' event:go/>`, events: {',
+    '    go: Hson.event`<hson:event on:click ' + domain + ':' + key,
+    '      ' + args + ' <>>` }',
+    input === undefined ? '} } } });' : '} } }, page: { document: Hson.document`<main <hson-part at=cards/button'
+      + input + '/>/>` } });',
+    'owner.actions.define("run", () => {}, {args:{required:true,schema:Args}});',
+  ].join("\r\n");
+  for (const domain of ["host", "local"] as const) {
+    const invalid = attachment(domain, 'note:str="🧪" a:num="12"');
+    const name = domain + ".ts";
+    await write(name, invalid);
+    const document = await vscode.workspace.openTextDocument(uri(name));
+    const editor = await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+    const issues = () => vscode.languages.getDiagnostics(document.uri).filter(issue => issue.source === "hson-schema");
+    await waitFor(() => issues().some(issue => /do not match its Schema/.test(issue.message)), domain + " invalid Action argument");
+    assert.deepEqual(issues().map(issue => document.getText(issue.range)), ['a:num="12"']);
+    assert.deepEqual(issues()[0]?.relatedInformation?.map(info => document.getText(info.location.range)), ['Args', 'event:go']);
+    const version = document.version;
+    const schemaColumn = schemaEditor.viewColumn;
+    const schemaTab = async () => vscode.window.showTextDocument(schemaEditor.document, { viewColumn: schemaColumn, preview: false });
+    await edit(await schemaTab(), schema("number"));
+    await waitFor(() => issues().length === 0, domain + " stale number mismatch after Schema edit");
+    assert.equal(document.version, version);
+    await edit(await schemaTab(), schema("number", ' next "number"'));
+    await waitFor(() => issues().some(issue => issue.message.includes('requires argument "next"')), domain + " missing field after Schema edit");
+    await edit(await schemaTab(), schema("string"));
+    await edit(await schemaTab(), schema("number"));
+    await waitFor(() => issues().length === 0, domain + " stale result after rapid Schema edits");
+    const current = await vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn, preview: false });
+    await edit(current, attachment(domain, ""));
+    await waitFor(() => issues().some(issue => issue.message.includes("requires arguments")), domain + " required Action input");
+    await edit(current, attachment(domain, "", "undeclared"));
+    await waitFor(() => issues().length === 0, domain + " open registry remained neutral");
+    await edit(await schemaTab(), schema("string"));
+    console.log("ok - " + domain + " Action ranges, required input, open registry, and Schema-driven replacement and withdrawal");
+    const extra = 'extra:str="Label: ^{label}"';
+    const fields = 'a:str="ok" note:str="control" ' + extra;
+    const eventTab = () => vscode.window.showTextDocument(document, { viewColumn: editor.viewColumn, preview: false });
+    await edit(await eventTab(), attachment(domain, fields, "run", ' label:str=""'));
+    await waitFor(() => issues().some(issue => issue.message.includes("unknown key at extra")), domain + " present extra field in a closed Schema");
+    assert.deepEqual(issues().map(issue => document.getText(issue.range)), [extra]);
+    const suppliedVersion = document.version;
+    await edit(await schemaTab(), schema("string", ' extra <optional "number">'));
+    await waitFor(() => issues().some(issue => issue.message.includes("supplies a value of type string")), domain + " present extra field with wrong type");
+    assert.equal(document.version, suppliedVersion);
+    await edit(await eventTab(), attachment(domain, fields, "run", ""));
+    await waitFor(() => issues().length === 0, domain + " omitted optional input must withdraw the field error");
+    const omittedVersion = document.version;
+    await edit(await schemaTab(), schema("string", ' extra "string"'));
+    await waitFor(() => issues().some(issue => issue.message.includes('requires argument "extra"')), domain + " proven omitted field now required");
+    assert.equal(document.version, omittedVersion);
+    await edit(await schemaTab(), schema("string"));
+    await waitFor(() => issues().length === 0, domain + " a closed Schema accepts the payload with the field omitted");
+    console.log("ok - " + domain + " Action distinguishes an omitted interpolation from a supplied empty string");
+  }
+
+  const member = (name: string, receiver: string) => name + ':{kind:"document",document:Hson.document`<button hson:part '
+    + receiver + ' event:' + name + '/>`,events:{' + name + ':shared}}';
+  const invoke = (name: string, input = "") => '<hson-part at=cards/' + name + input + '/>';
+  const reused = (shape: string, operand: string, parts: readonly string[], calls: string) => [
+    'import { Hson, hsonLiveMap } from "hson-live"; declare const unknownValue: string;',
+    'const Args = Hson.schema`<type "data" root <object <a "string" probe "boolean"' + shape + '>>>`;',
+    'const shared = Hson.event`<hson:event on:click local:save a:str="ok" ' + operand + ' <>>`;',
+    'const owner = hsonLiveMap.fromLibraries({cards:{parts:{' + parts.join(",") + '}},page:{document:Hson.document`<main ' + calls + '/>`}});',
+    'owner.actions.define("save", () => {}, {args:{required:true,schema:Args}});',
+  ].join("\n");
+  const check = async (name: string, text: string, operand: string, attachments: readonly string[], detail: RegExp) => {
+    await write(name + ".ts", text);
+    const document = await vscode.workspace.openTextDocument(uri(name + ".ts"));
+    await vscode.window.showTextDocument(document);
+    const issues = () => vscode.languages.getDiagnostics(document.uri).filter(issue => issue.source === "hson-schema");
+    await waitFor(() => issues().some(issue => issue.message.includes('requires argument "probe"')), name + " Action was checked");
+    const invalid = issues().filter(issue => issue.message.includes("do not match its Schema"));
+    assert.deepEqual(invalid.map(issue => document.getText(issue.range)), attachments.map(() => operand), name);
+    assert.deepEqual(invalid.map(issue => issue.relatedInformation?.map(info => document.getText(info.location.range)).at(-1)).sort(), attachments, name);
+    for (const issue of invalid) {
+      assert.equal(issue.code, 95002);
+      assert.match(issue.message, detail);
+    }
+    console.log("ok - Action " + name + ": " + JSON.stringify(attachments));
+  };
+  const interpolation = 'extra:str="Label: ^{label}"';
+  const left = member("left", 'str:label=%{caption?}'), right = member("right", 'str:label=%{caption?}');
+  const supplied = ' caption:str="Ready"';
+  for (const [order, parts] of [["forward", [left, right]], ["reverse", [right, left]]] as const) {
+    await check("shared-" + order, reused("", interpolation, parts, invoke("left") + invoke("right", supplied).repeat(2)),
+      interpolation, ["event:right"], /unknown key at extra/);
+  }
+  await check("shared-both-invalid", reused("", interpolation, [left, right], invoke("left", supplied) + invoke("right", supplied)),
+    interpolation, ["event:left", "event:right"], /unknown key at extra/);
+
+  const path = "extra:data=^{model.label?}";
+  const model = [member("data", 'data:model=%{record?}')];
+  const number = ' extra <optional "number">', nullable = ' extra <optional <union ["number", "null"]>>';
+  for (const [name, shape, value, expected] of [
+    ["null-for-number", number, '<label null>', ["event:data"]],
+    ["absent-member", number, '<>', []], ["valid-number", number, '<label 7>', []],
+    ["null-for-nullable", nullable, '<label null>', []], ["unknown-member", number, '${unknownValue}', []],
+  ] as const) await check(name, reused(shape, path, model, invoke("data", ' record:data="' + value + '"')),
+    path, expected, /expected number; received null/);
+}
+
 async function runEventAuthoring(workspace: string, extensionPath: string, rendered: boolean): Promise<void> {
   const root = vscode.Uri.file(join(workspace, "event-authoring"));
   const uri = vscode.Uri.joinPath(root, "authoring.ts");
@@ -751,7 +873,7 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
   await waitFor(() => hsonIssues().length === 0, "Inserted FormData operation was rejected");
   console.log("ok - raw FormData operation snippet retains quotes, brace, field cursor and native typing");
 
-  const expectEvidence = async (admitted: boolean, label: string) => {
+  const expectAttachment = async (attached: boolean, label: string) => {
     let observed;
     try {
       await waitFor(async () => {
@@ -759,33 +881,32 @@ async function runEventAuthoring(workspace: string, extensionPath: string, rende
         const definition = await partDefinition();
         const actionToken = rendered ? (await semantic()).get(document.getText().indexOf("deck.move"))?.type === "hsonEventAction" : undefined;
         observed = { completion, definition, actionToken };
-        return completion === admitted && definition === admitted && (!rendered || actionToken === admitted);
+        return completion && definition === attached && (!rendered || actionToken === true);
       }, label);
     } catch (error) {
-      throw new Error(`${label}; expected ${admitted}, observed ${JSON.stringify(observed)}`, { cause: error });
+      throw new Error(`${label}; expected attachment ${attached}, observed ${JSON.stringify(observed)}`, { cause: error });
     }
-    console.log("Event dependency evidence", label, JSON.stringify(observed));
+    console.log("Event attachment and local authoring", label, JSON.stringify(observed));
   };
   const version = document.version;
   const bindsTo = async (file: vscode.Uri) => (await definitions(offsetAfter("const go = E") - 1))?.some(definition =>
     ("targetUri" in definition ? definition.targetUri : definition.uri).toString() === file.toString()) ?? false;
   await write(bridge, substitute);
-  // Evidence is withdrawn as soon as the producer changes. Before the next
-  // write, require tsserver to have recognized the replacement binding.
+  // Require tsserver to see the replacement before testing the contextual link.
   await waitFor(() => bindsTo(bridge), "TypeScript did not see the substitute re-export");
-  await expectEvidence(false, "substitute re-export");
+  await expectAttachment(false, "substitute re-export");
   await write(bridge, genuine);
-  await expectEvidence(true, "restore re-export");
+  await expectAttachment(true, "restore re-export");
   await vscode.workspace.fs.delete(bridge);
   await waitFor(() => bindsTo(fallback), "TypeScript did not resolve the fallback after deleting the re-export");
-  await expectEvidence(false, "delete re-export");
+  await expectAttachment(false, "delete re-export");
   await write(bridge, genuine);
-  await expectEvidence(true, "recreate re-export");
+  await expectAttachment(true, "recreate re-export");
   assert.equal(document.version, version);
   await vscode.commands.executeCommand("typescript.restartTsServer");
   await waitFor(async () => (await labels(offsetAfter("on:pointer:d"))).some(item => name(item) === "on:pointer:down"),
     "Event completion did not recover after plugin reload");
-  console.log("ok - unchanged Event consumer withdraws and restores completion, navigation and highlighting across dependency edits and plugin reload");
+  console.log("ok - Event grammar completion and colors survive a dependency remap while contextual navigation follows the current Program");
 
   const editPrefix = 'import { Hson, hsonLiveTree } from "hson-live";\r\nconst e = Hson.event`';
   const editSuffix = '`;\r\nconst after = 42;\r\n';
@@ -1679,7 +1800,11 @@ export async function run(): Promise<void> {
 
   assert.ok(workspace);
   if (process.env.HSON_EDITING_TEST_ONLY === "1") { await runStructuralKeyboard(workspace); return; }
-  if (process.env.HSON_EVENT_TEST_ONLY === "1") { await runEventAuthoring(workspace, extension.extensionPath, true); return; }
+  if (process.env.HSON_EVENT_TEST_ONLY === "1") {
+    await runEventAuthoring(workspace, extension.extensionPath, true);
+    await runEventActionContracts(workspace);
+    return;
+  }
   if (process.env.HSON_PART_COMPLETION_TEST_ONLY === "1") { await runPartCompletions(workspace); return; }
   if (process.env.HSON_RESTRICTED_TEST !== "1" && process.env.HSON_LOCAL_HOST_TEST_ONLY !== "1") {
     await runProtectedSourceFormatting(workspace);

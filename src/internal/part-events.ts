@@ -10,14 +10,14 @@ export type PartEventReference = AuthoredEventReference;
 export type PartEvent = AuthoredEvent;
 export type PartEvents = ReadonlyMap<string, PartEvent>;
 
-export function read_part_events(value: OrderedProjectedValue): PartEvents {
+export function read_part_events(value: OrderedProjectedValue, parse = parse_part_event): PartEvents {
   if (!is_ordered_projected_object(value)) throw new TypeError("Part events requires a record of authored declaration strings.");
   const events = new Map<string, PartEvent>();
   for (const [name, source] of value.entries) {
     if (!is_part_parameter_name(name) || typeof source !== "string") {
       throw new TypeError("Part events requires identifier keys and authored declaration strings.");
     }
-    try { events.set(name, parse_part_event(source)); }
+    try { events.set(name, parse(source)); }
     catch (cause) {
       throw new TypeError(`Invalid Part event ${JSON.stringify(name)}. ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
     }

@@ -11,6 +11,8 @@ const readJson = async (path) => JSON.parse(await readFile(new URL(path, import.
 const manifest = await readJson("../package.json");
 const languageConfiguration = await readJson("../language-configuration.json");
 const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
+const typescriptEventGrammar = await readJson("../syntaxes/typescript-hson-event.tmLanguage.json");
+const typescriptReactEventGrammar = await readJson("../syntaxes/typescriptreact-hson-event.tmLanguage.json");
 const markdownGrammar = await readJson("../syntaxes/markdown-hson-codeblock.tmLanguage.json");
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 const extensionBundle = await readFile(new URL("../dist/extension.js", import.meta.url), "utf8");
@@ -31,6 +33,9 @@ assert.deepEqual(manifest.activationEvents, [
   "onStartupFinished",
   "onLanguage:typescript",
   "onLanguage:typescriptreact",
+  "onLanguage:javascript",
+  "onLanguage:javascriptreact",
+  "onLanguage:hson",
   "onLanguage:markdown",
 ]);
 assert.deepEqual(manifest.contributes.languages[0].extensions, [".hson"]);
@@ -45,12 +50,24 @@ assert.deepEqual(manifest.contributes.grammars, [
     path: "./syntaxes/hson.tmLanguage.json",
   },
   {
+    scopeName: "hson.event.injection",
+    path: "./syntaxes/typescript-hson-event.tmLanguage.json",
+    injectTo: ["source.ts"],
+  },
+  {
+    scopeName: "hson.event.injection.tsx",
+    path: "./syntaxes/typescriptreact-hson-event.tmLanguage.json",
+    injectTo: ["source.tsx"],
+  },
+  {
     scopeName: "markdown.hson.codeblock",
     path: "./syntaxes/markdown-hson-codeblock.tmLanguage.json",
     injectTo: ["text.html.markdown"],
     embeddedLanguages: { "meta.embedded.block.hson": "hson" },
   },
 ]);
+assert.equal(typescriptEventGrammar.scopeName, "hson.event.injection");
+assert.equal(typescriptReactEventGrammar.scopeName, "hson.event.injection.tsx");
 assert.equal(markdownGrammar.scopeName, "markdown.hson.codeblock");
 assert.equal(markdownGrammar.injectionSelector, "L:markup.fenced_code.block.markdown");
 assert.deepEqual(markdownGrammar.patterns, [

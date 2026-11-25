@@ -17,6 +17,7 @@ import {
   source_point_range_at,
   type HostSourceRange,
 } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import type { EventBodyCache, ReuseEventBody } from "./event-body-cache.js";
 import { diagnose_hson_tag, diagnose_hson_prefix } from "./tag-admission.js";
 import { static_interpolation_diagnostics } from "./static-interpolation-diagnostics.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
@@ -36,7 +37,6 @@ export type DocumentDiagnosticInput = Readonly<{
   text: string;
   authoringMode?: StandaloneAuthoringMode;
   sourceProgram?: ts.Program;
-  eventImports?: ReadonlySet<number> | null;
 }>;
 
 export type RelatedDiagnosticSpec = Readonly<{
@@ -167,20 +167,37 @@ function validateStandalone(text: string, mode: StandaloneAuthoringMode = 'canon
   }
 }
 
-function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boolean): readonly DocumentDiagnosticSpec[] {
+// Cache only literal-relative diagnostics, including secondary source ranges.
+function move_diagnostic(spec: DocumentDiagnosticSpec, offset: number): DocumentDiagnosticSpec {
+  const move = ({ start, end }: HostSourceRange) => ({ start: start + offset, end: end + offset });
+  return { ...spec, range: move(spec.range), related: spec.related.map(item => ({ ...item, range: move(item.range) })) };
+}
+
+function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boolean,
+  reuseEvent?: ReuseEventBody<readonly DocumentDiagnosticSpec[]>,
+): readonly DocumentDiagnosticSpec[] {
   // Share the discovery program's parsed host with the expectation processor.
   // No extra expectation parse is needed, and marker-free production is unchanged.
   const program = input.sourceProgram ?? (input.text.includes(HSON_EXPECT_ERROR_MARKER)
     ? create_hson_source_program(input.fileName, input.text) : undefined);
   const diagnostics: DocumentDiagnosticSpec[] = [];
-  const pending: ExpectationRegion[] = [];
   const discovery = discover_hson_tagged_templates(input.fileName, input.text, program,
-    ignoreDiagnostics ? undefined : source => { diagnostics.push(...diagnose_hson_prefix(source, true)); },
-    undefined, input.eventImports, program === undefined ? undefined : range => pending.push({ kind: "template", range, pending: true }));
+    ignoreDiagnostics ? undefined : source => { diagnostics.push(...diagnose_hson_prefix(source, true)); });
+  const withIntent = (source: { authoringKind?: string; eventValueImport?: true }) =>
+    source.authoringKind !== "event" || source.eventValueImport === true;
   if (!ignoreDiagnostics) {
-    for (const source of discovery.sources) diagnostics.push(...diagnose_hson_tag(source));
-    for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
-    for (const source of discovery.incompleteEvents) {
+    for (const source of discovery.sources.filter(withIntent)) {
+      if (source.authoringKind !== "event" || reuseEvent === undefined) {
+        diagnostics.push(...diagnose_hson_tag(source));
+        continue;
+      }
+      const { start, end } = source.bodyRange;
+      const body = input.text.slice(start, end);
+      const relative = reuseEvent(body, () => diagnose_hson_tag(source).map(spec => move_diagnostic(spec, -start)));
+      diagnostics.push(...relative.map(spec => move_diagnostic(spec, start)));
+    }
+    for (const source of discovery.interpolated.filter(withIntent)) diagnostics.push(...diagnose_hson_prefix(source));
+    for (const source of discovery.incompleteEvents.filter(withIntent)) {
       // An unfinished body can change meaning. A JavaScript hole already violates the tag contract.
       if ("substitutionRanges" in source && source.substitutionRanges.length > 0) diagnostics.push(...diagnose_hson_prefix(source));
     }
@@ -203,8 +220,7 @@ function validateEmbedded(input: DocumentDiagnosticInput, ignoreDiagnostics: boo
   const file = program?.getSourceFile(input.fileName);
   if (file === undefined) return ordinary;
   const regions: ExpectationRegion[] = [
-    ...pending,
-    ...[...discovery.sources, ...discovery.interpolated].map((source): ExpectationRegion => ({
+    ...[...discovery.sources, ...discovery.interpolated].filter(withIntent).map((source): ExpectationRegion => ({
       kind: "template", range: { start: source.tagRange.start, end: source.templateRange.end },
     })),
     ...staticSources.map((source): ExpectationRegion => ({ kind: "static-source", range: source.callRange })),
@@ -233,12 +249,12 @@ function staticTransformDiagnostic(
 }
 
 export function produce_document_diagnostics(
-  input: DocumentDiagnosticInput,
+  input: DocumentDiagnosticInput, eventBodies?: EventBodyCache<readonly DocumentDiagnosticSpec[]>,
 ): readonly DocumentDiagnosticSpec[] {
   if (!is_supported_document(input)) return Object.freeze([]);
   const ignoreDiagnostics = hasDiagnosticsIgnoreFileDirective(input);
-  if (ignoreDiagnostics && (input.languageId === "hson" || !input.text.includes(HSON_EXPECT_ERROR_MARKER))) return Object.freeze([]);
-  return input.languageId === "hson"
-    ? validateStandalone(input.text, input.authoringMode)
-    : validateEmbedded(input, ignoreDiagnostics);
+  if (input.languageId === "hson") return ignoreDiagnostics ? [] : validateStandalone(input.text, input.authoringMode);
+  const validate = (reuse?: ReuseEventBody<readonly DocumentDiagnosticSpec[]>) =>
+    ignoreDiagnostics && !input.text.includes(HSON_EXPECT_ERROR_MARKER) ? [] : validateEmbedded(input, ignoreDiagnostics, reuse);
+  return eventBodies === undefined ? validate() : eventBodies.scan(validate);
 }

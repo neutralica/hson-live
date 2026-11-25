@@ -8,7 +8,6 @@ export const HSON_EXPECT_ERROR_MARKER = "@hson-expect-error";
 export type ExpectationRegion = Readonly<{
   kind: "template" | "static-source";
   range: HostSourceRange;
-  pending?: true;
 }>;
 
 type Expectation = Readonly<{ range: HostSourceRange; code?: string }>;
@@ -21,7 +20,6 @@ type IndexedStatement = Readonly<{
 type IndexedRegion = {
   readonly id: number;
   readonly kind: ExpectationRegion["kind"];
-  readonly pending?: true;
   readonly range: HostSourceRange;
   readonly parent?: IndexedRegion;
   readonly ancestors: readonly IndexedRegion[];
@@ -135,13 +133,11 @@ function lastStartingBefore<T>(items: readonly T[], position: number, start: (it
   return low - 1;
 }
 
-function targetFor(statements: readonly IndexedStatement[], expectation: Expectation): IndexedRegion | "pending" | undefined {
+function targetFor(statements: readonly IndexedStatement[], expectation: Expectation): IndexedRegion | undefined {
   const following = statements[lastStartingBefore(statements, expectation.range.start, item => item.leading.start)];
   if (following === undefined || expectation.range.end > following.leading.end || !following.eligible) return undefined;
-  const settled = following.candidates.filter(region => !region.pending);
-  if (settled.length > 1 || settled[0]?.kind === "static-source") return undefined;
-  if (settled.length < following.candidates.length) return "pending";
-  return settled[0];
+  const [target] = following.candidates;
+  return following.candidates.length === 1 && target?.kind === "template" ? target : undefined;
 }
 
 /** Ownership is the innermost authored region containing the entire primary range. */
@@ -203,7 +199,6 @@ export function apply_hson_diagnostic_expectations(
       continue;
     }
     const target = targetFor(statements, directive);
-    if (target === "pending") continue;
     if (target === undefined) {
       errors.push(failure(directive, "HSON_EXPECT_ERROR_UNUSED", messages.hsonExpectationNoTarget(directive.code)));
       continue;

@@ -1,7 +1,7 @@
 import { assert_hson_identifier_name } from "../../core/hson-name.js";
 import { normalize_part_css_authoring } from "../../core/part-css-authoring.js";
 import { analyze_part_definition, validate_part_definition_flags } from "../../internal/part-definition.js";
-import { read_part_events, type PartEvents } from "../../internal/part-events.js";
+import { read_part_events, type parse_part_event, type PartEvents } from "../../internal/part-events.js";
 import { structured_part_stylesheet } from "../../internal/css/structured-css.js";
 import { document_css_subject_identities } from "../../internal/css/css-identity-translation.js";
 import { ANY_DATA, hson_schema_digest, hson_schema_source_digest } from "../schema/hson-schema.js";
@@ -80,9 +80,9 @@ export function assert_data_library_validation(validation: DataLibraryValidation
  * authored QUAD coordinates never enter a runtime identity overlay.
  * @internal
  */
-export function validate_part_collection(value: OrderedProjectedValue): readonly ValidatedPart[] {
+export function validate_part_collection(value: OrderedProjectedValue, parseEvent?: typeof parse_part_event): readonly ValidatedPart[] {
   if (!is_ordered_projected_object(value)) throw new TypeError("Part collection requires a string-keyed data object.");
-  return Object.freeze(value.entries.map(([key, member]) => validate_part_member(key, member)));
+  return Object.freeze(value.entries.map(([key, member]) => validate_part_member(key, member, parseEvent)));
 }
 
 /** A completed append-only transition admits every new member, including unused ones. @internal */
@@ -94,15 +94,15 @@ export function validate_part_additions(baseline: OrderedProjectedValue, candida
 }
 
 /** Admission-time contract only; lexical/receiving analysis remains at use time. @internal */
-export function validate_part_member(key: string, member: OrderedProjectedValue): ValidatedPart {
-  const part = read_part_member_source(key, member);
+export function validate_part_member(key: string, member: OrderedProjectedValue, parseEvent?: typeof parse_part_event): ValidatedPart {
+  const part = read_part_member_source(key, member, parseEvent);
   validate_part_definition_flags(part.root, part.events);
   if (part.events !== undefined) analyze_part_definition(part.root, undefined, part.events);
   return part;
 }
 
 /** Read the declared fields and Document shape before checking attachment and lexical contracts. @internal */
-export function read_part_member_source(key: string, member: OrderedProjectedValue): ValidatedPart {
+export function read_part_member_source(key: string, member: OrderedProjectedValue, parseEvent?: typeof parse_part_event): ValidatedPart {
   assert_hson_identifier_name(key, "Part");
   if (!is_ordered_projected_object(member)) throw new TypeError("Part requires a data record.");
   const fields = new Map(member.entries);
@@ -118,7 +118,7 @@ export function read_part_member_source(key: string, member: OrderedProjectedVal
   if (root.$_content.length !== 1 || !is_ordinary_element_node(element) || element.$_tag.toLowerCase() === "hson-part") {
     throw new TypeError("Part requires exactly one ordinary element root.");
   }
-  return interpret_part_source(key, fields, authored, root);
+  return interpret_part_source(key, fields, authored, root, parseEvent);
 }
 
 
@@ -145,7 +145,7 @@ export function read_admitted_part_member(member: OrderedProjectedValue | undefi
 }
 
 function interpret_part_source(key: string, fields: ReadonlyMap<string, OrderedProjectedValue>,
-  authored: ReturnType<typeof parse_authored_document_library>, root: HsonNode): ValidatedPart {
+  authored: ReturnType<typeof parse_authored_document_library>, root: HsonNode, parseEvent?: typeof parse_part_event): ValidatedPart {
   const quads = authored.declarations.length === 0 ? undefined : decode_document_quads(
     [...authored.declarations].sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0), root, "document");
   const rawSheet = fields.get("stylesheet");
@@ -156,7 +156,7 @@ function interpret_part_source(key: string, fields: ReadonlyMap<string, OrderedP
   if (fields.has("css")) records.push(structured_part_stylesheet(materialize_projected_value(fields.get("css")!), names));
   const css = records.length ? encode_portable_document_stylesheet(merge_part_stylesheets(records)) : undefined;
   const rawEvents = fields.get("events");
-  const events = rawEvents === undefined ? undefined : read_part_events(rawEvents);
+  const events = rawEvents === undefined ? undefined : read_part_events(rawEvents, parseEvent);
   if (css !== undefined) for (const name of document_css_subject_identities(css, "inbound")) {
     if (!names.has(name)) throw new TypeError(`Part stylesheet references missing local QUAD ${name}.`);
   }

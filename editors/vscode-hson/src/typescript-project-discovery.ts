@@ -1,16 +1,12 @@
 import { statSync } from "node:fs";
 import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 import ts from "typescript";
-import { create_hson_project_program, hson_source_syntactic_eligibility, is_hson_typescript_source_file, resolved_hson_event_imports } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
-import { event_source_text_hash, type EventSourceEvidence } from "./event-source-evidence.js";
-import type { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
+import { create_hson_project_program, is_hson_typescript_source_file } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 
 export type DiscoveredTypeScriptSource = Readonly<{
   fileName: string;
   languageId: "typescript" | "typescriptreact";
   owners: readonly string[];
-  eventEvidence?: EventSourceEvidence;
-  eventEvidencePending?: true;
 }>;
 
 export type TypeScriptProjectDiscovery = Readonly<{
@@ -26,9 +22,6 @@ export type ProjectDiscoveryRequest = Readonly<{
   openFiles: readonly (readonly [fileName: string, text: string, dirty: boolean])[];
   changedFiles?: readonly string[];
 }>;
-export type ProjectRevisions = readonly (readonly [project: string, revision: string])[];
-export type ProjectDiscoveryResponse = Readonly<{ sessionId: string; revision: ProjectRevisions; discoveryId?: string; projects?: TypeScriptProjectDiscovery }>;
-export type ActiveTypeScriptProject = Readonly<{ program: ts.Program | null; mapping?: (fileName: string) => SchemaSourceMapping | undefined }>;
 
 export function is_typescript_configuration_path(fileName: string): boolean {
   return /(?:^|[/\\])(?:tsconfig(?:\.[^/\\]+)?|jsconfig)\.json$/i.test(fileName);
@@ -133,59 +126,35 @@ export function visit_configured_typescript_projects(workspaceRoot: string, conf
   return errors;
 }
 
-type ProjectSource = Readonly<{ fileName: string; identity?: string; publish: boolean; eventEvidence?: EventSourceEvidence; eventEvidencePending?: true }>;
+type ProjectSource = Readonly<{ fileName: string; identity?: string; publish: boolean }>;
 type ProjectSources = Readonly<{
   files: ReadonlyMap<string, string | null>;
   /** null denotes a loaded project whose native Program is not ready. */
   activeProgram?: ts.Program | null;
-  current: boolean;
   sources: readonly ProjectSource[];
 }>;
 
-function read_project_sources(ts: typeof import("typescript"), program: ts.Program, workspaceRoots: readonly string[],
-  snapshots: ReadonlyMap<string, string>, configured: boolean, proveEvents: boolean, current: boolean, active?: ActiveTypeScriptProject,
+function read_project_sources(program: ts.Program, workspaceRoots: readonly string[],
+  snapshots: ReadonlyMap<string, string>, configured: boolean, activeProgram?: ts.Program | null,
 ): ProjectSources {
   const options = program.getCompilerOptions();
   const outputs = [options.outDir, options.declarationDir].filter((value): value is string => value !== undefined);
   const roots = new Set(program.getRootFileNames().map(canonical));
-  const eligible = hson_source_syntactic_eligibility(ts, program);
   const files = new Map<string, string | null>(), sources: ProjectSource[] = [];
   for (const file of program.getSourceFiles()) {
     const fileName = resolve(file.fileName), key = canonical(fileName);
     const identity = physical(fileName);
     files.set(key, identity ?? null);
     if (identity) files.set(identity, null);
-    // Every included source can veto another spelling of the same file. Output
-    // directories and external-library status only control URI publication.
+    // Preserve membership for every compiler input. Output and external-library
+    // status affect only whether the source gets workspace diagnostics.
     const root = roots.has(key);
-    const publishable = is_workspace_typescript_source(fileName, outputs) && !program.isSourceFileFromExternalLibrary(file)
+    const publishable = (identity !== undefined || snapshots.has(key) || ts.sys.fileExists(fileName))
+      && is_workspace_typescript_source(fileName, outputs) && !program.isSourceFileFromExternalLibrary(file)
       && (workspaceRoots.some(folder => beneath(fileName, folder)) || root && configured || snapshots.has(key));
-    const candidate = !file.isDeclarationFile && could_author_event(ts, file);
-    let eventEvidence: EventSourceEvidence | undefined;
-    const eventCandidate = proveEvents && identity !== undefined && candidate && is_hson_typescript_source_file(fileName);
-    if (eventCandidate && current) {
-      const mapping = active?.mapping?.(file.fileName);
-      if (mapping === undefined || mapping.text === file.text) {
-        const offsets = resolved_hson_event_imports(ts, program, file, eligible);
-        const importOffsets: number[] = [];
-        for (const offset of offsets) {
-          const authored = mapping === undefined ? offset : mapping.authored_edit({ start: offset, length: 1 })?.start;
-          if (authored !== undefined) importOffsets.push(authored);
-        }
-        if (importOffsets.length) eventEvidence = { fileName, textHash: event_source_text_hash(mapping?.authored ?? file.text),
-          importOffsets: importOffsets.sort((a, b) => a - b) };
-      }
-    }
-    sources.push({ fileName, identity, publish: publishable && (root || candidate || snapshots.has(key)), eventEvidence,
-      ...(proveEvents && !current ? { eventEvidencePending: true } : {}) });
+    sources.push({ fileName, identity, publish: publishable });
   }
-  return { files, sources, activeProgram: active?.program, current };
-}
-
-function agreed_evidence(left: EventSourceEvidence | undefined, right: EventSourceEvidence | undefined): EventSourceEvidence | undefined {
-  if (left === undefined || right === undefined || left.textHash !== right.textHash) return undefined;
-  const importOffsets = left.importOffsets.filter(offset => right.importOffsets.includes(offset));
-  return importOffsets.length === 0 ? undefined : { ...left, importOffsets };
+  return { files, sources, activeProgram };
 }
 
 /** The existing workspace scan owns these per-config observations. Source edits
@@ -196,10 +165,10 @@ export class TypeScriptProjectScanner {
   private observations = new Map<string, ProjectSources>();
   private revision = 0;
 
-  constructor(private readonly sdk = ts, private readonly proveEvents = true) {}
+  constructor(private readonly sdk = ts) {}
 
   *scan(workspaceRoots: readonly string[], openFiles: ReadonlyMap<string, string>,
-    changedFiles?: readonly string[], activeProjects: ReadonlyMap<string, ActiveTypeScriptProject> = new Map(),
+    changedFiles?: readonly string[], activeProjects: ReadonlyMap<string, ts.Program | null> = new Map(),
   ): Generator<void, TypeScriptProjectDiscovery> {
     const revision = ++this.revision;
     const changes = changedFiles?.flatMap(project_file_keys);
@@ -209,19 +178,18 @@ export class TypeScriptProjectScanner {
       ? read_configurations(this.sdk, workspaceRoots) : previousConfiguration;
     const observations = new Map<string, ProjectSources>();
     const snapshots = new Map([...openFiles].map(([fileName, text]) => [canonical(fileName), text]));
-    // Each compiler resolves its own path spelling. Only agreement and change
+    // Each compiler resolves its own path spelling. Only membership and change
     // invalidation use physical identity. Diagnostics are still published per editor URI.
-    type Ownership = { projects: Set<string>; publicationPaths: Set<string>; eventEvidence?: EventSourceEvidence; eventEvidencePending?: true };
+    type Ownership = { projects: Set<string>; publicationPaths: Set<string> };
     const owners = new Map<string, Ownership>();
     const documents = new Map<string, Ownership>();
     const observe = (source: ProjectSource, config?: string) => {
       const key = source.identity ?? canonical(source.fileName);
       let owner = owners.get(key);
       if (owner === undefined) {
-        owner = { projects: new Set(), publicationPaths: new Set(), eventEvidence: source.eventEvidence };
+        owner = { projects: new Set(), publicationPaths: new Set() };
         owners.set(key, owner);
-      } else owner.eventEvidence = agreed_evidence(owner.eventEvidence, source.eventEvidence);
-      if (source.eventEvidencePending) owner.eventEvidencePending = true;
+      }
       if (config !== undefined) owner.projects.add(config);
       if (source.publish) owner.publicationPaths.add(source.fileName);
       documents.set(canonical(source.fileName), owner);
@@ -231,34 +199,20 @@ export class TypeScriptProjectScanner {
       const active = activeProjects.get(config);
       const previous = configuration === previousConfiguration ? previousObservations.get(config) : undefined;
       let observed = previous;
-      if (!previous?.current || previous.activeProgram !== active?.program || changes?.some(file => previous.files.has(file))) {
-        const program = active?.program ?? (parsed && create_hson_project_program(this.sdk, parsed, dirname(config), name => snapshots.get(canonical(name))));
+      if (previous === undefined || previous.activeProgram !== active || changes?.some(file => previous.files.has(file))) {
+        const program = active ?? (parsed && create_hson_project_program(this.sdk, parsed, dirname(config), name => snapshots.get(canonical(name))));
         if (!program) continue;
-        const current = !active || active.program !== null && !program.getSourceFiles().some(file => {
-          const snapshot = snapshots.get(canonical(file.fileName));
-          if (snapshot === undefined) return false;
-          const mapping = active.mapping?.(file.fileName);
-          return mapping === undefined ? snapshot !== file.text : snapshot !== mapping.authored || file.text !== mapping.text;
-        });
-        observed = read_project_sources(this.sdk, program, workspaceRoots, snapshots, parsed !== undefined, this.proveEvents
-          && !parsed?.errors.length && !program.getConfigFileParsingDiagnostics().length, current, active);
+        observed = read_project_sources(program, workspaceRoots, snapshots, parsed !== undefined, active);
       }
       if (!observed) continue;
       observations.set(config, observed);
       for (const source of observed.sources) observe(source, config);
       if (observed !== previous) yield;
     }
-    for (const [fileName, text] of openFiles) {
-      const key = canonical(fileName);
-      const owner = documents.get(key);
-      if (owner !== undefined) {
-        if (owner.eventEvidence && event_source_text_hash(text) !== owner.eventEvidence.textHash) {
-          owner.eventEvidence = undefined;
-          owner.eventEvidencePending = true;
-        }
-        continue;
+    for (const fileName of openFiles.keys()) {
+      if (!documents.has(canonical(fileName)) && is_workspace_typescript_source(fileName)) {
+        observe({ fileName, identity: physical(fileName), publish: true });
       }
-      if (is_workspace_typescript_source(fileName)) observe({ fileName, identity: physical(fileName), publish: true });
     }
     if (revision === this.revision) {
       this.configuration = configuration;
@@ -267,8 +221,7 @@ export class TypeScriptProjectScanner {
     const sources = [...owners.values()].flatMap(owner =>
       [...owner.publicationPaths].map((fileName): DiscoveredTypeScriptSource => ({
         fileName, languageId: fileName.toLowerCase().endsWith(".tsx") ? "typescriptreact" : "typescript",
-        owners: [...owner.projects].sort(), eventEvidence: owner.eventEvidence && { ...owner.eventEvidence, fileName },
-        ...(owner.eventEvidencePending ? { eventEvidencePending: true } : {}),
+        owners: [...owner.projects].sort(),
       }))).sort((left, right) => left.fileName.localeCompare(right.fileName));
     const projectFiles = [...observations].map(([project, observation]) => [project, [...observation.files]] as const);
     return { sources, projectFiles, configurations: configuration.configurations, errors: configuration.errors };
@@ -282,19 +235,4 @@ export function discover_typescript_projects(workspaceRoots: readonly string[],
   let step = scan.next();
   while (!step.done) step = scan.next();
   return step.value;
-}
-
-function could_author_event(ts: typeof import("typescript"), file: ts.SourceFile): boolean {
-  const imports = new Set<string>();
-  for (const statement of file.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    const bindings = statement.importClause?.namedBindings;
-    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
-    for (const binding of bindings.elements) if ((binding.propertyName ?? binding.name).text === "Hson") imports.add(binding.name.text);
-  }
-  if (imports.size === 0) return false;
-  const visit = (node: ts.Node): true | undefined => ts.isPropertyAccessExpression(node)
-    && node.name.text === "event" && ts.isIdentifier(node.expression) && imports.has(node.expression.text)
-    ? true : ts.forEachChild(node, visit);
-  return visit(file) === true;
 }

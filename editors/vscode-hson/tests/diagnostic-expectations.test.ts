@@ -64,31 +64,17 @@ check("exact code consumes one original diagnostic and missing/wrong codes fail"
   assert.equal(apply(text.replace("CODE_A", "code_a"), [a])[1]?.code, "HSON_EXPECT_ERROR_UNUSED");
 });
 
-check("pending Event identity defers only expectations whose target can change", () => {
+check("Event expectations use the same local value import as grammar diagnostics", () => {
   const code = "HSON_TAGGED_TEMPLATE_REQUIRED";
   const event = 'Hson.event`<hson:event on:click local:${"go"} <> >`;';
-  const directive = "// @hson-expect-error ";
-  const output = (body: string, eventImports: ReadonlySet<number> | null) => produce_document_diagnostics({
-    text: prefix + body, fileName: "/workspace/expectations.ts", languageId: "typescript", eventImports,
+  const target = '// @hson-expect-error ' + code + '\n' + event;
+  const output = (text: string) => produce_document_diagnostics({
+    text, fileName: "/workspace/expectations.ts", languageId: "typescript",
   }).map(item => item.code);
-  const official = new Set([prefix.indexOf("Hson")]);
-  const denied = new Set<number>();
-  const match = directive + code + "\n" + event;
-  assert.deepEqual(output(match, null), []);
-  assert.deepEqual(output(match, official), []);
-  assert.deepEqual(output(match, denied), ["HSON_EXPECT_ERROR_UNUSED"]);
-  assert.deepEqual(output(event, official), [code]);
-  const wrong = match.replace(code, "HSON_EVENT_REFERENCE_INVALID");
-  assert.deepEqual(output(wrong, null), []);
-  assert.deepEqual(output(wrong, official), [code, "HSON_EXPECT_ERROR_UNUSED"]);
-  assert.deepEqual(output(match.replace('${"go"}', "go"), official), ["HSON_EXPECT_ERROR_UNUSED"]);
-  assert.deepEqual(output(directive + "\n" + event, null), ["HSON_EXPECT_ERROR_INVALID"]);
-  assert.deepEqual(output(directive + code + "\nconst unrelated = 0;\n" + event, null), ["HSON_EXPECT_ERROR_UNUSED"]);
-  assert.deepEqual(output(match.replace("Hson.event", "Foreign.event"), null), ["HSON_EXPECT_ERROR_UNUSED"]);
-  const mixed = directive + canonicalCode + "\nconst x = [" + 'Hson.canonical`${1n}`, ' + event.slice(0, -1) + "];";
-  assert.deepEqual(output(mixed, null), [canonicalCode]);
-  assert.deepEqual(output(mixed, denied), []);
-  assert.deepEqual(output(mixed, official), [code, canonicalCode, "HSON_EXPECT_ERROR_UNUSED"]);
+  assert.deepEqual(output(prefix + target), []);
+  assert.deepEqual(output(target), ["HSON_EXPECT_ERROR_UNUSED"]);
+  assert.deepEqual(output(prefix + target.replace('${"go"}', "go")), ["HSON_EXPECT_ERROR_UNUSED"]);
+  assert.deepEqual(output(prefix + event), [code]);
 });
 
 check("source range order consumes one occurrence and preserves survivor order/ranges", () => {

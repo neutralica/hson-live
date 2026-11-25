@@ -1,6 +1,6 @@
 import { Hson } from "../../../src/hson-authoring.js";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import Module from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,33 +9,23 @@ import { hson_highlights, load_hson_grammar } from "../src/highlighting.js";
 import { initialAppearance, readAppearance, housePalette, duplicatePalette, deletePalette, resolveStyle, blend, roleCatalog } from "../src/appearance-model.js";
 import { AppearanceSpanCache, appearanceColor, type AppearanceRole } from "../src/appearance-spans.js";
 import { HsonBindingCache } from "../src/binding-intelligence.js";
-import { event_source_imports } from "../src/event-source-evidence.js";
-import { discover_typescript_projects } from "../src/typescript-project-discovery.js";
 
 async function run() {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
   const cache = new AppearanceSpanCache();
   const eventText = 'import { Hson } from "hson-live"; Hson.event`<div/>`; Hson.document`<aside/>`;';
   const eventDocument = { uri: "/event.ts", fileName: "/event.ts", languageId: "typescript", version: 1, text: eventText };
-  const official = new Set([eventText.indexOf("Hson")]);
-  let imports = official;
-  const bindings = new HsonBindingCache(() => imports);
+  const bindings = new HsonBindingCache();
   const appearance = new AppearanceSpanCache(bindings);
   const initial = appearance.get(grammar, eventDocument);
-  const bodySpans = (spans: typeof initial, start: number, length: number) =>
-    spans.filter(span => start <= span.range.start && span.range.end <= start + length);
-  const eventStart = eventText.indexOf("<div/>"), adjacent = eventText.indexOf("<aside/>");
-  assert.equal(bodySpans(initial, eventStart, 6).length, 4);
-  imports = new Set();
-  bindings.forget(eventDocument.uri);
-  const withdrawn = appearance.get(grammar, eventDocument);
-  assert.deepEqual(bodySpans(withdrawn, eventStart, 6), []);
-  assert.deepEqual(bodySpans(withdrawn, adjacent, 8), bodySpans(initial, adjacent, 8));
-  assert.equal(appearance.get(grammar, eventDocument), withdrawn, "reuse with unchanged evidence");
-  imports = official;
-  bindings.forget(eventDocument.uri);
-  assert.deepEqual(appearance.get(grammar, eventDocument), initial, "restoration at the same version");
-  console.log("ok - a shared appearance cache follows Event evidence withdrawal and restoration");
+  assert.equal(appearance.get(grammar, eventDocument), initial);
+  const prefix = '// 🧪\r\n';
+  const moved = appearance.get(grammar, { ...eventDocument, text: prefix + eventText, version: 2 });
+  assert.deepEqual(moved.map(span => ({ ...span, range: { start: span.range.start - prefix.length, end: span.range.end - prefix.length } })), initial);
+  const bare = eventText.replace('import { Hson } from "hson-live"; ', '');
+  assert.ok(appearance.get(grammar, { ...eventDocument, text: bare, version: 3 })
+    .some(span => bare.slice(span.range.start, span.range.end) === "div"));
+  console.log("ok - Event Appearance survives moving the literal and removing the direct import");
 
   const preciseText = 'import { Hson } from "hson-live";\r\nconst outside = "native";\r\n'
     + 'const event = Hson.event`<hson:event on:pointer:down local:deck.move x:num=^{pointer.clientX}\r\n'
@@ -180,25 +170,14 @@ async function run() {
 
   const workspace = mkdtempSync(join(tmpdir(), "hson-utf16-appearance-"));
   try {
-    const packagePath = join(workspace, "node_modules/hson-live");
-    mkdirSync(join(packagePath, "dist"), { recursive: true });
-    writeFileSync(join(packagePath, "package.json"), '{"name":"hson-live","exports":{".":"./dist/index.d.ts"}}');
-    writeFileSync(join(packagePath, "dist/index.d.ts"), "export declare const Hson: { event: typeof String.raw };");
-    writeFileSync(join(workspace, "package.json"), '{"type":"module"}');
-    writeFileSync(join(workspace, "tsconfig.json"), '{"compilerOptions":{"module":"NodeNext","types":[]},"files":["event.ts"]}');
     const fileName = join(workspace, "event.ts");
     const authored = 'import { Hson } from "hson-live";\r\nHson.event`<div title="é🧪" name="eventword"/>`;';
     writeFileSync(fileName, Buffer.from("\uFEFF" + authored, "utf16le"));
-    const decorations = (text: string, snapshots: ReadonlyMap<string, string>) => {
-      const proof = discover_typescript_projects([workspace], snapshots).sources.find(source => source.fileName === fileName)?.eventEvidence;
-      assert.ok(proof);
-      const imports = event_source_imports([proof], ts.sys.useCaseSensitiveFileNames);
-      return new AppearanceSpanCache(new HsonBindingCache(imports)).get(grammar, { uri: fileName, fileName, languageId: "typescript", version: 1, text });
-    };
+    const decorations = (text: string) => appearance.get(grammar, { uri: fileName, fileName, languageId: "typescript", version: 1, text });
     const decoded = ts.sys.readFile(fileName);
     assert.equal(decoded, authored);
-    const closed = decorations(decoded, new Map());
-    const reopened = decorations(authored, new Map([[fileName, authored]]));
+    const closed = decorations(decoded);
+    const reopened = decorations(authored);
     assert.deepEqual(reopened, closed);
     const start = authored.indexOf("eventword");
     assert.ok(closed.some(span => span.role === "value.attributeString" && span.range.start === start && span.range.end === start + "eventword".length));
